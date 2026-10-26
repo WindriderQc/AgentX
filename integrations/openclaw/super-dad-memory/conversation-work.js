@@ -54,22 +54,25 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
     const worker = context.agentId === config.conversationWorkAgentId;
     return { name: 'conversation_work', label: 'Nestor Conversation Work',
       description: worker
-        ? 'Core owns your durable work. context reads the complete canonical request, selected context and verified receipt references. tasks reads current personal tasks (read-only). publish commits an answer, correction, clarification or no_work disposition with its exact receiptIds before your native run ends. You have no business mutations. The owner continues talking with Nestor meanwhile.'
-        : 'context reads your exact Core-accepted native Main request, selected context, current recent conversation turns and pending or received work in the same owner conversation. Refresh it while working when useful; it supplies reference data, not new authorization. request returns acceptance for the guardian’s current task lookup, never task data or completed actions. Only the current host-bound session and run are eligible.',
+        ? 'Core owns your durable work. context reads the complete canonical request, selected context and verified receipt references. tasks reads current personal tasks (read-only). evidence reads the complete stored value behind one $evidence ref from context. publish commits an answer, correction, clarification or no_work disposition with its exact receiptIds before your native run ends. You have no business mutations. The owner continues talking with Nestor meanwhile.'
+        : 'context reads your exact Core-accepted native Main request, selected context, current recent conversation turns and pending or received work in the same owner conversation. Earlier tool evidence appears as $evidence with a summary; evidence with that exact ref reads its complete stored value when the detail matters. Refresh context while working when useful; it supplies reference data, not new authorization. request returns acceptance for the guardian’s current task lookup, never task data or completed actions. Only the current host-bound session and run are eligible.',
       parameters: worker ? { type: 'object', properties: {
-        operation: { type: 'string', enum: worker ? ['context', 'tasks', 'publish'] : ['request'] },
+        operation: { type: 'string', enum: worker ? ['context', 'tasks', 'evidence', 'publish'] : ['request'] },
+        ref: { type: 'string', pattern: '^[a-f0-9]{64}/[a-f0-9]{64}$' },
         limit: { type: 'integer', minimum: 1, maximum: 50 }, includeDone: { type: 'boolean' },
         kind: { type: 'string', enum: ['answer', 'correction', 'clarification', 'no_work'] },
         text: { type: 'string', maxLength: 16000 },
         receiptIds: { type: 'array', items: { type: 'string', pattern: '^[a-f0-9]{64}$' }, maxItems: 16 }
       }, required: ['operation'], additionalProperties: false }
-        : { type: 'object', properties: { operation: { type: 'string', enum: ['request', 'context'] } }, required: ['operation'], additionalProperties: false },
+        : { type: 'object', properties: { operation: { type: 'string', enum: ['request', 'context', 'evidence'] },
+          ref: { type: 'string', pattern: '^[a-f0-9]{64}/[a-f0-9]{64}$' } }, required: ['operation'], additionalProperties: false },
       async execute(id, params) {
         const native = nativeCalls.get(key(context, id));
         if (!native?.runId || native.agentId !== context.agentId || native.sessionKey !== context.sessionKey) throw new Error('The native tool-call binding is unavailable. No operation was dispatched.');
-        if ((worker && params.operation === 'request') || (!worker && !['request', 'context'].includes(params.operation))) throw new Error('The selected native role cannot perform this operation.');
+        if ((worker && params.operation === 'request') || (!worker && !['request', 'context', 'evidence'].includes(params.operation))) throw new Error('The selected native role cannot perform this operation.');
         const input = params.operation === 'tasks' ? Object.fromEntries(['limit', 'includeDone'].filter(k => params[k] !== undefined).map(k => [k, params[k]]))
-          : params.operation === 'publish' ? { kind: params.kind, text: params.text, receiptIds: params.receiptIds } : undefined;
+          : params.operation === 'publish' ? { kind: params.kind, text: params.text, receiptIds: params.receiptIds }
+          : params.operation === 'evidence' ? { ref: params.ref } : undefined;
         const result = await call(!worker && params.operation === 'context' ? 'native_context' : params.operation, native, input, id);
         return { content: [{ type: 'text', text: JSON.stringify(result) }], details: result };
       } };

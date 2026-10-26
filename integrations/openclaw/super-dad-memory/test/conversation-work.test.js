@@ -28,11 +28,12 @@ test('the host-bound tool is optional, packaged, and keeps its private token out
   const h = setup();
   assert.equal(h.factory(native('family')), null); assert.equal(h.factory(native('secretary')), null);
   const main = h.factory(native('main')), worker = h.factory(native('worker'));
-  assert.deepEqual(main.parameters.properties.operation.enum, ['request', 'context']);
-  assert.deepEqual(worker.parameters.properties.operation.enum, ['context', 'tasks', 'publish']);
+  assert.deepEqual(main.parameters.properties.operation.enum, ['request', 'context', 'evidence']);
+  assert.deepEqual(worker.parameters.properties.operation.enum, ['context', 'tasks', 'evidence', 'publish']);
   assert.equal(JSON.stringify(main).includes('synthetic-secret-value'), false);
   assert.equal(main.parameters.properties.workId, undefined);
-  assert.deepEqual(Object.keys(main.parameters.properties), ['operation']);
+  // Main still cannot name a work or run: an evidence read takes only the exact ref copied from its context.
+  assert.deepEqual(Object.keys(main.parameters.properties), ['operation', 'ref']);
 });
 test('execute binds the real call id and run from the hook, and never trusts factory/model run parameters', async () => {
   const h = setup(), context = native('main'), tool = h.factory({ ...context, runId: 'invented-factory-run' });
@@ -142,4 +143,15 @@ test('a mistaken guardian id cannot remove Main tools or hide Main from the spea
   assert.equal(await guard(native('main')), undefined);
   const continuity = continuityOperations({ config: { agents: { entries: { main: {}, family: {} } } }, guardianAgentId: 'main' });
   assert.equal((await continuity({ operation: 'agents' })).agents.find(agent => agent.id === 'main').internal, undefined);
+});
+
+test('an evidence read forwards only the exact ref with the host-bound identity', async () => {
+  const h = setup(), context = native('main'), tool = h.factory(context);
+  const ref = 'a'.repeat(64) + '/' + 'b'.repeat(64);
+  await h.hooks.before_tool_call({ toolName: 'conversation_work', toolCallId: 'evidence', runId, params: { operation: 'evidence', ref } }, context);
+  await tool.execute('evidence', { operation: 'evidence', ref, workId: 'forged', runId: 'forged' });
+  const posted = h.posted.at(-1).body;
+  assert.equal(posted.operation, 'evidence');
+  assert.deepEqual(posted.input, { ref });
+  assert.equal(posted.context.runId, runId);
 });

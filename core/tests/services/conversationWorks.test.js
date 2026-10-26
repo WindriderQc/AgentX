@@ -100,7 +100,7 @@ test('oversized worker context explicitly refuses instead of returning only rece
   await expect(works.contextForWorker(job.context)).rejects.toMatchObject({ code: 'CONVERSATION_CONTEXT_REQUIRED', statusCode: 409 });
 });
 
-test('complete boss context retains older background answers, their full read evidence and actual presentation', async () => {
+test('complete boss context retains older background answers, recalls their read evidence exactly and keeps presentation', async () => {
   const answers = [];
   for (let index = 0; index < 6; index++) {
     const job = await startWork();
@@ -123,7 +123,10 @@ test('complete boss context retains older background answers, their full read ev
   expect(conversation.coverage).toMatchObject({ complete: true, turnCount: 7, workResultCount: 6 });
   for (const answer of answers) expect(conversation.turns.find(turn => turn.turnId === answer.turnId).workResults[0].text).toBe(answer.text);
   const first = conversation.turns[0].workResults[0];
-  expect(first.toolEvidence[0].data.tasks[0].title).toMatch(/LAST_SOURCE_DETAIL$/);
+  expect(first.toolEvidence[0].data.$evidence.summary).toMatchObject({ kind: 'tasks', totalCount: 1, returned: 1 });
+  const recalled = await works.readEvidence(latest.context, { ref: first.toolEvidence[0].data.$evidence.ref });
+  expect(recalled.data.tasks[0].title).toMatch(/LAST_SOURCE_DETAIL$/);
+  expect(recalled).toMatchObject({ receiptId: first.toolEvidence[0].id, tool: 'tasks.personal.list' });
   expect(first.presentation).toMatchObject({ state: 'completed', receipts: [{ stage: 'displayed' }, { stage: 'claim' }, { stage: 'started' }, { stage: 'completed' }] });
   expect(conversation.turns[1].workResults[0].presentation.state).toBe('available');
   const family = await conversations.createSession({ sessionId: randomUUID(), packId: 'kidx_nestor', scopeId: 'family', modeId: 'standard' });
@@ -137,7 +140,7 @@ test('large retained work evidence counts toward the complete-context budget', a
   await expect(works.contextForWorker(job.context)).rejects.toMatchObject({ code: 'CONVERSATION_CONTEXT_REQUIRED' });
 });
 
-test('repeated full source data shares inline values while retaining each work and canonical receipt', async () => {
+test('repeated full source data keeps the latest inline, references earlier receipts and recalls them exactly', async () => {
   const data = { tasks: [{ id: 'shared-source', title: 'x'.repeat(35000) + ' FINAL_SOURCE_DETAIL' }], totalCount: 1 };
   tasks.list.mockImplementation(async () => structuredClone(data));
   for (let index = 0; index < 3; index++) await result();
@@ -146,10 +149,13 @@ test('repeated full source data shares inline values while retaining each work a
   expect(JSON.stringify(expanded).length).toBeGreaterThan(96000);
   const received = await works.contextForWorker(latest.context);
   expect(received.conversation.coverage).toMatchObject({ complete: true, turnCount: 4, workResultCount: 3 });
-  expect(Object.values(received.conversation.sharedToolEvidence)).toEqual([data]);
   const references = received.conversation.turns.flatMap(turn => turn.workResults || []).map(work => work.toolEvidence[0]);
   expect(new Set(references.map(receipt => receipt.id)).size).toBe(3);
-  for (const receipt of references) expect(received.conversation.sharedToolEvidence[receipt.data.$ref.split('/').at(-1)]).toEqual(data);
+  expect(references[2].data).toEqual(data);
+  for (const receipt of references.slice(0, 2)) {
+    expect(receipt.data.$evidence.ref.split('/').at(-1)).toBe(receipt.id);
+    expect((await works.readEvidence(latest.context, { ref: receipt.data.$evidence.ref })).data).toEqual(data);
+  }
   expect(await works.conversationContext(current.sessionId)).toEqual(expanded);
   expect(tasks.list).toHaveBeenCalledTimes(3);
   const other = await conversations.createSession({ sessionId: randomUUID(), packId: 'personal_operator', scopeId: 'personal',

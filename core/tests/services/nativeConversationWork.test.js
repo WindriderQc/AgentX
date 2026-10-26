@@ -252,7 +252,7 @@ test('a successful canonical refresh clears only its own former budget refusal',
   expect((await works.repo.get(row._id)).reason).toBe('another_refusal');
 });
 
-test('native context shares repeated inline evidence without merging original runs or replaying reads', async () => {
+test('native context references earlier evidence without merging original runs or replaying reads', async () => {
   works.observer.stop();
   const data = { tasks: [{ id: 'shared-owner-action', title: 'x'.repeat(35000) + ' FINAL_SOURCE_DETAIL' }], totalCount: 1 };
   const list = jest.fn(async () => structuredClone(data));
@@ -269,8 +269,10 @@ test('native context shares repeated inline evidence without merging original ru
   const read = await works.contextForNative(context(current), 'synthetic-refresh');
   expect(read.nativeOwner).toBe('main');
   expect(read.conversation.coverage).toMatchObject({ complete: true, turnCount: 4, workResultCount: 3 });
-  expect(Object.values(read.conversation.sharedToolEvidence)).toEqual([data]);
   const historical = read.conversation.turns.flatMap(turn => turn.workResults || []);
+  const reads = historical.map(work => work.toolEvidence.find(item => item.tool === 'tasks.personal.list'));
+  expect(reads[2].data).toEqual(data);
+  for (const item of reads.slice(0, 2)) expect((await works.readEvidence(context(current), { ref: item.data.$evidence.ref })).data).toEqual(data);
   expect(historical.map(work => work.text)).toEqual(['Verified result 0', 'Verified result 1', 'Verified result 2']);
   expect(historical.map(work => work.toolEvidence[0].runId)).toEqual(runs);
   expect(list).toHaveBeenCalledTimes(3);
@@ -908,4 +910,42 @@ test('opaque turn ids and a repeated client turn id in another conversation cann
     await expect(works.guardianStarted(first.row._id, `agent:nestor-guardian:household:direct:${second.row.guardian.sessionId}`,
       'resp_' + randomUUID(), 'nestor-guardian')).rejects.toMatchObject({ statusCode: 404 });
   } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
+});
+
+test('earlier evidence that exceeded the budget now fits and stays recallable only within its own conversation', async () => {
+  works.observer.stop();
+  let call = 0;
+  const list = jest.fn(async () => ({ tasks: [{ id: `task-${call}`, title: `DETAIL_${call++} ` + 'z'.repeat(40000) }], totalCount: 1 }));
+  works = registerWorkRuntime({ router, conversations, tasks: { list }, agentClient: execute, continuity, env, capability });
+  works.observer.stop();
+  for (let index = 0; index < 3; index++) {
+    const row = await admitted('Lis mes tâches ouvertes.');
+    await works.readTasks(context(row), {}, 'synthetic-read', 'boss');
+    await works.publishNative(row._id, proof(row.attempt, `Verified result ${index}`, ['conversation_work']));
+  }
+  const now = await admitted('Help me choose a colour.');
+  expect(JSON.stringify(await works.conversationContext(current.sessionId)).length).toBeGreaterThan(96000);
+  const read = await works.contextForNative(context(now), 'call_fits_now');
+  expect(read.conversation.evidenceReferenceEncoding).toMatchObject({ name: 'core.tool-evidence-references/v1' });
+  const refs = read.conversation.turns.flatMap(turn => turn.workResults || [])
+    .flatMap(work => work.toolEvidence).filter(item => item.data?.$evidence).map(item => item.data.$evidence.ref);
+  expect(refs.length).toBeGreaterThanOrEqual(2);
+  const first = await works.readEvidence(context(now), { ref: refs.find(ref => ref) });
+  expect(first.data.tasks[0].title.length).toBeGreaterThan(40000);
+  const app = express(); app.use(express.json()); app.use(router);
+  const post = value => request(app).post('/native/work').set('Authorization', 'Bearer ' + env.PERSONAL_CONVERSATION_WORK_TOKEN).send(value);
+  const http = await post({ operation: 'evidence', context: context(now), input: { ref: refs[0] } });
+  expect(http.status).toBe(200);
+  expect(http.body.data).toMatchObject({ authority: 'core.conversation-works', ref: refs[0] });
+  expect((await post({ operation: 'evidence', context: context(now), input: { ref: 'f'.repeat(64) + '/' + 'e'.repeat(64) } })).status).toBe(404);
+  expect((await post({ operation: 'evidence', context: context(now), input: { ref: 'bad' } })).status).toBe(400);
+  expect((await post({ operation: 'evidence', context: context(now), input: { ref: refs[0], extra: 1 } })).status).toBe(400);
+  expect((await post({ operation: 'evidence', context: { ...context(now), runId: 'resp_' + randomUUID() }, input: { ref: refs[0] } })).status).toBe(404);
+  const other = await conversations.createSession({ sessionId: randomUUID(), packId: 'personal_operator', scopeId: 'personal',
+    modeId: 'standard', status: 'active', agentId: 'main', backend: 'openclaw', turnCount: 0 });
+  const previous = current; current = other;
+  const foreign = await admitted('Another conversation.');
+  current = previous;
+  await expect(works.readEvidence(context(foreign), { ref: refs[0] })).rejects.toMatchObject({ statusCode: 404 });
+  expect(list).toHaveBeenCalledTimes(3);
 });

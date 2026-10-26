@@ -122,7 +122,9 @@ In Core's `native` mode, every accepted personal work uses complete Main rather
 than the dedicated worker. Main's `conversation_work context` relays one private
 `native_context` read using the hook's exact session/run identity, without an
 arbitrary work selector. It refreshes canonical requests, current recent turns,
-guardian replies and pending or received results. It grants no worker task or
+guardian replies and pending or received results. Earlier tool evidence arrives as
+`$evidence` references with summaries; `conversation_work evidence` with an exact
+`ref` reads one complete stored value from the same conversation. It grants no worker task or
 publication capability. Main retains its installed native tools and specialists;
 Core receives the exact native final answer, including a tool-free reasoning
 answer or a private no-work review of an adequate greeting. The continuity
