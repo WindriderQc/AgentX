@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import objective_dispositions as dispositions
 import objective_review as worker
+import objective_equivalence as equivalent
 from evidence_store import load, save
 import test_objective_review as fixtures
 
@@ -192,6 +193,54 @@ class DispositionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "identity or source integrity"):
             dispositions.read(objective, manifest, row["pageId"], expected_identity=changed_identity)
         self.assertEqual(len(calls), 1)
+
+    def test_rejected_copy_never_enters_alias_findings_and_old_alias_receipt_is_preserved(self):
+        self.two_sources()
+        # Two physical native IDs preserve the very same message/RFC/context.
+        row = load(self.root / "raw-receipts/message01.json")
+        save(self.root / "raw-receipts/message02.json", {**row, "messageId": "message02"})
+
+        def accepted_second_copy(prompt, reply):
+            if prompt["source"]["id"] == "message02":
+                value = json.loads(reply["response"])
+                value["moments"][0]["quotes"] = ["Un fichier.pdf est envoyé."]
+                reply["response"] = json.dumps(value)
+            return reply
+
+        client, calls = self.client(accepted_second_copy)
+        first = self.run_worker(client, retain_rejected_pages=True)
+        self.assertEqual(first["coverage"]["counts"]["rejectedPages"], 1)
+        self.assertEqual(first["coverage"]["counts"]["reviewedPages"], 1)
+        self.assertEqual(len(calls), 2)
+        objective, manifest, _, rejected = self.disposition()
+        self.run_worker(client, retain_rejected_pages=True)
+        self.assertEqual(list((objective / "equivalences").glob("*.json")), [])
+        self.assertEqual(len(calls), 2)
+
+        # Preserve an older, otherwise valid alias which the previous code
+        # could create for the rejected unit. It must not enrich any finding.
+        source = next(s for s in manifest["sources"] if s["id"] == "message01")
+        current, units, _ = worker.materialize(self.root, source)
+        unit_pages = list(worker.pages(current, units, manifest["objectiveSha256"]))
+        canonical = equivalent.find(objective, current, units[0], worker.read_receipt, manifest)
+        equivalent.alias(objective, current, units[0], unit_pages, canonical, worker._source_record)
+        alias_file = next((objective / "equivalences").glob("*.json"))
+        original_alias = alias_file.read_bytes()
+        coverage = worker.export(objective, manifest)
+        finding = load(objective / "findings.json")[0]
+        records = load(objective / "sources.json")
+        self.assertEqual(len(finding["sourceIds"]), 1)
+        self.assertEqual(len(finding["claimsWithExactQuotes"]), 1)
+        self.assertEqual([r["nativeRef"]["messageId"] for r in records], ["message02"])
+        self.assertEqual(coverage["counts"]["rejectedPages"], 1)
+        self.assertEqual(coverage["counts"]["equivalentPages"], 0)
+        self.assertEqual(coverage["counts"]["sourcesTextCovered"], 1)
+        self.assertFalse(coverage["allTargetTextCovered"])
+        self.assertEqual(alias_file.read_bytes(), original_alias)
+        self.run_worker(client, retain_rejected_pages=True)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(load(objective / "findings.json")[0]["sourceIds"]), 1)
+        self.assertEqual(alias_file.read_bytes(), original_alias)
 
     def test_existing_default_still_stops_on_first_rejected_result(self):
         self.two_sources()

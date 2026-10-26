@@ -108,10 +108,19 @@ def read_receipt(file, manifest):
     return row
 
 
+def usable_aliases(objective, manifest):
+    # Retain and validate old receipts, but a rejected target unit must never
+    # lend its body/quotes to a finding through another accepted copy.
+    for alias in equivalent.receipts(objective, manifest):
+        if not any(dispositions.read(objective, manifest, pid) for pid in
+                   alias["coveredPageIds"] + alias["canonicalPageIds"]):
+            yield alias
+
+
 def coverage(objective, manifest):
     counts = Counter(targetSources=len(manifest["sources"]))
     by_system, sources = {}, []
-    aliases = list(equivalent.receipts(objective, manifest))
+    aliases = list(usable_aliases(objective, manifest))
     alias_index = equivalent.coverage_index(aliases)
     for alias in aliases:
         for pid in alias["canonicalPageIds"]:
@@ -190,7 +199,7 @@ def _source_record(page):
 
 def export(objective, manifest):
     findings, records = [], {}
-    aliases = list(equivalent.receipts(objective, manifest))
+    aliases = list(usable_aliases(objective, manifest))
     aliases_by_page = {}
     for alias in aliases:
         for pid in alias["canonicalPageIds"]:
@@ -258,7 +267,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
     requested_stop = stop
     stop = lambda: requested_stop() or clock() - started >= max_seconds
     status = {"schema": CONTRACT, "startedAt": now(), "queueRequestId": queue_id, "dispatchId": dispatch_id}
-    known_aliases = list(equivalent.receipts(objective, manifest))
+    known_aliases = list(usable_aliases(objective, manifest))
     alias_index = equivalent.coverage_index(known_aliases)
     for alias in known_aliases:
         for pid in alias["canonicalPageIds"]:
@@ -297,6 +306,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
             reused = set()
             for unit in units:
                 unit_pages = [p for p in plan if p["representation"] == equivalent.unit_ref(unit)]
+                if any(dispositions.read(objective, manifest, p["pageId"], expected_identity=p["identity"]) for p in unit_pages):
+                    continue
                 equivalent.register(objective, current, unit, unit_pages, read_receipt, manifest)
                 if all((objective / "page-reviews" / (p["pageId"] + ".json")).is_file() for p in unit_pages):
                     continue
@@ -304,6 +315,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                 if canonical:
                     equivalent.alias(objective, current, unit, unit_pages, canonical, _source_record)
                     reused.update(p["pageId"] for p in unit_pages)
+        except dispositions.DispositionIntegrityError:
+            raise
         except (OSError, ValueError, RuntimeError, KeyError) as error:
             durable(plan_file, {"source": source, "error": type(error).__name__, "gaps": [{"code": "source-unavailable-or-integrity-failed"}]})
             return finish("source-error", sourceId=source["id"], errorType=type(error).__name__)
@@ -318,7 +331,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                 continue
             unit = next(u for u in units if equivalent.unit_ref(u) == page["representation"])
             unit_pages = [p for p in plan if p["representation"] == page["representation"]]
-            canonical = equivalent.find(objective, current, unit, read_receipt, manifest)
+            unit_rejected = any(dispositions.read(objective, manifest, p["pageId"], expected_identity=p["identity"]) for p in unit_pages)
+            canonical = None if unit_rejected else equivalent.find(objective, current, unit, read_receipt, manifest)
             if canonical:
                 equivalent.alias(objective, current, unit, unit_pages, canonical, _source_record)
                 reused.update(p["pageId"] for p in unit_pages)

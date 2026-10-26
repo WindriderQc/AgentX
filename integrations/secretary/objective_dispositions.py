@@ -17,6 +17,10 @@ from review_receipts import durable, hashed
 CONTRACT = "secretary.objective-page-disposition/v1"
 
 
+class DispositionIntegrityError(ValueError):
+    """A saved disposition cannot be trusted; never turn it into a source gap."""
+
+
 def _proof(objective, page_id):
     """Require exact retained HTTP terminal evidence, never an unsettled call."""
     objective = Path(objective)
@@ -84,7 +88,7 @@ def terminal(objective, page_id, request_id):
     return proof
 
 
-def read(objective, manifest, page_id, *, expected_identity=None):
+def _read(objective, manifest, page_id, *, expected_identity=None):
     """Verify source scope and every retained byte before skipping a page."""
     objective = Path(objective)
     file = objective / "page-dispositions" / (page_id + ".json")
@@ -116,6 +120,13 @@ def read(objective, manifest, page_id, *, expected_identity=None):
     if row.get("proof") != proof or row.get("failure") != _failure(value, state, body):
         raise ValueError("Rejected page disposition no longer matches its retained result")
     return row
+
+
+def read(objective, manifest, page_id, *, expected_identity=None):
+    try:
+        return _read(objective, manifest, page_id, expected_identity=expected_identity)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise DispositionIntegrityError(str(error)) from error
 
 
 def retain(objective, manifest, page, error):
