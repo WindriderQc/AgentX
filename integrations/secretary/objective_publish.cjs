@@ -6,6 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
 function durable(file, value, exclusive = false) {
@@ -58,7 +59,32 @@ function boundEquivalentCopies(finding, records) {
       policy: 'Canonical model evidence plus one bounded equivalent copy per source system; no distinct evidence omitted',
       proofManifestSha256: hash(JSON.stringify(proof)), omitted } };
 }
-function build(finding, indexed, { matches = [] } = {}) {
+function applyDateReview(payload, review) {
+  if (!review) return payload;
+  const findingId = payload.timeline.legacyId;
+  if (review.findingId !== findingId || !Array.isArray(review.clear) || !review.clear.length ||
+      review.clear.some(side => !['start', 'end'].includes(side)) || new Set(review.clear).size !== review.clear.length ||
+      typeof review.reason !== 'string' || !review.reason.trim() || review.reason.length > 2000 ||
+      typeof review.question !== 'string' || !review.question.trim() || review.question.length > 2000 || !timestamp(review.reviewedAt)) {
+    throw new Error('Date adjudication needs its exact finding, absent-date sides, bounded reason/question and review timestamp');
+  }
+  const t = payload.timeline;
+  const proposal = { date: t.date, precision: t.precision, endDate: t.endDate, endPrecision: t.endPrecision,
+    ongoing: t.ongoing, originalDate: t.originalDate, rationale: t.rationale, uncertainty: t.notes };
+  if (review.modelProposal && !isDeepStrictEqual(review.modelProposal, proposal)) throw new Error('Core date review refers to another model proposal; inspect before replacement');
+  t.metadata.dateReview = { contract: 'secretary.objective-date-audit/v1', findingId, clear: review.clear,
+    reason: review.reason, question: review.question, reviewedAt: timestamp(review.reviewedAt),
+    authority: 'automated-source-audit-not-owner-confirmation', modelProposal: proposal };
+  if (review.clear.includes('start')) { t.date = null; t.precision = 'unknown'; payload.entry.eventDate = ''; payload.entry.eventDatePrecision = 'unknown'; }
+  if (review.clear.includes('end')) { t.endDate = null; t.endPrecision = 'unknown'; }
+  t.dateEstimateNote = review.reason;
+  t.reviewQuestions = [review.question];
+  t.notes = 'Date d’événement à préciser; interprétation automatique non confirmée.';
+  t.tentativeDate = true;
+  return payload;
+}
+function nativeDateReview(entry) { return entry?.context?.importedTimeline?.metadata?.dateReview || entry?.timeline?.metadata?.dateReview || null; }
+function build(finding, indexed, { matches = [], dateReview = null } = {}) {
   if (!/^objective-[a-f0-9]{64}$/.test(finding.id || '') || finding.userConfirmed !== false || finding.reviewState !== 'candidate') throw new Error('Only native unconfirmed objective candidates can be imported');
   const allRecords = finding.sourceIds.map(id => { const record = indexed.get(id); if (!record) throw new Error(`Missing quoted source ${id}`); return record; });
   const bounded = boundEquivalentCopies(finding, allRecords);
@@ -96,7 +122,7 @@ function build(finding, indexed, { matches = [] } = {}) {
       rationale: 'Rapprochement de provenance et de citation, sans fusion ni changement du relevé antérieur.',
       limits: 'Une même source ne constitue pas une corroboration indépendante; les formulations et dates restent à revoir.',
       sourceIndependence: 'not-established', claimsWithExactQuotes: bounded.claims.slice(0, 1) })), media: [] };
-  return payload;
+  return applyDateReview(payload, dateReview);
 }
 function matches(finding, indexed, existing) {
   const hashes = new Set(finding.sourceIds.map(id => indexed.get(id)?.nativeRef?.sourceSha256));
@@ -125,7 +151,8 @@ async function lookup(call, importId, contextHash = null) {
   if (!entry) return null;
   if (contextHash && entry.contextHash !== contextHash) throw new Error('Core has another context under this import identity; preserve owner state');
   return { importId, entryId: entry.id, sourceKey: entry.sourceKey, contextHash: entry.contextHash,
-    contextRevision: entry.contextRevision, reconciled: true, assertionState: entry.assertionState, reviewState: entry.reviewState };
+    contextRevision: entry.contextRevision, reconciled: true, assertionState: entry.assertionState, reviewState: entry.reviewState,
+    dateReview: nativeDateReview(entry) };
 }
 async function publishOne(directory, payload, normalized, call) {
   const root = path.join(directory, 'publication', hash(payload.importId));
@@ -139,6 +166,9 @@ async function publishOne(directory, payload, normalized, call) {
     durable(path.join(prior, 'receipt.json'), current);
   }
   if (current?.contextHash === expected) return current;
+  if (current?.dateReview && !isDeepStrictEqual(current.dateReview, payload.timeline.metadata?.dateReview)) {
+    throw new Error('Core date adjudication changed; reload the native review before source enrichment');
+  }
   // Source enrichment uses the current Core context revision; the importer
   // preserves owner overrides/review decisions. This is never a fuzzy merge.
   payload = { ...payload, expectedContextRevision: current?.contextRevision || 0 };
@@ -192,7 +222,17 @@ async function main(argv = process.argv.slice(2)) {
       offset = page.nextOffset;
     }
   }
-  const plan = findings.map(finding => build(finding, records, { matches: matches(finding, records, existing) }));
+  const supplied = options.adjudications ? read(path.resolve(options.adjudications)) : [];
+  if (!Array.isArray(supplied) || supplied.some(row => !row || !findings.some(f => f.id === row.findingId)) ||
+      new Set(supplied.map(row => row.findingId)).size !== supplied.length) throw new Error('Adjudications must reference distinct current native findings');
+  const plan = findings.map(finding => {
+    const importId = `objective:${finding.objectiveId}:${finding.objectiveVersion}:${finding.id.slice('objective-'.length)}`;
+    const retained = nativeDateReview(existing.find(row => row.importId === importId));
+    const requested = supplied.find(row => row.findingId === finding.id);
+    const payload = build(finding, records, { matches: matches(finding, records, existing), dateReview: requested || retained });
+    if (retained && !isDeepStrictEqual(retained, payload.timeline.metadata.dateReview)) throw new Error('A supplied date adjudication differs from Core; preserve the native decision before a new review');
+    return payload;
+  });
   durable(path.join(directory, 'publication-proof-manifest.json'), findings.map(finding => {
     const bounded = boundEquivalentCopies(finding, finding.sourceIds.map(id => records.get(id)));
     return { findingId: finding.id, ...bounded.limits, sources: bounded.proof };
@@ -212,5 +252,5 @@ async function main(argv = process.argv.slice(2)) {
   durable(path.join(directory, 'publication-summary.json'), { at: new Date().toISOString(), receipts });
   console.log(JSON.stringify({ publishedOrReconciled: receipts.length, writes, candidates: plan.length, confirmed: 0 }));
 }
-module.exports = { build, sourceRecord, boundEquivalentCopies, matches, client, lookup, publishOne, main };
+module.exports = { build, applyDateReview, nativeDateReview, sourceRecord, boundEquivalentCopies, matches, client, lookup, publishOne, main };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
