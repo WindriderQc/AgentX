@@ -215,8 +215,9 @@ test('pilot review gate stops after native release without publication or a foll
   assert.equal((await step(f.config, f.deps)).phase, 'awaiting-output-review');
   assert.equal(f.data.publishes, 0); assert.equal(f.data.jobs.length, 1); assert.equal(f.data.launches, 1);
 });
-test('pilot per-source bounds reach the existing worker unchanged', t => {
-  const f = fixture(t); f.config.maxPagesPerSource = 1;
+test('pilot per-source and explicit output bounds reach the existing worker unchanged', t => {
+  const f = fixture(t); f.config.maxPagesPerSource = 1; f.config.maxOutputTokens = 8192;
   let args; dependencies(f.config, (_cmd, flags) => { args = flags; return { status: 0 }; }).launch('pilot.service', { id: 'q', dispatchId: 'd' });
   assert.equal(args[args.indexOf('--max-pages-per-source') + 1], '1');
+  assert.equal(args[args.indexOf('--max-output-tokens') + 1], '8192');
 });
