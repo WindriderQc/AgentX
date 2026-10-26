@@ -75,7 +75,7 @@ async function watch(config, supplied, deps = {}) {
       if (['uncertain', 'needs-source-review', 'queue-submission-unconfirmed'].includes(state.phase)) {
         return record('stopped-for-review', { nativePhase: state.phase, exitCode: 2 });
       }
-      if (['text-scope-complete', 'controller-drained'].includes(state.phase)) return record(state.phase, { exitCode: 0 });
+      if (['text-scope-complete', 'controller-drained', 'awaiting-output-review'].includes(state.phase)) return record(state.phase, { exitCode: 0 });
       record(deadline || signalled ? 'draining' : state.phase);
       await wait(controls.pollSeconds * 1000);
     }

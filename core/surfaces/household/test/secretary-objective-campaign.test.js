@@ -176,3 +176,47 @@ test('an operator running state without a retained worker never authorizes anoth
   assert.equal(state.phase, 'uncertain'); assert.match(state.reason, /no retained local worker/);
   assert.equal(f.data.launches, 1);
 });
+test('materialized targets with no remaining pages and incomplete text coverage stop without empty chunks', async t => {
+  const f = fixture(t); f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: false,
+    counts: { sourcesPendingMaterialization: 0, pendingPagesKnown: 0, sourcesWithGaps: 1, sourceErrors: 0 } });
+  const state = await step(f.config, f.deps);
+  assert.equal(state.phase, 'needs-source-review'); assert.equal(state.remainingGaps, 1);
+  assert.equal(state.semanticAcceptance, 'not-established'); assert.equal(state.userConfirmed, false);
+  assert.equal(f.data.jobs.length, 0); assert.equal(f.data.launches, 0); assert.equal(f.data.publishes, 1);
+});
+test('already acquired candidates publish before an exhausted unreadable text scope stops', async t => {
+  const f = fixture(t); f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: false,
+    counts: { sourcesPendingMaterialization: 0, pendingPagesKnown: 0, sourcesWithGaps: 2 } });
+  let writes = 1;
+  f.deps.publish = async () => ({ writes: writes-- > 0 ? 1 : 0, candidates: 1 });
+  assert.equal((await step(f.config, f.deps)).phase, 'publication-pending');
+  assert.equal((await step(f.config, f.deps)).phase, 'needs-source-review');
+  assert.equal(f.data.jobs.length, 0); assert.equal(f.data.launches, 0);
+});
+test('a bounded pilot adopts one reviewed native request without creating another queue identity', async t => {
+  const f = fixture(t, { future: true }), id = '11111111-1111-4111-8111-111111111111';
+  f.config.existingQueueId = id; f.config.expectedQueueIntentHash = 'f'.repeat(64);
+  f.data.jobs.push({ id, key: 'existing-native-pilot', intentHash: f.config.expectedQueueIntentHash, kind: 'diagnostic',
+    hosts: f.config.hosts, executor: { mode: 'operator', receiptRef: path.join(f.dir, 'pilot-terminal.json') },
+    state: 'reserved', revision: 2, reservation: { start: '2026-10-26T19:00:00Z', end: '2026-10-26T19:30:00Z' } });
+  const state = await step(f.config, f.deps);
+  assert.equal(state.phase, 'waiting-for-native-window'); assert.equal(state.current.queueId, id);
+  assert.equal(state.current.adoptedIntentHash, f.config.expectedQueueIntentHash);
+  assert.equal(f.data.jobs.length, 1); assert.equal(f.data.launches, 0);
+  f.config.expectedQueueIntentHash = 'e'.repeat(64); f.config.id = 'wrong-adoption';
+  await assert.rejects(step(f.config, f.deps), /does not match/);
+  assert.equal(f.data.launches, 0);
+});
+test('pilot review gate stops after native release without publication or a following chunk', async t => {
+  const f = fixture(t); f.config.reviewBeforePublication = true;
+  await step(f.config, f.deps); f.terminal('partial');
+  assert.equal((await step(f.config, f.deps)).phase, 'chunk-released');
+  assert.equal((await step(f.config, f.deps)).phase, 'awaiting-output-review');
+  assert.equal((await step(f.config, f.deps)).phase, 'awaiting-output-review');
+  assert.equal(f.data.publishes, 0); assert.equal(f.data.jobs.length, 1); assert.equal(f.data.launches, 1);
+});
+test('pilot per-source bounds reach the existing worker unchanged', t => {
+  const f = fixture(t); f.config.maxPagesPerSource = 1;
+  let args; dependencies(f.config, (_cmd, flags) => { args = flags; return { status: 0 }; }).launch('pilot.service', { id: 'q', dispatchId: 'd' });
+  assert.equal(args[args.indexOf('--max-pages-per-source') + 1], '1');
+});

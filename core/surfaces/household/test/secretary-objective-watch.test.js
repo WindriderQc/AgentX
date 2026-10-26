@@ -52,6 +52,11 @@ test('text scope completion terminates the watcher while retaining separate huma
   const result = await watch(f.config, { until: f.until }, f.deps);
   assert.equal(result.phase, 'text-scope-complete'); assert.equal(result.completedChunks, 1); assert.equal(result.userConfirmed, false);
 });
+test('a released pilot awaiting output audit stops cleanly instead of starting a continuing campaign', async t => {
+  const f = fixture(t); f.deps.step = async () => ({ phase: 'awaiting-output-review', completedChunks: [{ queueId: 'pilot' }] });
+  const result = await watch(f.config, { until: f.until }, f.deps);
+  assert.equal(result.phase, 'awaiting-output-review'); assert.equal(result.exitCode, 0);
+});
 test('a live observer lock prevents a second watcher without clearing native fences', async t => {
   const f = fixture(t), home = watchHome(f.config); fs.mkdirSync(home, { recursive: true });
   const lock = path.join(home, 'watcher.lock'); fs.writeFileSync(lock, JSON.stringify({ host: os.hostname(), pid: process.pid }));

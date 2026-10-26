@@ -47,6 +47,11 @@ reconcile in Core. Remaining visual/OCR/context gaps, semantic acceptance and
 human confirmation remain separate. Do not mark an entire life reconstruction
 complete merely because one bounded chunk ended.
 
+If every target has been materialized and no text page remains but coverage is
+still incomplete (for example an unreadable MIME representation), the controller
+publishes acquired candidates and stops for source review. It never keeps
+creating empty chunks or counts missing readable text as a semantic review.
+
 ## Durable progression
 
 ```sh
@@ -78,3 +83,20 @@ dead observer lock can be released without touching worker/inference fences.
 The explicit deadline and graceful drain are independent of the Coding task's
 human confirmation or goal completion. Private watch checkpoints and receipts
 remain outside public Git.
+
+## Receiving a bounded operator pilot
+
+Optional `existingQueueId` plus `expectedQueueIntentHash` adopts a previously
+reviewed operator request instead of submitting another identity. Core's
+immutable intent, operator executor kind and declared hosts must match before
+the controller records adoption. The existing reservation, dispatch and planned
+terminal receipt remain authoritative; adoption never grants early execution.
+
+`maxPagesPerSource` forwards a pilot's explicit per-source bound to the native
+worker. `reviewBeforePublication: true` stops after the admitted chunk has
+terminated and Core has accepted its release receipt, in
+`awaiting-output-review`. The watcher then exits cleanly without publishing or
+creating another chunk. The authorized caller audits the exact outputs, uses
+the native publisher with any necessary date adjudications, and chooses the
+measured bounds for a separate continuing campaign. This output gate creates
+no owner confirmation and requests no additional human campaign approval.
