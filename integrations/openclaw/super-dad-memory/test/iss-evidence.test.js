@@ -18,10 +18,10 @@ test('Core ISS reads verify execution while delivery and missing result referenc
   for (const [i, result] of [{ details: data }, { structuredContent: data },
     { content: [{ type: 'text', text: JSON.stringify(data) }] }, { details: { status: 'ok' } },
     { isError: true, details: data }, { details: { ...data, counts: { geometric: 0, observable: 1 } } }].entries()) {
-    await recordTool(workspace, { toolName: 'nestor_iss', toolCallId: `call-${i}`, result }, context);
+    await recordTool(workspace, { toolName: 'agentx__iss_passes', toolCallId: `call-${i}`, result }, context);
   }
   const { receipts } = await readState(workspace);
   assert.deepEqual(receipts.map(r => r.status), ['verified', 'verified', 'verified', 'unknown', 'failed', 'unknown']);
   assert.ok(receipts.every(r => r.deliveryState === 'unknown' && r.resultRef === null));
-  assert.doesNotMatch(JSON.stringify(receipts), /Synthetic location|geometric|passes/);
+  assert.doesNotMatch(JSON.stringify(receipts), /Synthetic location|geometric|"passes"/);
 });

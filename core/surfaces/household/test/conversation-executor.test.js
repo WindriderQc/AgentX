@@ -162,3 +162,101 @@ test('a household turn outranks evaluation work and reports a busy host plainly 
   assert.equal(waitingNotices.length, 1, 'an ended turn is no longer notified');
   assert.equal(priority._state.activeTurns, 0);
 });
+
+// Famille tool loop (HOUSEHOLD_FAMILY_TOOLS): synthetic tool set, no Core service.
+const issCall = { function: { name: 'iss_passes', arguments: { visible_only: true } } };
+function syntheticToolset(results = []) {
+  const executed = [];
+  return { executed, toolset: { names: ['iss_passes'], maxRounds: 2, maxCallsPerRound: 3,
+    definitions: [{ type: 'function', function: { name: 'iss_passes', description: 'Synthetic', parameters: { type: 'object', properties: {} } } }],
+    instructions: 'Synthetic tool instructions',
+    execute: async call => { executed.push(call); const content = results.shift() || '{"status":"ok"}';
+      return { message: { role: 'tool', tool_name: call.function.name, content }, receipt: { tool: call.function.name, status: 'completed', at: 'synthetic' } }; } } };
+}
+
+test('Famille tools: a tool call runs through Core, then the model answers from its result', async () => {
+  const bodies = [];
+  const replies = [{ message: { content: '', tool_calls: [issCall] } }, { message: { content: 'Lundi à 06 h 03, si le ciel est dégagé.' } }];
+  const execute = createConversationExecutor({ agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async body => { bodies.push(structuredClone(body)); return { ok: true, body: replies.shift(), metadata: { model: 'local' } }; } } });
+  const { executed, toolset } = syntheticToolset(['{"status":"ok","nextVisible":{"startLocal":"lun. 26 oct., 06 h 03"}}']);
+  const reply = await execute({ ...request(), familyTools: toolset });
+  assert.equal(bodies.length, 2);
+  assert.deepEqual(bodies[0].tools, toolset.definitions);
+  assert.deepEqual(bodies[1].tools, toolset.definitions); // a second round may still call a tool
+  assert.deepEqual(executed, [issCall]);
+  const second = bodies[1].messages;
+  assert.deepEqual(second.at(-2), { role: 'assistant', content: '', tool_calls: [issCall] });
+  assert.deepEqual(second.at(-1), { role: 'tool', tool_name: 'iss_passes', content: '{"status":"ok","nextVisible":{"startLocal":"lun. 26 oct., 06 h 03"}}' });
+  assert.equal(reply.text, 'Lundi à 06 h 03, si le ciel est dégagé.');
+  assert.deepEqual(reply.tools, { status: 'observed', authority: 'agentx/core', offered: ['iss_passes'],
+    receipts: [{ tool: 'iss_passes', status: 'completed', at: 'synthetic' }] });
+  assert.equal(reply.metadata.toolRounds, 1);
+});
+
+test('Famille tools: a streamed reply without a tool call streams once, unchanged', async () => {
+  const deltas = [];
+  let calls = 0;
+  const execute = createConversationExecutor({ agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async body => { calls += 1; assert.ok(body.tools); return { ok: true, completion: Promise.resolve(),
+      stream: Readable.from(['{"message":{"content":"Bon"}}\n', '{"message":{"content":"jour"},"done":true}\n']) }; } } });
+  const reply = await execute({ ...request(), streaming: true, onDelta: d => deltas.push(d), familyTools: syntheticToolset().toolset });
+  assert.equal(calls, 1);
+  assert.deepEqual(deltas, ['Bon', 'jour']);
+  assert.equal(reply.text, 'Bonjour');
+  assert.deepEqual(reply.tools.receipts, []);
+  assert.equal(reply.tools.status, 'observed');
+});
+
+test('Famille tools: a streamed tool call is executed and only the answer is spoken', async () => {
+  const deltas = [];
+  const streams = [
+    ['{"message":{"content":"","tool_calls":[{"function":{"name":"iss_passes","arguments":{"visible_only":true}}}]}}\n', '{"message":{"content":""},"done":true}\n'],
+    ['{"message":{"content":"Demain à 06 h 03."},"done":true}\n'],
+  ];
+  const execute = createConversationExecutor({ agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async () => ({ ok: true, completion: Promise.resolve(), stream: Readable.from(streams.shift()) }) } });
+  const { executed, toolset } = syntheticToolset();
+  const reply = await execute({ ...request(), streaming: true, onDelta: d => deltas.push(d), familyTools: toolset });
+  assert.deepEqual(executed, [issCall]);
+  assert.deepEqual(deltas, ['Demain à 06 h 03.']);
+  assert.equal(reply.text, 'Demain à 06 h 03.');
+});
+
+test('Famille tools: rounds are bounded, and the last request offers no tool', async () => {
+  const bodies = [];
+  const execute = createConversationExecutor({ agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async body => { bodies.push(body); return { ok: true, body: { message: bodies.length <= 2
+      ? { content: '', tool_calls: [issCall] } : { content: 'Réponse finale.' } } }; } } });
+  const { executed, toolset } = syntheticToolset();
+  const reply = await execute({ ...request(), familyTools: toolset });
+  assert.equal(bodies.length, 3);
+  assert.ok(bodies[0].tools && bodies[1].tools);
+  assert.equal(bodies[2].tools, undefined);
+  assert.equal(executed.length, 2);
+  assert.equal(reply.text, 'Réponse finale.');
+  assert.equal(reply.metadata.toolRounds, 2);
+});
+
+test('Famille tools: a runtime that refuses tools answers the turn without them and says so', async () => {
+  const bodies = [];
+  const execute = createConversationExecutor({ agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async body => { bodies.push(body); return bodies.length === 1
+      ? { ok: false, status: 400, body: { error: 'registry.ollama.ai/library/x does not support tools' } }
+      : { ok: true, body: { message: { content: 'Sans outil.' } } }; } } });
+  const reply = await execute({ ...request(), familyTools: syntheticToolset().toolset });
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[1].tools, undefined);
+  assert.equal(reply.text, 'Sans outil.');
+  assert.equal(reply.tools.status, 'not_supported');
+  assert.match(reply.tools.reason, /does not accept tools/);
+});
+
+test('without Famille tools the AgentX request carries no tools field', async () => {
+  let body;
+  const execute = createConversationExecutor({ agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async value => { body = value; return { ok: true, body: { message: { content: 'Ok' } } }; } } });
+  const reply = await execute(request());
+  assert.equal('tools' in body, false);
+  assert.equal(reply.tools.status, 'not_supported');
+});

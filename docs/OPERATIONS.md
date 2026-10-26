@@ -793,28 +793,30 @@ within 3 seconds and 0.3° in `core/tests/unit/mcpIssTools.test.js`.
 
 `iss_passes` is one Core capability, available through the same MCP bus to
 Hermes, OpenClaw and other clients. Runtime allowlists select exposure; they
-do not replace server-side authorization. Omitting coordinates does not make
-the result public: the passes still concern the configured household location.
+do not replace server-side authorization. The answer carries no coordinates
+and ISS passes are public information for this product: every channel uses the
+same Core tool by its name, with no per-session adapter.
 Only compare passes within the returned `window`, even when the list is shorter.
 
-The optional `super-dad-memory` adapter relays it as `nestor_iss`, with no
-orbital calculation or separate store. In addition to per-agent
-`tools.alsoAllow`, it verifies the owner/household session identity and refuses
-scheduled, delegated and unrelated sessions. A direct OpenClaw MCP connection
-can expose the shared tool as `agentx__iss_passes`; use it when native policies
-preserve the intended session scope. Adding `iss_passes` to a global server
-filter alone is not evidence of that equivalence. Preserve existing grants
-until the replacement's allowed and denied paths are verified. See the
+OpenClaw agents reach it through the `agentx` MCP connection as
+`agentx__iss_passes` (`iss_passes` in `mcp.servers.agentx.toolFilter.include`
+and `agentx__iss_passes` in the agent's `tools.alsoAllow`); Hermes lists
+`iss_passes` in its `agentx-core` include list. The former `nestor_iss` plugin
+adapter is removed. See the
 [shared capability contract](SHARED_AGENT_CAPABILITIES.md).
 
-Famille conversations on the AgentX engine run no tools; they receive approved
-context. With `HOUSEHOLD_FAMILY_ISS_PASSES=true`, a Famille turn whose message
-asks about the ISS (`ISS`, `station spatiale`, `space station`) receives a short
-French summary of the same computation: the visible passes in the next 72
-hours, the count of passes that will not be visible and why, the computation
-and TLE dates, and the `ISS_VIEW_URL` link as a `link` show block. When the
-computation fails, the context tells Nestor to give no time. Unset, Famille
-receives nothing about the ISS.
+Famille conversations on the AgentX engine can call Core tools. Core lists the
+family-eligible tools in `core/surfaces/household/family-tools.js` (today
+`iss_passes`); the instance turns them on with `HOUSEHOLD_FAMILY_TOOLS`
+(comma-separated). The tools are offered to the model with the turn; a tool
+call runs the same handler as `/mcp`, its result goes back to the model, and
+the model answers from it (at most two tool rounds, three calls per round; the
+last request offers no tool). A reply without a tool call streams exactly as
+before. Famille's `iss_passes` has no `lat`/`lon`: it always answers for the
+household location. The turn records `tools.status: observed` with one receipt
+per call. When the model runtime refuses tools, the turn is answered without
+them and recorded as `not_supported`. Unset, Famille is offered no tool and the
+prompt keeps saying so.
 
 The personal finance capability is described for a new maintainer in
 [FINANCE.md](FINANCE.md). The personal finance ledger ingests bank and credit-card statements dropped in

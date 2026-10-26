@@ -1,6 +1,6 @@
 'use strict';
 
-const { readReplyStream } = require('./persona-catalog');
+const { readReplyFrames } = require('./persona-catalog');
 const { conversationInput } = require('./llmx-conversation');
 const { selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL } = require('./conversation-agent');
 const interactivePriority = require('../../src/services/interactivePriorityService');
@@ -134,31 +134,63 @@ function runTurn({ agentClient, hermesClient, inference, consumerContract, env }
     // A spoken turn takes the instance's voice lane, in any pack. LLMx scene
     // conversations keep their pack's task: they need its structured replies.
     const taskType = request.channel === 'voice' && !session.llmx ? voiceTask(env) : pack.taskType;
-    const result = await inference.execute({
-      mode: 'chat', taskType,
-      ...(request.model ? { model: request.model.replace(/^ollama\//, '') } : {}),
-      ...(request.openTarget ? { exclusiveHost: true, options: { num_ctx: request.openTarget.numCtx } } : {}),
-      messages: [{ role: 'system', content: agentxInstructions }, ...prepared.map(({ attachments, ...message }) => message)],
-      stream: request.streaming, think: false, temperature: pack.temperature, max_tokens: pack.maxTokens,
-      callerDetail: `agentx-household/${pack.id}/${session.modeId}`, timeoutMs: 600000
-    }, { signal, consumerContract, ...(session.ephemeral ? { contentRetention: 'ephemeral' } : {}), ...(request.openTarget ? { hostUrl: request.openTarget.hostUrl } : {}) });
-    if (!result?.ok) {
-      const error = result?.body?.error;
-      throw Object.assign(new Error((typeof error === 'string' ? error : error?.message) || 'AgentX inference failed'), { statusCode: result?.status || 502 });
-    }
-    let streamed = '';
-    try {
-      if (result.stream) streamed = await readReplyStream(result.stream, onDelta, signal);
-    } finally {
-      if (result.stream) {
-        if (!result.completion?.then) throw new Error('Core does not expose verified stream completion. Update the paired Product release.');
-        await result.completion;
+    // Famille may call the Core tools the instance turned on: the model's tool
+    // calls run through Core's handlers, then the model answers from their
+    // results. Without a tool call the first reply streams as before.
+    const toolset = request.familyTools || null;
+    const receipts = [];
+    let conversation = [{ role: 'system', content: agentxInstructions }, ...prepared.map(({ attachments, ...message }) => message)];
+    let result, streamed = '', toolCalls = [], toolsOffered = Boolean(toolset), rounds = 0;
+    for (;;) {
+      const offerTools = toolsOffered && rounds < toolset.maxRounds;
+      const execute = (withTools) => inference.execute({
+        mode: 'chat', taskType,
+        ...(request.model ? { model: request.model.replace(/^ollama\//, '') } : {}),
+        ...(request.openTarget ? { exclusiveHost: true, options: { num_ctx: request.openTarget.numCtx } } : {}),
+        messages: conversation, ...(withTools ? { tools: toolset.definitions } : {}),
+        stream: request.streaming, think: false, temperature: pack.temperature, max_tokens: pack.maxTokens,
+        callerDetail: `agentx-household/${pack.id}/${session.modeId}`, timeoutMs: 600000
+      }, { signal, consumerContract, ...(session.ephemeral ? { contentRetention: 'ephemeral' } : {}), ...(request.openTarget ? { hostUrl: request.openTarget.hostUrl } : {}) });
+      result = await execute(offerTools);
+      // A model whose runtime refuses tools answers the turn without them.
+      if (offerTools && !result?.ok && /does not support tools/i.test(JSON.stringify(result?.body?.error || ''))) {
+        toolsOffered = false;
+        result = await execute(false);
+      }
+      if (!result?.ok) {
+        const error = result?.body?.error;
+        throw Object.assign(new Error((typeof error === 'string' ? error : error?.message) || 'AgentX inference failed'), { statusCode: result?.status || 502 });
+      }
+      let frames = { text: '', toolCalls: [] };
+      try {
+        if (result.stream) frames = await readReplyFrames(result.stream, onDelta, signal);
+      } finally {
+        if (result.stream) {
+          if (!result.completion?.then) throw new Error('Core does not expose verified stream completion. Update the paired Product release.');
+          await result.completion;
+        }
+      }
+      const message = result.body?.message;
+      const text = frames.text || message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '';
+      streamed += text;
+      toolCalls = result.stream ? frames.toolCalls : (Array.isArray(message?.tool_calls) ? message.tool_calls : []);
+      if (!offerTools || !toolsOffered || !toolCalls.length || signal?.aborted) break;
+      rounds += 1;
+      const calls = toolCalls.slice(0, toolset.maxCallsPerRound);
+      conversation = [...conversation, { role: 'assistant', content: text, tool_calls: calls }];
+      for (const call of calls) {
+        const answered = await toolset.execute(call);
+        receipts.push(answered.receipt);
+        conversation.push(answered.message);
       }
     }
-    return { backend, text: streamed || result.body?.message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '',
-      metadata: result.metadata || {},
-      tools: { status: 'not_supported', authority: 'agentx/ollama', receipts: [],
-        reason: 'This inference backend uses supplied context; native agent tools, skills and Dreaming are not running.' } };
+    return { backend, text: streamed,
+      metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}) },
+      tools: toolset && toolsOffered
+        ? { status: 'observed', authority: 'agentx/core', offered: toolset.names, receipts }
+        : { status: 'not_supported', authority: 'agentx/ollama', receipts: [],
+          reason: toolset ? 'The selected model runtime does not accept tools; the turn used supplied context only.'
+            : 'This inference backend uses supplied context; native agent tools, skills and Dreaming are not running.' } };
   };
 }
 

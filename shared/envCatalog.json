@@ -1712,15 +1712,15 @@
       "secret": false,
       "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
     },
-    "HOUSEHOLD_FAMILY_ISS_PASSES": {
+    "HOUSEHOLD_FAMILY_TOOLS": {
       "services": [
         "core"
       ],
       "forwarded": true,
-      "default": "false",
+      "default": null,
       "category": "household",
       "secret": false,
-      "description": "true adds Core's dated ISS passes over the house to a Famille turn on the AgentX engine when the child asks about the ISS. Unset or anything else: Famille receives no ISS context."
+      "description": "Comma-separated Core tools a Famille conversation on the AgentX engine may call, among those Core lists as family-eligible (today: iss_passes). Unset: Famille is offered no tool."
     },
     "HOUSEHOLD_HERMES_TOKEN": {
       "services": [
