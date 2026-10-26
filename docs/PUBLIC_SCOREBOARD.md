@@ -94,10 +94,15 @@ is still pushed, so a missed delivery catches up and rsync transfers nothing new
 On the server, give the key one folder and nothing else:
 
 ```
-command="rrsync -wo /srv/public-scoreboard",restrict ssh-ed25519 AAAA… agentx-public-scoreboard
+command="rrsync -wo /srv/agentx-public",restrict ssh-ed25519 AAAA… agentx-public-scoreboard
 ```
 
-The public site mounts that folder read-only.
+`-wo` makes the key write-only: it cannot read files back. rrsync resolves the
+client's path inside its folder, so send to a subfolder: target
+`user@host:/scoreboard` lands in `/srv/agentx-public/scoreboard`, which is the
+folder the public site reads. If the restriction were ever missing, the same
+target would point at `/scoreboard` at the server root, which an ordinary user
+cannot write, and delivery fails instead of writing elsewhere.
 
 ## Schedule
 
