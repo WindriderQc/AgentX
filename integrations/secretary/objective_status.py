@@ -7,7 +7,7 @@ ARCHIVE_FIELDS = ("at", "pendingTextPages", "reviewedPages", "unresolvedInferenc
                   "uncollectedThreads", "discoveringScopes", "unavailableMessages", "unavailableDraftMessages", "pending")
 COUNTS = ("targetSources", "materializedSources", "sourcesPendingMaterialization", "sourcesTextReviewed", "sourcesWithGaps",
           "sourceErrors", "expectedPagesKnown", "reviewedPages", "pendingPagesKnown", "invalidReviewReceipts", "extractedMoments", "reviewGaps")
-COUNTS += ("sourcesTextCovered", "equivalentPages")
+COUNTS += ("sourcesTextCovered", "equivalentPages", "rejectedPages", "sourcesWithRejectedPages")
 
 
 def projection(root):

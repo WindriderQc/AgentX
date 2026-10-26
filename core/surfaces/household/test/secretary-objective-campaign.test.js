@@ -140,6 +140,42 @@ test('publication mode is validated and changing it cannot mutate an existing ca
   await assert.rejects(step(legacy.config, legacy.deps), /configuration changed/);
   assert.equal(legacy.data.jobs.length, 1); assert.equal(legacy.data.publishes, 0);
 });
+test('retaining rejected outputs is explicit review-only policy and immutable within a campaign', async t => {
+  for (const publicationMode of [undefined, 'publish-candidates']) {
+    const invalid = fixture(t); invalid.config.onInvalidOutput = 'retain-and-continue';
+    if (publicationMode) invalid.config.publicationMode = publicationMode;
+    await assert.rejects(step(invalid.config, invalid.deps), /requires explicit review-only/);
+    assert.equal(invalid.data.jobs.length, 0);
+  }
+  const f = reviewOnly(t); await step(f.config, f.deps);
+  f.config.onInvalidOutput = 'retain-and-continue';
+  await assert.rejects(step(f.config, f.deps), /configuration changed/);
+  assert.equal(f.data.publishes, 0);
+});
+test('review-only retained output gaps remain uncovered and end without an empty-chunk loop or publication', async t => {
+  const f = reviewOnly(t); f.config.onInvalidOutput = 'retain-and-continue';
+  f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: false, allTargetTextReviewed: false,
+    counts: { extractedMoments: 14, reviewedPages: 8, rejectedPages: 3, sourcesWithRejectedPages: 2,
+      sourcesPendingMaterialization: 0, pendingPagesKnown: 0, sourcesWithGaps: 2 } });
+  const result = await step(f.config, f.deps);
+  assert.equal(result.phase, 'needs-source-review');
+  assert.equal(result.textualCoverage.allTargetTextCovered, false);
+  assert.equal(result.textualCoverage.counts.rejectedPages, 3);
+  assert.equal(result.textualCoverage.counts.reviewedPages, 8);
+  assert.equal(result.proposalReview.availableCandidates, 14);
+  assert.equal(result.proposalReview.coreHistoryWritesByController, 0);
+  assert.equal(f.data.jobs.length, 0); assert.equal(f.data.publishes, 0);
+});
+test('retained output policy forwards only a worker disposition flag and preserves model settings', t => {
+  const f = reviewOnly(t); f.config.onInvalidOutput = 'retain-and-continue'; f.config.maxOutputTokens = 16384;
+  let args;
+  dependencies(f.config, (...value) => { args = value[1]; return { status: 0 }; })
+    .launch('synthetic.service', { id: 'queue-id', dispatchId: 'dispatch-id' });
+  assert.ok(args.includes('--retain-rejected-pages'));
+  assert.equal(args[args.indexOf('--max-output-tokens') + 1], '16384');
+  assert.equal(args[args.indexOf('--objective') + 1], f.config.objectiveFile);
+  assert.equal(f.data.publishes, 0);
+});
 test('review-only keeps the existing pilot output gate after native release', async t => {
   const f = reviewOnly(t); f.config.reviewBeforePublication = true;
   await step(f.config, f.deps); f.terminal('partial'); await step(f.config, f.deps);
