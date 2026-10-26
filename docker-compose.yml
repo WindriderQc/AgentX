@@ -41,6 +41,7 @@ services:
     environment:
       # Host folders behind the photos and documents mounts, so Core can open a path a history context recorded.
       OWNER_PHOTOS_HOST_DIR: ${HOUSEHOLD_PHOTOS_DIR:-}
+      ATLAS_DISPLAY_PREFERENCES_PATH: ${ATLAS_DISPLAY_PREFERENCES_PATH:-}
       OWNER_DOCUMENTS_HOST_DIR: ${OWNER_DOCUMENTS_DIR:-}
       AGENTX_RUNTIME_RESOURCES_JSON: ${AGENTX_RUNTIME_RESOURCES_JSON:-}
       AGENTX_RUNTIME_TOPOLOGY_JSON: ${AGENTX_RUNTIME_TOPOLOGY_JSON:-}
@@ -220,6 +221,8 @@ services:
       - ${HOUSEHOLD_MEDIA_DIR:-./docker/empty}:/mnt/household/media:ro
       # The owner's documents cited by the personal history (Life Atlas); read-only.
       - ${OWNER_DOCUMENTS_DIR:-./docker/empty}:/mnt/owner/documents:ro
+      # Optional presentation-only Atlas subjects; no history or sources here.
+      - ${ATLAS_DISPLAY_PREFERENCES_DIR:-./docker/empty}:/mnt/owner/atlas-display:ro
 
   benchmark:
     logging: *default-logging

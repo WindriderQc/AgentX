@@ -208,3 +208,59 @@ native IDs/source keys before enriching, and verify matching hashes on a lost
 response. Check the deployed instance's model pin drift after adding routes,
 without starting inference. Private manifests, bodies, media and receipts stay
 outside public Git.
+
+## Native Atlas presentation
+
+`/atlas/` reads the native timeline, Secretary desk coverage, and photo APIs. It
+keeps no second store of assertions, media associations, or review decisions.
+Generic decade chapters and native document readers remain available.
+
+The factual confirmation button sends `state: retained`,
+`assertionState: confirmed`, the displayed entry `revision`, and (for a
+contextual entry) `contextRevision` to the existing review route. A conflict is
+shown without retrying or replacing the displayed revision. Retention, source
+testimony, a kept souvenir, and matching photographs do not confirm a fact.
+Owner statements remain labelled “Déclaré par toi”; date uncertainty stays
+visible separately. Keeping a souvenir uses its own explicit action. A kept
+temporal snapshot retains partial dates and age windows. A souvenir corrected
+independently from its source context cannot confirm that different context.
+
+Photos already indexed by Core can be browsed through `/api/photos/search` and
+`/api/photos/count`, with native pagination, metadata filters and thumbnails.
+A context media record with `provenance.system: agentx.photos` and
+`provenance.assetId` uses `/api/photos/assets/:id/thumbnail`. Only explicit
+`candidateEventIds` create proposed links in the view, resolving Core IDs and
+legacy aliases. Merely storing media on an entry never links it to that entry.
+Searching the library creates no binding or face inference.
+
+Source panels preserve `provenance.bodyScope`. Selected table cells, an exact
+reviewed passage, and an equivalent copy not read by the model have distinct
+French labels. They are never presented as a full PDF or as independent witness
+accounts. Coverage selects the latest active `life-timeline` objective version;
+full source readings, covered copies, and the general archive review are shown
+separately.
+
+### Optional private presentation subjects
+
+The owner-only timeline response may include bounded `displayPreferences` from
+`ATLAS_DISPLAY_PREFERENCES_PATH`. It reads at most 32 KiB and exposes only
+`storyThreads` (up to 12 subjects, bounded labels, hints, event IDs and search
+terms). Unknown fields, statement text and receipt metadata are not returned.
+Missing, malformed or oversized files yield no personal subjects; generic
+chapters still work. This configuration cannot create or confirm a moment.
+
+With the standard Compose file, set `ATLAS_DISPLAY_PREFERENCES_DIR` to a private
+host directory mounted read-only at `/mnt/owner/atlas-display`, then set
+`ATLAS_DISPLAY_PREFERENCES_PATH=/mnt/owner/atlas-display/life-atlas-display.json`.
+Keep the file and host-specific values out of public Git. Example shape:
+
+```json
+{"storyThreads":[{"id":"chosen-subject","label":"My chosen subject","eventIds":["legacy-event-id"],"queries":[["first term","second term"]]}]}
+```
+
+Run the focused projection/transport/preferences tests with
+`node --test core/surfaces/household/test/atlas*.test.js`. The isolated browser
+journey is `node core/tests/browser/atlasParityJourney.cjs`; it uses synthetic
+HTTP fixtures and an installed Chromium (`CHROMIUM_PATH` if needed). Optional
+`ATLAS_BROWSER_ARTIFACTS` chooses the screenshot/report directory. It never
+proxies a real household, loads a model, or writes a real souvenir.

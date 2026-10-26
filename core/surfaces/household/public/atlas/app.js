@@ -8,6 +8,11 @@ import {connectionIndex,matchesEvidence,showConnections,visibleConnections} from
 import {renderMemories} from './memories.js';
 import {renderChapters,syncChapterRange} from './chapters.js';
 import {Gallery} from './gallery.js';
+import {isLifeMoment,lifeDomain} from './life-view.js';
+import {matchesSubject,matchesIntent} from './filters.js';
+import {renderStoryThreads} from './story-threads.js';
+import {showContextReview} from './context-review.js';
+import {showLibrary} from './library.js';
 import {startReview} from './review-session.js';
 import {showRecall,showPerson} from './core-panels.js';
 import {EventEditor} from './editor.js';
@@ -16,7 +21,7 @@ import {categories,icon,escape,number,fold,toast,DAY,YEAR,dateLabel,ownerDisplay
 
 const el=id=>document.getElementById(id);
 function saved(key,fallback){try{return JSON.parse(localStorage.getItem(key))??fallback;}catch{return fallback;}}
-const state={events:[],filtered:[],meta:{},dataset:'real',query:'',reviewFilter:'active',scope:'all',evidenceFilter:'all',connectionIndex:new Map(),latestIds:new Set(),activeConnectionId:null,connectedIds:new Set(),categories:new Set(Object.keys(categories)),favorites:new Set(saved('life-atlas-favorites',[])),favoritesOnly:false,range:null,domain:null,anchor:null};
+const state={events:[],filtered:[],meta:{},dataset:'real',query:'',reviewFilter:'active',scope:'all',subjectFilter:'all',intentFilter:'all',evidenceFilter:'all',connectionIndex:new Map(),latestIds:new Set(),activeConnectionId:null,connectedIds:new Set(),categories:new Set(Object.keys(categories)),favorites:new Set(saved('life-atlas-favorites',[])),favoritesOnly:false,range:null,domain:null,anchor:null};
 let timeline,popup,editor,gallery,loadSequence=0,selectedId=null,discoveryPage=0;
 
 function hydrate(event){const original=event;event=ownerDisplay(event,state.meta.owner);return {...event,reviewState:reviewState(event),ts:event.date?Date.parse(event.date+'T12:00:00Z'):null,search:fold([event.title,event.description,original.title,original.description,event.correspondent,event.subject,event.originalDate,event.place,event.notes,event.rationale,...(event.links||[]).map(l=>l.label)].join(' '))};}
@@ -24,12 +29,15 @@ function hydrate(event){const original=event;event=ownerDisplay(event,state.meta
 async function saveEvent(event,changes){
  if(!event.core)throw new Error('La démonstration se parcourt en lecture seule.');
  const keys=Object.keys(changes);
- if(keys.length===1&&changes.reviewState==='confirmed')return decide(event,'souvenir');
+ if(keys.length===1&&changes.reviewState==='confirmed')return decide(event,'confirm');
  if(keys.length===1&&changes.reviewState==='dismissed')return decide(event,'dismiss');
  throw new Error('Garde ce moment comme souvenir, puis corrige-le au besoin.');
 }
 async function decide(event,action,extra={}){
- const atlas=state.dataset,result=action==='souvenir'?await data.keepSouvenir(event,extra):await data.dismiss(event,extra.reason);
+ const atlas=state.dataset;
+ const actions={souvenir:()=>data.keepSouvenir(event,extra),confirm:()=>data.confirm(event),dismiss:()=>data.dismiss(event,extra.reason)};
+ if(!actions[action])throw new Error('Décision inconnue.');
+ const result=await actions[action]();
  return atlas===state.dataset?adoptResult(result):result.event;
 }
 async function correct(event,changes){return adoptResult(await data.correctSouvenir(event,changes));}
@@ -45,7 +53,7 @@ function openLink(){
 }
 function adopt(raw){
  const updated=hydrate(raw);state.events=state.events.map(e=>e.id===updated.id?updated:e);
- const bounds=temporalExtent(updated);if(bounds){const old=[...state.domain],whole=(state.range[1]-state.range[0])/(old[1]-old[0])>.98;state.domain=[Math.min(old[0],Date.UTC(new Date(bounds.start).getUTCFullYear(),0,1)),Math.max(old[1],Date.UTC(new Date(bounds.end-1).getUTCFullYear()+1,0,1))];if(whole)state.range=[...state.domain];}
+ const old=[...state.domain],whole=(state.range[1]-state.range[0])/(old[1]-old[0])>.98;state.domain=lifeDomain(state.events,{all:state.scope==='all'});if(whole)state.range=[...state.domain];
  updatePeriod();applyFilters();return updated;
 }
 
@@ -90,14 +98,11 @@ function updatePeriod(){
  el('zoom-out').disabled=span/full>.999;el('zoom-in').disabled=span<1.01*DAY;
  syncChapterRange(el('life-chapters'),state);gallery?.render();
 }
-function scopeEvents(){return state.scope==='life'?state.events.filter(e=>e.extractionPass>=2):state.events;}
+function scopeEvents(){return state.scope==='life'?state.events.filter(isLifeMoment):state.events;}
 function resetDomain(){
- const dates=scopeEvents().map(e=>temporalExtent(e)).filter(Boolean).flatMap(e=>[e.start,e.end-1]).sort((a,b)=>a-b);
- const start=dates.length?Date.UTC(new Date(dates[0]).getUTCFullYear(),0,1):Date.UTC(2000,0,1);
- // A few far-future dates (expiries, typos) must not stretch the whole life view.
- const now=new Date().getUTCFullYear(),last=new Date(dates.at(-1)||Date.now()).getUTCFullYear();
- const end=Date.UTC(Math.max(now,Math.min(last,now+2))+1,0,1);
- state.domain=[start,end];state.range=[start,end];state.anchor=dates[Math.floor(dates.length/2)]||Date.now();
+ const dates=scopeEvents().map(e=>temporalExtent(e)).filter(Boolean).map(e=>e.anchor).sort((a,b)=>a-b);
+ state.domain=lifeDomain(state.events,{all:state.scope==='all'});state.range=[...state.domain];state.anchor=dates[Math.floor(dates.length/2)]||Date.now();
+ const [start,end]=state.domain;
  el('global-range').textContent=`${new Date(start).getUTCFullYear()} — ${new Date(end-1).getUTCFullYear()}`;
  updatePeriod();
 }
@@ -105,7 +110,7 @@ function applyFilters(){
  discoveryPage=0;
  clearConnection();
  const terms=fold(state.query).split(/\s+/).filter(Boolean);
- const searched=scopeEvents().filter(e=>(!state.favoritesOnly||state.favorites.has(e.id))&&terms.every(t=>e.search.includes(t)));
+ const searched=scopeEvents().filter(e=>matchesSubject(e,state.subjectFilter)&&matchesIntent(e,state.intentFilter)&&(!state.favoritesOnly||state.favorites.has(e.id))&&terms.every(t=>e.search.includes(t)));
  const reviewed=searched.filter(e=>state.reviewFilter==='all'||state.reviewFilter==='active'&&reviewState(e)!=='dismissed'||state.reviewFilter==='documented'&&!['hypothesis','dismissed'].includes(reviewState(e))||reviewState(e)===state.reviewFilter);
  state.filtered=reviewed.filter(e=>matchesEvidence(e,state.evidenceFilter,state.connectionIndex,state.latestIds));
  const evidenceBase=reviewed.filter(e=>state.categories.has(e.category));
@@ -123,11 +128,11 @@ function applyFilters(){
  el('review-filter').value=state.reviewFilter;
  const withHypotheses=!['documented','confirmed','unreviewed','dismissed'].includes(state.reviewFilter);
  el('hypotheses-button').setAttribute('aria-pressed',String(withHypotheses));el('hypotheses-button').textContent=withHypotheses?'◇ Pistes visibles':'◇ Pistes masquées';
- const filterCount=Number(state.reviewFilter!=='active')+Number(state.evidenceFilter!=='all')+Number(state.scope!=='life'&&!!state.meta.pass2)+Number(state.favoritesOnly)+Number(state.categories.size!==Object.keys(categories).length);
+ const filterCount=Number(state.subjectFilter!=='all')+Number(state.intentFilter!=='all')+Number(state.reviewFilter!=='active')+Number(state.evidenceFilter!=='all')+Number(state.scope!=='life'&&state.events.some(isLifeMoment))+Number(state.favoritesOnly)+Number(state.categories.size!==Object.keys(categories).length);
  el('active-filter-count').hidden=!filterCount;el('active-filter-count').textContent=filterCount;
  el('undated-count').textContent=number(state.filtered.filter(e=>!e.ts&&state.categories.has(e.category)).length);
  el('search-hint').textContent=state.query?`${number(state.filtered.length)} observations correspondent à cette recherche.`:'Chaque détail ouvre une histoire.';
- timeline.schedule();renderDiscovery();renderMemories(el('owner-memories'),api);gallery?.render();
+ timeline.schedule();renderDiscovery();renderStoryThreads(el('story-threads'),popup,api);renderMemories(el('owner-memories'),api);gallery?.render();
 }
 function renderDiscovery(){
  const mode=state.query.trim()?'search':state.favoritesOnly?'favorites':state.reviewFilter==='hypothesis'?'hypotheses':state.reviewFilter==='dismissed'?'dismissed':'milestones';
@@ -142,17 +147,19 @@ function renderDiscovery(){
  el('discovery-items').querySelectorAll('[data-discovery]').forEach(b=>b.addEventListener('click',()=>popup.open([state.events.find(e=>e.id===b.dataset.discovery)],b,true)));
 }
 async function loadDataset(name){
- const sequence=++loadSequence;popup?.close();state.dataset=name;state.query='';state.reviewFilter='active';state.evidenceFilter='all';el('review-filter').value='active';state.favoritesOnly=false;state.categories=new Set(Object.keys(categories));el('search').value='';
+ const sequence=++loadSequence;popup?.close();state.dataset=name;state.query='';state.subjectFilter='all';state.intentFilter='all';el('subject-filter').value='all';el('intent-filter').value='all';state.reviewFilter='active';state.evidenceFilter='all';el('review-filter').value='active';state.favoritesOnly=false;state.categories=new Set(Object.keys(categories));el('search').value='';
  el('timeline').innerHTML='<div class="loading-state">Les souvenirs trouvent leur place…</div>';
  try{
   const loaded=name==='demo'?data.loadDemo():await data.loadHistory();if(sequence!==loadSequence)return;
   state.meta=loaded.meta;state.events=loaded.events.map(hydrate);state.connectionIndex=connectionIndex(loaded.meta.relations);state.latestIds=new Set();
   el('owner-heading').textContent=name==='demo'?'LE SCÉNARIO DE CAMILLE':'TA VIE, TES TRACES';
   renderChapters(el('life-chapters'),api);
-  state.scope=name==='real'&&loaded.meta.pass2?'life':'all';el('scope-filter').value=state.scope;el('pass-toolbar').hidden=!loaded.meta.pass2;
+  state.scope=name==='real'&&state.events.some(isLifeMoment)?'life':'all';el('scope-filter').value=state.scope;el('pass-toolbar').hidden=name==='demo';
+  el('library-button').hidden=name==='demo';el('context-button').hidden=name==='demo';
+  if(name==='real')data.photoCount().then(count=>{if(sequence===loadSequence)el('library-button').textContent=`Photothèque · ${count.exact?'':'≥ '}${number(count.total)} ↗`;}).catch(()=>{if(sequence===loadSequence)el('library-button').textContent='Photothèque ↗';});
   resetDomain();
   el('recall-button').hidden=loaded.meta.authority!=='agentx.core';
-  el('intro-stats').innerHTML=loaded.meta.core?[[loaded.meta.core.kept,'souvenirs gardés','kept'],[loaded.meta.core.candidates,'à relire','unreviewed'],[loaded.meta.core.testimony,'témoignages','owner'],[loaded.meta.undated,'à dater','undated']].map(([n,label,key])=>`<button type="button" class="intro-stat" data-intro-stat="${key}"><strong>${number(n)}</strong><span>${label}</span></button>`).join(''):'';
+  el('intro-stats').innerHTML=loaded.meta.core?[[loaded.meta.core.kept,'souvenirs gardés','kept'],[loaded.meta.core.toReview??loaded.meta.core.candidates,'à relire','unreviewed'],[loaded.meta.core.testimony,'témoignages','owner'],[loaded.meta.undated,'à dater','undated']].map(([n,label,key])=>`<button type="button" class="intro-stat" data-intro-stat="${key}"><strong>${number(n)}</strong><span>${label}</span></button>`).join(''):'';
   el('intro-stats').querySelectorAll('[data-intro-stat]').forEach(b=>b.addEventListener('click',e=>{const k=b.dataset.introStat;if(k==='undated')return showUndated(e.currentTarget);if(k==='unreviewed'){state.reviewFilter='unreviewed';state.evidenceFilter='all';}else{state.reviewFilter='active';state.evidenceFilter=k;}applyFilters();document.querySelector('.atlas').scrollIntoView({behavior:'smooth',block:'start'});}));
   el('dataset-name').textContent=name==='demo'?'Démo · Camille':loaded.meta.pass2||loaded.meta.authority==='agentx.core'?'Mon histoire':'Mes courriels';el('intro-meta').textContent=name==='demo'?'Une vie fictive pour explorer les possibilités.':loaded.meta.authority==='agentx.core'?`${number(loaded.meta.events)} moments · lus dans AgentX`:loaded.meta.pass3?`${number(loaded.meta.pass3.curatedEvents)} moments et pistes · ${number(loaded.meta.pass3.relations.length)} recoupements à explorer`:loaded.meta.pass2?`${number(loaded.meta.pass2.events)} moments et pistes · courriels, documents et médias`:`${number(loaded.meta.events)} observations · ${number(loaded.meta.threads)} fils de correspondance · une histoire à reconstruire`;
   el('source-note').textContent=name==='demo'?'Scénario entièrement fictif':loaded.meta.authority==='agentx.core'?'AgentX Core · source d’autorité':loaded.meta.pass3?'Troisième passe · extraits contrôlés':loaded.meta.pass2?'Exploration approfondie · à vérifier':'Courriels · observations existantes';
@@ -177,7 +184,7 @@ el('immersive-button').addEventListener('click',()=>immersive(!document.body.cla
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('atlas-immersive')&&!popup.root.children.length)immersive(false);},true);
 el('filters-button').addEventListener('click',()=>{const panel=el('advanced-filters');panel.hidden=!panel.hidden;el('filters-button').setAttribute('aria-expanded',String(!panel.hidden));});
 el('hypotheses-button').addEventListener('click',()=>{state.reviewFilter=['documented','confirmed','unreviewed','dismissed'].includes(state.reviewFilter)?'active':'documented';applyFilters();});
-el('filters-reset').addEventListener('click',()=>{state.reviewFilter='active';state.evidenceFilter='all';state.favoritesOnly=false;state.categories=new Set(Object.keys(categories));state.scope=state.meta.pass2?'life':'all';el('scope-filter').value=state.scope;resetDomain();applyFilters();});
+el('filters-reset').addEventListener('click',()=>{state.reviewFilter='active';state.evidenceFilter='all';state.favoritesOnly=false;state.categories=new Set(Object.keys(categories));state.subjectFilter='all';state.intentFilter='all';el('subject-filter').value='all';el('intent-filter').value='all';state.scope=state.dataset==='real'&&state.events.some(isLifeMoment)?'life':'all';el('scope-filter').value=state.scope;resetDomain();applyFilters();});
 el('validation-button').addEventListener('click',e=>startReview(popup,api,e.currentTarget));
 el('recall-button').addEventListener('click',e=>showRecall(popup,api,e.currentTarget));
 el('search-icon').innerHTML=icon('search');el('date-button').innerHTML=icon('calendar');
@@ -190,6 +197,10 @@ el('fit-button').addEventListener('click',fit);
 for(const [id,direction]of [['previous-button',-1],['next-button',1]])el(id).addEventListener('click',()=>{popup.close();const shift=(state.range[1]-state.range[0])*.75*direction;setRange(state.range.map(v=>v+shift));});
 el('search').addEventListener('input',e=>{state.query=e.target.value;applyFilters();});
 el('scope-filter').addEventListener('change',e=>{state.scope=e.target.value;popup.close();resetDomain();applyFilters();});
+el('subject-filter').addEventListener('change',e=>{state.subjectFilter=e.target.value;popup.close();applyFilters();});
+el('intent-filter').addEventListener('change',e=>{state.intentFilter=e.target.value;popup.close();applyFilters();});
+el('context-button').addEventListener('click',e=>showContextReview(popup,api,e.currentTarget));
+el('library-button').addEventListener('click',e=>showLibrary(popup,api,e.currentTarget));
 el('coverage-button').addEventListener('click',e=>showCoverage(popup,state,e.currentTarget));
 el('connections-button').addEventListener('click',e=>showConnections(popup,api,e.currentTarget));
 el('connection-focus-proof').addEventListener('click',e=>showConnections(popup,api,e.currentTarget,{relationId:state.activeConnectionId}));

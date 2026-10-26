@@ -5,7 +5,7 @@ import {sourcePanel} from './evidence.js';
 import {readSource} from './data.js';
 
 export function reviewCandidates(events){
- return events.filter(e=>['hypothesis','unreviewed'].includes(reviewState(e))).sort((a,b)=>{
+ return events.filter(e=>['hypothesis','unreviewed'].includes(reviewState(e))&&e.core?.canConfirm!==false).sort((a,b)=>{
   const score=e=>(e.confirmationBasis==='owner-tentative'?100:0)+(milestone(e)?30:0)+(e.extractionPass>=3?10:0)+(e.reviewState==='hypothesis'?5:0);
   return score(b)-score(a)||String(a.date||'9999').localeCompare(String(b.date||'9999'))||a.id.localeCompare(b.id);
  });
@@ -33,7 +33,8 @@ export function startReview(popup,api,anchor,{seen=new Set()}={}){
   confirm.addEventListener('click',()=>save('confirmed'));
   popup.root.querySelector('[data-sprint-dismiss]').addEventListener('click',()=>save('dismissed'));
   popup.root.querySelector('[data-sprint-skip]').addEventListener('click',()=>{seen.add(event.id);skipped++;cursor++;show();});
-  popup.root.querySelector('[data-sprint-edit]').hidden=true;
+  const edit=popup.root.querySelector('[data-sprint-edit]');edit.hidden=!event.core?.canEdit;
+  edit.addEventListener('click',()=>api.edit(event,anchor));
   popup.root.querySelector('[data-sprint-source]').addEventListener('click',async e=>{
    const target=popup.root.querySelector('[data-sprint-sources]'),sequence=popup.sequence;target.hidden=!target.hidden;if(target.hidden)return;
    target.textContent='Ouverture des sources…';

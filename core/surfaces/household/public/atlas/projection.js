@@ -24,6 +24,7 @@ const torontoDay=iso=>{const t=Date.parse(iso);return Number.isFinite(t)?new Int
 // Core's event date, else a day, month or year written in the source. Never the
 // source's own date: an undated memory stays undated.
 export function projectDate(entry){
+ if(['year','month'].includes(entry.eventDatePrecision)&&entry.eventDate){const a=anchor(entry.eventDate,entry.eventDatePrecision);if(a.date)return {...a,dateOrigin:'core'};}
  if(entry.eventDatePrecision==='day'&&/^\d{4}-\d{2}-\d{2}$/.test(entry.eventDate||''))return {date:entry.eventDate,precision:'day',dateOrigin:'core'};
  if(entry.eventDatePrecision==='instant'&&entry.eventDate){const day=torontoDay(entry.eventDate);if(day)return {date:day,precision:'day',dateOrigin:'core'};}
  const written=String(entry.eventDateAsWritten||'').trim();
@@ -61,12 +62,13 @@ function anchor(value,precision){
  return {date:null,precision:'unknown'};
 }
 
-function reviewStateOf(entry){
+function reviewStateOf(entry,displayMatchesContext=true){
  if(entry.reviewState==='dismissed')return 'dismissed';
- if(['retained','resolved'].includes(entry.reviewState)||entry.souvenirNoteId)return 'confirmed';
+ if(displayMatchesContext&&entry.assertionState==='confirmed'&&entry.confirmationCurrent!==false)return 'confirmed';
+ if(entry.timeline?.hypothesis||entry.timeline?.claimType==='hypothesis'||entry.timeline?.reviewState==='hypothesis'||entry.timeline?.confirmationBasis==='owner-tentative')return 'hypothesis';
  return 'unreviewed';
 }
-const occurrence={planned:'planned',cancelled:'cancelled',reported:'reported',confirmed:'reported'};
+const occurrence={planned:'planned',cancelled:'cancelled',reported:'reported'};
 function titleOf(text){
  const clean=String(text||'').replace(/^\d{4}-\d{2}-\d{2} : /,'').replace(/\s+/g,' ').trim();
  const sentence=clean.split(/(?<=[.!?])\s/)[0];
@@ -75,6 +77,14 @@ function titleOf(text){
 
 export function projectEntry(raw){
  const s=raw.souvenir,tl=raw.timeline,ctx=raw.context;
+ // A newly kept souvenir snapshots the typed temporal context; keeping it is
+ // not an exact date correction, nor a factual confirmation.
+ const snapshot=s?.historyContext;
+ const keptTime=snapshot?.temporal;
+ const sameKeptDate=keptTime&&s.eventDatePrecision===keptTime.precision&&String(s.eventDate||'')===String(keptTime.date||'').slice(0,keptTime.precision==='year'?4:keptTime.precision==='month'?7:10);
+ const useTimeline=Boolean(tl)&&(!s||snapshot&&sameKeptDate);
+ const useContextText=Boolean(tl)&&(!s||snapshot&&!(s.revision>0)&&snapshot.contextRevision===raw.contextRevision);
+ const time=useTimeline&&s?keptTime:tl;
  const base=s?{...raw,text:s.text||raw.text,eventDate:s.eventDate,eventDatePrecision:s.eventDatePrecision,people:s.people||raw.people,places:s.places||raw.places}:raw;
  const system=raw.source?.system||'';
  const contextSources=(ctx?.sources||[]).map(src=>({...src,atlasId:contextSourceId(raw.id,src.id)}));
@@ -82,34 +92,39 @@ export function projectEntry(raw){
  const native=[raw.source,...(raw.relatedSources||[])].filter(Boolean).map(sourceId).filter(Boolean);
  const sources=[...new Set([...native,...contextSources.map(src=>src.atlasId)])];
  let when=projectDate(base),end=null;
- if(tl&&!s){const a=anchor(tl.date,tl.precision);when={...a,dateOrigin:a.date?'core':'none'};}
+ if(useTimeline){const a=anchor(time.date,time.precision);when={...a,dateOrigin:a.date?'core':'none'};}
  else if(s&&['year','month'].includes(s.eventDatePrecision)){const a=anchor(s.eventDate,s.eventDatePrecision);when={...a,dateOrigin:'core'};}
- if(tl?.endDate)end=anchor(tl.endDate,tl.endPrecision||tl.precision);
- const testimony=system==='testimony'||tl?.confirmationBasis==='owner-testimony';
+ if(time?.endDate)end=anchor(time.endDate,time.endPrecision||time.precision);
+ const testimony=tl?.confirmationBasis==='owner-testimony';
  const text=String(base.text||'').replace(/^\d{4}(?:-\d{2}){0,2} : /,'');
  const quotes=(tl?.claimsWithExactQuotes||[]).map(q=>({...q,sourceId:byContextId.get(q.sourceId)||q.sourceId}));
- const decided=['retained','resolved'].includes(raw.reviewState)||raw.souvenirNoteId;
+ const calendarCorrected=Boolean(s)&&!useTimeline;
+ const canConfirm=!s||Boolean(snapshot&&snapshot.contextRevision===raw.contextRevision&&!(s.revision>0)&&sameKeptDate);
  return {
-  id:`core-${raw.id}`,title:tl&&!s?tl.title:titleOf(text),description:tl&&!s?(tl.description||text):text,
+  id:`core-${raw.id}`,title:useContextText?tl.title:titleOf(text),description:useContextText?(tl.description||text):text,
   date:when.date,precision:when.precision,dateOrigin:when.dateOrigin,originalDate:tl?.originalDate||raw.eventDateAsWritten||'',
-  endDate:end?.date||null,endPrecision:end?.precision,ongoing:tl?.ongoing===true,
-  dateWindow:tl?.dateWindow||null,ageStartWindow:tl?.ageStartWindow||null,ageEndWindow:tl?.ageEndWindow||null,
-  ageDateNote:tl?.ageDateNote,dateEstimateNote:tl?.dateEstimateNote,ownerTimeLabel:tl?.ownerTimeLabel,
+  endDate:end?.date||null,endPrecision:end?.precision,ongoing:time?.ongoing===true,
+  dateWindow:calendarCorrected?null:time?.dateWindow||null,ageStartWindow:calendarCorrected?null:time?.ageStartWindow||null,ageEndWindow:time?.ageEndWindow||null,
+  ageDateNote:calendarCorrected?null:time?.ageDateNote,dateEstimateNote:calendarCorrected?null:time?.dateEstimateNote,ownerTimeLabel:calendarCorrected?null:time?.ownerTimeLabel,
+  eventTime:calendarCorrected?undefined:tl?.eventTime,metadata:tl?.metadata||{},claimType:tl?.claimType,
   category:tl?.category||proposeCategory(base),importance:raw.souvenirNoteId?5:testimony?4:raw.kind==='fact'?3:2,
   status:testimony?'Ton témoignage':tl?.status||kindLabels[raw.kind]||'Relevé',sourceIds:sources,
   correspondent:raw.actor||(base.people||[]).join(', '),subject:`${sourceLabel(system)}${raw.sourceDate?` · ${torontoDay(raw.sourceDate)||''}`:''}`,
   place:tl&&!s?(tl.place||(base.places||[]).join(', ')):(base.places||[]).join(', '),people:base.people||[],
   threadId:raw.source?.threadId||null,sourceDate:raw.sourceDate,attachments:0,origin:'agentx-core',
-  reviewState:raw.reviewState==='dismissed'?'dismissed':decided?'confirmed':tl?.hypothesis?'hypothesis':'unreviewed',
+  reviewState:reviewStateOf(raw,canConfirm),
   occurrenceStatus:tl?.occurrenceStatus&&tl.occurrenceStatus!=='unknown'?tl.occurrenceStatus:occurrence[raw.assertionState],
   confirmationBasis:testimony?'owner-testimony':tl?.confirmationBasis==='owner-tentative'?'owner-tentative':undefined,
   rationale:tl?.rationale,notes:tl?.notes,reviewQuestions:tl?.reviewQuestions||[],contradictions:tl?.contradictions||[],links:tl?.links||[],
   relatedEventIds:(tl?.relatedEventIds||[]).map(id=>`core-${id}`),claimsWithExactQuotes:quotes,
   evidenceCheck:quotes.length?{status:'passed',quoteCount:quotes.length}:undefined,
-  legacyId:tl?.legacyId||'',narrative:tl?.narrative||null,findingId:raw.source?.findingId||'',
+  legacyId:tl?.legacyId||'',legacyIds:tl?.legacyIds||[],curated:Boolean(tl),narrative:tl?.narrative||null,findingId:raw.source?.findingId||'',
   contextSources,media:ctx?.media||[],contextRelations:ctx?.relations||[],
   contextRevision:raw.contextRevision||0,reviewUpdatedAt:ctx?.ownerEditedAt||null,
   core:{id:raw.id,revision:raw.revision,kind:raw.kind,reviewState:raw.reviewState,assertionState:raw.assertionState,
+   confirmationCurrent:raw.confirmationCurrent,recordedAssertionState:raw.recordedAssertionState,
+   souvenirContextCurrent:snapshot? snapshot.contextRevision===raw.contextRevision:null,
+   canConfirm,
    souvenirNoteId:raw.souvenirNoteId||'',sourceStatus:raw.sourceStatus||'',sourceSystem:system,contextual:Boolean(tl),
    gmailUrl:raw.gmailUrl||null,decidedAt:raw.decision?.at||null,canKeep:raw.kind!=='action'&&!raw.souvenirNoteId,
    canDismiss:raw.reviewState!=='dismissed'&&!raw.souvenirNoteId,canEdit:Boolean(tl)&&!raw.souvenirNoteId,
@@ -119,14 +134,19 @@ export function projectEntry(raw){
 }
 
 // Photos bound to moments in their history context, served from the household library.
+export function eventAliases(events){
+ return new Map(events.flatMap(e=>[e.id,e.core?.id,e.legacyId,...e.legacyIds||[]].filter(Boolean).map(id=>[id,e.id])));
+}
 export function collectMedia(events){
- const byLegacy=new Map(events.filter(e=>e.legacyId).map(e=>[e.legacyId,e.id]));
+ const byLegacy=eventAliases(events);
  const photos=new Map();
  for(const e of events)for(const m of e.media||[]){
-  if(!m.originalPath||!/^[a-f0-9]{64}$/.test(m.sourceContentSha256||''))continue;
-  const row=photos.get(m.id)||{id:m.id,eventIds:new Set(),url:`/api/secretary/files/content?nativePath=${encodeURIComponent(m.originalPath)}&sha256=${m.sourceContentSha256}`,
-   caption:m.caption||'',album:m.album||'',date:null,precision:'unknown',associationBasis:m.associationBasis||'',dateBasis:m.dateBasis||'',dateNote:m.dateNote||'',cover:m.cover===true,filename:m.originalPath.split('/').pop()};
-  row.eventIds.add(e.id);for(const legacy of m.candidateEventIds||[])if(byLegacy.has(legacy))row.eventIds.add(byLegacy.get(legacy));
+  const assetId=m.assetId||m.provenance?.assetId;
+  const native=m.provenance?.system==='agentx.photos'&&/^[a-f0-9-]{36}$/.test(assetId||'');
+  if(!native&&(!m.originalPath||!/^[a-f0-9]{64}$/.test(m.sourceContentSha256||'')))continue;
+  const row=photos.get(m.id)||{id:m.id,assetId:native?assetId:null,eventIds:new Set(),url:native?`/api/photos/assets/${assetId}/thumbnail?size=preview`:`/api/secretary/files/content?nativePath=${encodeURIComponent(m.originalPath)}&sha256=${m.sourceContentSha256}`,
+   caption:m.caption||'',album:m.album||'',date:null,precision:'unknown',associationBasis:m.associationBasis||'',dateBasis:m.dateBasis||'',dateNote:m.dateNote||'',cover:m.cover===true,filename:m.filename||m.originalPath?.split('/').pop()||'Photo'};
+  for(const legacy of m.candidateEventIds||[])if(byLegacy.has(legacy))row.eventIds.add(byLegacy.get(legacy));
   const a=anchor(m.date,m.datePrecision);if(a.date&&(!row.date||a.date<row.date)){row.date=a.date;row.precision=a.precision;}
   photos.set(m.id,row);
  }
@@ -138,17 +158,17 @@ export function collectMedia(events){
 export function buildRelations(events,{maxGroup=12}={}){
  const relations=[],seen=new Set(),byId=new Map(events.map(e=>[e.id,e]));
  const add=(kind,key,ids,title,summary,limits,sourceIds=[],extra={})=>{
-  const eventIds=[...new Set(ids)].sort();if(eventIds.length<2||eventIds.length>maxGroup)return;
-  const signature=`${kind}:${eventIds.join(',')}`;if(seen.has(signature))return;seen.add(signature);
-  relations.push({id:`${kind}-${relations.length+1}`,kind,key,title,summary,limits,eventIds,sourceIds,quoteCount:0,claimsWithExactQuotes:[],nativeRecordCount:sourceIds.length,...extra});
+  const eventIds=[...new Set(ids)].sort();if(eventIds.length<(extra.recorded?1:2)||eventIds.length>maxGroup&&!extra.recorded)return;
+  const signature=extra.recorded?`recorded:${key}`:`${kind}:${eventIds.join(',')}`;if(seen.has(signature))return;seen.add(signature);
+  relations.push({id:`${kind}-${relations.length+1}`,kind,key,title,summary,limits,eventIds,sourceIds,quoteCount:0,claimsWithExactQuotes:[],nativeRecordCount:null,...extra});
  };
  // Relations recorded with the history context, with their quoted evidence.
- const byLegacy=new Map(events.filter(e=>e.legacyId).map(e=>[e.legacyId,e.id])),known=new Set();
+ const byLegacy=eventAliases(events),known=new Set();
  for(const e of events)for(const r of e.contextRelations||[]){
   if(known.has(r.id))continue;known.add(r.id);
   const ids=(r.eventIds||[]).map(legacy=>byLegacy.get(legacy)).filter(Boolean);
   const claims=(r.claimsWithExactQuotes||[]).map(q=>({...q,sourceId:contextSourceId(e.core.id,q.sourceId)}));
-  add(r.kind,r.id,ids,r.title,r.summary||'',r.limits||'',[...new Set(claims.map(q=>q.sourceId))],{rationale:r.rationale||'',claimsWithExactQuotes:claims,quoteCount:claims.length});
+  add(r.kind,r.id,ids,r.title,r.summary||'',r.limits||'',[...new Set(claims.map(q=>q.sourceId))],{id:`recorded-${r.id}`,recorded:true,rationale:r.rationale||'',sourceIndependence:r.sourceIndependence,checkedAt:r.provenance?.checkedAt,nativeRecordCount:r.provenance?.nativeRecordCount??null,contextLegacyEventRefs:r.contextLegacyEventRefs||[],claimsWithExactQuotes:claims,quoteCount:claims.length});
  }
  const bySource=new Map();
  for(const e of events)for(const s of e.sourceIds){if(!bySource.has(s))bySource.set(s,[]);bySource.get(s).push(e.id);}
@@ -159,7 +179,7 @@ export function buildRelations(events,{maxGroup=12}={}){
  for(const e of events)if(e.date&&e.precision==='day')for(const p of e.people||[]){const key=`${e.date}|${fold(p)}`;if(!byDay.has(key))byDay.set(key,{person:p,ids:[]});byDay.get(key).ids.push(e.id);}
  for(const [key,{person,ids}]of byDay){
   const sources=[...new Set(ids.flatMap(id=>byId.get(id).sourceIds))];
-  add('agreement',key,ids,`${person} · ${key.slice(0,10)}`,`Plusieurs moments nomment ${person} le même jour.`,
+  add('hypothesis',key,ids,`${person} · ${key.slice(0,10)}`,`Plusieurs moments nomment ${person} le même jour.`,
    'Des copies d’un même message ne sont pas des témoignages indépendants.',sources.slice(0,12));
  }
  return relations;
@@ -171,8 +191,9 @@ export function summarize(events,{readAt,total}={}){
  return {source:'AgentX Core · historique personnel',authority:'agentx.core',fetchedAt:readAt,
   events:events.length,dated:dated.length,undated:events.length-dated.length,firstDate:dated[0]||null,lastDate:dated.at(-1)||null,bySystem,
   core:{total:total??events.length,kept:events.filter(e=>e.core.souvenirNoteId).length,candidates:events.filter(e=>e.core.reviewState==='candidate').length,
+   toReview:events.filter(e=>['unreviewed','hypothesis'].includes(e.reviewState)).length,
    retained:events.filter(e=>['retained','resolved'].includes(e.core.reviewState)).length,dismissed:events.filter(e=>e.reviewState==='dismissed').length,
-   testimony:events.filter(e=>e.confirmationBasis==='owner-testimony').length}};
+   testimony:events.filter(e=>['owner-testimony','owner-tentative'].includes(e.confirmationBasis)).length}};
 }
 
 // The archived original of a mail, as the source panel shows it.
@@ -187,7 +208,8 @@ export function projectArchive(id,archive){
 // A source record kept in a history context, as the source panel shows it.
 export function projectContextSource(id,source,file){
  const base={id,kind:source.kind==='media'?'photo':source.kind,subject:source.subject||kindNames[source.kind]||'Source',date:source.date||'',
-  body:source.metadataOnly?'':source.body||'',bodySha256:source.bodySha256,from:source.authority==='direct-owner-statement'?'Toi':''};
+  body:source.body||'',metadataOnly:source.metadataOnly===true,bodySha256:source.bodySha256,from:source.authority==='direct-owner-statement'?'Toi':'',
+  bodyScope:source.provenance?.bodyScope||'',nativeRef:source.nativeRef||null,originalBinaryRead:source.provenance?.originalBinaryRead};
  if(file?.kind==='folder')return {...base,images:file.images||[]};
  if(file?.kind==='photo')return {...base,images:[{name:file.title,url:file.url}]};
  if(file?.kind==='document')return {...base,fileUrl:file.url,fileType:file.type,bytes:file.bytes};

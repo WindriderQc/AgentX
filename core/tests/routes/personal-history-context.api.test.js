@@ -22,6 +22,18 @@ describe('native owner timeline contexts with isolated Mongo', () => {
   beforeAll(async () => { for (const model of [Entry, MemoryNote, Suppression]) { await model.createCollection(); await model.createIndexes(); } });
   beforeEach(async () => { await Entry.deleteMany({}); await MemoryNote.deleteMany({}); await Suppression.deleteMany({}); });
 
+  test('timeline returns optional presentation preferences without writing facts or memory', async () => {
+    const loader = require('../../src/services/atlasDisplayPreferences');
+    const preferences = { storyThreads: [{ id: 'chosen-topic', label: 'Synthetic subject', queries: [['word']], eventIds: [] }] };
+    const read = jest.spyOn(loader, 'read').mockResolvedValue(preferences);
+    try {
+      const response = (await request(app).get(`${path}/timeline`).expect(200)).body.data;
+      expect(response.displayPreferences).toEqual(preferences);
+      expect(response.entries).toEqual([]);
+      expect(await Entry.countDocuments()).toBe(0);expect(await MemoryNote.countDocuments()).toBe(0);
+    } finally { read.mockRestore(); }
+  });
+
   test('imports a complete nonmail moment once, exposes metadata pages and verifies exact source reads', async () => {
     const value = input(); const first = (await publish([value])).body.data.results[0];
     expect(first).toMatchObject({ created: true, changed: true, replayed: false, contextRevision: 1,
