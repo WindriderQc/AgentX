@@ -29,6 +29,7 @@ function fixture(t, { future = false } = {}) {
       if (action === 'begin-operator') { job.state = 'dispatching'; job.dispatchId = dispatchId; job.revision++;
         if (data.loseBegin) { data.loseBegin = false; throw new Error('lost begin response'); } return job; }
       if (action === 'finish-operator') { data.finishes++; job.state = 'completed'; job.releaseReceipt = { state: 'completed', runtimeReleased: true }; return job; }
+      if (action === 'cancel') { job.state = 'cancelled'; job.revision++; return job; }
       throw new Error('unexpected action: ' + action);
     },
     place: async job => { job.state = 'reserved'; job.revision++; job.reservation = {
@@ -127,4 +128,35 @@ test('text coverage plus reconciled Core publication completes only the text sco
   assert.equal(state.phase, 'text-scope-complete'); assert.equal(state.remainingGaps, 2);
   assert.equal(state.semanticAcceptance, 'not-established'); assert.equal(state.userConfirmed, false);
   assert.equal(f.data.jobs.length, 0); assert.equal(f.data.publishes, 1);
+});
+test('a controller deadline starts no new queue request', async t => {
+  const f = fixture(t);
+  const state = await step(f.config, f.deps, { allowStart: false });
+  assert.equal(state.phase, 'controller-drained'); assert.equal(f.data.jobs.length, 0); assert.equal(f.data.launches, 0);
+});
+test('a deadline cancels an unstarted native booking and retains its cancellation identity', async t => {
+  const f = fixture(t, { future: true }); await step(f.config, f.deps);
+  const id = f.data.jobs[0].id;
+  const state = await step(f.config, f.deps, { allowStart: false });
+  assert.equal(state.phase, 'controller-drained'); assert.equal(f.data.jobs[0].state, 'cancelled');
+  assert.equal(state.cancelledChunks[0].queueId, id); assert.equal(state.completedChunks.length, 0);
+  assert.equal(f.data.launches, 0);
+});
+test('a lost cancellation reply reconciles the same unstarted booking', async t => {
+  const f = fixture(t, { future: true }); await step(f.config, f.deps);
+  const queue = f.deps.queue;
+  f.deps.queue = async (action, args) => { const result = await queue(action, args); if (action === 'cancel') throw new Error('lost cancellation response'); return result; };
+  await assert.rejects(step(f.config, f.deps, { allowStart: false }), /lost cancellation/);
+  const state = await step(f.config, f.deps, { allowStart: false });
+  assert.equal(state.phase, 'controller-drained'); assert.equal(state.cancelledChunks.length, 1);
+  assert.equal(f.data.jobs.length, 1); assert.equal(f.data.launches, 0);
+});
+test('an admitted chunk drains and publishes after the controller deadline without starting another', async t => {
+  const f = fixture(t); await step(f.config, f.deps);
+  assert.equal((await step(f.config, f.deps, { allowStart: false })).phase, 'running');
+  f.terminal('partial');
+  assert.equal((await step(f.config, f.deps, { allowStart: false })).phase, 'chunk-released');
+  assert.equal((await step(f.config, f.deps, { allowStart: false })).phase, 'ready');
+  assert.equal((await step(f.config, f.deps, { allowStart: false })).phase, 'controller-drained');
+  assert.equal(f.data.jobs.length, 1); assert.equal(f.data.launches, 1); assert.equal(f.data.publishes, 1);
 });

@@ -4,7 +4,8 @@
 control step over Core's existing heavy-work queue. Run it after a measured
 pilot has established practical page and time bounds. It creates no cron,
 parallel queue, new model client or confirmed memory. A future reservation
-remains in Core; the operator or active authorized task calls `step` again.
+remains in Core; an authorized caller can repeat `step` or use the durable
+`watch` controller below.
 
 Private configuration names `id`, `actor`, `core`, `objectiveFile`, optional
 `archiveRoot`, explicit `hosts`, the session/issue `source`, `startBefore`,
@@ -45,3 +46,35 @@ target text to be read or verified equivalent and all current candidates to
 reconcile in Core. Remaining visual/OCR/context gaps, semantic acceptance and
 human confirmation remain separate. Do not mark an entire life reconstruction
 complete merely because one bounded chunk ended.
+
+## Durable progression
+
+```sh
+node integrations/secretary/objective_campaign.cjs watch \
+  --config "$PRIVATE_CAMPAIGN" --until "$EXPLICIT_ADMISSION_DEADLINE" \
+  --poll-seconds 30
+```
+
+`watch` repeats the same native step every 15–60 seconds, including waiting for
+other work to release its resources, beginning inside Core's window, observing
+the retained worker, releasing each chunk and publishing it before the next.
+It terminates only after text coverage plus Core publication, a known failure
+or uncertainty requiring review, or an explicit admission deadline. The
+deadline must be no later than the campaign's `startBefore`.
+
+At the deadline, or SIGTERM/SIGINT, it cancels an unstarted request/reservation
+through Core under its original identity. Already admitted work remains bounded
+by its worker budgets and native queue window; the controller observes its
+termination, release and publication before stopping. A lost cancellation reply
+reconciles the same request, never a replacement. No new chunk starts while
+draining. A failure leaves an exact `watch-status.json` and all native fences
+intact; no automatic restart conceals or retries an uncertain result.
+
+Run this controller in one retained user service for operational durability.
+Use a stable unit identity, `Restart=no`, and a stop timeout longer than the
+bounded worker plus release/publication allowance. Observe that same unit after
+a lost launch response. A live `watcher.lock` prevents two observers; only a
+dead observer lock can be released without touching worker/inference fences.
+The explicit deadline and graceful drain are independent of the Coding task's
+human confirmation or goal completion. Private watch checkpoints and receipts
+remain outside public Git.
