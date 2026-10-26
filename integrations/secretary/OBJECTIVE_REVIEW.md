@@ -54,6 +54,14 @@ native receipt. An uncertain dispatch blocks replacement; reconcile the exact
 saved attempt, never delete a fence. Invalid output keeps its original result
 and refuses a new model call. Native source corruption refuses reading.
 
+The local representation adapter may change only a missing date's precision
+from day/month/year to `unknown`. It never fills a date, alters a quote, or
+repairs an attribution, occurrence or factual interpretation. The immutable
+native model result remains intact; a separate processing receipt names its
+hash and each changed path. Receipt reads replay and verify this derivation.
+A complete result rejected solely for this representation can therefore resume
+without another inference or a different objective/prompt identity.
+
 The worker verifies original bytes and reuses the native inert MIME reader:
 every inline plain/HTML representation and available HTML supplement is a
 separate bounded scope. It reuses existing attachment text only; no new OCR,

@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from evidence_store import load, now
 from mail_catchup import Busy, CoreClient
 from mailbox_backfill import Lock
-from objective_schema import INSTRUCTIONS, SCHEMA, validate
+from objective_schema import INSTRUCTIONS, SCHEMA, normalize_representation, validate
 from objective_sources import inventory, materialize, pages
 import objective_equivalence as equivalent
 from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled
@@ -95,6 +95,12 @@ def read_receipt(file, manifest):
             or record.get("bodySha256") != identity.get("contentSha256"):
         raise ValueError("Objective receipt integrity does not match its saved identity")
     validate(row["result"], record["body"])
+    if "resultProcessing" in row:
+        raw = load(file.parent.parent / "review-attempts" / hashed(file.stem) / "result.json", {}).get("value")
+        normalized, changes = normalize_representation(raw)
+        expected = {"contract": "secretary.objective-representation/v1", "rawResultSha256": hashed(raw), "changes": changes}
+        if not changes or row["resultProcessing"] != expected or normalized != row["result"]:
+            raise ValueError("Objective representation receipt does not match the retained native result")
     return row
 
 
@@ -307,11 +313,16 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     saved = (objective / "review-attempts" / hashed(page["pageId"]) / "result.json").is_file()
                     raw = extract_once(fence, client, system, prompt, page)
                     inferences += not saved
-                    validate(raw, page["content"])
+                    normalized, changes = normalize_representation(raw)
+                    validate(normalized, page["content"])
                     record = _source_record(page)
-                    durable(objective / "page-reviews" / (page["pageId"] + ".json"), {
+                    receipt = {
                         "schema": CONTRACT, "objectiveSha256": manifest["objectiveSha256"], "pageId": page["pageId"], "identity": page["identity"],
-                        "at": now(), "sourceRecord": record, "result": raw, "queueRequestId": queue_id, "dispatchId": dispatch_id})
+                        "at": now(), "sourceRecord": record, "result": normalized, "queueRequestId": queue_id, "dispatchId": dispatch_id}
+                    if changes:
+                        receipt["resultProcessing"] = {"contract": "secretary.objective-representation/v1",
+                            "rawResultSha256": hashed(raw), "changes": changes}
+                    durable(objective / "page-reviews" / (page["pageId"] + ".json"), receipt)
                     break
                 except Busy as error:
                     status.update(phase="paused", at=now(), reason=error.reason, newlyReviewedPages=made)
