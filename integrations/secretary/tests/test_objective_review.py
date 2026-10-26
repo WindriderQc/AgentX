@@ -6,11 +6,12 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evidence_store import load, save
 import objective_review as worker
-from objective_schema import validate
+from objective_schema import normalize_representation, validate
 from objective_sources import inventory, materialize, pages
 import objective_equivalence as equivalent
 
@@ -136,6 +137,52 @@ class ObjectiveTests(unittest.TestCase):
         self.assertEqual(len(client.calls), 1)
         objective, _ = self.prepare()
         self.assertEqual(load(objective / "findings.json"), [])
+
+    def test_missing_date_precision_normalization_retains_raw_result_without_reinference(self):
+        class MissingDateClient(Client):
+            def extract(self, *args, **kwargs):
+                value = super().extract(*args, **kwargs)
+                value["moments"][0].update(startDate=None, startPrecision="day", endPrecision="day")
+                return value
+
+        client = MissingDateClient()
+        # Simulate a pre-adapter run that retained a complete model response
+        # but rejected its representation locally.
+        with patch.object(worker, "normalize_representation", side_effect=lambda value: (value, [])):
+            self.assertEqual(self.run_worker(client)["phase"], "validation-error")
+        self.assertEqual(len(client.calls), 1)
+        result = self.run_worker(client)
+        self.assertEqual(result["phase"], "done")
+        self.assertEqual(result["inferenceCalls"], 0)
+        objective, manifest = self.prepare()
+        receipt_file = next((objective / "page-reviews").glob("*.json"))
+        receipt = worker.read_receipt(receipt_file, manifest)
+        self.assertEqual(receipt["result"]["moments"][0]["startPrecision"], "unknown")
+        self.assertEqual(len(receipt["resultProcessing"]["changes"]), 2)
+        raw = load(next((objective / "review-attempts").glob("*/result.json")))["value"]
+        self.assertEqual(raw["moments"][0]["startPrecision"], "day")
+        self.assertEqual(normalize_representation(raw)[0], receipt["result"])
+        self.assertEqual(raw["moments"][0]["endPrecision"], "day")
+        self.assertEqual(self.run_worker(client)["newlyReviewedPages"], 0)
+        self.assertEqual(len(client.calls), 1)
+        receipt["resultProcessing"]["changes"][0]["from"] = "year"
+        save(receipt_file, receipt)
+        with self.assertRaisesRegex(ValueError, "retained native result"):
+            worker.read_receipt(receipt_file, manifest)
+
+    def test_representation_normalization_never_repairs_non_null_dates_or_quotes(self):
+        value = {"summary": "Un événement fictif.", "classification": "life-events", "moments": [moment("absent")], "gaps": []}
+        value["moments"][0].update(startDate="2014", startPrecision="day")
+        normalized, changes = normalize_representation(value)
+        self.assertEqual(changes, [])
+        self.assertEqual(value, normalized)
+        with self.assertRaisesRegex(ValueError, "stated precision"):
+            validate(normalized, "Une source fictive.")
+        value["moments"][0].update(startDate=None, startPrecision="invalid")
+        normalized, changes = normalize_representation(value)
+        self.assertEqual(changes, [])
+        with self.assertRaises(ValueError):
+            validate(normalized, "Une source fictive.")
 
     def test_lost_result_blocks_replacement(self):
         client = Client(fail=True)
@@ -324,6 +371,16 @@ class ObjectiveTests(unittest.TestCase):
         wrong["moments"][0]["quotes"] *= 21
         with self.assertRaisesRegex(ValueError, "bound"):
             validate(wrong, "citation")
+
+    def test_scheduling_priority_does_not_change_objective_or_page_intent(self):
+        self.mail("message02", "Aucun événement personnel dans ce message fictif.")
+        self.config["selection"]["gmailMessageIds"].append("message02")
+        save(self.file, self.config)
+        _, manifest = self.prepare()
+        result = self.run_worker(Client(), max_pages=1, priority=["gmail:message02"])
+        row = next(s for s in result["coverage"]["sources"] if s["messageId"] == "message02")
+        self.assertEqual(row["reviewedPages"], 1)
+        self.assertEqual(self.prepare()[1]["objectiveSha256"], manifest["objectiveSha256"])
 
 
 if __name__ == "__main__":

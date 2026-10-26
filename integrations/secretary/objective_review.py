@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from evidence_store import load, now
 from mail_catchup import Busy, CoreClient
 from mailbox_backfill import Lock
-from objective_schema import INSTRUCTIONS, SCHEMA, validate
+from objective_schema import INSTRUCTIONS, SCHEMA, normalize_representation, validate
 from objective_sources import inventory, materialize, pages
 import objective_equivalence as equivalent
 from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled
@@ -95,6 +95,12 @@ def read_receipt(file, manifest):
             or record.get("bodySha256") != identity.get("contentSha256"):
         raise ValueError("Objective receipt integrity does not match its saved identity")
     validate(row["result"], record["body"])
+    if "resultProcessing" in row:
+        raw = load(file.parent.parent / "review-attempts" / hashed(file.stem) / "result.json", {}).get("value")
+        normalized, changes = normalize_representation(raw)
+        expected = {"contract": "secretary.objective-representation/v1", "rawResultSha256": hashed(raw), "changes": changes}
+        if not changes or row["resultProcessing"] != expected or normalized != row["result"]:
+            raise ValueError("Objective representation receipt does not match the retained native result")
     return row
 
 
@@ -208,7 +214,7 @@ def export(objective, manifest):
 
 
 def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, per_source_pages=None,
-        max_seconds=1800, sleep=time.sleep, clock=time.monotonic, stop=lambda: False):
+        max_seconds=1800, priority=(), sleep=time.sleep, clock=time.monotonic, stop=lambda: False):
     if not UUID.fullmatch(queue_id or "") or not UUID.fullmatch(dispatch_id or ""):
         raise ValueError("Native run requires its explicit Core operator queue/dispatch identities")
     if type(max_pages) is not int or max_pages <= 0:
@@ -238,7 +244,9 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         durable(objective / "status.json", status)
         return {**status, "coverage": export(objective, manifest)}
 
-    for source in manifest["sources"]:
+    order = {value: index for index, value in enumerate(priority)}
+    ordered = sorted(manifest["sources"], key=lambda source: order.get(source["system"] + ":" + source["id"], len(order)))
+    for source in ordered:
         if made >= max_pages or stop():
             return finish("partial" if not stop() else "stopped")
         plan_file = objective / "sources" / (source_key(source) + ".json")
@@ -305,11 +313,16 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     saved = (objective / "review-attempts" / hashed(page["pageId"]) / "result.json").is_file()
                     raw = extract_once(fence, client, system, prompt, page)
                     inferences += not saved
-                    validate(raw, page["content"])
+                    normalized, changes = normalize_representation(raw)
+                    validate(normalized, page["content"])
                     record = _source_record(page)
-                    durable(objective / "page-reviews" / (page["pageId"] + ".json"), {
+                    receipt = {
                         "schema": CONTRACT, "objectiveSha256": manifest["objectiveSha256"], "pageId": page["pageId"], "identity": page["identity"],
-                        "at": now(), "sourceRecord": record, "result": raw, "queueRequestId": queue_id, "dispatchId": dispatch_id})
+                        "at": now(), "sourceRecord": record, "result": normalized, "queueRequestId": queue_id, "dispatchId": dispatch_id}
+                    if changes:
+                        receipt["resultProcessing"] = {"contract": "secretary.objective-representation/v1",
+                            "rawResultSha256": hashed(raw), "changes": changes}
+                    durable(objective / "page-reviews" / (page["pageId"] + ".json"), receipt)
                     break
                 except Busy as error:
                     status.update(phase="paused", at=now(), reason=error.reason, newlyReviewedPages=made)
@@ -342,6 +355,7 @@ def main(argv=None):
     parser.add_argument("--max-seconds", type=int, default=1800)
     parser.add_argument("--queue-request-id")
     parser.add_argument("--queue-dispatch-id")
+    parser.add_argument("--priority-file", type=Path, help="Private native IDs; scheduling order only, never model instructions")
     args = parser.parse_args(argv)
     objective, manifest = prepare(args.root, config_at(args.objective), create=args.command in ("plan", "run"))
     if args.command in ("plan", "status"):
@@ -349,6 +363,9 @@ def main(argv=None):
     elif args.command == "export":
         result = export(objective, manifest)
     else:
+        priority = load(args.priority_file, []) if args.priority_file else []
+        if not isinstance(priority, list) or any(not isinstance(value, str) or not re.fullmatch(r"(?:gmail|outlook-export):[a-zA-Z0-9_-]{8,256}", value) for value in priority):
+            raise ValueError("Priority must contain explicit native source keys")
         stopping = []
         for sig in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sig, lambda *_: stopping.append(True))
@@ -359,7 +376,7 @@ def main(argv=None):
             result = run(args.root, objective, manifest, CoreClient(args.core, task_type=args.task_type, schema=SCHEMA,
                          caller="secretary-objective-review"), max_pages=args.max_pages, queue_id=args.queue_request_id,
                          dispatch_id=args.queue_dispatch_id, per_source_pages=args.max_pages_per_source,
-                         max_seconds=args.max_seconds, stop=lambda: bool(stopping))
+                         max_seconds=args.max_seconds, priority=priority, stop=lambda: bool(stopping))
         finally:
             lock.release()
     if args.command == "plan":

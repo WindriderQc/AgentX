@@ -49,6 +49,42 @@ test('native candidates map to Core context without user confirmation', () => {
   assert.equal(result.timeline.claimsWithExactQuotes[0].quote, source.body);
   assert.equal(result.timeline.metadata.userConfirmed, false);
 });
+test('a source audit publishes an unknown date initially and retains the exact model proposal in Core metadata', () => {
+  const { finding, source, indexed } = fixture();
+  const review = { findingId: finding.id, clear: ['start'], reason: 'Seule une borne supérieure est attestée.',
+    question: 'Quelle est la date réelle du déménagement ?', reviewedAt: '2026-10-26T18:00:00Z' };
+  const result = publisher.build(finding, indexed, { dateReview: review });
+  assert.equal(result.timeline.date, null); assert.equal(result.timeline.precision, 'unknown');
+  assert.equal(result.entry.eventDate, ''); assert.equal(result.entry.eventDatePrecision, 'unknown');
+  assert.equal(result.timeline.metadata.dateReview.modelProposal.date, '2014-08');
+  assert.equal(result.timeline.metadata.dateReview.authority, 'automated-source-audit-not-owner-confirmation');
+  assert.equal(result.timeline.reviewState, 'candidate'); assert.equal(result.timeline.metadata.userConfirmed, false);
+  assert.deepEqual(result.timeline.claimsWithExactQuotes, finding.claimsWithExactQuotes);
+  assert.equal(result.sourceRecords[0].body, source.body);
+  assert.equal(finding.startDate, '2014-08');
+  const retained = publisher.nativeDateReview({ context: { importedTimeline: result.timeline } });
+  const resumed = publisher.build(finding, indexed, { dateReview: retained });
+  assert.deepEqual(resumed, result);
+});
+test('date audit cannot invent a date or silently reuse another model proposal', () => {
+  const { finding, indexed } = fixture();
+  const base = { findingId: finding.id, clear: ['invent'], reason: 'Motif explicite.', question: 'Question explicite ?', reviewedAt: '2026-10-26T18:00:00Z' };
+  assert.throws(() => publisher.build(finding, indexed, { dateReview: base }), /adjudication/);
+  base.clear = ['start']; base.modelProposal = { date: '2000' };
+  assert.throws(() => publisher.build(finding, indexed, { dateReview: base }), /another model proposal/);
+});
+test('a native date adjudication changed after planning cannot be overwritten by source enrichment', async t => {
+  const dir = home(t), { finding, indexed } = fixture();
+  const payload = publisher.build(finding, indexed);
+  let posts = 0;
+  const call = async (_url, body) => {
+    if (body) { posts++; throw new Error('must not write'); }
+    return { total: 1, entries: [{ id: 'd'.repeat(24), contextHash: 'earlier', contextRevision: 7,
+      timeline: { metadata: { dateReview: { contract: 'native-existing-audit' } } } }] };
+  };
+  await assert.rejects(publisher.publishOne(dir, payload, { context: { inputHash: 'expected' } }, call), /adjudication changed/);
+  assert.equal(posts, 0);
+});
 test('bad source hashes and quotes refuse before an API call', () => {
   const { finding, source, indexed } = fixture();
   source.bodySha256 = '0'.repeat(64);

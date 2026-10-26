@@ -3,6 +3,8 @@
 For a separately versioned reading objective without resetting general page
 receipts, see [objective review](OBJECTIVE_REVIEW.md). The existing catch-up
 status also projects content-free archive and objective progress.
+Bounded campaigns resume through the same Core queue; see
+[objective continuations](OBJECTIVE_CAMPAIGNS.md).
 
 `secretary_evidence.py` preserves complete private Gmail sources, bounded read
 pages, resumable reviews, attachment hashes and the existing accounting export.

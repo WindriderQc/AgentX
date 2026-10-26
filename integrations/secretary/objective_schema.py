@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 from calendar import monthrange
+import copy
 import re
 
 
@@ -88,6 +89,28 @@ def _date(value, precision):
     if not re.fullmatch(patterns[precision], value):
         raise ValueError("Date must preserve its stated precision")
     date.fromisoformat(value + ("-01-01" if precision == "year" else "-01" if precision == "month" else ""))
+
+
+def normalize_representation(value):
+    """Represent an absent date as unknown; never repair evidence or semantics.
+
+    Keep the model value immutable. The caller retains its native result and
+    records every changed path, so a complete saved response can be resumed
+    without asking the model to regenerate it.
+    """
+    normalized, changes = copy.deepcopy(value), []
+    if not isinstance(normalized, dict) or not isinstance(normalized.get("moments"), list):
+        return normalized, changes
+    for index, moment in enumerate(normalized["moments"]):
+        if not isinstance(moment, dict):
+            continue
+        for side in ("start", "end"):
+            key = side + "Precision"
+            if side + "Date" in moment and moment[side + "Date"] is None and moment.get(key) in ("day", "month", "year"):
+                changes.append({"path": f"moments/{index}/{key}", "from": moment[key], "to": "unknown",
+                                "reason": "No date was supplied; no date or factual claim was inferred."})
+                moment[key] = "unknown"
+    return normalized, changes
 
 
 def validate(value, content):
