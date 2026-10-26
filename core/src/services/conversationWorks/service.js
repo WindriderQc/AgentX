@@ -7,6 +7,7 @@ const { OWNER, SCOPED, EXCHANGE_SCOPE, ACTIVE, LIMITS, hash, fail, notFound,
 const { createRepository } = require('./repository');
 const { readTurnContext, assertContextSize } = require('../conversations/turnContext');
 const { shareToolEvidence } = require('../conversations/sharedToolEvidence');
+const { referenceEarlierToolEvidence } = require('../conversations/toolEvidenceReferences');
 const { resolveProfile } = require('./performance');
 const { isNativeToolCallId } = require('../../../../shared/nativeToolCallId.cjs');
 
@@ -149,7 +150,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
     if (!turn || hash(turn.inputText) !== row.requestSha256) throw fail('CONVERSATION_WORK_CONTEXT_UNAVAILABLE', 'The complete canonical request is unavailable.', 503);
     const selected = row.contextRef ? await repo.read(row, row.contextRef) : { selectedContext: '' };
-    const conversation = shareToolEvidence(await conversationContext(row.sessionId));
+    const conversation = shareToolEvidence(referenceEarlierToolEvidence(await conversationContext(row.sessionId)));
     assertContextSize(selected.selectedContext + JSON.stringify(conversation), LIMITS.context);
     return { authority: 'core.conversation-works', id: row._id, turnId: row.turnId,
       request: turn.inputText, guardianReply: turn.replyText, guardianOutcome: turn.outcome,
@@ -185,6 +186,18 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     }
     conversation.coverage.workResultCount = rows.length;
     return conversation;
+  }
+  // Read-only recall of one earlier evidence value, limited to the caller's own
+  // conversation. The ref comes from an $evidence reference in its context.
+  async function readEvidence(context, input) {
+    const row = await binding(context, context?.agentId === 'main' ? 'boss' : 'worker');
+    const match = /^([a-f0-9]{64})\/([a-f0-9]{64})$/.exec(input?.ref || '');
+    if (!match || Object.keys(input).some(key => key !== 'ref')) throw fail('CONVERSATION_WORK_EVIDENCE_INVALID', 'Choose an exact evidence ref.');
+    const target = await repo.get(match[1]);
+    const tool = target?.sessionId === row.sessionId && target.result?.version ? target.tools.find(item => item.id === match[2]) : null;
+    if (!tool?.payloadRef) throw notFound();
+    return { authority: 'core.conversation-works', ref: input.ref, workId: target._id, receiptId: tool.id,
+      tool: tool.tool, status: tool.status, runId: tool.runId, data: await repo.read(target, tool.payloadRef) };
   }
   async function readTasks(context, input, callId, role = 'worker') {
     const row = await binding(context, role);
@@ -411,7 +424,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: row.conversationId }, 'completed', { packets: 0, statusCode: 200,
       conversationId: row.conversationId, workId: row._id });
   }
-  return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, conversationContext, readTasks,
+  return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, conversationContext, readTasks, readEvidence,
     requestTextForDisplay: async row => {
       const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
       return turn && hash(turn.inputText) === row.requestSha256 ? turn.inputText : null;

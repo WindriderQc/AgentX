@@ -198,7 +198,7 @@ before the worker's first invocation, separately from selected personal memory.
 The context tool refreshes that complete conversation, including original input,
 guardian replies, shown text, attachment references and recorded tool evidence.
 It also includes every published background answer on its source turn, with
-the complete retained tool evidence and separate presentation receipts; a
+its tool receipts and separate presentation receipts; a
 published answer is not proof that the owner saw or heard it. Earlier boss
 corrections are not limited by the guardian's selected-feedback window.
 Coverage names the first/last turn and turn count; neither UI pagination limits
@@ -207,7 +207,19 @@ consultations receive the same complete conversation. The complete
 current human request is always retained and returned. Inputs outside the
 4,000-character intake budget refuse instead of truncating.
 
-Repeated identical large tool-result data use a lossless per-response inline
+Earlier tool evidence is referenced, not re-sent (`evidenceReferenceEncoding`,
+`core.tool-evidence-references/v1`). The latest published work keeps its complete
+evidence inline. For earlier works, a receipt whose data is at least 1,024
+characters keeps its identity, tool, status and native run, and its data becomes
+`{ "$evidence": { ref, sha256, chars, summary } }`. The summary is deterministic
+(task count and first titles, a native consultation's status and completed tools,
+or a bounded preview). Every turn and answer stays complete. The stored value is
+unchanged in Core: `conversation_work` with operation `evidence` and that exact
+`ref` returns it, read-only, only for a published work of the caller's own
+conversation. This keeps long conversations under the work-context budget;
+source tests do not establish a live latency gain.
+
+Within what remains inline, repeated identical large tool-result data use a lossless per-response inline
 dictionary in the model context: each receipt retains its identity, native run,
 order and presentation, with `data.$ref` pointing into `sharedToolEvidence` in
 that same conversation. The complete value is supplied once in the same block;
