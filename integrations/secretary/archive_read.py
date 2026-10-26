@@ -11,12 +11,27 @@ from evidence_store import load
 from compound_sources import packet_scopes
 
 MAX_BYTES = 64 * 1024 * 1024
+CHARSET_ALIASES = {"windows-874": "cp874"}
 
 
 class ArchiveReadError(RuntimeError):
     def __init__(self, message, code="SECRETARY_ARCHIVE_UNAVAILABLE", status=503):
         super().__init__(message)
         self.code, self.status = code, status
+
+
+def _text(part):
+    try:
+        return part.get_content(), None
+    except LookupError:
+        charset = part.get_content_charset()
+        codec = CHARSET_ALIASES.get(charset)
+        if codec is None:
+            raise
+        payload = part.get_payload(decode=True)
+        if not isinstance(payload, bytes):
+            raise ValueError("No decoded MIME bytes for the declared charset alias")
+        return payload.decode(codec, errors="strict"), {"declaredCharset": charset, "resolvedCodec": codec, "errors": "strict"}
 
 
 def representations(message):
@@ -31,9 +46,9 @@ def representations(message):
         if not blocked and (document or not part.is_multipart() and kind not in ("text/plain", "text/html")):
             attachments.append({"partIndex": current, "filename": str(part.get_filename() or "(sans nom)")[:300], "mimeType": kind})
         if not blocked and not document and kind in ("text/plain", "text/html"):
-            value, readable, extra = "", True, None
+            value, readable, extra, decoding = "", True, None, None
             try:
-                value = part.get_content()
+                value, decoding = _text(part)
                 if not isinstance(value, str): readable, value = False, ""
                 if kind == "text/html":
                     from archive_html import supplement
@@ -44,7 +59,8 @@ def representations(message):
                 readable, value = False, ""
             bodies.append({"partIndex": current, "mimeType": kind, "readable": readable, "totalChars": len(value),
                            "textSha256": hashlib.sha256(value.encode()).hexdigest() if readable else None,
-                           "content": value, "part": part, "htmlEvidence": extra})
+                           "content": value, "part": part, "htmlEvidence": extra,
+                           **({"decoding": decoding} if decoding else {})})
         if part.is_multipart():
             stack.extend((child, blocked or document, depth + 1) for child in reversed(list(part.iter_parts())))
     return bodies, attachments

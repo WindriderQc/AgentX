@@ -69,6 +69,13 @@ render, decompression or linked-resource fetch occurs. Missing, clipped,
 visual, nested and OCR-quality scopes remain explicit gaps. Metadata describing
 an image or attachment is not evidence that its content was seen.
 
+The inert reader resolves the declared `windows-874` charset through Python's
+`cp874` codec using strict decoding and records that derivation in the text
+representation. Unknown charset names and invalid bytes remain unreadable;
+no encoding is guessed. A source plan with no readable page is revisited on
+resume, so this reader correction needs neither an archive mutation nor a
+reset of completed review receipts or the objective identity.
+
 Private results live under `objective-reviews/<id>/<version>/`: immutable
 `manifest.json`, native `review-attempts`, per-source plans, per-page exact
 passage receipts, `status.json`, `coverage.json`, `findings.json` and

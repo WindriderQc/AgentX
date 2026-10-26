@@ -133,6 +133,33 @@ class ArchivedOriginalReadingTests(unittest.TestCase):
         self.assertIn('unreadable_text_representation', page['readingWarnings'])
         self.assertEqual(page['bodyCompleteScope'], 'selected-mime-text-part')
 
+    def test_declared_windows_874_plain_and_html_use_a_traced_strict_alias_without_source_changes(self):
+        text = 'Synthetic camp in Thailand ภาษาไทย'
+        message = EmailMessage(); message.set_content(text, charset='cp874', cte='base64')
+        message.add_alternative('<p>' + text + '</p>', subtype='html', charset='cp874', cte='base64')
+        for part in message.iter_parts():
+            part.set_param('charset', 'windows-874', header='Content-Type')
+        self.preserve(message)
+        original = self.file.read_bytes()
+        page = read_original(self.root, 'message1', self.sha)
+        self.assertTrue(page['bodyReadable']); self.assertIn(text, page['body'])
+        for part in page['bodyRepresentations']:
+            self.assertEqual(part['decoding'], {'declaredCharset': 'windows-874', 'resolvedCodec': 'cp874', 'errors': 'strict'})
+            other = read_original(self.root, 'message1', self.sha, part_index=part['partIndex'])
+            self.assertIn(text, other['body'])
+        self.assertEqual(self.file.read_bytes(), original)
+        self.assertNotIn('unreadable_text_representation', page['readingWarnings'])
+
+    def test_unsupported_charsets_and_undefined_windows_874_bytes_are_not_guessed(self):
+        for charset, payload in [('not-a-charset', b'ASCII still needs a declared decoder'), ('windows-874', b'\x81')]:
+            raw = b'Content-Type: text/plain; charset=' + charset.encode() + b'\r\n\r\n' + payload
+            self.sha = hashlib.sha256(raw).hexdigest(); self.file.write_bytes(raw)
+            save(self.root / 'raw-receipts/message1.json', {'messageId': 'message1', 'threadId': 'thread01',
+                 'sha256': self.sha, 'bytes': len(raw), 'path': 'raw/source.eml'})
+            page = read_original(self.root, 'message1', self.sha)
+            self.assertFalse(page['bodyReadable'])
+            self.assertIn('unreadable_text_representation', page['readingWarnings'])
+
     def test_html_only_document_targets_descriptions_and_structured_data_are_inert_evidence(self):
         message = EmailMessage(); message.set_content('Preferred text has no document target.')
         message.add_alternative('<p>Read <a href="https://example.invalid/invoice?a=1&amp;b=2">the document</a>.</p>'

@@ -119,6 +119,30 @@ class ObjectiveTests(unittest.TestCase):
         self.assertEqual(self.run_worker(client)["newlyReviewedPages"], 0)
         self.assertEqual(len(client.calls), 1)
 
+    def test_previously_unreadable_charset_plan_is_revisited_without_resetting_any_review(self):
+        message = email.message.EmailMessage()
+        message.set_content('Synthetic camp in Thailand ภาษาไทย', charset='cp874', cte='base64')
+        message.set_param('charset', 'windows-874', header='Content-Type')
+        raw = message.as_bytes()
+        row = {**self.message, 'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)}
+        (self.root / row['path']).write_bytes(raw)
+        save(self.root / 'raw-receipts/message01.json', row)
+        client = Client()
+        with patch('archive_read.CHARSET_ALIASES', {}):
+            first = self.run_worker(client)
+        self.assertEqual(first['coverage']['counts']['expectedPagesKnown'], 0)
+        self.assertFalse(first['coverage']['allTargetTextCovered']); self.assertEqual(len(client.calls), 0)
+        result = self.run_worker(client)
+        self.assertTrue(result['coverage']['allTargetTextCovered']); self.assertEqual(len(client.calls), 1)
+        objective, _ = self.prepare()
+        receipt = load(next((objective / 'page-reviews').glob('*.json')))
+        self.assertEqual(receipt['sourceRecord']['nativeRef']['representation']['decoding']['resolvedCodec'], 'cp874')
+        self.assertIn('ภาษาไทย', receipt['sourceRecord']['body'])
+        self.assertEqual((self.root / row['path']).read_bytes(), raw)
+        self.assertEqual(load(self.root / 'page-reviews/general.json'), {'unrelated': 'preserve'})
+        self.assertEqual(self.run_worker(client)["newlyReviewedPages"], 0)
+        self.assertEqual(len(client.calls), 1)
+
     def test_exact_quote_candidates_keep_native_identity_and_never_confirm(self):
         self.run_worker(Client())
         objective, _ = self.prepare()
