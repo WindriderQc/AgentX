@@ -22,6 +22,7 @@ from objective_schema import INSTRUCTIONS, SCHEMA, normalize_representation, val
 from objective_sources import inventory, materialize, pages
 import objective_equivalence as equivalent
 import objective_dispositions as dispositions
+from objective_annual import aggregate as annual_coverage
 from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled, blocked_phase, blocked_counts, result_file
 from review_response import ReviewInvalidOutput
 from secretary_evidence import DEFAULT_ROOT
@@ -117,9 +118,9 @@ def usable_aliases(objective, manifest):
             yield alias
 
 
-def coverage(objective, manifest):
+def coverage(objective, manifest, *, include_annual=False):
     counts = Counter(targetSources=len(manifest["sources"]))
-    by_system, sources = {}, []
+    by_system, sources, annual_entries = {}, [], []
     aliases = list(usable_aliases(objective, manifest))
     alias_index = equivalent.coverage_index(aliases)
     for alias in aliases:
@@ -157,6 +158,7 @@ def coverage(objective, manifest):
                "rejectedPages": len(rejected),
                "textReviewComplete": complete, "textCovered": covered, "gaps": gaps, "error": plan.get("error")}
         sources.append(row)
+        annual_entries.append((source, plan, row))
         counts["materializedSources"] += bool(plan)
         counts["sourcesPendingMaterialization"] += not bool(plan)
         counts["sourcesTextReviewed"] += complete
@@ -173,6 +175,7 @@ def coverage(objective, manifest):
     return {"schema": CONTRACT, "at": now(), "objectiveId": manifest["config"]["id"],
             "version": manifest["config"]["version"], "objectiveSha256": manifest["objectiveSha256"],
             "counts": dict(counts), "bySystem": by_system, "sources": sources,
+            **({"annualCoverage": annual_coverage(objective.parents[2], manifest, annual_entries)} if include_annual else {}),
             "allTargetTextReviewed": counts["sourcesTextReviewed"] == len(manifest["sources"]) and bool(sources),
             "allTargetTextCovered": counts["sourcesTextCovered"] == len(manifest["sources"]) and bool(sources),
             "semanticAcceptance": "not-established", "userConfirmed": False,
@@ -228,7 +231,7 @@ def export(objective, manifest):
                 finding["claimsWithExactQuotes"].extend({"sourceId": other["id"], "quote": q} for c in claims for q in c["quotes"])
                 finding["sourceIndependence"] = "same-declaration"
             findings.append(finding)
-    report = coverage(objective, manifest)
+    report = coverage(objective, manifest, include_annual=True)
     durable(objective / "findings.json", findings)
     durable(objective / "sources.json", list(records.values()))
     durable(objective / "coverage.json", report)
@@ -422,7 +425,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     objective, manifest = prepare(args.root, config_at(args.objective), create=args.command in ("plan", "run"))
     if args.command in ("plan", "status"):
-        result = coverage(objective, manifest)
+        result = coverage(objective, manifest, include_annual=args.command == "plan")
     elif args.command == "export":
         result = export(objective, manifest)
     else:
