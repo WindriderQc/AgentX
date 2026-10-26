@@ -2,7 +2,7 @@ import { Context } from '@deepseek-ai/cordis';
 import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { mkdir, realpath } from 'node:fs/promises';
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import { buildForkSeed } from '@deepseek-ai/dsh-session';
 import { WorkerSessions } from './bridge.mjs';
 
@@ -15,10 +15,12 @@ export async function apply(ctx) {
   await mkdir(stateRoot, { recursive: true, mode: 0o700 });
   const readerContexts = [];
   const bridge = new WorkerSessions({ ctx, workersRoot: await realpath(workersRoot), stateRoot: await realpath(stateRoot),
-    reader: root => {
+    reader: async root => {
       const readerContext = new Context();
       readerContexts.push(readerContext);
-      return new JsonlSessionPersistence(readerContext, { root, compression: 'none' });
+      await readerContext.plugin(JsonlSessionPersistence.default ?? JsonlSessionPersistence,
+        { root, compression: 'none' }).await();
+      return readerContext.sessionPersistence;
     }, buildForkSeed });
   const logger = ctx.logger('agentx-coding-team');
   ctx.on('agent/created', ({ agent }) => {

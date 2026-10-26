@@ -26,7 +26,7 @@ export class WorkerSessions {
         for (const worker of await discoverWorkers(this.workersRoot)) {
           let backend = this.readers.get(worker.logs);
           if (!backend) {
-            backend = this.reader(worker.logs);
+            backend = await this.reader(worker.logs);
             this.readers.set(worker.logs, backend);
           }
           for (const stored of await backend.list()) {

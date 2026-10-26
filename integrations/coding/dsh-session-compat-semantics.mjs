@@ -20,6 +20,8 @@ if (args.length !== 2 || args[0] !== '--runtime-root' || !args[1]) {
 const runtimeRoot = resolve(args[1]);
 const runtimeManifest = pathToFileURL(join(runtimeRoot, 'package.json'));
 const runtimeRequire = createRequire(runtimeManifest);
+const runtimeVersion = JSON.parse(readFileSync(runtimeRequire.resolve('@deepseek-ai/dsh/package.json'), 'utf8')).version;
+assert.ok(['0.2.0-rc.2', '0.2.1-rc.3'].includes(runtimeVersion), 'Only reviewed upstream releases are qualified');
 const targetPackage = '@deepseek-ai/dsh-session-format-v0-to-v1';
 const requiredPackages = [
   '@deepseek-ai/dsh-session-format', targetPackage,
@@ -29,7 +31,7 @@ const requiredPackages = [
 for (const name of requiredPackages) {
   const manifest = JSON.parse(readFileSync(runtimeRequire.resolve(`${name}/package.json`), 'utf8'));
   assert.equal(manifest.name, name, 'Exact upstream package required');
-  assert.equal(manifest.version, '0.2.0-rc.2', 'Only the reviewed upstream version is qualified');
+  assert.equal(manifest.version, runtimeVersion, 'All migration packages must match the reviewed runtime');
 }
 const packageRoot = dirname(runtimeRequire.resolve(`${targetPackage}/package.json`));
 const disposableRoot = mkdtempSync(join(tmpdir(), 'dsh-session-compat-semantics-'));

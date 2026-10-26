@@ -1,9 +1,14 @@
 # Pinned DSH legacy-session read compatibility
 
 `dsh-session-compat.py` is an explicit operator installer for
-`@deepseek-ai/dsh-session-format-v0-to-v1@0.2.0-rc.2`, targeting only
+`@deepseek-ai/dsh-session-format-v0-to-v1` at the exact reviewed versions
+**0.2.0-rc.2** and **0.2.1-rc.3**, targeting only
 `lib/index.js`. It uses a bundled, hash-pinned replacement artifact. It does not
 run from either DSH launcher.
+
+Both published versions have identical target bytes and use the same reviewed
+artifact. The receipt reports the installed package version. Other releases
+remain unsupported even when their source bytes happen to match.
 
 The compatibility change admits the known legacy descriptor-v2 shape while
 preserving its version and fields. It does not promote that descriptor to v3
@@ -58,7 +63,7 @@ python3 -m unittest discover -s integrations/coding/tests \
   -p test_dsh_session_compat.py -v
 ```
 
-The synthetic migration qualifier needs an existing DSH 0.2.0-rc.2 runtime and
+The synthetic migration qualifier needs either reviewed DSH runtime and
 Node.js 24. It copies only the target package's manifest and source into a new
 temporary directory, applies this installer there, and resolves the remaining
 read-only dependencies from the supplied runtime. It tests the complete v0→v4

@@ -19,6 +19,8 @@ import sys
 
 PACKAGE = "@deepseek-ai/dsh-session-format-v0-to-v1"
 VERSION = "0.2.0-rc.2"
+# Both releases publish the same reviewed target bytes; keep the artifact pinned.
+SUPPORTED_VERSIONS = (VERSION, "0.2.1-rc.3")
 TARGET = "lib/index.js"
 ARTIFACT = Path(__file__).with_suffix(".json")
 # Updated only together with the reviewed, bundled patch artifact.
@@ -162,8 +164,9 @@ def _check_manifest(descriptor):
     except (ValueError, UnicodeError) as error:
         raise Refusal("PACKAGE_INVALID", "Package manifest is invalid.") from error
     if (not isinstance(manifest, dict) or manifest.get("name") != PACKAGE
-            or manifest.get("version") != VERSION):
+            or manifest.get("version") not in SUPPORTED_VERSIONS):
         raise Refusal("PACKAGE_MISMATCH", "Only the pinned package name and version are supported.")
+    return manifest["version"]
 
 
 def _atomic_replace(directory_fd, descriptor, metadata, original, replacement, manifest_check):
@@ -212,7 +215,7 @@ def install(package_root, apply=False):
         manifest_fd = _regular_fd("package.json", root_fd)
         manifest_metadata = os.fstat(manifest_fd)
         manifest_bytes = _read_fd(manifest_fd)
-        _check_manifest(manifest_fd)
+        installed_version = _check_manifest(manifest_fd)
         source_fd = _regular_fd("index.js", lib_fd)
         if apply:
             try:
@@ -242,7 +245,7 @@ def install(package_root, apply=False):
                 _unchanged("index.js", lib_fd, source_fd, metadata, source)
         return {"ok": True, "schema": "agentx.dsh-session-compat-plan/v1",
                 "mode": "apply" if apply else "check", "state": state, "action": action,
-                "package": PACKAGE, "version": VERSION, "target": TARGET,
+                "package": PACKAGE, "version": installed_version, "target": TARGET,
                 "observedSha256": installed_sha,
                 "installedSha256": patch["afterSha256"] if state == "applied" else installed_sha,
                 "upstreamSha256": patch["beforeSha256"],

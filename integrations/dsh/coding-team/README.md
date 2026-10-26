@@ -1,6 +1,6 @@
 # Native coding sessions in DSH Studio
 
-This optional bundle connects the coding worker's native DSH **0.2.0-rc.2**
+This optional bundle connects the coding worker's native DSH **0.2.0-rc.2 / 0.2.1-rc.3**
 execution histories to Studio's existing conversations. It replaces the embedded
 Pipeline panel. **Sessions du coding team** opens the actual native transcript,
 including messages and tool calls, and updates it from the worker log every two
@@ -70,7 +70,7 @@ node integrations/dsh/coding-team/scripts/package.mjs \
   --core-url https://agentx.example --output /private/artifacts/dsh-team
 npm pack /private/artifacts/dsh-team --ignore-scripts --pack-destination /private/artifacts
 DSH_HOME=/private/studio-home /selected/dsh/node_modules/.bin/dsh plugin --profile web add \
-  /private/artifacts/agentx-dsh-coding-team-0.3.0.tgz
+  /private/artifacts/agentx-dsh-coding-team-0.3.1.tgz
 ```
 
 Keep the generated instance URL and tarball outside public Git. DSH peers come
