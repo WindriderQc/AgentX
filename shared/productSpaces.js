@@ -33,6 +33,9 @@ function productSpaces(link) {
         item('images', 'Images', '/images', 'fa-image'),
         item('models', 'Models', '/models', 'fa-cubes'),
         item('voice-lab', 'Voice workshop', '/voice-lab', 'fa-microphone-lines'),
+        item('graphysx', 'GraphysX Center', '/graphysx', 'fa-cube', 'core', {
+          description: 'The 3D world Nestor proposes changes to. Nothing applies until you accept it in the page.'
+        }),
         { section: 'Knowledge' },
         item('rag-upload', 'Add knowledge', '/upload', 'fa-upload', 'rag'),
         item('rag-search', 'Ask your knowledge', '/search', 'fa-magnifying-glass', 'rag'),

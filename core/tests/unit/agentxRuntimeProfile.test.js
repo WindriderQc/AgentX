@@ -73,6 +73,8 @@ describe('Agent X runtime profile', () => {
     '/data-toolbox',
     '/diskx',
     '/api/diskx/diskx.js',
+    '/graphysx',
+    '/api/graphysx/center/events',
     '/api/ollama-watchdog/status',
     '/api/analytics/federated',
     '/api/analytics/codex-usage',

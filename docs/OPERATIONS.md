@@ -1136,6 +1136,27 @@ present in the scene for changes, new ids for creations, no reserved
 applied: the page shows the commands as a proposal and a person accepts or
 discards them in GraphysX, which owns the commit, its attribution and undo.
 The route is full-profile only and refused on a family-pinned device.
+`/graphysx` serves that Center on Core's own origin: the page frames the
+GraphysX build at `GRAPHYSX_CENTER_URL` and loads `<graphysx-center>`, the host
+end of the bridge GraphysX publishes with every build at `/embed/center-host.js`,
+relayed by Core at `/api/graphysx/center-host.js` (JavaScript only, 512 KiB).
+The page's CSP allows that one origin as a frame and nothing else; the GraphysX
+build must name Core's origin in its `VITE_GRAPHYSX_HOST_ORIGINS`, or the Center
+answers the page nothing. On this page the Center's request field asks
+`POST /api/graphysx/propose` same-origin, so no key, relay or cross-site POST is
+involved. Each open page holds one stream at `GET /api/graphysx/center/events`
+(at most 8; Core says hello with a page id), reports its revision and bounded
+scene summary to `POST /api/graphysx/center/state`, and reports what it did with
+a pushed proposal to `POST /api/graphysx/center/receipts`. Nestor's tool
+`propose_world_change` (listed on Core's MCP transport) composes a request for
+the most recently active page through the same prompt and validation, pushes it
+on that page's stream as a proposal from `Nestor · Core` at the page's reported
+revision, waits up to five seconds for the Center's receipt and answers
+`proposed` with `delivery.status` `shown`, `refused` (with the Center's reason:
+a card already waiting, a forged namespace) or `unconfirmed`; `declined` when
+the vocabulary has no answer; `no-page` when no Center page is open. Core applies
+nothing and keeps no scene: pages are process memory, forgotten on restart. Page
+and routes are full-profile only and refused on a family-pinned device.
 Pictures beside Nestor come only from sources Core can resolve. `SEARXNG_URL`
 enables internet image search (strict SafeSearch in Famille; the browser loads the
 https image directly without a referrer). Household photos and media need both a

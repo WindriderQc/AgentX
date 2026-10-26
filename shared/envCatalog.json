@@ -1047,6 +1047,16 @@
       "secret": false,
       "description": "URL of the GraphysX diskx.js module Core relays for the /diskx page. Unset: the relay answers 404 and the page says the module is unavailable."
     },
+    "GRAPHYSX_CENTER_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "URL of the GraphysX Center the /graphysx page frames (a GraphysX build's root, e.g. https://graphysx.example/); Core relays that build's /embed/center-host.js and the page's CSP allows that one origin as a frame. The build must list Core's origin in VITE_GRAPHYSX_HOST_ORIGINS. Unset: the page answers 503 and says so."
+    },
     "GRAPHYSX_VOCABULARY_URL": {
       "services": [
         "core"

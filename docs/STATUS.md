@@ -154,7 +154,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   to it with the report's counts. `POST /api/graphysx/propose` turns a sentence
   from the GraphysX AgentX Center into validated world commands from the
   vocabulary GraphysX publishes (`GRAPHYSX_VOCABULARY_URL`); the page holds them
-  as a proposal for a human decision and Core applies nothing. The `demo` profile keeps chat,
+  as a proposal for a human decision and Core applies nothing. `/graphysx` serves
+  that Center on Core's origin (the GraphysX build at `GRAPHYSX_CENTER_URL`,
+  framed, with its relayed `<graphysx-center>` host module), and Nestor's tool
+  `propose_world_change` pushes a composed proposal into the open page as an
+  inert card from `Nestor · Core`, reporting whether the page showed it. The `demo` profile keeps chat,
   model discovery, RAG and Benchmark. Core owns one common home at `/`,
   `/portal` and `/ecosystem`; full-profile navigation groups Personnel, Famille
   and Atelier, with Système as the secondary menu. Household, PsyX and Data
