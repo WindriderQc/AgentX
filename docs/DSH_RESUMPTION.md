@@ -88,13 +88,15 @@ No extra memory service, scheduler or agent-team layer is needed.
 ## Optional worker navigation and presentation plugins
 
 The optional [AgentX Coding Team bundle](../integrations/dsh/coding-team/README.md)
-adds a native Studio sidebar link to `/pipeline#pipelineWorkerMonitor`. Supply
-the instance's HTTPS Core origin when packaging outside Git. The link starts
-no worker or model call. Pipeline's **Follow and decide** view observes the
-existing worker controller: exact task/request identity, recorded attempt when
-the dossier proves its binding, observation age, heartbeat, useful progress,
-budgets, tests and checkpoint. Its Stop action uses the original request;
-acknowledgement, termination and native resource release remain separate.
+connects retained worker histories to native Studio conversations. Its sidebar
+entry opens read-only messages and tool calls, updated from native logs, and
+creates independent native human continuations with copied repository files.
+The private Studio service opts in through `AGENTX_CODING_WORKSPACES` and an
+optional `AGENTX_DSH_TEAM_STATE`. Source history and files stay under the worker's
+ownership; the bridge neither stops it nor approves its task. Opening and
+copying require no inference. Human prompts retain Studio's native route and
+admission. The separate Pipeline link retains dispatch, stop and review controls.
+See the bundle procedure for copy boundaries, receipts and restart behavior.
 
 Optional third-party presentation bundles belong only in Studio's Web profile.
 Stage exact versions in a disposable native profile before activation, preserve

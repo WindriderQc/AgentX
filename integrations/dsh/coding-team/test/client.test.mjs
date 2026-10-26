@@ -30,7 +30,7 @@ function register(plugin, selectedSlot = 'sidebar.footer.action') {
   let attach;
   let removed = false;
   const cleanup = () => { removed = true; };
-  plugin.apply({ slots: {
+  plugin.apply({ effect() {}, slots: {
     inject(slot, callback) {
       if (slot === selectedSlot) attach = callback;
     },
@@ -45,42 +45,7 @@ function register(plugin, selectedSlot = 'sidebar.footer.action') {
   return { definition, component, dispose, removed: () => removed };
 }
 
-test('native sidebar action keeps an accessible new-tab link in wide and collapsed layouts', () => {
-  const plugin = createClientPlugin(React, url);
-  assert.deepEqual(plugin.inject, ['slots']);
-  const entry = register(plugin);
-  assert.equal(entry.definition.id, 'agentx-coding-team');
-  for (const wide of [true, false]) {
-    const link = entry.component({ wide });
-    assert.equal(link.type, 'a');
-    assert.equal(link.props.href, url);
-    assert.equal(link.props.target, '_blank');
-    assert.equal(link.props.rel, 'noopener noreferrer');
-    assert.match(link.props['aria-label'], /AgentX Coding Team.*new tab/);
-    assert.equal(link.children[0].props['aria-hidden'], true);
-    assert.equal(link.children[1]?.children[0] ?? null, wide ? 'AgentX Coding Team' : null);
-  }
-  entry.dispose();
-  assert.equal(entry.removed(), true, 'native slot cleanup remains with its caller');
-});
-
-test('native work panel renders Core in Studio without creating or selecting worker sessions', () => {
-  const plugin = createClientPlugin(React, url);
-  const panel = register(plugin, 'main');
-  assert.equal(panel.definition.key, 'agentx-coding-work');
-  const frame = panel.component();
-  assert.equal(frame.type, 'iframe');
-  assert.equal(frame.props.src, 'https://agentx.example/pipeline?view=studio');
-  assert.equal(frame.props.title, 'Travail des agents');
-  const sidebar = register(plugin, 'sidebar.panellist');
-  assert.equal(sidebar.definition.id, panel.definition.key);
-  assert.equal(sidebar.definition.label(), 'Travail des agents');
-  assert.equal(sidebar.component({ size: 24 }).props['aria-hidden'], true);
-  panel.dispose(); sidebar.dispose();
-  assert.equal(panel.removed(), true); assert.equal(sidebar.removed(), true);
-});
-
-test('built artifact is a lazy native client factory with an inert host half', async () => {
+test('built artifact is a lazy native client factory with native transport and no embedded task board', async () => {
   const root = await mkdtemp(join(tmpdir(), 'agentx-dsh-link-test-'));
   try {
     const output = await buildPackage({ coreUrl: 'https://agentx.example', output: join(root, 'package') });
@@ -100,10 +65,10 @@ test('built artifact is a lazy native client factory with an inert host half', a
       return React;
     });
     assert.deepEqual(requests, ['react']);
-    assert.equal(register(plugin).component({ wide: true }).props.href, url);
-    const host = await import(join(output, 'lib/index.js'));
-    assert.deepEqual(Object.keys(host), ['apply']);
-    assert.equal(host.apply(new Proxy({}, { get() { throw new Error('Host behavior must be absent'); } })), undefined);
+    assert.equal(register(plugin).definition.id, 'agentx-coding-team');
+    assert.ok((await readFile(join(output, 'lib/index.js'), 'utf8')).includes("./bridge.js"));
+    assert.ok((await readFile(join(output, 'lib/bridge.js'), 'utf8')).includes('buildForkSeed'));
+    assert.ok(!(await readFile(join(output, 'lib/client.js'), 'utf8')).includes('iframe'));
     await assert.rejects(buildPackage({ coreUrl: 'https://agentx.example', output }), /EEXIST/);
   } finally {
     await rm(root, { recursive: true, force: true });
