@@ -1,0 +1,14 @@
+[Unit]
+Description=AgentX public scoreboard publication (push only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Instance file outside Git: AGENTX_PUBLIC_SCOREBOARD_OUTBOX, _TARGET, _SSH_KEY,
+# _KNOWN_HOSTS, optional _EXCLUDE, BENCHMARK_SERVICE_URL.
+EnvironmentFile=%h/.config/agentx/public-scoreboard.env
+ExecStart=/usr/bin/node ${AGENTX_PRODUCT_ROOT}/integrations/operations/benchmark-public-publish.js --outbox ${AGENTX_PUBLIC_SCOREBOARD_OUTBOX} --send
+TimeoutStartSec=300
+UMask=0022
+NoNewPrivileges=true
