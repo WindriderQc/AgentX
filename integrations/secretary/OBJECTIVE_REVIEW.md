@@ -139,6 +139,37 @@ no encoding is guessed. A source plan with no readable page is revisited on
 resume, so this reader correction needs neither an archive mutation nor a
 reset of completed review receipts or the objective identity.
 
+The same MIME reader extracts text from `application/rtf`, `text/rtf`,
+`application/x-rtf`, and explicitly named `.rtf` octet-stream parts. It verifies
+the RTF signature after MIME transfer decoding and uses unchanged vendored
+striprtf 0.0.34, with its distribution/source hashes and BSD-3-Clause license
+in `_vendor/striprtf/UPSTREAM.json`. A disposable local Python child limits CPU
+to two seconds, wall time to three seconds, address space to 128 MiB and input
+and output to 1 MiB each. No office engine, document code, network resource,
+image render or new OCR runs.
+
+The supported profile is ASCII RTF syntax with strict codepage escapes and
+Unicode controls. Valid UTF-16 surrogate pairs are combined; unsupported raw
+8-bit text, unknown codepages, malformed structure/controls, binary payloads,
+fields and omitted text destinations remain explicit unreadable gaps. Hex
+images/objects can retain the surrounding text but remain visually unqualified.
+No missing text is guessed or silently replaced. Extracted text carries the
+part index, MIME type, filename/disposition, decoded binary hash, processor,
+version, profile and text hash. The archive API labels its scope as a selected
+RTF text part, never a whole-message or visual reading.
+
+An older plan that knows an RTF document but has no current RTF profile is
+rematerialized before either completed-page fast path. Its old header unit is
+retained byte for byte and the newly extracted RTF unit has new page identities.
+Existing receipts, request fences and the frozen objective/prompt remain
+unchanged. Until rematerialization, or while known RTF text remains opaque,
+source-level `textReviewComplete` and `textCovered` stay false; actual header
+page receipts remain counted. A failed extraction stamps the current profile
+and its reason, so later runs do not reparse that same known failure forever.
+Native complete-text equivalence can cover the new representation only after
+its text and message context are verified; it never counts as another model
+read or independent testimony.
+
 Private results live under `objective-reviews/<id>/<version>/`: immutable
 `manifest.json`, native `review-attempts`, per-source plans, per-page exact
 passage receipts, `status.json`, `coverage.json`, `findings.json` and

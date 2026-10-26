@@ -19,7 +19,8 @@ from evidence_store import load, now
 from mail_catchup import Busy, CoreClient
 from mailbox_backfill import Lock
 from objective_schema import INSTRUCTIONS, SCHEMA, normalize_representation, validate
-from objective_sources import inventory, materialize, pages
+from objective_sources import inventory, materialize, pages, retain_header_scope
+import objective_rtf_scope as rtf_scope
 import objective_equivalence as equivalent
 import objective_dispositions as dispositions
 import objective_rejected_copies as rejected_copies
@@ -155,9 +156,9 @@ def coverage(objective, manifest, *, include_annual=False):
             except (OSError, ValueError, KeyError, TypeError):
                 counts["invalidReviewReceipts"] += 1
         reused = alias_index.get((source["system"], source["id"], source["sha256"]), set()) & (set(expected) - set(read) - set(rejected) - set(deferred))
-        complete = bool(plan) and len(read) == len(expected) and bool(expected) and not plan.get("error")
-        covered = bool(plan) and len(read) + len(reused) == len(expected) and bool(expected) and not plan.get("error")
-        gaps = [*plan.get("gaps", []), *[{"code": "model-output-rejected", "pageId": pid,
+        complete = bool(plan) and len(read) == len(expected) and bool(expected) and not plan.get("error") and not rtf_scope.opaque_body(plan)
+        covered = bool(plan) and len(read) + len(reused) == len(expected) and bool(expected) and not plan.get("error") and not rtf_scope.opaque_body(plan)
+        gaps = [*plan.get("gaps", []), *rtf_scope.coverage_gaps(plan), *[{"code": "model-output-rejected", "pageId": pid,
                 "receipt": "page-dispositions/" + pid + ".json"} for pid in rejected],
                 *[{"code": "exact-copy-of-rejected-unit-deferred", "pageId": pid,
                    "receipt": "rejected-copy-reports/" + pid + ".json"} for pid in deferred]]
@@ -307,9 +308,10 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         plan_file = objective / "sources" / (source_key(source) + ".json")
         previous = load(plan_file, {})
         alias_pages = alias_index.get((source["system"], source["id"], source["sha256"]), set())
-        if previous.get("pageIds") and set(previous["pageIds"]) <= alias_pages:
+        refresh_rtf = rtf_scope.upgrade_pending(previous)
+        if not refresh_rtf and previous.get("pageIds") and set(previous["pageIds"]) <= alias_pages:
             continue
-        if previous.get("pageIds") and all((objective / "page-reviews" / (pid + ".json")).is_file() for pid in previous["pageIds"]):
+        if not refresh_rtf and previous.get("pageIds") and all((objective / "page-reviews" / (pid + ".json")).is_file() for pid in previous["pageIds"]):
             for pid in previous["pageIds"]:
                 read_receipt(objective / "page-reviews" / (pid + ".json"), manifest)
             continue
@@ -318,6 +320,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         client._call("POST", "/api/cluster/schedule/work-queue/" + queue_id + "/assert-dispatch", {"dispatchId": dispatch_id})
         try:
             current, units, gaps = materialize(root, source)
+            if refresh_rtf and rtf_scope.had_headers(previous):
+                retain_header_scope(current, units)
             plan = list(pages(current, units, manifest["objectiveSha256"], manifest["config"]["pageChars"], manifest["config"]["overlap"]))
             durable(plan_file, {"source": current, "pageIds": [p["pageId"] for p in plan], "gaps": gaps,
                                 "representations": [{k: v for k, v in u.items() if k != "content"} for u in units]})
