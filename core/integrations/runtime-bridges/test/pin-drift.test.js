@@ -39,11 +39,11 @@ test('a route naming an unpinned model and a physical OpenClaw id are drift', as
 });
 
 function splitServices() {
-  const tasks = { daily_operator: task('daily_operator', 'model-a'),
-    code_generation: task('code_generation', 'model-a'), master_brain: task('master_brain', 'model-a') };
   const principalTopology = { ...task('daily_operator', 'lane-pin'),
     hostKey: 'lane-a', hostUrl: 'http://model-host.test:11437',
     hostPreference: { pinnedModels: [{ ...PIN, model: 'lane-pin' }] } };
+  const tasks = { daily_operator: principalTopology,
+    code_generation: task('code_generation', 'model-a'), master_brain: task('master_brain', 'model-a') };
   return { routing: { getEffectiveSnapshot: async () => ({ tasks, principalTopology }) } };
 }
 
