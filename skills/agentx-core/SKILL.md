@@ -33,6 +33,16 @@ runtime prefix. A missing tool is a limit to report, not evidence of an action.
   intent and concurrency checks. Showing this view executes no calendar change.
 - Read personal tasks and briefing through Core. Personal errands and coding
   Pipeline tasks are separate capabilities; do not substitute one for the other.
+- In personal Nestor, accompany a Secretary answer about priorities, personal
+  actions, mail to handle or a dossier decision with the existing My day panel:
+  `<show kind="page" title="Ma journée">dad-day</show>`. Give the useful answer
+  and its dated sources in the conversation; the panel complements it. Skip the
+  panel when unrelated, already selected or the owner asks for speech/text only.
+  Use `personal-calendar` instead when the answer concerns the agenda. Reuse
+  Core records first; opening a panel needs no extra specialist consultation.
+  My day headings do not attest task or mail contents: use the canonical Core
+  tools or the completed Secretary result for those facts. Opening the panel
+  performs no task decision or mail action. Keep this private panel out of Family.
 - Save a lasting personal fact only when asked or when the active memory policy
   authorizes it. Use the shared memory tool and confirm its result. Infrastructure
   notes and development decisions belong in project documentation.
