@@ -156,12 +156,15 @@ test('review-only retained output gaps remain uncovered and end without an empty
   const f = reviewOnly(t); f.config.onInvalidOutput = 'retain-and-continue';
   f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: false, allTargetTextReviewed: false,
     counts: { extractedMoments: 14, reviewedPages: 8, rejectedPages: 3, sourcesWithRejectedPages: 2,
-      sourcesPendingMaterialization: 0, pendingPagesKnown: 0, sourcesWithGaps: 2 } });
+      sourcesPendingMaterialization: 0, pendingPagesKnown: 0, sourcesWithGaps: 10,
+      deferredRejectedCopyPages: 8, sourcesWithDeferredRejectedCopies: 8 } });
   const result = await step(f.config, f.deps);
   assert.equal(result.phase, 'needs-source-review');
   assert.equal(result.textualCoverage.allTargetTextCovered, false);
   assert.equal(result.textualCoverage.counts.rejectedPages, 3);
   assert.equal(result.textualCoverage.counts.reviewedPages, 8);
+  assert.equal(result.textualCoverage.counts.deferredRejectedCopyPages, 8);
+  assert.equal(result.textualCoverage.counts.sourcesWithDeferredRejectedCopies, 8);
   assert.equal(result.proposalReview.availableCandidates, 14);
   assert.equal(result.proposalReview.coreHistoryWritesByController, 0);
   assert.equal(f.data.jobs.length, 0); assert.equal(f.data.publishes, 0);

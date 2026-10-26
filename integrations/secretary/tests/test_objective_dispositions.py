@@ -208,7 +208,10 @@ class DispositionTests(unittest.TestCase):
             return reply
 
         client, calls = self.client(accepted_second_copy)
-        first = self.run_worker(client, retain_rejected_pages=True)
+        self.run_worker(client, retain_rejected_pages=True, max_pages=1)
+        # An older accepted copy can predate the explicit copy-deferral policy.
+        # Keep exercising the old-alias integrity guard independently of it.
+        first = self.run_worker(client, priority=("gmail:message02",), max_pages=1)
         self.assertEqual(first["coverage"]["counts"]["rejectedPages"], 1)
         self.assertEqual(first["coverage"]["counts"]["reviewedPages"], 1)
         self.assertEqual(len(calls), 2)
