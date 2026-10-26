@@ -17,6 +17,10 @@ const adapters = {
     hostFile: 'src/index.js',
     hostSha256: 'f14d47aad69c4ada788e05c3b0d4cdb84380b41f4dca77898607920f24862d29',
   },
+  'dsh-searxng': {
+    version: '0.4.0', file: 'lib/index.mjs', metadataOnly: true,
+    sha256: 'a68331cefbbd5a6b41b2c5a0dba4573b72f8582e5f5483820f9441047cd533f9',
+  },
 };
 
 function adaptHost(source) {
@@ -77,8 +81,8 @@ function prepare(source, output) {
   const client = fs.readFileSync(path.join(source, adapter.file));
   const digest = createHash('sha256').update(client).digest('hex');
   if (digest !== adapter.sha256) throw new Error('Upstream client digest differs; review the artifact before adapting it');
-  const updated = adaptClient(manifest.name, client.toString('utf8'));
-  if (updated === client.toString('utf8')) throw new Error('Expected compatibility edits were not found');
+  const updated = adapter.metadataOnly ? client.toString('utf8') : adaptClient(manifest.name, client.toString('utf8'));
+  if (!adapter.metadataOnly && updated === client.toString('utf8')) throw new Error('Expected compatibility edits were not found');
   let host;
   if (adapter.hostFile) {
     const original = fs.readFileSync(path.join(source, adapter.hostFile), 'utf8');
@@ -88,12 +92,16 @@ function prepare(source, output) {
   const provenance = {
     schema: 'agentx.dsh-community-plugin-compatibility/v1',
     name: manifest.name, upstreamVersion: manifest.version,
-    upstreamClientSha256: digest, targetRuntime: '0.2.0-rc.2',
-    scope: manifest.name === '@1e0zj/dsh-plugin-mall' ? 'settings-section-and-authenticated-shared-fetch-rpc' : 'ui-icons-and-conversation-session-scope',
+    upstreamClientSha256: digest, targetRuntime: adapter.metadataOnly || host ? '0.2.1-rc.3' : '0.2.0-rc.2',
+    scope: adapter.metadataOnly ? 'reviewed-runtime-compatibility-manifest' : host ? 'settings-section-and-authenticated-shared-fetch-rpc' : 'ui-icons-and-conversation-session-scope',
     ...(adapter.hostSha256 ? { upstreamHostSha256: adapter.hostSha256 } : {}),
   };
-  manifest.version += adapter.hostFile ? '-agentx.6' : '-agentx.2';
-  if (adapter.hostFile) manifest.peerDependencies['@deepseek-ai/dsh-client-connection'] = '0.2.0-rc.2';
+  manifest.version += adapter.hostFile ? '-agentx.7' : adapter.metadataOnly ? '-agentx.1' : '-agentx.2';
+  if (host || adapter.metadataOnly) {
+    manifest.engines = { ...manifest.engines, dsh: '0.2.0-rc.2 || 0.2.1-rc.3' };
+    const peers = adapter.metadataOnly ? ['@deepseek-ai/dsh-launch-environment', '@deepseek-ai/dsh-web'] : ['@deepseek-ai/dsh-client-connection'];
+    for (const peer of peers) manifest.peerDependencies[peer] = '0.2.0-rc.2 || 0.2.1-rc.3';
+  }
   manifest.files = [...new Set([...(manifest.files || []), 'agentx-compatibility.json'])];
   fs.cpSync(source, output, { recursive: true, errorOnExist: true, force: false });
   fs.writeFileSync(path.join(output, adapter.file), updated);

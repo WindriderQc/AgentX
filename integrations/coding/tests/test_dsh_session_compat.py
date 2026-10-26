@@ -142,13 +142,26 @@ class InstallerTest(unittest.TestCase):
         self.no_staging()
 
     def test_name_and_version_are_both_exact(self):
-        for field, value in (("version", "0.2.0-rc.3"), ("name", "other-package")):
+        for field, value in (("version", "0.2.0-rc.3"), ("version", "0.2.1-rc.2"),
+                             ("version", "0.2.1-rc.4"), ("name", "other-package")):
             with self.subTest(field=field):
                 manifest = {"name": COMPAT.PACKAGE, "version": COMPAT.VERSION}
                 manifest[field] = value
                 self.manifest.write_text(json.dumps(manifest))
                 self.assert_refused("PACKAGE_MISMATCH")
         self.assertEqual(self.source.read_bytes(), self.before)
+
+    def test_reviewed_releases_preserve_source_guard_and_report_actual_version(self):
+        for version in COMPAT.SUPPORTED_VERSIONS:
+            with self.subTest(version=version):
+                self.manifest.write_text(json.dumps({"name": COMPAT.PACKAGE, "version": version}))
+                self.source.write_bytes(self.before)
+                result = COMPAT.install(self.package, apply=True)
+                self.assertEqual((result["state"], result["version"]), ("applied", version))
+                self.assertEqual(self.source.read_bytes(), self.after)
+                self.assertEqual(COMPAT.install(self.package)["version"], version)
+                self.source.write_bytes(self.before + b"// unreviewed source\n")
+                self.assert_refused("SOURCE_DRIFT")
 
     def test_manifest_invalid_or_missing_refuses(self):
         self.manifest.write_bytes(b"not json")

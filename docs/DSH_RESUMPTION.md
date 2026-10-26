@@ -22,7 +22,7 @@ database or model scheduler.
 
 ## Native Studio
 
-The supported runtime is DSH **0.2.0-rc.2**. Install it separately and retain its version, original native settings,
+The supported runtime is DSH **0.2.1-rc.3**. Install it separately and retain its version, original native settings,
 histories, workspace and isolation configuration outside Git. The launcher
 `integrations/coding/dsh-studio.sh` prepares a private launch overlay. Upstream
 imports ordinary legacy preferences once into its native profile; the managed
@@ -70,8 +70,8 @@ its observer selects the highest plaintext session generation, including V4.
 
 Studio can mount the upstream experimental Playwright provider by setting
 `DSH_STUDIO_BROWSER_EXECUTABLE` to an installed Chromium executable. Install
-`@deepseek-ai/dsh-browser-use@0.2.0-rc.2` and
-`@deepseek-ai/dsh-experimental-browser-use-playwright-mcp@0.2.0-rc.2` in its
+`@deepseek-ai/dsh-browser-use@0.2.1-rc.3` and
+`@deepseek-ai/dsh-experimental-browser-use-playwright-mcp@0.2.1-rc.3` in its
 private `$DSH_HOME/profiles/web` profile. Keep DSH service peers supplied by the
 runtime, rather than installing duplicate copies: use `auto-install-peers=false`
 in the profile's `.npmrc` with pnpm, or `--legacy-peer-deps` with npm. Retain the
@@ -84,6 +84,13 @@ memory. Keep the Coding Team's network isolation and single-worker guard;
 browser plugins are enabled only for the human-operated Studio. Reuse compatible
 project skills through DSH's existing `.agents/skills` or `.dsh/skills` discovery.
 No extra memory service, scheduler or agent-team layer is needed.
+
+DSH 0.2.1 also supplies the optional **Custom plugin markets** bundle. Enabling
+it adds **Discover** under Plugins; no index source is shipped. It is separate
+from the community Mall, which discovers GitHub repositories. Computer-use
+providers are a separate explicit choice and are not required for coding or
+native image reading. `read_image` requires a durable attachment store and a
+route that declares image input; plugin installation does not add model vision.
 
 ## Optional worker navigation and presentation plugins
 

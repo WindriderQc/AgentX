@@ -23,7 +23,7 @@ for (const flag of ['--runtime-root', '--playwright-module', '--chromium']) {
 }
 const runtime = options['--runtime-root'];
 const runtimeModules = join(runtime, 'node_modules');
-assert.equal(JSON.parse(await readFile(join(runtimeModules, '@deepseek-ai/dsh/package.json'))).version, '0.2.0-rc.2');
+assert.ok(['0.2.0-rc.2', '0.2.1-rc.3'].includes(JSON.parse(await readFile(join(runtimeModules, '@deepseek-ai/dsh/package.json'))).version));
 const { chromium } = await import(pathToFileURL(options['--playwright-module']).href);
 const temporary = await mkdtemp(join(tmpdir(), 'agentx-dsh-link-native-'));
 let child;
@@ -75,7 +75,7 @@ async function command(executable, args, cwd) {
 try {
   const { Context } = await import(pathToFileURL(join(runtimeModules, '@deepseek-ai/cordis/lib/index.js')));
   const { Session } = await import(pathToFileURL(join(runtimeModules, '@deepseek-ai/dsh-session/lib/index.js')));
-  const { default: Jsonl } = await import(pathToFileURL(join(runtimeModules, '@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js')));
+  const Jsonl = await import(pathToFileURL(join(runtimeModules, '@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js')));
   fixtureContext = new Context();
   const workers = join(temporary, 'workers');
   const sourceWorkspace = join(workers, 'task-9999');
@@ -88,7 +88,8 @@ try {
   const fixture = Session.create('session-worker-fixture', undefined, {
     version: 4, id: 'session-worker-fixture', cwd: '/workspace', isSeeded: false, createdAt: Date.now(),
   });
-  fixtureWriter = await new Jsonl(fixtureContext, { root: sourceLogs, compression: 'none' }).create(fixture.header);
+  await fixtureContext.plugin(Jsonl.default ?? Jsonl, { root: sourceLogs, compression: 'none' }).await();
+  fixtureWriter = await fixtureContext.sessionPersistence.create(fixture.header);
   const events = [];
   const append = async (type, data, ...opts) => {
     const event = fixture.append(type, data, ...opts); events.push(event);
@@ -205,7 +206,8 @@ try {
     version: 4, id: 'session-worker-aux-fixture', cwd: '/workspace', isSeeded: false, createdAt: Date.now(),
   });
   const auxContext = new Context();
-  const auxWriter = await new Jsonl(auxContext, { root: sourceLogs, compression: 'none' }).create(aux.header);
+  await auxContext.plugin(Jsonl.default ?? Jsonl, { root: sourceLogs, compression: 'none' }).await();
+  const auxWriter = await auxContext.sessionPersistence.create(aux.header);
   try {
     await auxWriter.append([aux.append('permission/preset', { preset: 'workspace-write' })]);
     await auxWriter.flush();
@@ -231,7 +233,8 @@ try {
   assert.equal(await readFile(join(sourceWorkspace, 'example.txt'), 'utf8'), 'original worker file\n');
   assert.deepEqual(errors, []);
   assert.equal(providerCalls, 2, 'Only the synthetic human continuation invokes the dummy provider');
-  console.log(JSON.stringify({ runtime: '0.2.0-rc.2', packed: true, authenticated: true,
+  const runtimeVersion = JSON.parse(await readFile(join(runtimeModules, '@deepseek-ai/dsh/package.json'), 'utf8')).version;
+  console.log(JSON.stringify({ runtime: runtimeVersion, packed: true, authenticated: true,
     viewports: [1440, 412], nativeConversation: true, liveSourceWithWriter: true,
     isolatedHandoff: true, replayRecovered: true, nativeToolWrite: true, originalUnchanged: true, syntheticProviderCalls: providerCalls, liveModelCalls: 0, errors }));
 } catch (error) {

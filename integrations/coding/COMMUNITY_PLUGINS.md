@@ -4,8 +4,8 @@ Third-party packages stay owned by their upstream projects. Studio's runtime,
 profile and model route remain instance choices; adding a UI plugin does not
 replace Core inference, canonical memory or task ownership.
 
-`prepare-dsh-community-plugin.cjs` prepares two reviewed upstream clients for
-DSH `0.2.0-rc.2`: Explorer `0.1.0` uses the current icon exports and the active
+`prepare-dsh-community-plugin.cjs` prepares reviewed upstream packages for
+DSH `0.2.0-rc.2` and `0.2.1-rc.3`: Explorer `0.1.0` uses the current icon exports and the active
 conversation's explicit Session identity. Its fixed drawer is contributed by
 the conversation header, rather than reading the removed global `current`
 selection from the Session catalog. Open a conversation to use its file tree.
@@ -16,6 +16,12 @@ custom-channel registration fails its WebServer injection check, so the adapter
 uses the existing shared API carrier and native envelope schema. Host tools,
 installation preflight, confirmation, and dispatch handlers are unchanged.
 Source versions and client/host SHA-256 digests must match.
+Mall's adapted manifest declares only those two reviewed DSH versions.
+SearXNG `0.4.0` receives the same exact-version compatibility declaration after
+checking its published module digest; its executable code stays unchanged.
+These declarations satisfy the newer runtime's compatibility checks, rather
+than granting an unbounded version exemption. Qualify actual startup and use
+against the selected runtime before installing either adapted package.
 The helper copies an unpacked package into a new directory, retains upstream
 licensing and writes provenance. Pack that directory and install its tarball
 through the native plugin manager with install scripts disabled. Never patch
@@ -37,4 +43,5 @@ preflight, confirmation and startup-recovery requirements. New upstream versions
 need review rather than an automatic reapplication of these edits.
 
 Upstreams: [Explorer](https://github.com/No-PRM/dsh-explorer),
-[Plugin Mall](https://github.com/1e0zj/dsh-plugin-mall).
+[Plugin Mall](https://github.com/1e0zj/dsh-plugin-mall),
+[SearXNG](https://github.com/rogerdigital/dsh-searxng).
