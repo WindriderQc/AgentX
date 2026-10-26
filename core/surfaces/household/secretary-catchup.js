@@ -52,7 +52,7 @@ function registerSecretaryCatchupRoutes({ router, envelope, fail, ideaInbox = nu
 // Counts only, as the host reported them; never message content.
 const count = value => (Number.isFinite(Number(value)) && value !== null ? Number(value) : null);
 const REVIEW_COUNTS = ['targetSources', 'materializedSources', 'sourcesPendingMaterialization', 'sourcesTextReviewed',
-  'sourcesWithGaps', 'sourceErrors', 'expectedPagesKnown', 'reviewedPages', 'pendingPagesKnown', 'invalidReviewReceipts', 'extractedMoments', 'reviewGaps'];
+  'sourcesWithGaps', 'sourceErrors', 'expectedPagesKnown', 'reviewedPages', 'pendingPagesKnown', 'invalidReviewReceipts', 'extractedMoments', 'reviewGaps', 'sourcesTextCovered', 'equivalentPages'];
 function reviewProgress(body) {
   const archive = body.archiveProgress;
   return {
@@ -67,6 +67,7 @@ function reviewProgress(body) {
       objectiveId: clean(v.objectiveId, 80), version: clean(v.version, 80), at: v.at || null, phase: clean(v.phase, 40),
       counts: Object.fromEntries(REVIEW_COUNTS.filter(k => v.counts && Number.isSafeInteger(v.counts[k]) && v.counts[k] >= 0).map(k => [k, v.counts[k]])),
       allTargetTextReviewed: v.allTargetTextReviewed === true, semanticAcceptance: 'not-established', userConfirmed: false,
+      allTargetTextCovered: v.allTargetTextCovered === true,
       newlyReviewedPages: count(v.newlyReviewedPages), elapsedSeconds: count(v.elapsedSeconds)
     }))
   };

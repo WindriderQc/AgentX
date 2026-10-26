@@ -69,6 +69,21 @@ native identities, offsets, exact quotes, owner/related/third-party attribution,
 event start/end and date precision, occurrence status and proposed relation
 hints. Source date remains distinct from event date. No candidate is confirmed.
 
+Complete units with the same whitespace-folded text and the same author,
+addressee, date, subject, RFC identity and draft context can reuse an existing
+objective review. Attachment units also require the same binary/extraction
+identity. A unit is registered only after all of its canonical pages have
+validated model receipts. New text variants remain pending. An equivalence
+receipt retains the alias's original/representation hashes, maps every claim
+back to an exact quote in that copy, and points to the actual canonical reads.
+It adds source provenance to the same candidate, not another fact or an
+independent agreement.
+
+`reviewedPages` and `sourcesTextReviewed` count only actual model page receipts.
+`equivalentPages` and `sourcesTextCovered` separately describe verified text
+equivalence. `allTargetTextCovered` can be true while `allTargetTextReviewed`
+is false; neither establishes semantic acceptance or human confirmation.
+
 Coverage distinguishes target sources, materialized scopes, validated page
 receipts, remaining known pages, sources not yet materialized, extraction gaps
 and semantic acceptance. A fully read text scope does not qualify images,
