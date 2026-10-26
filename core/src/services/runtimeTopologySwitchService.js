@@ -102,9 +102,14 @@ function defaultDrift() {
     const { checkPinDrift } = require('../../integrations/runtime-bridges/pin-drift');
     const { createTrustedRuntimeServices } = require('../extensions/trustedRuntimeServices');
     const result = await checkPinDrift({ runtimeServices: createTrustedRuntimeServices() });
+    // Keep the findings themselves (bounded), so a refused switch says what drifted.
+    const rows = list => (Array.isArray(list) ? list : []).slice(0, 20)
+      .map(row => (row && typeof row === 'object' ? JSON.parse(JSON.stringify(row)) : row));
     return { status: result?.status || 'error', checkedAt: result?.checkedAt || null,
       unpinnedRoutes: (result?.unpinnedRoutes || []).length, unpinnedExportLanes: (result?.unpinnedExportLanes || []).length,
-      openclaw: result?.openclaw?.status || null };
+      openclaw: result?.openclaw?.status || null,
+      findings: { routes: rows(result?.unpinnedRoutes), exportLanes: rows(result?.unpinnedExportLanes),
+        openclaw: rows(result?.openclaw?.drift) } };
   };
 }
 
