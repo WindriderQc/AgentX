@@ -21,7 +21,7 @@ from mailbox_backfill import Lock
 from objective_schema import INSTRUCTIONS, SCHEMA, normalize_representation, validate
 from objective_sources import inventory, materialize, pages
 import objective_equivalence as equivalent
-from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled, blocked_phase, blocked_counts
+from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled, blocked_phase, blocked_counts, result_file
 from review_response import ReviewInvalidOutput
 from secretary_evidence import DEFAULT_ROOT
 
@@ -97,7 +97,7 @@ def read_receipt(file, manifest):
         raise ValueError("Objective receipt integrity does not match its saved identity")
     validate(row["result"], record["body"])
     if "resultProcessing" in row:
-        raw = load(file.parent.parent / "review-attempts" / hashed(file.stem) / "result.json", {}).get("value")
+        raw = load(result_file(file.parent.parent, file.stem), {}).get("value")
         normalized, changes = normalize_representation(raw, record["body"])
         expected = {"contract": "secretary.objective-representation/v1", "rawResultSha256": hashed(raw), "changes": changes}
         if not changes or row["resultProcessing"] != expected or normalized != row["result"]:
@@ -315,7 +315,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                         "offset": page["offset"], "totalChars": page["totalChars"],
                         "moreOfThisRepresentation": page["moreOfThisRepresentation"], "sourceContext": page["sourceContext"],
                         "untrustedContent": page["content"]}, ensure_ascii=False)
-                    saved = (objective / "review-attempts" / hashed(page["pageId"]) / "result.json").is_file()
+                    saved = result_file(objective, page["pageId"]).is_file()
                     raw = extract_once(fence, client, system, prompt, page)
                     inferences += not saved
                     normalized, changes = normalize_representation(raw, page["content"])

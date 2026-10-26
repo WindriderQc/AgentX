@@ -68,6 +68,36 @@ Campaigns can pass `maxOutputTokens`. The option enters the dispatch intent:
 changing it cannot silently replace a failed prior request. Completed page
 receipts remain readable under their original identities.
 
+An unusable response can receive an explicit, bounded linked retry after its
+native computation and queue release are reconciled. `review_recovery.py` does
+not run inference. It verifies the original intent/request identity, Core's
+exact successful InferenceLog, a terminal operator queue with its native release
+receipt, the exact terminal/status byte hashes and absence of active runtime
+claims. A missing log, active claim, mismatched page/request, uncertain release
+or retained structured result refuses the operation. Original attempt and
+response files remain untouched; a structured result must be recovered instead.
+
+```sh
+python3 integrations/secretary/review_recovery.py record-terminal \
+  --directory "$NATIVE_OBJECTIVE_DIRECTORY" --page-id "$PAGE_ID" --request-id "$OLD_REQUEST_ID" \
+  --queue-id "$OLD_QUEUE_ID" --inference-log-id "$INFERENCE_LOG_ID" \
+  --terminal-receipt "$EXACT_OPERATOR_RECEIPT" --worker-status "$EXACT_WORKER_STATUS" \
+  --reason "$RECONCILIATION_REASON" --authorization-ref "$SESSION_TASK_REFERENCE"
+python3 integrations/secretary/review_recovery.py authorize-retry \
+  --directory "$NATIVE_OBJECTIVE_DIRECTORY" --page-id "$PAGE_ID" --request-id "$OLD_REQUEST_ID" \
+  --max-output-tokens 8192 --reason "$RETRY_REASON" --authorization-ref "$SESSION_TASK_REFERENCE"
+```
+
+The immutable retry plan derives a new identity from the unchanged source,
+prompt/system/route and explicit output budget, linked to its parent's request
+and terminal-reconciliation hash. Changed source/policy/budget refuses; no retry
+is automatic. An admitted worker with the matching budget creates a separate
+`retries/<intent-hash>/` attempt. Its uncertain result blocks the entire next
+batch. Retained child results and representation derivations replay without an
+additional model call. Eight chain traversal steps bound recovery complexity.
+The ordinary Core queue/dispatch and live inference admission still apply to
+each later run; a retry plan grants neither a reservation nor admission.
+
 The local representation adapter may change a missing date's precision from
 day/month/year to `unknown`. It can also restore a quote's exact original
 whitespace when every non-whitespace token and punctuation mark is identical
