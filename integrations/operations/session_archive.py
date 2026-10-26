@@ -11,7 +11,9 @@ archived and is only counted. Credential files are never read. Receipts hold
 counts, never file contents.
 
 The receiving side is this same file, sent with each call and run by the
-archive host's python3, so both sides always speak the same protocol.
+archive host's python3, so both sides always speak the same protocol. With
+`collect`, the archive host starts the sending side on a source host over SSH,
+also from this file, so nothing is installed or scheduled on that host.
 """
 from __future__ import annotations
 
@@ -208,6 +210,16 @@ def remote_main(argv):
 # Sending side (source host)
 # --------------------------------------------------------------------------
 
+def own_source():
+    """This file's code, also when it was itself started from a bootstrap."""
+    source = globals().get("__source__")
+    return source if source else Path(__file__).read_bytes()
+
+
+def packed():
+    return base64.b64encode(zlib.compress(own_source(), 9)).decode()
+
+
 class SshArchive:
     """The archive host, reached over SSH; the receiver code travels with each call."""
 
@@ -217,9 +229,8 @@ class SshArchive:
         if not REMOTE_ROOT.fullmatch(root) or ".." in root.split("/"):
             raise ValueError("Invalid destination root")
         self.target, self.root, self.ssh, self.python = target, root.rstrip("/"), list(ssh), python
-        payload = base64.b64encode(zlib.compress(Path(__file__).read_bytes(), 9)).decode()
         self.bootstrap = ("import base64,sys,zlib;ns={'__name__':'session_archive_remote'};"
-                          f"exec(zlib.decompress(base64.b64decode('{payload}')),ns);"
+                          f"exec(zlib.decompress(base64.b64decode('{packed()}')),ns);"
                           "sys.exit(ns['remote_main'](sys.argv[1:]))")
 
     def call(self, verb, host, run_id, write_input, timeout=3600):
@@ -381,15 +392,49 @@ def archive(sources, archive_host, host, state_dir, excludes=DEFAULT_EXCLUDES, d
         lock.unlink(missing_ok=True)
 
 
+def collect(args, ssh=("ssh",)):
+    """Run `send` on the source host over SSH, from this file, back to this archive host."""
+    for target in (args.source_host, args.return_host):
+        if not SSH_TARGET.fullmatch(target) or target.startswith("-"):
+            raise ValueError("Invalid SSH target")
+    bootstrap = ("import base64,sys,zlib;s=zlib.decompress(base64.b64decode('" + packed() + "'));"
+                 "exec(compile(s,'session_archive.py','exec'),{'__name__':'__main__','__source__':s})")
+    words = ["python3", "-c", bootstrap, "send", "--host-label", args.host_label,
+             "--destination-host", args.return_host, "--destination-root", args.destination_root,
+             "--state-dir", str(args.state_dir)]
+    for label, path in args.source:
+        words += ["--source", f"{label}={path.as_posix()}"]
+    for pattern in args.exclude or ():
+        words += ["--exclude", pattern]
+    if args.dry_run:
+        words.append("--dry-run")
+    command = [*ssh, "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", args.source_host,
+               " ".join(shlex.quote(word) for word in words)]
+    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, timeout=4 * 3600)
+    output = result.stdout.decode("utf-8", "replace").strip()
+    if not output:
+        detail = result.stderr.decode("utf-8", "replace").strip().splitlines()[-1:] or [""]
+        output = json.dumps({"contract": CONTRACT, "status": "failed", "at": now(), "error": "SourceHostUnavailable",
+                             "detail": f"exit {result.returncode}: {detail[0][:160]}"})
+        print(output)
+        return 1
+    print(output.splitlines()[-1])
+    return result.returncode
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("verb", choices=["send"])
-    parser.add_argument("--host-label", required=True, help="Lowercase name of this source host, e.g. devx")
+    parser.add_argument("verb", choices=["send", "collect"],
+                        help="send: from this host; collect: from --source-host, run on the archive host")
+    parser.add_argument("--host-label", required=True, help="Lowercase name of the source host, e.g. devx")
     parser.add_argument("--source", action="append", required=True, type=parse_source,
                         help="label=path of a directory or file to archive; repeat for each source")
-    parser.add_argument("--destination-host", required=True, help="SSH target of the archive host")
+    parser.add_argument("--destination-host", help="send: SSH target of the archive host")
     parser.add_argument("--destination-root", required=True, help="Existing absolute directory on the archive host")
-    parser.add_argument("--state-dir", required=True, type=Path, help="Private local directory for state and receipts")
+    parser.add_argument("--state-dir", required=True, type=Path,
+                        help="Private directory for state and receipts, on the source host")
+    parser.add_argument("--source-host", help="collect: SSH target of the source host")
+    parser.add_argument("--return-host", help="collect: SSH target of this archive host as seen from the source host")
     parser.add_argument("--exclude", action="append", help="Extra file-name glob to skip")
     parser.add_argument("--dry-run", action="store_true", help="Count what would be sent; send nothing")
     args = parser.parse_args(argv)
@@ -398,6 +443,17 @@ def main(argv=None):
     labels = [label for label, _ in args.source]
     if len(set(labels)) != len(labels):
         parser.error("Each source needs its own label")
+    if args.verb == "collect":
+        if not args.source_host or not args.return_host:
+            parser.error("collect needs --source-host and --return-host")
+        try:
+            return collect(args)
+        except (ValueError, OSError, subprocess.TimeoutExpired) as error:
+            print(json.dumps({"contract": CONTRACT, "status": "failed", "at": now(), "error": type(error).__name__,
+                              "detail": str(error)[:200]}))
+            return 1
+    if not args.destination_host:
+        parser.error("send needs --destination-host")
     excludes = DEFAULT_EXCLUDES + tuple(args.exclude or ())
     try:
         destination = SshArchive(args.destination_host, args.destination_root)

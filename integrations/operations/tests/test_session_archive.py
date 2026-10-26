@@ -214,6 +214,63 @@ class SessionArchiveOverSshTests(unittest.TestCase):
             again = json.loads(subprocess.run(command, capture_output=True, text=True, env=env, timeout=60).stdout)
             self.assertEqual((again["unchanged"], again["sent"]), (1, 0))
 
+    def test_collect_runs_the_shipped_sender_on_the_source_host(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            source = base / "home" / ".codex" / "sessions" / "2026"
+            source.mkdir(parents=True)
+            (source / "rollout-a.jsonl").write_bytes(b'{"codex": "remote"}\n')
+            (base / "home" / ".codex" / "auth.json").write_bytes(b"{}")
+            root = base / "archive"
+            root.mkdir()
+            calls = base / "calls.log"
+            fake = base / "ssh"
+            fake.write_text(textwrap.dedent(f"""\
+                #!{sys.executable}
+                import subprocess, sys
+                args = sys.argv[1:]
+                while args and args[0] == "-o":
+                    args = args[2:]
+                with open({str(calls)!r}, "a") as log:
+                    log.write(args[0] + "\\n")
+                sys.exit(subprocess.call(["bash", "-c", args[1]], cwd="/"))
+                """))
+            fake.chmod(0o700)
+            # Run the collector from a copy elsewhere, as the archive host would.
+            installed = base / "archive-host" / "session_archive.py"
+            installed.parent.mkdir()
+            shutil.copy(SCRIPT, installed)
+            env = dict(os.environ, PATH=f"{base}{os.pathsep}{os.environ['PATH']}")
+            command = [sys.executable, str(installed), "collect", "--host-label", "devx",
+                       "--source-host", "devx.invalid", "--return-host", "archive.invalid",
+                       "--source", f"codex-sessions={base / 'home' / '.codex' / 'sessions'}",
+                       "--source", f"codex-auth={base / 'home' / '.codex' / 'auth.json'}",
+                       "--destination-root", str(root), "--state-dir", str(base / "source-state")]
+            result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            report = json.loads(result.stdout)
+            self.assertEqual((report["status"], report["host"], report["new"]), ("verified", "devx", 1))
+            self.assertEqual((root / "live" / "devx" / "codex-sessions" / "2026" / "rollout-a.jsonl").read_bytes(),
+                             b'{"codex": "remote"}\n')
+            self.assertFalse(any(p.name == "auth.json" for p in root.rglob("*")))
+            self.assertEqual(calls.read_text().split(), ["devx.invalid", "archive.invalid", "archive.invalid"])
+            self.assertTrue((base / "source-state" / "latest-run.json").is_file())
+
+    def test_collect_reports_an_unreachable_source_host(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            fake = base / "ssh"
+            fake.write_text(f"#!{sys.executable}\nimport sys\nsys.stderr.write('ssh: connect to host devx port 22: No route to host\\n')\nsys.exit(255)\n")
+            fake.chmod(0o700)
+            env = dict(os.environ, PATH=f"{base}{os.pathsep}{os.environ['PATH']}")
+            result = subprocess.run([sys.executable, str(SCRIPT), "collect", "--host-label", "devx", "--source-host", "devx",
+                                     "--return-host", "archive", "--source", "a=/nowhere", "--destination-root", "/archive",
+                                     "--state-dir", "/state"], capture_output=True, text=True, env=env, timeout=60)
+            self.assertEqual(result.returncode, 1)
+            report = json.loads(result.stdout)
+            self.assertEqual((report["status"], report["error"]), ("failed", "SourceHostUnavailable"))
+            self.assertIn("No route to host", report["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()
