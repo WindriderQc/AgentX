@@ -49,6 +49,10 @@ use capabilities and does not itself install tools or widen permissions.
 
 ## Existing transport
 
+Core's [local advisory decision API](LOCAL_DECISIONS.md) classifies supplied
+context using the existing principal pin. It is opt-in per call and executes
+no domain action; runtime tool exposure and live qualification remain separate.
+
 Core's `/mcp` endpoint exposes the shared skill bus. `/mcp/memory` is a narrower
 view of the same implementation, limited to personal-note search/save and RAG
 search. Use the catalogue advertised by the selected endpoint rather than
