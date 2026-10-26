@@ -143,7 +143,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   It also shows storage growth and Data's
   activity log. DiskX (`/diskx`) draws the indexed disks and the latest Janitor
   duplicate report in GraphysX's 3D city, presentation only, and Nestor links
-  to it with the report's counts. The `demo` profile keeps chat,
+  to it with the report's counts. `POST /api/graphysx/propose` turns a sentence
+  from the GraphysX AgentX Center into validated world commands from the
+  vocabulary GraphysX publishes (`GRAPHYSX_VOCABULARY_URL`); the page holds them
+  as a proposal for a human decision and Core applies nothing. The `demo` profile keeps chat,
   model discovery, RAG and Benchmark. Core owns one common home at `/`,
   `/portal` and `/ecosystem`; full-profile navigation groups Personnel, Famille
   and Atelier, with Système as the secondary menu. Household, PsyX and Data

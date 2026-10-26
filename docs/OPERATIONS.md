@@ -1107,6 +1107,22 @@ like the Data Toolbox, a family-pinned device cannot open it: file paths stay on
 the private network and out of Famille. The module compiles WebAssembly, so this
 page alone adds `'wasm-unsafe-eval'` to Core's `script-src`; it allows
 WebAssembly compilation, not `eval()` of JavaScript.
+`POST /api/graphysx/propose` composes GraphysX world commands from a sentence:
+the AgentX Center page sends `{ request, revision, scene }` (the person's words
+and a summary of at most 60 entities as id, type and label; never the scene
+document) and receives `{ intent, commands }`, or `{ ok: false, reason }` in a
+200 when the request has no answer in the world's vocabulary. Core reads that
+vocabulary from `GRAPHYSX_VOCABULARY_URL` (a GraphysX build's
+`/embed/world-vocabulary.json`, cached ten minutes; `GET
+/api/graphysx/vocabulary` reports what is loaded), renders the system prompt
+from it and runs one admitted `analysis` inference with JSON output, retrying
+once with the refusal when the answer fails validation. Core validates the
+model's answer before replying: known operations and entity types only, ids
+present in the scene for changes, new ids for creations, no reserved
+`live-*:` namespace, at most 40 commands and a 200-character intent. Nothing is
+applied: the page shows the commands as a proposal and a person accepts or
+discards them in GraphysX, which owns the commit, its attribution and undo.
+The route is full-profile only and refused on a family-pinned device.
 Pictures beside Nestor come only from sources Core can resolve. `SEARXNG_URL`
 enables internet image search (strict SafeSearch in Famille; the browser loads the
 https image directly without a referrer). Household photos and media need both a
