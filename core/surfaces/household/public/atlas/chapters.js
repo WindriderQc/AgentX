@@ -5,6 +5,7 @@ import {temporalExtent} from './temporal.js';
 import {escape,icon,categories} from './ui.js';
 import {reviewState} from './review.js';
 import {collectPhotos} from './gallery.js';
+import {isLifeMoment} from './life-view.js';
 
 const MINIMUM=3;
 const top=(values,count)=>[...values.reduce((map,v)=>map.set(v,(map.get(v)||0)+1),new Map())].sort((a,b)=>b[1]-a[1]).slice(0,count).map(([v])=>v);
@@ -12,13 +13,13 @@ const top=(values,count)=>[...values.reduce((map,v)=>map.set(v,(map.get(v)||0)+1
 export function buildChapters(events){
  const byDecade=new Map();
  for(const e of events){
-  if(!e.date||reviewState(e)==='dismissed')continue;
+  if(!isLifeMoment(e)||!e.date||reviewState(e)==='dismissed')continue;
   const decade=Math.floor(Number(e.date.slice(0,4))/10)*10;
   if(!byDecade.has(decade))byDecade.set(decade,[]);byDecade.get(decade).push(e);
  }
  const now=new Date().getUTCFullYear();
  return [...byDecade].filter(([decade,members])=>members.length>=MINIMUM&&decade<=now).sort((a,b)=>a[0]-b[0]).map(([decade,members])=>{
-  const extents=members.map(temporalExtent).filter(Boolean);
+  const extents=members.map(e=>temporalExtent(e)).filter(Boolean);
   const first=Math.min(...extents.map(t=>t.start)),last=Math.max(...extents.map(t=>t.end));
   const places=top(members.flatMap(e=>String(e.place||'').split(',').map(p=>p.trim()).filter(Boolean)),2);
   const people=top(members.flatMap(e=>e.people||[]),1);

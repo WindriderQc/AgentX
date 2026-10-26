@@ -215,6 +215,19 @@ outside public Git.
 keeps no second store of assertions, media associations, or review decisions.
 Generic decade chapters and native document readers remain available.
 
+Chapters and the default timeline share the life-moment scope; the all-records
+view retains the other archive observations. Opening counts follow the selected
+scope and active search constraints. The early “Explorer ma vie” command enters
+the existing immersive view explicitly; the page never enters that mode on load.
+Calendar scale changes retain the selected day's anchor until navigation moves
+outside its window. Photo dossiers show their image before review controls,
+with internal import diagnostics folded separately from source evidence.
+
+When Core returns `truncated: true`, Atlas preserves that flag after decisions,
+shows a visible partial-coverage notice and qualifies available counts as lower
+bounds. These are loaded observations, not an exhaustive history. The backend
+limit remains unchanged; this presentation warning does not add pagination.
+
 The factual confirmation button sends `state: retained`,
 `assertionState: confirmed`, the displayed entry `revision`, and (for a
 contextual entry) `contextRevision` to the existing review route. A conflict is

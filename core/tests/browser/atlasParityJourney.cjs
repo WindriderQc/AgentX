@@ -22,7 +22,7 @@ async function chromium() {
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'atlas-parity-browser-'));
   const output = process.env.ATLAS_BROWSER_ARTIFACTS || await fs.mkdtemp(path.join(os.tmpdir(), 'atlas-parity-evidence-'));
   await fs.mkdir(output, { recursive: true });
-  const fixture = createFixture();await new Promise(resolve => fixture.server.listen(0, '127.0.0.1', resolve));
+  const fixture = createFixture({ truncated: true });await new Promise(resolve => fixture.server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${fixture.server.address().port}`;
   const browser = spawn(await chromium(), ['--headless', '--disable-gpu', '--no-sandbox', '--no-first-run', '--disable-dev-shm-usage', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
   let ws;
@@ -48,7 +48,12 @@ async function chromium() {
     await call('Page.navigate', { url: `${base}/atlas/` });await until("globalThis.lifeAtlas?.state.events.length===38&&document.querySelectorAll('[data-story-thread]').length===6");
     assert.equal(await evaluate('document.documentElement.dataset.theme'), 'dark');
     assert.equal(await evaluate('lifeAtlas.state.scope'), 'life');
-    assert.ok(await evaluate("document.querySelectorAll('[data-temporal=period]').length>2"));
+    assert.match(await evaluate("document.getElementById('coverage-warning').textContent"), /Au moins 38 relevés chargés/);
+    assert.equal(await evaluate("document.querySelector('[data-intro-stat=pending] strong').textContent"), '37');
+    const selectedDay=fixture.entries[37].id;await evaluate(`location.hash='#entry:${selectedDay}'`);await until("!!document.querySelector('.popup-title')");
+    for(const scale of ['life','year','month','day'])await click(`[data-scale=${scale}]`);
+    assert.deepEqual(await evaluate('lifeAtlas.state.range'),[Date.UTC(2012,6,13),Date.UTC(2012,6,14)]);await evaluate('lifeAtlas.fit()');
+    await until("document.querySelectorAll('[data-temporal=period]').length>2");
     await screenshot('overview');
     await click('[data-gallery-undated]');await until("document.querySelector('.photo-viewer-stage img')?.naturalWidth>0");
     assert.match(await evaluate("document.querySelector('.photo-viewer-date').textContent"), /Date à préciser/);await screenshot('undated-photo');await close();
@@ -64,17 +69,20 @@ async function chromium() {
     await click('[data-library-photo]');await until("document.querySelector('.photo-viewer-stage img')?.naturalWidth>0");
     assert.match(await evaluate("document.querySelector('.photo-viewer-body').textContent"), /Bibliothèque native AgentX/);
     await click('[data-photo-back]');await until("document.querySelectorAll('[data-library-photo]').length===3");await close();
+    await evaluate("document.getElementById('scope-filter').value='all';document.getElementById('scope-filter').dispatchEvent(new Event('change'))");
+    assert.equal(await evaluate("document.querySelector('[data-intro-stat=pending] strong').textContent"),'38');
     await evaluate("document.getElementById('scope-filter').value='all';document.getElementById('scope-filter').dispatchEvent(new Event('change'));document.getElementById('subject-filter').value='thirdparty';document.getElementById('subject-filter').dispatchEvent(new Event('change'))");
     assert.equal(await evaluate('lifeAtlas.state.filtered.length'), 1);
     await click('#filters-reset');await click('#validation-button');await until("!!document.querySelector('[data-sprint-confirm]')");
     await click('[data-sprint-confirm]');await until('lifeAtlas.state.events.some(e=>e.core.assertionState===\'confirmed\')');
+    assert.equal(await evaluate("document.querySelector('[data-intro-stat=pending] strong').textContent"),'36');
     assert.equal(fixture.writes.length, 1);assert.equal(fixture.writes[0].input.contextRevision, 1);assert.equal(fixture.writes[0].input.assertionState, 'confirmed');assert.match(fixture.writes[0].path, /\/review$/);await close();
     const confirmed = fixture.entries.find(e => e.assertionState === 'confirmed');
     await evaluate(`location.hash='#entry:${confirmed.id}'`);await until("!!document.querySelector('[data-action=edit]')");
     await click('[data-action=edit]');await until("!!document.querySelector('#event-editor')");
     await evaluate("document.querySelector('#event-editor textarea[name=description]').value='An owner correction with the date still approximate.';document.querySelector('#event-editor').requestSubmit()");
     await until(`lifeAtlas.state.events.find(e=>e.core.id==='${confirmed.id}').contextRevision===2`);
-    assert.notEqual(await evaluate(`lifeAtlas.state.events.find(e=>e.core.id==='${confirmed.id}').reviewState`), 'confirmed');await close();
+    assert.notEqual(await evaluate(`lifeAtlas.state.events.find(e=>e.core.id==='${confirmed.id}').reviewState`), 'confirmed');assert.equal(await evaluate("document.querySelector('[data-intro-stat=pending] strong').textContent"),'37');await close();
     const stale = fixture.entries[0];
     await evaluate(`location.hash='#entry:${stale.id}'`);await until("!!document.querySelector('[data-action=confirm]')");
     stale.contextRevision++;
@@ -82,12 +90,21 @@ async function chromium() {
     assert.match(await evaluate("document.querySelector('[data-review-error]').textContent"), /a changé/);assert.equal(stale.assertionState, 'unknown');await screenshot('stale-confirmation');await close();
     await evaluate(`location.hash='#entry:${fixture.entries[3].id}'`);await until("!!document.querySelector('[data-action=sources]')");await click('[data-action=sources]');
     await until("document.querySelector('[data-sources]')?.textContent.includes('Synthetic lease')");
-    assert.ok(await evaluate("!!document.querySelector('[data-sources] .source-file')"));await screenshot('source-document');await close();
+    assert.ok(await evaluate("!!document.querySelector('[data-sources] .source-file')"));
+    assert.ok(await evaluate("document.querySelector('.event-photo-section').getBoundingClientRect().top<document.querySelector('.review-panel').getBoundingClientRect().top"));
+    assert.equal(await evaluate("document.querySelector('.core-diagnostics').open"),false);await screenshot('source-document');await close();
     await evaluate('lifeAtlas.fit()');
-    for (const [width, height] of [[768, 1000], [390, 900]]) { await size(width, height);assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));await screenshot(`overview-${width}`); }
+    for (const [width, height] of [[768, 1000], [390, 900]]) { await size(width, height);await evaluate('window.scrollTo(0,0)');assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth+1'));await screenshot(`overview-${width}`); }
+    const cta=await evaluate("(()=>{const r=document.getElementById('explore-life-button').getBoundingClientRect();return {top:r.top,bottom:r.bottom}})()");assert.ok(cta.top>=0&&cta.bottom<900);
+    assert.equal(await evaluate("document.body.classList.contains('atlas-immersive')"),false);await click('#explore-life-button');
+    await until("document.body.classList.contains('atlas-immersive')&&document.querySelectorAll('.lane').length===6");await click('[data-scale=year]');
+    const beforePan=await evaluate('lifeAtlas.state.range');await click('#next-button');assert.notDeepEqual(await evaluate('lifeAtlas.state.range'),beforePan);
+    await evaluate("document.querySelector('.minimap-row').scrollIntoView({block:'end',behavior:'instant'})");assert.ok(await evaluate("document.querySelector('.minimap-row').getBoundingClientRect().bottom<=900"));await screenshot('mobile-immersive-navigation');
+    await evaluate("document.getElementById('immersive-button').scrollIntoView({block:'center',behavior:'instant'})");await click('#immersive-button');assert.equal(await evaluate("document.body.classList.contains('atlas-immersive')"),false);
+    assert.equal(await evaluate('document.activeElement.id'),'explore-life-button');
     assert.deepEqual(errors, []);assert.ok(fixture.writes.every(w => !w.path.endsWith('/souvenir')));
     const report = { synthetic: true, entries: 38, subjects: 6, nativePhotoPages: 2, factualConfirmations: 1, souvenirWrites: 0, staleContextRejected: true,
-      sourceDocumentPreserved: true, undatedPhotoAccessibleWithoutInventedDate: true, javascriptErrors: errors, writes: fixture.writes.map(w => ({ path: w.path, revision: w.input.revision, contextRevision: w.input.contextRevision })) };
+      sourceDocumentPreserved: true, undatedPhotoAccessibleWithoutInventedDate: true, mobileEntryAndExit: true, selectedDayRetained: true, partialCoverageVisible: true, javascriptErrors: errors, writes: fixture.writes.map(w => ({ path: w.path, revision: w.input.revision, contextRevision: w.input.contextRevision })) };
     await fs.writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');console.log(JSON.stringify({ passed: true, output, ...report }));
   } finally { ws?.close();browser.kill('SIGTERM');await new Promise(resolve => fixture.server.close(resolve));await new Promise(resolve => browser.exitCode !== null ? resolve() : browser.once('exit', resolve));await fs.rm(profile, { recursive: true, maxRetries: 5, retryDelay: 200 }); }
 })().catch(error => { console.error(error);process.exitCode = 1; });

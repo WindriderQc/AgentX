@@ -38,14 +38,14 @@ function contributions(events){
 function rebuild(){
  const events=[...raw.values()].map(projectEntry);
  const media=collectMedia(events);for(const event of events)event.photoIds=media.filter(p=>p.eventIds.includes(event.id)).map(p=>p.id);
- meta={...summarize(events,{readAt:meta?.fetchedAt,total:events.length}),displayPreferences:meta?.displayPreferences||{},relations:buildRelations(events),ownerContributions:contributions(events)};
+ meta={...summarize(events,{readAt:meta?.fetchedAt,total:events.length}),truncated:meta?.truncated===true,displayPreferences:meta?.displayPreferences||{},relations:buildRelations(events),ownerContributions:contributions(events)};
  return {meta,events};
 }
 
 export async function loadHistory(){
  const timeline=await call('/api/secretary/history/timeline');
  raw.clear();for(const entry of timeline.entries)raw.set(entry.id,entry);
- meta={fetchedAt:timeline.readAt,displayPreferences:timeline.displayPreferences||{}};
+ meta={fetchedAt:timeline.readAt,truncated:timeline.truncated===true,displayPreferences:timeline.displayPreferences||{}};
  return rebuild();
 }
 

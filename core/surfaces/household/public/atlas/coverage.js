@@ -3,6 +3,8 @@ import {escape,number} from './ui.js';
 import {sourceLabel} from './projection.js';
 import {readCoverage} from './data.js';
 
+export function coverageNotice(meta){return meta?.truncated?`Au moins ${number(meta.events)} relevés chargés. Core a limité cette réponse : une partie de l’historique n’est pas affichée. Les comptes et les périodes visibles décrivent uniquement cette sélection.`:'';}
+
 export function activeLifeReviews(reviews){return (reviews||[]).filter(o=>o.objectiveId==='life-timeline'&&!['superseded','cancelled'].includes(o.phase)).sort((a,b)=>String(b.version).localeCompare(String(a.version),'en',{numeric:true})).slice(0,1);}
 
 export function nativeCoverage(c){
@@ -19,7 +21,7 @@ export async function showCoverage(popup,state,anchor){
  const c=m.core,systems=Object.entries(m.bySystem||{}).sort((a,b)=>b[1]-a[1]);
  const decades=new Map();for(const e of state.events)if(e.date){const d=Math.floor(Number(e.date.slice(0,4))/10)*10;decades.set(d,(decades.get(d)||0)+1);}
  const peak=Math.max(1,...decades.values());
- popup.info(`<h3>Les traces et les blancs</h3><p>Tout ce que montre cet atlas vient d’AgentX : ton historique, tes souvenirs, tes sources. Rien n’est copié ici.</p>
+ popup.info(`<h3>Les traces et les blancs</h3>${m.truncated?`<p class="coverage-warning">${escape(coverageNotice(m))}</p>`:''}<p>Tout ce que montre cet atlas vient d’AgentX : ton historique, tes souvenirs, tes sources. Rien n’est copié ici.</p>
  <div class="info-stats"><div><strong>${number(c.kept)}</strong><small>souvenirs gardés</small></div><div><strong>${number(c.toReview??c.candidates)}</strong><small>moments à relire</small></div><div><strong>${number(m.dated)}</strong><small>moments datés</small></div><div><strong>${number(m.undated)}</strong><small>à dater</small></div></div>
  <section data-native-coverage><p>Lecture de l’état natif…</p></section><h4 class="coverage-title">D’où viennent les moments</h4><ul class="coverage-list">${systems.map(([system,count])=>`<li><span>${escape(sourceLabel(system))}</span><strong>${number(count)}</strong></li>`).join('')}</ul>
  <h4 class="coverage-title">Densité par décennie</h4><div class="coverage-bars">${[...decades].sort((a,b)=>a[0]-b[0]).map(([d,n])=>`<div><span>${d}</span><i style="--w:${Math.max(4,Math.round(100*n/peak))}%"></i><small>${number(n)}</small></div>`).join('')}</div>
