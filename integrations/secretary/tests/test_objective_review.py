@@ -148,7 +148,7 @@ class ObjectiveTests(unittest.TestCase):
         client = MissingDateClient()
         # Simulate a pre-adapter run that retained a complete model response
         # but rejected its representation locally.
-        with patch.object(worker, "normalize_representation", side_effect=lambda value: (value, [])):
+        with patch.object(worker, "normalize_representation", side_effect=lambda value, *args: (value, [])):
             self.assertEqual(self.run_worker(client)["phase"], "validation-error")
         self.assertEqual(len(client.calls), 1)
         result = self.run_worker(client)
@@ -183,6 +183,70 @@ class ObjectiveTests(unittest.TestCase):
         self.assertEqual(changes, [])
         with self.assertRaises(ValueError):
             validate(normalized, "Une source fictive.")
+
+    def test_unique_whitespace_quote_recovers_saved_result_without_new_inference(self):
+        self.mail("message01", "Mon\u00a0déménagement\t est\r\nterminé en août 2014.")
+        quote = "Mon déménagement est terminé en août 2014."
+        class WhitespaceClient(Client):
+            def extract(self, *args, **kwargs):
+                result = super().extract(*args, **kwargs)
+                result.update(classification="life-events", moments=[moment(quote)])
+                return result
+        client = WhitespaceClient()
+        with patch.object(worker, "normalize_representation", side_effect=lambda value, *args: (value, [])):
+            self.assertEqual(self.run_worker(client)["phase"], "validation-error")
+        result = self.run_worker(client)
+        self.assertEqual(result["phase"], "done")
+        self.assertEqual(result["inferenceCalls"], 0)
+        self.assertEqual(len(client.calls), 1)
+        objective, manifest = self.prepare()
+        file = next((objective / "page-reviews").glob("*.json"))
+        receipt = worker.read_receipt(file, manifest)
+        actual = receipt["result"]["moments"][0]["quotes"][0]
+        self.assertNotEqual(actual, quote)
+        self.assertIn(actual, receipt["sourceRecord"]["body"])
+        change = receipt["resultProcessing"]["changes"][0]
+        span = change["sourceSpans"][0]
+        self.assertEqual(receipt["sourceRecord"]["body"][span["start"]:span["end"]], actual)
+        raw = load(next((objective / "review-attempts").glob("*/result.json")))["value"]
+        self.assertEqual(raw["moments"][0]["quotes"], [quote])
+
+    def test_ambiguous_whitespace_and_changed_tokens_or_punctuation_are_never_repaired(self):
+        quote = "Mon déménagement est terminé en août 2014."
+        value = {"summary": "Une déclaration fictive.", "classification": "life-events", "moments": [moment(quote)], "gaps": []}
+        for body in ["Mon\tdéménagement est terminé en août 2014.\nMon  déménagement est terminé en août 2014.",
+                     "Mon\tdéménagement est terminé en juillet 2014.",
+                     "Mon\tdéménagement est terminé en août 2014!", "XMon\tdéménagement est terminé en août 2014."]:
+            normalized, changes = normalize_representation(value, body)
+            self.assertEqual(changes, [])
+            self.assertEqual(normalized, value)
+            with self.assertRaisesRegex(ValueError, "exact supplied passage"):
+                validate(normalized, body)
+        value["moments"][0]["quotes"] = ["a a"]
+        normalized, changes = normalize_representation(value, "a\ta  a")
+        self.assertEqual(changes, [])
+        with self.assertRaisesRegex(ValueError, "exact supplied passage"):
+            validate(normalized, "a\ta  a")
+
+    def test_crlf_quote_preserves_source_bytes_and_matches_its_exact_span(self):
+        quote, content = "Première ligne\nDeuxième ligne", "Contexte\r\nPremière ligne\r\nDeuxième ligne\r\nFin"
+        value = {"summary": "Un passage fictif.", "classification": "life-events", "moments": [moment(quote)], "gaps": []}
+        normalized, changes = normalize_representation(value, content)
+        validate(normalized, content)
+        self.assertEqual(value["moments"][0]["quotes"], [quote])
+        self.assertEqual(normalized["moments"][0]["quotes"], ["Première ligne\r\nDeuxième ligne"])
+        self.assertEqual(len(changes), 1)
+
+    def test_repeated_identical_source_quote_is_one_value_without_independent_testimony(self):
+        quote, actual = "Première ligne\nDeuxième ligne", "Première ligne\r\nDeuxième ligne"
+        content = actual + "\r\nAutre contexte\r\n" + actual
+        value = {"summary": "Une chaîne citée fictive.", "classification": "life-events", "moments": [moment(quote)], "gaps": []}
+        normalized, changes = normalize_representation(value, content)
+        validate(normalized, content)
+        self.assertEqual(normalized["moments"][0]["quotes"], [actual])
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(len(changes[0]["sourceSpans"]), 2)
+        self.assertEqual(len(normalized["moments"]), 1)
 
     def test_lost_result_blocks_replacement(self):
         client = Client(fail=True)
