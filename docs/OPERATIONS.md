@@ -1147,16 +1147,25 @@ answers the page nothing. On this page the Center's request field asks
 involved. Each open page holds one stream at `GET /api/graphysx/center/events`
 (at most 8; Core says hello with a page id), reports its revision and bounded
 scene summary to `POST /api/graphysx/center/state`, and reports what it did with
-a pushed proposal to `POST /api/graphysx/center/receipts`. Nestor's tool
+a pushed proposal to `POST /api/graphysx/center/receipts`: first whether the card
+was shown, then, under the same push id, what the person decided (`accepted` with
+the world revision and commit id, `discarded`, `stale`, `rejected`). Nestor's tool
 `propose_world_change` (listed on Core's MCP transport) composes a request for
 the most recently active page through the same prompt and validation, pushes it
 on that page's stream as a proposal from `Nestor · Core` at the page's reported
 revision, waits up to five seconds for the Center's receipt and answers
 `proposed` with `delivery.status` `shown`, `refused` (with the Center's reason:
 a card already waiting, a forged namespace) or `unconfirmed`; `declined` when
-the vocabulary has no answer; `no-page` when no Center page is open. Core applies
-nothing and keeps no scene: pages are process memory, forgotten on restart. Page
-and routes are full-profile only and refused on a family-pinned device.
+the vocabulary has no answer; `no-page` when no Center page is open. Core keeps a
+record of the last 64 pushes with their receipts, and the read-only tool
+`world_proposal_status` (same transport; one push id, or none for the most recent)
+answers `pending`, `shown`, `refused`, `accepted` with the revision and commit id,
+`discarded`, `stale`, `rejected`, or `unknown` for a push Core never sent or has
+forgotten — so Nestor says "accepted in revision 9" only when the Center said so. A
+decision on a push the Center refused is not believed, and the first decision on a
+push is the decision. Core applies nothing and keeps no scene: pages and push
+records are process memory, forgotten on restart. Page and routes are full-profile
+only and refused on a family-pinned device.
 Pictures beside Nestor come only from sources Core can resolve. `SEARXNG_URL`
 enables internet image search (strict SafeSearch in Famille; the browser loads the
 https image directly without a referrer). Household photos and media need both a
