@@ -54,6 +54,20 @@ native receipt. An uncertain dispatch blocks replacement; reconcile the exact
 saved attempt, never delete a fence. Invalid output keeps its original result
 and refuses a new model call. Native source corruption refuses reading.
 
+The native client saves the received HTTP text before parsing its envelope,
+then saves the exact model text and output limits before parsing that text.
+Both private captures have hashes and retain the request/intent identity.
+Received malformed or length-limited output is a known validation failure;
+transport loss or failed durable capture remains uncertain. Neither failure
+permits an automatic replacement call. An incomplete generation is rejected
+even if its final JSON happens to parse.
+
+`--max-output-tokens` explicitly requests a bounded Core output budget through
+`options.num_predict`; it never changes the host pin, context or model choice.
+Campaigns can pass `maxOutputTokens`. The option enters the dispatch intent:
+changing it cannot silently replace a failed prior request. Completed page
+receipts remain readable under their original identities.
+
 The local representation adapter may change a missing date's precision from
 day/month/year to `unknown`. It can also restore a quote's exact original
 whitespace when every non-whitespace token and punctuation mark is identical

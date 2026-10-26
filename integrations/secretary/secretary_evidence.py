@@ -607,10 +607,10 @@ class Archive:
 
     def native_next(self):
         """One resumable work item in the existing Secretary agent turn, no scheduler."""
-        from review_attempts import unsettled
+        from review_attempts import unsettled, blocked_phase, blocked_counts
         held = unsettled(self.root)
         if held:
-            return {"outcome": "uncertain", "unresolvedInferenceAttempts": len(held), "requests": held}
+            return {"outcome": blocked_phase(held), **blocked_counts(held), "requests": held}
         state_file = self.root / "native-worker.json"
         state = load(state_file, {"lane": 0})
         issued = state.get("issued")

@@ -1,7 +1,7 @@
 """Source coverage and unsettled analysis remain distinct in native progress."""
 from evidence_inventory import collection_status
 from evidence_store import now, save
-from review_attempts import unsettled
+from review_attempts import unsettled, blocked_counts
 
 
 def native_status(archive, queries):
@@ -11,7 +11,7 @@ def native_status(archive, queries):
     collection = collection_status(archive, queries, manifests)
     held = unsettled(archive.root)
     state = {"at": now(), "pendingTextPages": pending, "reviewedPages": len(read),
-             "unresolvedInferenceAttempts": len(held), **collection,
+             **blocked_counts(held), **collection,
              "pending": bool(pending or collection["uncollectedThreads"] or collection["discoveringScopes"] or held)}
     save(archive.root / "native-status.json", state)
     return state

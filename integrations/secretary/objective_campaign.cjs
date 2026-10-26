@@ -25,6 +25,7 @@ function configuration(value) {
   if (!['asap', 'tonight'].includes(value.when)) throw new Error('Core placement must be asap or tonight');
   if (!value.startBefore || !Number.isFinite(Date.parse(value.startBefore))) throw new Error('An explicit campaign start limit is required');
   if (value.maxPagesPerSource !== undefined && (!Number.isInteger(value.maxPagesPerSource) || value.maxPagesPerSource <= 0)) throw new Error('maxPagesPerSource must be positive');
+  if (value.maxOutputTokens !== undefined && (!Number.isInteger(value.maxOutputTokens) || value.maxOutputTokens <= 0 || value.maxOutputTokens > 65536)) throw new Error('maxOutputTokens must be an explicit positive integer up to 65536');
   if (value.reviewBeforePublication !== undefined && typeof value.reviewBeforePublication !== 'boolean') throw new Error('reviewBeforePublication must be explicit boolean');
   if (value.existingQueueId !== undefined && (!/^[a-f0-9-]{36}$/.test(value.existingQueueId) || !/^[a-f0-9]{64}$/.test(value.expectedQueueIntentHash || ''))) throw new Error('Adoption needs an exact existing queue ID and immutable intent hash');
   return value;
@@ -51,6 +52,7 @@ function dependencies(config, exec = spawnSync) {
         '--max-seconds', String(config.maxSeconds), '--queue-request-id', job.id, '--queue-dispatch-id', job.dispatchId,
         ...(config.archiveRoot ? ['--root', config.archiveRoot] : []),
         ...(config.maxPagesPerSource ? ['--max-pages-per-source', String(config.maxPagesPerSource)] : []),
+        ...(config.maxOutputTokens ? ['--max-output-tokens', String(config.maxOutputTokens)] : []),
         ...(config.priorityFile ? ['--priority-file', config.priorityFile] : [])], { encoding: 'utf8' });
     },
     publish(directory) {

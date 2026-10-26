@@ -29,7 +29,8 @@ from evidence_record import record_page  # noqa: E402
 from evidence_store import load, now, save  # noqa: E402
 from mailbox_backfill import MAX_CONSECUTIVE_FAILURES, Lock  # noqa: E402
 from secretary_evidence import DEFAULT_ROOT, Archive  # noqa: E402
-from review_attempts import ReviewUncertain, extract_once, unsettled  # noqa: E402
+from review_attempts import ReviewUncertain, extract_once, unsettled, blocked_phase, blocked_counts  # noqa: E402
+from review_response import ReviewInvalidOutput, parse_content  # noqa: E402
 from review_policy import STRICT_RULES, context_for  # noqa: E402
 
 LOCK_NAME = "catchup.lock"  # secretary_evidence.native_next stops issuing pages while it is fresh
@@ -121,11 +122,14 @@ class Busy(Exception):
 
 class CoreClient:
     def __init__(self, base, task_type="analysis", light_model=None, light_host=None, timeout=900,
-                 opener=urllib.request.urlopen, schema=None, caller="secretary-catchup"):
+                 opener=urllib.request.urlopen, schema=None, caller="secretary-catchup", max_output_tokens=None):
         self.base, self.task_type = base.rstrip("/"), task_type
         self.schema, self.caller = schema or REVIEW_SCHEMA, caller
         self.light_model, self.light_host = light_model, light_host
         self.timeout, self.opener = timeout, opener
+        if max_output_tokens is not None and (type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 65536):
+            raise ValueError("max_output_tokens must be an explicit positive integer up to 65536")
+        self.max_output_tokens, self.review_response_sink = max_output_tokens, None
 
     def _call(self, method, path, body=None):
         data = None if body is None else json.dumps(body).encode()
@@ -133,10 +137,27 @@ class CoreClient:
                                          headers={"content-type": "application/json"})
         try:
             with self.opener(request, timeout=self.timeout) as response:
-                return response.status, json.loads(response.read() or b"{}"), response.headers
+                raw = response.read()
+                inference = path == "/api/inference/generate" and method == "POST"
+                if inference and self.review_response_sink:
+                    headers = {k: str(response.headers.get(k)) for k in ("content-type", "x-agentx-response-mode", "x-agentx-context-window", "x-agentx-context-source") if response.headers and response.headers.get(k)}
+                    self.review_response_sink("http", raw, {"httpStatus": response.status, "headers": headers})
+                try:
+                    reply = json.loads(raw if inference else raw or b"{}")
+                except (ValueError, UnicodeError) as error:
+                    if inference:
+                        raise ReviewInvalidOutput("invalid-core-http-json") from error
+                    raise
+                if inference and not isinstance(reply, dict):
+                    raise ReviewInvalidOutput("non-object-core-http-json")
+                return response.status, reply, response.headers
         except urllib.error.HTTPError as exc:
             if path == "/api/inference/generate" and method == "POST":
-                try: detail = json.loads(exc.read(65536))
+                raw = exc.read(65537)
+                if self.review_response_sink:
+                    self.review_response_sink("http", raw[:65536], {"httpStatus": exc.code,
+                        "truncated": len(raw) > 65536, "bodyLimitBytes": 65536})
+                try: detail = json.loads(raw[:65536])
                 except (ValueError, OSError): detail = {}
                 if exc.code in BUSY_HTTP and detail.get("code") in PRE_DISPATCH_CODES:
                     retry = exc.headers.get("Retry-After") if exc.headers else None
@@ -180,6 +201,8 @@ class CoreClient:
         body = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
                 "stream": False, "think": False, "format": self.schema, "options": {"temperature": 0},
                 "callerDetail": self.caller}
+        if self.max_output_tokens is not None:
+            body["options"]["num_predict"] = self.max_output_tokens
         if request_id:
             body["telemetry"] = {"runtime": "external", "correlationId": request_id}
         if light and self.light_model:
@@ -188,13 +211,7 @@ class CoreClient:
             body["taskType"] = self.task_type
         _, reply, _ = self._call("POST", "/api/inference/generate", body)
         self.last_inference_receipt = {key: reply[key] for key in ("model", "host", "lane", "inferenceContract", "routing") if key in reply}
-        content = (reply.get("message") or {}).get("content") or reply.get("response")
-        if not isinstance(content, str):
-            raise RuntimeError("Core inference returned no content")
-        value = json.loads(content)
-        if not isinstance(value, dict):
-            raise ValueError("Model output is not a JSON object")
-        return value
+        return parse_content(reply, self.max_output_tokens, self.review_response_sink)
 
 
 def threads_of(root, scope):
@@ -359,7 +376,7 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
     report()
     blocked = unsettled(root)
     if blocked:
-        return finish("uncertain", unresolvedInferenceAttempts=len(blocked))
+        return finish(blocked_phase(blocked), **blocked_counts(blocked))
     for lane in lanes:
         for page in queues[lane]:
             if max_pages is not None and status["reviewed"] + status["failed"] >= max_pages:

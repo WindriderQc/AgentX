@@ -21,7 +21,8 @@ from mailbox_backfill import Lock
 from objective_schema import INSTRUCTIONS, SCHEMA, normalize_representation, validate
 from objective_sources import inventory, materialize, pages
 import objective_equivalence as equivalent
-from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled
+from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled, blocked_phase, blocked_counts
+from review_response import ReviewInvalidOutput
 from secretary_evidence import DEFAULT_ROOT
 
 CONTRACT = "secretary.objective-review/v1"
@@ -226,7 +227,11 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
     fence = SimpleNamespace(root=objective)
     held = unsettled(objective)
     if held:
-        return {"phase": "uncertain", "attempts": held, "coverage": coverage(objective, manifest)}
+        status = {"schema": CONTRACT, "startedAt": now(), "at": now(), "queueRequestId": queue_id,
+                  "dispatchId": dispatch_id, "phase": blocked_phase(held), "attempts": held,
+                  "newlyReviewedPages": 0, "inferenceCalls": 0, "elapsedSeconds": 0, **blocked_counts(held)}
+        durable(objective / "status.json", status)
+        return {**status, "coverage": coverage(objective, manifest)}
     system = INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + manifest["config"]["instructions"]
     started, made, inferences = clock(), 0, 0
     requested_stop = stop
@@ -330,6 +335,10 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     sleep(min(error.retry_after, 60))
                 except ReviewUncertain:
                     return finish("uncertain", pageId=page["pageId"])
+                except ReviewInvalidOutput as error:
+                    inferences += not saved
+                    return finish("validation-error", pageId=page["pageId"], errorType=type(error).__name__,
+                                  validationReason=error.reason, outputLimits=error.limits)
                 except (ValueError, RuntimeError) as error:
                     return finish("validation-error", pageId=page["pageId"], errorType=type(error).__name__)
             made += 1
@@ -353,6 +362,7 @@ def main(argv=None):
     parser.add_argument("--max-pages", type=int)
     parser.add_argument("--max-pages-per-source", type=int)
     parser.add_argument("--max-seconds", type=int, default=1800)
+    parser.add_argument("--max-output-tokens", type=int, help="Explicit Core output budget; never changes the host pin or context")
     parser.add_argument("--queue-request-id")
     parser.add_argument("--queue-dispatch-id")
     parser.add_argument("--priority-file", type=Path, help="Private native IDs; scheduling order only, never model instructions")
@@ -374,7 +384,7 @@ def main(argv=None):
             raise RuntimeError("This objective already has a native worker")
         try:
             result = run(args.root, objective, manifest, CoreClient(args.core, task_type=args.task_type, schema=SCHEMA,
-                         caller="secretary-objective-review"), max_pages=args.max_pages, queue_id=args.queue_request_id,
+                         caller="secretary-objective-review", max_output_tokens=args.max_output_tokens), max_pages=args.max_pages, queue_id=args.queue_request_id,
                          dispatch_id=args.queue_dispatch_id, per_source_pages=args.max_pages_per_source,
                          max_seconds=args.max_seconds, priority=priority, stop=lambda: bool(stopping))
         finally:

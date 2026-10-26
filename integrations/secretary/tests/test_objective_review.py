@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evidence_store import load, save
@@ -161,6 +161,28 @@ class ObjectiveTests(unittest.TestCase):
         self.assertEqual(len(client.calls), 1)
         objective, _ = self.prepare()
         self.assertEqual(load(objective / "findings.json"), [])
+
+    def test_retained_truncated_native_response_has_known_validation_status_and_no_automatic_retry(self):
+        calls = []
+        def opener(request, timeout):
+            inference = request.full_url.endswith('/api/inference/generate')
+            if inference: calls.append(request)
+            value = {'response': '{"moments": [', 'done': True, 'done_reason': 'length', 'eval_count': 4096} if inference else {'data': {}}
+            reply = MagicMock(status=200, headers={}); reply.read.return_value = json.dumps(value).encode()
+            reply.__enter__.return_value = reply
+            return reply
+        client = worker.CoreClient('http://core.invalid', opener=opener, schema=worker.SCHEMA, max_output_tokens=8192)
+        first = self.run_worker(client)
+        self.assertEqual(first['phase'], 'validation-error'); self.assertEqual(first['inferenceCalls'], 1)
+        self.assertEqual(first['validationReason'], 'incomplete-model-output')
+        self.assertEqual(first['newlyReviewedPages'], 0)
+        second = self.run_worker(client)
+        self.assertEqual(second['phase'], 'validation-error'); self.assertEqual(second['invalidInferenceResults'], 1)
+        self.assertEqual(second['unresolvedInferenceAttempts'], 0); self.assertEqual(len(calls), 1)
+        objective, _ = self.prepare()
+        status = load(objective / 'status.json')
+        self.assertEqual(status['queueRequestId'], QUEUE); self.assertEqual(status['dispatchId'], DISPATCH)
+        self.assertEqual(load(objective / 'findings.json'), [])
 
     def test_missing_date_precision_normalization_retains_raw_result_without_reinference(self):
         class MissingDateClient(Client):
