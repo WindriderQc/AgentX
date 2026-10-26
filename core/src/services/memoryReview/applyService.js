@@ -70,10 +70,17 @@ async function applySharedFact(run, candidate, deps) {
   const statement = effectiveStatement(candidate);
   if (candidate.type === 'supersedes') {
     const old = candidate.supersedes;
-    if (old?.authority !== 'local_memory' || !old.fingerprint || !candidate.review?.at || candidate.apply?.automated) {
+    if (!['local_memory', 'rag'].includes(old?.authority) || !old.fingerprint || !candidate.review?.at || candidate.apply?.automated) {
       throw new MemoryReviewError('A supersession requires an individually reviewed exact owner source');
     }
     const key = `memory-review:${run.runId}:${candidate.candidateId}`;
+    if (old.authority === 'rag') {
+      const replaced = await (deps.ragReplacement || require('./ragReplacement').createRagReplacement()).supersede({
+        ref: old.ref, expectedFingerprint: old.fingerprint, key, text: statement,
+        scope: candidate.scope, sensitivity: candidate.sensitivity, ...factMetadata(run, candidate) });
+      return { result: `RAG document ${old.ref} replaced by ${replaced.id}`,
+        rollbackRef: `POST /api/memory-review/runs/${run.runId}/candidates/${candidate.candidateId}/rollback` };
+    }
     const note = await (deps.ownerNotes || personal()).supersede({ id: old.ref, expectedFingerprint: old.fingerprint,
       key, text: statement, scope: candidate.scope, sensitivity: candidate.sensitivity, ...factMetadata(run, candidate) });
     return { result: `owner note ${old.ref} replaced by ${note.id}`,

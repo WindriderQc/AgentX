@@ -7,7 +7,7 @@ const { redact } = require('./contentGuard');
 
 // The existing operator boundary owns rollback. No automatic or agent tool
 // receives this mutation; the exact reviewed replacement is its durable key.
-async function rollbackCandidate(runId, candidateId, { by, ownerNotes = personal() } = {}) {
+async function rollbackCandidate(runId, candidateId, { by, ownerNotes = personal(), ragReplacement } = {}) {
   const refuse = (message, status = 409) => new policy.MemoryReviewError(message, { status });
   if (policy.serverMode() !== 'apply') throw refuse('Rollback requires server apply mode', 403);
   const reviewer = String(by || '').trim().slice(0, 64);
@@ -16,7 +16,7 @@ async function rollbackCandidate(runId, candidateId, { by, ownerNotes = personal
   const candidate = run?.candidates.find(item => item.candidateId === candidateId);
   if (!candidate) throw refuse('The reviewed replacement does not exist', 404);
   if (run.mode !== 'apply' || !run.applyAuthorization?.at || candidate.type !== 'supersedes'
-      || !candidate.review?.at || candidate.supersedes?.authority !== 'local_memory') throw refuse('This run has no reviewed owner replacement to roll back', 403);
+      || !candidate.review?.at || !['local_memory', 'rag'].includes(candidate.supersedes?.authority)) throw refuse('This run has no reviewed owner replacement to roll back', 403);
   if (candidate.status === 'rolled_back') return { candidateId, status: 'rolled_back', alreadyRolledBack: true };
   const now = new Date();
   const elem = { candidateId, $or: [{ status: { $in: ['applied', 'rollback_failed'] } },
@@ -29,9 +29,14 @@ async function rollbackCandidate(runId, candidateId, { by, ownerNotes = personal
   if (!run) throw refuse('The replacement is not applied or rollback is already in progress');
   let status = 'rolled_back', result;
   try {
-    await ownerNotes.rollbackSupersession({ id: candidate.supersedes.ref,
-      key: `memory-review:${runId}:${candidateId}` });
-    result = `restored owner note ${candidate.supersedes.ref}`;
+    const key = `memory-review:${runId}:${candidateId}`;
+    if (candidate.supersedes.authority === 'rag') {
+      await (ragReplacement || require('./ragReplacement').createRagReplacement()).rollback({ ref: candidate.supersedes.ref, key });
+      result = `restored RAG document ${candidate.supersedes.ref}`;
+    } else {
+      await ownerNotes.rollbackSupersession({ id: candidate.supersedes.ref, key });
+      result = `restored owner note ${candidate.supersedes.ref}`;
+    }
   } catch (error) {
     status = 'rollback_failed';
     result = redact(String(error.message)).slice(0, 1000);

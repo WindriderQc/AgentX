@@ -24,6 +24,7 @@ const { expandQuery } = require('./queryExpansion');
 const { keywordSearch } = require('./keywordSearch');
 const { rerankResults } = require('./reranker');
 const { getCompressionService } = require('./ragCompression');
+const { revisionFingerprint } = require('./documentRevision');
 const {
   MARKDOWN_FORMAT,
   chunkMarkdownNote,
@@ -514,6 +515,46 @@ class RagStore {
     return this.writeGuard.run(this, () => this.vectorStore.deleteDocument(documentId));
   }
 
+  /**
+   * Change only invalidatedAt/supersededBy, re-using the stored original text,
+   * labels, fact dates and provenance. Refuses unless the document still has
+   * the fingerprint the caller reviewed.
+   */
+  async setDocumentValidity(documentId, input = {}) {
+    if (!this.writeGuard) return this._setDocumentValidity(documentId, input);
+    return this.writeGuard.run(this, () => this._setDocumentValidity(documentId, input));
+  }
+
+  async _setDocumentValidity(documentId, input) {
+    const conflict = (message, statusCode = 409, code = 'MEMORY_FACT_CHANGED') => Object.assign(new Error(message), { statusCode, code });
+    if (!input || Object.keys(input).some(key => !['invalidatedAt', 'supersededBy', 'expectedFingerprint'].includes(key))
+        || !Object.hasOwn(input, 'invalidatedAt') || !Object.hasOwn(input, 'supersededBy')
+        || !/^[a-f0-9]{64}$/.test(input.expectedFingerprint || '')) {
+      throw conflict('Name invalidatedAt, supersededBy and the reviewed expectedFingerprint', 400, 'INVALID_MEMORY_FACT_METADATA');
+    }
+    const validity = memoryValidityInput(input);
+    const doc = await this.vectorStore.getDocument(documentId);
+    if (!doc) throw conflict('Document not found', 404, 'DOCUMENT_NOT_FOUND');
+    const text = typeof this.vectorStore.getDocumentOriginalText === 'function'
+      ? await this.vectorStore.getDocumentOriginalText(documentId) : null;
+    if (typeof text !== 'string') throw conflict('The stored original text is unavailable; re-ingest the source first');
+    const identity = buildDocumentIdentity(doc.source || 'unknown', text, documentId);
+    return this._withIdentityLock(identity.sourceIdentity, async () => {
+      const current = await this.vectorStore.getDocument(documentId);
+      if (!current || current.mixedRevision || revisionFingerprint(current) !== input.expectedFingerprint) {
+        throw conflict('The document changed after review');
+      }
+      return this._upsertDocumentWithIdentity(text, {
+        documentId, source: current.source, tags: current.tags || [],
+        ...(current.scope ? { scope: current.scope, sensitivity: current.sensitivity } : {}),
+        validFrom: current.validFrom || null, sourceRefs: current.sourceRefs || [], ...validity,
+        ...(current.format ? { format: current.format } : {}), ...(current.hash ? { hash: current.hash } : {}),
+        ...(current.chunkSize != null ? { chunkSize: current.chunkSize } : {}),
+        ...(current.chunkOverlap != null ? { chunkOverlap: current.chunkOverlap } : {})
+      }, identity);
+    });
+  }
+
   async getDocument(documentId) {
     return this.vectorStore.getDocument(documentId);
   }
@@ -544,4 +585,4 @@ function resetRagStore() {
   instance = null;
 }
 
-module.exports = { RagStore, getRagStore, resetRagStore };
+module.exports = { RagStore, getRagStore, resetRagStore, revisionFingerprint };
