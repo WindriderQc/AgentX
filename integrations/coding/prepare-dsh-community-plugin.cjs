@@ -44,7 +44,9 @@ const iconNames = {
 function adaptClient(name, source) {
   if (name === 'dsh-client-ui-explorer') {
     return source.replace(/\bIcon(?:ChevronLeftOutline14|ChevronRightOutline14|CloseOutline16|FolderClose16|FolderOpen16|RefreshOutline16)\b/g,
-      name => iconNames[name]);
+      name => iconNames[name])
+      .replaceAll('`shell.overlay`', '`conversation.session.header.actions`')
+      .replace('},CM))', '},function agentxFiletree(props){return(0,m.jsx)(CM,{...props,useSessions:selector=>props.useSessions(state=>selector({...state,current:props.sessionId}))})}))');
   }
   if (name === '@1e0zj/dsh-plugin-mall') {
     return source.replaceAll('settings.plugins.tab', 'settings.section')
@@ -87,10 +89,10 @@ function prepare(source, output) {
     schema: 'agentx.dsh-community-plugin-compatibility/v1',
     name: manifest.name, upstreamVersion: manifest.version,
     upstreamClientSha256: digest, targetRuntime: '0.2.0-rc.2',
-    scope: manifest.name === '@1e0zj/dsh-plugin-mall' ? 'settings-section-and-authenticated-shared-fetch-rpc' : 'ui-icon-exports',
+    scope: manifest.name === '@1e0zj/dsh-plugin-mall' ? 'settings-section-and-authenticated-shared-fetch-rpc' : 'ui-icons-and-conversation-session-scope',
     ...(adapter.hostSha256 ? { upstreamHostSha256: adapter.hostSha256 } : {}),
   };
-  manifest.version += adapter.hostFile ? '-agentx.6' : '-agentx.1';
+  manifest.version += adapter.hostFile ? '-agentx.6' : '-agentx.2';
   if (adapter.hostFile) manifest.peerDependencies['@deepseek-ai/dsh-client-connection'] = '0.2.0-rc.2';
   manifest.files = [...new Set([...(manifest.files || []), 'agentx-compatibility.json'])];
   fs.cpSync(source, output, { recursive: true, errorOnExist: true, force: false });

@@ -5,7 +5,11 @@ profile and model route remain instance choices; adding a UI plugin does not
 replace Core inference, canonical memory or task ownership.
 
 `prepare-dsh-community-plugin.cjs` prepares two reviewed upstream clients for
-DSH `0.2.0-rc.2`: Explorer `0.1.0` uses the current icon exports, and Plugin Mall
+DSH `0.2.0-rc.2`: Explorer `0.1.0` uses the current icon exports and the active
+conversation's explicit Session identity. Its fixed drawer is contributed by
+the conversation header, rather than reading the removed global `current`
+selection from the Session catalog. Open a conversation to use its file tree.
+Plugin Mall
 `0.4.17` registers its marketplace under a settings section and carries its RPC
 over native authenticated exact Fetch routes on `/api/market/*`. The runtime's
 custom-channel registration fails its WebServer injection check, so the adapter
