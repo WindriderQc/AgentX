@@ -50,7 +50,7 @@ export async function apply(ctx) {
     try { await bridge.poll(); } catch (error) { logger.warn('Worker history refresh failed', error); }
     finally { refreshing = false; }
   };
-  await refresh();
+  void refresh();
   const timer = setInterval(() => { if (!stopped) void refresh(); }, 2000);
   timer.unref();
   ctx.effect(() => async () => { stopped = true; clearInterval(timer); await bridge.pending;

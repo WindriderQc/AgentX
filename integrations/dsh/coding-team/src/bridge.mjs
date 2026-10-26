@@ -13,6 +13,7 @@ export class WorkerSessions {
     this.readers = new Map();
     this.pending = Promise.resolve();
     this.error = undefined;
+    this.initialized = false;
   }
   serialize(operation) {
     const result = this.pending.then(operation);
@@ -85,6 +86,7 @@ export class WorkerSessions {
           }
         }
         this.error = undefined;
+        this.initialized = true;
       } catch (error) {
         this.error = 'Actualisation des historiques indisponible';
         throw error;
@@ -92,7 +94,7 @@ export class WorkerSessions {
     });
   }
   list() {
-    return { error: this.error ?? null, sessions: [...this.records.values()].sort((left, right) =>
+    return { error: this.error ?? null, loading: !this.initialized, sessions: [...this.records.values()].sort((left, right) =>
       (right.events.at(-1)?.time ?? 0) - (left.events.at(-1)?.time ?? 0)).map(record => ({
       sessionId: record.id, taskId: record.taskId, sourceId: record.sourceId,
       eventCount: record.events.length, updatedAt: record.updatedAt,
