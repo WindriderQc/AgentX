@@ -151,3 +151,22 @@ test('the page keeps the step on screen with the presented report; a refused lis
   events['diskx-error']({ detail: { stage: 'play', message: 'unknown play step: delete' } });
   assert.equal(window.AgentXPresentedContent.state, 'ready');
 });
+
+
+test('a targeted opening reads its exact group once after display, without an intermediate report read', async () => {
+  const events = {}, calls = [];
+  const status = { classList: { toggle() {} } };
+  const city = { getAttribute: name => name === 'group' ? SHA : null,
+    addEventListener: (name, fn) => { events[name] = fn; } };
+  const window = {};
+  vm.runInNewContext(fs.readFileSync(require.resolve('../public/diskx-page.js'), 'utf8'), {
+    window, document: { getElementById: () => status, querySelector: () => city }, URLSearchParams, setTimeout() {},
+    fetch: async url => { calls.push(url); return { ok: true, json: async () => ({ ok: true, data: { read: { id: 'exact-group' }, filters: {} } }) }; }
+  });
+  events['diskx-report-read']({ detail: { reportGeneratedAt: DATE } });
+  assert.equal(calls.length, 0); assert.equal(window.AgentXPresentedContent.state, 'loading');
+  events['diskx-group-shown']({ detail: { reportGeneratedAt: DATE, sha256: SHA } });
+  await new Promise(setImmediate);
+  assert.equal(calls.length, 1); assert.equal(new URL(calls[0], 'http://fixture').searchParams.get('group'), SHA);
+  assert.equal(window.AgentXPresentedContent.state, 'ready');
+});
