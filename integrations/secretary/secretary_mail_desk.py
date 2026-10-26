@@ -274,7 +274,9 @@ def catchup(_args: argparse.Namespace, root: Path | None = None) -> dict[str, An
     except OSError:
         running = False
     paused = status.get("paused") if isinstance(status.get("paused"), dict) else None
+    from objective_status import projection
     return {"known": bool(status), "running": running, **{key: status.get(key) for key in CATCHUP_FIELDS},
+            **projection(root),
             "paused": {"reason": str(paused.get("reason"))[:120], "since": paused.get("since")} if paused else None,
             "proposalsPending": sum(1 for p in proposals if isinstance(p, dict) and p.get("state") == "pending"),
             "proposalsQueued": sum(1 for p in proposals if isinstance(p, dict) and p.get("state") == "queued")}

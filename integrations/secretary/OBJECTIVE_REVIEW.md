@@ -1,0 +1,81 @@
+# Versioned archive reading objectives
+
+`objective_review.py` reuses Secretary's native Core client and durable attempt
+fences for a new, explicitly versioned reading goal. General page reviews are
+preserved. It does not send mail, mutate mailbox state, publish personal tasks,
+confirm memories or create souvenirs. Code tests do not establish live model
+quality or exhaustive interpretation.
+
+The first supported objective is `life-timeline`. Its private JSON configuration
+contains `id`, `version`, `kind`, explicit `ownerAliases`, optional `instructions`,
+`pageChars` (default 6000), `overlap` (300), and optional `selection`:
+
+```json
+{
+  "id": "life-timeline", "version": "v1", "kind": "life-timeline",
+  "ownerAliases": ["Synthetic Owner", "owner@example.test"],
+  "selection": {"gmailMessageIds": ["message001"], "outlookSha256": []}
+}
+```
+
+Omitting a selection array includes that native source system; an empty array
+excludes it. Optional `selection.order` contains `gmail:<id>` or
+`outlook-export:<sha256>` keys for a representative pilot. Native Outlook
+conversion files and their existing Gmail/RFC links remain explicit. Copies,
+quoted chains and MIME alternatives do not establish independent testimony.
+
+`plan` freezes the objective, prompt/schema hashes and archive source inventory
+without a model, MIME parse or hash-verification pass. A changed configuration,
+prompt or schema under the same version refuses; use a new version. The source
+inventory is a snapshot: later arrivals require explicit new planning. Metadata
+planning cannot know the full page count before source materialization.
+
+```sh
+python3 integrations/secretary/objective_review.py plan --objective "$PRIVATE_OBJECTIVE"
+python3 integrations/secretary/objective_review.py status --objective "$PRIVATE_OBJECTIVE"
+```
+
+Before `run`, obtain an operator dispatch through Core's
+[heavy-work queue](../../docs/HEAVY_WORK_QUEUE.md), link the session/issue,
+declare hosts/duration/window and retain native coordination and admission.
+The worker asserts the exact queue dispatch before source work and each live
+call. It never chooses a concrete model or changes a host pin. `mail_review`
+uses Core's configured task route. A pilot should bound pages, time and pages
+per source; Core retains final inference admission.
+
+```sh
+python3 integrations/secretary/objective_review.py run --objective "$PRIVATE_OBJECTIVE" \
+  --max-pages 16 --max-pages-per-source 1 --max-seconds 1800 \
+  --queue-request-id "$QUEUE_REQUEST_ID" --queue-dispatch-id "$QUEUE_DISPATCH_ID"
+```
+
+Run the same objective again to resume. A completed page is replayed from its
+native receipt. An uncertain dispatch blocks replacement; reconcile the exact
+saved attempt, never delete a fence. Invalid output keeps its original result
+and refuses a new model call. Native source corruption refuses reading.
+
+The worker verifies original bytes and reuses the native inert MIME reader:
+every inline plain/HTML representation and available HTML supplement is a
+separate bounded scope. It reuses existing attachment text only; no new OCR,
+render, decompression or linked-resource fetch occurs. Missing, clipped,
+visual, nested and OCR-quality scopes remain explicit gaps. Metadata describing
+an image or attachment is not evidence that its content was seen.
+
+Private results live under `objective-reviews/<id>/<version>/`: immutable
+`manifest.json`, native `review-attempts`, per-source plans, per-page exact
+passage receipts, `status.json`, `coverage.json`, `findings.json` and
+`sources.json`. Exported candidates carry original/representation hashes,
+native identities, offsets, exact quotes, owner/related/third-party attribution,
+event start/end and date precision, occurrence status and proposed relation
+hints. Source date remains distinct from event date. No candidate is confirmed.
+
+Coverage distinguishes target sources, materialized scopes, validated page
+receipts, remaining known pages, sources not yet materialized, extraction gaps
+and semantic acceptance. A fully read text scope does not qualify images,
+prove a complete live mailbox, or establish the truth of the interpretation.
+
+`secretary_mail_desk.py catchup` reads content-free `archiveProgress` from
+`native-status.json` and `objectiveReviews` from the generated objective
+coverage/status receipts. Core preserves these at
+`GET /api/secretary/desk` → `data.mail.catchup`. Existing catch-up counters
+continue to describe the last general run, not all reviewed archive pages.
