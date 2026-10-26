@@ -25,6 +25,7 @@
       const result = await response.json();
       if (generation !== readGeneration) return;
       if (!response.ok || !result.ok || !result.data?.read) throw new Error(result.message || 'Lecture du rapport indisponible.');
+      status.hidden = true;
       content('ready', { read: result.data.read, filters: result.data.filters,
         selection: { group, outside: Number.isSafeInteger(detail?.outside) ? detail.outside : 0, ...(scene ? { scene } : {}) } });
     } catch (error) {

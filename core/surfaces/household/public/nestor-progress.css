@@ -1,0 +1,12 @@
+/* Normal document flow keeps the avatar, transcript and composer reachable. */
+.nestor-progress-host[hidden] { display: none; }
+.nestor-progress-host { margin: .4rem auto; width: min(100%, 32rem); min-width: 0; }
+.nestor-progress { padding: .35rem .65rem; border: 1px solid #3a5267; border-radius: .65rem; background: #102130; color: #c4d6e6; font-size: .75rem; }
+.nestor-progress summary { cursor: pointer; min-height: 32px; align-content: center; overflow-wrap: anywhere; }
+.nestor-progress summary:focus-visible { outline: 2px solid #90deef; outline-offset: 2px; }
+.nestor-progress summary span:last-child { font-variant-numeric: tabular-nums; color: #9eb6c9; }
+.nestor-progress ul { max-height: 8rem; overflow: auto; text-align: left; padding-left: 1.1rem; }
+.nestor-progress li { padding-block: .2rem; overflow-wrap: anywhere; }
+.nestor-progress [data-state=failed] { color: #ffd4aa; }
+
+.avatar-scene-bar .nestor-progress-host { pointer-events: auto; margin: 0; max-width: min(32rem, calc(100vw - 32px)); }

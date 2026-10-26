@@ -105,6 +105,51 @@ read. Collector age limits the GPU reference; missing freshness never becomes a
 numeric measurement. Browser loading/failure removes the corresponding live
 read even when the historical summary remains available.
 
+## Mobile views and observed latency
+
+DiskX/Janitor and the ecosystem tour share GraphysX's mobile disclosure controls.
+At widths up to 820 pixels, details start closed; the player remains accessible,
+labels are smaller and their count is bounded. Desktop details start open. The
+native disclosure controls remain keyboard accessible. Opening details does not
+change the report, tour, permissions or underlying scene.
+
+The personal conversation has a compact status badge after five seconds, sourced
+from its existing stream and durable work receipts. It displays elapsed time,
+explicit completion, interruption or error, and supplied remaining time only.
+Unavailable polling remains labelled; it never implies successful completion.
+The badge follows the existing scene command bar in full-screen/presentation
+mode, leaving the avatar and Conversation control available.
+
+`window.AgentXJourneyTimings.snapshot()` retains at most 100 requests and 100
+presentations in the current page. It contains identifiers and numeric browser
+observations, never requests, tool arguments, paths or transcripts. Separate
+fields cover request/acceptance, Nestor processing observed in the stream, paired
+tool start/end signals, opening, frame document load, module resource timing and
+the first frame rendered by GraphysX. A presentation keeps the initiating live
+turn identity; an uncorrelated background/restored opening stays uncorrelated.
+Missing durations remain `null`. Tool/processing observations include transport
+latency and may overlap; they are not pure model compute or additive phases.
+A first rendered frame can precede document load; its signed timestamps remain
+available while a negative load-to-frame duration is left unknown. Hidden/lazy
+frames may wait before rendering. None of these observations assigns a cause to
+an unmeasured delay or proves that physical screen pixels were displayed.
+
+Run the composed browser check against a locally built GraphysX embed:
+
+```bash
+GRAPHYSX_CHECKOUT=/path/to/GraphysX-Web \
+PRESENTATIONS_REPORT_DIR=/path/outside/git \
+node core/tests/browser/mobilePresentationsJourney.cjs
+```
+
+The test needs Playwright on Node's module path and a matching installed browser
+(`SMOKE_CHROMIUM` may select an installed executable). It uses the production
+Core page, display board, workflow and badge with synthetic read-only data and
+software WebGL, under GraphysX's machine verification lock. Queue this rendering
+work before execution on a managed instance. It covers both journeys at mobile
+and desktop widths; its captures and timing receipt stay outside Git. Local
+fixture results do not qualify the installed Nestor or a physical phone.
+
 ## Runtime clients and qualification
 
 The full Core MCP bus exposes `read_presentation(id, revision)`; its narrower

@@ -163,6 +163,7 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
     try {
       state = await accept(request, state, request.signal);
       await request.onStarted?.(sessionKey, state.runId);
+      request.onActivity?.({ kind: 'processing', agentId: 'hermes' });
       const response = await http(pathFor(state) + '/events', { signal: request.signal, sessionKey });
       await readEvents(response.body, async event => {
         if (event.run_id && event.run_id !== state.runId) throw fault('Hermes returned an event for another run.');
@@ -171,6 +172,8 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
           streamed += event.delta; request.onDelta?.(event.delta);
         }
         if (type === 'tool.started') request.onActivity?.({ kind: 'tool', agentId: 'hermes', tool: String(event.tool || '').slice(0, 120) });
+        if (type === 'tool.completed') request.onActivity?.({ kind: 'tool_result', agentId: 'hermes',
+          tool: String(event.tool || '').slice(0, 120), status: event.error ? 'failed' : 'completed' });
         if (type === 'tool.completed') receipts.push({ tool: String(event.tool || '').slice(0, 120),
           status: event.error ? 'failed' : 'completed', runId: state.runId, authority: 'hermes' });
         if (type === 'approval.required' || type === 'approval.request') throw fault('Hermes needs approval in its native console.', 'HERMES_APPROVAL_REQUIRED');

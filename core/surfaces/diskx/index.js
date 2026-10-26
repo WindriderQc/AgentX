@@ -169,6 +169,7 @@ function renderPage({ roots, attributes }) {
 <meta name="referrer" content="no-referrer">
 <title>${title}</title>
 <link rel="stylesheet" href="/assets/diskx/diskx.css">
+<script src="/assets/household/journey-timings.js?v=1"></script>
 <script type="module" src="${MODULE_ROUTE}"></script>
 <script defer src="/assets/diskx/${ecosystem ? 'ecosystem-page' : 'diskx-page'}.js"></script>
 </head>

@@ -79,6 +79,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     <section id="conversationRecap" class="conversation-recap" aria-label="Conversation recap" hidden></section>
     <div class="conversation-layout"><section class="conversation-stage" aria-label="Conversation"><div class="conversation-cockpit${family ? ' conversation-cockpit-family' : ''}">
       <div class="conversation-live"><div id="conversationPresence" class="conversation-presence" data-state="idle" aria-hidden="true"><span id="conversationInitial">N</span></div>
+      ${family ? '' : '<div id="nestorProgress" class="nestor-progress-host" hidden></div>'}
       <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Getting Nestor ready…</p><p id="conversationVoiceNotice" class="muted" role="status" hidden></p>
       <p id="conversationBrowserSttIndicator" class="conversation-browser-stt" hidden></p><section id="conversationBrowserSttNotice" class="conversation-audio" aria-label="Browser speech recognition" role="alert" hidden></section>
       <div class="conversation-actions"><button id="conversationStart" type="button" class="button primary" hidden disabled>Turn on Nestor</button></div>
@@ -138,7 +139,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const fallbackSettings = document.createElement('div');
   const wake = el('conversationWake');
   wake.checked = family;
-  const workflow = family ? null : NestorWorkflow.create({ host: diagnosticFlow, signal: el('conversationWorkflowSignal') });
+  const progress = family ? null : NestorProgress.create({ host: el('nestorProgress'), getLanguage: () => language.value });
+  const workflow = family ? null : NestorWorkflow.create({ host: diagnosticFlow, signal: el('conversationWorkflowSignal'), onSnapshot: view => progress.update(view) });
   // The background brain (#169): tapping a suggestion asks it; a remark is spoken at a pause
   // when the voice conversation is listening, otherwise shown in the transcript.
   const brain = window.NestorBrain.create(el('conversationBrain'), { base: sessionBase,
@@ -806,7 +808,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const visit = family ? null : window.NestorGuidedVisit.mount({ host: app.querySelector('.conversation-toolbar'),
     onExpire: () => { if (document.hidden && !textBusy) { conversation.stop(true); void releaseOpen(); } } });
   document.addEventListener('visibilitychange', () => { if (document.hidden && !visit?.active()) { if (!textBusy) { conversation.stop(true); void releaseOpen(); } } });
-  window.addEventListener('pagehide', () => { visit?.dispose(); pagePicker?.dispose(); work?.dispose(); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
+  window.addEventListener('pagehide', () => { progress?.dispose(); visit?.dispose(); pagePicker?.dispose(); work?.dispose(); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
   conversation.show('idle');
   const performance = family ? null : ConversationPreferences.mount({ button: el('conversationPerformance'), api, endpoint: '/api/voice-personas/preferences',
