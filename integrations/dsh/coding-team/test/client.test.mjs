@@ -24,7 +24,7 @@ test('opens only the configured HTTPS worker monitor, without embedded credentia
   }
 });
 
-function register(plugin) {
+function register(plugin, selectedSlot = 'sidebar.footer.action') {
   let definition;
   let component;
   let attach;
@@ -32,8 +32,7 @@ function register(plugin) {
   const cleanup = () => { removed = true; };
   plugin.apply({ slots: {
     inject(slot, callback) {
-      assert.equal(slot, 'sidebar.footer.action');
-      attach = callback;
+      if (slot === selectedSlot) attach = callback;
     },
     register(specification, render) {
       definition = specification;
@@ -63,6 +62,22 @@ test('native sidebar action keeps an accessible new-tab link in wide and collaps
   }
   entry.dispose();
   assert.equal(entry.removed(), true, 'native slot cleanup remains with its caller');
+});
+
+test('native work panel renders Core in Studio without creating or selecting worker sessions', () => {
+  const plugin = createClientPlugin(React, url);
+  const panel = register(plugin, 'main');
+  assert.equal(panel.definition.key, 'agentx-coding-work');
+  const frame = panel.component();
+  assert.equal(frame.type, 'iframe');
+  assert.equal(frame.props.src, 'https://agentx.example/pipeline?view=studio');
+  assert.equal(frame.props.title, 'Travail des agents');
+  const sidebar = register(plugin, 'sidebar.panellist');
+  assert.equal(sidebar.definition.id, panel.definition.key);
+  assert.equal(sidebar.definition.label(), 'Travail des agents');
+  assert.equal(sidebar.component({ size: 24 }).props['aria-hidden'], true);
+  panel.dispose(); sidebar.dispose();
+  assert.equal(panel.removed(), true); assert.equal(sidebar.removed(), true);
 });
 
 test('built artifact is a lazy native client factory with an inert host half', async () => {
