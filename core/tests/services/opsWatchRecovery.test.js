@@ -107,3 +107,22 @@ test('the bounded cursor scan includes acknowledged findings beyond the first pa
   await Alert.insertMany(Array.from({ length: 400 }, (_, i) => escalation(String(9400 + i))));
   await expect(listOpenAlerts()).rejects.toThrow('scan is incomplete');
 });
+
+test('reviewed terminal queue receipts stay historical while unresolved findings and uncertainty remain visible', async () => {
+  const notification = (key, state, extra = {}) => ({ ruleId: 'heavy_work_queue', severity: 'info',
+    title: 'Synthetic queue receipt', message: 'Recorded outcome', fingerprint: key, status: 'active',
+    context: { additionalData: { state } }, ...extra });
+  await Alert.insertMany(Array.from({ length: 510 }, (_, n) => notification('completed-' + n, n % 2 ? 'completed' : 'cancelled')));
+  const reviewed = await Alert.create(notification('reviewed-failure', 'failed', { status: 'acknowledged', severity: 'warning',
+    context: { additionalData: { state: 'failed', receipt: { terminal: true, waitingForRelease: false } } } }));
+  await Alert.create(notification('reviewed-operator', 'failed', { status: 'acknowledged', severity: 'warning',
+    context: { additionalData: { state: 'failed', receipt: { confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED' } } } }));
+  await Alert.create(notification('pending-failure', 'failed', { severity: 'warning' }));
+  await Alert.create(notification('uncertain', 'uncertain', { status: 'acknowledged', severity: 'warning' }));
+  await Alert.create(notification('unverified-failure', 'failed', { status: 'acknowledged', severity: 'warning' }));
+  await Alert.create({ ...escalation('9103'), status: 'acknowledged' });
+  const findings = await listOpenAlerts();
+  expect(findings.map(a => a.fingerprint).sort()).toEqual(['pending-failure', 'task-9103', 'uncertain', 'unverified-failure']);
+  expect(await Alert.countDocuments()).toBe(516);
+  expect((await Alert.findById(reviewed._id)).status).toBe('acknowledged');
+});

@@ -117,6 +117,10 @@ and acknowledge reviewed outcomes in Core's alert inbox. Acknowledgment does not
 turn failed work into success or close linked tasks. Keep unresolved incidents
 visible until their owner verifies recovery; never use a bulk age cleanup to
 clear uncertain execution or native release records.
+Operations watch excludes successful/cancelled queue notices and acknowledged
+failures with a native release receipt from its current findings. They remain
+in the inbox/history. Active failures, uncertain outcomes, unverified receipts
+and acknowledged operational incidents still participate in surveillance.
 
 Core generation binds new calls from its resolved `benchmark-service` principal
 to `benchmark-service-v1`. Existing explicit internal consumer contracts are
