@@ -66,6 +66,7 @@ function createBrowserSessionControls({
           status: 'active'
         });
         if (!session) return fail(res, 404, 'Conversation not found in this space', 'VOICE_PERSONA_SESSION_NOT_FOUND');
+        if (session.ephemeral) return fail(res, 404, 'Ephemeral context is not retained history.', 'VOICE_PERSONA_SESSION_NOT_FOUND');
         const pack = packById(packId);
         if (!pack.modes.some((mode) => mode.id === session.modeId)) {
           return fail(res, 409, 'This session uses a retired mode and cannot be resumed.', 'VOICE_PERSONA_SESSION_MODE_UNAVAILABLE');

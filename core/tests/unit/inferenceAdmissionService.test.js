@@ -53,6 +53,18 @@ describe('distributed inference admission lifecycle', () => {
     expect(runtime.releaseInference).not.toHaveBeenCalled();
   });
 
+  test('ephemeral failures retain native quarantine identity without persisting provider error content', async () => {
+    const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a', contentRetention: 'ephemeral' });
+    lifecycle.markDispatched();
+    await lifecycle.abandon(new Error('SYNTHETIC_PRIVATE_PROVIDER_ERROR'));
+    expect(runtime.markInferenceUnknown).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'inference-a', generation: 'generation-a', principal: 'core-service',
+      reason: 'ephemeral inference terminal state unknown'
+    }));
+    expect(JSON.stringify(runtime.markInferenceUnknown.mock.calls)).not.toContain('SYNTHETIC_PRIVATE_PROVIDER_ERROR');
+    expect(runtime.releaseInference).not.toHaveBeenCalled();
+  });
+
   test('a failure that is neither an abort nor a closed connection is quarantined with no origin', async () => {
     const lifecycle = await beginInferenceAdmission({ host: 'http://host:11434', model: 'model-a' });
     lifecycle.markDispatched();

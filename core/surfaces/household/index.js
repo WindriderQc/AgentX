@@ -152,7 +152,8 @@ function register(api) {
   // First: a device pinned to the family profile reaches only family pages and APIs (#826).
   const { ownerUnlock } = require('./family-device').register({ app, mongoose, standardJsonParser, envelope, fail, logger });
   const models = createModels(mongoose);
-  const conversations = require('./turn-attribution').attributedConversations(runtimeServices.conversations.forSurface('household'));
+  const conversations = require('./turn-attribution').attributedConversations(
+    require('../../src/services/conversations/ephemeralSessions').withEphemeralSessions(runtimeServices.conversations.forSurface('household')));
   const memberWork = createMemberWork({ conversations });
   const personalTasks = runtimeServices.tasks.personal;
   const familyTasks = runtimeServices.tasks.family;
@@ -324,6 +325,7 @@ function register(api) {
       const open = backend !== 'hermes' && access === 'private' && (req.body?.inference?.open === true || requestedMode.id === 'open');
       if (backend === 'hermes' && requestedMode.id === 'open') throw Object.assign(new Error('Choose the personal mode for Hermes.'), { statusCode: 400 });
       const mode = requestedMode;
+      const privacy = access === 'private' && !consumer ? require('./ephemeral-policy').privacyForNew(req.body, open) : { ephemeral: false };
       let persona = null;
       if (runtimeServices.personas && (access === 'private' || req.body?.personaId)) {
         await ensureCatalog();
@@ -343,12 +345,14 @@ function register(api) {
         ...(persona ? { persona, inference: { open }, voice: { language, ...(Object.keys(voiceSelections(req.body?.voice?.selections)).length ? { selections: voiceSelections(req.body.voice.selections) } : {}), ...(presentation ? { presentation } : {}) }, visual: normalizeVisual(req.body?.visual) } : {}),
         scopeId: access === 'private' ? 'personal' : cleanScope(req.body?.scopeId, pack.defaultScopeId),
         agentId, backend,
+        ...privacy,
         ...(consumer === 'llmx' ? { llmx: { schemaVersion: 1, humanStarted: false, opening: null } } : {}),
         label: cleanText(req.body?.label, 120)
       });
       return envelope(res, { session: publicSession(session), pack: packSummary(pack), mode: modeSummary(mode) }, 201);
     } catch (error) {
-      logger?.error?.('Household session creation failed', { error: error.message });
+      logger?.error?.('Household session creation failed', req.body?.ephemeral || req.body?.inference?.open || req.body?.modeId === 'open'
+        ? { code: 'EPHEMERAL_SESSION_CREATE_FAILED' } : { error: error.message });
       return fail(res, error.statusCode || 500, error.message || 'Unable to create voice session', error.code || 'VOICE_PERSONA_SESSION_CREATE_FAILED');
     }
   };
@@ -382,6 +386,7 @@ function register(api) {
       error.code || 'NESTOR_CONTINUITY_UNAVAILABLE'); }
   });
   const activePersonaTurns = new Map();
+  require('./ephemeral-policy').registerPrivacyRoutes(personas, { conversations, activePersonaTurns, envelope, fail });
   if (preferenceStore) require('../../src/services/conversationPreferences/routes').registerPreferenceRoutes(personas, {
     base: '/preferences', serviceFor: req => {
       if (req.query.space && !['nestor', 'family'].includes(req.query.space)) throw Object.assign(new Error('Choose Nestor or Family.'), { statusCode: 400 });
@@ -410,7 +415,8 @@ function register(api) {
   });
   registerBrowserSessionControls('/private', 'personal_operator'); visuals.register(personas); brain.register(personas); memberWork.register(personas);
   registerBrowserSessionControls('/family', VOIX_FAMILY_PACK_ID, VOIX_FAMILY_SCOPE_ID, personas, null, VOIX_FAMILY_MODE_ID);
-  const personalAttachments = sessionId => runtimeServices.attachments.forConversation({
+  const personalAttachments = sessionId => require('../../src/services/conversations/ephemeralSessions').ephemeralId(sessionId)
+    ? conversations.ephemeralAttachments(sessionId) : runtimeServices.attachments.forConversation({
     surface: 'household', sessionId, packId: 'personal_operator', scopeId: 'personal'
   });
   const conversationWorks = require('./conversation-work-runtime').registerWorkRuntime({

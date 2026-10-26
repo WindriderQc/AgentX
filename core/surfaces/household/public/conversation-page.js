@@ -49,8 +49,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
           <label class="ss-switch ss-two"><span>Open mic</span><input id="conversationWake" type="checkbox" role="switch" aria-label="Wait for Hey Nestor"><i aria-hidden="true"></i><span>“Hey Nestor”</span></label></div>
         <div class="ss-row"><div class="ss-text"><span class="ss-label">Interrupt by speaking</span><span class="ss-hint">Talking over Nestor stops its answer.</span></div>
           <label class="ss-switch"><input id="conversationInterrupt" type="checkbox" role="switch" aria-label="Interrupt by speaking"><i aria-hidden="true"></i></label></div>
-        ${family ? '' : `<div class="ss-row ss-soon"><div class="ss-text"><span class="ss-label">Ephemeral <em>soon</em></span><span class="ss-hint">Tools on, nothing kept in memory or RAG.</span></div>
-          <label class="ss-switch"><input type="checkbox" role="switch" disabled aria-label="Ephemeral mode (coming soon)"><i aria-hidden="true"></i></label></div>`}
+        ${family ? '' : `<div class="ss-row"><div class="ss-text"><label class="ss-label" for="conversationEphemeral">Conversation éphémère</label><span class="ss-hint">Pour les prochains échanges.</span></div>
+          <label class="ss-switch"><input id="conversationEphemeral" type="checkbox" role="switch" aria-describedby="conversationPrivacyNotice"><i aria-hidden="true"></i></label></div>
+          <p id="conversationPrivacyNotice" class="ss-hint" role="status"></p><button id="conversationPrivacyDirect" type="button" class="button" hidden>Utiliser Ollama direct pour l’éphémère</button>`}
         </div>
       </div>
       <div class="ss-group" id="conversationWho" aria-labelledby="ssWho"${family ? ' hidden' : ''}><h2 id="ssWho" class="ss-title">Who answers <small>set when a conversation starts</small></h2>
@@ -123,6 +124,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const selectedAgent = () => agents.find(agent => agent.id === agentPicker.value) || agents[0];
   const team = family ? [] : ConversationTeam.members(personas, agents);
   const picker = el('conversationPersona'), open = el('conversationOpen');
+  const privacyChoice = window.ConversationPrivacy.create();
+  let privacyBackend = null;
   // Language is a two-button choice; the rest of the page reads it like a field.
   const languageField = el('conversationLanguage');
   const language = {
@@ -201,7 +204,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         method: 'POST', signal, body: JSON.stringify({ name: file.name, dataUrl }) });
       refs.push(data.attachment);
       // The archive keeps the photo as taken; a missing archive never blocks the turn.
-      if (image) await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/attachments/${encodeURIComponent(data.attachment.id)}/original`, {
+      if (image && !session.ephemeral) await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/attachments/${encodeURIComponent(data.attachment.id)}/original`, {
         method: 'POST', signal, body: original,
         headers: { 'Content-Type': original.type || 'application/octet-stream', 'X-Original-Name': encodeURIComponent(original.name) } })
         .catch(error => { if (signal?.aborted) throw error; console.warn('Original photo not archived', error.message); });
@@ -236,6 +239,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   function summarize() {
     const parts = family || backendPicker.value === 'hermes' ? [] : [open.checked ? 'Abliterated' : 'Standard'];
     parts.push(wake.checked ? 'Hey Nestor' : 'Open mic', language.value.toUpperCase());
+    if (!family && privacyChoice.snapshot().ephemeral) parts.push('Éphémère');
     el('conversationSettingsSummary').textContent = parts.join(' · ');
     el('conversationSettingsToggle').dataset.abliterated = String(!family && open.checked && backendPicker.value !== 'hermes');
   }
@@ -265,7 +269,34 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   const selection = () => ({ wakeWord: wake.checked, backend: backendPicker.value, agentId: family ? 'family' : backendPicker.value === 'hermes' ? 'main' : selectedAgent().id, personaId: selected().id, personaVersion: selected().version,
     inference: { open: !family && backendPicker.value !== 'hermes' && open.checked }, voice: { presentation: chosenVoice(), selections: preferences.profiles[picker.value]?.selections || {} }, language: language.value,
-    visual: null, interruption: interruption.checked });
+    visual: null, interruption: interruption.checked, ...(!family && privacyChoice.snapshot()) });
+  function renderPrivacy() {
+    if (family) return;
+    const choice = privacyChoice.snapshot(), backend = privacyBackend || conversation.session?.backend || backendPicker.value;
+    el('conversationEphemeral').checked = choice.ephemeral;
+    el('conversationPrivacyDirect').hidden = !choice.ephemeral || backend === 'agentx';
+    el('conversationPrivacyNotice').textContent = (choice.ephemeral ? window.ConversationPrivacy.notice + ' ' : '')
+      + (conversation.session?.ephemeral && !choice.ephemeral ? window.ConversationPrivacy.boundary : window.ConversationPrivacy.prior)
+      + (choice.ephemeral && backend === 'agentx' ? ' Ollama direct utilise le contexte fourni et les actions d’affichage ; les outils natifs Hermes/OpenClaw ne sont pas exécutés.' : '')
+      + (choice.ephemeral && backend !== 'agentx' ? ' Ce moteur conserve ses sessions natives. Choisis Ollama direct pour continuer en éphémère. Ollama direct utilise le routage AgentX et n’exécute pas les outils natifs Hermes/OpenClaw.' : '');
+    summarize();
+  }
+  async function preparePrivacy(session, choice, signal) {
+    if (family) return session;
+    const target = choice.ephemeral ? choice.backend || session.backend : session.backend;
+    if (Boolean(session.ephemeral) === choice.ephemeral && session.ephemeralExplicit === choice.ephemeralExplicit && target === session.backend) return session;
+    const { backend: _backend, ...policy } = choice;
+    const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/privacy`, {
+      method: 'POST', signal, body: JSON.stringify({ ...policy, ...(target !== session.backend ? { backend: target } : {}) }) });
+    signal.throwIfAborted(); backendPicker.value = data.session.backend;
+    if (data.session.ephemeral) recap?.clear();
+    if (data.contextReset) {
+      clearBoard(); brain.reset(); work?.reset(); workflow?.reset(); recap?.clear(); personalNotes.show(null);
+      const row = document.createElement('p'); row.className = 'muted'; row.textContent = window.ConversationPrivacy.boundary; transcript.append(row);
+    }
+    return data.session;
+  }
+  const requestPrivacy = () => { const choice = privacyChoice.snapshot(); return Object.freeze({ ...choice, ...(choice.ephemeral && privacyBackend ? { backend: privacyBackend } : {}) }); };
   // The team member answering this turn when it addressed one directly (#41); null for the conversation's agent.
   let turnSpeaker = null;
   const message = (role, text, interrupted = false, sound = null, attachments = [], speakerName = role === 'assistant' ? turnSpeaker?.name : '') => {
@@ -310,10 +341,12 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       await openHold.start();
       if (signal.aborted) await releaseOpen();
     }
-    workflow?.follow(data.session.sessionId); work?.follow(data.session.sessionId);
+    if (!data.session.ephemeral) { workflow?.follow(data.session.sessionId); work?.follow(data.session.sessionId); }
     return data.session;
   }
-  async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice, onSayEnd } = {}) {
+  async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice, onSayEnd, requestPolicy = requestPrivacy() } = {}) {
+    session = await preparePrivacy(session, requestPolicy, signal);
+    signal.throwIfAborted(); conversation.session = session; describe();
     const turnLanguage = language.value === 'en' ? 'en' : 'fr';
     turnId ||= crypto.randomUUID();
     personalNotes.show(null);
@@ -322,10 +355,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     let response;
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
-        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, ...(!family && { screen: board.context() }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, ...(!family && { ephemeral: session.ephemeral, screen: board.context() }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
-    work?.follow(session.sessionId);
+    if (!session.ephemeral) work?.follow(session.sessionId);
     if (response.status === 202) {
       workflow?.stream(turnId, { type: 'deferred' });
       const body = await response.json();
@@ -380,7 +413,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
       // Core has sent every spoken word; pictures, tools and the record follow before `done`.
       if (event.type === 'say_end' && !interruptedTurns.has(turnId)) onSayEnd?.();
-      if (event.type === 'done') { result = event.data; activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); if (!workAccepted) void brain.follow(session.sessionId, event.data?.traceId).then(review => workflow?.review(turnId, review, session.sessionId)); void work?.poll(); }
+      if (event.type === 'done') { result = event.data; activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); if (!workAccepted && !session.ephemeral) void brain.follow(session.sessionId, event.data?.traceId).then(review => workflow?.review(turnId, review, session.sessionId)); if (!session.ephemeral) void work?.poll(); }
     };
     try {
       while (true) {
@@ -392,7 +425,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
       if (pending.trim()) consume(pending);
       if (!result?.reply) throw new Error('The reply was interrupted. Start again when ready.');
-      void recap?.refresh(session.sessionId);
+      if (!session.ephemeral) void recap?.refresh(session.sessionId);
       personalNotes.show(result.continuity?.personal); degradedReply = result.routing?.fallbackUsed === true;
       showTools(result.tools);
       showExecution(result);
@@ -505,6 +538,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     }
   }
   const conversation = new NestorConversation.Conversation({
+    requestPolicy: requestPrivacy, prepareTurnSession: preparePrivacy,
     readyToSpeak: () => avatar?.ready,
     openAudio: (signal, onError, options) => NestorConversation.openAudio(signal, onError, { ...options, captureScope: family ? 'family' : 'personal', observeSpeech: true,
       onPlaybackMetrics: metrics => { lastPlaybackMetrics = metrics; voiceHealth.segment(metrics); renderVoiceNotice(); } }).then(audio => speechFallback.wrapAudio(audio)), createSession, message, turn: streamedTurn,
@@ -565,7 +599,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       return { text: lastWakeReply = NestorGreetings.wakeReply({ language: lang, previous: lastWakeReply }), language: lang };
     }
   }, (state, detail) => {
-    if (conversation.session?.sessionId) { workflow?.follow(conversation.session.sessionId); work?.follow(conversation.session.sessionId); }
+    if (conversation.session?.sessionId && !conversation.session.ephemeral) { workflow?.follow(conversation.session.sessionId); work?.follow(conversation.session.sessionId); }
     if (state === 'listening') void work?.naturalPause();
     if (state === 'idle' && !open.checked) void releaseOpen();
     if (state === 'starting') void speechFallback.probe(() => api('/api/voix/health'));
@@ -592,6 +626,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       node.title = node.disabled && lockReason ? lockReason : '';
     });
     renderModel();
+    renderPrivacy();
     wake.disabled = textBusy || !['idle', 'paused', 'error', 'listening'].includes(state);
     // Waiting voice (open listening or wake standby) accepts a typed message as its next turn.
     const typing = active && !conversation.canType();
@@ -720,6 +755,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     language.value = profile.language;
   };
   backendPicker.onchange = () => {
+    privacyBackend = null;
     if (!engines.available(runtime, family).includes(backendPicker.value)) backendPicker.value = engines.choose(runtime, family);
     if (!family) { try { storage?.setItem(backendKey, backendPicker.value); } catch {} }
     if (backendPicker.value === 'hermes') { open.checked = false; if (personas.some(p => p.id === 'nestor')) picker.value = 'nestor'; void releaseOpen(); }
@@ -731,7 +767,15 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   language.addEventListener('change', () => { conversation.setLanguage(language.value); summarize(); });
   interruption.onchange = () => { savePreferences(); conversation.setInterruption(interruption.checked); };
   restoreProfile(); describe();
-  open.onchange = () => { if (open.checked) void openHold.start(); else void releaseOpen(); renderModel(); };
+  open.onchange = () => { privacyChoice.select(open.checked); if (open.checked) void openHold.start(); else void releaseOpen(); renderModel(); renderPrivacy(); };
+  if (!family) {
+    el('conversationEphemeral').onchange = event => { privacyChoice.choose(event.target.checked); renderPrivacy(); };
+    el('conversationPrivacyDirect').onclick = () => {
+      privacyBackend = 'agentx';
+      if (!conversation.session) { backendPicker.value = 'agentx'; describe(); }
+      renderPrivacy();
+    };
+  }
   // What a press on Activer Nestor or Reprendre starts; opening a saved conversation starts it too.
   const startVoice = options => {
     preferences.lastVoice = chosenVoice(); savePreferences();
@@ -743,11 +787,12 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     return startVoice();
   };
   el('conversationNew').onclick = () => {
+    privacyChoice.reset(open.checked); privacyBackend = null;
     recap?.clear();
     el('conversationResume').hidden = true; setHistoryOpen(false); conversation.stop(); work?.reset(); workflow?.reset(); void releaseOpen(); partial = null;
     transcript.innerHTML = '<p class="empty">Our conversation will appear here.</p>'; clearBoard(); brain.reset(); showExecution(null);
     personalNotes.show(null);
-    showTools(null); void recap?.refresh();
+    showTools(null); if (!privacyChoice.snapshot().ephemeral) void recap?.refresh();
     el('conversationMessage').value = ''; composer.sync(); draftFiles = []; renderDraftFiles(); restoreProfile(); describe(); el('conversationMessage').focus();
   };
   // Enter sends, Shift+Enter adds a line; an IME composition keeps its Enter.
@@ -761,13 +806,15 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (!textBusy && conversation.canType()) return typedDuringVoice();
     if (textBusy || !['idle', 'paused', 'error'].includes(conversation.state)) return;
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
+    const submittedPrivacy = requestPrivacy();
     let shown = false;
     textBusy = true; conversation.abort = new AbortController(); const epoch = ++conversation.epoch;
     conversation.show('thinking');
     try {
       if (open.checked) await openHold.start();
       if (!conversation.current(epoch)) return;
-      const session = conversation.session || await createSession(selection(), conversation.abort.signal);
+      let session = conversation.session || await createSession({ ...selection(), ...submittedPrivacy }, conversation.abort.signal);
+      session = await preparePrivacy(session, submittedPrivacy, conversation.abort.signal);
       if (!conversation.current(epoch)) return;
       conversation.session = session;
       const attachments = await uploadDraftFiles(session, conversation.abort.signal);
@@ -777,7 +824,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       // unless the person already started typing the next one.
       shown = true; if (input.value.trim() === text) input.value = '';
       draftFiles = []; renderDraftFiles();
-      const reply = await streamedTurn(conversation.session, text, conversation.abort.signal, undefined, { attachmentIds: attachments.map(item => item.id) });
+      const reply = await streamedTurn(conversation.session, text, conversation.abort.signal, undefined, { attachmentIds: attachments.map(item => item.id), requestPolicy: submittedPrivacy });
       if (conversation.current(epoch)) { message('assistant', reply.text, false, reply.sound); conversation.show('paused'); }
     } catch (error) {
       // A failed send gives the text back so it can be sent again.
@@ -792,14 +839,15 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   async function typedDuringVoice() {
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
     textBusy = true; conversation.show(conversation.state);
+    const submittedPrivacy = requestPrivacy();
     let attachments = null, failure = '';
-    try { attachments = await uploadDraftFiles(conversation.session, conversation.abort.signal); }
+    try { conversation.session = await preparePrivacy(conversation.session, submittedPrivacy, conversation.abort.signal); attachments = await uploadDraftFiles(conversation.session, conversation.abort.signal); }
     catch (error) { failure = error.message; }
     textBusy = false;
     if (!attachments) { conversation.show(conversation.state, failure); return; }
     if (input.value.trim() === text) input.value = '';
     draftFiles = []; renderDraftFiles();
-    if (!await conversation.typed(text, { attachments }) && !input.value.trim()) input.value = text;
+    if (!await conversation.typed(text, { attachments, requestPolicy: submittedPrivacy }) && !input.value.trim()) input.value = text;
     composer.sync();
   }
   // A hidden page stops listening; a typed turn already sent is left to finish.
@@ -820,7 +868,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     prepare: async () => { if (textBusy || conversation.state === 'thinking') return false; conversation.stop(true); await releaseOpen(); },
     onResume: async id => { const data = await api(`${sessionBase}/${encodeURIComponent(id)}/history`); return resumeSession(data.session, el('conversationHistoryToggle')); }
   });
-  void recap?.refresh();
+  if (!privacyChoice.snapshot().ephemeral) void recap?.refresh();
   let historyRequest = 0;
   function setHistoryOpen(visible, restoreFocus = false) {
     el('conversationHistory').hidden = !visible;
@@ -845,7 +893,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     try {
       const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/history`);
       if (epoch !== conversation.epoch) return;
-      conversation.session = data.session; workflow?.follow(data.session.sessionId); work?.follow(data.session.sessionId);
+      conversation.session = data.session; privacyChoice.restore(data.session); privacyBackend = null; renderPrivacy(); workflow?.follow(data.session.sessionId); work?.follow(data.session.sessionId);
       draftFiles = []; renderDraftFiles();
       const saved = data.session;
       if (saved.persona && !personas.some(p => p.id === saved.persona.id)) { personas.push(saved.persona); picker.add(new Option(saved.persona.name, saved.persona.id)); }

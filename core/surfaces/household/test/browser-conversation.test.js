@@ -62,6 +62,30 @@ test('live STT callbacks precede the model request and settle after recognition'
   h.conversation.stop();
 });
 
+test('voice preparation freezes the submitted privacy choice and keeps earlier timing callbacks on their original context', async () => {
+  let choice = true;
+  const gate = deferred(), prepared = deferred(), sent = [], timingSessions = [];
+  const h = harness({
+    requestPolicy: () => Object.freeze({ ephemeral: choice }),
+    prepareTurnSession: async (session, policy) => {
+      prepared.resolve(); await gate.promise;
+      return { ...session, sessionId: policy.ephemeral ? 'transient-context' : 'new-retained-context', ephemeral: policy.ephemeral };
+    },
+    turn: async (session, _text, _signal, _delta, metadata) => { sent.push({ session, policy: metadata.requestPolicy }); return { text: 'Salut' }; },
+    timings: async session => { timingSessions.push(session.sessionId); return {}; }
+  });
+  try {
+    await h.conversation.start({ language: 'fr' });
+    const first = h.say(); await prepared.promise; choice = false; gate.resolve(); await first;
+    assert.equal(sent[0].policy.ephemeral, true);
+    assert.equal(sent[0].session.sessionId, 'transient-context');
+    await h.say();
+    assert.equal(sent[1].session.sessionId, 'new-retained-context');
+    assert.equal(sent[0].session.sessionId, 'transient-context', 'context objects are never mutated into successors');
+    assert.equal(timingSessions.includes('transient-context'), true);
+  } finally { h.conversation.stop(); }
+});
+
 for (const early of [false, true]) test(`the ${early ? 'early' : 'complete'} recognition receipt belongs to the submitted turn, without rewriting its words`, async () => {
   const snapshots = [], texts = [], seen = [];
   const recognitionId = '19b98eab-7a12-4a31-8d40-8802ec82da11';

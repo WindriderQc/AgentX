@@ -46,6 +46,20 @@ test('family drawing selects bounded quick parameters once and stores a durable 
   assert.doesNotMatch(historyText('', stored), /source="draw"/);
   assert.match(images.contract(family, 'openclaw'), /not a native tool/);
 });
+
+test('ephemeral Ollama keeps bounded image actions and their refusal rules without native-tool permissions', async () => {
+  const session = { ...privateSession, sessionId: 'ephemeral-synthetic', ephemeral: true };
+  const f = fixture(), display = [draw('Two robots in a cardboard car')];
+  await f.complete(display, { session, backend: 'agentx', pack: packs.packById(session.packId) });
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(f.calls[0].options.conversation, scopeFor(session));
+  assert.equal(display[0].operation.id, id);
+  assert.match(f.images.contract(session, 'agentx'), /bounded application request/);
+  const refused = fixture(); refused.service.status = () => ({ configured: false });
+  await refused.complete([draw('A lake')], { session, backend: 'agentx', pack: packs.packById(session.packId) });
+  assert.equal(refused.calls.length, 0);
+  assert.equal(refused.events[0].status, 'failed');
+});
 test('unavailable service, unsuitable drawing, team member and interrupted turns never generate', async () => {
   for (const body of ['A nude person', 'An email with my password', 'Graphic gore and dismemberment']) {
     const f = fixture(); await f.complete([draw(body)]); assert.equal(f.calls.length, 0); assert.equal(f.events[0].status, 'failed');

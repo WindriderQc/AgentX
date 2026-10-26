@@ -73,6 +73,11 @@ Hermes retains its own native execution history on the operator's host. Core's
 conversation erasure does not automatically erase that external native store.
 The operator manages that store through Hermes' own lifecycle controls.
 
+The personal [ephemeral conversation switch](EPHEMERAL_CONVERSATIONS.md) refuses
+Hermes dispatch because this native contract requires a durable journal. The
+interface offers an explicit AgentX / Ollama choice for ephemeral exchanges;
+ordinary Hermes sessions keep their existing tools, routing and history.
+
 ## Acceptance
 
 CPU fixtures cover session persistence, family exclusion, private credentials,

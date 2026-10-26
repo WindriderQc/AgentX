@@ -15,6 +15,10 @@ module.exports = new Schema({
     visual: { type: Object, default: null },
     agentId: { type: String, default: 'main' },
     backend: { type: String, enum: ['openclaw', 'agentx', 'hermes'], default: null },
+    // Retained contexts store the explicit OFF choice. Ephemeral contexts live
+    // only in the volatile service and never reach this schema.
+    ephemeral: { type: Boolean, default: false },
+    ephemeralExplicit: { type: Boolean, default: false },
     // Native Hermes dispatch identity and terminal receipt; unresolved work fences new turns.
     hermesRuntime: { type: Object, default: undefined },
     // Core-owned asynchronous collaborator request, dispatch fence and native identity.
