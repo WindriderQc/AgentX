@@ -13,3 +13,11 @@ export function matchesIntent(event,filter='all'){
  if(filter==='reported')return !intention&&['reported','occurred','confirmed'].includes(event.occurrenceStatus);
  return true;
 }
+export function matchesReview(event,filter='active'){
+ const state=event.reviewState||'unreviewed';
+ if(filter==='all')return true;
+ if(filter==='active')return state!=='dismissed';
+ if(filter==='pending')return ['unreviewed','hypothesis'].includes(state);
+ if(filter==='documented')return !['hypothesis','dismissed'].includes(state);
+ return state===filter;
+}

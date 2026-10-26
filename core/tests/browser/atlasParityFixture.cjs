@@ -17,7 +17,7 @@ function fixtureEntries() {
       reviewState: 'candidate', assertionState: 'unknown', confirmationCurrent: false, sourceDate: '2025-01-02T12:00:00Z', eventDate: '', eventDatePrecision: 'unknown',
       source: { system: 'document', id: `source-${i}`, sourceSha256: digest(body), findingId: digest(String(i)) },
       timeline: { legacyId: `moment-${i + 1}`, legacyIds: [`old-${i + 1}`], title: `Synthetic ${categories[i % 6]} moment ${i + 1}`, description: body,
-        category: categories[i % 6], date: i === 36 ? null : String(year), precision: i === 36 ? 'unknown' : 'year',
+        category: categories[i % 6], date: i === 36 ? null : i === 37 ? '2012-07-13' : String(year), precision: i === 36 ? 'unknown' : i === 37 ? 'day' : 'year',
         ...(i % 3 === 0 ? { endDate: String(year + 3), endPrecision: 'year' } : {}),
         ...(i === 1 ? { confirmationBasis: 'owner-tentative', reviewState: 'hypothesis', ageStartWindow: { start: `${year - 1}-09-03`, end: `${year}-09-03` } } : {}),
         ...(i === 37 ? { occurrenceStatus: 'planned' } : { occurrenceStatus: 'reported' }),
@@ -30,13 +30,13 @@ function fixtureEntries() {
   });
 }
 
-function createFixture() {
+function createFixture({ truncated = false } = {}) {
   const entries = fixtureEntries(), writes = [];
   const send = (res, data, code = 200, photos = false) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });res.end(JSON.stringify(photos ? { ok: code === 200, data } : { status: code === 200 ? 'success' : 'error', data, message: code === 409 ? 'Context changed' : undefined })); };
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://fixture');
     try {
-      if (req.method === 'GET' && url.pathname === '/api/secretary/history/timeline') return send(res, { entries, total: entries.length, readAt: '2026-01-01T12:00:00Z',
+      if (req.method === 'GET' && url.pathname === '/api/secretary/history/timeline') return send(res, { entries, total: entries.length, truncated, readAt: '2026-01-01T12:00:00Z',
         displayPreferences: { storyThreads: Array.from({ length: 6 }, (_, i) => ({ id: `subject-${i}`, label: `Chosen subject ${i + 1}`, eventIds: [`moment-${i + 1}`], queries: [] })) } });
       if (url.pathname === '/api/secretary/desk') return send(res, { mail: { catchup: { objectiveReviews: [
         { objectiveId: 'life-timeline', version: 'v1', phase: 'done', counts: { sourcesTextReviewed: 999 } },
