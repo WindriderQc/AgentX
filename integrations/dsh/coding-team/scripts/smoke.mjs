@@ -123,7 +123,6 @@ try {
       models: [{ id: 'fixture-model', contextWindow: 8192, maxTokens: 256 }],
     } } } },
     { id: 'agent-default-model', config: { provider: 'fixture', model: 'fixture-model' } },
-    { id: 'session-title-llm', disabled: true },
     { id: 'host-product-telemetry-otel', disabled: true },
   ];
   const patchFile = join(profile, 'cordis.patch.yml');
@@ -194,12 +193,32 @@ try {
   assert.equal(replay.status(), 409);
   const rows = await page.request.get(new URL('api/agentx-coding', page.url()).href).then(response => response.json());
   const recovered = await page.request.post(new URL('api/agentx-coding', page.url()).href, {
-    data: { sessionId: rows.sessions[0].sessionId, requestId: receipt.requestId },
+    data: { sessionId: rows.sessions.find(item => item.sourceId === receipt.sourceId).sessionId, requestId: receipt.requestId },
   });
   assert.equal(recovered.status(), 200);
   assert.equal((await recovered.json()).sessionId, receipt.sessionId);
   assert.equal((await readdir(state)).length, 1);
   assert.equal(providerCalls, 0, 'Observation and handoff must make no model requests');
+  // Native title generation is enabled. A newly discovered worker has not
+  // entered its first prompt yet; replay must not launch an auxiliary model.
+  const aux = Session.create('session-worker-aux-fixture', undefined, {
+    version: 4, id: 'session-worker-aux-fixture', cwd: '/workspace', isSeeded: false, createdAt: Date.now(),
+  });
+  const auxContext = new Context();
+  const auxWriter = await new Jsonl(auxContext, { root: sourceLogs, compression: 'none' }).create(aux.header);
+  try {
+    await auxWriter.append([aux.append('permission/preset', { preset: 'workspace-write' })]);
+    await auxWriter.flush();
+    await delay(3000);
+    const auxEvents = [aux.append('turn/start', { turn: 1 }), aux.append('step/start', { turn: 1, step: 1 }),
+      aux.append('user/message', { id: 'aux-first-prompt', role: 'user', source: { kind: 'user' },
+        content: [{ type: 'text', text: 'This worker first prompt must not generate a Studio title.' }] }, { surfaceOp: 'append' }),
+      aux.append('request/header', { reason: 'initial', header: { config: { provider: 'fixture', model: 'fixture-model' } } })];
+    await auxWriter.append(auxEvents);
+    await auxWriter.flush();
+    await delay(3000);
+    assert.equal(providerCalls, 0, 'Native auxiliary title calls are fenced for observations');
+  } finally { await auxWriter.close(); await auxContext.fiber.dispose(); }
   allowContinuation = true;
   const input = page.getByRole('textbox').first();
   await input.fill('Create human-result.txt in this continuation workspace.');

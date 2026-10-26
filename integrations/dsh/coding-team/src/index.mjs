@@ -26,6 +26,14 @@ export async function apply(ctx) {
       throw new Error('Worker observation is read-only. Use Reprendre dans une copie.');
     }
   }, { global: true });
+  // Native auxiliary providers can react to replayed user/header events too.
+  // Fence every observation call, including title generation, before routing.
+  ctx.on('llm/stream', (options, next) => {
+    if (options.sessionId?.startsWith('session-agentx-worker-')) {
+      throw new Error('Worker observation cannot request inference');
+    }
+    return next();
+  }, { global: true, prepend: true });
   ctx.effect(() => ctx.connection.fetch.register({
     path: '/api/agentx-coding', methods: ['GET', 'POST'], requestBody: 'buffered',
     async fetch(request) {
