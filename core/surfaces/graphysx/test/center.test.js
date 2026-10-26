@@ -395,3 +395,44 @@ test('the page and its routes are full-profile only and refused on a family-pinn
     assert.equal(allowedForFamilyDevice({ path, method: 'POST', query: {} }), false, path);
   }
 });
+
+
+function responseRecorder() {
+  return { writableEnded: false, destroyed: false, messages: [], write(chunk) { this.messages.push(JSON.parse(chunk.split('data: ')[1].trim())); } };
+}
+
+test('an explicit page target never drifts to a more recently active page', async () => {
+  let now = 1;
+  const registry = center.createCenterRegistry({ now: () => now });
+  const first = registry.open(responseRecorder()), second = registry.open(responseRecorder());
+  registry.setState(first.id, { revision: 7, scene: SCENE }); now = 2;
+  registry.setState(second.id, { revision: 20, scene: { ...SCENE, id: 'other' } });
+  const result = await center.callCenterTool({ request: 'add a lake', pageId: first.id }, { registry, compose: async () => COMPOSED, receiptWaitMs: 0 });
+  assert.equal(result.isError, false); assert.equal(result.structuredContent.pageId, first.id);
+  assert.equal(first.res.messages.length, 1); assert.equal(second.res.messages.length, 0);
+  assert.equal(first.res.messages[0].expectedRevision, 7);
+  assert.equal(center.readWorldProposalStatus({ id: result.structuredContent.id }, { registry }).pageId, first.id);
+});
+
+test('a model reply retains the observed revision when the page changes during composition', async () => {
+  const registry = center.createCenterRegistry(), page = registry.open(responseRecorder());
+  registry.setState(page.id, { revision: 7, scene: SCENE });
+  const result = await center.pushWorldProposal({ request: 'add a lake' }, { registry, receiptWaitMs: 0, compose: async observed => {
+    assert.equal(observed.revision, 7); assert.deepEqual(observed.scene, SCENE);
+    registry.setState(page.id, { revision: 8, scene: { ...SCENE, label: 'Changed while composing' } });
+    return COMPOSED;
+  } });
+  assert.equal(page.revision, 8); assert.equal(page.res.messages[0].expectedRevision, 7); assert.equal(result.expectedRevision, 7);
+});
+
+test('missing, unready or malformed explicit page targets never fall back or start inference', async () => {
+  const registry = center.createCenterRegistry(), ready = registry.open(responseRecorder()), unready = registry.open(responseRecorder());
+  registry.setState(ready.id, { revision: 7, scene: SCENE }); let calls = 0;
+  const deps = { registry, compose: async () => { calls++; return COMPOSED; }, receiptWaitMs: 0 };
+  for (const pageId of ['missing-page', unready.id]) {
+    const result = await center.callCenterTool({ request: 'add a lake', pageId }, deps);
+    assert.equal(result.structuredContent.status, 'no-page');
+  }
+  for (const pageId of [null, '', 2, 'a'.repeat(65)]) assert.equal((await center.callCenterTool({ request: 'add a lake', pageId }, deps)).isError, true);
+  assert.equal(calls, 0); assert.equal(ready.res.messages.length, 0);
+});

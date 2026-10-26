@@ -258,24 +258,29 @@ function checkReceipt(body) {
 }
 
 /**
- * Nestor's push. Composes for the most recent page through `compose` (the same prompt, inference
+ * Nestor's push. Composes for an explicit page, or the most recent page when omitted, through `compose` (the same prompt, inference
  * and validation as a typed request), sends the proposal on the page's stream and waits briefly
  * for the Center's receipt. Returns what Nestor may say — and no more.
  */
-async function pushWorldProposal({ request }, { registry, compose, receiptWaitMs = RECEIPT_WAIT_MS }) {
+async function pushWorldProposal({ request, pageId }, { registry, compose, receiptWaitMs = RECEIPT_WAIT_MS }) {
   if (!text(request, REQUEST_CHARS) || !request.trim()) {
     throw Object.assign(new Error(`request must be a sentence of at most ${REQUEST_CHARS} characters`), { code: 'INVALID_ARGUMENTS' });
   }
-  const page = registry.mostRecent();
-  if (!page) {
-    return { status: 'no-page', page: PAGE, message: `No GraphysX Center page is open on Core (${PAGE}). Nothing was proposed; ask the person to open it.` };
+  if (pageId !== undefined && (!text(pageId, 64) || !pageId)) {
+    throw Object.assign(new Error('pageId must identify the observed Center page'), { code: 'INVALID_ARGUMENTS' });
   }
-  const composed = await compose({ request: request.trim(), revision: page.revision, scene: page.scene });
+  const page = pageId === undefined ? registry.mostRecent() : registry.get(pageId);
+  if (!page || !page.scene || page.res.writableEnded || page.res.destroyed) {
+    return { status: 'no-page', page: PAGE, message: pageId === undefined ? `No GraphysX Center page is open on Core (${PAGE}). Nothing was proposed; ask the person to open it.` : 'The requested Center page is not open and ready. Nothing was proposed; no other page was used.' };
+  }
+  // Bind the model input, card and receipt to one observation before the asynchronous work.
+  const revision = page.revision, scene = structuredClone(page.scene);
+  const composed = await compose({ request: request.trim(), revision, scene });
   if (!composed || !composed.ok) {
     return { status: 'declined', page: PAGE, reason: (composed && composed.reason) || 'The proposal could not be composed.', model: (composed && composed.model) || null };
   }
   const id = `push-${crypto.randomBytes(6).toString('hex')}`;
-  const proposal = { id, actor: NESTOR_ACTOR, intent: composed.intent, commands: composed.commands, expectedRevision: page.revision, model: composed.model || null };
+  const proposal = { id, actor: NESTOR_ACTOR, intent: composed.intent, commands: composed.commands, expectedRevision: revision, model: composed.model || null };
   const pending = registry.awaitReceipt(page, id, receiptWaitMs);
   if (!registry.send(page, 'proposal', proposal)) {
     registry.close(page.id);
@@ -290,8 +295,8 @@ async function pushWorldProposal({ request }, { registry, compose, receiptWaitMs
     // `refused` at the top too: Nestor reads one word first, and a card the page did not show
     // was not proposed to anyone.
     status: delivery.status === 'refused' ? 'refused' : 'proposed',
-    id, page: PAGE, intent: composed.intent, commandCount: composed.commands.length,
-    expectedRevision: page.revision, model: composed.model || null, delivery,
+    id, page: PAGE, pageId: page.id, intent: composed.intent, commandCount: composed.commands.length,
+    expectedRevision: revision, model: composed.model || null, delivery,
     note: 'A proposal card in the Center, inert until a person presses Apply there; Core applied nothing.',
     followUp: `Call ${STATUS_TOOL_NAME} with this id to learn what the person decided.`
   };
@@ -326,7 +331,7 @@ function pushStatusSentence(record) {
 
 function describePush(record) {
   return {
-    status: pushStatusWord(record), id: record.id, page: PAGE, intent: record.intent, commandCount: record.commandCount,
+    status: pushStatusWord(record), id: record.id, page: PAGE, pageId: record.pageId, intent: record.intent, commandCount: record.commandCount,
     expectedRevision: record.expectedRevision, pushedAt: record.pushedAt, delivery: record.delivery, decision: record.decision,
     message: pushStatusSentence(record)
   };
@@ -371,7 +376,7 @@ const TOOL = Object.freeze({
   description: 'Propose one change to the 3D world shown in the GraphysX Center page open on Core (/graphysx), as one request in plain words (for example "add a lake with a flock of birds at sunset"). Core composes world commands from GraphysX\'s own vocabulary and shows them in the page as a proposal card from Nestor; nothing is applied until the person presses Apply there, and the reply says whether the card was shown (delivery.status: shown, refused with a reason, or unconfirmed). Use it when the person asks to add, change or remove something in the 3D scene, or when you announce such an intention. Never say the change happened: say it is proposed. With no page open the reply says so; ask the person to open /graphysx.',
   inputSchema: {
     type: 'object',
-    properties: { request: { type: 'string', minLength: 1, maxLength: REQUEST_CHARS, description: 'What should change in the world, as one request in the person\'s words or your own.' } },
+    properties: { request: { type: 'string', minLength: 1, maxLength: REQUEST_CHARS, description: 'What should change in the world, as one request in the person\'s words or your own.' }, pageId: { type: 'string', minLength: 1, maxLength: 64, description: 'Optional exact Center page id from its host state. Omit to use the most recently active page. A missing or closed explicit target never falls back to another page.' } },
     required: ['request'],
     additionalProperties: false
   },
@@ -386,8 +391,10 @@ function toolResult(structuredContent, isError = false) {
 async function callCenterTool(args, deps, name = TOOL_NAME) {
   try {
     if (!isRecord(args)) throw Object.assign(new Error('arguments must be an object'), { code: 'INVALID_ARGUMENTS' });
+    const keys = name === STATUS_TOOL_NAME ? ['id'] : ['request', 'pageId'];
+    if (Object.keys(args).some(key => !keys.includes(key))) throw Object.assign(new Error('Unknown tool argument'), { code: 'INVALID_ARGUMENTS' });
     if (name === STATUS_TOOL_NAME) return toolResult(readWorldProposalStatus({ id: args.id }, deps));
-    return toolResult(await pushWorldProposal({ request: args.request }, deps));
+    return toolResult(await pushWorldProposal({ request: args.request, pageId: args.pageId }, deps));
   } catch (error) {
     return toolResult({ error: error.code || 'GRAPHYSX_CENTER_TOOL_ERROR', message: error.message }, true);
   }
