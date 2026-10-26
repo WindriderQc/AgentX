@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { checkPinDrift, createPinDriftWatch, intervalMs, projectOpenClawConfig, readInstalledOpenClawConfig } = require('../pin-drift');
+const { buildRuntimeConfigExport, compareOpenClawConfig } = require('../runtime-config');
 
 const PIN = { model: 'model-a', contextSize: 32768, keepAlive: -1 };
 function services(tasks) {
@@ -35,6 +36,73 @@ test('a route naming an unpinned model and a physical OpenClaw id are drift', as
   assert.equal(result.status, 'drift');
   assert.deepEqual(result.unpinnedRoutes.map(route => route.taskType), ['nestor_answer_light']);
   assert.ok(result.openclaw.drift.some(row => row.path.includes('agentx-primary')));
+});
+
+function splitServices() {
+  const principalTopology = { ...task('daily_operator', 'lane-pin'),
+    hostKey: 'lane-a', hostUrl: 'http://model-host.test:11437',
+    hostPreference: { pinnedModels: [{ ...PIN, model: 'lane-pin' }] } };
+  const tasks = { daily_operator: principalTopology,
+    code_generation: task('code_generation', 'model-a'), master_brain: task('master_brain', 'model-a') };
+  return { routing: { getEffectiveSnapshot: async () => ({ tasks, principalTopology }) } };
+}
+
+test('switching the principal alias does not require unused specialist catalog suggestions', async () => {
+  process.env.OPENCLAW_AGENTX_PROVIDER_BASE_URL = 'http://core.test/api/openclaw-ollama';
+  const result = await checkPinDrift({ runtimeServices: splitServices(), readConfig: async () => installed() });
+  assert.equal(result.status, 'ok');
+  assert.deepEqual(result.openclaw.drift, []);
+});
+
+for (const reference of ['default', 'string-default', 'primary', 'string-primary', 'fallback', 'inherited-fallback']) {
+  test(`a missing specialist catalog entry remains drift when used by an installed ${reference}`, async () => {
+    const config = installed();
+    const ref = 'ollama/model-a';
+    if (reference === 'default') config.agents.defaults.model.primary = ref;
+    if (reference === 'string-default') config.agents.defaults.model = ref;
+    if (reference === 'primary') config.agents.list[0].model.primary = ref;
+    if (reference === 'string-primary') config.agents.list[0].model = ref;
+    if (reference === 'fallback') config.agents.list[0].model.fallbacks = [ref];
+    if (reference === 'inherited-fallback') config.agents.defaults.model.fallbacks = [ref];
+    const result = await checkPinDrift({ runtimeServices: splitServices(), readConfig: async () => config });
+    assert.equal(result.status, 'drift');
+    assert.ok(result.openclaw.drift.some(row => row.path.endsWith('models[model-a]')));
+  });
+}
+
+test('an installed unused specialist entry is still checked against its pin context', async () => {
+  const config = installed();
+  config.models.providers.ollama.models.push({ id: 'model-a', contextWindow: 65536, params: { num_ctx: 65536 } });
+  const result = await checkPinDrift({ runtimeServices: splitServices(), readConfig: async () => config });
+  assert.equal(result.status, 'drift');
+  assert.equal(result.openclaw.drift.filter(row => row.path.includes('models[model-a]')).length, 2);
+});
+
+test('a guarded dispatcher still requires its specialist entry, including namespaced model ids', async () => {
+  const exported = await buildRuntimeConfigExport(splitServices());
+  const specialist = exported.openclaw.provider.models.find(row => row.id === 'model-a');
+  specialist.id = 'owner/model-a';
+  exported.openclaw.agentModelPolicy.guardedExecution = { agents: { worker: {
+    targets: [{ model: 'ollama/owner/model-a', path: 'executionProfiles.worker.model' }]
+  } } };
+  const result = compareOpenClawConfig(installed(), exported.openclaw);
+  assert.equal(result.status, 'drift');
+  assert.ok(result.drift.some(row => row.path.endsWith('models[owner/model-a]')));
+});
+
+test('references in an additional Core provider and entries-format agents still require the specialist', async () => {
+  const config = installed();
+  config.models.providers['agentx-conversation'] = { baseUrl: 'http://core.test/api/openclaw-ollama', models: [] };
+  config.agents.entries = { specialist: { model: 'agentx-conversation/model-a' } };
+  const result = await checkPinDrift({ runtimeServices: splitServices(), readConfig: async () => config });
+  assert.equal(result.status, 'drift');
+  assert.ok(result.openclaw.drift.some(row => row.path.endsWith('models[model-a]')));
+});
+
+test('the principal alias remains required when only an unused specialist is installed', async () => {
+  const result = await checkPinDrift({ runtimeServices: splitServices(), readConfig: async () => installed('model-a') });
+  assert.equal(result.status, 'drift');
+  assert.ok(result.openclaw.drift.some(row => row.path.endsWith('models[agentx-primary]')));
 });
 
 test('an unreadable installed config is reported, not hidden', async () => {

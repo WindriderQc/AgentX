@@ -2159,6 +2159,11 @@ that artifact on that endpoint.
   More than the lane holds, or no value at all, is drift: OpenClaw would size
   its history past the lane, or fall back to its own default. Every provider
   routed through Core that lists the model is checked.
+  Specialist catalog entries proposed by the export need not be installed
+  when no configured agent, default, fallback or guarded dispatch references
+  them. Their absence is not drift when the principal alias moves to a lane
+  while specialist task routes remain fixed. Referenced entries remain required;
+  installed entries still receive the context checks even when unused.
 - **One value for both modes.** For a group that switches modes, give OpenClaw
   the smallest verified context of its modes, once. Nothing then changes in
   OpenClaw at a switch. OpenClaw applies model changes live, mid-session, so
