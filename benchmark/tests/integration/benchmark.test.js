@@ -2789,7 +2789,7 @@ describe('Benchmark System - Integration Tests', () => {
             expect(response.body.data.leaderboard[0]).toHaveProperty('generalistScore');
         });
 
-        it('exposes untested categories as unavailable while preserving coverage penalties', async () => {
+        it.each([true, false])('exposes untested categories and coverage penalties with cloud=%s', async (includeCloud) => {
             await BenchmarkPrompt.create([
                 {
                     name: 'Coding evidence prompt',
@@ -2806,6 +2806,7 @@ describe('Benchmark System - Integration Tests', () => {
             ]);
             await BenchmarkResult.create({
                 model: 'partial-evidence-model',
+                quality_cohort_fingerprint: 'partial-coverage-fixture',
                 host: 'http://localhost:11434',
                 prompt: 'Code task',
                 prompt_name: 'Coding evidence prompt',
@@ -2816,7 +2817,7 @@ describe('Benchmark System - Integration Tests', () => {
             });
 
             const response = await api
-                .get('/api/benchmark/generalist-leaderboard?axis=quality&challengeScope=all&includeUnavailableModels=true&includeCloud=false');
+                .get(`/api/benchmark/generalist-leaderboard?axis=quality&challengeScope=all&includeUnavailableModels=true&includeCloud=${includeCloud}`);
 
             expect(response.status).toBe(200);
             const row = response.body.data.leaderboard.find(

@@ -189,7 +189,8 @@ class BenchmarkService {
         // Scope for the per-cohort performance and attempt summaries: every
         // filter above, before the match is narrowed to one quality cohort.
         const summaryScopeMatch = { ...leaderboardMatch };
-        if (includeCloud) {
+        {
+            // Source eligibility never changes the comparison policy.
             // Rank only one exact quality cohort. Historical rows without the
             // additive fingerprint stay visible below as non-comparable; they
             // are never silently treated as proof-equivalent.
@@ -199,7 +200,18 @@ class BenchmarkService {
             // Inside the cohort, compare only results on prompts as the
             // catalog holds them today (see promptComparison).
             promptScope = await promptScopeFor(selectedQualityCohortFingerprint);
-            if (promptScope.pinned) addMatchClause(currentPromptClause(promptScope));
+            if (promptScope.pinned) {
+                addMatchClause(currentPromptClause(promptScope));
+                // Historical cohorts keep their own summaries. For the selected
+                // cohort, performance and attempts use the same current prompts
+                // as the score, including after a catalog edit or removal.
+                summaryScopeMatch.$and = [...(summaryScopeMatch.$and || []), {
+                    $or: [
+                        { quality_cohort_fingerprint: { $ne: selectedQualityCohortFingerprint } },
+                        currentPromptClause(promptScope)
+                    ]
+                }];
+            }
             nonComparableRows = await BenchmarkResult.aggregate([
                 {
                     $match: selectedQualityCohortFingerprint
@@ -425,7 +437,7 @@ class BenchmarkService {
                 promptSet,
                 rule: selectedQualityCohortFingerprint
                     ? 'quality cohort (judge, scorer version, contexts) covering the most models in scope, the most recent on a tie; results compared only on prompts as the catalog holds them today'
-                    : 'every cohort pooled per model and host; one scorer generation per row'
+                    : 'no comparable quality cohort in scope; historical results remain unranked'
             },
             categoryWeights,
             confidenceWeighted,
