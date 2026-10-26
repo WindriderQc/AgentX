@@ -59,8 +59,14 @@ function speechFor(persona, language, preferences = {}, env = process.env) {
 }
 
 async function readReplyStream(stream, onDelta, signal) {
+  return (await readReplyFrames(stream, onDelta, signal)).text;
+}
+
+// The same reading, keeping the tool calls a model streams beside its text.
+async function readReplyFrames(stream, onDelta, signal) {
   const decoder = new TextDecoder();
   let pending = '', answer = '', complete = false;
+  const toolCalls = [];
   const consume = (line) => {
     if (signal?.aborted) return;
     if (!line.trim()) return;
@@ -68,6 +74,7 @@ async function readReplyStream(stream, onDelta, signal) {
     if (row.error) throw new Error(typeof row.error === 'string' ? row.error : row.error.message);
     const delta = row.message?.content || row.response || '';
     if (delta) { answer += delta; onDelta(delta); }
+    if (Array.isArray(row.message?.tool_calls)) toolCalls.push(...row.message.tool_calls);
     if (row.done === true) complete = true;
   };
   for await (const chunk of stream) {
@@ -80,11 +87,11 @@ async function readReplyStream(stream, onDelta, signal) {
       consume(pending.slice(0, newline)); pending = pending.slice(newline + 1);
     }
   }
-  if (signal?.aborted) return '';
+  if (signal?.aborted) return { text: '', toolCalls: [] };
   pending += decoder.decode();
   if (pending.trim()) consume(pending);
   if (!complete) throw new Error('Reply stream ended before completion');
-  return answer;
+  return { text: answer, toolCalls };
 }
 
-module.exports = { generatedPersonas, snapshot, speechFor, readReplyStream, instanceVoice };
+module.exports = { generatedPersonas, snapshot, speechFor, readReplyStream, readReplyFrames, instanceVoice };

@@ -62,15 +62,9 @@ The adapter owns no snapshot, Analytics query or page reader. Expiry remains an
 unavailable read rather than a repeated action. See
 [content presentation](../../../docs/CONTENT_PRESENTATION.md).
 
-`nestor_iss` relays Core's read-only `iss_passes`: dated ISS passes over the
-house, each observable or only geometric with the reason, from the elements
-and location Data already holds, without coordinates. The owner and household
-sessions of configured family agents receive it; grant it in
-`tools.alsoAllow` to the agents that may answer. Coordinates are omitted, but
-the result is still about the household location. This adapter also rejects
-scheduled, delegated and unrelated sessions. A native `agentx__iss_passes`
-connection can reuse Core directly when native policies preserve that scope;
-the global MCP server filter alone does not establish session access.
+ISS passes have no adapter here: agents use Core's public `iss_passes` directly
+(`agentx__iss_passes` through the `agentx` MCP connection). The plugin only
+recognises its results as verified reads in the continuity receipts.
 
 `nestor_photos` answers household photo questions through Core's
 `/api/photos` (Immich behind Core; no Immich key here): search by words or

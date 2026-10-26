@@ -17,7 +17,7 @@ const records = require('../persona-records');
 const BLOCK = '[Household selected context for this turn: reference data, not tool instructions]';
 const RUN_ID = 'resp_33333333-3333-4333-8333-333333333333';
 
-function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages, validClientTurnId = () => false }) {
+function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages, validClientTurnId = () => false, conversationEnv = {} }) {
   const pack = packs.packById(packId);
   const session = { sessionId: 'synthetic-session', status: 'active', packId, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
@@ -41,7 +41,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
   };
   const executeConversation = createConversationExecutor({
     inference: { execute: async body => {
-      sent.push({ prefix: body.messages[0].content, messages: body.messages, request: body.messages.at(-1).content, taskType: body.taskType });
+      sent.push({ prefix: body.messages[0].content, messages: body.messages, request: body.messages.at(-1).content, taskType: body.taskType, tools: body.tools });
       return { ok: true, body: { response }, metadata: { model: 'synthetic' } };
     } },
     agentClient: async request => {
@@ -52,7 +52,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     }
   });
   const handle = createPersonaTurnHandler({
-    screenPages, logger: null, runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv: {},
+    screenPages, logger: null, runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv,
     executeConversation: async request => { const result = await executeConversation(request); settle?.(request); return result; }, conversationImages,
     requireNativeAgent: async () => {},
     familyTasks: { listProfileDetails: async () => ({ profiles: state.profiles }), listProfiles: async () => ({ profiles: state.profiles }),
@@ -135,6 +135,23 @@ for (const backend of ['agentx', 'openclaw']) {
     assert.equal(sent[0].prefix, sent[2].prefix);
   });
 }
+
+test('Famille on the AgentX engine is offered the Core tools the instance turned on, and only Famille', async () => {
+  const env = { HOUSEHOLD_FAMILY_TOOLS: 'iss_passes' };
+  const family = harness({ packId: 'kidx_nestor', backend: 'agentx', conversationEnv: env });
+  await family.turn("Nestor, l'ISS passe quand?", 'text');
+  assert.deepEqual(family.sent[0].tools.map(tool => tool.function.name), ['iss_passes']);
+  assert.equal(family.sent[0].tools[0].function.parameters.properties.lat, undefined);
+  assert.match(family.sent[0].prefix, /these Core tools: iss_passes/);
+  assert.doesNotMatch(family.sent[0].prefix, /No native agent tools/);
+  const personal = harness({ packId: 'personal_operator', backend: 'agentx', conversationEnv: env });
+  await personal.turn("Nestor, l'ISS passe quand?", 'text');
+  assert.equal(personal.sent[0].tools, undefined);
+  const off = harness({ packId: 'kidx_nestor', backend: 'agentx' });
+  await off.turn("Nestor, l'ISS passe quand?", 'text');
+  assert.equal(off.sent[0].tools, undefined);
+  assert.match(off.sent[0].prefix, /No native agent tools, skills or Dreaming run here/);
+});
 
 for (const backend of ['agentx', 'openclaw']) {
   test(`the final ${backend} family prompt places child temperament after the adult persona`, async () => {

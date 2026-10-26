@@ -26,7 +26,6 @@
     "native-read-budget.js",
     "photos.js",
     "presentation.js",
-    "iss.js",
     "iss-evidence.js"
   ],
   "scripts": {
