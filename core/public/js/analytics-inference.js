@@ -299,7 +299,7 @@ async function renderCodex(windowKey) {
     return;
   }
   try {
-    const res = await fetch(`/api/analytics/federated?window=${encodeURIComponent(windowKey)}`, {
+    const res = await fetch(`/api/analytics/federated?window=${encodeURIComponent(windowKey === 'usage' ? '24h' : windowKey)}`, {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(30000)
     });
@@ -449,7 +449,30 @@ function init() {
   $('analyticsWindow')?.addEventListener('change', load);
   $('refreshBtn')?.addEventListener('click', applyChatLaneCollapse);
   document.addEventListener('analytics:show-chat-lane', showChatLane);
-  load();
+  initializePeriod().then(load);
+}
+
+async function initializePeriod() {
+  const select = $('analyticsWindow');
+  const requested = new URLSearchParams(location.search).get('window');
+  try {
+    const res = await fetch('/api/analytics/inference/usage-period', {
+      headers: { Accept: 'application/json' }, cache: 'no-store', signal: AbortSignal.timeout(10000)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    if (!body.ok) throw new Error('Reporting period unavailable');
+    if (body.data?.since) {
+      const since = new Date(body.data.since);
+      if (!Number.isFinite(+since)) throw new Error('Invalid reporting period');
+      select.add(new Option('Since daily use began', 'usage'), 0);
+      select.value = 'usage';
+      setText('ao-period-note', `Daily use began ${since.toLocaleString()}. Earlier activity remains in the rolling periods. This period includes all recorded traffic.`);
+    }
+  } catch {
+    setText('ao-period-note', 'Daily-use reporting boundary unavailable. Showing a rolling period.');
+  }
+  if ([...select.options].some(option => option.value === requested)) select.value = requested;
 }
 
 if (document.readyState === 'loading') {

@@ -32,7 +32,7 @@ function failureFacets() {
   const reason = { $set: { _failureReason: failureReasonExpression() } };
   return {
     failureReasons: [match, reason,
-      { $group: { _id: '$_failureReason', calls: { $sum: 1 } } },
+      { $group: { _id: '$_failureReason', calls: { $sum: 1 }, lastAt: { $max: '$timestamp' } } },
       { $sort: { calls: -1, _id: 1 } },
     ],
     topErrors: [match, reason,
@@ -54,6 +54,7 @@ function shapeFailures(facet) {
   const unclassified = byReason.filter(row => row.reason === 'unclassified_error').reduce((sum, row) => sum + row.calls, 0);
   return {
     failureAnalysis: { admissionRefusals, unclassified, byReason,
+      lastErrorAt: latest(facet?.failureReasons, false), lastRefusalAt: latest(facet?.failureReasons, true),
       basis: 'Recorded non-success attempts excluding cancellations. Admission refusals did not dispatch inference. Retries can produce several records for one client request; these are not counts of failed user requests.' },
     topErrors: (facet?.topErrors || []).map(row => {
       const projected = projectInferenceLog({ model: row._id?.model, status: row._id?.status, consumerContract: row._id?.consumerContract });
@@ -64,4 +65,10 @@ function shapeFailures(facet) {
   };
 }
 
-module.exports = { failureFacets, shapeFailures };
+function latest(rows = [], refusal) {
+  const times = rows.filter(row => ADMISSION_REASONS.includes(row._id) === refusal)
+    .map(row => row.lastAt == null ? NaN : new Date(row.lastAt).getTime()).filter(Number.isFinite);
+  return times.length ? new Date(Math.max(...times)).toISOString() : null;
+}
+
+module.exports = { failureFacets, shapeFailures, failureReasonExpression };

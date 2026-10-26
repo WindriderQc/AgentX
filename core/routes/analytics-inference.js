@@ -23,9 +23,12 @@
 
 const { bucketFacet, summaryCoverage, MISSING_CONSUMER, attributionFacet, attributionCoverage } = require('../src/services/inferenceSummaryMetrics');
 const { failureFacets, shapeFailures } = require('../src/services/inferenceFailureAnalytics');
+const { recentFacet, shapeRecent } = require('../src/services/inferenceRecentHealth');
+const { usageWindow } = require('../src/services/analyticsUsagePeriod');
 const { analyticsDayKey } = require('../src/services/conversationActivityAnalytics');
 const express = require('express');
 const router = express.Router();
+router.use(require('./analytics-usage-period'));
 
 const InferenceLog = require('../models/InferenceLog');
 const {
@@ -382,7 +385,9 @@ async function estimateCloudCost(model, tokensIn, tokensOut) {
  */
 router.get('/summary', async (req, res) => {
   try {
-    const { key, from, to } = resolveWindow(req.query.window);
+    const selected = req.query.window === 'usage' ? await usageWindow() : resolveWindow(req.query.window);
+    const { key, from, to, bucketKey = key, requestedDays = WINDOWS[key] / 24, since = null } = selected;
+    const recentSince = new Date(Math.max(+from, +to - RECENT_MS));
     const match = { timestamp: { $gte: from, $lte: to } };
 
     const groupMetrics = {
@@ -424,7 +429,7 @@ router.get('/summary', async (req, res) => {
           missingConsumers: attributionFacet(),
           totals: [{ $group: { _id: null, ...groupMetrics } }],
           // Last hour, whatever the window: a fresh outage must not be diluted by 30 days.
-          recent: [{ $match: { timestamp: { $gte: new Date(to.getTime() - RECENT_MS) } } }, { $group: { _id: null, ...groupMetrics } }],
+          recent: recentFacet(groupMetrics, recentSince),
           byModel: [
             { $group: { _id: '$model', ...groupMetrics, hosts: { $addToSet: '$host' } } },
             { $sort: { calls: -1 } }
@@ -440,7 +445,7 @@ router.get('/summary', async (req, res) => {
           byDegraded: [{ $group: { _id: { $ifNull: ['$routeDecision.degraded', false] }, ...groupMetrics } }, { $sort: { calls: -1 } }],
           byRuntime: [{ $group: { _id: '$runtime', ...groupMetrics } }, { $sort: { calls: -1 } }],
           byHost: [{ $group: { _id: '$host', ...groupMetrics } }, { $sort: { calls: -1 } }],
-          byBucket: bucketFacet(key, groupMetrics),
+          byBucket: bucketFacet(bucketKey, groupMetrics),
           byDay: [
             {
               $group: {
@@ -569,7 +574,7 @@ router.get('/summary', async (req, res) => {
     };
 
     const data = {
-      window: { key, from, to },
+      window: { key, from, to, ...(since && { since }) },
       source: 'inferencelogs',
       scope: 'Recorded AgentX-routed inference attempts only; native calls bypassing Core are outside this view.',
       observedAt: to,
@@ -611,7 +616,7 @@ router.get('/summary', async (req, res) => {
           ? rate(t.classificationMs || 0, t.classifiedDurationMs || 0)
           : null,
         tokensOutPerSecond: totalSeconds > 0 ? round(t.tokensOut / totalSeconds) : 0,
-        callsPerDay: round(t.calls / (WINDOWS[key] / 24), 1)
+        callsPerDay: requestedDays > 0 ? round(t.calls / Math.min(requestedDays, (+to - +from) / 86400000), 1) : 0
       },
       local: {
         models: localModels.length,
@@ -631,9 +636,9 @@ router.get('/summary', async (req, res) => {
           : 'Some cloud models have no configured price; their spend is excluded rather than guessed.'
       },
       byModel: byModel.slice(0, 40),
-      coverage: summaryCoverage({ models: byModel, listedModels: byModel.slice(0, 40), calls: t.calls, windowKey: key }),
-      recent: { since: new Date(to.getTime() - RECENT_MS), calls: facet?.recent?.[0]?.calls || 0, errors: facet?.recent?.[0]?.errors || 0 },
-      bucketHours: key === '24h' ? 1 : 24,
+      coverage: { ...summaryCoverage({ models: byModel, listedModels: byModel.slice(0, 40), calls: t.calls, windowKey: key }), requestedDays },
+      recent: shapeRecent(facet?.recent?.[0], recentSince),
+      bucketHours: bucketKey === '24h' ? 1 : 24,
       byBucket: (facet?.byBucket || []).map((row) => shape(row, 'date')),
       byCaller: (facet?.byCaller || []).map((r) => shape(r, 'caller')),
       byConsumerContract: (facet?.byConsumerContract || []).map((r) => {
@@ -665,7 +670,7 @@ router.get('/summary', async (req, res) => {
     envelope.success(res, data);
   } catch (err) {
     logger.error('Inference analytics summary failed', { error: err.message, stack: err.stack });
-    envelope.error(res, 500, err.message);
+    envelope.error(res, err.statusCode || 500, err.message);
   }
 });
 

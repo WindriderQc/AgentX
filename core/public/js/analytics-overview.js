@@ -214,25 +214,36 @@
     });
   }
 
-  // Review threshold: a single old failure in a busy window is noise. Flag the
-  // window when at least 3 operational errors push the rate above 2 %, or
-  // when any error happened in the last hour (a fresh outage must not be
-  // diluted by a 7- or 30-day window).
+  // A recent snapshot governs attention independently of historical volume.
+  // Attested admission refusals remain visible separately; unknown failures
+  // still need review. The rate threshold is a fallback for older Core reads.
   const REVIEW_MIN_ERRORS = 3;
   const REVIEW_ERROR_RATE_PCT = 2;
   function needsReview(totals = {}, recent = null) {
-    if ((Number(recent?.errors) || 0) > 0) return true;
+    if (finite(recent?.calls) && finite(recent?.errors)) {
+      return recent.errors - refusalCount(recent) > 0;
+    }
     const errors = Number(totals.errors) || 0;
     const calls = Number(totals.calls) || 0;
     const rate = Number.isFinite(Number(totals.errorRate)) ? Number(totals.errorRate) : (calls > 0 ? errors / calls * 100 : 0);
     return errors >= REVIEW_MIN_ERRORS && rate > REVIEW_ERROR_RATE_PCT;
   }
 
+  function refusalCount(recent) {
+    return finite(recent?.admissionRefusals) && recent.admissionRefusals >= 0
+      && recent.admissionRefusals <= recent.errors ? recent.admissionRefusals : 0;
+  }
+
   function statusText(totals = {}, recent = null) {
     const errors = Number(totals.errors) || 0;
     const recentErrors = Number(recent?.errors) || 0;
     if (!(totals.calls > 0)) return { state: 'empty', text: 'No recorded calls in this window' };
-    if (recentErrors > 0) return { state: 'attention', text: `${count(recentErrors)} error${recentErrors === 1 ? '' : 's'} in the last hour need review` };
+    const refusals = refusalCount(recent), other = recentErrors - refusals;
+    if (other > 0) return { state: 'attention', text: `${count(other)} error${other === 1 ? '' : 's'} in the last hour need review${refusals ? ` · ${count(refusals)} admission refusals separately` : ''}` };
+    if (refusals > 0) return { state: 'notice', text: `${count(refusals)} admission refusal${refusals === 1 ? '' : 's'} in the last hour · no other errors recorded` };
+    if (finite(recent?.calls) && finite(recent?.errors)) return { state: recent.calls > 0 ? 'ready' : 'unknown', text: recent.calls > 0
+      ? `No errors recorded in the last hour · ${count(errors)} in the selected period`
+      : `No calls in the last hour · ${count(errors)} historical errors in the selected period` };
     if (needsReview(totals)) return { state: 'attention', text: 'Error rate needs review' };
     if (errors > 0) return { state: 'ready', text: `${count(errors)} recorded error${errors === 1 ? '' : 's'} · below the ${REVIEW_ERROR_RATE_PCT}% review threshold` };
     return { state: 'ready', text: 'No operational errors recorded' };
@@ -250,6 +261,12 @@
     set('ao-calls-note', `${count(t.callsPerDay)} / day · ${count(data.coverage?.modelCount ?? data.byModel?.length)} models`);
     set('ao-success', percent(success));
     set('ao-outcomes', `${count(t.errors)} errors · ${count(t.cancellations)} canceled / ${count(t.calls)} calls`);
+    const failure = data.failureAnalysis;
+    set('ao-last-error', failure ? [
+      failure.lastErrorAt ? `Last other error: ${new Date(failure.lastErrorAt).toLocaleString()}`
+        : finite(failure.admissionRefusals) && t.errors === failure.admissionRefusals ? 'No other error recorded in this period' : 'Last other error time unrecorded',
+      failure.lastRefusalAt ? `Last admission refusal: ${new Date(failure.lastRefusalAt).toLocaleString()}` : ''
+    ].filter(Boolean).join(' · ') : 'Last error time unavailable');
     set('ao-output', hasCalls ? compact(t.tokensOut) : '—');
     set('ao-input', hasCalls ? `${compact(t.tokensIn)} prompt tokens · reported usage only` : 'No token usage observed');
     set('ao-latency', duration(hasCalls ? t.avgLatencyMs : null));
@@ -257,6 +274,7 @@
     if (hasCalls && finite(t.timedCalls) && t.timedCalls < t.calls) set('ao-time', `${count(t.timedCalls)} / ${count(t.calls)} calls timed · includes waits`);
     set('ao-fallbacks', `${count(t.fallbackCalls)} fallbacks${hasCalls ? ` · ${percent(t.fallbackRate)}` : ''}`);
     const focus = $('ao-error-focus'), refusals = data.failureAnalysis?.admissionRefusals;
+    $('ao-outcomes').title = finite(refusals) ? `${count(refusals)} of ${count(t.errors)} errors were admission refusals. See error details.` : '';
     focus.hidden = !(t.errors > 0);
     focus.textContent = finite(refusals) ? `${count(refusals)} / ${count(t.errors)} errors: admission refused →` : 'Explore recorded errors →';
     if (finite(data.failureAnalysis?.unclassified) && data.failureAnalysis.unclassified > 0) focus.textContent += ` · ${count(data.failureAnalysis.unclassified)} causes unrecorded`;
@@ -305,6 +323,7 @@
     $('ao-status').dataset.state = state;
     set('ao-status', message);
     set('ao-updated', '');
+    set('ao-last-error', '');
     $('ao-error-focus').hidden = true;
     set('ao-error-focus', '');
     ['ao-calls', 'ao-success', 'ao-output', 'ao-latency', 'ao-local-calls', 'ao-local-time', 'ao-cloud-cost'].forEach(id => set(id, '—'));
@@ -385,7 +404,9 @@
       // Only the committed response for this window may be discussed. Loading
       // and failure immediately invalidate the old reference.
       window.AgentXPresentedContent = { contract: 'agentx.presentation/v1', state,
-        filters: { window: windowKey }, selection: { groupBy, overlay }, read: state === 'ready' ? data?.presentation || null : null };
+        filters: state === 'ready' ? data?.presentation?.filters || { window: windowKey } : { window: windowKey }, selection: { groupBy, overlay }, read: state === 'ready' ? data?.presentation || null : null };
+      const note = $('analytics-secondary-period');
+      if (note) note.hidden = windowKey !== 'usage';
       if (state === 'ready') renderSummary(data);
       else clearSummary(state);
     });

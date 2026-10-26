@@ -52,6 +52,20 @@ test('largest supported view remains bounded with explicit dimension coverage', 
   assert.ok(JSON.stringify(projected).length < 32768);
 });
 
+test('daily-use selection must match the exact stored boundary in its Core receipt', () => {
+  const data = summary('usage');
+  data.window.since = data.window.from.toISOString();
+  const ref = presentationReader.publishAnalytics(data);
+  const input = row({ read: ref, filters: { window: 'usage', since: data.window.since } });
+  const evidence = presentationEvidence([input], pages);
+  assert.equal(evidence.read.status, 'available');
+  assert.deepEqual(evidence.filters, input.filters);
+  input.filters.since = new Date(+data.window.from - 60000).toISOString();
+  assert.equal(presentationEvidence([input], pages).read.status, 'unavailable');
+  delete data.window.since;
+  assert.equal(analyticsSnapshot(data), null);
+});
+
 test('only the active, loaded view receives matching Core data; browser numbers are ignored', () => {
   const ref = presentationReader.publishAnalytics(summary());
   const input = row({ read: { ...ref, totals: { calls: 999 } }, password: 'PRIVATE_PASSWORD', body: 'PRIVATE_FORM',
