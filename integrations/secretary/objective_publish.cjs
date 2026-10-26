@@ -63,10 +63,10 @@ function applyDateReview(payload, review) {
   if (!review) return payload;
   const findingId = payload.timeline.legacyId;
   if (review.findingId !== findingId || !Array.isArray(review.clear) || !review.clear.length ||
-      review.clear.some(side => !['start', 'end'].includes(side)) || new Set(review.clear).size !== review.clear.length ||
+      review.clear.some(side => !['start', 'end', 'ongoing'].includes(side)) || new Set(review.clear).size !== review.clear.length ||
       typeof review.reason !== 'string' || !review.reason.trim() || review.reason.length > 2000 ||
       typeof review.question !== 'string' || !review.question.trim() || review.question.length > 2000 || !timestamp(review.reviewedAt)) {
-    throw new Error('Date adjudication needs its exact finding, absent-date sides, bounded reason/question and review timestamp');
+    throw new Error('Date adjudication needs its exact finding, temporal fields to clear, bounded reason/question and review timestamp');
   }
   const t = payload.timeline;
   const proposal = { date: t.date, precision: t.precision, endDate: t.endDate, endPrecision: t.endPrecision,
@@ -77,13 +77,28 @@ function applyDateReview(payload, review) {
     authority: 'automated-source-audit-not-owner-confirmation', modelProposal: proposal };
   if (review.clear.includes('start')) { t.date = null; t.precision = 'unknown'; payload.entry.eventDate = ''; payload.entry.eventDatePrecision = 'unknown'; }
   if (review.clear.includes('end')) { t.endDate = null; t.endPrecision = 'unknown'; }
+  if (review.clear.includes('ongoing')) t.ongoing = false;
   t.dateEstimateNote = review.reason;
   t.reviewQuestions = [review.question];
-  t.notes = 'Date d’événement à préciser; interprétation automatique non confirmée.';
-  t.tentativeDate = true;
+  t.notes = 'Temporalité à préciser; interprétation automatique non confirmée.';
+  if (review.clear.some(side => side !== 'ongoing')) t.tentativeDate = true;
   return payload;
 }
 function nativeDateReview(entry) { return entry?.context?.importedTimeline?.metadata?.dateReview || entry?.timeline?.metadata?.dateReview || null; }
+function boundHistoricalOngoing(payload, finding, source) {
+  if (!finding.ongoing) return payload;
+  const t = payload.timeline;
+  const reason = 'Le courriel décrit un état en cours dans son contexte historique; sa continuité jusqu’à aujourd’hui n’est pas établie.';
+  t.metadata.ongoingReview = { contract: 'secretary.objective-ongoing-scope/v1',
+    authority: 'automated-source-audit-not-owner-confirmation',
+    modelProposal: { ongoing: finding.ongoing, endDate: finding.endDate, endPrecision: finding.endPrecision, uncertainty: finding.uncertainty },
+    sourceId: source.id, sourceMailDate: timestamp(source.mailDate), sourceScope: source.bodyScope || 'exact-reviewed-passage',
+    sourceDateMeaning: 'Container header timestamp; quoted declarations may have their own historical date.', reason };
+  t.ongoing = false; t.endDate = null; t.endPrecision = 'unknown';
+  t.timeCaveat = reason;
+  t.reviewQuestions = [...(t.reviewQuestions || []), 'Cet état s’est-il poursuivi après la période décrite, et jusqu’à quand ?'];
+  return payload;
+}
 function build(finding, indexed, { matches = [], dateReview = null } = {}) {
   if (!/^objective-[a-f0-9]{64}$/.test(finding.id || '') || finding.userConfirmed !== false || finding.reviewState !== 'candidate') throw new Error('Only native unconfirmed objective candidates can be imported');
   const allRecords = finding.sourceIds.map(id => { const record = indexed.get(id); if (!record) throw new Error(`Missing quoted source ${id}`); return record; });
@@ -122,7 +137,7 @@ function build(finding, indexed, { matches = [], dateReview = null } = {}) {
       rationale: 'Rapprochement de provenance et de citation, sans fusion ni changement du relevé antérieur.',
       limits: 'Une même source ne constitue pas une corroboration indépendante; les formulations et dates restent à revoir.',
       sourceIndependence: 'not-established', claimsWithExactQuotes: bounded.claims.slice(0, 1) })), media: [] };
-  return applyDateReview(payload, dateReview);
+  return boundHistoricalOngoing(applyDateReview(payload, dateReview), finding, records[0]);
 }
 function matches(finding, indexed, existing) {
   const hashes = new Set(finding.sourceIds.map(id => indexed.get(id)?.nativeRef?.sourceSha256));

@@ -139,12 +139,22 @@ history remains the authority for candidates and human decisions; the publisher
 creates no souvenir and never confirms an assertion.
 
 A source audit may supply `--adjudications "$PRIVATE_AUDIT"` on the first plan
-and publication. Each item names `findingId`, `clear: ["start"]` and/or `"end"`,
-an explicit `reason`, `question` and `reviewedAt`. This bounded operation can
-only clear an unsupported event date to unknown. It retains the exact model
-date proposal and rationale in `timeline.metadata.dateReview`, labels the
+and publication. Each item names `findingId`, `clear` with `"start"`, `"end"`
+and/or `"ongoing"`, an explicit `reason`, `question` and `reviewedAt`. This
+bounded operation can only clear an unsupported event date to unknown or remove
+an unsupported claim of continuation through today. Clearing `ongoing` preserves
+the known start and unknown end, without inventing a departure date. It retains
+the exact model date proposal and rationale in `timeline.metadata.dateReview`, labels the
 audit as automatic, and publishes the corrected candidate on its first write.
 Quotes and occurrence/subject claims remain unchanged. The private input is an
 execution intent, not a lasting decision authority: future publication reads
 the adjudication from Core and preserves it without that file. A different
 native adjudication detected after planning blocks enrichment until reloaded.
+
+Every automatic `ongoing: true` proposal is additionally bounded to its source
+context before publication: the imported candidate has `ongoing: false` and an
+unknown end, with an explicit caveat and review question. Metadata preserves the
+model's ongoing/end proposal, uncertainty, source identity and container date;
+that date does not replace a quoted declaration's own date. No historical
+"currently" establishes continuation through today. Core's retained owner
+overrides remain authoritative over the descriptive imported timeline.
