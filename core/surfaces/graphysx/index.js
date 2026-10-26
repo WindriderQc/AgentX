@@ -84,7 +84,11 @@ function checkProposalRequest(body) {
   if (unknown.length) throw invalid(`Unknown field: ${unknown[0].slice(0, 40)}`);
   if (!text(body.request, REQUEST_LIMITS.requestChars) || !body.request.trim()) throw invalid(`request must be a sentence of at most ${REQUEST_LIMITS.requestChars} characters`);
   if (!Number.isInteger(body.revision) || body.revision < 0) throw invalid('revision must be a non-negative integer');
-  const scene = body.scene;
+  return { request: body.request.trim(), revision: body.revision, scene: checkScene(body.scene) };
+}
+
+/** The bounded scene summary — id, label, at most 60 entities as { id, type, label } — or a 400. */
+function checkScene(scene) {
   if (!isRecord(scene) || !text(scene.id, REQUEST_LIMITS.idChars) || !text(scene.label, REQUEST_LIMITS.labelChars) || !Array.isArray(scene.entities)) {
     throw invalid('scene must carry id, label and entities');
   }
@@ -96,7 +100,7 @@ function checkProposalRequest(body) {
     }
     return { id: entity.id, type: entity.type, label: entity.label };
   });
-  return { request: body.request.trim(), revision: body.revision, scene: { id: scene.id, label: scene.label, entities } };
+  return { id: scene.id, label: scene.label, entities };
 }
 
 const range = (field) => (Array.isArray(field.range) ? `[${field.range[0]}..${field.range[1]}]` : '');
@@ -310,9 +314,18 @@ async function proposeWorldChange(request, { vocabulary, execute, signal, timeou
   return last.ok ? { ok: true, intent: last.intent, commands: last.commands, model } : { ok: false, reason: last.reason, model };
 }
 
-function register({ app, express, env = process.env, fetchWithTimeout, execute, readVocabulary } = {}) {
+function register({ app, express, env = process.env, fetchWithTimeout, execute, readVocabulary, center = {} } = {}) {
   const vocabulary = readVocabulary || createVocabularyReader({ env, fetchWithTimeout });
   const run = execute || ((body, options) => require('../../src/services/inferenceService').executeInference(body, options));
+  // The Center page Core serves, its page streams and Nestor's push (center.js). Composition
+  // goes through the same vocabulary, prompt and validation as the route below.
+  const served = require('./center').register({
+    app, express, env,
+    fetchWithTimeout: fetchWithTimeout || require('../../src/services/voice/transport').fetchWithTimeout,
+    checkScene,
+    compose: async (request) => proposeWorldChange(request, { vocabulary: await vocabulary(), execute: run }),
+    ...center
+  });
   const fail = (res, error) => res.status(error.status || 500).json({ ok: false, status: 'error', code: error.code || 'GRAPHYSX_PROPOSE_FAILED', message: error.message, reason: error.message });
 
   app.get(VOCABULARY_ROUTE, async (_req, res) => {
@@ -348,9 +361,10 @@ function register({ app, express, env = process.env, fetchWithTimeout, execute, 
       req.off('close', abort);
     }
   });
+  return served;
 }
 
 module.exports = {
-  register, vocabularyUrl, createVocabularyReader, checkProposalRequest, buildSystemPrompt, buildUserPrompt,
+  register, vocabularyUrl, createVocabularyReader, checkProposalRequest, checkScene, buildSystemPrompt, buildUserPrompt,
   parseModelReply, validateProposal, proposeWorldChange, PROPOSE_ROUTE, VOCABULARY_ROUTE, VOCABULARY_SCHEMA, REQUEST_LIMITS, MAX_ATTEMPTS
 };

@@ -58,6 +58,7 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/data-toolbox',
   '/device-check',
   '/diskx',
+  '/graphysx',
   '/llmx',
   '/finance',
   '/images',
