@@ -11,10 +11,24 @@ export function normalizePipelineUrl(value) {
   return url.href;
 }
 
-/** Create one native sidebar action; this plugin registers no model capabilities. */
+/** Present Core work inside a native Studio panel; retain the full monitor link. */
 export function createClientPlugin(React, pipelineUrl) {
   const href = normalizePipelineUrl(pipelineUrl);
   const label = 'AgentX Coding Team';
+  const panelId = 'agentx-coding-work';
+  const workUrl = new URL('/pipeline?view=studio', href).href;
+  function WorkIcon({ size = 18 }) {
+    return React.createElement('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
+      stroke: 'currentColor', strokeWidth: 1.7, 'aria-hidden': true },
+    React.createElement('path', { d: 'm8 7-5 5 5 5m8-10 5 5-5 5m-3-13-2 16' }));
+  }
+  function WorkPanel() {
+    return React.createElement('iframe', {
+      src: workUrl, title: 'Travail des agents', 'data-agentx-coding-work': '',
+      referrerPolicy: 'no-referrer',
+      style: { display: 'block', width: '100%', height: '100%', minHeight: 300, border: 0 },
+    });
+  }
   function CodingTeamLink({ wide }) {
     const icon = React.createElement('svg', {
       width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none',
@@ -36,6 +50,10 @@ export function createClientPlugin(React, pipelineUrl) {
   return {
     inject: ['slots'],
     apply(ctx) {
+      ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: panelId }, WorkPanel));
+      ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        name: 'sidebar.panellist', id: panelId, order: 20, label: () => 'Travail des agents',
+      }, WorkIcon));
       ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
         name: 'sidebar.footer.action', id: 'agentx-coding-team', order: 20,
       }, CodingTeamLink));

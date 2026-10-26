@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Travail des agents — AgentX</title>
+  <link rel="stylesheet" href="/css/coding-work.css">
+</head>
+<body>
+  <header>
+    <div><p class="eyebrow">CODING TEAM</p><h1>Travail des agents</h1>
+      <p>Comprendre les avancées, les résultats et ce qui bloque.</p></div>
+    <a href="/pipeline#pipelineWorkerMonitor" target="_blank" rel="noopener noreferrer">Moniteur et commandes ↗</a>
+  </header>
+  <form id="workFilters" role="search">
+    <label>Tâche ou titre<input name="query" type="search" maxlength="120" placeholder="Numéro ou mots du titre"></label>
+    <label>État<select name="status"><option value="">Tous les états</option><option value="in_progress">En cours</option><option value="review">À revoir</option><option value="blocked">Bloqué</option><option value="queued">En attente</option><option value="done">Terminé</option></select></label>
+    <button type="submit">Rechercher</button><button type="button" id="workRefresh">Actualiser</button>
+  </form>
+  <p id="workStatus" role="status" aria-live="polite">Chargement des dossiers…</p>
+  <main>
+    <section aria-label="Dossiers des agents"><div id="workList"></div><button id="workMore" hidden>Afficher la suite</button></section>
+    <article id="workDossier" aria-label="Dossier sélectionné"><h2>Choisis un dossier</h2><p>Les consignes, comptes rendus, essais et livrables apparaîtront ici.</p></article>
+  </main>
+  <script src="/js/coding-work.js"></script>
+</body>
+</html>

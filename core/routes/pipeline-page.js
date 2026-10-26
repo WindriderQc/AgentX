@@ -11,6 +11,11 @@ function allowSameOriginFrame(res) {
 function registerPipelinePage(app) {
   app.get('/js/pipeline-report-selection.js', (_req, res) => res.sendFile(require.resolve('../../shared/pipelineReportSelection')));
   app.get('/pipeline', (req, res) => {
+    if (req.query.view === 'studio') {
+      allowStudioFrame(res);
+      res.setHeader('Cache-Control', 'no-store');
+      return res.render('pages/coding-work');
+    }
     const screen = req.query.view === 'screen';
     if (screen) allowSameOriginFrame(res);
     res.render('layouts/main', {
@@ -38,3 +43,17 @@ function registerPipelinePage(app) {
 
 module.exports = registerPipelinePage;
 module.exports.allowSameOriginFrame = allowSameOriginFrame;
+
+// This dedicated read surface may be embedded by the configured Studio only.
+// Other Pipeline views keep their existing frame policy and controls.
+function allowStudioFrame(res) {
+  const config = require('../integrations/runtime-bridges/dsh/studio').validateDshStudioEnvironment();
+  const origin = config.configured ? new URL(config.publicUrl).origin : null;
+  const ancestors = `frame-ancestors 'self'${origin ? ` ${origin}` : ''}`;
+  const policy = String(res.getHeader('Content-Security-Policy') || "default-src 'self'");
+  res.setHeader('Content-Security-Policy', /frame-ancestors [^;]*/.test(policy)
+    ? policy.replace(/frame-ancestors [^;]*/, ancestors) : `${policy}; ${ancestors}`);
+  if (origin) res.removeHeader('X-Frame-Options');
+  else res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+}
+module.exports.allowStudioFrame = allowStudioFrame;

@@ -28,6 +28,7 @@ const { chromium } = await import(pathToFileURL(options['--playwright-module']).
 const temporary = await mkdtemp(join(tmpdir(), 'agentx-dsh-link-native-'));
 let child;
 let browser;
+let page;
 let providerCalls = 0;
 const provider = createServer((_request, response) => {
   providerCalls += 1;
@@ -54,7 +55,8 @@ try {
     name: 'dsh-profile-web', private: true, dependencies: {},
     dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', '@agentx/dsh-coding-team'] } },
   }));
-  await command('npm', ['install', join(temporary, 'agentx-dsh-coding-team-0.1.0.tgz'),
+  const manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
+  await command('npm', ['install', join(temporary, `agentx-dsh-coding-team-${manifest.version}.tgz`),
     '--offline', '--ignore-scripts', '--legacy-peer-deps', '--no-audit', '--no-fund'], profile);
   await symlink(join(runtimeModules, '@deepseek-ai'), join(profile, 'node_modules/@deepseek-ai'));
   await writeFile(join(profile, 'cordis.yml'), '[]\n');
@@ -93,22 +95,28 @@ try {
   browser = await chromium.launch({ headless: true, executablePath: options['--chromium'], args: ['--disable-gpu'] });
   const context = await browser.newContext();
   await context.route('https://agentx.example/**', (route) => route.fulfill({
-    contentType: 'text/html', body: '<!doctype html><title>Pipeline fixture</title>',
+    contentType: 'text/html', body: '<!doctype html><title>Pipeline fixture</title><h1>Travail des agents</h1>',
   }));
-  const page = await context.newPage();
+  page = await context.newPage();
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   assert.equal((await page.goto(launchUrl)).status(), 200);
   const link = page.locator('[data-agentx-coding-team]');
   await link.waitFor({ state: 'visible', timeout: 15000 });
   const notice = page.getByRole('button', { name: 'Continue', exact: true });
+  await notice.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
   if (await notice.isVisible()) await notice.click();
   assert.ok(!page.url().includes('token='), 'Native authentication must remove its token');
+  const panel = page.locator('iframe[data-agentx-coding-work]');
   for (const width of [1440, 412]) {
     await page.setViewportSize({ width, height: 915 });
     await link.waitFor({ state: 'visible' });
     assert.equal(await link.getAttribute('href'), 'https://agentx.example/pipeline#pipelineWorkerMonitor');
     assert.equal(await link.getAttribute('rel'), 'noopener noreferrer');
+    await page.getByRole('button', { name: 'Travail des agents', exact: true }).click();
+    await panel.waitFor({ state: 'visible' });
+    assert.equal(await panel.getAttribute('src'), 'https://agentx.example/pipeline?view=studio');
+    await page.frameLocator('iframe[data-agentx-coding-work]').getByRole('heading', { name: 'Travail des agents' }).waitFor();
   }
   await page.setViewportSize({ width: 1440, height: 915 });
   const [popup] = await Promise.all([context.waitForEvent('page'), link.click()]);
@@ -118,13 +126,20 @@ try {
   await popup.close();
   await writeFile(patchFile, JSON.stringify([...patches, { id: 'agentx-coding-team-ui', disabled: true }]));
   await link.waitFor({ state: 'detached', timeout: 15000 });
+  await panel.waitFor({ state: 'detached', timeout: 15000 });
   await writeFile(patchFile, JSON.stringify(patches));
   await link.waitFor({ state: 'visible', timeout: 15000 });
   assert.equal(await link.count(), 1);
+  await page.getByRole('button', { name: 'Travail des agents', exact: true }).click();
+  await panel.waitFor({ state: 'visible' });
+  assert.equal(await panel.count(), 1);
   assert.deepEqual(errors, []);
   assert.equal(providerCalls, 0, 'UI qualification must make no model requests');
   console.log(JSON.stringify({ runtime: '0.2.0-rc.2', packed: true, authenticated: true,
-    viewports: [1440, 412], isolatedNewTab: true, disableReenable: true, providerCalls, errors }));
+    viewports: [1440, 412], isolatedNewTab: true, embeddedWorkPanel: true, disableReenable: true, providerCalls, errors }));
+} catch (error) {
+  if (page) console.error('Isolated Studio state:', (await page.locator('body').innerText()).slice(0, 3500));
+  throw error;
 } finally {
   await browser?.close();
   if (child && child.exitCode === null) {
