@@ -39,6 +39,9 @@ services:
     ports:
       - "127.0.0.1:${CORE_PORT:-3180}:3080"
     environment:
+      # Host folders behind the photos and documents mounts, so Core can open a path a history context recorded.
+      OWNER_PHOTOS_HOST_DIR: ${HOUSEHOLD_PHOTOS_DIR:-}
+      OWNER_DOCUMENTS_HOST_DIR: ${OWNER_DOCUMENTS_DIR:-}
       AGENTX_RUNTIME_RESOURCES_JSON: ${AGENTX_RUNTIME_RESOURCES_JSON:-}
       AGENTX_RUNTIME_TOPOLOGY_JSON: ${AGENTX_RUNTIME_TOPOLOGY_JSON:-}
       AGENTX_TOPOLOGY_ACTUATORS_JSON: ${AGENTX_TOPOLOGY_ACTUATORS_JSON:-}
@@ -215,6 +218,8 @@ services:
       - recovery_data:/backups
       - ${HOUSEHOLD_PHOTOS_DIR:-./docker/empty}:/mnt/household/photos:ro
       - ${HOUSEHOLD_MEDIA_DIR:-./docker/empty}:/mnt/household/media:ro
+      # The owner's documents cited by the personal history (Life Atlas); read-only.
+      - ${OWNER_DOCUMENTS_DIR:-./docker/empty}:/mnt/owner/documents:ro
 
   benchmark:
     logging: *default-logging

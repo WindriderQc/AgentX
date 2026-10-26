@@ -186,6 +186,23 @@ async function list(input = {}) {
     ordering: 'source-date-oldest-first', eventDateCoverage: 'event-dates-are-independent-of-source-dates' };
 }
 
+// Every entry the owner has not forgotten, in one read, for a timeline view
+// (Life Atlas). Same projection as the list, without source bodies.
+const TIMELINE_MAXIMUM = 20000;
+async function timeline() {
+  const rows = await Entry.find({ scope: 'owner', reviewState: { $ne: 'forgotten' } })
+    .select('-context.sources.body -reviewHistory').sort({ sourceDate: 1, _id: 1 }).limit(TIMELINE_MAXIMUM + 1).lean();
+  const truncated = rows.length > TIMELINE_MAXIMUM;
+  const page = rows.slice(0, TIMELINE_MAXIMUM);
+  const kept = new Map((await notes().souvenirs(page.map(row => row.souvenirNoteId).filter(Boolean))).map(note => [note.id, note]));
+  const entries = page.map(row => {
+    const note = row.souvenirNoteId ? kept.get(String(row.souvenirNoteId)) : null;
+    return { ...project(row), ...(note ? { souvenir: { id: note.id, revision: note.revision, text: note.text, eventDate: note.eventDate,
+      eventDatePrecision: note.eventDatePrecision, people: note.people, places: note.places, historyContext: note.historyContext || null } } : {}) };
+  });
+  return { authority: 'agentx.core', entries, total: entries.length, truncated, readAt: new Date().toISOString() };
+}
+
 async function review(id, input = {}) {
   if (!/^[a-f0-9]{24}$/.test(id)) throw failure('Choose an existing history entry');
   const state = enumValue(input.state, STATES.filter(s => s !== 'candidate'));
@@ -287,4 +304,4 @@ async function keepAsSouvenir(id, input = {}) {
   return { authority: 'agentx.core', created: note.created, entry: project(row), souvenirNoteId: note.id, souvenir };
 }
 
-module.exports = { normalize, record, list, review, keepAsSouvenir, project };
+module.exports = { normalize, record, list, timeline, review, keepAsSouvenir, project };
