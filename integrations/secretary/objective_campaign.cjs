@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
+const { isDeepStrictEqual } = require('node:util');
 const queue = require('../operations/heavy-work-queue.cjs');
 const hash = value => createHash('sha256').update(value).digest('hex');
 const read = file => JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -23,6 +24,9 @@ function configuration(value) {
   for (const key of ['maxPages', 'maxSeconds', 'estimatedMinutes', 'publishBudget']) if (!Number.isInteger(value[key]) || value[key] <= 0) throw new Error(`Positive ${key} is required after pilot measurement`);
   if (!['asap', 'tonight'].includes(value.when)) throw new Error('Core placement must be asap or tonight');
   if (!value.startBefore || !Number.isFinite(Date.parse(value.startBefore))) throw new Error('An explicit campaign start limit is required');
+  if (value.maxPagesPerSource !== undefined && (!Number.isInteger(value.maxPagesPerSource) || value.maxPagesPerSource <= 0)) throw new Error('maxPagesPerSource must be positive');
+  if (value.reviewBeforePublication !== undefined && typeof value.reviewBeforePublication !== 'boolean') throw new Error('reviewBeforePublication must be explicit boolean');
+  if (value.existingQueueId !== undefined && (!/^[a-f0-9-]{36}$/.test(value.existingQueueId) || !/^[a-f0-9]{64}$/.test(value.expectedQueueIntentHash || ''))) throw new Error('Adoption needs an exact existing queue ID and immutable intent hash');
   return value;
 }
 function serviceName(id) { return `secretary-objective-${id}.service`; }
@@ -46,6 +50,7 @@ function dependencies(config, exec = spawnSync) {
         'run', '--objective', config.objectiveFile, '--core', config.core, '--max-pages', String(config.maxPages),
         '--max-seconds', String(config.maxSeconds), '--queue-request-id', job.id, '--queue-dispatch-id', job.dispatchId,
         ...(config.archiveRoot ? ['--root', config.archiveRoot] : []),
+        ...(config.maxPagesPerSource ? ['--max-pages-per-source', String(config.maxPagesPerSource)] : []),
         ...(config.priorityFile ? ['--priority-file', config.priorityFile] : [])], { encoding: 'utf8' });
     },
     publish(directory) {
@@ -64,10 +69,23 @@ async function advance(config, deps, { allowStart = true, stopReason = 'Explicit
   const objective = read(path.join(directory, 'manifest.json'));
   const home = path.join(directory, 'campaigns', config.id), stateFile = path.join(home, 'state.json');
   const configHash = hash(JSON.stringify({ config, objectiveSha256: objective.objectiveSha256 }));
-  let state = fs.existsSync(stateFile) ? read(stateFile) : { schema: 'secretary.objective-campaign/v1', configHash,
+  const fresh = !fs.existsSync(stateFile);
+  let state = !fresh ? read(stateFile) : { schema: 'secretary.objective-campaign/v1', configHash,
     objectiveSha256: objective.objectiveSha256, sequence: 0, current: null, completedChunks: [] };
   if (state.configHash !== configHash) throw new Error('Campaign configuration changed; retain original identities and use a new campaign ID');
   const report = (phase, extra = {}) => { state = { ...state, phase, at: deps.now().toISOString(), ...extra }; durable(stateFile, state); return state; };
+  if (fresh && config.existingQueueId) {
+    const job = await deps.queue('show', ['--id', config.existingQueueId]);
+    if (job.id !== config.existingQueueId || job.intentHash !== config.expectedQueueIntentHash || job.executor?.mode !== 'operator' ||
+        !['diagnostic', 'other'].includes(job.kind) || !isDeepStrictEqual([...job.hosts].sort(), [...config.hosts].sort())) {
+      throw new Error('Existing operator request does not match the reviewed immutable intent and hosts');
+    }
+    const chunkHome = path.join(home, 'chunk-0');
+    durable(path.join(chunkHome, 'adopted-request.json'), job);
+    state.current = { key: job.key, queueId: job.id, chunkHome, launchIntent: false, adoptedIntentHash: job.intentHash };
+    report('adopted-existing-request');
+  }
+  if (state.phase === 'awaiting-output-review') return state;
   if (state.phase === 'needs-source-review') return state;
   if (state.phase === 'publication-pending') {
     const published = await deps.publish(directory);
@@ -126,6 +144,7 @@ async function advance(config, deps, { allowStart = true, stopReason = 'Explicit
     if (!job.releaseReceipt) return report('uncertain', { reason: 'Native queue has no release receipt' });
     state.completedChunks.push({ queueId: job.id, dispatchId: job.dispatchId, releaseReceipt: job.releaseReceipt });
     state.current = null; state.sequence++;
+    if (config.reviewBeforePublication) return report('awaiting-output-review', { reason: 'Chunk released; audit retained outputs before explicit native publication or a continuing campaign' });
     const published = await deps.publish(directory);
     return report(published.writes ? 'publication-pending' : 'ready', { publication: published });
   }
