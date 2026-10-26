@@ -97,7 +97,7 @@ def read_receipt(file, manifest):
     validate(row["result"], record["body"])
     if "resultProcessing" in row:
         raw = load(file.parent.parent / "review-attempts" / hashed(file.stem) / "result.json", {}).get("value")
-        normalized, changes = normalize_representation(raw)
+        normalized, changes = normalize_representation(raw, record["body"])
         expected = {"contract": "secretary.objective-representation/v1", "rawResultSha256": hashed(raw), "changes": changes}
         if not changes or row["resultProcessing"] != expected or normalized != row["result"]:
             raise ValueError("Objective representation receipt does not match the retained native result")
@@ -313,7 +313,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     saved = (objective / "review-attempts" / hashed(page["pageId"]) / "result.json").is_file()
                     raw = extract_once(fence, client, system, prompt, page)
                     inferences += not saved
-                    normalized, changes = normalize_representation(raw)
+                    normalized, changes = normalize_representation(raw, page["content"])
                     validate(normalized, page["content"])
                     record = _source_record(page)
                     receipt = {

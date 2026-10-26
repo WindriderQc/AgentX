@@ -54,13 +54,21 @@ native receipt. An uncertain dispatch blocks replacement; reconcile the exact
 saved attempt, never delete a fence. Invalid output keeps its original result
 and refuses a new model call. Native source corruption refuses reading.
 
-The local representation adapter may change only a missing date's precision
-from day/month/year to `unknown`. It never fills a date, alters a quote, or
-repairs an attribution, occurrence or factual interpretation. The immutable
-native model result remains intact; a separate processing receipt names its
-hash and each changed path. Receipt reads replay and verify this derivation.
-A complete result rejected solely for this representation can therefore resume
-without another inference or a different objective/prompt identity.
+The local representation adapter may change a missing date's precision from
+day/month/year to `unknown`. It can also restore a quote's exact original
+whitespace when every non-whitespace token and punctuation mark is identical
+and all matching source spans contain one identical original string. Repeated
+positions of that string are accepted without adding testimony; distinct
+original whitespace variants remain ambiguous and are rejected. This covers
+CRLF/LF, tabs and nonbreaking spaces without fuzzy text matching.
+
+The adapter never fills a date or repairs an attribution, occurrence or factual
+interpretation. The source and native model result remain intact; a separate
+processing receipt names the raw result hash, each changed path and the exact
+source spans for restored quotes. Receipt reads replay and verify this
+derivation. A complete result rejected solely for these representation
+differences can resume without another inference or a different
+objective/prompt identity.
 
 The worker verifies original bytes and reuses the native inert MIME reader:
 every inline plain/HTML representation and available HTML supplement is a
