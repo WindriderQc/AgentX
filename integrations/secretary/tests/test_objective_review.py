@@ -325,6 +325,16 @@ class ObjectiveTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "bound"):
             validate(wrong, "citation")
 
+    def test_scheduling_priority_does_not_change_objective_or_page_intent(self):
+        self.mail("message02", "Aucun événement personnel dans ce message fictif.")
+        self.config["selection"]["gmailMessageIds"].append("message02")
+        save(self.file, self.config)
+        _, manifest = self.prepare()
+        result = self.run_worker(Client(), max_pages=1, priority=["gmail:message02"])
+        row = next(s for s in result["coverage"]["sources"] if s["messageId"] == "message02")
+        self.assertEqual(row["reviewedPages"], 1)
+        self.assertEqual(self.prepare()[1]["objectiveSha256"], manifest["objectiveSha256"])
+
 
 if __name__ == "__main__":
     unittest.main()

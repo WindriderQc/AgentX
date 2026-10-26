@@ -208,7 +208,7 @@ def export(objective, manifest):
 
 
 def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, per_source_pages=None,
-        max_seconds=1800, sleep=time.sleep, clock=time.monotonic, stop=lambda: False):
+        max_seconds=1800, priority=(), sleep=time.sleep, clock=time.monotonic, stop=lambda: False):
     if not UUID.fullmatch(queue_id or "") or not UUID.fullmatch(dispatch_id or ""):
         raise ValueError("Native run requires its explicit Core operator queue/dispatch identities")
     if type(max_pages) is not int or max_pages <= 0:
@@ -238,7 +238,9 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         durable(objective / "status.json", status)
         return {**status, "coverage": export(objective, manifest)}
 
-    for source in manifest["sources"]:
+    order = {value: index for index, value in enumerate(priority)}
+    ordered = sorted(manifest["sources"], key=lambda source: order.get(source["system"] + ":" + source["id"], len(order)))
+    for source in ordered:
         if made >= max_pages or stop():
             return finish("partial" if not stop() else "stopped")
         plan_file = objective / "sources" / (source_key(source) + ".json")
@@ -342,6 +344,7 @@ def main(argv=None):
     parser.add_argument("--max-seconds", type=int, default=1800)
     parser.add_argument("--queue-request-id")
     parser.add_argument("--queue-dispatch-id")
+    parser.add_argument("--priority-file", type=Path, help="Private native IDs; scheduling order only, never model instructions")
     args = parser.parse_args(argv)
     objective, manifest = prepare(args.root, config_at(args.objective), create=args.command in ("plan", "run"))
     if args.command in ("plan", "status"):
@@ -349,6 +352,9 @@ def main(argv=None):
     elif args.command == "export":
         result = export(objective, manifest)
     else:
+        priority = load(args.priority_file, []) if args.priority_file else []
+        if not isinstance(priority, list) or any(not isinstance(value, str) or not re.fullmatch(r"(?:gmail|outlook-export):[a-zA-Z0-9_-]{8,256}", value) for value in priority):
+            raise ValueError("Priority must contain explicit native source keys")
         stopping = []
         for sig in (signal.SIGINT, signal.SIGTERM):
             signal.signal(sig, lambda *_: stopping.append(True))
@@ -359,7 +365,7 @@ def main(argv=None):
             result = run(args.root, objective, manifest, CoreClient(args.core, task_type=args.task_type, schema=SCHEMA,
                          caller="secretary-objective-review"), max_pages=args.max_pages, queue_id=args.queue_request_id,
                          dispatch_id=args.queue_dispatch_id, per_source_pages=args.max_pages_per_source,
-                         max_seconds=args.max_seconds, stop=lambda: bool(stopping))
+                         max_seconds=args.max_seconds, priority=priority, stop=lambda: bool(stopping))
         finally:
             lock.release()
     if args.command == "plan":

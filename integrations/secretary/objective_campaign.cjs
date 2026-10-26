@@ -44,7 +44,8 @@ function dependencies(config) {
       return spawnSync('systemd-run', ['--user', `--unit=${unit}`, '--service-type=exec', '--property=RemainAfterExit=yes',
         '--description=Native bounded Secretary objective review', '/usr/bin/python3', path.join(__dirname, 'objective_review.py'),
         'run', '--objective', config.objectiveFile, '--core', config.core, '--max-pages', String(config.maxPages),
-        '--max-seconds', String(config.maxSeconds), '--queue-request-id', job.id, '--queue-dispatch-id', job.dispatchId], { encoding: 'utf8' });
+        '--max-seconds', String(config.maxSeconds), '--queue-request-id', job.id, '--queue-dispatch-id', job.dispatchId,
+        ...(config.priorityFile ? ['--priority-file', config.priorityFile] : [])], { encoding: 'utf8' });
     },
     publish(directory) {
       const result = spawnSync(process.execPath, [path.join(__dirname, 'objective_publish.cjs'), 'publish', '--directory', directory,

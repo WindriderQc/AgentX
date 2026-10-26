@@ -12,6 +12,9 @@ Core placement `when` (`asap` or `tonight`), and positive `maxPages`,
 `maxSeconds`, `estimatedMinutes` and `publishBudget`. No concrete model or
 load/context options belong in it. A configuration change uses a new campaign
 identity while preserving the objective's existing page receipts.
+Optional `priorityFile` names a private JSON array of `gmail:<native-id>` or
+`outlook-export:<sha256>` keys. It changes execution order only, without adding
+instructions to the model or changing source/page/goal reading identities.
 
 The controller records its native queue key before submission. It reconciles
 the same key/ID on a lost response, respects Core's placement, and obtains the
