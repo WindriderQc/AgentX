@@ -32,9 +32,37 @@ function sourceRecord(record) {
     date: timestamp(record.mailDate), authority: 'source-record', nativeRef: record.nativeRef,
     provenance: { owner: 'secretary-objective-review', bodyScope: record.bodyScope } };
 }
+function boundEquivalentCopies(finding, records) {
+  const mandatory = records.filter(record => record.bodyScope !== 'verified-equivalent-unit-not-read-by-model');
+  const aliases = records.filter(record => record.bodyScope === 'verified-equivalent-unit-not-read-by-model');
+  const proof = records.map(record => ({ id: record.id, bodySha256: record.bodySha256, nativeRef: record.nativeRef,
+    claimsWithExactQuotes: finding.claimsWithExactQuotes.filter(c => c.sourceId === record.id) }));
+  const selected = [...mandatory], represented = new Set(), omitted = [];
+  const mandatoryClaims = finding.claimsWithExactQuotes.filter(c => mandatory.some(r => r.id === c.sourceId));
+  let claims = mandatoryClaims.length;
+  let bytes = Buffer.byteLength(JSON.stringify(mandatory)) + Buffer.byteLength(JSON.stringify(mandatoryClaims));
+  for (const record of [...aliases].sort((a, b) => Buffer.byteLength(a.body) - Buffer.byteLength(b.body))) {
+    const group = record.nativeRef.system;
+    const count = finding.claimsWithExactQuotes.filter(c => c.sourceId === record.id).length;
+    const size = Buffer.byteLength(JSON.stringify(record)) + Buffer.byteLength(JSON.stringify(finding.claimsWithExactQuotes.filter(c => c.sourceId === record.id)));
+    const reason = represented.has(group) ? 'equivalent-copy-grouped-by-source-system'
+      : Buffer.byteLength(record.body) > 1024 * 1024 ? 'equivalent-body-over-core-limit'
+        : selected.length >= 100 || claims + count > 100 || bytes + size > 1536 * 1024 ? 'equivalent-copy-core-context-budget' : null;
+    if (reason) { omitted.push({ sourceId: record.id, reason }); continue; }
+    selected.push(record); represented.add(group); claims += count; bytes += size;
+  }
+  return { records: selected, claims: finding.claimsWithExactQuotes.filter(c => selected.some(r => r.id === c.sourceId)),
+    proof, limits: { totalSourceRecords: records.length, importedSourceRecords: selected.length,
+      totalQuotedClaims: finding.claimsWithExactQuotes.length, importedQuotedClaims: claims,
+      omittedEquivalentCopies: omitted.length, equivalentCopies: aliases.length,
+      policy: 'Canonical model evidence plus one bounded equivalent copy per source system; no distinct evidence omitted',
+      proofManifestSha256: hash(JSON.stringify(proof)), omitted } };
+}
 function build(finding, indexed, { matches = [] } = {}) {
   if (!/^objective-[a-f0-9]{64}$/.test(finding.id || '') || finding.userConfirmed !== false || finding.reviewState !== 'candidate') throw new Error('Only native unconfirmed objective candidates can be imported');
-  const records = finding.sourceIds.map(id => { const record = indexed.get(id); if (!record) throw new Error(`Missing quoted source ${id}`); return record; });
+  const allRecords = finding.sourceIds.map(id => { const record = indexed.get(id); if (!record) throw new Error(`Missing quoted source ${id}`); return record; });
+  const bounded = boundEquivalentCopies(finding, allRecords);
+  const records = bounded.records;
   const findingId = finding.id.slice('objective-'.length);
   const primary = nativeSource(records[0], findingId);
   for (const claim of finding.claimsWithExactQuotes) {
@@ -56,17 +84,18 @@ function build(finding, indexed, { matches = [] } = {}) {
       occurrenceStatus: finding.occurrenceStatus, claimType: finding.claimType === 'hypothesis' ? 'hypothesis' : 'assertion',
       reviewState: 'candidate', confirmationBasis: 'source-record', rationale: finding.rationale, notes: finding.uncertainty,
       sourceIndependence: finding.sourceIndependence || 'not-established',
-      sourceIds: finding.sourceIds, claimsWithExactQuotes: finding.claimsWithExactQuotes,
+      sourceIds: records.map(r => r.id), claimsWithExactQuotes: bounded.claims,
       proposedRelations: [...(finding.relationHints || []), ...proposals],
       metadata: { objectiveId: finding.objectiveId, objectiveVersion: finding.objectiveVersion,
-        subject: finding.subject, subjectName: finding.subjectName, userConfirmed: false } },
+        subject: finding.subject, subjectName: finding.subjectName, userConfirmed: false,
+        proofLimits: Object.fromEntries(Object.entries(bounded.limits).filter(([key]) => key !== 'omitted')) } },
     sourceRecords: records.map(sourceRecord),
     relations: related.map(row => ({ id: `objective-match-${hash(`${finding.id}:${row.id}`)}`, title: 'Fait possiblement déjà relevé',
       kind: 'hypothesis', eventIds: [finding.id, row.timeline.legacyId],
       summary: 'La nouvelle lecture et le relevé existant citent le même original et un passage commun.',
       rationale: 'Rapprochement de provenance et de citation, sans fusion ni changement du relevé antérieur.',
       limits: 'Une même source ne constitue pas une corroboration indépendante; les formulations et dates restent à revoir.',
-      sourceIndependence: 'not-established', claimsWithExactQuotes: finding.claimsWithExactQuotes })), media: [] };
+      sourceIndependence: 'not-established', claimsWithExactQuotes: bounded.claims.slice(0, 1) })), media: [] };
   return payload;
 }
 function matches(finding, indexed, existing) {
@@ -164,6 +193,10 @@ async function main(argv = process.argv.slice(2)) {
     }
   }
   const plan = findings.map(finding => build(finding, records, { matches: matches(finding, records, existing) }));
+  durable(path.join(directory, 'publication-proof-manifest.json'), findings.map(finding => {
+    const bounded = boundEquivalentCopies(finding, finding.sourceIds.map(id => records.get(id)));
+    return { findingId: finding.id, ...bounded.limits, sources: bounded.proof };
+  }));
   const normalized = plan.map(value => contract.normalize(value)); // All validate before any mutation.
   durable(path.join(directory, 'publication-plan.json'), { at: new Date().toISOString(), entries: plan,
     contextHashes: normalized.map(value => value.context.inputHash) });
@@ -179,5 +212,5 @@ async function main(argv = process.argv.slice(2)) {
   durable(path.join(directory, 'publication-summary.json'), { at: new Date().toISOString(), receipts });
   console.log(JSON.stringify({ publishedOrReconciled: receipts.length, writes, candidates: plan.length, confirmed: 0 }));
 }
-module.exports = { build, sourceRecord, matches, client, lookup, publishOne, main };
+module.exports = { build, sourceRecord, boundEquivalentCopies, matches, client, lookup, publishOne, main };
 if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });

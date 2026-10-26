@@ -96,3 +96,31 @@ test('existing facts are proposed as hypotheses, never overwritten or auto-merge
   assert.equal(result.entryId, undefined);
   assert.equal(existing[0].timeline.title, undefined);
 });
+test('hundreds of equivalent copies are grouped explicitly without losing distinct evidence or stopping publication', () => {
+  const { finding, indexed, source } = fixture();
+  for (let n = 0; n < 150; n++) {
+    const id = `objective-${hash(`alias-${n}`)}`;
+    indexed.set(id, { ...source, id, bodyScope: 'verified-equivalent-unit-not-read-by-model',
+      nativeRef: { ...source.nativeRef, system: 'outlook-export', messageId: hash(id) } });
+    finding.sourceIds.push(id); finding.claimsWithExactQuotes.push({ sourceId: id, quote: source.body });
+  }
+  const result = publisher.build(finding, indexed);
+  assert.equal(result.sourceRecords.length, 2);
+  assert.equal(result.timeline.claimsWithExactQuotes.length, 2);
+  assert.equal(result.timeline.metadata.proofLimits.omittedEquivalentCopies, 149);
+  assert.equal(result.timeline.metadata.proofLimits.totalSourceRecords, 151);
+  assert.match(result.timeline.metadata.proofLimits.proofManifestSha256, /^[a-f0-9]{64}$/);
+  const proof = publisher.boundEquivalentCopies(finding, finding.sourceIds.map(id => indexed.get(id)));
+  assert.equal(proof.proof.length, 151);
+  assert.equal(proof.limits.omitted.length, 149);
+});
+test('an oversized equivalent body is retained in native provenance while the original claim can still publish', () => {
+  const { finding, indexed, source } = fixture();
+  const id = 'objective-' + 'f'.repeat(64), body = source.body + '\n' + 'x'.repeat(1024 * 1024);
+  indexed.set(id, { ...source, id, body, bodySha256: hash(body), bodyScope: 'verified-equivalent-unit-not-read-by-model' });
+  finding.sourceIds.push(id); finding.claimsWithExactQuotes.push({ sourceId: id, quote: source.body });
+  const result = publisher.build(finding, indexed);
+  assert.equal(result.sourceRecords.length, 1);
+  assert.equal(result.timeline.metadata.proofLimits.omittedEquivalentCopies, 1);
+  assert.equal(result.timeline.claimsWithExactQuotes[0].quote, source.body);
+});

@@ -12,6 +12,7 @@ from evidence_store import load, save
 import objective_review as worker
 from objective_schema import validate
 from objective_sources import inventory, materialize, pages
+import objective_equivalence as equivalent
 
 QUEUE = "11111111-1111-4111-8111-111111111111"
 DISPATCH = "22222222-2222-4222-8222-222222222222"
@@ -285,6 +286,15 @@ class ObjectiveTests(unittest.TestCase):
         self.assertEqual(len(client.calls), 1)
         self.assertEqual(result["coverage"]["counts"]["equivalentPages"], 1)
 
+    def test_equivalent_date_zones_and_display_names_preserve_native_message_identity(self):
+        source, units, _ = materialize(self.root, inventory(self.root)[0])
+        copy_source = copy.deepcopy(source)
+        copy_source["mailDate"] = "2014-08-01T06:00:00-04:00"
+        copy_source["headers"]["from"] = '"Autre affichage" <owner@example.test>'
+        self.assertEqual(equivalent.key(source, units[0]), equivalent.key(copy_source, units[0]))
+        copy_source["direction"] = "draft"
+        self.assertNotEqual(equivalent.key(source, units[0]), equivalent.key(copy_source, units[0]))
+
     def test_visual_attachments_remain_gaps_without_ocr_or_render(self):
         save(self.root / "threads/thread001/manifest.json", {"messages": [{"id": "message01", "attachments": [
             {"filename": "photo.jpg", "mimeType": "image/jpeg", "sha256": "f" * 64, "status": "needs_visual_review"}]}]})
@@ -301,6 +311,18 @@ class ObjectiveTests(unittest.TestCase):
         wrong = copy.deepcopy(value)
         wrong["classification"] = "no-life-event"
         with self.assertRaises(ValueError):
+            validate(wrong, "citation")
+
+    def test_worker_output_bounds_match_the_core_context_contract(self):
+        value = {"summary": "Résumé fictif.", "classification": "life-events", "moments": [moment("citation")], "gaps": []}
+        for key, maximum in [("title", 500), ("description", 16000), ("uncertainty", 2000), ("rationale", 8000), ("subjectName", 300)]:
+            wrong = copy.deepcopy(value)
+            wrong["moments"][0][key] = "x" * (maximum + 1)
+            with self.assertRaisesRegex(ValueError, "bound"):
+                validate(wrong, "citation")
+        wrong = copy.deepcopy(value)
+        wrong["moments"][0]["quotes"] *= 21
+        with self.assertRaisesRegex(ValueError, "bound"):
             validate(wrong, "citation")
 
 

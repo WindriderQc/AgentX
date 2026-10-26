@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+from datetime import datetime, timezone
+from email.utils import getaddresses
 
 from evidence_store import load, now
 from review_attempts import durable, hashed
@@ -16,8 +18,18 @@ def key(source, unit):
     # The date/author/RFC context prevents a generic repeated 'OK' or boilerplate
     # from borrowing another message's interpretation. No RFC means same source.
     headers = source["headers"]
-    context = {name: normalized(headers.get(name, "")) for name in ("from", "to", "cc", "subject")}
-    context.update(date=source.get("mailDate") or headers.get("date"),
+    context = {"subject": normalized(headers.get("subject", ""))}
+    for name in ("from", "to", "cc"):
+        addresses = sorted(address.casefold() for _, address in getaddresses([headers.get(name, "")]) if address)
+        context[name] = addresses or normalized(headers.get(name, ""))
+    date = source.get("mailDate") or headers.get("date")
+    try:
+        instant = datetime.fromisoformat(date.replace("Z", "+00:00"))
+        if instant.tzinfo is not None:
+            date = instant.astimezone(timezone.utc).isoformat()
+    except (ValueError, AttributeError):
+        pass
+    context.update(date=date,
                    rfc=source.get("rfc822MessageId") or [source["system"], source["id"]],
                    draft=source.get("direction") == "draft")
     attachment = unit.get("attachment") or {}
