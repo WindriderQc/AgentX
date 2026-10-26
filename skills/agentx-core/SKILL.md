@@ -219,9 +219,13 @@ Use `consult_team` for an installed collaborator's actual execution. It retains
 that collaborator's native tools and permissions. `main` provides existing
 SuperDad workflows such as page reading and coding delegation through the
 Pipeline. Give the collaborator the complete request and relevant context.
-Generate one UUID `requestId`; retain it, poll `status`, and report only the
-returned answer/evidence. A dispatch acknowledgement is not completion. If
-uncertain, keep polling the original identity; never submit a replacement.
+Choose one fresh UUID `requestId` directly and retain it; do not launch a
+terminal command or another agent just to generate it. Poll `status` with that
+same identity and report only the returned answer/evidence. Core already waits
+up to 20 seconds per pending status call: call it again while pending, without
+adding terminal `sleep` commands. Honor an explicit retry delay or rate limit
+if returned. A dispatch acknowledgement is not completion. If uncertain, keep
+polling the original identity; never submit a replacement.
 Do not send mail or perform destructive actions without the owner's explicit
 request. Cloud budget, campaign approval and native admission still apply.
 

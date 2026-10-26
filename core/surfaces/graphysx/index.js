@@ -111,9 +111,13 @@ const idLine = (entry) => (entry.label ? `${entry.id} (${entry.label}${entry.des
 function buildSystemPrompt(vocabulary) {
   const limits = { ...DEFAULT_PROPOSAL_LIMITS, ...(vocabulary.proposalLimits || {}) };
   const fields = vocabulary.fields || {};
-  const block = (name, title) => (Array.isArray(fields[name]) && fields[name].length
-    ? `${title || name}: ${fields[name].map((field) => (typeof field === 'string' ? field : fieldLine(field))).join('; ')}`
-    : null);
+  const renderedBlocks = new Set(['patch']);
+  const block = (name, title) => {
+    renderedBlocks.add(name);
+    return Array.isArray(fields[name]) && fields[name].length
+      ? `${title || name}: ${fields[name].map((field) => (typeof field === 'string' ? field : fieldLine(field))).join('; ')}`
+      : null;
+  };
   const lines = [
     'You compose changes to a GraphysX 3D world for the AgentX Center. You answer with JSON only.',
     `Reply shape: {"intent": "<one sentence, under ${limits.intentChars} characters, saying what the change does>", "commands": [<at most ${limits.commands} commands>]}.`,
@@ -127,7 +131,7 @@ function buildSystemPrompt(vocabulary) {
     ...Object.entries(vocabulary.operations).map(([op, entry]) => `- ${op}: ${JSON.stringify(entry.shape)} — ${entry.description || ''}`),
     '',
     'ENTITY TYPES (primitive? physics? config block)',
-    ...Object.entries(vocabulary.entityTypes).map(([type, entry]) => `- ${type}: ${entry.primitive ? 'primitive mesh' : 'not a mesh'}, ${entry.physics ? 'accepts physics' : 'no physics'}${entry.config ? `, config block "${entry.config}"` : ''}${entry.requires ? `, requires ${entry.requires.join(', ')}` : ''}${entry.fields ? `, fields ${entry.fields.join(', ')}` : ''}`),
+    ...Object.entries(vocabulary.entityTypes).map(([type, entry]) => `- ${type}: ${entry.primitive ? 'primitive mesh' : type === 'mesh' ? 'authored triangle mesh' : 'non-primitive'}, ${entry.physics ? 'accepts physics' : 'no physics'}${entry.config ? `, config block "${entry.config}"` : ''}${entry.requires ? `, requires ${entry.requires.join(', ')}` : ''}${entry.fields ? `, fields ${entry.fields.join(', ')}` : ''}`),
     '',
     'FIELDS (name[min..max] — meaning)',
     block('entity', 'entity (spawn.entity)'),
@@ -135,6 +139,10 @@ function buildSystemPrompt(vocabulary) {
     block('transform'), block('geometry'), block('material'), block('texture'), block('physics'), block('path'), block('asset'), block('agent'),
     block('emitter'), block('sound'), block('terrain'), block('water'), block('flock'), block('crowd'), block('formula'), block('dna'), block('forceField'), block('surface'), block('steering'),
     block('environment', 'environment (set-environment.environment)'), block('envelope'), block('bloom', 'post.bloom'), block('lighting'), block('dayNight'), block('ground'), block('environmentPhysics', 'environment.physics'), block('joint'),
+    '',
+    ...Object.keys(fields).filter((name) => !renderedBlocks.has(name)).map((name) => block(name)),
+    'RESOURCE LIMITS',
+    JSON.stringify(vocabulary.limits || {}),
     '',
     'BEHAVIORS (attach-behavior.behavior, or spawn.entity.behaviors[])',
     ...Object.entries(vocabulary.behaviors || {}).map(([type, entry]) => `- ${type}: fields ${entry.fields.join(', ')} — ${entry.description || ''}`),
