@@ -83,7 +83,7 @@ class RecallIndexTests(unittest.TestCase):
         self.assertEqual(sent["source"], {"messageId": "m1", "threadId": "t1", "sourceSha256": "1" * 64})
         self.assertEqual(docs[2]["source"]["filename"], "report.pdf")
         self.assertNotIn("\x00", docs[2]["text"])  # Core refuses NUL characters
-        self.assertEqual(recall_index.clean("Bravo \U0001F389 et merci"), "Bravo  et merci")
+        self.assertEqual(recall_index.clean("Bravo \U0001F389 et\x00 merci"), "Bravo \U0001F389 et merci")
         self.assertEqual((counts["messagesNotPersonOrImportant"], counts["attachmentsWithoutReadText"]), (1, 1))
 
     def test_run_pauses_for_core_then_indexes_once_and_syncs(self):
