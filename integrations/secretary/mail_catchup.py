@@ -122,11 +122,14 @@ class Busy(Exception):
 
 class CoreClient:
     def __init__(self, base, task_type="analysis", light_model=None, light_host=None, timeout=900,
-                 opener=urllib.request.urlopen, schema=None, caller="secretary-catchup", max_output_tokens=None):
+                 opener=urllib.request.urlopen, schema=None, caller="secretary-catchup", max_output_tokens=None, thinking=False):
         self.base, self.task_type = base.rstrip("/"), task_type
         self.schema, self.caller = schema or REVIEW_SCHEMA, caller
         self.light_model, self.light_host = light_model, light_host
         self.timeout, self.opener = timeout, opener
+        if type(thinking) is not bool:
+            raise ValueError("thinking must be an explicit boolean")
+        self.thinking = thinking
         if max_output_tokens is not None and (type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 65536):
             raise ValueError("max_output_tokens must be an explicit positive integer up to 65536")
         self.max_output_tokens, self.review_response_sink = max_output_tokens, None
@@ -199,7 +202,7 @@ class CoreClient:
 
     def extract(self, system, prompt, light=False, request_id=None):
         body = {"messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-                "stream": False, "think": False, "format": self.schema, "options": {"temperature": 0},
+                "stream": False, "think": self.thinking, "format": self.schema, "options": {"temperature": 0},
                 "callerDetail": self.caller}
         if self.max_output_tokens is not None:
             body["options"]["num_predict"] = self.max_output_tokens

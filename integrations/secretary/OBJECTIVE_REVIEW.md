@@ -43,6 +43,17 @@ call. It never chooses a concrete model or changes a host pin. `mail_review`
 uses Core's configured task route. A pilot should bound pages, time and pages
 per source; Core retains final inference admission.
 
+Optional private `thinking: true` requests Core's native reasoning channel for
+this objective. Omitted/false retains the inherited non-thinking request and
+legacy dispatch identity. Enabling it enters both the immutable objective
+manifest and the dispatch intent; a changed mode cannot replace a retained
+attempt. The worker refuses a client whose mode differs from its manifest.
+Use a distinct objective version for changed instructions or reasoning mode,
+preserving old page receipts and raw results. This option chooses no model,
+host pin or context, performs no profile/load, and establishes no semantic
+quality by itself. A live comparison still needs native queue/admission and
+source-level output review before publication or a larger campaign.
+
 ```sh
 python3 integrations/secretary/objective_review.py run --objective "$PRIVATE_OBJECTIVE" \
   --max-pages 16 --max-pages-per-source 1 --max-seconds 1800 \

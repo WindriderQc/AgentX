@@ -112,6 +112,8 @@ def extract_once(archive, client, system, prompt, page, light=False, attempts="r
               "lightHost": getattr(client, "light_host", None) if light else None, "light": light}
     if getattr(client, "max_output_tokens", None) is not None:
         intent["maxOutputTokens"] = client.max_output_tokens
+    if getattr(client, "thinking", False) is True:
+        intent["thinking"] = True  # false preserves the original dispatch identity
     try:
         directory, intent = selection(directory, intent)
     except (OSError, ValueError, KeyError, TypeError) as error:

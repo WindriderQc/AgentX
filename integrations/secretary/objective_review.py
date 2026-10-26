@@ -32,8 +32,10 @@ UUID = re.compile(r"[a-f0-9-]{36}")
 
 def config_at(file):
     value = load(file, {})
-    if set(value) - {"id", "version", "kind", "ownerAliases", "instructions", "selection", "pageChars", "overlap"}:
+    if set(value) - {"id", "version", "kind", "ownerAliases", "instructions", "selection", "pageChars", "overlap", "thinking"}:
         raise ValueError("Unknown objective configuration field")
+    if "thinking" in value and type(value["thinking"]) is not bool:
+        raise ValueError("Objective thinking must be an explicit boolean")
     if value.get("kind") != "life-timeline" or any(not KEY.fullmatch(str(value.get(k, ""))) for k in ("id", "version")):
         raise ValueError("Objective needs a safe id/version and supported kind")
     aliases = value.get("ownerAliases", [])
@@ -224,6 +226,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         raise ValueError("Invalid per-source page budget")
     if type(max_seconds) is not int or max_seconds <= 0:
         raise ValueError("Every run needs a positive time budget")
+    if getattr(client, "thinking", False) is not manifest["config"].get("thinking", False):
+        raise ValueError("The native client thinking mode differs from the frozen objective")
     fence = SimpleNamespace(root=objective)
     held = unsettled(objective)
     if held:
@@ -384,7 +388,8 @@ def main(argv=None):
             raise RuntimeError("This objective already has a native worker")
         try:
             result = run(args.root, objective, manifest, CoreClient(args.core, task_type=args.task_type, schema=SCHEMA,
-                         caller="secretary-objective-review", max_output_tokens=args.max_output_tokens), max_pages=args.max_pages, queue_id=args.queue_request_id,
+                         caller="secretary-objective-review", max_output_tokens=args.max_output_tokens,
+                         thinking=manifest["config"].get("thinking", False)), max_pages=args.max_pages, queue_id=args.queue_request_id,
                          dispatch_id=args.queue_dispatch_id, per_source_pages=args.max_pages_per_source,
                          max_seconds=args.max_seconds, priority=priority, stop=lambda: bool(stopping))
         finally:
