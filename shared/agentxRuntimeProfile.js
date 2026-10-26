@@ -18,6 +18,7 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/api/data-toolbox',
   '/api/diskx',
   '/api/dsh',
+  '/api/graphysx',
   '/api/family',
   '/api/finance',
   '/api/household',
