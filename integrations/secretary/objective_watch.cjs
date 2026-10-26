@@ -63,6 +63,9 @@ async function watch(config, supplied, deps = {}) {
       phase, admissionDeadline: controls.until, pollSeconds: controls.pollSeconds, iterations,
       queueId: state?.current?.queueId || null, dispatchId: state?.current?.dispatchId || null,
       completedChunks: state?.completedChunks?.length || 0, userConfirmed: false, ...extra };
+    if (config.publicationMode === 'review-only') Object.assign(status, {
+      publicationMode: 'review-only', textualCoverage: state?.textualCoverage || null,
+      proposalReview: state?.proposalReview || null, semanticAcceptance: 'not-established' });
     durable(path.join(home, 'watch-status.json'), status); onProgress(status); return status;
   };
   try {
