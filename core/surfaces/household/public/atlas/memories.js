@@ -1,0 +1,11 @@
+import {escape,icon} from './ui.js';
+import {reviewState} from './review.js';
+
+export function renderMemories(root,api){
+ const state=api.state,visible=new Set(state.filtered.filter(e=>state.categories.has(e.category)).map(e=>e.id));
+ const chapters=(state.meta.ownerContributions?.chapters||[]).filter(c=>c.paths.some(p=>p.items.some(i=>visible.has(i.id)))||(c.pendingDates||[]).some(i=>visible.has(i.id)));
+ root.hidden=!chapters.length;
+ root.innerHTML=chapters.map(c=>`<details class="memory-chapter" open><summary><span>${icon('user')}</span><span><small>TON RÉCIT · SOUVENIRS ET REPÈRES</small><strong>${escape(c.title)}</strong></span><span class="memory-chevron" aria-hidden="true">⌄</span></summary><div class="memory-body"><p>${escape(c.summary)}</p>${c.paths.map(path=>{const items=path.items.filter(i=>visible.has(i.id));return items.length?`<div class="memory-path-heading"><h3>${escape(path.label)}</h3><span>Ordre du récit · dates partielles</span></div><ol class="memory-path">${items.map(i=>{const e=state.events.find(e=>e.id===i.id);return `<li><button type="button" data-memory-event="${escape(i.id)}"><span class="memory-state" aria-hidden="true">${reviewState(e)==='confirmed'?'✓':'◌'}</span><strong>${escape(i.label)}</strong><small>${escape(i.context)}</small></button></li>`;}).join('')}</ol>`:'';}).join('')}${(c.pendingDates||[]).filter(i=>visible.has(i.id)).map(i=>`<div class="memory-pending"><span aria-hidden="true">◇</span><button type="button" class="text-button" data-memory-event="${escape(i.id)}">${escape(i.label)}</button><small>${escape(i.context)}</small></div>`).join('')}<div class="memory-actions"><button type="button" class="text-button" data-memory-focus="${escape(c.id)}">Explorer les repères datés ↗</button><span>Cliquer sur une étape pour lire, corriger ou compléter son dossier.</span></div></div></details>`).join('');
+ root.querySelectorAll('[data-memory-event]').forEach(b=>b.addEventListener('click',()=>api.open([state.events.find(e=>e.id===b.dataset.memoryEvent)],b,true)));
+ root.querySelectorAll('[data-memory-focus]').forEach(b=>b.addEventListener('click',()=>{const c=chapters.find(c=>c.id===b.dataset.memoryFocus),ids=c.paths.flatMap(p=>p.items.map(i=>i.id));api.focus(state.events.filter(e=>ids.includes(e.id)&&visible.has(e.id)));}));
+}

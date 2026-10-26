@@ -8,6 +8,7 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail }) {
     catch (error) { return fail(res, error.statusCode || 500, error.message, error.code || 'PERSONAL_HISTORY_FAILED'); }
   };
   router.get('/history', (req, res) => respond(res, () => history.list(req.query)));
+  router.get('/history/timeline', (_req, res) => respond(res, () => history.timeline()));
   router.post('/history/import', (req, res) => respond(res, async () => {
     const entries = req.body?.entries;
     if (!Array.isArray(entries) || !entries.length || entries.length > 50) {

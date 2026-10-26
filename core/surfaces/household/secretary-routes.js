@@ -14,6 +14,7 @@ const { registerSecretaryHistoryRoutes } = require('./secretary-history');
 const { registerSecretaryPeopleRoutes } = require('./secretary-people');
 const { registerSecretaryRecallRoutes } = require('./secretary-recall');
 const { registerSecretarySouvenirRoutes } = require('./secretary-souvenirs');
+const { registerSecretarySourceRoutes } = require('./secretary-sources');
 const { registerSecretaryDossierRoutes } = require('./secretary-dossier');
 
 // A slow or unreachable host never delays the desk; its late answer shows on the next refresh.
@@ -103,6 +104,7 @@ function registerSecretaryRoutes(app, {
   registerSecretaryPeopleRoutes({ router: secretary, envelope, fail });
   registerSecretaryRecallRoutes({ router: secretary, envelope, fail });
   registerSecretarySouvenirRoutes({ router: secretary, envelope, fail });
+  registerSecretarySourceRoutes({ router: secretary, envelope, fail });
   registerSecretaryDossierRoutes({ router: secretary, envelope, fail, dossiers });
   secretary.get('/email-action/readiness', async (_req, res) => {
     const readiness = await checkEmailActionReadiness();

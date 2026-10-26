@@ -4,6 +4,7 @@ const { createHash } = require('node:crypto');
 const Entry = require('../../models/PersonalHistoryEntry');
 const { sealText } = require('./identifierVault');
 const privacy = require('./personalHistoryPrivacy');
+const ownerSources = require('./ownerSourceService');
 
 const KINDS = ['action', 'fact', 'deliverable', 'invoice', 'calendar', 'contact'];
 const STATES = ['candidate', 'retained', 'resolved', 'dismissed', 'forgotten'];
@@ -47,9 +48,11 @@ function eventDate(value, precision) {
   return value;
 }
 
+// Mail, the owner's own statements, Core records and household files
+// (ownerSourceService); each is cited by a SHA-256 identity.
 function sourceOf(source = {}) {
-  const system = enumValue(source.system, ['gmail', 'outlook-export']);
-  for (const key of ['sourceSha256', 'findingId']) if (!HASH.test(source[key] || '')) throw failure(`source.${key} must be a SHA-256`);
+  let system;
+  try { ({ system } = ownerSources.validate(source)); } catch (error) { throw failure(error.message); }
   if (system === 'gmail' && (!ID.test(source.messageId || '') || !ID.test(source.threadId || ''))) throw failure('Exact Gmail message and thread IDs are required');
   return system;
 }
@@ -63,7 +66,8 @@ const labels = (value = []) => {
 function relatedSources(value = []) {
   if (!Array.isArray(value) || value.length > 18) throw failure('Cite at most 18 related sources');
   return value.map(source => ({ system: sourceOf(source), threadId: text(source.threadId, 256),
-    messageId: text(source.messageId, 256), sourceSha256: source.sourceSha256, findingId: source.findingId }));
+    messageId: text(source.messageId, 256), locator: text(source.locator, 512),
+    sourceSha256: source.sourceSha256, findingId: source.findingId }));
 }
 
 function normalize(input = {}) {
@@ -82,7 +86,7 @@ function normalize(input = {}) {
     assertionState: 'unknown', sourceStatus: text(input.sourceStatus, 1000),
     people: labels(input.people), places: labels(input.places), relatedSources: relatedSources(input.relatedSources),
     source: { system, sourceSha256: source.sourceSha256, findingId: source.findingId,
-      threadId: text(source.threadId, 256), messageId: text(source.messageId, 256),
+      threadId: text(source.threadId, 256), messageId: text(source.messageId, 256), locator: text(source.locator, 512),
       evidenceHash: source.evidenceHash || '', reviewSha256: source.reviewSha256 || '',
       personalNoteId: source.personalNoteId || '', direction: enumValue(source.direction, ['received', 'sent', 'draft', 'unknown'], 'unknown') }
   };
@@ -98,13 +102,14 @@ function project(row) {
     eventDateAsWritten: forgotten ? '' : row.eventDateAsWritten, eventDatePrecision: row.eventDatePrecision,
     assertionState: row.assertionState, sourceStatus: forgotten ? '' : row.sourceStatus,
     people: forgotten ? [] : row.people || [], places: forgotten ? [] : row.places || [],
-    relatedSources: forgotten ? [] : row.relatedSources || [],
+    relatedSources: forgotten ? [] : (row.relatedSources || []).map(source => ({ ...source, url: ownerSources.sourceLink(source) })),
     reviewState: row.reviewState, revision: row.revision, sensitivity: row.sensitivity,
     source: forgotten ? null : row.source,
     gmailUrl: !forgotten && row.source?.system === 'gmail'
       ? `https://mail.google.com/mail/#all/${encodeURIComponent(row.source.threadId)}` : null,
     archiveUrl: !forgotten && row.source?.system === 'gmail'
       ? `/api/secretary/archive/${encodeURIComponent(row.source.messageId)}?sha256=${row.source.sourceSha256}` : null,
+    sourceUrl: forgotten ? null : ownerSources.sourceLink(row.source),
     decision: forgotten ? null : row.decision, souvenirNoteId: forgotten ? '' : row.souvenirNoteId || '', createdAt: row.createdAt, updatedAt: row.updatedAt };
 }
 
@@ -161,7 +166,7 @@ async function list(input = {}) {
   ] }];
   else filter.reviewState = input.state ? enumValue(input.state, STATES) : { $ne: 'forgotten' };
   if (input.kind) filter.kind = enumValue(input.kind, KINDS);
-  if (input.source) filter['source.system'] = enumValue(input.source, ['gmail', 'outlook-export']);
+  if (input.source) filter['source.system'] = enumValue(input.source, ownerSources.SYSTEMS);
   if (input.souvenir) filter.souvenirNoteId = enumValue(input.souvenir, ['kept', 'not-kept']) === 'kept'
     ? { $nin: ['', null] } : { $in: ['', null] };
   if (input.before || input.since) filter.sourceDate = {
@@ -176,15 +181,29 @@ async function list(input = {}) {
   const [rows, total] = await Promise.all([
     Entry.find(filter).sort({ sourceDate: 1, _id: 1 }).skip(offset).limit(limit).lean(), Entry.countDocuments(filter)
   ]);
-  // A kept entry shows its souvenir as it is now, with the owner's corrections.
+  const entries = await withSouvenirs(rows);
+  return { authority: 'agentx.core', entries, total, nextOffset: offset + rows.length < total ? offset + rows.length : null,
+    ordering: 'source-date-oldest-first', eventDateCoverage: 'event-dates-are-independent-of-source-dates' };
+}
+
+// A kept entry shows its souvenir as it is now, with the owner's corrections.
+async function withSouvenirs(rows) {
   const kept = new Map((await notes().souvenirs(rows.map(row => row.souvenirNoteId).filter(Boolean))).map(note => [note.id, note]));
-  const entries = rows.map(row => {
+  return rows.map(row => {
     const note = row.souvenirNoteId && row.reviewState !== 'forgotten' ? kept.get(String(row.souvenirNoteId)) : null;
     return { ...project(row), ...(note ? { souvenir: { id: note.id, revision: note.revision, text: note.text, eventDate: note.eventDate,
       eventDatePrecision: note.eventDatePrecision, people: note.people, places: note.places } } : {}) };
   });
-  return { authority: 'agentx.core', entries, total, nextOffset: offset + rows.length < total ? offset + rows.length : null,
-    ordering: 'source-date-oldest-first', eventDateCoverage: 'event-dates-are-independent-of-source-dates' };
+}
+
+// Every entry the owner has not forgotten, in one read, for a timeline view.
+const TIMELINE_MAXIMUM = 20000;
+async function timeline() {
+  const filter = { scope: 'owner', reviewState: { $ne: 'forgotten' } };
+  const rows = await Entry.find(filter, { reviewHistory: 0 }).sort({ sourceDate: 1, _id: 1 }).limit(TIMELINE_MAXIMUM + 1).lean();
+  const truncated = rows.length > TIMELINE_MAXIMUM;
+  const entries = await withSouvenirs(rows.slice(0, TIMELINE_MAXIMUM));
+  return { authority: 'agentx.core', entries, total: entries.length, truncated, readAt: new Date().toISOString() };
 }
 
 async function review(id, input = {}) {
@@ -255,4 +274,4 @@ async function keepAsSouvenir(id, input = {}) {
   return { authority: 'agentx.core', created: note.created, entry: project(row), souvenirNoteId: note.id };
 }
 
-module.exports = { normalize, record, list, review, keepAsSouvenir, project };
+module.exports = { normalize, record, list, timeline, review, keepAsSouvenir, project };

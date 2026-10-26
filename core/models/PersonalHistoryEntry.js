@@ -1,6 +1,7 @@
 'use strict';
 
 const mongoose = require('mongoose');
+const { SYSTEMS } = require('../src/services/ownerSourceService');
 
 // Source assertions for the owner's historical review. Selected memory, task
 // commitments and provider records retain their existing owners.
@@ -23,18 +24,21 @@ const schema = new mongoose.Schema({
   places: [{ type: String, maxlength: 300 }],
   relatedSources: [{
     _id: false,
-    system: { type: String, enum: ['gmail', 'outlook-export'], required: true },
+    system: { type: String, enum: SYSTEMS, required: true },
     threadId: { type: String, default: '', maxlength: 256 },
     messageId: { type: String, default: '', maxlength: 256 },
+    // A Core record or household file: see ownerSourceService.
+    locator: { type: String, default: '', maxlength: 512 },
     sourceSha256: { type: String, required: true, maxlength: 64 },
     findingId: { type: String, required: true, maxlength: 64 }
   }],
   reviewState: { type: String, enum: ['candidate', 'retained', 'resolved', 'dismissed', 'forgotten'], default: 'candidate', index: true },
   revision: { type: Number, default: 0 },
   source: {
-    system: { type: String, enum: ['gmail', 'outlook-export'], required: true },
+    system: { type: String, enum: SYSTEMS, required: true },
     threadId: { type: String, default: '', maxlength: 256 },
     messageId: { type: String, default: '', maxlength: 256 },
+    locator: { type: String, default: '', maxlength: 512 },
     sourceSha256: { type: String, required: true, maxlength: 64 },
     findingId: { type: String, required: true, maxlength: 64 },
     evidenceHash: { type: String, default: '', maxlength: 64 },

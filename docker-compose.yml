@@ -215,6 +215,8 @@ services:
       - recovery_data:/backups
       - ${HOUSEHOLD_PHOTOS_DIR:-./docker/empty}:/mnt/household/photos:ro
       - ${HOUSEHOLD_MEDIA_DIR:-./docker/empty}:/mnt/household/media:ro
+      # The owner's documents cited by the personal history (Life Atlas); read-only.
+      - ${OWNER_DOCUMENTS_DIR:-./docker/empty}:/mnt/owner/documents:ro
 
   benchmark:
     logging: *default-logging

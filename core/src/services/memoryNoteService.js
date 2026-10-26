@@ -39,7 +39,8 @@ const sourceOf = value => (typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test
 // values are accepted from the Nestor consumer; anything else is not a note
 // the owner dictated, but it is never relabelled as one either.
 const AGENT_PROVENANCE = Object.freeze({ conversation: 'nestor-conversation', 'mail-review': 'nestor-mail-review', scheduled: 'nestor-scheduled' });
-const SOUVENIR_REF_SYSTEMS = ['personal-history', 'gmail', 'outlook-export'];
+// A souvenir cites its history entry and the sources that entry cites.
+const SOUVENIR_REF_SYSTEMS = ['personal-history', 'gmail', 'outlook-export', 'owner-statement', 'core-record', 'owner-file'];
 function souvenirRefs(value) {
   if (!Array.isArray(value) || !value.length || value.length > 20) throw error('A souvenir needs 1-20 sources');
   return value.map(ref => {

@@ -241,6 +241,13 @@ function register(api) {
   }
   app.use('/assets/household', express.static(publicRoot, { fallthrough: false, maxAge: '5m' }));
   app.get('/device-check', (_req, res) => res.redirect(302, '/voice-lab/devices'));
+  // Life Atlas: the owner's timeline and souvenir editor, a static page over
+  // /api/secretary. Family-pinned devices are refused like every owner page.
+  app.get('/atlas', (req, res, next) => {
+    const [pathname, query] = String(req.originalUrl).split('?');
+    return pathname === '/atlas' ? res.redirect(301, `/atlas/${query ? `?${query}` : ''}`) : next();
+  });
+  app.use('/atlas', express.static(path.join(publicRoot, 'atlas'), { index: 'index.html', maxAge: '5m', fallthrough: false }));
   app.get('/voice-personas/debug', (_req, res) => res.redirect(302, '/voice-lab/personas'));
   app.get('/dad/nestor', (_req, res) => res.redirect(302, '/voice'));
   app.get([
