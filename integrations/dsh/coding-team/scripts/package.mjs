@@ -43,7 +43,10 @@ export async function buildPackage({ coreUrl, output }) {
 });
 `;
   await writeFile(resolve(destination, 'lib/client.js'), bundle, { mode: 0o600 });
-  await copyFile(resolve(sourceRoot, 'src/index.mjs'), resolve(destination, 'lib/index.js'));
+  for (const file of ['index', 'bridge', 'workspaces']) {
+    const source = await readFile(resolve(sourceRoot, `src/${file}.mjs`), 'utf8');
+    await writeFile(resolve(destination, `lib/${file}.js`), source.replaceAll("./bridge.mjs", "./bridge.js").replaceAll("./workspaces.mjs", "./workspaces.js"));
+  }
   await writeFile(resolve(destination, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   for (const file of ['cordis.patch.yml', 'README.md']) {
     await copyFile(resolve(sourceRoot, file), resolve(destination, file));

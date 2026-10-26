@@ -9,14 +9,13 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
-- **Coding work in Studio and Nestor.** The optional DSH bundle embeds Core's
-  engineering work index and read-only dossiers in a native Studio panel. The
-  same bounded service supplies complete specifications and feedback through
-  Nestor's existing `pipeline_tasks` tool. Long reads use hash-bound pages;
-  recorded feedback remains inspectable when the artifact registry is empty.
-  Worker sessions, execution authority, review and deployment retain their
-  native owners. Instance installation and human acceptance require their own
-  evidence.
+- **Coding work in Studio and Nestor.** The optional DSH bundle exposes native
+  worker conversations with read-only progress and independent human
+  continuations, using the retained worker logs and separate repository copies.
+  Core's bounded dossier reader supplies complete specifications and feedback
+  through Nestor's existing `pipeline_tasks` tool. Task state, execution
+  authority, review and deployment retain their native owners. Instance
+  installation and human acceptance require separate evidence.
 
 - **Personal agenda.** `/dad/calendar` presents up to 50 primary-calendar events
   in the instance time zone, with explicit partial coverage and a Core read

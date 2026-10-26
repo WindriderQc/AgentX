@@ -1,91 +1,99 @@
-# DSH Studio → Coding Team
+# Native coding sessions in DSH Studio
 
-This optional DSH **0.2.0-rc.2** bundle adds a native **Travail des agents**
-panel. It presents Core's engineering work index and complete task dossiers
-inside Studio: specification, feedback, attempts, recorded budgets, interventions
-and deliverables. Search by task number or title, filter by status and page older
-work. The existing sidebar-foot link still opens the full Pipeline monitor and
-its native controls in a separate tab.
+This optional bundle connects the coding worker's native DSH **0.2.0-rc.2**
+execution histories to Studio's existing conversations. It replaces the embedded
+Pipeline panel. **Sessions du coding team** opens the actual native transcript,
+including messages and tool calls, and updates it from the worker log every two
+seconds. It does not stream tokens that the worker has not persisted yet.
 
-Core serves `/pipeline?view=studio` and owns the shared read service used by the
-panel and Nestor's existing `pipeline_tasks` tool (`view=dossier`). Long dossiers
-are read completely in hash-bound pages. A changing dossier requires a fresh
-read; an empty deliverable registry does not imply an absence of work.
+The observation is read-only. **Reprendre dans une copie** creates a durable
+native DSH fork with the recorded history and a separate repository copy.
+The human can then use Studio's normal conversation, files and tools. Opening
+or copying a session never requests inference. A later human prompt uses the
+Studio profile's own model selection, admission and permissions; expired worker
+relay credentials and sandbox configuration are not installed into Studio.
 
-The DSH host entry remains inert. The browser registers native main/sidebar
-slots and frames only the configured Core origin. Only this dedicated Core view
-admits the exact configured `DSH_STUDIO_PUBLIC_URL` as an additional frame
-ancestor. Other pages keep their existing frame restrictions. No runtime
-credentials, tool grants, filesystem mounts, worker dispatch or session copying
-are added. Isolated worker histories remain under their native owner; this panel
-does not turn them into editable Studio sessions or claim their work is accepted.
+Core remains the owner of tasks, dispatch, budgets, review and deployment.
+A human continuation does not stop the original worker, approve its task or
+publish its changes. Pipeline remains available through a separate link.
+Missing worker logs are reported as missing history; a task status cannot
+reconstruct an execution that was not retained.
 
-## Build an instance artifact
+## Private instance configuration
 
-The source has no host URL. Supply the private HTTPS Core origin when building:
+Install only in the private Web profile, preserving its existing bundles and
+lockfiles. Supply these environment values to its existing service:
+
+```bash
+AGENTX_CODING_WORKSPACES=/private/coding-workspaces
+AGENTX_DSH_TEAM_STATE=/private/studio-team-state
+```
+
+The first root contains the existing `task-NNNN` repositories and sibling
+`.home-task-NNNN/.dsh/progress-sessions` histories. The native JSONL reader opens
+these logs read-only, including while the original writer holds its lock. Never
+remove its lock, mount the worker's writable home into Studio, or reuse a worker
+execution request to launch a human continuation. The Studio process needs read
+access to these directories. A sandboxed Studio must receive corresponding
+read-only source mounts and a separate writable continuation root.
+
+The second root contains private continuation receipts, independent Git clones
+and empty observation directories. It defaults to `$DSH_HOME/agentx-coding-team`.
+Keep it outside public Git. A stable request UUID reconciles a lost successful
+response to the same continuation. An incomplete receipt blocks replacement:
+inspect that receipt and its native session before recovering it. Do not delete
+it to retry under another identity.
+
+Observation sessions are reconstructed from their original logs after a Studio
+restart; they are not a second durable task/transcript store. Live copied events
+retain source payloads and translated references; their display arrival times
+can differ from source times. Original timestamps remain in the source log.
+Unexpected history rewrites or lifecycle seed markers stop synchronization with
+an explicit error. Restart the bridge to reload a new source lifecycle.
+
+Continuation copies retain tracked and nonignored untracked files, deletions,
+Git objects and the rejected candidate in `refs/stash`, when present. Ignored
+files such as dependencies are excluded. Git remotes are removed, hooks are
+disabled and writable objects are not hardlinked. External or absolute symlinks
+refuse the copy. The files reflect the repository at copy time, which may differ
+from an older conversation's event boundary; an active worker can still change
+its original directory. The continuation receipt records its source history
+hash and any non-file paths omitted from the copy. Install dependencies and
+inspect the stash deliberately before continuing a rejected candidate.
+
+## Package and install
+
+Build into a new private directory outside this repository:
 
 ```bash
 node integrations/dsh/coding-team/scripts/package.mjs \
-  --core-url https://agentx.example \
-  --output /private/artifacts/dsh-coding-team
-npm pack /private/artifacts/dsh-coding-team --ignore-scripts \
-  --pack-destination /private/artifacts
-```
-
-The output must be a **new directory outside this repository** whose parent
-already exists. The generated package contains the instance URL; keep it and its
-tarball outside public Git. The builder rejects credentials, query parameters,
-non-HTTPS origins and symlink destinations inside the source tree. Build again
-in a new external directory when the origin changes. The package is private to
-prevent accidental npm publication.
-
-## Install only in Studio
-
-Stage the tarball in a disposable `DSH_HOME` first, with the same selected
-runtime and a dummy provider that cannot reach a live model. Verify the native
-Web page at desktop and narrow widths, the accessible link, its new-tab target,
-the embedded work panel, and plugin disable/re-enable. A source test does not prove runtime installation.
-
-In Studio's private `$DSH_HOME/profiles/web`, use the native package procedure:
-
-```bash
+  --core-url https://agentx.example --output /private/artifacts/dsh-team
+npm pack /private/artifacts/dsh-team --ignore-scripts --pack-destination /private/artifacts
 DSH_HOME=/private/studio-home /selected/dsh/node_modules/.bin/dsh plugin --profile web add \
-  /private/artifacts/agentx-dsh-coding-team-0.2.0.tgz
+  /private/artifacts/agentx-dsh-coding-team-0.3.0.tgz
 ```
 
-Keep the profile's existing bundle declarations, dependencies and lockfile.
-DSH peers are supplied by the selected runtime: disable package-manager peer
-auto-install (`auto-install-peers=false` for pnpm, or `--legacy-peer-deps` when
-preparing the profile with npm). No runtime upgrade is required. The bundle's
-native patch inserts only its `agentx-coding-team-ui` row.
+Keep the generated instance URL and tarball outside public Git. DSH peers come
+from the selected runtime; disable peer auto-install. Keep native authentication
+and the existing Studio model/context contract. Stage in a disposable profile
+before installation. Retain the installed profile snapshot for rollback.
 
-Apply the reviewed instance installation through the existing operator path.
-Keep the coding worker's isolated `DSH_HOME` untouched. Native authentication
-remains enabled; qualification needs no prompt or model invocation. Disabling
-this bundle removes its panel and link. Retain a profile snapshot and lockfile for
-rollback, and restart Studio only under its existing ownership procedure.
-
-## Source checks
+## Verification
 
 ```bash
 npm test --prefix integrations/dsh/coding-team
-```
-
-The CPU fixtures exercise URL rejection, native slot attachment/cleanup, wide
-and collapsed presentation, lazy bundle loading, native work-panel registration, host inactivity and external
-artifact containment. See [Studio setup](../../../docs/DSH_RESUMPTION.md) for
-the runtime's native admission and authentication contract.
-
-The optional native smoke uses already installed DSH and Playwright artifacts,
-an isolated temporary home and a dummy provider. It never submits a prompt:
-
-```bash
 node integrations/dsh/coding-team/scripts/smoke.mjs \
   --runtime-root /selected/dsh \
   --playwright-module /test-tools/node_modules/playwright/index.mjs \
   --chromium /test-tools/chromium/chrome
 ```
 
-It checks the actual packed package, native authenticated Web boot, desktop and
-narrow presentation, the embedded panel, new-tab isolation, and native plugin disable/re-enable.
-All model requests fail the smoke, and the temporary profile is removed afterward.
+CPU checks cover packaging, containment and independent dirty repository copies.
+The native smoke boots the packed bundle in an authenticated disposable Studio,
+opens a native conversation at desktop/mobile widths, observes an appended event
+while the source writer remains active, creates a human continuation and checks
+that editing its copy leaves the original unchanged. Observation and handoff make no inference requests. A synthetic local provider
+then returns a native file-tool call and a reply to qualify continuation; the
+resulting file exists only in the human copy. These checks use no live model
+and do not qualify autonomous worker output.
+See [Studio setup](../../../docs/DSH_RESUMPTION.md) for native admission.
