@@ -395,6 +395,14 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
                     break
                 except ReviewUncertain:
                     return finish("uncertain", unresolvedInferenceAttempts=max(1, len(unsettled(root))), lastUncertainPage=page["pageId"])
+                except ReviewInvalidOutput as exc:
+                    errors[page["pageId"]] = {"at": now(), "lane": lane, "threadId": page["threadId"],
+                                              "error": f"{type(exc).__name__}: {exc}"[:300]}
+                    status["failed"] += 1
+                    status["lanes"][lane]["failed"] += 1
+                    return finish("validation-error", **blocked_counts(unsettled(root)),
+                                  lastInvalidPage=page["pageId"], validationReason=exc.reason,
+                                  outputLimits=exc.limits, lastError=errors[page["pageId"]]["error"])
                 except Busy as exc:
                     report(paused={"reason": exc.reason, "since": status.get("paused", {}).get("since", now())})
                     sleep(exc.retry_after)
