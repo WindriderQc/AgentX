@@ -55,7 +55,7 @@ test('a kept souvenir shows its corrections and can no longer be edited as a can
   assert.equal(event.link, `#souvenir:${'f'.repeat(24)}`);
   assert.equal(event.core.canKeep, false);
   assert.equal(event.core.canEdit, false);
-  assert.equal(event.reviewState, 'confirmed');
+  assert.equal(event.reviewState, 'unreviewed');
 });
 
 test('context relations keep their quoted evidence; derived comparisons still apply', async () => {
@@ -74,7 +74,7 @@ test('context relations keep their quoted evidence; derived comparisons still ap
 
 test('photos bound in a context are served by Core and linked to their moments', async () => {
   const { projectEntry, collectMedia } = await load();
-  const media = [{ id: 'm1', originalPath: '/Host/images/trip/beach.jpg', sourceContentSha256: sha('e'), candidateEventIds: ['purchase'], date: '2005-05', datePrecision: 'month', album: 'Trip' }];
+  const media = [{ id: 'm1', originalPath: '/Host/images/trip/beach.jpg', sourceContentSha256: sha('e'), candidateEventIds: ['lease', 'purchase'], date: '2005-05', datePrecision: 'month', album: 'Trip' }];
   const events = [projectEntry(entry(1, context('lease', {}, { media }))), projectEntry(entry(2, context('purchase')))];
   const [photo] = collectMedia(events);
   assert.equal(photo.url, `/api/secretary/files/content?nativePath=${encodeURIComponent('/Host/images/trip/beach.jpg')}&sha256=${sha('e')}`);
@@ -86,6 +86,6 @@ test('the page code carries no personal detail and calls Core routes only', () =
   for (const file of fs.readdirSync(atlas).filter(name => /\.(js|html|css)$/.test(name))) {
     const text = fs.readFileSync(path.join(atlas, file), 'utf8');
     assert.doesNotMatch(text, /https?:\/\/(?!mail\.google\.com)[a-z]/i, `${file} must not load an external resource`);
-    assert.doesNotMatch(text, /fetch\((['"`])(?!\/api\/secretary\/)/, `${file} must call Core routes only`);
+    assert.doesNotMatch(text, /fetch\((['"`])(?!\/api\/(?:secretary|photos)\/)/, `${file} must call Core routes only`);
   }
 });

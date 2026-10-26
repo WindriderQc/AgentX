@@ -353,6 +353,16 @@
       "secret": false,
       "description": "Retention of Data air-quality points. Unset: 30 days."
     },
+    "ATLAS_DISPLAY_PREFERENCES_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Optional owner-only Atlas presentation JSON file inside the Core container. Bounded to 32 KiB and read-only; exposes chosen story subjects only, never history facts or decisions. Unset or invalid: no personal subjects; generic chapters remain available."
+    },
     "BACKUP_INTERVAL_MS": {
       "services": [
         "core"
