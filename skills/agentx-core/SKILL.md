@@ -1,6 +1,6 @@
 ---
 name: agentx-core
-description: Use shared AgentX tools for personal memory, document research, ecosystem status and tasks while preserving canonical data and execution evidence.
+description: Use shared AgentX tools for personal memory, document research, ecosystem status, tasks and ISS (space station) passes over the house while preserving canonical data and execution evidence.
 ---
 
 # AgentX Core capabilities
@@ -31,6 +31,12 @@ runtime prefix. A missing tool is a limit to report, not evidence of an action.
   Comment on its current Core read and coverage, including any partial results.
   Use `personal_calendar` for changes and invitations with their existing human
   intent and concurrency checks. Showing this view executes no calendar change.
+- For "when does the ISS / the space station pass?", use `iss_passes`. Some
+  runtimes keep shared tools out of their visible list: search the tool catalogue
+  for `iss_passes` before anything else. Quote its local times, directions and
+  window, and say "si le ciel est dégagé". Never estimate a pass time from the
+  web and never send the household location to a website to compute one; when
+  the tool is unavailable, say so.
 - Read personal tasks and briefing through Core. Personal errands and coding
   Pipeline tasks are separate capabilities; do not substitute one for the other.
 - In personal Nestor, accompany a Secretary answer about priorities, personal
