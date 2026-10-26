@@ -25,6 +25,16 @@ function presentationEvidence(value, catalog) {
       const read = target.page === 'analytics' ? presentationReader.read(row.read || {}) : null;
       if (read?.status === 'available' && read.source === 'analytics.inference.summary' && row.filters?.window === read.filters.window) selected.read = read;
       else selected.read = { status: 'unavailable', reason: read?.reason || 'no_matching_reader' };
+      if (target.page === 'ecosystem') {
+        selected.read = presentationReader.observeEcosystem(row.observation, selected.id);
+        if (selected.read.status !== 'available') selected.status = 'unavailable';
+        else {
+          selected.instance = selected.read.instance;
+          selected.version = selected.read.version;
+          selected.scene = selected.read.tour;
+          selected.selection = selected.read.selection;
+        }
+      }
       if (target.page === 'diskx') {
         const report = presentationReader.read(row.read || {});
         const expected = { report: require('../../src/services/janitorPresentation').reportDate(row.filters?.report),

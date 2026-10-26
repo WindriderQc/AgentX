@@ -13,6 +13,13 @@
     const known = word => SHOW_SCENES.includes(word) || /^tour-(?:[1-9]|1\d|20)$/.test(word) || /^group-[a-f0-9]{64}$/.test(word);
     return words.every(known) ? words.join(',') : null;
   }
+  // GraphysX owns the tour and node catalogue. Core validates its bounded presentation grammar.
+  const ECOSYSTEM_SCENES = Object.freeze(['overview', 'frank', 'services', 'alien', 'brutal', 'network', 'edge', 'spare', 'voice', 'image', 'memory', 'garage', 'watch', 'summary']);
+  function ecosystemPlay(value) {
+    if (typeof value !== 'string' || !value || value.length > 2000) return null;
+    const words = value.split(',').map(word => word.trim().toLowerCase());
+    return words.length <= 32 && words.every(word => ECOSYSTEM_SCENES.includes(word) || /^node-[a-z0-9][a-z0-9-]{0,63}$/.test(word)) ? words.join(',') : null;
+  }
   function destination(value) {
     if (!value || !ID.test(value.id) || typeof value.label !== 'string' || !value.label.trim()
         || value.label.length > 80 || /[\u0000-\u001f\u007f]/.test(value.label)
@@ -54,6 +61,10 @@
         if (key === 'report' && /^\d{4}-\d\d-\d\dt\d\d:\d\d:\d\d(?:\.\d{1,3})?z$/.test(value)
             && Number.isFinite(Date.parse(value))) focus.report = new Date(value).toISOString();
       }
+      if (page === 'ecosystem') for (const word of words.slice(1)) {
+        if (!word.startsWith('play=') || !ecosystemPlay(word.slice(5))) return null;
+        focus.play = ecosystemPlay(word.slice(5));
+      }
       if (page === 'personal-calendar') for (const word of words.slice(1)) {
         const [key, value = ''] = word.split('=');
         if (['start', 'end'].includes(key) && /^\d{4}-\d\d-\d\d$/.test(value)
@@ -77,7 +88,7 @@
     return Object.freeze({ PAGES, STATUSES, parse, canonical, url, label, mode, keepsConversation, entries: Object.freeze(Object.values(PAGES)) });
   }
   let current = createCatalog();
-  const api = Object.freeze({ STATUSES, SHOW_SCENES, diskxPlay, createCatalog, destination, canonical,
+  const api = Object.freeze({ STATUSES, SHOW_SCENES, ECOSYSTEM_SCENES, diskxPlay, ecosystemPlay, createCatalog, destination, canonical,
     configure(entries) { current = createCatalog(entries); },
     get PAGES() { return current.PAGES; }, get entries() { return current.entries; },
     parse: body => current.parse(body), url: (target, options) => current.url(target, options),

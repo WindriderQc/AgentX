@@ -14,6 +14,7 @@
 const path = require('path');
 const { createScriptRelay, configuredModuleUrl } = require('../household/asset-relay');
 const { reportDate, diskxPlay } = require('../../src/services/janitorPresentation');
+const { ecosystemPlay } = require('../../public/js/screen-pages');
 
 const PAGE = '/diskx';
 const MODULE_ROUTE = '/api/diskx/diskx.js';
@@ -79,10 +80,25 @@ const single = (value) => (Array.isArray(value) ? value[0] : value);
  * under one of the roots, play as a DiskX animation list (presentation steps).
  */
 function checkQuery(query = {}, roots = []) {
-  const unknown = Object.keys(query).filter((key) => !['janitor', 'group', 'focus', 'report', 'view', 'from', 'play'].includes(key));
+  const ecosystem = single(query.app) === 'ecosystem';
+  const allowed = ecosystem ? ['app', 'view', 'from', 'play', 'presentation'] : ['janitor', 'group', 'focus', 'report', 'view', 'from', 'play'];
+  const unknown = Object.keys(query).filter((key) => !allowed.includes(key));
   if (unknown.length) throw invalid(`Unknown parameter: ${unknown[0].slice(0, 40)}`);
   if (query.view !== undefined && single(query.view) !== 'screen') throw invalid('view must be screen');
   if (query.from !== undefined && single(query.from) !== 'nestor') throw invalid('from must be nestor');
+  if (ecosystem) {
+    const attributes = { app: 'ecosystem' };
+    if (query.play !== undefined) {
+      const play = ecosystemPlay(single(query.play));
+      if (!play) throw invalid('play must be an ecosystem presentation list');
+      attributes.play = play;
+    }
+    if (query.presentation !== undefined) {
+      if (!/^[a-zA-Z0-9_-]{1,80}$/.test(single(query.presentation))) throw invalid('Invalid presentation identity');
+      attributes['presentation-id'] = single(query.presentation);
+    }
+    return attributes;
+  }
   const attributes = {};
   if (query.report !== undefined) {
     const report = reportDate(single(query.report));
@@ -140,7 +156,10 @@ const escapeAttribute = (value) => String(value)
   .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 function renderPage({ roots, attributes }) {
-  const element = { 'api-base': API_BASE, roots: roots.join(','), ...attributes, 'actions-href': ACTIONS_HREF };
+  const ecosystem = attributes.app === 'ecosystem';
+  const tag = ecosystem ? 'agentx-ecosystem' : 'diskx-city';
+  const title = ecosystem ? 'Écosystème' : 'DiskX';
+  const element = ecosystem ? attributes : { 'api-base': API_BASE, roots: roots.join(','), ...attributes, 'actions-href': ACTIONS_HREF };
   const attrs = Object.entries(element).map(([name, value]) => ` ${name}="${escapeAttribute(value)}"`).join('');
   return `<!doctype html>
 <html lang="fr">
@@ -148,14 +167,14 @@ function renderPage({ roots, attributes }) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>DiskX</title>
+<title>${title}</title>
 <link rel="stylesheet" href="/assets/diskx/diskx.css">
 <script type="module" src="${MODULE_ROUTE}"></script>
-<script defer src="/assets/diskx/diskx-page.js"></script>
+<script defer src="/assets/diskx/${ecosystem ? 'ecosystem-page' : 'diskx-page'}.js"></script>
 </head>
 <body>
-<diskx-city${attrs}></diskx-city>
-<p id="diskx-status" role="status" aria-live="polite">Chargement de la vue DiskX…</p>
+<${tag}${attrs}></${tag}>
+<p id="diskx-status" role="status" aria-live="polite">Chargement de la vue ${title}…</p>
 <noscript><p>DiskX a besoin de JavaScript.</p></noscript>
 </body>
 </html>
@@ -188,9 +207,10 @@ function register({ app, express, fetchWithTimeout, fetchData, env = process.env
   });
 
   app.get('/diskx', async (req, res) => {
-    const roots = await resolveRoots({ env, fetchData });
+    const ecosystem = single(req.query.app) === 'ecosystem';
+    const roots = ecosystem ? [] : await resolveRoots({ env, fetchData });
     // <diskx-city> requires roots: without any, say so instead of mounting a broken city.
-    if (!roots.length) {
+    if (!ecosystem && !roots.length) {
       return res.status(503).type('html').set('Cache-Control', 'no-store')
         .send(errorPage('Aucune racine de stockage connue : définissez DISKX_ROOTS ou vérifiez que Data déclare ses sources.'));
     }

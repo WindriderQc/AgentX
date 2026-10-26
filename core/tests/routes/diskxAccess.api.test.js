@@ -54,6 +54,9 @@ describe('DiskX access', () => {
     const page = await owner.get('/diskx?janitor=latest');
     expect(page.status).toBe(200);
     expect(page.text).toContain('<diskx-city api-base="/api/data-toolbox" roots="/srv/lake" janitor="latest" actions-href="/data-toolbox">');
+    const ecosystem = await owner.get('/diskx?app=ecosystem');
+    expect(ecosystem.status).toBe(200);
+    expect(ecosystem.text).toContain('<agentx-ecosystem app="ecosystem">');
     const module = await owner.get('/api/diskx/diskx.js');
     expect(module.status).toBe(200);
     expect(module.text).toBe(MODULE);
@@ -61,7 +64,7 @@ describe('DiskX access', () => {
 
   test('a family-pinned device is refused the page, the module and its data, like the Toolbox', async () => {
     const tablet = await pinned(app());
-    for (const path of ['/diskx', '/diskx?janitor=latest', '/data-toolbox']) {
+    for (const path of ['/diskx', '/diskx?janitor=latest', '/diskx?app=ecosystem', '/data-toolbox']) {
       const page = await tablet.get(path);
       expect(page.status).toBe(302);
       expect(page.headers.location).toBe('/panel');
