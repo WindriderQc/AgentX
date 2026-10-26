@@ -110,7 +110,7 @@ describe('analytics overview review threshold', () => {
     const totals = { calls: 1000, errors: 100, errorRate: 10 };
     const recent = { calls: 20, errors: 3, admissionRefusals: 3 };
     expect(needsReview(totals, recent)).toBe(false);
-    expect(statusText(totals, recent)).toEqual({ state: 'ready', text: '3 admission refusals in the last hour · no other errors recorded' });
+    expect(statusText(totals, recent)).toEqual({ state: 'notice', text: '3 admission refusals in the last hour · no other errors recorded' });
     expect(needsReview(totals, { ...recent, admissionRefusals: 2 })).toBe(true);
     expect(statusText(totals, { ...recent, admissionRefusals: 2 }).text).toMatch(/1 error.*2 admission refusals separately/);
     expect(needsReview(totals, { ...recent, admissionRefusals: 4 })).toBe(true);
@@ -121,5 +121,6 @@ describe('analytics overview review threshold', () => {
     expect(needsReview(totals, { calls: 4, errors: 0 })).toBe(false);
     expect(statusText(totals, { calls: 4, errors: 0 }).text).toMatch(/No errors recorded in the last hour/);
     expect(statusText(totals, { calls: 0, errors: 0 }).text).toMatch(/No calls in the last hour/);
+    expect(statusText(totals, { calls: 0, errors: 0 }).state).toBe('unknown');
   });
 });

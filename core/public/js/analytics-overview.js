@@ -240,8 +240,8 @@
     if (!(totals.calls > 0)) return { state: 'empty', text: 'No recorded calls in this window' };
     const refusals = refusalCount(recent), other = recentErrors - refusals;
     if (other > 0) return { state: 'attention', text: `${count(other)} error${other === 1 ? '' : 's'} in the last hour need review${refusals ? ` · ${count(refusals)} admission refusals separately` : ''}` };
-    if (refusals > 0) return { state: 'ready', text: `${count(refusals)} admission refusal${refusals === 1 ? '' : 's'} in the last hour · no other errors recorded` };
-    if (finite(recent?.calls) && finite(recent?.errors)) return { state: 'ready', text: recent.calls > 0
+    if (refusals > 0) return { state: 'notice', text: `${count(refusals)} admission refusal${refusals === 1 ? '' : 's'} in the last hour · no other errors recorded` };
+    if (finite(recent?.calls) && finite(recent?.errors)) return { state: recent.calls > 0 ? 'ready' : 'unknown', text: recent.calls > 0
       ? `No errors recorded in the last hour · ${count(errors)} in the selected period`
       : `No calls in the last hour · ${count(errors)} historical errors in the selected period` };
     if (needsReview(totals)) return { state: 'attention', text: 'Error rate needs review' };
