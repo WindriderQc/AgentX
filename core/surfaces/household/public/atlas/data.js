@@ -109,7 +109,14 @@ export async function readSource(id,{offset=0}={}){
  else{
   const {source}=await call(`/api/secretary/history/${ref.entryId}/sources/${encodeURIComponent(ref.sourceId)}`);
   // The original file, when the household library or the Datalake still holds it unchanged.
-  const file=source.nativePath?await call(`/api/secretary/files/read?nativePath=${encodeURIComponent(source.nativePath)}&sha256=${source.contentSha256||''}`).catch(()=>null):null;
+  // A native reference may instead identify Gmail, a photo API or a public URL.
+  // Metadata-only media can identify a folder without a binary hash: Core resolves
+  // that pointer as a folder; an actual file still requires its content hash.
+  const nativePath=typeof source.nativePath==='string'?source.nativePath:'';
+  const fileHash=/^[a-f0-9]{64}$/.test(source.contentSha256||'');
+  const folderPointer=source.kind==='media'&&source.metadataOnly===true&&!source.contentSha256;
+  const filePointer=nativePath.startsWith('/')&&!nativePath.startsWith('//')&&!/^\/api(?:\/|$)/.test(nativePath)&&!nativePath.includes('\0');
+  const file=filePointer&&(fileHash||folderPointer)?await call(`/api/secretary/files/read?nativePath=${encodeURIComponent(nativePath)}&sha256=${source.contentSha256||''}`).catch(()=>null):null;
   value=projectContextSource(id,source,file);
  }
  sourceCache.set(key,value);return value;
