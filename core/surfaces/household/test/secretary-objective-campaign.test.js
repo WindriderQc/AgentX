@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { step, dependencies } = require('../../../../integrations/secretary/objective_campaign.cjs');
+const { watch } = require('../../../../integrations/secretary/objective_watch.cjs');
 function fixture(t, { future = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'objective-campaign-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -23,12 +24,16 @@ function fixture(t, { future = false } = {}) {
     now: () => data.now,
     queue: async (action, args) => {
       if (action === 'list') return { jobs: data.jobs };
-      if (action === 'submit') { const request = JSON.parse(fs.readFileSync(args[1])); data.jobs.push({ ...request, id: jobId, state: 'requested', revision: 1 }); return data.jobs[0]; }
-      const job = data.jobs[0];
+      if (action === 'submit') { const request = JSON.parse(fs.readFileSync(args[1]));
+        const id = data.jobs.length ? `11111111-1111-4111-8111-${String(data.jobs.length + 1).padStart(12, '0')}` : jobId;
+        data.jobs.push({ ...request, id, state: 'requested', revision: 1 }); return data.jobs.at(-1); }
+      const job = data.jobs.find(row => row.id === args[1]) || data.jobs[0];
       if (action === 'show') return job;
       if (action === 'begin-operator') { job.state = 'dispatching'; job.dispatchId = dispatchId; job.revision++;
         if (data.loseBegin) { data.loseBegin = false; throw new Error('lost begin response'); } return job; }
-      if (action === 'finish-operator') { data.finishes++; job.state = 'completed'; job.releaseReceipt = { state: 'completed', runtimeReleased: true }; return job; }
+      if (action === 'finish-operator') { data.finishes++;
+        const receipt = JSON.parse(fs.readFileSync(args[args.indexOf('--file') + 1]));
+        job.state = receipt.state; job.releaseReceipt = { state: receipt.state, runtimeReleased: true }; return job; }
       if (action === 'cancel') { job.state = 'cancelled'; job.revision++; return job; }
       throw new Error('unexpected action: ' + action);
     },
@@ -41,10 +46,18 @@ function fixture(t, { future = false } = {}) {
   };
   const terminal = phase => {
     data.unit = { LoadState: 'loaded', MainPID: '0', ExecMainCode: '1', ExecMainStatus: '0' };
-    write(path.join(dir, 'status.json'), { phase, queueRequestId: jobId, dispatchId,
+    write(path.join(dir, 'status.json'), { phase, queueRequestId: data.jobs.at(-1)?.id || jobId, dispatchId,
       newlyReviewedPages: 10, inferenceCalls: 10, elapsedSeconds: 30 });
   };
   return { config, data, deps, terminal, dir, write };
+}
+function reviewOnly(t, options) {
+  const f = fixture(t, options); f.config.publicationMode = 'review-only';
+  f.write(path.join(f.dir, 'findings.json'), [{ id: 'unreviewed-proposal', userConfirmed: false }]);
+  f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: false, allTargetTextReviewed: false,
+    counts: { extractedMoments: 14, sourcesWithGaps: 2, sourcesPendingMaterialization: 10, pendingPagesKnown: 8 } });
+  f.deps.publish = async () => { f.data.publishes++; throw new Error('review-only must never enter the publisher'); };
+  return f;
 }
 test('one native queue/unit identity survives repeated controller steps', async t => {
   const f = fixture(t);
@@ -57,6 +70,164 @@ test('one native queue/unit identity survives repeated controller steps', async 
   assert.equal(f.data.finishes, 1);
   assert.equal((await step(f.config, f.deps)).phase, 'ready');
   assert.equal(f.data.publishes, 1);
+});
+test('review-only completes admitted chunks and keeps reading with durable unpublished proposals', async t => {
+  const f = reviewOnly(t);
+  await step(f.config, f.deps); f.terminal('partial');
+  assert.equal((await step(f.config, f.deps)).phase, 'chunk-released');
+  const ready = await step(f.config, f.deps);
+  assert.equal(ready.phase, 'ready'); assert.equal(ready.publication.writes, 0);
+  assert.equal(ready.proposalReview.availableCandidates, 14);
+  assert.equal(ready.proposalReview.coreHistoryWritesByController, 0);
+  assert.equal(ready.semanticAcceptance, 'not-established'); assert.equal(ready.userConfirmed, false);
+  f.data.unit = { LoadState: 'not-found' };
+  assert.equal((await step(f.config, f.deps)).phase, 'running');
+  assert.equal(f.data.jobs.length, 2); assert.equal(f.data.launches, 2); assert.equal(f.data.publishes, 0);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.dir, 'findings.json'))).length, 1);
+});
+test('review-only resumes a publication-pending checkpoint without invoking the publisher', async t => {
+  const f = reviewOnly(t); await step(f.config, f.deps); f.terminal('partial');
+  await step(f.config, f.deps); await step(f.config, f.deps);
+  const file = path.join(f.dir, 'campaigns', f.config.id, 'state.json');
+  const checkpoint = JSON.parse(fs.readFileSync(file)); checkpoint.phase = 'publication-pending';
+  f.write(file, checkpoint);
+  const result = await step(f.config, f.deps, { allowStart: false });
+  assert.equal(result.phase, 'controller-drained'); assert.equal(result.publication.writes, 0);
+  assert.equal(f.data.publishes, 0); assert.equal(f.data.jobs.length, 1);
+});
+test('review-only text completion retains proposals and never claims semantic acceptance', async t => {
+  const f = reviewOnly(t);
+  f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: true, allTargetTextReviewed: false,
+    counts: { extractedMoments: 14, reviewedPages: 3, equivalentPages: 2, sourcesWithGaps: 2 } });
+  const result = await step(f.config, f.deps);
+  assert.equal(result.phase, 'text-scope-complete'); assert.equal(result.publication.writes, 0);
+  assert.equal(result.proposalReview.availableCandidates, 14);
+  assert.equal(result.textualCoverage.counts.reviewedPages, 3);
+  assert.equal(result.textualCoverage.counts.equivalentPages, 2);
+  assert.equal(result.textualCoverage.allTargetTextReviewed, false);
+  assert.equal(result.semanticAcceptance, 'not-established'); assert.equal(result.userConfirmed, false);
+  assert.equal(f.data.publishes, 0); assert.equal(f.data.jobs.length, 0);
+});
+test('review-only exhausted text gaps and pre-admission drain retain every proposal without publication', async t => {
+  const exhausted = reviewOnly(t);
+  exhausted.write(path.join(exhausted.dir, 'coverage.json'), { allTargetTextCovered: false,
+    counts: { extractedMoments: 14, sourcesPendingMaterialization: 0, pendingPagesKnown: 0, sourcesWithGaps: 2, sourceErrors: 1 } });
+  const held = await step(exhausted.config, exhausted.deps);
+  assert.equal(held.phase, 'needs-source-review'); assert.equal(held.proposalReview.availableCandidates, 14);
+  assert.equal(exhausted.data.publishes, 0); assert.equal(exhausted.data.jobs.length, 0);
+  const drained = reviewOnly(t);
+  const result = await step(drained.config, drained.deps, { allowStart: false });
+  assert.equal(result.phase, 'controller-drained'); assert.equal(drained.data.publishes, 0);
+  assert.equal(drained.data.jobs.length, 0);
+});
+test('review-only future booking cancellation and active-worker drain cannot publish candidates', async t => {
+  const future = reviewOnly(t, { future: true }); await step(future.config, future.deps);
+  assert.equal((await step(future.config, future.deps, { allowStart: false })).phase, 'controller-drained');
+  assert.equal(future.data.jobs[0].state, 'cancelled'); assert.equal(future.data.publishes, 0);
+  const active = reviewOnly(t); await step(active.config, active.deps);
+  assert.equal((await step(active.config, active.deps, { allowStart: false })).phase, 'running');
+  active.terminal('partial'); await step(active.config, active.deps, { allowStart: false });
+  assert.equal((await step(active.config, active.deps, { allowStart: false })).phase, 'ready');
+  assert.equal((await step(active.config, active.deps, { allowStart: false })).phase, 'controller-drained');
+  assert.equal(active.data.publishes, 0); assert.equal(active.data.jobs.length, 1);
+});
+test('publication mode is validated and changing it cannot mutate an existing campaign identity', async t => {
+  const invalid = fixture(t); invalid.config.publicationMode = 'reviewonly';
+  await assert.rejects(step(invalid.config, invalid.deps), /publicationMode/);
+  assert.equal(invalid.data.jobs.length, 0); assert.equal(invalid.data.publishes, 0);
+  const legacy = fixture(t); await step(legacy.config, legacy.deps);
+  legacy.config.publicationMode = 'review-only';
+  await assert.rejects(step(legacy.config, legacy.deps), /configuration changed/);
+  assert.equal(legacy.data.jobs.length, 1); assert.equal(legacy.data.publishes, 0);
+});
+test('retaining rejected outputs is explicit review-only policy and immutable within a campaign', async t => {
+  for (const publicationMode of [undefined, 'publish-candidates']) {
+    const invalid = fixture(t); invalid.config.onInvalidOutput = 'retain-and-continue';
+    if (publicationMode) invalid.config.publicationMode = publicationMode;
+    await assert.rejects(step(invalid.config, invalid.deps), /requires explicit review-only/);
+    assert.equal(invalid.data.jobs.length, 0);
+  }
+  const f = reviewOnly(t); await step(f.config, f.deps);
+  f.config.onInvalidOutput = 'retain-and-continue';
+  await assert.rejects(step(f.config, f.deps), /configuration changed/);
+  assert.equal(f.data.publishes, 0);
+});
+test('review-only retained output gaps remain uncovered and end without an empty-chunk loop or publication', async t => {
+  const f = reviewOnly(t); f.config.onInvalidOutput = 'retain-and-continue';
+  f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: false, allTargetTextReviewed: false,
+    counts: { extractedMoments: 14, reviewedPages: 8, rejectedPages: 3, sourcesWithRejectedPages: 2,
+      sourcesPendingMaterialization: 0, pendingPagesKnown: 0, sourcesWithGaps: 2 } });
+  const result = await step(f.config, f.deps);
+  assert.equal(result.phase, 'needs-source-review');
+  assert.equal(result.textualCoverage.allTargetTextCovered, false);
+  assert.equal(result.textualCoverage.counts.rejectedPages, 3);
+  assert.equal(result.textualCoverage.counts.reviewedPages, 8);
+  assert.equal(result.proposalReview.availableCandidates, 14);
+  assert.equal(result.proposalReview.coreHistoryWritesByController, 0);
+  assert.equal(f.data.jobs.length, 0); assert.equal(f.data.publishes, 0);
+});
+test('retained output policy forwards only a worker disposition flag and preserves model settings', t => {
+  const f = reviewOnly(t); f.config.onInvalidOutput = 'retain-and-continue'; f.config.maxOutputTokens = 16384;
+  let args;
+  dependencies(f.config, (...value) => { args = value[1]; return { status: 0 }; })
+    .launch('synthetic.service', { id: 'queue-id', dispatchId: 'dispatch-id' });
+  assert.ok(args.includes('--retain-rejected-pages'));
+  assert.equal(args[args.indexOf('--max-output-tokens') + 1], '16384');
+  assert.equal(args[args.indexOf('--objective') + 1], f.config.objectiveFile);
+  assert.equal(f.data.publishes, 0);
+});
+test('review-only keeps the existing pilot output gate after native release', async t => {
+  const f = reviewOnly(t); f.config.reviewBeforePublication = true;
+  await step(f.config, f.deps); f.terminal('partial'); await step(f.config, f.deps);
+  const result = await step(f.config, f.deps);
+  assert.equal(result.phase, 'awaiting-output-review'); assert.equal(f.data.publishes, 0);
+  assert.equal((await step(f.config, f.deps)).phase, 'awaiting-output-review');
+  assert.equal(f.data.jobs.length, 1);
+});
+test('a real review-only watch advances two native chunks and ends with separate text/proposal counters', async t => {
+  const f = reviewOnly(t); let waits = 0;
+  const result = await watch(f.config, { until: '2026-10-26T18:10:00Z', pollSeconds: 15 }, {
+    now: () => f.data.now, step: (config, flags) => step(config, f.deps, flags),
+    wait: async () => {
+      waits++; f.data.now = new Date(f.data.now.getTime() + 1000);
+      if ([1, 4].includes(waits)) f.terminal('partial');
+      if (waits === 3) f.data.unit = { LoadState: 'not-found' };
+      if (waits === 4) f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: true,
+        allTargetTextReviewed: false, counts: { extractedMoments: 14, reviewedPages: 3, equivalentPages: 2 } });
+      assert.ok(waits <= 8, 'watch must not loop on unpublished proposals');
+    }
+  });
+  assert.equal(result.phase, 'text-scope-complete'); assert.equal(result.exitCode, 0);
+  assert.equal(result.publicationMode, 'review-only'); assert.equal(result.completedChunks, 2);
+  assert.equal(result.proposalReview.availableCandidates, 14); assert.equal(result.proposalReview.coreHistoryWritesByController, 0);
+  assert.equal(result.textualCoverage.counts.reviewedPages, 3); assert.equal(result.semanticAcceptance, 'not-established');
+  assert.equal(result.userConfirmed, false); assert.equal(f.data.jobs.length, 2);
+  assert.equal(f.data.launches, 2); assert.equal(f.data.publishes, 0);
+});
+test('review-only errors and uncertain native results retain their status without a publication call', async t => {
+  for (const phase of ['source-error', 'validation-error', 'uncertain']) {
+    const f = reviewOnly(t); await step(f.config, f.deps); f.terminal(phase);
+    const result = await step(f.config, f.deps);
+    assert.equal(result.phase, phase === 'uncertain' ? 'uncertain' : 'needs-source-review');
+    assert.equal(result.semanticAcceptance, 'not-established'); assert.equal(result.userConfirmed, false);
+    if (phase !== 'uncertain') assert.equal((await step(f.config, f.deps)).phase, 'needs-source-review');
+    assert.equal(f.data.publishes, 0); assert.equal(f.data.jobs.length, 1);
+  }
+});
+test('review-only signal drain through the real watcher ends without publication or another request', async t => {
+  const f = reviewOnly(t); let stop = false;
+  const result = await watch(f.config, { until: '2026-10-26T18:10:00Z', pollSeconds: 15 }, {
+    now: () => f.data.now, stopRequested: () => stop, step: (config, flags) => step(config, f.deps, flags),
+    wait: async () => { stop = true; f.terminal('partial'); }
+  });
+  assert.equal(result.phase, 'controller-drained'); assert.equal(result.proposalReview.availableCandidates, 14);
+  assert.equal(result.proposalReview.coreHistoryWritesByController, 0); assert.equal(result.userConfirmed, false);
+  assert.equal(f.data.jobs.length, 1); assert.equal(f.data.publishes, 0);
+});
+test('explicit candidate publication mode retains the legacy native importer behavior', async t => {
+  const f = fixture(t); f.config.publicationMode = 'publish-candidates';
+  await step(f.config, f.deps); f.terminal('partial'); await step(f.config, f.deps);
+  assert.equal((await step(f.config, f.deps)).phase, 'ready'); assert.equal(f.data.publishes, 1);
 });
 test('a future Core reservation never launches a worker', async t => {
   const f = fixture(t, { future: true });
@@ -215,8 +386,9 @@ test('pilot review gate stops after native release without publication or a foll
   assert.equal((await step(f.config, f.deps)).phase, 'awaiting-output-review');
   assert.equal(f.data.publishes, 0); assert.equal(f.data.jobs.length, 1); assert.equal(f.data.launches, 1);
 });
-test('pilot per-source bounds reach the existing worker unchanged', t => {
-  const f = fixture(t); f.config.maxPagesPerSource = 1;
+test('pilot per-source and explicit output bounds reach the existing worker unchanged', t => {
+  const f = fixture(t); f.config.maxPagesPerSource = 1; f.config.maxOutputTokens = 8192;
   let args; dependencies(f.config, (_cmd, flags) => { args = flags; return { status: 0 }; }).launch('pilot.service', { id: 'q', dispatchId: 'd' });
   assert.equal(args[args.indexOf('--max-pages-per-source') + 1], '1');
+  assert.equal(args[args.indexOf('--max-output-tokens') + 1], '8192');
 });

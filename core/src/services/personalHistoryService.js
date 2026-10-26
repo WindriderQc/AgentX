@@ -200,7 +200,8 @@ async function timeline() {
     return { ...project(row), ...(note ? { souvenir: { id: note.id, revision: note.revision, text: note.text, eventDate: note.eventDate,
       eventDatePrecision: note.eventDatePrecision, people: note.people, places: note.places, historyContext: note.historyContext || null } } : {}) };
   });
-  return { authority: 'agentx.core', entries, total: entries.length, truncated, readAt: new Date().toISOString() };
+  return { authority: 'agentx.core', entries, total: entries.length, truncated, readAt: new Date().toISOString(),
+    displayPreferences: await require('./atlasDisplayPreferences').read() };
 }
 
 async function review(id, input = {}) {

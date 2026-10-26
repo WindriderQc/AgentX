@@ -707,6 +707,17 @@ MQTT. Power loss without a valid time source cannot establish the current hour.
 An unavailable/reconfigured GPIO cannot execute a timer. Default form values
 06:00:00 and 23:59:59 do not activate anything by themselves.
 
+Daily starts respect the firmware's native global automation pause and the
+selected output's manual priority. The native GPIO lock covers both the gate
+and the logical write; a missing pause setting is paused, matching local
+automation defaults. A blocked start is consumed once: releasing pause or
+letting manual priority expire never replays it within that interval. The next
+daily start may run normally. These gates do not suppress the independent
+daily OFF, explicit timer cancellation or ordinary manual commands. Firmware
+reports a skipped start through the existing `lastError` field; the wire schema
+and publication/acknowledgment meanings are unchanged. Pause and manual
+priority are configured on the device, not by saving a timer in Data.
+
 HTTP under `/api/v1/iot` (Core exposes the same suffix under
 `/api/data-toolbox/iot`):
 

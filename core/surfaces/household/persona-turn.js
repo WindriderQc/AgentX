@@ -339,8 +339,10 @@ function createPersonaTurnHandler({
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
         const screen = !pack.childSafe && !isLlmX && !consult ? require('./screen-context') : null;
         entry.presentationContext = screen?.presentationEvidence(req.body?.screen, screenPages);
+        entry.pipelineFacts = screen && !member ? await require('./pipeline-turn-facts').factsFor(userText, entry.presentationContext) : null;
         const contextTail = [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
-          screen?.screenContext(req.body?.screen, screenPages, entry.presentationContext) || ''].join('');
+          screen?.screenContext(req.body?.screen, screenPages, entry.presentationContext) || '',
+          require('../../src/services/pipelineSpokenFacts').context(entry.pipelineFacts)].join('');
         const turnContext = [contextBase, brainAdvice.text, workAdvice.text, contextTail].join('').trim();
         const guardianContext = guardianSession ? dedicatedGuardian.selectedContext({
           base: contextBase, brain: brainAdvice, work: workAdvice, tail: contextTail }) : null;
@@ -381,7 +383,8 @@ function createPersonaTurnHandler({
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: !pack.childSafe, pageCatalog: screenPages, language: replyLanguage,
+        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: !pack.childSafe, pageCatalog: screenPages,
+          answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { if (!res.writableEnded) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {

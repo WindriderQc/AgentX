@@ -125,6 +125,36 @@ class CatchupTests(unittest.TestCase):
         self.assertEqual(self.archive.native_next()["outcome"], "uncertain")
         self.assertEqual(self.archive.native_status()["unresolvedInferenceAttempts"], 1)
 
+    def test_retained_truncated_core_response_stops_before_the_next_page(self):
+        self.thread("thread-mail1", "First synthetic source")
+        self.thread("thread-mail2", "Second synthetic source")
+        calls = []
+
+        def opener(request, timeout):
+            reply = {"data": {}}
+            if request.full_url.endswith("/api/inference/generate"):
+                calls.append(json.loads(request.data))
+                reply = ({"response": '{"summary":', "done": True, "done_reason": "length", "eval_count": 4096}
+                         if len(calls) == 1 else {"response": json.dumps(review()), "done": True})
+            response = mock.MagicMock(status=200, headers={})
+            response.read.return_value = json.dumps(reply).encode()
+            response.__enter__.return_value = response
+            return response
+
+        client = catchup.CoreClient("http://core.invalid", opener=opener, max_output_tokens=8192)
+        status = self.run_catchup(client)
+        self.assertEqual((status["phase"], status["reviewed"], status["failed"], len(calls)),
+                         ("validation-error", 0, 1, 1))
+        self.assertEqual(status["remaining"], 2)  # neither rejected nor untouched text was reviewed
+        self.assertEqual(status["invalidInferenceResults"], 1)
+        self.assertEqual(status["unresolvedInferenceAttempts"], 0)
+        self.assertEqual(status["validationReason"], "incomplete-model-output")
+        self.assertEqual(status["outputLimits"]["requestedMaxOutputTokens"], 8192)
+        self.assertEqual(self.archive.native_next()["outcome"], "validation-error")
+        self.assertFalse(list((self.root / "page-reviews").glob("*.json")))
+        self.assertEqual(self.run_catchup(client)["phase"], "validation-error")
+        self.assertEqual(len(calls), 1)
+
     def test_model_result_is_saved_before_recording_and_reused_after_record_failure(self):
         self.thread("thread-mail1", "Synthetic source with a completed model result")
         client = FakeClient()

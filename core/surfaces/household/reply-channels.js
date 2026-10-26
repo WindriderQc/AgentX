@@ -101,7 +101,7 @@ function spokenTable(lines) {
   return lines.map(row => row.replace(/^\s*\||\|\s*$/g, '').split('|').map(cell => cell.trim()).filter(Boolean).join('. ')).join('\n');
 }
 
-function createReplyChannels({ allowSecrets = false, allowPages = false, pageCatalog = screenPages, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
+function createReplyChannels({ allowSecrets = false, allowPages = false, pageCatalog = screenPages, answerForPage = null, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
   let pending = '', inShow = false, showAttributes = null, received = false, ended = false;
@@ -278,6 +278,11 @@ function createReplyChannels({ allowSecrets = false, allowPages = false, pageCat
         process();
         feedSpoken('');
         closeGroup();
+        // A page is a complement (#924): if the model spoke no figure, Core adds the
+        // answer it read for the shown focus instead of leaving a screen pointer.
+        const page = answerForPage && !/\d/.test(spoken) ? display.find(block => block.kind === 'page') : null;
+        const answer = page ? String(answerForPage(page) || '').trim() : '';
+        if (answer) emit((spoken.trim() ? ' ' : '') + answer);
         if (!spoken.trim() && display.length) emit(ONLY_SHOWN[lang]);
       }
       return { say: spoken.replace(/\n{3,}/g, '\n\n').trim(), display: display.slice() };

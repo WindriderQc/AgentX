@@ -1,7 +1,11 @@
 :root { color-scheme: dark; --bg: #05080d; --fg: #d6e2ee; --muted: #8aa0b5; --warn: #f5b041; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; }
 diskx-city, agentx-ecosystem { position: fixed; inset: 0; display: block; }
-#diskx-status { position: fixed; left: 12px; top: 96px; margin: 0; padding: 6px 10px; max-width: calc(100vw - 48px);
-  border-radius: 6px; background: rgba(5, 8, 13, 0.8); color: var(--muted); max-height: 25dvh; overflow: auto; pointer-events: auto; }
-#diskx-status.error { color: var(--warn); }
+/* A toast over the middle of the scene: the module draws its header and breadcrumb top-left,
+   its panels on the sides and its player bar at the bottom. Clicks pass through unless it is an error. */
+#diskx-status { position: fixed; z-index: 10; left: 50%; top: 33dvh; transform: translateX(-50%); box-sizing: border-box;
+  width: max-content; max-width: min(440px, calc(100vw - 24px)); max-height: 18dvh; margin: 0; padding: 6px 12px; overflow: auto;
+  border: 1px solid rgba(138, 160, 181, 0.25); border-radius: 8px; background: rgba(5, 8, 13, 0.88); color: var(--muted);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); pointer-events: none; }
+#diskx-status.error { color: var(--warn); pointer-events: auto; }
 #diskx-status[hidden] { display: none; }

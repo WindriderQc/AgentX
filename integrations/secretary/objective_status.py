@@ -2,12 +2,13 @@
 from pathlib import Path
 
 from evidence_store import load
+from objective_annual import project as annual_projection
 
 ARCHIVE_FIELDS = ("at", "pendingTextPages", "reviewedPages", "unresolvedInferenceAttempts",
                   "uncollectedThreads", "discoveringScopes", "unavailableMessages", "unavailableDraftMessages", "pending")
 COUNTS = ("targetSources", "materializedSources", "sourcesPendingMaterialization", "sourcesTextReviewed", "sourcesWithGaps",
           "sourceErrors", "expectedPagesKnown", "reviewedPages", "pendingPagesKnown", "invalidReviewReceipts", "extractedMoments", "reviewGaps")
-COUNTS += ("sourcesTextCovered", "equivalentPages")
+COUNTS += ("sourcesTextCovered", "equivalentPages", "rejectedPages", "sourcesWithRejectedPages")
 
 
 def projection(root):
@@ -30,6 +31,9 @@ def projection(root):
                 "allTargetTextCovered": value.get("allTargetTextCovered") is True,
                 "semanticAcceptance": "not-established", "userConfirmed": False,
                 "newlyReviewedPages": status.get("newlyReviewedPages"), "elapsedSeconds": status.get("elapsedSeconds")})
+            annual = annual_projection(value.get("annualCoverage"))
+            if annual:
+                objectives[-1]["annualCoverage"] = annual
         except (OSError, ValueError, TypeError, AttributeError):
             objectives.append({"objectiveId": file.parent.parent.name, "version": file.parent.name, "phase": "unavailable"})
     return {"archiveProgress": archive, "objectiveReviews": objectives}

@@ -91,8 +91,30 @@ def _date(value, precision):
     date.fromisoformat(value + ("-01-01" if precision == "year" else "-01" if precision == "month" else ""))
 
 
-def normalize_representation(value):
-    """Represent an absent date as unknown; never repair evidence or semantics.
+def _exact_whitespace_quote(quote, content):
+    if not isinstance(quote, str) or not quote.strip() or quote in content:
+        return None
+    tokens = quote.split()
+    pattern = r"\s+".join(re.escape(token) for token in tokens)
+    if re.match(r"\w", tokens[0][0]):
+        pattern = r"(?<!\w)" + pattern
+    if re.match(r"\w", tokens[-1][-1]):
+        pattern += r"(?!\w)"
+    matcher = re.compile(pattern)
+    first = matcher.search(content)
+    if first is None:
+        return None
+    value, spans, current = first.group(0), [], first
+    while current is not None:
+        if current.group(0) != value:
+            return None
+        spans.append({"start": current.start(), "end": current.end()})
+        current = matcher.search(content, current.start() + 1)
+    return {"value": value, "spans": spans}
+
+
+def normalize_representation(value, content=None):
+    """Normalize bounded representation differences, never evidence semantics.
 
     Keep the model value immutable. The caller retains its native result and
     records every changed path, so a complete saved response can be resumed
@@ -110,6 +132,15 @@ def normalize_representation(value):
                 changes.append({"path": f"moments/{index}/{key}", "from": moment[key], "to": "unknown",
                                 "reason": "No date was supplied; no date or factual claim was inferred."})
                 moment[key] = "unknown"
+        if isinstance(content, str) and isinstance(moment.get("quotes"), list):
+            for number, quote in enumerate(moment["quotes"]):
+                match = _exact_whitespace_quote(quote, content)
+                if match is not None:
+                    actual = match["value"]
+                    changes.append({"path": f"moments/{index}/quotes/{number}", "from": quote, "to": actual,
+                        "sourceSpans": match["spans"],
+                        "reason": "Whitespace only; identical tokens and punctuation, one exact source value restored, possibly repeated."})
+                    moment["quotes"][number] = actual
     return normalized, changes
 
 

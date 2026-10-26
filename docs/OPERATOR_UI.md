@@ -827,7 +827,10 @@ and which resolution Data actually used.
   Pour annuler une minuterie, décoche son activation, enregistre puis confirme
   l’envoi de la désactivation. Le micrologiciel garde les horaires et les exécute
   localement. Après redémarrage, une sortie minutée reste OFF jusqu’au prochain
-  début avec une heure valide. Un créneau peut passer minuit.
+  début avec une heure valide. Un créneau peut passer minuit. La pause générale
+  et la priorité manuelle définies sur l’appareil bloquent les allumages;
+  libérer ces protections ne rattrape pas un début bloqué. L’arrêt prévu reste
+  actif. Un refus déclaré par le micrologiciel apparaît dans la configuration.
 - Un envoi de profil ou de minuterie garde son identité après une réponse perdue.
   La page distingue publication, application déclarée et résultat incertain.
   Aucun nouvel envoi ne remplace une tentative non vérifiée; actualise d’abord

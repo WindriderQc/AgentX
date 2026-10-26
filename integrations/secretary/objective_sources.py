@@ -86,6 +86,8 @@ def materialize(root, source):
     gaps = []
     for body in bodies:
         ref = {"partIndex": body["partIndex"], "mimeType": body["mimeType"]}
+        if body.get("decoding"):
+            ref["decoding"] = body["decoding"]
         if not body["readable"]:
             gaps.append({"code": "mime-text-unreadable", **ref})
             continue

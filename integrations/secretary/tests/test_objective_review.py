@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evidence_store import load, save
@@ -119,6 +119,30 @@ class ObjectiveTests(unittest.TestCase):
         self.assertEqual(self.run_worker(client)["newlyReviewedPages"], 0)
         self.assertEqual(len(client.calls), 1)
 
+    def test_previously_unreadable_charset_plan_is_revisited_without_resetting_any_review(self):
+        message = email.message.EmailMessage()
+        message.set_content('Synthetic camp in Thailand ภาษาไทย', charset='cp874', cte='base64')
+        message.set_param('charset', 'windows-874', header='Content-Type')
+        raw = message.as_bytes()
+        row = {**self.message, 'sha256': hashlib.sha256(raw).hexdigest(), 'bytes': len(raw)}
+        (self.root / row['path']).write_bytes(raw)
+        save(self.root / 'raw-receipts/message01.json', row)
+        client = Client()
+        with patch('archive_read._text', side_effect=LookupError('Previous reader did not register this declared charset')):
+            first = self.run_worker(client)
+        self.assertEqual(first['coverage']['counts']['expectedPagesKnown'], 0)
+        self.assertFalse(first['coverage']['allTargetTextCovered']); self.assertEqual(len(client.calls), 0)
+        result = self.run_worker(client)
+        self.assertTrue(result['coverage']['allTargetTextCovered']); self.assertEqual(len(client.calls), 1)
+        objective, _ = self.prepare()
+        receipt = load(next((objective / 'page-reviews').glob('*.json')))
+        self.assertEqual(receipt['sourceRecord']['nativeRef']['representation']['decoding']['resolvedCodec'], 'cp874')
+        self.assertIn('ภาษาไทย', receipt['sourceRecord']['body'])
+        self.assertEqual((self.root / row['path']).read_bytes(), raw)
+        self.assertEqual(load(self.root / 'page-reviews/general.json'), {'unrelated': 'preserve'})
+        self.assertEqual(self.run_worker(client)["newlyReviewedPages"], 0)
+        self.assertEqual(len(client.calls), 1)
+
     def test_exact_quote_candidates_keep_native_identity_and_never_confirm(self):
         self.run_worker(Client())
         objective, _ = self.prepare()
@@ -138,6 +162,28 @@ class ObjectiveTests(unittest.TestCase):
         objective, _ = self.prepare()
         self.assertEqual(load(objective / "findings.json"), [])
 
+    def test_retained_truncated_native_response_has_known_validation_status_and_no_automatic_retry(self):
+        calls = []
+        def opener(request, timeout):
+            inference = request.full_url.endswith('/api/inference/generate')
+            if inference: calls.append(request)
+            value = {'response': '{"moments": [', 'done': True, 'done_reason': 'length', 'eval_count': 4096} if inference else {'data': {}}
+            reply = MagicMock(status=200, headers={}); reply.read.return_value = json.dumps(value).encode()
+            reply.__enter__.return_value = reply
+            return reply
+        client = worker.CoreClient('http://core.invalid', opener=opener, schema=worker.SCHEMA, max_output_tokens=8192)
+        first = self.run_worker(client)
+        self.assertEqual(first['phase'], 'validation-error'); self.assertEqual(first['inferenceCalls'], 1)
+        self.assertEqual(first['validationReason'], 'incomplete-model-output')
+        self.assertEqual(first['newlyReviewedPages'], 0)
+        second = self.run_worker(client)
+        self.assertEqual(second['phase'], 'validation-error'); self.assertEqual(second['invalidInferenceResults'], 1)
+        self.assertEqual(second['unresolvedInferenceAttempts'], 0); self.assertEqual(len(calls), 1)
+        objective, _ = self.prepare()
+        status = load(objective / 'status.json')
+        self.assertEqual(status['queueRequestId'], QUEUE); self.assertEqual(status['dispatchId'], DISPATCH)
+        self.assertEqual(load(objective / 'findings.json'), [])
+
     def test_missing_date_precision_normalization_retains_raw_result_without_reinference(self):
         class MissingDateClient(Client):
             def extract(self, *args, **kwargs):
@@ -148,7 +194,7 @@ class ObjectiveTests(unittest.TestCase):
         client = MissingDateClient()
         # Simulate a pre-adapter run that retained a complete model response
         # but rejected its representation locally.
-        with patch.object(worker, "normalize_representation", side_effect=lambda value: (value, [])):
+        with patch.object(worker, "normalize_representation", side_effect=lambda value, *args: (value, [])):
             self.assertEqual(self.run_worker(client)["phase"], "validation-error")
         self.assertEqual(len(client.calls), 1)
         result = self.run_worker(client)
@@ -183,6 +229,70 @@ class ObjectiveTests(unittest.TestCase):
         self.assertEqual(changes, [])
         with self.assertRaises(ValueError):
             validate(normalized, "Une source fictive.")
+
+    def test_unique_whitespace_quote_recovers_saved_result_without_new_inference(self):
+        self.mail("message01", "Mon\u00a0déménagement\t est\r\nterminé en août 2014.")
+        quote = "Mon déménagement est terminé en août 2014."
+        class WhitespaceClient(Client):
+            def extract(self, *args, **kwargs):
+                result = super().extract(*args, **kwargs)
+                result.update(classification="life-events", moments=[moment(quote)])
+                return result
+        client = WhitespaceClient()
+        with patch.object(worker, "normalize_representation", side_effect=lambda value, *args: (value, [])):
+            self.assertEqual(self.run_worker(client)["phase"], "validation-error")
+        result = self.run_worker(client)
+        self.assertEqual(result["phase"], "done")
+        self.assertEqual(result["inferenceCalls"], 0)
+        self.assertEqual(len(client.calls), 1)
+        objective, manifest = self.prepare()
+        file = next((objective / "page-reviews").glob("*.json"))
+        receipt = worker.read_receipt(file, manifest)
+        actual = receipt["result"]["moments"][0]["quotes"][0]
+        self.assertNotEqual(actual, quote)
+        self.assertIn(actual, receipt["sourceRecord"]["body"])
+        change = receipt["resultProcessing"]["changes"][0]
+        span = change["sourceSpans"][0]
+        self.assertEqual(receipt["sourceRecord"]["body"][span["start"]:span["end"]], actual)
+        raw = load(next((objective / "review-attempts").glob("*/result.json")))["value"]
+        self.assertEqual(raw["moments"][0]["quotes"], [quote])
+
+    def test_ambiguous_whitespace_and_changed_tokens_or_punctuation_are_never_repaired(self):
+        quote = "Mon déménagement est terminé en août 2014."
+        value = {"summary": "Une déclaration fictive.", "classification": "life-events", "moments": [moment(quote)], "gaps": []}
+        for body in ["Mon\tdéménagement est terminé en août 2014.\nMon  déménagement est terminé en août 2014.",
+                     "Mon\tdéménagement est terminé en juillet 2014.",
+                     "Mon\tdéménagement est terminé en août 2014!", "XMon\tdéménagement est terminé en août 2014."]:
+            normalized, changes = normalize_representation(value, body)
+            self.assertEqual(changes, [])
+            self.assertEqual(normalized, value)
+            with self.assertRaisesRegex(ValueError, "exact supplied passage"):
+                validate(normalized, body)
+        value["moments"][0]["quotes"] = ["a a"]
+        normalized, changes = normalize_representation(value, "a\ta  a")
+        self.assertEqual(changes, [])
+        with self.assertRaisesRegex(ValueError, "exact supplied passage"):
+            validate(normalized, "a\ta  a")
+
+    def test_crlf_quote_preserves_source_bytes_and_matches_its_exact_span(self):
+        quote, content = "Première ligne\nDeuxième ligne", "Contexte\r\nPremière ligne\r\nDeuxième ligne\r\nFin"
+        value = {"summary": "Un passage fictif.", "classification": "life-events", "moments": [moment(quote)], "gaps": []}
+        normalized, changes = normalize_representation(value, content)
+        validate(normalized, content)
+        self.assertEqual(value["moments"][0]["quotes"], [quote])
+        self.assertEqual(normalized["moments"][0]["quotes"], ["Première ligne\r\nDeuxième ligne"])
+        self.assertEqual(len(changes), 1)
+
+    def test_repeated_identical_source_quote_is_one_value_without_independent_testimony(self):
+        quote, actual = "Première ligne\nDeuxième ligne", "Première ligne\r\nDeuxième ligne"
+        content = actual + "\r\nAutre contexte\r\n" + actual
+        value = {"summary": "Une chaîne citée fictive.", "classification": "life-events", "moments": [moment(quote)], "gaps": []}
+        normalized, changes = normalize_representation(value, content)
+        validate(normalized, content)
+        self.assertEqual(normalized["moments"][0]["quotes"], [actual])
+        self.assertEqual(len(changes), 1)
+        self.assertEqual(len(changes[0]["sourceSpans"]), 2)
+        self.assertEqual(len(normalized["moments"]), 1)
 
     def test_lost_result_blocks_replacement(self):
         client = Client(fail=True)
@@ -381,6 +491,29 @@ class ObjectiveTests(unittest.TestCase):
         row = next(s for s in result["coverage"]["sources"] if s["messageId"] == "message02")
         self.assertEqual(row["reviewedPages"], 1)
         self.assertEqual(self.prepare()[1]["objectiveSha256"], manifest["objectiveSha256"])
+
+    def test_thinking_is_explicit_frozen_and_never_changes_an_existing_objective(self):
+        objective, old = self.prepare()
+        self.assertNotIn("thinking", old["config"])
+        self.config["thinking"] = True; save(self.file, self.config)
+        with self.assertRaisesRegex(ValueError, "another intent"): self.prepare()
+        self.config["version"] = "v2"; save(self.file, self.config)
+        new_objective, new = self.prepare()
+        self.assertNotEqual(new["objectiveSha256"], old["objectiveSha256"])
+        self.assertNotEqual(new_objective, objective)
+        self.assertEqual(load(objective / "manifest.json"), old)
+        with self.assertRaisesRegex(ValueError, "thinking mode"):
+            self.run_worker(Client())
+        client = Client(); client.thinking = True
+        self.assertEqual(self.run_worker(client)["newlyReviewedPages"], 1)
+        intent = load(next((new_objective / "review-attempts").glob("*/attempt.json")))["intent"]
+        self.assertTrue(intent["thinking"])
+
+    def test_objective_thinking_requires_a_boolean(self):
+        for value in ("true", None, 1, 0):
+            self.config["thinking"] = value; save(self.file, self.config)
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "boolean"):
+                worker.config_at(self.file)
 
 
 if __name__ == "__main__":

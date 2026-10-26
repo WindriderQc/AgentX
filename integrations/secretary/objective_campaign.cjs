@@ -25,9 +25,21 @@ function configuration(value) {
   if (!['asap', 'tonight'].includes(value.when)) throw new Error('Core placement must be asap or tonight');
   if (!value.startBefore || !Number.isFinite(Date.parse(value.startBefore))) throw new Error('An explicit campaign start limit is required');
   if (value.maxPagesPerSource !== undefined && (!Number.isInteger(value.maxPagesPerSource) || value.maxPagesPerSource <= 0)) throw new Error('maxPagesPerSource must be positive');
+  if (value.maxOutputTokens !== undefined && (!Number.isInteger(value.maxOutputTokens) || value.maxOutputTokens <= 0 || value.maxOutputTokens > 65536)) throw new Error('maxOutputTokens must be an explicit positive integer up to 65536');
   if (value.reviewBeforePublication !== undefined && typeof value.reviewBeforePublication !== 'boolean') throw new Error('reviewBeforePublication must be explicit boolean');
+  if (value.publicationMode !== undefined && !['publish-candidates', 'review-only'].includes(value.publicationMode)) throw new Error('publicationMode must be publish-candidates or review-only');
+  if (value.onInvalidOutput !== undefined && (value.onInvalidOutput !== 'retain-and-continue' || value.publicationMode !== 'review-only')) throw new Error('onInvalidOutput retain-and-continue requires explicit review-only mode');
   if (value.existingQueueId !== undefined && (!/^[a-f0-9-]{36}$/.test(value.existingQueueId) || !/^[a-f0-9]{64}$/.test(value.expectedQueueIntentHash || ''))) throw new Error('Adoption needs an exact existing queue ID and immutable intent hash');
   return value;
+}
+function reviewOnlyProgress(directory) {
+  const coverage = read(path.join(directory, 'coverage.json'));
+  return { publicationMode: 'review-only', semanticAcceptance: 'not-established', userConfirmed: false,
+    textualCoverage: { allTargetTextCovered: coverage.allTargetTextCovered === true,
+      allTargetTextReviewed: coverage.allTargetTextReviewed === true, counts: coverage.counts },
+    proposalReview: { availableCandidates: coverage.counts.extractedMoments || 0,
+      disposition: 'Retained in native objective receipts; separate semantic review required',
+      coreHistoryWritesByController: 0, userConfirmationsByController: 0 } };
 }
 function serviceName(id) { return `secretary-objective-${id}.service`; }
 function showUnit(unit, exec = spawnSync) {
@@ -51,6 +63,8 @@ function dependencies(config, exec = spawnSync) {
         '--max-seconds', String(config.maxSeconds), '--queue-request-id', job.id, '--queue-dispatch-id', job.dispatchId,
         ...(config.archiveRoot ? ['--root', config.archiveRoot] : []),
         ...(config.maxPagesPerSource ? ['--max-pages-per-source', String(config.maxPagesPerSource)] : []),
+        ...(config.maxOutputTokens ? ['--max-output-tokens', String(config.maxOutputTokens)] : []),
+        ...(config.onInvalidOutput === 'retain-and-continue' ? ['--retain-rejected-pages'] : []),
         ...(config.priorityFile ? ['--priority-file', config.priorityFile] : [])], { encoding: 'utf8' });
     },
     publish(directory) {
@@ -73,7 +87,13 @@ async function advance(config, deps, { allowStart = true, stopReason = 'Explicit
   let state = !fresh ? read(stateFile) : { schema: 'secretary.objective-campaign/v1', configHash,
     objectiveSha256: objective.objectiveSha256, sequence: 0, current: null, completedChunks: [] };
   if (state.configHash !== configHash) throw new Error('Campaign configuration changed; retain original identities and use a new campaign ID');
-  const report = (phase, extra = {}) => { state = { ...state, phase, at: deps.now().toISOString(), ...extra }; durable(stateFile, state); return state; };
+  const reviewOnly = config.publicationMode === 'review-only';
+  const report = (phase, extra = {}) => { state = { ...state, phase, at: deps.now().toISOString(), ...extra,
+    ...(reviewOnly ? reviewOnlyProgress(directory) : {}) }; durable(stateFile, state); return state; };
+  const publish = async () => reviewOnly
+    ? { mode: 'review-only', writes: 0, candidates: read(path.join(directory, 'coverage.json')).counts.extractedMoments || 0,
+      deferredForSemanticReview: true, coreHistoryWritesByController: 0 }
+    : deps.publish(directory);
   if (fresh && config.existingQueueId) {
     const job = await deps.queue('show', ['--id', config.existingQueueId]);
     if (job.id !== config.existingQueueId || job.intentHash !== config.expectedQueueIntentHash || job.executor?.mode !== 'operator' ||
@@ -88,19 +108,19 @@ async function advance(config, deps, { allowStart = true, stopReason = 'Explicit
   if (state.phase === 'awaiting-output-review') return state;
   if (state.phase === 'needs-source-review') return state;
   if (state.phase === 'publication-pending') {
-    const published = await deps.publish(directory);
+    const published = await publish();
     if (published.writes > 0) return report('publication-pending', { publication: published });
     state.phase = 'ready';
   }
   if (!state.current) {
     const coverage = read(path.join(directory, 'coverage.json'));
     if (coverage.allTargetTextCovered) {
-      const published = await deps.publish(directory);
+      const published = await publish();
       return report(published.writes ? 'publication-pending' : 'text-scope-complete', { publication: published,
         remainingGaps: coverage.counts.sourcesWithGaps || 0, semanticAcceptance: 'not-established', userConfirmed: false });
     }
     if (coverage.counts.sourcesPendingMaterialization === 0 && coverage.counts.pendingPagesKnown === 0) {
-      const published = await deps.publish(directory);
+      const published = await publish();
       return report(published.writes ? 'publication-pending' : 'needs-source-review', { publication: published,
         reason: 'Every target was materialized and no text page remains, but some targets have no established text coverage; inspect source gaps before another chunk',
         remainingGaps: coverage.counts.sourcesWithGaps || 0, sourceErrors: coverage.counts.sourceErrors || 0,
@@ -145,7 +165,7 @@ async function advance(config, deps, { allowStart = true, stopReason = 'Explicit
     state.completedChunks.push({ queueId: job.id, dispatchId: job.dispatchId, releaseReceipt: job.releaseReceipt });
     state.current = null; state.sequence++;
     if (config.reviewBeforePublication) return report('awaiting-output-review', { reason: 'Chunk released; audit retained outputs before explicit native publication or a continuing campaign' });
-    const published = await deps.publish(directory);
+    const published = await publish();
     return report(published.writes ? 'publication-pending' : 'ready', { publication: published });
   }
   if (job.state === 'uncertain') return report('uncertain', { reason: 'Native queue requires exact dispatch reconciliation' });

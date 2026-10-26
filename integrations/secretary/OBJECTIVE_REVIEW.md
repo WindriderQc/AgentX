@@ -43,6 +43,17 @@ call. It never chooses a concrete model or changes a host pin. `mail_review`
 uses Core's configured task route. A pilot should bound pages, time and pages
 per source; Core retains final inference admission.
 
+Optional private `thinking: true` requests Core's native reasoning channel for
+this objective. Omitted/false retains the inherited non-thinking request and
+legacy dispatch identity. Enabling it enters both the immutable objective
+manifest and the dispatch intent; a changed mode cannot replace a retained
+attempt. The worker refuses a client whose mode differs from its manifest.
+Use a distinct objective version for changed instructions or reasoning mode,
+preserving old page receipts and raw results. This option chooses no model,
+host pin or context, performs no profile/load, and establishes no semantic
+quality by itself. A live comparison still needs native queue/admission and
+source-level output review before publication or a larger campaign.
+
 ```sh
 python3 integrations/secretary/objective_review.py run --objective "$PRIVATE_OBJECTIVE" \
   --max-pages 16 --max-pages-per-source 1 --max-seconds 1800 \
@@ -54,13 +65,65 @@ native receipt. An uncertain dispatch blocks replacement; reconcile the exact
 saved attempt, never delete a fence. Invalid output keeps its original result
 and refuses a new model call. Native source corruption refuses reading.
 
-The local representation adapter may change only a missing date's precision
-from day/month/year to `unknown`. It never fills a date, alters a quote, or
-repairs an attribution, occurrence or factual interpretation. The immutable
-native model result remains intact; a separate processing receipt names its
-hash and each changed path. Receipt reads replay and verify this derivation.
-A complete result rejected solely for this representation can therefore resume
-without another inference or a different objective/prompt identity.
+The native client saves the received HTTP text before parsing its envelope,
+then saves the exact model text and output limits before parsing that text.
+Both private captures have hashes and retain the request/intent identity.
+Received malformed or length-limited output is a known validation failure;
+transport loss or failed durable capture remains uncertain. Neither failure
+permits an automatic replacement call. An incomplete generation is rejected
+even if its final JSON happens to parse.
+
+`--max-output-tokens` explicitly requests a bounded Core output budget through
+`options.num_predict`; it never changes the host pin, context or model choice.
+Campaigns can pass `maxOutputTokens`. The option enters the dispatch intent:
+changing it cannot silently replace a failed prior request. Completed page
+receipts remain readable under their original identities.
+
+An unusable response can receive an explicit, bounded linked retry after its
+native computation and queue release are reconciled. `review_recovery.py` does
+not run inference. It verifies the original intent/request identity, Core's
+exact successful InferenceLog, a terminal operator queue with its native release
+receipt, the exact terminal/status byte hashes and absence of active runtime
+claims. A missing log, active claim, mismatched page/request, uncertain release
+or retained structured result refuses the operation. Original attempt and
+response files remain untouched; a structured result must be recovered instead.
+
+```sh
+python3 integrations/secretary/review_recovery.py record-terminal \
+  --directory "$NATIVE_OBJECTIVE_DIRECTORY" --page-id "$PAGE_ID" --request-id "$OLD_REQUEST_ID" \
+  --queue-id "$OLD_QUEUE_ID" --inference-log-id "$INFERENCE_LOG_ID" \
+  --terminal-receipt "$EXACT_OPERATOR_RECEIPT" --worker-status "$EXACT_WORKER_STATUS" \
+  --reason "$RECONCILIATION_REASON" --authorization-ref "$SESSION_TASK_REFERENCE"
+python3 integrations/secretary/review_recovery.py authorize-retry \
+  --directory "$NATIVE_OBJECTIVE_DIRECTORY" --page-id "$PAGE_ID" --request-id "$OLD_REQUEST_ID" \
+  --max-output-tokens 8192 --reason "$RETRY_REASON" --authorization-ref "$SESSION_TASK_REFERENCE"
+```
+
+The immutable retry plan derives a new identity from the unchanged source,
+prompt/system/route and explicit output budget, linked to its parent's request
+and terminal-reconciliation hash. Changed source/policy/budget refuses; no retry
+is automatic. An admitted worker with the matching budget creates a separate
+`retries/<intent-hash>/` attempt. Its uncertain result blocks the entire next
+batch. Retained child results and representation derivations replay without an
+additional model call. Eight chain traversal steps bound recovery complexity.
+The ordinary Core queue/dispatch and live inference admission still apply to
+each later run; a retry plan grants neither a reservation nor admission.
+
+The local representation adapter may change a missing date's precision from
+day/month/year to `unknown`. It can also restore a quote's exact original
+whitespace when every non-whitespace token and punctuation mark is identical
+and all matching source spans contain one identical original string. Repeated
+positions of that string are accepted without adding testimony; distinct
+original whitespace variants remain ambiguous and are rejected. This covers
+CRLF/LF, tabs and nonbreaking spaces without fuzzy text matching.
+
+The adapter never fills a date or repairs an attribution, occurrence or factual
+interpretation. The source and native model result remain intact; a separate
+processing receipt names the raw result hash, each changed path and the exact
+source spans for restored quotes. Receipt reads replay and verify this
+derivation. A complete result rejected solely for these representation
+differences can resume without another inference or a different
+objective/prompt identity.
 
 The worker verifies original bytes and reuses the native inert MIME reader:
 every inline plain/HTML representation and available HTML supplement is a
@@ -68,6 +131,13 @@ separate bounded scope. It reuses existing attachment text only; no new OCR,
 render, decompression or linked-resource fetch occurs. Missing, clipped,
 visual, nested and OCR-quality scopes remain explicit gaps. Metadata describing
 an image or attachment is not evidence that its content was seen.
+
+The inert reader resolves the declared `windows-874` charset through Python's
+`cp874` codec using strict decoding and records that derivation in the text
+representation. Unknown charset names and invalid bytes remain unreadable;
+no encoding is guessed. A source plan with no readable page is revisited on
+resume, so this reader correction needs neither an archive mutation nor a
+reset of completed review receipts or the objective identity.
 
 Private results live under `objective-reviews/<id>/<version>/`: immutable
 `manifest.json`, native `review-attempts`, per-source plans, per-page exact
@@ -103,6 +173,30 @@ coverage/status receipts. Core preserves these at
 `GET /api/secretary/desk` → `data.mail.catchup`. Existing catch-up counters
 continue to describe the last general run, not all reviewed archive pages.
 
+Objective exports also retain `annualCoverage` (`secretary.annual-source-coverage/v1`):
+at most 512 observed mail-header years, a separate unknown-date bucket, and
+Gmail/Outlook totals. Each physical target remains counted, including copies.
+`targetedSources`, `availableSources`, `reviewedSources`, `coveredSources`,
+`rejectedSources`, `gapSources`, `sourceErrors` and `metadataErrors` are separate,
+potentially overlapping source counts. Year/system totals must reconcile.
+
+The year comes from a materialized source's `mailDate` bound to the frozen
+source identity, the Outlook container's archived RFC Date, or Gmail's existing
+thread-manifest Date header after matching its exact message/thread and native
+raw receipt path/hash to the frozen inventory. Missing, invalid or mismatched
+metadata stays unknown. Gmail provider milliseconds, retrieval time, filesystem
+mtime and extracted life-event dates never supply this year. Calendar years
+retain the header's timezone rather than shifting a December date into January.
+Availability checks only presence and expected byte size, never attest integrity.
+
+The aggregate is calculated at plan/export time and written with the existing
+atomic coverage receipt. Desk reads project that stored aggregate without
+opening all source files; both Python and Core retain only bounded count/year
+fields. The Atlas popup fills empty view/life years through today, retains
+observed years outside the displayed range, and shows unknown dates separately.
+This inventory/reading view stays distinct from the density of loaded moments,
+semantic acceptance, owner decisions and the factual chronology of a life.
+
 ## Publishing candidates to Core
 
 After the worker releases its lock, `objective_publish.cjs plan` validates every
@@ -131,12 +225,22 @@ history remains the authority for candidates and human decisions; the publisher
 creates no souvenir and never confirms an assertion.
 
 A source audit may supply `--adjudications "$PRIVATE_AUDIT"` on the first plan
-and publication. Each item names `findingId`, `clear: ["start"]` and/or `"end"`,
-an explicit `reason`, `question` and `reviewedAt`. This bounded operation can
-only clear an unsupported event date to unknown. It retains the exact model
-date proposal and rationale in `timeline.metadata.dateReview`, labels the
+and publication. Each item names `findingId`, `clear` with `"start"`, `"end"`
+and/or `"ongoing"`, an explicit `reason`, `question` and `reviewedAt`. This
+bounded operation can only clear an unsupported event date to unknown or remove
+an unsupported claim of continuation through today. Clearing `ongoing` preserves
+the known start and unknown end, without inventing a departure date. It retains
+the exact model date proposal and rationale in `timeline.metadata.dateReview`, labels the
 audit as automatic, and publishes the corrected candidate on its first write.
 Quotes and occurrence/subject claims remain unchanged. The private input is an
 execution intent, not a lasting decision authority: future publication reads
 the adjudication from Core and preserves it without that file. A different
 native adjudication detected after planning blocks enrichment until reloaded.
+
+Every automatic `ongoing: true` proposal is additionally bounded to its source
+context before publication: the imported candidate has `ongoing: false` and an
+unknown end, with an explicit caveat and review question. Metadata preserves the
+model's ongoing/end proposal, uncertainty, source identity and container date;
+that date does not replace a quoted declaration's own date. No historical
+"currently" establishes continuation through today. Core's retained owner
+overrides remain authoritative over the descriptive imported timeline.

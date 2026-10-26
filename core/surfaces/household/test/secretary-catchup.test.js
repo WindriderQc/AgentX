@@ -30,6 +30,17 @@ test('general receipts and versioned objective review keep separate content-free
   assert.doesNotMatch(JSON.stringify(result), /private/);
 });
 
+test('rejected objective pages remain separate counts and never establish text coverage', () => {
+  const result = catchupProjection({ known: true, objectiveReviews: [{ objectiveId: 'life', version: 'v1',
+    allTargetTextCovered: false, counts: { reviewedPages: 2, rejectedPages: 3, sourcesWithRejectedPages: 2,
+      pendingPagesKnown: 0, privateResultBody: 'not exposed' } }] });
+  assert.deepEqual(result.objectiveReviews[0].counts,
+    { reviewedPages: 2, pendingPagesKnown: 0, rejectedPages: 3, sourcesWithRejectedPages: 2 });
+  assert.equal(result.objectiveReviews[0].allTargetTextCovered, false);
+  assert.equal(result.objectiveReviews[0].semanticAcceptance, 'not-established');
+  assert.doesNotMatch(JSON.stringify(result), /not exposed|privateResultBody/);
+});
+
 test("Dad's desk shows the archive catch-up from counts only", () => {
   const running = { known: true, running: true, phase: 'reviewing', reviewed: 343, failed: 0, remaining: 16260, pending: 16603,
     pagesPerHour: 484.1, etaHours: 33.6, lane: 'invoice-files', paused: null, proposalsQueued: 2, proposalsPending: 0, summary: 'ignored' };

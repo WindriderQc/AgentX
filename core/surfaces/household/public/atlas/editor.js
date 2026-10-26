@@ -69,7 +69,7 @@ export class EventEditor{
    throw new Error('Une date s’écrit 2014, 2014-06 ou 2014-06-28.');};
   try{
    for(const key of ['title','description','category','place','rationale','notes'])if(f[key].value!==this.initial[key])patch[key]=f[key].value;
-   if(f.eventTime.value!==this.initial.eventTime){Object.assign(patch,time(f.eventTime.value));patch.dateWindow=null;patch.ageStartWindow=null;}
+   if(f.eventTime.value!==this.initial.eventTime){Object.assign(patch,time(f.eventTime.value));patch.dateWindow=null;patch.ageStartWindow=null;patch.ownerTimeLabel='';patch.ageDateNote='';patch.dateEstimateNote='';}
    const ongoing=f.ongoing.checked,endTime=ongoing?'':f.endTime.value;
    if(endTime!==this.initial.endTime){const t=time(endTime);patch.endDate=t.date;patch.endPrecision=t.precision;patch.ageEndWindow=null;}
    if(ongoing!==this.initial.ongoing)patch.ongoing=ongoing;
