@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { step } = require('../../../../integrations/secretary/objective_campaign.cjs');
+const { step, dependencies } = require('../../../../integrations/secretary/objective_campaign.cjs');
 function fixture(t, { future = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'objective-campaign-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -63,6 +63,40 @@ test('a future Core reservation never launches a worker', async t => {
   assert.equal(state.phase, 'waiting-for-native-window');
   assert.equal(state.nextAt, '2026-10-26T19:00:00Z');
   assert.equal(f.data.launches, 0);
+});
+test('the native worker reads the controller explicit archive root', t => {
+  const f = fixture(t);
+  let command;
+  const deps = dependencies(f.config, (...args) => { command = args; return { status: 0 }; });
+  deps.launch('synthetic.service', { id: 'queue-id', dispatchId: 'dispatch-id' });
+  assert.equal(command[0], 'systemd-run');
+  const rootFlag = command[1].indexOf('--root');
+  assert.ok(rootFlag > 0);
+  assert.equal(command[1][rootFlag + 1], f.config.archiveRoot);
+});
+test('an expired reservation is placed again through Core under the same queue identity', async t => {
+  const f = fixture(t, { future: true });
+  await step(f.config, f.deps);
+  const id = f.data.jobs[0].id;
+  f.data.now = new Date('2026-10-26T20:00:00Z');
+  let replaced = 0;
+  f.deps.place = async job => {
+    assert.equal(job.id, id); replaced++;
+    return { ...job, revision: job.revision + 1, reservation: { start: '2026-10-26T20:01:00Z', end: '2026-10-26T20:31:00Z' } };
+  };
+  const result = await step(f.config, f.deps);
+  assert.equal(result.phase, 'waiting-for-native-window');
+  assert.equal(result.nextAt, '2026-10-26T20:01:00Z');
+  assert.equal(replaced, 1); assert.equal(f.data.jobs.length, 1); assert.equal(f.data.launches, 0);
+});
+test('a conflict while replacing an expired reservation preserves the original queue identity', async t => {
+  const f = fixture(t, { future: true }); await step(f.config, f.deps);
+  const id = f.data.jobs[0].id; f.data.now = new Date('2026-10-26T20:00:00Z');
+  f.deps.place = async () => { throw new Error('native resource remains held'); };
+  const result = await step(f.config, f.deps);
+  assert.equal(result.phase, 'waiting-for-native-placement');
+  assert.match(result.reason, /resource remains held/);
+  assert.equal(result.current.queueId, id); assert.equal(f.data.jobs.length, 1); assert.equal(f.data.launches, 0);
 });
 test('a lost begin response is reconciled by the same Core queue identity', async t => {
   const f = fixture(t); f.data.loseBegin = true;

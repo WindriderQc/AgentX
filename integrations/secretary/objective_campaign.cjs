@@ -31,7 +31,7 @@ function showUnit(unit, exec = spawnSync) {
   const state = Object.fromEntries(String(result.stdout || '').trim().split('\n').filter(line => line.includes('=')).map(line => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));
   return { ...state, commandStatus: result.status };
 }
-function dependencies(config) {
+function dependencies(config, exec = spawnSync) {
   const flags = ['--core', config.core, '--actor', config.actor];
   return {
     now: () => new Date(),
@@ -41,10 +41,11 @@ function dependencies(config) {
     coordination: () => queue.json(`${config.core}/api/nerve-center/runtime-coordination/active`),
     unit: showUnit,
     launch(unit, job) {
-      return spawnSync('systemd-run', ['--user', `--unit=${unit}`, '--service-type=exec', '--property=RemainAfterExit=yes',
+      return exec('systemd-run', ['--user', `--unit=${unit}`, '--service-type=exec', '--property=RemainAfterExit=yes',
         '--description=Native bounded Secretary objective review', '/usr/bin/python3', path.join(__dirname, 'objective_review.py'),
         'run', '--objective', config.objectiveFile, '--core', config.core, '--max-pages', String(config.maxPages),
         '--max-seconds', String(config.maxSeconds), '--queue-request-id', job.id, '--queue-dispatch-id', job.dispatchId,
+        ...(config.archiveRoot ? ['--root', config.archiveRoot] : []),
         ...(config.priorityFile ? ['--priority-file', config.priorityFile] : [])], { encoding: 'utf8' });
     },
     publish(directory) {
@@ -114,7 +115,7 @@ async function advance(config, deps) {
     return report(published.writes ? 'publication-pending' : 'ready', { publication: published });
   }
   if (job.state === 'uncertain') return report('uncertain', { reason: 'Native queue requires exact dispatch reconciliation' });
-  if (job.state === 'requested') {
+  if (job.state === 'requested' || job.state === 'reserved' && deps.now().getTime() >= Date.parse(job.reservation.end)) {
     try { job = await deps.place(job); }
     catch (error) { return report('waiting-for-native-placement', { reason: error.message }); }
   }
