@@ -160,6 +160,7 @@ def _source_record(page):
     sid = "objective-" + page["pageId"]
     native = {"system": source["system"], "messageId": source["id"], "threadId": source["threadId"],
               "sourceSha256": source["sha256"], "rfc822MessageId": source.get("rfc822MessageId"),
+              "direction": source.get("direction", "unknown"),
               "readerContract": CONTRACT, "representation": page["representation"],
               "offset": page["offset"], "end": page["end"], "totalChars": page["totalChars"]}
     return {"id": sid, "kind": "mail", "body": page["content"],

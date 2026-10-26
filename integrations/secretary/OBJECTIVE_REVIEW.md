@@ -94,3 +94,30 @@ prove a complete live mailbox, or establish the truth of the interpretation.
 coverage/status receipts. Core preserves these at
 `GET /api/secretary/desk` → `data.mail.catchup`. Existing catch-up counters
 continue to describe the last general run, not all reviewed archive pages.
+
+## Publishing candidates to Core
+
+After the worker releases its lock, `objective_publish.cjs plan` validates every
+candidate with Core's existing personal-history context contract. `publish`
+sends one atomic context import at a time through
+`POST /api/secretary/history/context/import`, with an explicit write budget:
+
+```sh
+node integrations/secretary/objective_publish.cjs plan \
+  --directory "$NATIVE_OBJECTIVE_DIRECTORY" --core "$AGENTX_CORE_URL"
+node integrations/secretary/objective_publish.cjs publish \
+  --directory "$NATIVE_OBJECTIVE_DIRECTORY" --core "$AGENTX_CORE_URL" --max-entries 20
+```
+
+Stable import IDs and per-payload intent/response receipts reconcile the native
+entry and `contextHash` before any retry. An uncertain result with no exact
+Core receipt blocks replacement. Additive context enrichment uses Core's
+current context revision, retaining owner overrides, review and souvenir state.
+The write budget counts actual posts; already reconciled entries do not prevent
+later candidates from advancing on the next invocation. Existing-source facts
+with a shared exact passage can receive proposed hypothesis links; the publisher
+does not merge them or rewrite an earlier assertion.
+
+The local files are execution and recovery evidence. Core's existing owner
+history remains the authority for candidates and human decisions; the publisher
+creates no souvenir and never confirms an assertion.
