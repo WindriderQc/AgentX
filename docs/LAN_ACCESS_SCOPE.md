@@ -10,6 +10,7 @@ a design proposal, not a delivered capability.
 | Browser entry | Backend | Previous gate | Retained authority |
 |---|---|---|---|
 | HTTPS LAN `/`, `/dad`, `/panel`, `/lecture` | Core on loopback 3180 | `parentalAccess`, gateway entry header, adult cookie | Core surface/pack binding, conversations, memory audience, task lanes |
+| HTTPS LAN `/llmx` | Existing GraphysX Forge module and bounded graphical assets relayed by Household | Same private-LAN boundary as Core | Existing LLMx personal/Family consumer and VoiX; Family-pinned devices may enter only `?profile=family` and its scoped consumer. No cross-site exception or new credential. |
 | HTTPS LAN `/psyx`, `/api/psyx/*` | PsyX in Core | Shared parental session; separate native token | PsyX owner namespace and explicit lifecycle/reset confirmations; native bearer remains independent |
 | HTTPS LAN `/benchmark`, `/benchmark/*` | Benchmark on loopback 3181 | Caddy forward auth to Core | Benchmark admission, leases, execution limits and qualification |
 | HTTPS LAN `/rag`, `/rag/*` | RAG on loopback 3182 | Caddy forward auth to Core | Retrieval classifications, ingestion policy and destructive confirmations |

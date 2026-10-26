@@ -1,8 +1,8 @@
 /* Nearby everyday destinations; the shared product navigation remains the catalogue. */
 (function () {
   'use strict';
-  const personal = [['/dad', 'Nestor'], ['/dad/day', 'My day'], ['/dad/memories', 'Memories'], ['/dad/history', 'Archives à revoir'], ['/dad/people', 'Personnes'], ['/dad/family', 'Family tracking'], ['/dad/family/plants', 'Plants']];
-  const family = [['/panel', 'Nestor Family'], ['/kids', 'Kids'], ['/lecture', 'Reading'], ['/kids/sounds', 'Sounds'], ['/kids/plants', 'Ma jungle']];
+  const personal = [['/dad', 'Nestor'], ['/llmx', 'Forge 3D'], ['/dad/day', 'My day'], ['/dad/memories', 'Memories'], ['/dad/history', 'Archives à revoir'], ['/dad/people', 'Personnes'], ['/dad/family', 'Family tracking'], ['/dad/family/plants', 'Plants']];
+  const family = [['/panel', 'Nestor Family'], ['/llmx?profile=family', 'Forge 3D'], ['/kids', 'Kids'], ['/lecture', 'Reading'], ['/kids/sounds', 'Sounds'], ['/kids/plants', 'Ma jungle']];
   function mount(app, path) {
     const parent = path.startsWith('/dad');
     const destinations = parent ? personal : family;
