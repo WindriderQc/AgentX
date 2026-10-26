@@ -160,3 +160,19 @@ test('an admitted chunk drains and publishes after the controller deadline witho
   assert.equal((await step(f.config, f.deps, { allowStart: false })).phase, 'controller-drained');
   assert.equal(f.data.jobs.length, 1); assert.equal(f.data.launches, 1); assert.equal(f.data.publishes, 1);
 });
+test('an operator running state observes the same retained worker and can release its exact terminal receipt', async t => {
+  const f = fixture(t); await step(f.config, f.deps);
+  f.data.jobs[0].state = 'running';
+  assert.equal((await step(f.config, f.deps)).phase, 'running');
+  assert.equal(f.data.launches, 1);
+  f.terminal('partial');
+  assert.equal((await step(f.config, f.deps)).phase, 'chunk-released');
+  assert.equal(f.data.finishes, 1);
+});
+test('an operator running state without a retained worker never authorizes another launch', async t => {
+  const f = fixture(t); await step(f.config, f.deps);
+  f.data.jobs[0].state = 'running'; f.data.unit = { LoadState: 'not-found' };
+  const state = await step(f.config, f.deps);
+  assert.equal(state.phase, 'uncertain'); assert.match(state.reason, /no retained local worker/);
+  assert.equal(f.data.launches, 1);
+});

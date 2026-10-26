@@ -140,11 +140,13 @@ async function advance(config, deps, { allowStart = true, stopReason = 'Explicit
     job = await deps.queue('begin-operator', ['--id', job.id, '--revision', String(job.revision)]);
     current.dispatchId = job.dispatchId; report('admitted');
   }
-  if (job.state !== 'dispatching' || !job.dispatchId || current.dispatchId && current.dispatchId !== job.dispatchId) return report('uncertain', { reason: 'Unexpected native dispatch identity/state' });
+  const observable = job.state === 'dispatching' || job.state === 'running' && job.executor?.mode === 'operator';
+  if (!observable || !job.dispatchId || current.dispatchId && current.dispatchId !== job.dispatchId) return report('uncertain', { reason: 'Unexpected native dispatch identity/state' });
   current.dispatchId = job.dispatchId;
   current.unit = serviceName(job.id);
   let unit = await deps.unit(current.unit);
   if (unit.LoadState === 'not-found') {
+    if (job.state === 'running') return report('uncertain', { reason: 'Native running job has no retained local worker; no replacement launched' });
     if (current.launchIntent) return report('uncertain', { reason: 'Systemd launch outcome not reconciled; no replacement launched' });
     current.launchIntent = true; report('launching');
     const launched = await deps.launch(current.unit, job);
