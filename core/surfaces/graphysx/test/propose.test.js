@@ -229,3 +229,20 @@ test('the route is a full-profile, private-LAN surface like DiskX: off in demo, 
     assert.equal(allowedForFamilyDevice({ path, method: 'GET', query: {} }), false, path);
   }
 });
+
+
+test('prompt includes new vocabulary blocks and their resource limits without a second field registry', () => {
+  const vocabulary = structuredClone(VOCABULARY);
+  vocabulary.entityTypes.mesh = { primitive: false, physics: true, requires: ['mesh'] };
+  vocabulary.fields.mesh = [{ name: 'positions', description: 'Local xyz triples.' }, 'indices'];
+  vocabulary.fields.pixels = [{ name: 'rgba', description: 'Unsigned RGBA bytes.' }];
+  vocabulary.fields.futureConstruction = [{ name: 'profile', description: 'Published construction profile.' }];
+  vocabulary.limits = { mesh: { vertices: 4096 }, pixels: { dimension: 64 } };
+  const prompt = graphysx.buildSystemPrompt(vocabulary);
+  assert.match(prompt, /mesh: positions.*Local xyz triples.*indices/);
+  assert.match(prompt, /pixels: rgba.*Unsigned RGBA bytes/);
+  assert.match(prompt, /futureConstruction: profile.*Published construction profile/);
+  assert.match(prompt, /authored triangle mesh/);
+  assert.ok(prompt.includes(JSON.stringify(vocabulary.limits)));
+  assert.equal(prompt.split('mesh: positions').length, 2);
+});
