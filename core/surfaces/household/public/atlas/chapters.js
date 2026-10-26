@@ -4,7 +4,7 @@
 import {temporalExtent} from './temporal.js';
 import {escape,icon,categories} from './ui.js';
 import {reviewState} from './review.js';
-import {collectPhotos,imagesOf} from './gallery.js';
+import {collectPhotos} from './gallery.js';
 
 const MINIMUM=3;
 const top=(values,count)=>[...values.reduce((map,v)=>map.set(v,(map.get(v)||0)+1),new Map())].sort((a,b)=>b[1]-a[1]).slice(0,count).map(([v])=>v);
@@ -43,9 +43,10 @@ export function renderChapters(root,api){
    root.querySelectorAll('[data-chapter]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
    document.querySelector('.atlas').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'instant':'smooth',block:'start'});});
   // A cover from a photo folder of that decade, once Core has listed it.
-  const cover=photos.find(p=>p.date&&Math.floor(Number(p.date.slice(0,4))/10)*10===c.decade);
-  if(cover)imagesOf(cover.id).then(set=>{const image=set.images[0];if(!image||!b.isConnected)return;
-   const img=document.createElement('img');img.src=image.url;img.alt='';img.loading='lazy';b.querySelector('.chapter-art').replaceWith(img);b.classList.add('has-photo');});
+  const inDecade=photos.filter(p=>p.date&&Math.floor(Number(p.date.slice(0,4))/10)*10===c.decade);
+  const cover=inDecade.find(p=>p.cover)||inDecade[Math.floor(inDecade.length/2)];
+  if(cover){const img=document.createElement('img');img.src=cover.url;img.alt='';img.loading='lazy';
+   img.addEventListener('load',()=>{b.querySelector('.chapter-art')?.replaceWith(img);b.classList.add('has-photo');},{once:true});}
  });
 }
 

@@ -10,13 +10,14 @@ import {renderChapters,syncChapterRange} from './chapters.js';
 import {Gallery} from './gallery.js';
 import {startReview} from './review-session.js';
 import {showRecall,showPerson} from './core-panels.js';
+import {EventEditor} from './editor.js';
 import * as data from './data.js';
 import {categories,icon,escape,number,fold,toast,DAY,YEAR,dateLabel,ownerDisplay} from './ui.js';
 
 const el=id=>document.getElementById(id);
 function saved(key,fallback){try{return JSON.parse(localStorage.getItem(key))??fallback;}catch{return fallback;}}
 const state={events:[],filtered:[],meta:{},dataset:'real',query:'',reviewFilter:'active',scope:'all',evidenceFilter:'all',connectionIndex:new Map(),latestIds:new Set(),activeConnectionId:null,connectedIds:new Set(),categories:new Set(Object.keys(categories)),favorites:new Set(saved('life-atlas-favorites',[])),favoritesOnly:false,range:null,domain:null,anchor:null};
-let timeline,popup,gallery,loadSequence=0,selectedId=null,discoveryPage=0;
+let timeline,popup,editor,gallery,loadSequence=0,selectedId=null,discoveryPage=0;
 
 function hydrate(event){const original=event;event=ownerDisplay(event,state.meta.owner);return {...event,reviewState:reviewState(event),ts:event.date?Date.parse(event.date+'T12:00:00Z'):null,search:fold([event.title,event.description,original.title,original.description,event.correspondent,event.subject,event.originalDate,event.place,event.notes,event.rationale,...(event.links||[]).map(l=>l.label)].join(' '))};}
 // Every decision is Core's own: keeping a souvenir, dismissing, correcting.
@@ -32,6 +33,7 @@ async function decide(event,action,extra={}){
  return atlas===state.dataset?adoptResult(result):result.event;
 }
 async function correct(event,changes){return adoptResult(await data.correctSouvenir(event,changes));}
+async function editContext(event,changes){return adoptResult(await data.editContext(event,changes));}
 function adoptResult({meta,event}){state.meta={...state.meta,...meta};state.connectionIndex=connectionIndex(meta.relations);return adopt(event);}
 // A stable link (#entry:<history id>, #souvenir:<note id>) opens its moment.
 function openLink(){
@@ -167,8 +169,8 @@ function showInfo(anchor){
  popup.info(`<h3>Les traces de mon histoire</h3><p>${state.dataset==='demo'?'Cette démonstration utilise uniquement des événements et des sources fictifs.':state.meta.authority==='agentx.core'?`Cette vue lit l’historique personnel d’AgentX Core (lu le ${new Intl.DateTimeFormat('fr-CA',{dateStyle:'medium',timeStyle:'short',timeZone:'America/Toronto'}).format(new Date(state.meta.fetchedAt))}, heure de Toronto). Life Atlas n’en garde aucune copie. Garder un moment comme souvenir l’ajoute à la mémoire de Nestor; écarter un moment est une décision enregistrée dans Core. Un moment sans date écrite reste « à dater » : la date du courriel n’est pas sa date.`:state.meta.pass2?'Cette vue réunit les découvertes issues des courriels, documents, calendriers et métadonnées de médias. Les extraits cités permettent de vérifier chaque proposition.':'Cette vue réutilise les observations déjà extraites de l’archive Secretary. Les messages originaux restent accessibles pour lire leur contexte.'}</p><div class="info-stats"><div><strong>${number(state.events.length)}</strong><small>observations distinctes</small></div><div><strong>${number(state.events.filter(e=>e.ts).length)}</strong><small>observations datées</small></div><div><strong>${number(state.meta.messages||0)}</strong><small>courriels dans l’archive</small></div><div><strong>${number(state.meta.threads||0)}</strong><small>fils archivés</small></div></div><p>Les correspondants d’un message ne sont pas automatiquement les participants de l’événement. Les catégories sont proposées depuis le texte.</p><p>${state.meta.pass2?'Une nouvelle passe rapproche les courriels, documents, calendriers et indices de médias. « Les traces et les blancs » précise ce qui a été parcouru et ce qui reste à explorer.':'La passe dédiée à la chronologie n’a pas encore été exécutée sur ce corpus.'}</p>`,anchor);
 }
 function theme(mode){document.documentElement.dataset.theme=mode;localStorage.setItem('life-atlas-theme-preference',mode);el('theme-button').innerHTML=icon(mode==='dark'?'sun':'moon');timeline?.schedule();}
-const api={state,get selectedId(){return selectedId;},setRange,zoom,fit,focus,focusConnection,favorite,toast,saveEvent,decide,correct,showPerson:(name,anchor)=>showPerson(popup,api,name,anchor),photoOpen:(id,anchor,options)=>gallery.open(id,anchor,options),onPhotosLoaded:()=>{renderChapters(el('life-chapters'),api);syncChapterRange(el('life-chapters'),state);timeline.schedule();},select:id=>{selectedId=id;document.querySelectorAll('[data-cluster]').forEach(b=>{const selected=!!id&&timeline?.clusters?.[Number(b.dataset.cluster)]?.events.some(e=>e.id===id);b.classList.toggle('selected',selected);b.setAttribute('aria-expanded',String(selected));});if(id){const e=state.events.find(e=>e.id===id);if(e?.ts)state.anchor=e.ts;}},open:(events,anchor,pin,point)=>popup.open(events,anchor,pin,point),close:()=>popup?.close(),hidePreview:()=>{if(popup&&!popup.pinned)popup.close(false);},leave:()=>popup.leave()};
-popup=new Popover(el('popup-root'),api);timeline=new Timeline(el('timeline'),api);
+const api={state,get selectedId(){return selectedId;},setRange,zoom,fit,focus,focusConnection,favorite,toast,saveEvent,decide,correct,editContext,edit:(event,anchor)=>editor.open(event,anchor),showPerson:(name,anchor)=>showPerson(popup,api,name,anchor),photoOpen:(id,anchor,options)=>gallery.open(id,anchor,options),onPhotosLoaded:()=>{renderChapters(el('life-chapters'),api);syncChapterRange(el('life-chapters'),state);timeline.schedule();},select:id=>{selectedId=id;document.querySelectorAll('[data-cluster]').forEach(b=>{const selected=!!id&&timeline?.clusters?.[Number(b.dataset.cluster)]?.events.some(e=>e.id===id);b.classList.toggle('selected',selected);b.setAttribute('aria-expanded',String(selected));});if(id){const e=state.events.find(e=>e.id===id);if(e?.ts)state.anchor=e.ts;}},open:(events,anchor,pin,point)=>popup.open(events,anchor,pin,point),close:()=>popup?.close(),hidePreview:()=>{if(popup&&!popup.pinned)popup.close(false);},leave:()=>popup.leave()};
+popup=new Popover(el('popup-root'),api);timeline=new Timeline(el('timeline'),api);editor=new EventEditor(popup,api);
 gallery=new Gallery(el('life-gallery'),popup,api);
 function immersive(enabled){document.body.classList.toggle('atlas-immersive',enabled);el('immersive-button').setAttribute('aria-pressed',String(enabled));el('immersive-button').textContent=enabled?'⛶ Quitter la vue immersive':'⛶ Vue immersive';popup.close();timeline.schedule();window.scrollTo({top:0,behavior:'instant'});}
 el('immersive-button').addEventListener('click',()=>immersive(!document.body.classList.contains('atlas-immersive')));

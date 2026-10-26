@@ -1,7 +1,7 @@
 // The Atlas reads and writes the owner's history through Core only. Raw
 // entries are kept for the page's lifetime so a decision can be reflected
 // without a full reread; nothing is stored in the browser.
-import {projectEntry,buildRelations,summarize,parseSourceId,projectArchive,projectOwnerSource,projectRecall} from './projection.js';
+import {projectEntry,buildRelations,summarize,parseSourceId,projectArchive,projectContextSource,projectRecall} from './projection.js';
 import {demoEvents,demoSources} from './demo.js';
 
 const raw=new Map();
@@ -13,7 +13,7 @@ async function call(url,options={}){
  catch{throw new Error('AgentX ne répond pas pour le moment.');}
  const answer=await response.json().catch(()=>({}));
  if(!response.ok||answer.status!=='success'){
-  const error=new Error(response.status===409?'Ce moment a changé dans AgentX depuis l’ouverture de la page. Recharge la page avant de décider.'
+  const error=new Error(response.status===409?'Ce moment a changé dans AgentX depuis l’ouverture de la page. Recharge la page avant de continuer.'
    :response.status===403?'Cette page est réservée au profil du propriétaire.':answer.message||'AgentX a refusé la demande.');
   error.status=response.status;throw error;
  }
@@ -21,49 +21,60 @@ async function call(url,options={}){
 }
 const post=(url,body)=>call(url,{method:'POST',body:JSON.stringify(body)});
 
+// The owner's story in the order told: narrative paths kept in each moment's context.
+function contributions(events){
+ const chapters=new Map();
+ for(const e of events){
+  const n=e.narrative;if(!n?.chapterId)continue;
+  const chapter=chapters.get(n.chapterId)||{id:n.chapterId,title:n.title||'Ton récit',summary:n.summary||'',paths:new Map(),pendingDates:[]};
+  if(n.pendingDate)chapter.pendingDates.push({id:e.id,label:n.label||e.title,context:n.context||''});
+  else{const key=n.pathId||'path';const path=chapter.paths.get(key)||{label:n.pathLabel||'Étapes',items:[]};path.items.push({id:e.id,label:n.label||e.title,context:n.context||'',order:n.order??9999});chapter.paths.set(key,path);}
+  chapters.set(n.chapterId,chapter);
+ }
+ const list=[...chapters.values()].map(c=>({...c,paths:[...c.paths.values()].map(p=>({...p,items:p.items.sort((a,b)=>a.order-b.order)}))}));
+ return list.length?{chapters:list,events:events.filter(e=>e.confirmationBasis==='owner-testimony').length}:null;
+}
+
 function rebuild(){
  const events=[...raw.values()].map(projectEntry);
- meta={...summarize(events,{readAt:meta?.fetchedAt,total:events.length}),relations:buildRelations(events),ownerContributions:meta?.ownerContributions||null,statements:meta?.statements||[]};
+ meta={...summarize(events,{readAt:meta?.fetchedAt,total:events.length}),relations:buildRelations(events),ownerContributions:contributions(events)};
  return {meta,events};
 }
 
-// The owner's own story, in the order told: chapters kept with the statements,
-// their items mapped to history entries by the importer's finding ids.
-function contributions(statements,events){
- const byFinding=new Map(events.filter(e=>e.findingId).map(e=>[e.findingId,e.id]));
- const chapters=statements.map(s=>s.chapter).filter(c=>c&&Array.isArray(c.paths)).map(c=>({...c,
-  paths:c.paths.map(p=>({...p,items:(p.items||[]).map(i=>({...i,id:byFinding.get(i.findingId)})).filter(i=>i.id)})),
-  pendingDates:(c.pendingDates||[]).map(i=>({...i,id:byFinding.get(i.findingId)})).filter(i=>i.id)}));
- return chapters.length?{chapters,events:events.filter(e=>e.confirmationBasis==='owner-testimony').length}:null;
-}
-
 export async function loadHistory(){
- const [timeline,statements]=await Promise.all([call('/api/secretary/history/timeline'),call('/api/secretary/statements').catch(()=>({statements:[]}))]);
+ const timeline=await call('/api/secretary/history/timeline');
  raw.clear();for(const entry of timeline.entries)raw.set(entry.id,entry);
- meta={fetchedAt:timeline.readAt,statements:statements.statements};
- const result=rebuild();
- meta.ownerContributions=contributions(statements.statements,result.events);
- result.meta=meta;
- return result;
+ meta={fetchedAt:timeline.readAt};
+ return rebuild();
 }
 
 export function loadDemo(){
  return {meta:{events:demoEvents.length,dated:demoEvents.length,undated:0,source:'Scénario fictif · Camille',demo:true,relations:[]},events:demoEvents};
 }
 
-function adopt(entry){raw.set(entry.id,entry);return {...rebuild(),event:projectEntry(entry)};}
+// Core's answer to a decision is the entry without its souvenir join; keep the known souvenir.
+function adopt(entry,souvenir){
+ const previous=raw.get(entry.id);
+ const next={...entry,...(souvenir?{souvenir}:previous?.souvenir&&entry.souvenirNoteId?{souvenir:previous.souvenir}:{})};
+ raw.set(entry.id,next);
+ return {...rebuild(),event:projectEntry(next)};
+}
+const fence=event=>event.core.contextual?{contextRevision:event.contextRevision}:{};
 
 // Keep a moment as a souvenir in the owner's memory (Core's own route).
 export async function keepSouvenir(event,{eventDate}={}){
- const body={revision:event.core.revision,...(eventDate?{eventDate,eventDatePrecision:'day'}:{})};
- const answer=await post(`/api/secretary/history/${event.core.id}/souvenir`,body);
- const entry=answer.entry;
- // The history row and the new note together give the souvenir's current values.
- const note=await call(`/api/secretary/souvenirs/${answer.souvenirNoteId}`).then(r=>r.souvenir).catch(()=>null);
- return adopt({...entry,...(note?{souvenir:{id:note.id,revision:note.revision,text:note.text,eventDate:note.eventDate,eventDatePrecision:note.eventDatePrecision,people:note.people,places:note.places}}:{})});
+ const answer=await post(`/api/secretary/history/${event.core.id}/souvenir`,
+  {revision:event.core.revision,...fence(event),...(eventDate?{eventDate,eventDatePrecision:'day'}:{})});
+ const note=answer.souvenir||await call(`/api/secretary/souvenirs/${answer.souvenirNoteId}`).then(r=>r.souvenir).catch(()=>null);
+ return adopt(answer.entry,note?{id:note.id,revision:note.revision??0,text:note.text,eventDate:note.eventDate,eventDatePrecision:note.eventDatePrecision,people:note.people,places:note.places,historyContext:note.historyContext||null}:null);
 }
 export async function dismiss(event,reason){
  const answer=await post(`/api/secretary/history/${event.core.id}/review`,{revision:event.core.revision,state:'dismissed',reason:reason||'Écarté depuis Life Atlas'});
+ return adopt(answer.entry);
+}
+// Correct a moment before keeping it: its context timeline (title, dates, period, place, notes, links).
+export async function editContext(event,timeline){
+ const answer=await post(`/api/secretary/history/${event.core.id}/context`,{revision:event.contextRevision,changes:{timeline}});
  return adopt(answer.entry);
 }
 // Correct a kept souvenir: date, people, places or text; its sources never change.
@@ -74,7 +85,7 @@ export async function correctSouvenir(event,changes){
  if(changes.eventDate!==undefined)Object.assign(body,changes.eventDate?{eventDate:changes.eventDate,eventDatePrecision:'day'}:{eventDate:'',eventDatePrecision:'unknown'});
  for(const key of ['people','places','text'])if(changes[key]!==undefined)body[key]=changes[key];
  const {souvenir:s}=await post(`/api/secretary/souvenirs/${id}`,body);
- return adopt({...entry,souvenir:{id:s.id,revision:s.revision,text:s.text,eventDate:s.eventDate,eventDatePrecision:s.eventDatePrecision,people:s.people,places:s.places}});
+ return adopt(entry,{...entry.souvenir,id:s.id,revision:s.revision,text:s.text,eventDate:s.eventDate,eventDatePrecision:s.eventDatePrecision,people:s.people,places:s.places});
 }
 
 const sourceCache=new Map();
@@ -85,7 +96,12 @@ export async function readSource(id,{offset=0}={}){
  let value;
  if(ref.system==='gmail')value=projectArchive(id,await call(`/api/secretary/archive/${encodeURIComponent(ref.messageId)}?sha256=${ref.sourceSha256}&offset=${offset}`));
  else if(ref.system==='outlook-export')value={id,kind:'mail',subject:'Message Outlook archivé',body:'Ce message vient de l’export Outlook conservé par Secretary. Core garde son empreinte; la lecture de ce format n’est pas encore offerte.',bodySha256:ref.sourceSha256};
- else value=projectOwnerSource(id,await call(`/api/secretary/sources/read?system=${ref.system}&sha256=${ref.sourceSha256}${ref.locator?`&locator=${encodeURIComponent(ref.locator)}`:''}`));
+ else{
+  const {source}=await call(`/api/secretary/history/${ref.entryId}/sources/${encodeURIComponent(ref.sourceId)}`);
+  // The original file, when the household library or the Datalake still holds it unchanged.
+  const file=source.nativePath?await call(`/api/secretary/files/read?nativePath=${encodeURIComponent(source.nativePath)}&sha256=${source.contentSha256||''}`).catch(()=>null):null;
+  value=projectContextSource(id,source,file);
+ }
  sourceCache.set(key,value);return value;
 }
 

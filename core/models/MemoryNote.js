@@ -23,9 +23,10 @@ const schema = new mongoose.Schema({
   // A souvenir is a lasting memory of something that happened: when, with
   // whom, where, and the sources it was kept from. It never expires.
   eventDate: { type: String, default: '', maxlength: 40 },
-  eventDatePrecision: { type: String, enum: ['unknown', 'day', 'instant'], default: 'unknown' },
+  eventDatePrecision: { type: String, enum: ['unknown', 'year', 'month', 'day', 'instant'], default: 'unknown' },
   people: { type: [String], default: undefined },
   places: { type: [String], default: undefined },
+  historyContext: { type: require('./personalHistorySouvenirSchema'), default: null },
   sourceRefs: { type: [{ _id: false, system: String, id: String }], default: undefined },
   // Fences the owner's corrections of a souvenir. Notes written before it
   // existed have no value and count as revision 0.

@@ -7,6 +7,8 @@ const { createIndex } = require('./memoryNoteIndex');
 const { currentFactFilter } = require('./memoryNoteValidity');
 const { scoreFloor } = require('../helpers/scoreFloor');
 const { memoryFactInput, memoryFactProjection, mergeMemoryFactMetadata } = require('../../../shared/memoryFactMetadata');
+const temporal = require('./personalHistoryTemporal');
+const historyContext = require('./personalHistorySouvenirContext');
 
 // A note is recalled by meaning when its similarity to the request reaches
 // this floor. Measured with qllama/bge-m3:f16 on 24 owner questions
@@ -39,10 +41,9 @@ const sourceOf = value => (typeof value === 'string' && /^[a-z0-9-]{1,40}$/.test
 // values are accepted from the Nestor consumer; anything else is not a note
 // the owner dictated, but it is never relabelled as one either.
 const AGENT_PROVENANCE = Object.freeze({ conversation: 'nestor-conversation', 'mail-review': 'nestor-mail-review', scheduled: 'nestor-scheduled' });
-// A souvenir cites its history entry and the sources that entry cites.
-const SOUVENIR_REF_SYSTEMS = ['personal-history', 'gmail', 'outlook-export', 'owner-statement', 'core-record', 'owner-file'];
+const SOUVENIR_REF_SYSTEMS = ['personal-history', 'gmail', 'outlook-export', 'document', 'media', 'ledger', 'testimony', 'conversation', 'calendar'];
 function souvenirRefs(value) {
-  if (!Array.isArray(value) || !value.length || value.length > 20) throw error('A souvenir needs 1-20 sources');
+  if (!Array.isArray(value) || !value.length || value.length > 125) throw error('A souvenir needs 1-125 sources');
   return value.map(ref => {
     if (!SOUVENIR_REF_SYSTEMS.includes(ref?.system) || typeof ref.id !== 'string'
         || !/^[a-zA-Z0-9_-]{8,128}$/.test(ref.id)) throw error('A souvenir source is invalid');
@@ -50,14 +51,7 @@ function souvenirRefs(value) {
   });
 }
 function souvenirDate(value = '', precision = 'unknown') {
-  if (precision === 'unknown') {
-    if (value) throw error('An unknown event date must remain empty');
-    return { eventDate: '', eventDatePrecision: 'unknown' };
-  }
-  const valid = precision === 'day' ? /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value)
-    : precision === 'instant' && /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value));
-  if (!valid) throw error('A souvenir date must be a day (YYYY-MM-DD) or an ISO instant with timezone');
-  return { eventDate: precision === 'instant' ? new Date(value).toISOString() : value, eventDatePrecision: precision };
+  return { eventDate: temporal.eventDate(value, precision, error), eventDatePrecision: precision };
 }
 const labels = (value = []) => {
   if (!Array.isArray(value) || value.length > 20) throw error('List at most 20 people or places');
@@ -92,7 +86,7 @@ function project(row) {
     ...(row.replaces && { replaces: row.replaces }),
     ...memoryFactProjection(row),
     ...(row.kind === 'souvenir' ? { eventDate: row.eventDate || '', eventDatePrecision: row.eventDatePrecision || 'unknown',
-      people: row.people || [], places: row.places || [], revision: row.revision || 0 } : {}) };
+      people: row.people || [], places: row.places || [], revision: row.revision || 0, historyContext: row.historyContext?.toObject?.() || row.historyContext || null } : {}) };
 }
 
 // Bind once in trusted server code. Request bodies and personas cannot widen
@@ -154,6 +148,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     // A kept souvenir retains its original sources, including through the
     // general note editor. Only ordinary facts accumulate review references.
     const fact = mergeMemoryFactMetadata(existing?.kind === 'souvenir' ? { validFrom: input.validFrom } : input, existing || {});
+    if (existing?.kind === 'souvenir') fact.sourceRefs = memoryFactProjection(existing).sourceRefs;
     if (input.id !== undefined && (!existing || existing.status === 'forgotten')) throw error('The selected note no longer exists', 404);
     // A souvenir is kept for good: a correction cannot give it an expiry.
     const expiresAt = existing?.kind === 'souvenir' ? null
@@ -214,7 +209,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
 
   // A souvenir kept from reviewed sources. The first keep for a source creates
   // it; keeping the same source again returns the same note.
-  async function keepSouvenir(input = {}) {
+  async function keepSouvenir(input = {}, { pending = false } = {}) {
     if (audience !== 'owner') throw error('Souvenirs belong to the owner space', 403);
     const refs = souvenirRefs(input.sourceRefs);
     const { eventDate, eventDatePrecision } = souvenirDate(input.eventDate, input.eventDatePrecision);
@@ -224,15 +219,36 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     const values = { packId: packs[0], scopeId, ...classification, text, topic: 'souvenir', type: 'fact',
       kind: 'souvenir', eventDate, eventDatePrecision, people: await sealAll(input.people),
       places: await sealAll(input.places), sourceRefs: refs, source: sourceOf(input.source),
-      contentHash: digest(text.toLowerCase()), status: 'active', expiresAt: null };
+      contentHash: digest(text.toLowerCase()), status: pending ? 'pending' : 'active', expiresAt: null, historyContext: historyContext.normalize(input.historyContext) };
     const result = await MemoryNote.findOneAndUpdate({ ...boundary, sourceTraceId },
       { $setOnInsert: { ...values, sourceTraceId } },
       { new: true, upsert: true, runValidators: true, includeResultMetadata: true });
-    const row = result.value;
+    let row = result.value;
     if (row.status === 'forgotten') throw error('This souvenir was forgotten', 409);
     if (row.invalidatedAt || row.supersededBy) throw error('This souvenir was replaced', 409);
-    if (!row.embeddedHash) indexLater(row);
+    if (pending && row.status === 'active' && JSON.stringify(row.historyContext?.toObject?.() || row.historyContext || null) !== JSON.stringify(values.historyContext)) {
+      throw error('An active souvenir already keeps another source context; review that souvenir explicitly', 409);
+    }
+    if (pending && row.status === 'pending') {
+      row = await MemoryNote.findOneAndUpdate({ ...boundary, _id: row._id, status: 'pending' }, { $set: values }, { new: true, runValidators: true });
+      if (!row) throw error('This pending souvenir changed', 409);
+    }
+    if (!pending && row.status === 'active' && !row.embeddedHash) indexLater(row);
     return { ok: true, authority: 'agentx.core', ...project(row), created: Boolean(result.lastErrorObject?.upserted) };
+  }
+
+  // The history owner publishes a prepared note only after linking it with
+  // both native and context revision fences. A lost reply resumes this step.
+  async function finalizeSouvenir(id) {
+    if (audience !== 'owner') throw error('Souvenirs belong to the owner space', 403);
+    noteId(id);
+    let row = await MemoryNote.findOneAndUpdate({ ...boundary, _id: id, kind: 'souvenir', status: 'pending' },
+      { $set: { status: 'active' } }, { new: true });
+    const activated = Boolean(row);
+    if (!row) row = await MemoryNote.findOne({ ...boundary, _id: id, kind: 'souvenir', status: 'active' });
+    if (!row) throw error('This souvenir is unavailable', 409);
+    if (activated && !row.embeddedHash) indexLater(row);
+    return project(row);
   }
 
   // The owner corrects a kept souvenir: its date, people, places or text. The
@@ -242,7 +258,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     if (audience !== 'owner') throw error('Souvenirs belong to the owner space', 403);
     noteId(id);
     if (!Number.isSafeInteger(input.revision) || input.revision < 0) throw error('The current souvenir revision is required');
-    const existing = await MemoryNote.findOne({ ...boundary, _id: id, kind: 'souvenir' }).lean();
+    const existing = await MemoryNote.findOne({ ...boundary, _id: id, kind: 'souvenir', status: 'active' }).lean();
     if (!existing || existing.status === 'forgotten') throw error('The selected souvenir no longer exists', 404);
     if (existing.invalidatedAt || existing.supersededBy) throw error('This souvenir was replaced', 409);
     const current = existing.revision || 0;
@@ -345,7 +361,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   const reindex = () => index.rebuild(boundary);
 
   const replacements = require('./memoryNoteReplacement').forNotes({ audience, boundary, seal, indexLater, forget });
-  return Object.freeze({ list, remember, record, keepSouvenir, editSouvenir, souvenirs, forget, search, similar, reindex,
+  return Object.freeze({ list, remember, record, keepSouvenir, finalizeSouvenir, editSouvenir, souvenirs, forget, search, similar, reindex,
     ...replacements, count: () => MemoryNote.countDocuments(active()) });
 }
 

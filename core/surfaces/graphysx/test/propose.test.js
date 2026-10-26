@@ -246,3 +246,16 @@ test('prompt includes new vocabulary blocks and their resource limits without a 
   assert.ok(prompt.includes(JSON.stringify(vocabulary.limits)));
   assert.equal(prompt.split('mesh: positions').length, 2);
 });
+
+
+test('explicit mesh focus reaches native composition, and malformed focus never admits inference', async () => {
+  const focus = { id: 'sail', type: 'mesh', label: 'Sail', vertexCount: 3, triangleCount: 1, complete: true,
+    mesh: { positions: [0,0,0, 1,0,0, 0,1,0], indices: [0,1,2] } };
+  const scene = { id: 'focused-world', label: 'Focused world', entities: [{ id: 'sail', type: 'mesh', label: 'Sail' }], focus };
+  const server = app({ replies: [{ intent: 'Refine sail', commands: [{ op: 'update', id: 'sail', patch: { label: 'Refined sail' } }] }] });
+  const received = await request(server).post('/api/graphysx/propose').send({ ...REQUEST, scene }).expect(200);
+  assert.equal(received.body.commands[0].id, 'sail');
+  assert.deepEqual(JSON.parse(server.calls[0].body.prompt).scene.focus, focus);
+  await request(server).post('/api/graphysx/propose').send({ ...REQUEST, scene: { ...scene, focus: { ...focus, transcript: 'private' } } }).expect(400);
+  assert.equal(server.calls.length, 1);
+});

@@ -2,7 +2,7 @@
 // every view is rebuilt from Core's entries and souvenirs.
 
 const kindLabels={fact:'Information retrouvée',calendar:'Rendez-vous ou événement',contact:'Contact',deliverable:'Document ou livrable',invoice:'Facture',action:'Action à faire'};
-const systemLabels={gmail:'Courriel Gmail','outlook-export':'Courriel Outlook','owner-statement':'Ton témoignage','core-record':'Enregistrement AgentX','owner-file':'Fichier du foyer'};
+const systemLabels={gmail:'Courriel Gmail','outlook-export':'Courriel Outlook',document:'Document',media:'Photo',ledger:'Grand livre',testimony:'Ton témoignage',conversation:'Conversation',calendar:'Calendrier'};
 export const fold=value=>String(value||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 
 // The category is a reading aid proposed from the text, never Core's assertion.
@@ -34,20 +34,32 @@ export function projectDate(entry){
  return {date:null,precision:'unknown',dateOrigin:'none'};
 }
 
-// A source id is "<system>|<sha256>|<locator or message id>".
+// A source id is "gmail|<sha256>|<message id>", "outlook-export|<sha256>|", or
+// "ctx|<entry id>|<source id>" for a source record kept in a history context.
 export function sourceId(source){
  if(!source||!/^[a-f0-9]{64}$/.test(source.sourceSha256||''))return null;
  if(source.system==='gmail')return /^[a-zA-Z0-9_-]{8,256}$/.test(source.messageId||'')?`gmail|${source.sourceSha256}|${source.messageId}`:null;
- if(!systemLabels[source.system])return null;
- return `${source.system}|${source.sourceSha256}|${source.locator||''}`;
+ if(source.system==='outlook-export')return `outlook-export|${source.sourceSha256}|`;
+ return null;
 }
+export const contextSourceId=(entryId,id)=>`ctx|${entryId}|${id}`;
 export function parseSourceId(id){
- const [system,sha256,...rest]=String(id||'').split('|'),detail=rest.join('|');
- if(!systemLabels[system]||!/^[a-f0-9]{64}$/.test(sha256||''))return null;
- return system==='gmail'?{system,sourceSha256:sha256,messageId:detail}:{system,sourceSha256:sha256,locator:detail};
+ const [system,first,...rest]=String(id||'').split('|'),detail=rest.join('|');
+ if(system==='ctx')return /^[a-f0-9]{24}$/.test(first||'')&&detail?{system,entryId:first,sourceId:detail}:null;
+ if(!['gmail','outlook-export'].includes(system)||!/^[a-f0-9]{64}$/.test(first||''))return null;
+ return {system,sourceSha256:first,messageId:detail};
 }
-export const sourceLabel=system=>systemLabels[system]||'Source';
-export const isPhotoSource=id=>/^owner-file\|[a-f0-9]{64}\|photos:/.test(id||'');
+const kindNames={mail:'Courriel',document:'Document',media:'Photo ou vidéo',ledger:'Écriture du grand livre',testimony:'Ton témoignage',conversation:'Conversation',calendar:'Calendrier',unknown:'Source'};
+export const sourceLabel=system=>systemLabels[system]||kindNames[system]||'Source';
+
+// Partial dates keep their precision; the timeline draws an uncertainty window.
+function anchor(value,precision){
+ const text=String(value||'');
+ if(precision==='year'&&/^\d{4}/.test(text))return {date:`${text.slice(0,4)}-07-01`,precision:'year'};
+ if(precision==='month'&&/^\d{4}-\d{2}/.test(text))return {date:`${text.slice(0,7)}-15`,precision:'month'};
+ if(['day','instant'].includes(precision)&&/^\d{4}-\d{2}-\d{2}/.test(text))return {date:precision==='instant'?torontoDay(text)||text.slice(0,10):text.slice(0,10),precision:'day'};
+ return {date:null,precision:'unknown'};
+}
 
 function reviewStateOf(entry){
  if(entry.reviewState==='dismissed')return 'dismissed';
@@ -62,41 +74,82 @@ function titleOf(text){
 }
 
 export function projectEntry(raw){
- const s=raw.souvenir;
- const entry=s?{...raw,text:s.text||raw.text,eventDate:s.eventDate,eventDatePrecision:s.eventDatePrecision,people:s.people||raw.people,places:s.places||raw.places}:raw;
- const when=projectDate(entry);
- const cited=[entry.source,...(entry.relatedSources||[])].filter(Boolean);
- const sources=[...new Set(cited.map(sourceId).filter(Boolean))];
- const people=entry.people||[],system=entry.source?.system||'';
- const testimony=system==='owner-statement';
+ const s=raw.souvenir,tl=raw.timeline,ctx=raw.context;
+ const base=s?{...raw,text:s.text||raw.text,eventDate:s.eventDate,eventDatePrecision:s.eventDatePrecision,people:s.people||raw.people,places:s.places||raw.places}:raw;
+ const system=raw.source?.system||'';
+ const contextSources=(ctx?.sources||[]).map(src=>({...src,atlasId:contextSourceId(raw.id,src.id)}));
+ const byContextId=new Map(contextSources.map(src=>[src.id,src.atlasId]));
+ const native=[raw.source,...(raw.relatedSources||[])].filter(Boolean).map(sourceId).filter(Boolean);
+ const sources=[...new Set([...native,...contextSources.map(src=>src.atlasId)])];
+ let when=projectDate(base),end=null;
+ if(tl&&!s){const a=anchor(tl.date,tl.precision);when={...a,dateOrigin:a.date?'core':'none'};}
+ else if(s&&['year','month'].includes(s.eventDatePrecision)){const a=anchor(s.eventDate,s.eventDatePrecision);when={...a,dateOrigin:'core'};}
+ if(tl?.endDate)end=anchor(tl.endDate,tl.endPrecision||tl.precision);
+ const testimony=system==='testimony'||tl?.confirmationBasis==='owner-testimony';
+ const text=String(base.text||'').replace(/^\d{4}(?:-\d{2}){0,2} : /,'');
+ const quotes=(tl?.claimsWithExactQuotes||[]).map(q=>({...q,sourceId:byContextId.get(q.sourceId)||q.sourceId}));
+ const decided=['retained','resolved'].includes(raw.reviewState)||raw.souvenirNoteId;
  return {
-  id:`core-${entry.id}`,title:titleOf(entry.text),description:String(entry.text||'').replace(/^\d{4}-\d{2}-\d{2} : /,''),
-  date:when.date,precision:when.precision,dateOrigin:when.dateOrigin,originalDate:entry.eventDateAsWritten||'',
-  category:proposeCategory(entry),importance:entry.souvenirNoteId?5:testimony?4:entry.kind==='fact'?3:2,
-  status:testimony?'Ton témoignage':kindLabels[entry.kind]||'Relevé',sourceIds:sources,
-  correspondent:entry.actor||people.join(', '),subject:`${sourceLabel(system)}${entry.sourceDate?` · ${torontoDay(entry.sourceDate)||''}`:''}`,
-  place:(entry.places||[]).join(', '),people,threadId:entry.source?.threadId||null,sourceDate:entry.sourceDate,attachments:0,origin:'agentx-core',
-  reviewState:reviewStateOf(entry),occurrenceStatus:occurrence[entry.assertionState],
-  confirmationBasis:testimony?'owner-testimony':undefined,findingId:entry.source?.findingId||'',
-  photoSourceIds:sources.filter(isPhotoSource),
-  core:{id:entry.id,revision:entry.revision,kind:entry.kind,reviewState:entry.reviewState,assertionState:entry.assertionState,
-   souvenirNoteId:entry.souvenirNoteId||'',sourceStatus:entry.sourceStatus||'',sourceSystem:system,
-   gmailUrl:entry.gmailUrl||null,decidedAt:entry.decision?.at||null,canKeep:entry.kind!=='action'&&!entry.souvenirNoteId,
-   canDismiss:entry.reviewState!=='dismissed'&&!entry.souvenirNoteId,
-   souvenir:s?{id:s.id,revision:s.revision??0}:entry.souvenirNoteId?{id:entry.souvenirNoteId,revision:null}:null},
-  link:entry.souvenirNoteId?`#souvenir:${entry.souvenirNoteId}`:`#entry:${entry.id}`
+  id:`core-${raw.id}`,title:tl&&!s?tl.title:titleOf(text),description:tl&&!s?(tl.description||text):text,
+  date:when.date,precision:when.precision,dateOrigin:when.dateOrigin,originalDate:tl?.originalDate||raw.eventDateAsWritten||'',
+  endDate:end?.date||null,endPrecision:end?.precision,ongoing:tl?.ongoing===true,
+  dateWindow:tl?.dateWindow||null,ageStartWindow:tl?.ageStartWindow||null,ageEndWindow:tl?.ageEndWindow||null,
+  ageDateNote:tl?.ageDateNote,dateEstimateNote:tl?.dateEstimateNote,ownerTimeLabel:tl?.ownerTimeLabel,
+  category:tl?.category||proposeCategory(base),importance:raw.souvenirNoteId?5:testimony?4:raw.kind==='fact'?3:2,
+  status:testimony?'Ton témoignage':tl?.status||kindLabels[raw.kind]||'Relevé',sourceIds:sources,
+  correspondent:raw.actor||(base.people||[]).join(', '),subject:`${sourceLabel(system)}${raw.sourceDate?` · ${torontoDay(raw.sourceDate)||''}`:''}`,
+  place:tl&&!s?(tl.place||(base.places||[]).join(', ')):(base.places||[]).join(', '),people:base.people||[],
+  threadId:raw.source?.threadId||null,sourceDate:raw.sourceDate,attachments:0,origin:'agentx-core',
+  reviewState:raw.reviewState==='dismissed'?'dismissed':decided?'confirmed':tl?.hypothesis?'hypothesis':'unreviewed',
+  occurrenceStatus:tl?.occurrenceStatus&&tl.occurrenceStatus!=='unknown'?tl.occurrenceStatus:occurrence[raw.assertionState],
+  confirmationBasis:testimony?'owner-testimony':tl?.confirmationBasis==='owner-tentative'?'owner-tentative':undefined,
+  rationale:tl?.rationale,notes:tl?.notes,reviewQuestions:tl?.reviewQuestions||[],contradictions:tl?.contradictions||[],links:tl?.links||[],
+  relatedEventIds:(tl?.relatedEventIds||[]).map(id=>`core-${id}`),claimsWithExactQuotes:quotes,
+  evidenceCheck:quotes.length?{status:'passed',quoteCount:quotes.length}:undefined,
+  legacyId:tl?.legacyId||'',narrative:tl?.narrative||null,findingId:raw.source?.findingId||'',
+  contextSources,media:ctx?.media||[],contextRelations:ctx?.relations||[],
+  contextRevision:raw.contextRevision||0,reviewUpdatedAt:ctx?.ownerEditedAt||null,
+  core:{id:raw.id,revision:raw.revision,kind:raw.kind,reviewState:raw.reviewState,assertionState:raw.assertionState,
+   souvenirNoteId:raw.souvenirNoteId||'',sourceStatus:raw.sourceStatus||'',sourceSystem:system,contextual:Boolean(tl),
+   gmailUrl:raw.gmailUrl||null,decidedAt:raw.decision?.at||null,canKeep:raw.kind!=='action'&&!raw.souvenirNoteId,
+   canDismiss:raw.reviewState!=='dismissed'&&!raw.souvenirNoteId,canEdit:Boolean(tl)&&!raw.souvenirNoteId,
+   souvenir:s?{id:s.id,revision:s.revision??0}:raw.souvenirNoteId?{id:raw.souvenirNoteId,revision:null}:null},
+  link:raw.souvenirNoteId?`#souvenir:${raw.souvenirNoteId}`:`#entry:${raw.id}`
  };
+}
+
+// Photos bound to moments in their history context, served from the household library.
+export function collectMedia(events){
+ const byLegacy=new Map(events.filter(e=>e.legacyId).map(e=>[e.legacyId,e.id]));
+ const photos=new Map();
+ for(const e of events)for(const m of e.media||[]){
+  if(!m.originalPath||!/^[a-f0-9]{64}$/.test(m.sourceContentSha256||''))continue;
+  const row=photos.get(m.id)||{id:m.id,eventIds:new Set(),url:`/api/secretary/files/content?nativePath=${encodeURIComponent(m.originalPath)}&sha256=${m.sourceContentSha256}`,
+   caption:m.caption||'',album:m.album||'',date:null,precision:'unknown',associationBasis:m.associationBasis||'',dateBasis:m.dateBasis||'',dateNote:m.dateNote||'',cover:m.cover===true,filename:m.originalPath.split('/').pop()};
+  row.eventIds.add(e.id);for(const legacy of m.candidateEventIds||[])if(byLegacy.has(legacy))row.eventIds.add(byLegacy.get(legacy));
+  const a=anchor(m.date,m.datePrecision);if(a.date&&(!row.date||a.date<row.date)){row.date=a.date;row.precision=a.precision;}
+  photos.set(m.id,row);
+ }
+ return [...photos.values()].map(p=>({...p,eventIds:[...p.eventIds]}));
 }
 
 // Comparisons Core's data supports without a model: entries citing the same
 // source, and entries naming the same person on the same day.
 export function buildRelations(events,{maxGroup=12}={}){
  const relations=[],seen=new Set(),byId=new Map(events.map(e=>[e.id,e]));
- const add=(kind,key,ids,title,summary,limits,sourceIds=[])=>{
+ const add=(kind,key,ids,title,summary,limits,sourceIds=[],extra={})=>{
   const eventIds=[...new Set(ids)].sort();if(eventIds.length<2||eventIds.length>maxGroup)return;
   const signature=`${kind}:${eventIds.join(',')}`;if(seen.has(signature))return;seen.add(signature);
-  relations.push({id:`${kind}-${relations.length+1}`,kind,key,title,summary,limits,eventIds,sourceIds,quoteCount:0,claimsWithExactQuotes:[],nativeRecordCount:sourceIds.length});
+  relations.push({id:`${kind}-${relations.length+1}`,kind,key,title,summary,limits,eventIds,sourceIds,quoteCount:0,claimsWithExactQuotes:[],nativeRecordCount:sourceIds.length,...extra});
  };
+ // Relations recorded with the history context, with their quoted evidence.
+ const byLegacy=new Map(events.filter(e=>e.legacyId).map(e=>[e.legacyId,e.id])),known=new Set();
+ for(const e of events)for(const r of e.contextRelations||[]){
+  if(known.has(r.id))continue;known.add(r.id);
+  const ids=(r.eventIds||[]).map(legacy=>byLegacy.get(legacy)).filter(Boolean);
+  const claims=(r.claimsWithExactQuotes||[]).map(q=>({...q,sourceId:contextSourceId(e.core.id,q.sourceId)}));
+  add(r.kind,r.id,ids,r.title,r.summary||'',r.limits||'',[...new Set(claims.map(q=>q.sourceId))],{rationale:r.rationale||'',claimsWithExactQuotes:claims,quoteCount:claims.length});
+ }
  const bySource=new Map();
  for(const e of events)for(const s of e.sourceIds){if(!bySource.has(s))bySource.set(s,[]);bySource.get(s).push(e.id);}
  for(const [source,ids]of bySource)add('hypothesis',source,ids,`Une même source citée par ${new Set(ids).size} moments`,
@@ -131,13 +184,14 @@ export function projectArchive(id,archive){
   gmailUrl:archive.threadId?`https://mail.google.com/mail/#all/${encodeURIComponent(archive.threadId)}`:null,
   bodySha256:archive.sourceSha256,provenance:'Archive Secretary · vérifiée par empreinte'};
 }
-// A statement, Core record or household file, as the source panel shows it.
-export function projectOwnerSource(id,read){
- const base={id,kind:read.kind,subject:read.title||sourceLabel(read.system),date:read.date||read.modifiedAt||'',bodySha256:id.split('|')[1]};
- if(read.kind==='folder')return {...base,images:read.images||[],body:''};
- if(read.kind==='photo')return {...base,images:[{name:read.title,url:read.url}],body:''};
- if(read.kind==='document')return {...base,body:'',fileUrl:read.url,fileType:read.type,bytes:read.bytes};
- return {...base,body:read.text||'',from:read.kind==='testimony'?'Toi':read.role==='user'?'Toi, dans une conversation':'',statement:read.statement||null};
+// A source record kept in a history context, as the source panel shows it.
+export function projectContextSource(id,source,file){
+ const base={id,kind:source.kind==='media'?'photo':source.kind,subject:source.subject||kindNames[source.kind]||'Source',date:source.date||'',
+  body:source.metadataOnly?'':source.body||'',bodySha256:source.bodySha256,from:source.authority==='direct-owner-statement'?'Toi':''};
+ if(file?.kind==='folder')return {...base,images:file.images||[]};
+ if(file?.kind==='photo')return {...base,images:[{name:file.title,url:file.url}]};
+ if(file?.kind==='document')return {...base,fileUrl:file.url,fileType:file.type,bytes:file.bytes};
+ return base;
 }
 
 export function projectRecall(results=[]){

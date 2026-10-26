@@ -1,5 +1,9 @@
 # Native Secretary evidence and watchdog
 
+For a separately versioned reading objective without resetting general page
+receipts, see [objective review](OBJECTIVE_REVIEW.md). The existing catch-up
+status also projects content-free archive and objective progress.
+
 `secretary_evidence.py` preserves complete private Gmail sources, bounded read
 pages, resumable reviews, attachment hashes and the existing accounting export.
 It reads Gmail through `gog`; it does not send mail, change mailbox state or create

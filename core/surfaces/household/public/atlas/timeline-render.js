@@ -1,7 +1,7 @@
 import {categories,icon,escape,number,dateLabel} from './ui.js';
 import {reviewState,reviewStates} from './review.js';
 import {DAY,YEAR,temporalExtent,intersects,periodGeometry,packPeriods,groupPoints} from './temporal.js';
-import {photosInRange,photoDate,collectPhotos,imagesOf} from './gallery.js';
+import {photosInRange,photoDate,collectPhotos} from './gallery.js';
 
 const layer=event=>['hypothesis','dismissed'].includes(reviewState(event))?reviewState(event):'main';
 export function renderTimeline(chart){
@@ -26,7 +26,7 @@ export function renderTimeline(chart){
   html.push(`<div class="timeline-photo-lane" style="top:${top}px"><span class="timeline-photo-label"><span>◇</span>Images</span></div>`);
   const groups=[];
   for(const photo of photos){const px=x(Date.parse(photo.date.slice(0,10)+'T12:00:00Z'));const previous=groups.at(-1);if(previous&&px-previous.x<42)previous.photos.push(photo);else groups.push({x:px,photos:[photo]});}
-  for(const group of groups){const photo=group.photos[0],index=chart.photoGroups.length;chart.photoGroups.push(group.photos);html.push(`<button type="button" class="timeline-photo" data-timeline-photo="${escape(photo.id)}" data-photo-group="${index}" style="left:${Math.max(left,Math.min(left+plotWidth-36,group.x-18))}px;top:${top+6}px" aria-label="${group.photos.length>1?number(group.photos.length)+' images':'Photo'} : ${escape(photo.title)}, ${escape(photoDate(photo))}. Association proposée." title="${escape(photo.title)} · ${escape(photoDate(photo))}"><img alt="" loading="lazy" data-photo-cover="${escape(photo.id)}">${group.photos.length>1?`<span>+${group.photos.length-1}</span>`:''}</button>`);}
+  for(const group of groups){const photo=group.photos[0],index=chart.photoGroups.length;chart.photoGroups.push(group.photos);html.push(`<button type="button" class="timeline-photo" data-timeline-photo="${escape(photo.id)}" data-photo-group="${index}" style="left:${Math.max(left,Math.min(left+plotWidth-36,group.x-18))}px;top:${top+6}px" aria-label="${group.photos.length>1?number(group.photos.length)+' images':'Photo'} : ${escape((photo.album||photo.caption||photo.filename))}, ${escape(photoDate(photo))}. Association proposée." title="${escape((photo.album||photo.caption||photo.filename))} · ${escape(photoDate(photo))}"><img src="${escape(photo.url)}" alt="" loading="lazy">${group.photos.length>1?`<span>+${group.photos.length-1}</span>`:''}</button>`);}
   top+=45;
  }
  for(const key of Object.keys(categories).filter(k=>s.categories.has(k))){

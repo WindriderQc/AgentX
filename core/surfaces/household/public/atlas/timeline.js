@@ -1,5 +1,4 @@
 import {renderTimeline} from './timeline-render.js';
-import {hydrateCovers} from './gallery.js';
 import {temporalExtent} from './temporal.js';
 import {categories,icon,escape,number,DAY,YEAR,dateLabel} from './ui.js';
 import {reviewState,reviewStates} from './review.js';
@@ -8,7 +7,7 @@ export class Timeline {
  constructor(root,api){
   this.root=root;this.api=api;this.width=root.clientWidth;this.hoverTimer=null;this.drag=null;
   this.observer=new ResizeObserver(()=>{this.width=root.clientWidth;this.schedule();});this.observer.observe(root);
-  root.addEventListener('click',e=>{const b=e.target.closest('[data-timeline-photo]');if(b&&!this.justDragged)this.api.photoOpen(b.dataset.timelinePhoto,b);});
+  root.addEventListener('click',e=>{const b=e.target.closest('[data-timeline-photo]');if(b&&!this.justDragged)this.api.photoOpen(b.dataset.timelinePhoto,b,{pool:this.photoGroups[Number(b.dataset.photoGroup)]});});
   root.addEventListener('click',e=>{if(this.justDragged)return;const card=e.target.closest('[data-cluster]'),cluster=card&&this.clusters?.[Number(card.dataset.cluster)];if(cluster)this.api.open(cluster.events,card,true);});
   root.addEventListener('pointerover',e=>{const card=e.target.closest('[data-cluster]');if(!card||card.contains(e.relatedTarget)||e.pointerType==='touch'||this.drag)return;const cluster=this.clusters?.[Number(card.dataset.cluster)];if(!cluster)return;clearTimeout(this.hoverTimer);const point={x:e.clientX,y:e.clientY};this.hoverTimer=setTimeout(()=>{if(card.isConnected)this.api.open(cluster.events,card,false,point);},260);});
   root.addEventListener('pointermove',e=>this.updateCursor(e));
@@ -32,7 +31,7 @@ export class Timeline {
   cursor.querySelector('span').textContent=new Intl.DateTimeFormat('fr-CA',{timeZone:'UTC',day:'numeric',month:'short',year:'numeric'}).format(new Date(at));
  }
  schedule(){if(this.raf)return;this.raf=requestAnimationFrame(()=>{this.raf=null;this.render();});}
- render(){renderTimeline(this);hydrateCovers(this.root);}
+ render(){renderTimeline(this);}
 
  ticks(start,end,width){
   const span=end-start,out=[];let current,unit,step;

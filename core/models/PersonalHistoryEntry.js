@@ -1,7 +1,6 @@
 'use strict';
 
 const mongoose = require('mongoose');
-const { SYSTEMS } = require('../src/services/ownerSourceService');
 
 // Source assertions for the owner's historical review. Selected memory, task
 // commitments and provider records retain their existing owners.
@@ -13,10 +12,10 @@ const schema = new mongoose.Schema({
   text: { type: String, default: '', maxlength: 4000 },
   contentHash: { type: String, default: '', index: true },
   actor: { type: String, default: '', maxlength: 300 },
-  sourceDate: { type: Date, required: true, index: true },
+  sourceDate: { type: Date, default: null, index: true },
   eventDateAsWritten: { type: String, default: '', maxlength: 200 },
   eventDate: { type: String, default: '', maxlength: 40 },
-  eventDatePrecision: { type: String, enum: ['unknown', 'day', 'instant'], default: 'unknown' },
+  eventDatePrecision: { type: String, enum: ['unknown', 'year', 'month', 'day', 'instant'], default: 'unknown' },
   assertionState: { type: String, enum: ['unknown', 'reported', 'planned', 'confirmed', 'cancelled', 'disputed'], default: 'unknown' },
   sourceStatus: { type: String, default: '', maxlength: 1000 },
   // A consolidated assertion: its people, places and the other sources it merges.
@@ -24,21 +23,20 @@ const schema = new mongoose.Schema({
   places: [{ type: String, maxlength: 300 }],
   relatedSources: [{
     _id: false,
-    system: { type: String, enum: SYSTEMS, required: true },
+    system: { type: String, enum: ['gmail', 'outlook-export', 'document', 'media', 'ledger', 'testimony', 'conversation', 'calendar'], required: true },
+    id: { type: String, default: '', maxlength: 256 },
     threadId: { type: String, default: '', maxlength: 256 },
     messageId: { type: String, default: '', maxlength: 256 },
-    // A Core record or household file: see ownerSourceService.
-    locator: { type: String, default: '', maxlength: 512 },
     sourceSha256: { type: String, required: true, maxlength: 64 },
     findingId: { type: String, required: true, maxlength: 64 }
   }],
   reviewState: { type: String, enum: ['candidate', 'retained', 'resolved', 'dismissed', 'forgotten'], default: 'candidate', index: true },
   revision: { type: Number, default: 0 },
   source: {
-    system: { type: String, enum: SYSTEMS, required: true },
+    system: { type: String, enum: ['gmail', 'outlook-export', 'document', 'media', 'ledger', 'testimony', 'conversation', 'calendar'], required: true },
+    id: { type: String, default: '', maxlength: 256 },
     threadId: { type: String, default: '', maxlength: 256 },
     messageId: { type: String, default: '', maxlength: 256 },
-    locator: { type: String, default: '', maxlength: 512 },
     sourceSha256: { type: String, required: true, maxlength: 64 },
     findingId: { type: String, required: true, maxlength: 64 },
     evidenceHash: { type: String, default: '', maxlength: 64 },
@@ -50,12 +48,19 @@ const schema = new mongoose.Schema({
     reason: { type: String, default: '', maxlength: 2000 },
     at: { type: Date, default: null }
   },
+  confirmation: { type: new mongoose.Schema({
+    revision: Number, contextRevision: { type: Number, default: null },
+    contextHash: { type: String, default: '' }, reason: String, at: Date
+  }, { _id: false }), default: null },
   reviewHistory: [{
     revision: Number, state: String, assertionState: String, eventDate: String,
-    eventDatePrecision: String, reason: String, at: Date
+    eventDatePrecision: String, reason: String, at: Date, contextRevision: Number, contextHash: String
   }],
   // The owner's souvenir kept from this assertion (MemoryNote id).
   souvenirNoteId: { type: String, default: '', maxlength: 24 },
+  // The opaque import fence survives forgetting; source bodies and aliases do not.
+  contextImportKey: { type: String, unique: true, sparse: true, match: /^[a-f0-9]{64}$/ },
+  context: { type: require('./personalHistoryContextSchema'), default: null },
   forgottenAt: { type: Date, default: null }
 }, { timestamps: true, collection: 'personal_history_entries' });
 

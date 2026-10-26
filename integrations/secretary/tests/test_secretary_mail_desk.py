@@ -173,9 +173,17 @@ class SecretaryMailDeskTest(unittest.TestCase):
                 "paused": {"reason": "benchmark running", "since": "2026-10-02T19:00:00Z"}}))
             (root / "catchup-proposals.json").write_text(json.dumps([{"state": "pending", "text": "private"}, {"state": "queued"}, {"state": "queued"}]))
             (root / "catchup.lock").write_text("{}")
+            (root / "native-status.json").write_text(json.dumps({"at": "2026-10-02T19:00:00Z", "reviewedPages": 120,
+                "pendingTextPages": 0, "pending": False, "ownerAliases": ["private"]}))
+            objective = root / "objective-reviews/life/v1"
+            objective.mkdir(parents=True)
+            (objective / "coverage.json").write_text(json.dumps({"objectiveId": "life", "version": "v1",
+                "counts": {"targetSources": 20, "reviewedPages": 2, "prompt": "private"}, "sources": ["private"]}))
             data = MODULE.catchup(None, root)
             self.assertEqual((data["known"], data["running"], data["reviewed"], data["proposalsPending"], data["proposalsQueued"]), (True, True, 3, 1, 2))
             self.assertEqual(data["paused"]["reason"], "benchmark running")
+            self.assertEqual(data["archiveProgress"]["reviewedPages"], 120)
+            self.assertEqual(data["objectiveReviews"][0]["counts"], {"targetSources": 20, "reviewedPages": 2})
             self.assertNotIn("private", json.dumps(data))
             self.assertEqual(MODULE.catchup(None, root / "missing")["known"], False)
         out = io.StringIO()
