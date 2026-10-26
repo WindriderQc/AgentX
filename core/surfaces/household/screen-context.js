@@ -23,7 +23,8 @@ function presentationEvidence(value, catalog) {
       // A browser reference is a claim of selection; the data is read from Core,
       // never from a caller-supplied snapshot or arbitrary URL.
       const read = target.page === 'analytics' ? presentationReader.read(row.read || {}) : null;
-      if (read?.status === 'available' && read.source === 'analytics.inference.summary' && row.filters?.window === read.filters.window) selected.read = read;
+      if (read?.status === 'available' && read.source === 'analytics.inference.summary' && row.filters?.window === read.filters.window
+        && (read.filters.window !== 'usage' || row.filters.since === read.filters.since)) selected.read = read;
       else selected.read = { status: 'unavailable', reason: read?.reason || 'no_matching_reader' };
       if (target.page === 'ecosystem') {
         selected.read = presentationReader.observeEcosystem(row.observation, selected.id);
@@ -61,6 +62,7 @@ function presentationEvidence(value, catalog) {
         if (matches) selected.filters = agenda.filters;
       }
       if (row.filters && ['24h', '7d', '30d', '90d'].includes(row.filters.window)) selected.filters = { window: row.filters.window };
+      if (target.page === 'analytics' && selected.read?.status === 'available' && selected.read.filters.window === 'usage') selected.filters = selected.read.filters;
       const groups = ['byModel', 'byConsumerContract', 'byErrors'];
       if (groups.includes(row.selection?.groupBy)) selected.comparison = row.selection.groupBy;
       if (['errors', 'latency'].includes(row.selection?.overlay)) selected.trend = row.selection.overlay;

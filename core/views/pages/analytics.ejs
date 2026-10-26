@@ -16,7 +16,8 @@
             <div>
                 <div class="eyebrow">AgentX • Intelligence</div>
                 <h2><i class="fas fa-chart-line"></i><span class="title-separator"></span>Activity workbench</h2>
-                <p class="lede">Every panel below follows the Period chosen at the top of the page.</p>
+                <p class="lede">Inference detail follows the selected period. Subscription quotas keep their native period.</p>
+                <p id="analytics-secondary-period" class="lede" hidden>Playground, provider and effectiveness details show the last 24 hours while the inference period is Since daily use began.</p>
             </div>
             <div class="header-controls">
                 <button type="button" id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
@@ -338,7 +339,8 @@
             function esc(value){ return String(value == null ? '' : value).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
             function label(value){ return esc(String(value || 'other').replace(/-/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); })); }
             function effectivenessWindow(){
-                return document.getElementById('analyticsWindow')?.value || '24h';
+                var key = document.getElementById('analyticsWindow')?.value || '24h';
+                return key === 'usage' ? '24h' : key;
             }
             var effectivenessSeq = 0;
             async function loadEffectiveness(){
@@ -852,7 +854,8 @@
                 document.getElementById('fedMcTableBody').innerHTML = errorRow(5, 'Could not load provider telemetry. Try Refresh.');
             }
             async function loadFederated(){
-                const win = document.getElementById('analyticsWindow')?.value || '24h';
+                const chosen = document.getElementById('analyticsWindow')?.value || '24h';
+                const win = chosen === 'usage' ? '24h' : chosen;
                 const seq = ++federatedSeq;
                 let payload;
                 try {

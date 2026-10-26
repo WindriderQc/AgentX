@@ -16,10 +16,11 @@ const errors = [], requests = [];
 let failSummary = false, empty = false, staleGPU = false, failLive = false;
 let delayWindow = null;
 let legacySummary = false;
+let usageSince = null;
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 function summary(key) {
   const to = new Date(), days = { '24h': 1, '7d': 7, '30d': 30, '90d': 90 }[key] || 1;
-  const from = new Date(to.getTime() - days * 86400000);
+  const from = key === 'usage' ? new Date(usageSince) : new Date(to.getTime() - days * 86400000);
   const models = ['local/brain-27b', 'local/guardian-4b', 'embedding/bge-m3', 'cloud/reasoner', 'local/worker'].map((model, i) => ({
     model, calls: [780, 310, 235, 100, 56][i], errors: i === 0 ? 3 : 0, cancellations: i === 0 ? 4 : 0,
     errorRate: i === 0 ? .38 : 0, cancellationRate: i === 0 ? .51 : 0,
@@ -28,7 +29,7 @@ function summary(key) {
   }));
   const calls = empty ? 0 : 1481;
   const elapsedMs = empty ? 0 : Math.round(models.reduce((sum, model) => sum + model.inferenceSeconds, 0) * 1000);
-  const bucketHours = key === '24h' ? 1 : 24;
+  const bucketHours = key === '24h' || key === 'usage' ? 1 : 24;
   const step = bucketHours * 3600000, byBucket = [];
   const volume = [16, 10, 8, 6, 5, 15, 30, 66, 100, 128, 94, 86, 110, 78, 68, 82, 60, 70, 62, 58, 52, 64, 76, 90, 53];
   for (let at = Math.floor(+from / step) * step; at < +to; at += step) byBucket.push({ date: new Date(at).toISOString() });
@@ -47,7 +48,7 @@ function summary(key) {
     tokensOut: outputs[i], inferenceSeconds: durations[i] / 1000, avgLatencyMs: counts[i] > 0 ? durations[i] / counts[i] : null
   }));
   return {
-    window: { key, from, to }, source: 'inferencelogs', scope: 'Recorded calls only', bucketHours, byBucket,
+    window: { key, from, to, ...(key === 'usage' && { since: usageSince }) }, source: 'inferencelogs', scope: 'Recorded calls only', bucketHours, byBucket,
     totals: { calls, callsPerDay: calls / days, errors: empty ? 0 : 3, cancellations: empty ? 0 : 4, nonSuccesses: empty ? 0 : 7,
       errorRate: .2, fallbackRate: 0, fallbackCalls: 0, tokensIn: empty ? 0 : 39087891, tokensOut: empty ? 0 : 499407,
       inferenceHours: elapsedMs / 3600000, inferenceSeconds: elapsedMs / 1000, avgLatencyMs: calls > 0 ? Math.round(elapsedMs / calls) : null, tokensOutPerSecond: 24.09, classifiedCalls: 0 },
@@ -60,6 +61,8 @@ function summary(key) {
       { reason: 'workload_reserved', consumerContract: 'desktop-gateway-v1', model: 'local/brain-27b', calls: 2, avgLatencyMs: 25 },
       { reason: 'inference_recovery_required', consumerContract: 'native-conversation-v1', model: 'local/brain-27b', calls: 1, avgLatencyMs: 30 },
     ] }),
+    ...(key === 'usage' && { recent: { since: usageSince, calls, errors: empty ? 0 : 3, admissionRefusals: empty ? 0 : 3 },
+      presentation: { filters: { window: key, since: usageSince } } }),
     coverage: summaryCoverage({ models: empty ? [] : models, listedModels: empty ? [] : models, calls, windowKey: key }),
     local: { calls: empty ? 0 : 1381, inferenceHours: empty ? 0 : models.filter(model => !model.isCloud).reduce((sum, model) => sum + model.inferenceSeconds, 0) / 3600 },
     cloud: { calls: empty ? 0 : 100, estimatedCostUsd: empty ? null : 1.42, unpricedModels: [] }
@@ -74,6 +77,7 @@ const server = http.createServer(async (req, res) => {
       requests.push(p + url.search);
       res.setHeader('Content-Type', 'application/json');
       const json = data => res.end(JSON.stringify({ ok: true, data }));
+      if (p === '/api/analytics/inference/usage-period') return json(usageSince ? { since: usageSince } : null);
       if (p === '/api/analytics/inference/summary') {
         const key = url.searchParams.get('window');
         const data = summary(key);
@@ -161,6 +165,7 @@ const server = http.createServer(async (req, res) => {
       assert.deepEqual(overlaps, [], `visual overlaps headline at ${width}`);
       if (width >= 1280) {
         const edge = await page.locator('.ao-bottom-grid').evaluate(el => el.getBoundingClientRect().bottom);
+        if (edge >= height) await page.screenshot({ path: path.join(report, `overflow-${width}.png`), fullPage: true });
         assert.ok(edge < height, `essential dashboard below first screen: ${edge} > ${height}`);
       }
       if (width === 1440 || width === 390) await page.screenshot({ path: path.join(report, `overview-${width}.png`), fullPage: true });
@@ -258,6 +263,21 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.locator('.ao-live').count(), 0);
     assert.equal(await page.locator('a[href^="/nerve-center"]').count(), 0);
     assert.equal(requests.slice(requestStart).some(p => p.startsWith('/api/nerve-center') || p.startsWith('/api/analytics/federated')), false, 'demo must not probe disabled operational capabilities');
+    usageSince = new Date(Date.now() - 20 * 60000).toISOString();
+    await page.goto(`http://127.0.0.1:${server.address().port}/analytics`);
+    await page.waitForFunction(() => document.getElementById('ao-calls').textContent === '1,481');
+    assert.equal(await page.locator('#analyticsWindow').inputValue(), 'usage');
+    assert.match(await page.locator('#ao-period-note').textContent(), /Earlier activity remains/);
+    assert.match(await page.locator('#ao-status').textContent(), /3 admission refusals.*no other errors/);
+    assert.match(await page.locator('#ao-outcomes').getAttribute('title'), /3 of 3 errors were admission refusals/);
+    assert.equal(await page.evaluate(() => window.AgentXPresentedContent.filters.since), usageSince);
+    assert.equal(await page.locator('#analytics-secondary-period').evaluate(el => el.hidden), false);
+    await page.selectOption('#analyticsWindow', '7d');
+    await page.waitForFunction(() => window.AgentXPresentedContent.filters.window === '7d' && window.AgentXPresentedContent.state === 'ready');
+    assert.equal(await page.locator('#analytics-secondary-period').evaluate(el => el.hidden), true);
+    await page.goto(`http://127.0.0.1:${server.address().port}/analytics?window=24h`);
+    await page.waitForFunction(() => document.getElementById('ao-calls').textContent === '1,481');
+    assert.equal(await page.locator('#analyticsWindow').inputValue(), '24h', 'explicit rolling history remains directly accessible');
     assert.deepEqual(errors, []);
     assert.ok(requests.some(p => p.includes('/summary?window=24h')));
     assert.ok(bucketFacet('24h', {})[0].$group._id.$dateToString.format.includes('%H'));

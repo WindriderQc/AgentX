@@ -12,20 +12,23 @@ const MAX_BYTES = 32768;
 const clean = value => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 120) : null;
 const number = value => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const units = Object.freeze({ calls: 'calls', errors: 'calls', cancellations: 'calls', nonSuccesses: 'calls',
+  admissionRefusals: 'calls', unclassified: 'calls',
   errorRate: 'percent', fallbackCalls: 'calls', fallbackRate: 'percent', tokensIn: 'tokens', tokensOut: 'tokens',
   avgLatencyMs: 'ms', timedCalls: 'calls', inferenceHours: 'hours', inferenceSeconds: 'seconds', estimatedCostUsd: 'USD' });
 const metrics = (source, keys = Object.keys(units)) => Object.fromEntries(keys.map(key => [key, number(source?.[key])]));
 const rowMetrics = ['calls', 'errors', 'cancellations', 'tokensOut', 'avgLatencyMs', 'inferenceSeconds'];
 
 function analyticsSnapshot(data) {
-  if (data?.source !== 'inferencelogs' || !['24h', '7d', '30d', '90d'].includes(data.window?.key)) return null;
+  if (data?.source !== 'inferencelogs' || !['24h', '7d', '30d', '90d', 'usage'].includes(data.window?.key)) return null;
   const from = new Date(data.window.from), to = new Date(data.window.to);
   if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) return null;
+  const since = data.window.key === 'usage' ? new Date(data.window.since) : null;
+  if (since && (!Number.isFinite(+since) || +since > +from)) return null;
   const models = (data.byModel || []).slice(0, 40);
   const buckets = (data.byBucket || []).slice(0, 96);
   return { contract: CONTRACT, source: 'analytics.inference.summary', page: 'analytics',
     observedAt: to.toISOString(), expiresAt: new Date(to.getTime() + TTL_MS).toISOString(),
-    filters: { window: data.window.key }, period: { from: from.toISOString(), to: to.toISOString(), timezone: 'UTC' },
+    filters: { window: data.window.key, ...(since && { since: since.toISOString() }) }, period: { from: from.toISOString(), to: to.toISOString(), timezone: 'UTC' },
     units, totals: metrics(data.totals), local: metrics(data.local), cloud: metrics(data.cloud),
     byModel: models.map(row => ({ model: clean(row.model), ...metrics(row, rowMetrics) })),
     byConsumerContract: (data.byConsumerContract || []).slice(0, 12).map(row => ({ consumerContract: clean(row.consumerContract), ...metrics(row, rowMetrics) })),
@@ -39,7 +42,10 @@ function analyticsSnapshot(data) {
       }))
     } : null,
     failureAnalysis: { admissionRefusals: number(data.failureAnalysis?.admissionRefusals),
-      unclassified: number(data.failureAnalysis?.unclassified) },
+      unclassified: number(data.failureAnalysis?.unclassified),
+      lastErrorAt: clean(data.failureAnalysis?.lastErrorAt), lastRefusalAt: clean(data.failureAnalysis?.lastRefusalAt) },
+    recent: data.recent ? { since: clean(data.recent.since instanceof Date ? data.recent.since.toISOString() : data.recent.since),
+      ...metrics(data.recent, ['calls', 'errors', 'admissionRefusals', 'unclassified', 'cancellations']) } : null,
     bucketHours: number(data.bucketHours),
     byBucket: buckets.map(row => ({ at: clean(row.date), ...metrics(row, ['calls', 'errors', 'tokensOut', 'avgLatencyMs']) })),
     coverage: { modelsListed: models.length, modelCount: number(data.coverage?.modelCount),

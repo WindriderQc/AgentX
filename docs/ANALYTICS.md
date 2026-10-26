@@ -3,7 +3,10 @@
 Open `/analytics` for a compact overview of recorded AgentX-routed calls.
 The selected period applies to the four headline metrics, the volume/error
 chart, model or consumer comparison, and local/cloud accounting. The default
-is 24 hours. Models and consumers share the same total-call denominator;
+is 24 hours until the operator starts the daily-use reporting period. Then
+**Since daily use began** is the default; rolling periods still include earlier
+records. This boundary selects dates, not traffic purpose: later tests and
+Benchmark calls remain included. Models and consumers share the same total-call denominator;
 **All other calls** includes rows omitted from the compact comparison.
 **Errors** switches that same comparison to cause × consumer, with model detail
 on hover. Its bars and percentages use all operational errors as the denominator;
@@ -88,6 +91,32 @@ visible; after five minutes the status asks for a refresh. Failed reads clear
 the overview's prior values. Later responses for a superseded period are ignored.
 Playground conversation panels retain their separately labeled period and
 cover conversations, not platform-wide calls.
+
+## Moving from development to daily use
+
+`GET /api/analytics/inference/usage-period` reads the optional reporting boundary.
+An operator starts it with `PUT` on that path and `{ "since": "<ISO timestamp with timezone>" }`.
+The timestamp must not be in the future. Repeating the same timestamp is safe;
+a different timestamp refuses with 409. This writes one reporting marker and
+never deletes logs, alerts, Benchmark results, admissions or recovery receipts.
+`summary?window=usage` returns 409 before a marker exists. Afterwards its exact
+window and presentation receipt share that boundary, limited to retained history
+(at most 90 days), with the original start and retention disclosed.
+
+The overview's attention state uses the last hour within the selected period.
+Attested admission refusals are informational and listed separately; other
+errors, including unclassified failures, still need review. Historical errors
+and their last occurrence remain visible without declaring a current outage.
+No recent traffic means no recent observation. Live admissions, maintenance and
+quarantines retain their independent display. Playground, provider and
+effectiveness details use 24 hours when the daily-use period is selected;
+subscription panels retain their native monthly/quota periods.
+
+At transition, review terminal work notifications through their native receipts
+and acknowledge reviewed outcomes in Core's alert inbox. Acknowledgment does not
+turn failed work into success or close linked tasks. Keep unresolved incidents
+visible until their owner verifies recovery; never use a bulk age cleanup to
+clear uncertain execution or native release records.
 
 Core generation binds new calls from its resolved `benchmark-service` principal
 to `benchmark-service-v1`. Existing explicit internal consumer contracts are

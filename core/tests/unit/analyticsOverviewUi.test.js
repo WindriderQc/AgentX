@@ -105,4 +105,21 @@ describe('analytics overview review threshold', () => {
   test('no calls is empty, not healthy', () => {
     expect(statusText({ calls: 0, errors: 0 }).state).toBe('empty');
   });
+
+  test('recent admission refusals are informational; unknown failures still need review', () => {
+    const totals = { calls: 1000, errors: 100, errorRate: 10 };
+    const recent = { calls: 20, errors: 3, admissionRefusals: 3 };
+    expect(needsReview(totals, recent)).toBe(false);
+    expect(statusText(totals, recent)).toEqual({ state: 'ready', text: '3 admission refusals in the last hour · no other errors recorded' });
+    expect(needsReview(totals, { ...recent, admissionRefusals: 2 })).toBe(true);
+    expect(statusText(totals, { ...recent, admissionRefusals: 2 }).text).toMatch(/1 error.*2 admission refusals separately/);
+    expect(needsReview(totals, { ...recent, admissionRefusals: 4 })).toBe(true);
+  });
+
+  test('a high historical rate does not describe current health or turn no recent activity into success', () => {
+    const totals = { calls: 100, errors: 20, errorRate: 20 };
+    expect(needsReview(totals, { calls: 4, errors: 0 })).toBe(false);
+    expect(statusText(totals, { calls: 4, errors: 0 }).text).toMatch(/No errors recorded in the last hour/);
+    expect(statusText(totals, { calls: 0, errors: 0 }).text).toMatch(/No calls in the last hour/);
+  });
 });

@@ -19,6 +19,7 @@
 .ao-header > div > .ao-eyebrow, .ao-panel-head .ao-eyebrow { display: block; }
 .ao-header > div > .ao-eyebrow { color: var(--ao-accent); }
 .ao-controls { flex-shrink: 0; gap: 8px; }
+.ao-controls label { white-space: nowrap; }
 .ao-controls label, .ao-context, .ao-coverage { font-size: .72rem; color: var(--ao-muted); }
 .ao-controls select, .ao-controls button, .ao-segment button {
   border: 1px solid var(--ao-border); border-radius: 7px; background: #101b2d; color: #dce8fb; padding: 8px 11px; font: inherit; font-size: .75rem;
