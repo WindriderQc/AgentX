@@ -86,7 +86,7 @@ function project(row) {
     ...(row.replaces && { replaces: row.replaces }),
     ...memoryFactProjection(row),
     ...(row.kind === 'souvenir' ? { eventDate: row.eventDate || '', eventDatePrecision: row.eventDatePrecision || 'unknown',
-      people: row.people || [], places: row.places || [], revision: row.revision || 0, sourceRefs: row.sourceRefs || [], historyContext: row.historyContext || null } : {}) };
+      people: row.people || [], places: row.places || [], revision: row.revision || 0, historyContext: row.historyContext?.toObject?.() || row.historyContext || null } : {}) };
 }
 
 // Bind once in trusted server code. Request bodies and personas cannot widen
@@ -148,6 +148,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     // A kept souvenir retains its original sources, including through the
     // general note editor. Only ordinary facts accumulate review references.
     const fact = mergeMemoryFactMetadata(existing?.kind === 'souvenir' ? { validFrom: input.validFrom } : input, existing || {});
+    if (existing?.kind === 'souvenir') fact.sourceRefs = memoryFactProjection(existing).sourceRefs;
     if (input.id !== undefined && (!existing || existing.status === 'forgotten')) throw error('The selected note no longer exists', 404);
     // A souvenir is kept for good: a correction cannot give it an expiry.
     const expiresAt = existing?.kind === 'souvenir' ? null
