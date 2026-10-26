@@ -220,7 +220,10 @@ async function pushWorldProposal({ request }, { registry, compose, receiptWaitMs
     ? { status: receipt.status, ...(receipt.stale !== undefined ? { stale: receipt.stale } : {}), ...(receipt.reason ? { reason: receipt.reason } : {}), ...(receipt.proposalId ? { proposalId: receipt.proposalId } : {}) }
     : { status: 'unconfirmed', reason: 'The page has not acknowledged the proposal yet.' };
   return {
-    status: 'proposed', id, page: PAGE, intent: composed.intent, commandCount: composed.commands.length,
+    // `refused` at the top too: Nestor reads one word first, and a card the page did not show
+    // was not proposed to anyone.
+    status: delivery.status === 'refused' ? 'refused' : 'proposed',
+    id, page: PAGE, intent: composed.intent, commandCount: composed.commands.length,
     expectedRevision: page.revision, model: composed.model || null, delivery,
     note: 'A proposal card in the Center, inert until a person presses Apply there; Core applied nothing.'
   };
