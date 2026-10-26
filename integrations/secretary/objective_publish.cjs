@@ -85,6 +85,20 @@ function applyDateReview(payload, review) {
   return payload;
 }
 function nativeDateReview(entry) { return entry?.context?.importedTimeline?.metadata?.dateReview || entry?.timeline?.metadata?.dateReview || null; }
+function boundHistoricalOngoing(payload, finding, source) {
+  if (!finding.ongoing) return payload;
+  const t = payload.timeline;
+  const reason = 'Le courriel décrit un état en cours dans son contexte historique; sa continuité jusqu’à aujourd’hui n’est pas établie.';
+  t.metadata.ongoingReview = { contract: 'secretary.objective-ongoing-scope/v1',
+    authority: 'automated-source-audit-not-owner-confirmation',
+    modelProposal: { ongoing: finding.ongoing, endDate: finding.endDate, endPrecision: finding.endPrecision, uncertainty: finding.uncertainty },
+    sourceId: source.id, sourceMailDate: timestamp(source.mailDate), sourceScope: source.bodyScope || 'exact-reviewed-passage',
+    sourceDateMeaning: 'Container header timestamp; quoted declarations may have their own historical date.', reason };
+  t.ongoing = false; t.endDate = null; t.endPrecision = 'unknown';
+  t.timeCaveat = reason;
+  t.reviewQuestions = [...(t.reviewQuestions || []), 'Cet état s’est-il poursuivi après la période décrite, et jusqu’à quand ?'];
+  return payload;
+}
 function build(finding, indexed, { matches = [], dateReview = null } = {}) {
   if (!/^objective-[a-f0-9]{64}$/.test(finding.id || '') || finding.userConfirmed !== false || finding.reviewState !== 'candidate') throw new Error('Only native unconfirmed objective candidates can be imported');
   const allRecords = finding.sourceIds.map(id => { const record = indexed.get(id); if (!record) throw new Error(`Missing quoted source ${id}`); return record; });
@@ -123,7 +137,7 @@ function build(finding, indexed, { matches = [], dateReview = null } = {}) {
       rationale: 'Rapprochement de provenance et de citation, sans fusion ni changement du relevé antérieur.',
       limits: 'Une même source ne constitue pas une corroboration indépendante; les formulations et dates restent à revoir.',
       sourceIndependence: 'not-established', claimsWithExactQuotes: bounded.claims.slice(0, 1) })), media: [] };
-  return applyDateReview(payload, dateReview);
+  return boundHistoricalOngoing(applyDateReview(payload, dateReview), finding, records[0]);
 }
 function matches(finding, indexed, existing) {
   const hashes = new Set(finding.sourceIds.map(id => indexed.get(id)?.nativeRef?.sourceSha256));

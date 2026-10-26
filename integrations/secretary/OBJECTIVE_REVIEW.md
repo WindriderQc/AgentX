@@ -142,3 +142,11 @@ Quotes and occurrence/subject claims remain unchanged. The private input is an
 execution intent, not a lasting decision authority: future publication reads
 the adjudication from Core and preserves it without that file. A different
 native adjudication detected after planning blocks enrichment until reloaded.
+
+Every automatic `ongoing: true` proposal is additionally bounded to its source
+context before publication: the imported candidate has `ongoing: false` and an
+unknown end, with an explicit caveat and review question. Metadata preserves the
+model's ongoing/end proposal, uncertainty, source identity and container date;
+that date does not replace a quoted declaration's own date. No historical
+"currently" establishes continuation through today. Core's retained owner
+overrides remain authoritative over the descriptive imported timeline.

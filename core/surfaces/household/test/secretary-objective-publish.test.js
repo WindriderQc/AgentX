@@ -90,6 +90,24 @@ test('a historical ongoing statement can retain its known start without claiming
   const retained = publisher.nativeDateReview({ context: { importedTimeline: result.timeline } });
   assert.deepEqual(publisher.build(finding, indexed, { dateReview: retained }), result);
 });
+test('all automatic ongoing proposals are bounded to their historical source before publication', () => {
+  const { finding, source, indexed } = fixture();
+  finding.ongoing = true; finding.endDate = '2018'; finding.endPrecision = 'year';
+  const result = publisher.build(finding, indexed);
+  assert.equal(result.timeline.ongoing, false); assert.equal(result.timeline.endDate, null);
+  assert.equal(result.timeline.endPrecision, 'unknown'); assert.equal(result.timeline.date, finding.startDate);
+  const audit = result.timeline.metadata.ongoingReview;
+  assert.equal(audit.modelProposal.ongoing, true); assert.equal(audit.modelProposal.endDate, '2018');
+  assert.equal(audit.modelProposal.uncertainty, finding.uncertainty);
+  assert.equal(audit.sourceId, source.id); assert.equal(audit.sourceMailDate, result.entry.sourceDate);
+  assert.equal(audit.sourceScope, 'exact-reviewed-passage');
+  assert.match(audit.sourceDateMeaning, /quoted declarations/);
+  assert.match(result.timeline.timeCaveat, /continuité/);
+  assert.equal(result.timeline.reviewQuestions.length, 1);
+  assert.equal(result.timeline.reviewState, 'candidate');
+  assert.deepEqual(result.timeline.claimsWithExactQuotes, finding.claimsWithExactQuotes);
+  assert.equal(finding.ongoing, true); assert.equal(finding.endDate, '2018');
+});
 test('a native date adjudication changed after planning cannot be overwritten by source enrichment', async t => {
   const dir = home(t), { finding, indexed } = fixture();
   const payload = publisher.build(finding, indexed);
