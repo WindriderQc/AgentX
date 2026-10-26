@@ -492,6 +492,29 @@ class ObjectiveTests(unittest.TestCase):
         self.assertEqual(row["reviewedPages"], 1)
         self.assertEqual(self.prepare()[1]["objectiveSha256"], manifest["objectiveSha256"])
 
+    def test_thinking_is_explicit_frozen_and_never_changes_an_existing_objective(self):
+        objective, old = self.prepare()
+        self.assertNotIn("thinking", old["config"])
+        self.config["thinking"] = True; save(self.file, self.config)
+        with self.assertRaisesRegex(ValueError, "another intent"): self.prepare()
+        self.config["version"] = "v2"; save(self.file, self.config)
+        new_objective, new = self.prepare()
+        self.assertNotEqual(new["objectiveSha256"], old["objectiveSha256"])
+        self.assertNotEqual(new_objective, objective)
+        self.assertEqual(load(objective / "manifest.json"), old)
+        with self.assertRaisesRegex(ValueError, "thinking mode"):
+            self.run_worker(Client())
+        client = Client(); client.thinking = True
+        self.assertEqual(self.run_worker(client)["newlyReviewedPages"], 1)
+        intent = load(next((new_objective / "review-attempts").glob("*/attempt.json")))["intent"]
+        self.assertTrue(intent["thinking"])
+
+    def test_objective_thinking_requires_a_boolean(self):
+        for value in ("true", None, 1, 0):
+            self.config["thinking"] = value; save(self.file, self.config)
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "boolean"):
+                worker.config_at(self.file)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,7 +22,7 @@ class RetainedResponseTests(unittest.TestCase):
         self.directory = self.archive.root / "review-attempts" / hashed(self.page["pageId"])
         self.calls = []
 
-    def client(self, raw, budget=None):
+    def client(self, raw, budget=None, thinking=False):
         def opener(request, timeout):
             self.calls.append(json.loads(request.data))
             if isinstance(raw, Exception):
@@ -31,7 +31,7 @@ class RetainedResponseTests(unittest.TestCase):
             response.read.return_value = raw
             response.__enter__.return_value = response
             return response
-        return CoreClient("http://core.invalid", task_type="mail_review", opener=opener, max_output_tokens=budget)
+        return CoreClient("http://core.invalid", task_type="mail_review", opener=opener, max_output_tokens=budget, thinking=thinking)
 
     def run_once(self, client):
         return extract_once(self.archive, client, "Synthetic policy", "Synthetic source page", self.page)
@@ -133,6 +133,40 @@ class RetainedResponseTests(unittest.TestCase):
     def test_an_output_budget_is_explicit_bounded_and_never_a_concrete_model(self):
         for value in (0, -1, True, 1.5, 65537):
             with self.assertRaises(ValueError): self.client(b'{}', value)
+
+    def test_default_thinking_false_preserves_the_legacy_intent_and_request_body(self):
+        client = self.client(json.dumps({"response": '{}'}).encode())
+        self.assertEqual(self.run_once(client), {})
+        state = load(self.directory / "attempt.json")
+        self.assertFalse(self.calls[0]["think"])
+        self.assertNotIn("thinking", state["intent"])
+        self.assertEqual(self.run_once(self.client(b'not-called', thinking=False)), {})
+        self.assertEqual(len(self.calls), 1)
+
+    def test_explicit_thinking_is_sent_to_core_and_bound_to_the_retained_identity(self):
+        client = self.client(json.dumps({"response": '{}'}).encode(), 16384, thinking=True)
+        self.assertEqual(self.run_once(client), {})
+        state = load(self.directory / "attempt.json")
+        self.assertIs(state["intent"]["thinking"], True)
+        self.assertTrue(self.calls[0]["think"])
+        self.assertEqual(self.calls[0]["taskType"], "mail_review")
+        self.assertEqual(self.calls[0]["options"]["num_predict"], 16384)
+        self.assertNotIn("model", self.calls[0]); self.assertNotIn("num_ctx", self.calls[0]["options"])
+        before = (self.directory / "attempt.json").read_bytes()
+        client.thinking = False
+        with self.assertRaises(ReviewUncertain): self.run_once(client)
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual((self.directory / "attempt.json").read_bytes(), before)
+
+    def test_enabling_thinking_cannot_replace_a_legacy_dispatch(self):
+        client = self.client(json.dumps({"response": '{}'}).encode())
+        self.run_once(client); client.thinking = True
+        with self.assertRaises(ReviewUncertain): self.run_once(client)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_thinking_refuses_non_boolean_options(self):
+        for value in (None, "true", 0, 1, {}, []):
+            with self.subTest(value=value), self.assertRaises(ValueError): self.client(b'{}', thinking=value)
 
 
 if __name__ == "__main__":
