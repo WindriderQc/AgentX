@@ -45,7 +45,7 @@ export function renderChapters(root,api){
   // A cover from a photo folder of that decade, once Core has listed it.
   const inDecade=photos.filter(p=>p.date&&Math.floor(Number(p.date.slice(0,4))/10)*10===c.decade);
   const cover=inDecade.find(p=>p.cover)||inDecade[Math.floor(inDecade.length/2)];
-  if(cover){const img=document.createElement('img');img.src=cover.url;img.alt='';img.loading='lazy';
+  if(cover){const img=document.createElement('img');img.src=cover.thumb;img.alt='';img.loading='lazy';
    img.addEventListener('load',()=>{b.querySelector('.chapter-art')?.replaceWith(img);b.classList.add('has-photo');},{once:true});}
  });
 }

@@ -30,8 +30,10 @@ const router = express.Router();
 const deps = { router, envelope: (res, data) => res.json({ status: 'success', data }),
   fail: (res, status, message, code) => res.status(status).json({ status: 'error', code, message }) };
 registerSecretaryHistoryRoutes(deps);
-registerSecretaryFileRoutes({ ...deps, files: createOwnerFiles({ env: { OWNER_PHOTOS_DIR: photos, OWNER_DOCUMENTS_MOUNT: documents, OWNER_PHOTOS_HOST_DIR: '/Host/images', OWNER_DOCUMENTS_HOST_DIR: '/Host/datalake/' } }) });
+registerSecretaryFileRoutes({ ...deps, files: createOwnerFiles({ env: { OWNER_PHOTOS_DIR: photos, OWNER_DOCUMENTS_MOUNT: documents, OWNER_PHOTOS_HOST_DIR: '/Host/images', OWNER_DOCUMENTS_HOST_DIR: '/Host/datalake/' },
+  resize: async (file, width) => { resized.push(width); return Buffer.from(`thumb-${width}`); } }) });
 app.use('/api/secretary', router);
+const resized = [];
 const read = (locator, hash) => request(app).get(`/api/secretary/files/read?locator=${encodeURIComponent(locator)}&sha256=${hash}`);
 
 describe('household files the owner history points to', () => {
@@ -62,6 +64,21 @@ describe('household files the owner history points to', () => {
     await request(app).get(found.images[0].url.replace('beach.jpg', '..%2F..%2Foutside.pdf')).expect(404);
     await request(app).get(found.images[0].url.replace('beach.jpg', 'notes.txt')).expect(404);
     await read(locator, 'c'.repeat(64)).expect(404);
+  });
+
+  test('an image is downsized on request, verified first and cached; other widths and files are served as they are', async () => {
+    fs.writeFileSync(path.join(photos, 'Pictures', 'single.jpg'), 'synthetic single');
+    const url = width => `/api/secretary/files/content?locator=${encodeURIComponent('photos:Pictures/single.jpg')}&sha256=${sha('synthetic single')}${width ? `&width=${width}` : ''}`;
+    const small = await request(app).get(url(480)).expect(200);
+    expect(small.headers['content-type']).toBe('image/jpeg');
+    expect(small.body.toString()).toBe('thumb-480');
+    await request(app).get(url(480)).expect(200);
+    expect(resized).toEqual([480]);
+    expect((await request(app).get(url(333)).expect(200)).body.toString()).toBe('synthetic single');
+    await request(app).get(url(480).replace(sha('synthetic single'), 'a'.repeat(64))).expect(404);
+    const pdf = `/api/secretary/files/content?locator=${encodeURIComponent('documents:Perso/contract.pdf')}&sha256=${sha('%PDF synthetic')}&width=480`;
+    expect((await request(app).get(pdf).expect(200)).headers['content-type']).toBe('application/pdf');
+    expect(resized).toEqual([480]);
   });
 
   test('a host path recorded by a history context opens the same file or folder', async () => {

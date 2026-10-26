@@ -128,6 +128,7 @@ export function collectMedia(events){
    caption:m.caption||'',album:m.album||'',date:null,precision:'unknown',associationBasis:m.associationBasis||'',dateBasis:m.dateBasis||'',dateNote:m.dateNote||'',cover:m.cover===true,filename:m.originalPath.split('/').pop()};
   row.eventIds.add(e.id);for(const legacy of m.candidateEventIds||[])if(byLegacy.has(legacy))row.eventIds.add(byLegacy.get(legacy));
   const a=anchor(m.date,m.datePrecision);if(a.date&&(!row.date||a.date<row.date)){row.date=a.date;row.precision=a.precision;}
+  row.small=`${row.url}&width=240`;row.thumb=`${row.url}&width=480`;row.large=`${row.url}&width=1600`;
   photos.set(m.id,row);
  }
  return [...photos.values()].map(p=>({...p,eventIds:[...p.eventIds]}));
