@@ -1,6 +1,5 @@
-/* GraphysX Center page status: the <graphysx-center> receipts as one line of text.
-   Every event is a receipt of what the page showed, never of a change applied: the Center
-   applies a proposal only when the person presses Apply inside it. */
+/* GraphysX Center status: delivery receipts and the person's decision as one line of text.
+   Only an accepted outcome confirms application, at the revision/commit in that receipt. */
 (function () {
   'use strict';
   const status = document.getElementById('graphysx-status');
@@ -19,6 +18,24 @@
     const detail = event.detail || {};
     if (detail.status === 'shown') say(detail.stale ? 'Proposition affichée, mais la scène a bougé depuis : elle est périmée.' : 'Proposition affichée dans la page ; à vous de décider.');
     else say(`Proposition refusée par la page : ${clip(detail.reason, 300) || 'raison inconnue'}.`, true);
+  });
+  center.addEventListener('graphysx-center-outcome', (event) => {
+    const detail = event.detail || {};
+    if (!Number.isInteger(detail.revision) || detail.revision < 0) return;
+    switch (detail.status) {
+      case 'accepted':
+        say(`Changement accepté à la révision ${detail.revision}${detail.commitId ? ` (${clip(detail.commitId, 120)})` : ''}.`);
+        break;
+      case 'discarded':
+        say('Proposition écartée ; aucun changement appliqué par cette proposition.');
+        break;
+      case 'stale':
+        say(`Proposition périmée à la révision ${detail.revision} ; aucun changement appliqué.`, true);
+        break;
+      case 'rejected':
+        say(`Changement refusé à la révision ${detail.revision} : ${clip(detail.reason, 300) || 'raison inconnue'}.`, true);
+        break;
+    }
   });
   center.addEventListener('graphysx-center-error', (event) => {
     const detail = event.detail || {};
