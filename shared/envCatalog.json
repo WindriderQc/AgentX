@@ -2839,6 +2839,26 @@
       "secret": false,
       "description": "Interval at which Core turns the current operational findings and active alerts into one short model-written report (task ops_watch), minimum 300000. Applies until the watch is set in the Nerve Center. Unset: off."
     },
+    "OWNER_DOCUMENTS_HOST_DIR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "storage",
+      "secret": false,
+      "description": "Host folder mounted read-only at /mnt/owner/documents (set from OWNER_DOCUMENTS_DIR). Core maps a document path recorded by a personal-history context onto that mount to open the original for the owner. Unset: such documents are not opened."
+    },
+    "OWNER_PHOTOS_HOST_DIR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "storage",
+      "secret": false,
+      "description": "Host folder behind the household photos mount (set from HOUSEHOLD_PHOTOS_DIR). Core maps a photo path recorded by a personal-history context onto that mount to show the original in Life Atlas. Unset: such photos are not shown."
+    },
     "PERSONAL_CONVERSATION_CLOUD_BOSS_MODEL": {
       "services": [
         "core"
