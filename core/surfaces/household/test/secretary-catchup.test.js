@@ -14,6 +14,22 @@ test('a catch-up proposal becomes one bounded idea text with an idempotent sourc
   assert.throws(() => proposalIdea({ kind: 'action', text: 'x', key: 'D'.repeat(32) }), error => error.code === 'CATCHUP_PROPOSAL_BAD_KEY');
 });
 
+test('general receipts and versioned objective review keep separate content-free coverage', () => {
+  const result = catchupProjection({ known: true, running: false, phase: 'done', reviewed: 2,
+    archiveProgress: { at: '2026-01-01T00:00:00Z', reviewedPages: 100, pendingTextPages: 0, pending: false,
+      discoveringScopes: ['mailbox', 'private'], prompt: 'private' },
+    objectiveReviews: [{ objectiveId: 'life', version: 'v1', phase: 'partial', userConfirmed: true,
+      counts: { targetSources: 20, reviewedPages: 2, sourcesPendingMaterialization: 18, private: 1 }, ownerAliases: ['private'] }]
+  });
+  assert.equal(result.reviewed, 2);
+  assert.equal(result.archiveProgress.reviewedPages, 100);
+  assert.deepEqual(result.archiveProgress.discoveringScopes, ['mailbox']);
+  assert.deepEqual(result.objectiveReviews[0].counts, { targetSources: 20, sourcesPendingMaterialization: 18, reviewedPages: 2 });
+  assert.equal(result.objectiveReviews[0].userConfirmed, false);
+  assert.equal(result.objectiveReviews[0].semanticAcceptance, 'not-established');
+  assert.doesNotMatch(JSON.stringify(result), /private/);
+});
+
 test("Dad's desk shows the archive catch-up from counts only", () => {
   const running = { known: true, running: true, phase: 'reviewing', reviewed: 343, failed: 0, remaining: 16260, pending: 16603,
     pagesPerHour: 484.1, etaHours: 33.6, lane: 'invoice-files', paused: null, proposalsQueued: 2, proposalsPending: 0, summary: 'ignored' };
