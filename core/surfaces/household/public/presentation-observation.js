@@ -28,11 +28,14 @@
         return { ...base, status: card._screenState?.() || 'loading' };
       const content = card._screenFrame.contentWindow.AgentXPresentedContent;
       const detail = content?.contract === 'agentx.presentation/v1' ? content : null;
+      if (target.page === 'ecosystem' && (new URL(doc.location.href).searchParams.get('app') !== 'ecosystem' || !detail))
+        return { ...base, status: 'unavailable' };
       return { ...base, status: detail && detail.state !== 'ready' ? detail.state === 'loading' ? 'loading' : 'unavailable' : 'visible',
         title: String(doc.title || base.title).slice(0, 160),
         headings: Array.from(doc.querySelectorAll('h1,h2,h3')).filter(el => el.getClientRects().length)
           .slice(0, 6).map(el => el.textContent.trim().slice(0, 160)),
         ...(detail && { read: detail.read, filters: detail.filters, selection: detail.selection }),
+        ...(target.page === 'ecosystem' && detail?.observation && { observation: detail.observation }),
         ...(target.page === 'analytics' && { live: card._screenFrame.contentWindow.AgentXPresentedLiveContent }) };
     } catch { return { ...base, status: 'external' }; }
   }

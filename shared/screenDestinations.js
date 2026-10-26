@@ -9,6 +9,7 @@ function screenDestinations(options = {}) {
   const core = String(options.publicUrls?.core || '').replace(/\/+$/, '');
   const contextual = options.agentxProfile === 'demo' ? [] : [
     { id: 'diskx', label: 'DiskX', href: '/diskx?janitor=latest' },
+    { id: 'ecosystem', label: 'Écosystème · visite accompagnée', href: '/diskx?app=ecosystem' },
     { id: 'dad-people', label: 'Personnes', href: '/dad/people' },
     { id: 'images-guide', label: 'Image guide', href: '/images/guide' },
     { id: 'voice-devices', label: 'Voice devices', href: '/voice-lab/devices' },

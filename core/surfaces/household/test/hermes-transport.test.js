@@ -56,6 +56,25 @@ test('Hermes streams public text only and uses the terminal served model and dur
   assert.ok(post.body.input.at(-1).content.includes('Synthetic selected personal fact'));
 });
 
+test('Hermes preserves the selected ecosystem observation and its clarification contract without new tools or grants', async () => {
+  const { contract } = require('../reply-channels');
+  const pages = require('../../../public/js/screen-pages').createCatalog([
+    { id: 'ecosystem', label: 'Ecosystem', href: '/diskx?app=ecosystem', mode: 'frame' }
+  ]);
+  const f = fixture();
+  f.request.text = 'Et ce composant sert à quoi ?';
+  f.request.hermesInstructions = contract({ pages: true, pageCatalog: pages });
+  f.request.turnContext = 'Current rendered ecosystem: ' + JSON.stringify({ instance: 'synthetic-instance', version: 'synthetic-version',
+    selection: { status: 'ambiguous', candidates: [{ id: 'collector' }, { id: 'archive' }], clarificationRequired: true } });
+  await f.run(f.request);
+  const post = f.calls.find(call => call.path === '/v1/runs').body;
+  assert.match(post.instructions, /ambiguous or absent, ask which component/);
+  assert.match(JSON.stringify(post.input), /synthetic-instance/);
+  assert.match(JSON.stringify(post.input), /clarificationRequired/);
+  assert.match(JSON.stringify(post.input), /Et ce composant sert à quoi/);
+  assert.equal(post.tools, undefined);
+});
+
 test('native local fallback remains the same run and is reported explicitly', async () => {
   const f = fixture({ terminal: { runtime: { provider: 'custom', model: 'synthetic-local' } } });
   const result = await f.run(f.request);

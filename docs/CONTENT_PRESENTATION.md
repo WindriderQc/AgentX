@@ -20,6 +20,8 @@ images and active links are excluded. Copy retains the source text.
 | --- | --- | --- | --- |
 | Analytics inference overview | Catalogue page in a retained frame | Core snapshot of the same `/api/analytics/inference/summary` response; exact period and window | Overview, comparison and UTC trend; other detail panels retain their domain tools |
 | Analytics live inference and GPU cards | Same retained frame; refresh every 15 seconds | Separate Core references on the runtime-coordination and GPU-status responses used by the view | Independent of historical filters; at most 30 seconds, bounded further by collector freshness; failed refresh clears its reference |
+| Janitor report | Existing DiskX catalogue page and relayed GraphysX module | Core reads the displayed report date and group after the report/group display event | Changed report dates refuse; logical bytes and a survivor rule never authorize a file action |
+| Accompanied ecosystem tour | `ecosystem play=…` uses `/diskx?app=ecosystem` and the same module relay | GraphysX's after-render observation, bounded and referenced by Core as `graphysx.ecosystem` | Dated browser observation, not a Core inventory, live telemetry or pixel verification; at most 30 seconds |
 | Other AgentX pages | Validated catalogue destination | Same-origin title and six visible headings, or an existing domain tool | Headings do not supply values or prove an action |
 | External services | Validated frame or explicit tab link | Existing authorized domain tool, if available | External tabs are unseen; authentication/frame restrictions stay in force |
 | Text/Markdown, lists | Selected card | Original shown text, bounded to 8,000 characters in selected context; truncation/partial flags | Display/copy retains the complete body |
@@ -37,6 +39,32 @@ also carries its Core snapshot revision. Closed content sends an empty selection
 Old display/history entries never select the current page. Navigating a frame
 away from its expected origin/path removes its read context. Form values, raw
 DOM, arbitrary URLs and vault data are not collected.
+
+The ecosystem route mounts the existing GraphysX tour from the already configured
+DiskX module; it does not fetch Data, add a proxy, change device permissions or
+create a model provider. The selected card identity is passed to the element.
+GraphysX supplies a new renderer-instance identity, source-input fingerprint,
+snapshot date, document revision, frame sequence, tour step, focused candidates
+and explicit node selection only after rendering. A constructor, iframe load or
+opening request cannot supply this receipt. The existing presentation observation
+reads the latest rendered state when the user submits the next turn.
+
+Core validates freshness, card/instance binding, monotonic frames and document
+revisions, and rejects version changes within an instance. Accepting a newer frame
+or instance invalidates its predecessor's read reference. The immutable bounded
+observation goes through the same `read_presentation` cache and canonical turn
+evidence as other content, explicitly labelled `browser_after_render`. It is not
+a new inventory owner. The cache learns browser changes on submitted observations,
+not through a background monitoring feed. Expired observations need a fresh view.
+An explicit displayed node step selects that component; a workflow with multiple
+focused components requires clarification. Hover and earlier views do not select
+the referent of “this component”. Both native conversation transports receive the
+same current selection and clarification rule through the existing reply contract.
+
+The self-contained embed retains GraphysX's scene geometry, tour and controls;
+external sky, texture and optional custom-model fetches are disabled in this mode
+so it works with the existing same-origin module relay and CSP. The standalone
+`app=ecosystem` retains its assets. No new permission or network origin is needed.
 
 Analytics explicitly publishes its committed window and Core reference. Loading
 or failed requests clear that reference before a new response can be used.
@@ -92,6 +120,24 @@ Run the relevant surface tests, MCP/Analytics/canonical-store suites and:
 npm run build --prefix core
 node core/tests/browser/presentationJourney.cjs
 ```
+
+Targeted composed validation uses a locally built compatible GraphysX module:
+
+```bash
+DISKX_TEST_MODULE=/path/to/GraphysX-Web/dist/embed/diskx.js \
+  ECOSYSTEM_BROWSER_REPORT=/path/outside/git/ecosystem \
+  node core/tests/browser/ecosystemPresentationJourney.cjs
+DISKX_TEST_MODULE=/path/to/GraphysX-Web/dist/embed/diskx.js \
+  DISKX_BROWSER_REPORT=/path/outside/git/janitor \
+  node core/tests/browser/diskxPresentationJourney.cjs
+```
+
+These serve actual Core/GraphysX components on loopback with a simulated
+conversation provider and synthetic Janitor data. They do not qualify an installed
+native conversation. After separate deployment approval, publish the compatible
+GraphysX module before installing Core, verify the module actually served by the
+existing relay, and receive the two-turn journey in the native Nestor interface.
+Runtime tool grants and family-device restrictions remain unchanged.
 
 Set `AGENTX_PLAYWRIGHT_MODULE` for an external Playwright installation and
 `AGENTX_PRESENTATION_BROWSER_REPORT` for an output directory outside Git.

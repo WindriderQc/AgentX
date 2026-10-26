@@ -64,6 +64,7 @@ function requestsScreenVisit(text, catalog) {
   const fold = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[-_]/g, ' ');
   const input = fold(text);
   if (!/\b(?:ouvre|ouvrir|montre|montrer|affiche|afficher|visite|visiter|guide|guider|navigue|naviguer|emmene|amene|open|show|visit|guide|navigate|tour)\b/.test(input)) return false;
+  if (catalog?.PAGES?.ecosystem && /\b(?:ecosysteme|ecosystem|ou (?:passent|vont|circulent) (?:les |mes )?donnees|data flows?)\b/.test(input)) return true;
   return /\b(?:pages?|sites?|services?|home\s?assistant|agentx|tableau de bord|dashboard)\b/.test(input)
     || (catalog?.entries || []).some(row => [fold(row.id), fold(row.label)].some(name => name.length > 2 && input.includes(name)));
 }

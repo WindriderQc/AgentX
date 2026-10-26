@@ -156,7 +156,7 @@
     return space === 'personal' && pages ? pages.parse(block.body) : null;
   }
 
-  function pageBody(block, target, actions) {
+  function pageBody(block, target, actions, presentationId) {
     const pages = root.AgentXScreenPages;
     const href = pages.url(target);
     const holder = node('div', 'display-page-holder');
@@ -177,7 +177,13 @@
     }
     status.textContent = 'Ouverture de la page… Si elle reste vide ou demande une connexion, utilisez « Ouvrir dans un onglet ».';
     const frame = node('iframe', 'display-block-page');
-    frame.src = href; frame.title = block.title || pages.label(target); frame.loading = 'lazy';
+    let frameHref = href;
+    if (target.page === 'ecosystem') {
+      const source = new URL(href, root.location.href); source.searchParams.set('presentation', presentationId);
+      frameHref = source.pathname + source.search + source.hash;
+    }
+    frame.src = frameHref;
+    frame.title = block.title || pages.label(target); frame.loading = 'lazy';
     frame.referrerPolicy = 'no-referrer';
     if (!href.startsWith('/')) frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
     frame.addEventListener('load', () => {
@@ -226,7 +232,7 @@
     if (block.kind === 'secret') content = secretBody(block, actions);
     else if (block.kind === 'image') content = imageBody(block, space);
     else if (block.kind === 'scene') content = sceneBody(block, space);
-    else if (block.kind === 'page') content = pageBody(block, target, actions);
+    else if (block.kind === 'page') content = pageBody(block, target, actions, card.dataset.presentationId);
     else {
       if (block.kind === 'table') content = tableBody(block.body);
       else if (block.kind === 'link') content = linkBody(block.body, space);

@@ -54,6 +54,7 @@ function analyticsSnapshot(data) {
 
 function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
   const snapshots = new Map();
+  const ecosystem = require('./ecosystemPresentation').createEcosystemObserver({ now, capacity });
   const prune = () => {
     for (const [id, row] of snapshots) if (Date.parse(row.expiresAt) <= now()) snapshots.delete(id);
     while (snapshots.size >= capacity) snapshots.delete(snapshots.keys().next().value);
@@ -75,6 +76,13 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
     publishCalendar: view => publish(require('./calendarPresentation').calendarSnapshot(view, now())),
     publishRuntime: data => publish(require('./analyticsLivePresentation').runtimeSnapshot(data, now())),
     publishGpus: data => publish(require('./analyticsLivePresentation').gpuSnapshot(data, now())),
+    observeEcosystem(value, presentationId) {
+      const result = ecosystem.accept(value, presentationId);
+      if (!result.snapshot) return { contract: CONTRACT, status: 'unavailable', reason: result.reason };
+      const reference = publish(result.snapshot);
+      return reference ? { ...JSON.parse(JSON.stringify(result.snapshot)), ...reference, status: 'available' }
+        : { contract: CONTRACT, status: 'unavailable', reason: 'observation_not_retained' };
+    },
     read({ id, revision } = {}) {
       const missing = reason => ({ contract: CONTRACT, status: 'unavailable', reason });
       if (!/^view_[a-f0-9]{64}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(revision || '')) return missing('invalid_reference');
@@ -82,6 +90,7 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
       if (!snapshot) return missing('expired_or_not_retained');
       if (id !== 'view_' + revision) return missing('revision_mismatch');
       if (Date.parse(snapshot.expiresAt) <= now()) return missing('expired');
+      if (snapshot.source === 'graphysx.ecosystem' && !ecosystem.current(snapshot)) return missing('superseded_display_observation');
       return { ...JSON.parse(JSON.stringify(snapshot)), id, revision, status: 'available' };
     }
   };
@@ -89,7 +98,7 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
 
 const presentationReader = createPresentationReader();
 const PRESENTATION_TOOLS = [{ name: 'read_presentation', title: 'Read Presented Content',
-  description: 'Read the exact Core Analytics, live runtime/GPU, owner calendar or Janitor report snapshot referenced by the current screen context. Requires its id and revision. Each source has its own freshness and scope; live data is independent of historical filters. Never fetches a URL or re-executes a tool. A receipt does not prove browser display; unavailable requires refreshing the view.',
+  description: 'Read the exact Core Analytics, live runtime/GPU, owner calendar, Janitor report or bounded GraphysX ecosystem display observation referenced by the current screen context. Requires its id and revision. Each source has its own freshness and scope; a GraphysX observation is browser-reported, not a Core inventory or live telemetry. Never fetches a URL or re-executes a tool. A data receipt alone does not prove browser display; unavailable requires refreshing the view.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['id', 'revision'], properties: {
     id: { type: 'string', pattern: '^view_[a-f0-9]{64}$' }, revision: { type: 'string', pattern: '^[a-f0-9]{64}$' } } },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false } }];
