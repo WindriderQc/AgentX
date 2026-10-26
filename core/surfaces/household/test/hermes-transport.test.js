@@ -46,7 +46,9 @@ test('Hermes streams public text only and uses the terminal served model and dur
   assert.equal(result.metadata.model, 'synthetic-cloud');
   assert.equal(f.saved().state, 'completed');
   assert.equal(f.saved().body, undefined);
-  assert.deepEqual(f.activity, [{ kind: 'tool', agentId: 'hermes', tool: 'synthetic_read' }]);
+  assert.deepEqual(f.activity, [{ kind: 'processing', agentId: 'hermes' },
+    { kind: 'tool', agentId: 'hermes', tool: 'synthetic_read' },
+    { kind: 'tool_result', agentId: 'hermes', tool: 'synthetic_read', status: 'completed' }]);
   assert.equal(result.tools.receipts[0].status, 'completed');
   assert.ok(!JSON.stringify(result).includes('Do not expose'));
   const post = f.calls[0];

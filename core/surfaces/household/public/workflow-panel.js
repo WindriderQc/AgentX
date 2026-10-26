@@ -54,7 +54,8 @@
     function begin(session, id, channel = 'unknown') {
       follow(session); const row = turn(id);
       if (row) {
-        row.channel = channel; row.live = true; row.captureOnly = false;
+        row.channel = channel; row.live = true; row.captureOnly = false; row.browserStartedAt ??= Date.now();
+        root.AgentXJourneyTimings?.begin(id);
       }
     }
     function capture(session, id) {
@@ -72,6 +73,9 @@
       if (!row || !event || !['accepted', 'speaker', 'tools', 'status', 'delta', 'done', 'deferred', 'error', 'interrupted'].includes(event.type)) return;
       if (event.type === 'delta' && row.firstText || event.type === 'status' && event.phase !== 'activity' && row.phase === event.phase
           || ['accepted', 'done', 'deferred', 'error', 'interrupted'].includes(event.type) && row.stream.includes(event.type)) return false;
+      root.AgentXJourneyTimings?.stream(id, event);
+      if (event.type === 'status' && event.phase === 'activity') row.currentActivity = event.activity;
+      if (['done', 'error', 'interrupted'].includes(event.type)) row.browserEndedAt = Date.now();
       if (event.type === 'speaker') row.speaker = safe(event.speaker?.name || event.speaker?.agentId);
       if (event.type === 'tools') row.toolCount = Array.isArray(event.evidence?.receipts) ? event.evidence.receipts.length : 0;
       if (event.type === 'status') {
@@ -396,7 +400,7 @@
     }
     return null;
   }
-  function create({ host, signal = null }) {
+  function create({ host, signal = null, onSnapshot = () => {} }) {
     const model = createModel();
     const compactMedia = root.matchMedia?.('(max-width: 760px)');
     let compactFlow = !!compactMedia?.matches || (host.getBoundingClientRect?.().width || Infinity) < 600;
@@ -418,6 +422,7 @@
         (target?.matches('button') || target?.getAttribute?.('role') === 'button' ? target : target?.querySelector('summary'))?.focus({ preventScroll: true });
       };
       const view = model.snapshot();
+      onSnapshot(view);
       const rows = view.turns, current = rows.find(row => row.id === selected) || rows.at(-1);
       if (current) selected = current.id;
       summary.textContent = `Log and receipts${rows.length ? ` · ${rows.length} turn${rows.length > 1 ? 's' : ''}` : ''}`;

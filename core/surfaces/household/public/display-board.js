@@ -160,6 +160,8 @@
     const pages = root.AgentXScreenPages;
     const href = pages.url(target);
     const holder = node('div', 'display-page-holder');
+    const timings = root.AgentXJourneyTimings;
+    if (['diskx', 'ecosystem'].includes(target.page)) timings?.open(presentationId, target.page);
     holder.dataset.state = 'loading';
     const open = node('a', 'display-block-action', 'Ouvrir dans un onglet');
     open.href = pages.url(target, { screen: false });
@@ -186,7 +188,15 @@
     frame.title = block.title || pages.label(target); frame.loading = 'lazy';
     frame.referrerPolicy = 'no-referrer';
     if (!href.startsWith('/')) frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+    let stopTimings;
     frame.addEventListener('load', () => {
+      timings?.mark(presentationId, 'frameLoadedAt');
+      stopTimings?.();
+      try {
+        const child = frame.contentWindow.AgentXJourneyTimings;
+        const update = () => timings?.absorb(presentationId, child?.snapshot().presentations[0]);
+        update(); stopTimings = child?.subscribe(update);
+      } catch { /* An external page supplies no timing receipt. */ }
       // A cross-origin load event does not prove successful service rendering.
       try {
         const doc = frame.contentDocument;
@@ -208,7 +218,7 @@
     holder.append(frame);
     holder._screenFrame = frame;
     holder._screenTarget = target;
-    holder._dispose = () => { frame.src = 'about:blank'; };
+    holder._dispose = () => { stopTimings?.(); frame.src = 'about:blank'; };
     return holder;
   }
 
