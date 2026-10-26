@@ -222,6 +222,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   recording time and keep candidate provenance through reads and reindexing.
   Historical source assertions have a separate review at `/dad/history`: source
   dates, event dates, attribution and revision-fenced decisions stay explicit.
+  [Sourced timeline contexts](PERSONAL_HISTORY_CONTEXT.md) retain partial dates,
+  periods, age windows, exact quoted document/media/ledger/testimony provenance,
+  proposed relations and media bindings on those same assertions. Stable imports
+  preserve native decisions; owner corrections have a separate context revision.
+  Source reads verify their text hashes; importing or editing confirms no claim.
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a
   souvenir: a permanent owner note with its event date, people, places and
