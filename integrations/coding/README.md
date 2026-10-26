@@ -3,6 +3,8 @@
 DSH remains the default isolated coding harness and powers the human-operated Studio.
 Studio uses Core's OpenAI gateway with request-scoped admission; an idle web
 server holds no inference host. See [Studio setup and qualification](../../docs/DSH_RESUMPTION.md).
+Optional third-party UI packages use the reviewed
+[community plugin compatibility procedure](COMMUNITY_PLUGINS.md).
 The worker also has a replaceable OpenCode adapter; Core and the host runner,
 not either harness, retain task and delivery authority. See the
 [multi-harness architecture](../../docs/CODING_TEAM_ARCHITECTURE.md).
