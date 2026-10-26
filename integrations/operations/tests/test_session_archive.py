@@ -9,6 +9,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+import unittest.mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "session_archive.py"
@@ -92,8 +93,27 @@ class SessionArchiveTests(unittest.TestCase):
         self.assertNotIn("turn", json.dumps(remote))
         self.assertFalse((self.root / "staging" / "devx" / report["runId"]).exists())
         if os.name != "nt":
-            self.assertEqual(self.live.stat().st_mode & 0o777, 0o700)
+            for directory in (self.root / "live", self.live, self.live / "claude-projects" / "proj-a" / "s1",
+                              self.root / "receipts", self.root / "staging"):
+                self.assertEqual(directory.stat().st_mode & 0o777, 0o700, directory)
             self.assertEqual((self.live / "codex-history" / "history.jsonl").stat().st_mode & 0o777, 0o600)
+
+    @unittest.skipIf(os.name == "nt", "POSIX modes")
+    def test_modes_are_set_even_when_the_umask_is_not_honoured(self):
+        # An inheriting ACL can override the umask; simulate it with a permissive
+        # mkdir and file creation mode.
+        real_mkdir, real_umask = Path.mkdir, os.umask
+        def open_mkdir(path, mode=0o777, parents=False, exist_ok=False):
+            real_mkdir(path, 0o777, parents, exist_ok)
+            if path.exists():
+                os.chmod(path, 0o777)
+        with unittest.mock.patch.object(Path, "mkdir", open_mkdir), \
+                unittest.mock.patch.object(os, "umask", lambda mask: real_umask(0)):
+            self.run_archive()
+        real_umask(0o022)
+        modes = {p.stat().st_mode & 0o777 for p in self.live.rglob("*")}
+        self.assertEqual(modes - {0o700, 0o600}, set())
+        self.assertEqual((self.root / "live").stat().st_mode & 0o777, 0o700)
 
     def test_unchanged_files_are_not_sent_again(self):
         self.run_archive()
@@ -213,6 +233,63 @@ class SessionArchiveOverSshTests(unittest.TestCase):
             self.assertTrue((root / "receipts" / "devx" / "latest-run.json").is_file())
             again = json.loads(subprocess.run(command, capture_output=True, text=True, env=env, timeout=60).stdout)
             self.assertEqual((again["unchanged"], again["sent"]), (1, 0))
+
+    def test_collect_runs_the_shipped_sender_on_the_source_host(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            source = base / "home" / ".codex" / "sessions" / "2026"
+            source.mkdir(parents=True)
+            (source / "rollout-a.jsonl").write_bytes(b'{"codex": "remote"}\n')
+            (base / "home" / ".codex" / "auth.json").write_bytes(b"{}")
+            root = base / "archive"
+            root.mkdir()
+            calls = base / "calls.log"
+            fake = base / "ssh"
+            fake.write_text(textwrap.dedent(f"""\
+                #!{sys.executable}
+                import subprocess, sys
+                args = sys.argv[1:]
+                while args and args[0] == "-o":
+                    args = args[2:]
+                with open({str(calls)!r}, "a") as log:
+                    log.write(args[0] + "\\n")
+                sys.exit(subprocess.call(["bash", "-c", args[1]], cwd="/"))
+                """))
+            fake.chmod(0o700)
+            # Run the collector from a copy elsewhere, as the archive host would.
+            installed = base / "archive-host" / "session_archive.py"
+            installed.parent.mkdir()
+            shutil.copy(SCRIPT, installed)
+            env = dict(os.environ, PATH=f"{base}{os.pathsep}{os.environ['PATH']}")
+            command = [sys.executable, str(installed), "collect", "--host-label", "devx",
+                       "--source-host", "devx.invalid", "--return-host", "archive.invalid",
+                       "--source", f"codex-sessions={base / 'home' / '.codex' / 'sessions'}",
+                       "--source", f"codex-auth={base / 'home' / '.codex' / 'auth.json'}",
+                       "--destination-root", str(root), "--state-dir", str(base / "source-state")]
+            result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=60)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            report = json.loads(result.stdout)
+            self.assertEqual((report["status"], report["host"], report["new"]), ("verified", "devx", 1))
+            self.assertEqual((root / "live" / "devx" / "codex-sessions" / "2026" / "rollout-a.jsonl").read_bytes(),
+                             b'{"codex": "remote"}\n')
+            self.assertFalse(any(p.name == "auth.json" for p in root.rglob("*")))
+            self.assertEqual(calls.read_text().split(), ["devx.invalid", "archive.invalid", "archive.invalid"])
+            self.assertTrue((base / "source-state" / "latest-run.json").is_file())
+
+    def test_collect_reports_an_unreachable_source_host(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            fake = base / "ssh"
+            fake.write_text(f"#!{sys.executable}\nimport sys\nsys.stderr.write('ssh: connect to host devx port 22: No route to host\\n')\nsys.exit(255)\n")
+            fake.chmod(0o700)
+            env = dict(os.environ, PATH=f"{base}{os.pathsep}{os.environ['PATH']}")
+            result = subprocess.run([sys.executable, str(SCRIPT), "collect", "--host-label", "devx", "--source-host", "devx",
+                                     "--return-host", "archive", "--source", "a=/nowhere", "--destination-root", "/archive",
+                                     "--state-dir", "/state"], capture_output=True, text=True, env=env, timeout=60)
+            self.assertEqual(result.returncode, 1)
+            report = json.loads(result.stdout)
+            self.assertEqual((report["status"], report["error"]), ("failed", "SourceHostUnavailable"))
+            self.assertIn("No route to host", report["detail"])
 
 
 if __name__ == "__main__":

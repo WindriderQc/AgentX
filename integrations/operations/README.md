@@ -21,7 +21,7 @@ It installs no jobs until an operator configures its native runtime.
 | `offhost-backup-replication.ps1` | Required `SourceHost`, `SourceRoot`, private `DestinationRoot` | Copies Mongo, configuration, Qdrant and native-state archives; verifies hashes; retention is opt-in |
 | `host_jobs_control.py` / `host_job_worker.py` | External native configuration and state roots | Server recurrence, bounded workstation adapters, replay-safe receipts and inventory |
 | `bundle_delivery.py` | Published source, private staging and local destination | Verified non-destructive delivery into a local workspace |
-| `session_archive.py` | `--host-label`, one `--source label=path` per directory or file, `--destination-host`, existing `--destination-root`, private `--state-dir`; optional `--dry-run` | Append-only push of local Claude Code / Codex session transcripts from the host that holds them; verifies each file by SHA-256 on arrival, replaces a session that only grew, keeps any other replaced version, never deletes, never reads credential files |
+| `session_archive.py` | `--host-label`, one `--source label=path` per directory or file, `--destination-host`, existing `--destination-root`, private `--state-dir`; optional `--dry-run` | Append-only push of local Claude Code / Codex session transcripts from the host that holds them (`collect` starts it from the archive host); verifies each file by SHA-256 on arrival, replaces a session that only grew, keeps any other replaced version, never deletes, never reads credential files |
 | `archive_mirror.py` | Required `--source-host`, `--source-root`, private `--destination`; optional `--latest-zfs-snapshot`, `--remote-receipt` | Append-only pull of a private archive directory (for example the Secretary evidence archive); copies new and changed files, verifies each by SHA-256, keeps replaced versions, never deletes |
 
 ## Session transcript archive
@@ -51,9 +51,23 @@ keeps the size and modification time already archived, so an unchanged file is
 not read again; delete it only to force a full re-verification. Transcripts are
 verbatim and may contain secrets: keep the archive owner-only and out of RAG.
 
-On a Windows workstation the operations worker runs it as the `session-archive`
-handler. On a Linux host use an existing user timer, for example hourly
-(`OnCalendar=hourly`, `Persistent=true`), calling the command above.
+To keep a source host free of installed code and timers, run `collect` on the
+archive host instead: it starts `send` on the source over SSH from this same
+file, and the files come back over the source host's SSH to the archive host.
+`--state-dir` is then a directory on the source host.
+
+```
+python3 session_archive.py collect --host-label devx \
+  --source-host devx --return-host archive-host \
+  --source claude-projects=/home/owner/.claude/projects ... \
+  --destination-root /archive/agent-sessions \
+  --state-dir /home/owner/.agentx/session-archive/state
+```
+
+On a Windows workstation the operations worker runs `send` as the
+`session-archive` handler. For a Linux source, schedule `collect` from the
+archive host's user timer, for example hourly (`OnCalendar=hourly`,
+`Persistent=true`).
 
 Core defaults to loopback port 3180; Data defaults to 3183. Linux helpers on the
 same host use the internal/loopback endpoint. Windows consumers may use the private
