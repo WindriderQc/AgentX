@@ -23,7 +23,7 @@ export async function getReadinessMap() {
         const highest = ['benchmarked', 'profiled', 'available']
           .find(s => stages.includes(s)) || 'available';
         const hostCount = entries.filter(([, r]) => r.stage === highest).length;
-        map[m.name] = { stage: highest, hostCount, totalHosts: entries.length };
+        map[m.name] = { stage: highest, hostCount, totalHosts: entries.length, hosts: entries.map(([, value]) => value) };
       }
       _cache = map;
       return map;
@@ -36,8 +36,23 @@ export async function getReadinessMap() {
   return _fetching;
 }
 
-export function getBadgeHtml(modelName, readinessMap) {
+export function getBadgeHtml(modelName, readinessMap, target = null) {
   const info = readinessMap[modelName];
+  if (target) {
+    // The server projection verifies the current artifact and authority receipt.
+    // This says nothing about the artifact or judge of historical test results.
+    const host = String(target.host || '').replace(/\/+$/, '');
+    if (!host || target.host_available === false || target.executionTarget?.executionKind === 'harness') return '';
+    const current = (info?.hosts || []).find(value =>
+      String(value.artifact?.hostUrl || '').replace(/\/+$/, '') === host
+      && value.artifact?.model === modelName
+      && value.artifact?.digest && value.artifact?.runtimeFingerprint
+      && value.authorityVerified === true && value.stale === false
+      && value.benchmarkQualified === true
+      && ['profiled', 'benchmarked'].includes(value.stage));
+    if (!current) return '';
+    return '<span class="ax-badge cb-current-profile" title="Current artifact verified on this host. This does not qualify historical benchmark results.">Current host profile verified</span>';
+  }
   if (!info || info.stage === 'available') return '';
 
   const BADGE_CONFIG = {

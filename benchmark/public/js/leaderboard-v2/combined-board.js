@@ -14,7 +14,7 @@ import {
   authorityReasons, collectReasonCodes, coverageGaps, describeHeadline, graderSummary, humanizeReason,
   isAuthoritative, isComparable, isPartialCoverage, reasonLabel, reasonLegendHtml, verdictReasons
 } from './verdict.js';
-import { historyHtml, metricsHtml, promptCoverageText, provenanceHtml, scorePartsText, successText, SUCCESS_DEFINITION } from './cohort-history.js';
+import { formatDateRange, historyHtml, metricsHtml, promptCoverageText, provenanceHtml, scorePartsText, successText, SUCCESS_DEFINITION } from './cohort-history.js';
 import { buildCsvFromGroups, csvFilename, downloadCsv } from './leaderboard-csv.js';
 import { CATEGORY_KEYS, BENCHMARK_CATEGORY_META } from '../benchmark-categories.js';
 
@@ -264,8 +264,10 @@ function compactCategoryStrip(entry) {
     const score = categoryScore(entry, category);
     const pct = score == null ? 0 : Math.min(100, Math.max(0, score * 10));
     const state = score == null ? 'empty' : scoreClass(score);
-    const value = score == null ? 'not scored' : `${score.toFixed(1)} / 10`;
-    return `<span class="cb-spark ${state}" style="--spark-fill:${pct}%" title="${meta.label}: ${value}">
+    const missing = entry.categoryEvidence?.[category] === 'review_pending' ? 'pending human review'
+      : entry.categoryEvidence?.[category] === 'attempted_unscored' ? 'attempted; score unavailable' : 'not tested';
+    const value = score == null ? missing : `${score.toFixed(1)} / 10`;
+    return `<span class="cb-spark ${state}" style="--spark-fill:${pct}%" title="${meta.label}: ${value}" aria-label="${meta.label}: ${value}">
       <span class="cb-spark-fill"></span><span class="cb-spark-label">${meta.icon}</span>
     </span>`;
   }).join('');
@@ -295,10 +297,9 @@ function rowState(entry, comparable) {
     notes.push(`Not ranked: ${reasons.length ? reasons.map(reasonLabel).join(', ') : 'no reason recorded'}`);
   } else {
     const authority = authorityReasons(entry);
-    if (authority.length) notes.push(`Provisional rank: ${authority.map(reasonLabel).join(', ')}`);
+    if (authority.length) notes.push('Provisional · grading not calibrated');
     if (isPartialCoverage(entry)) {
-      const gaps = coverageGaps(entry);
-      notes.push(gaps ? `Partial coverage: missing ${gaps}` : 'Partial coverage');
+      notes.push('Partial coverage');
     }
   }
   const thinking = thinkingLabel(entry);
@@ -358,7 +359,7 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
       ? `${ordinal(shownPosition)} in ${scopeLabel} among comparable verdicts (category order, not the generalist rank)`
       : `Rank ${shownPosition} among comparable verdicts (server ranking across the whole board)`;
   const model = entry.model || '—';
-  const readinessBadge = readinessMap ? getBadgeHtml(model, readinessMap) : '';
+  const readinessBadge = readinessMap ? getBadgeHtml(model, readinessMap, entry) : '';
   const hostName = entry.hostName || rowGroup.hostName || shortHost(entry.host) || '—';
   const judgeModel = entry.judgeModel || null;
   const useModelUrl = playgroundUrl(entry);
@@ -483,20 +484,22 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
   const ttftValue = entry.benchmarkTtft != null ? `TTFT measured ${formatMs(entry.benchmarkTtft)}` : 'TTFT not measured';
   const parts = entry.scoreParts || null;
   const partsStrong = parts ? `quality ${parts.quality != null ? parts.quality.toFixed(2) : '—'}` : `${tests} results`;
-  const partsSmall = parts ? scoreAdjustments(parts) : (confidence === '—' ? 'uncertainty unknown' : `${confidence} uncertainty`);
+  const coverageLabel = entry.promptCoverage ? `${entry.promptCoverage.covered}/${entry.promptCoverage.boardPrompts} prompts` : `${tests} results`;
+  const partsSmall = parts ? `${coverageLabel} · ${scoreAdjustments(parts)}` : (confidence === '—' ? 'uncertainty unknown' : `${confidence} uncertainty`);
   const summary = `<button type="button" class="cb-row-open" data-detail-key="${key}"
       aria-haspopup="dialog" aria-controls="cb-model-dialog" aria-label="Open full evidence sheet for ${esc(model)}">
     <span class="cb-rank">${rank}</span>
     <span class="cb-summary-id">
-      <span class="cb-summary-model">${esc(model)}${readinessBadge}</span>
+      <span class="cb-summary-model">${esc(model)}</span>
       <span class="cb-summary-source"><i class="fas fa-${isLocal ? 'server' : 'cloud'}" aria-hidden="true"></i> ${agentTarget ? 'agent · ' : ''}${esc(entry.provider || 'ollama')} · ${esc(tierLabel)} · ${esc(hostName)}</span>
       <span class="cb-summary-state" data-evidence-level="${esc(evidenceLevel)}" data-comparable="${comparable}" data-partial="${comparable && isPartialCoverage(entry)}">${esc(rowState(entry, comparable))}</span>
+      <span class="cb-summary-date">Tests: ${esc(formatDateRange(entry.earliestTimestamp, entry.latestTimestamp))}</span>
     </span>
     <span class="cb-summary-score" style="--score-pct:${scorePct}%" title="${parts ? esc(scorePartsText(entry)) : 'No comparable score'}">
       <span class="cb-score ${scoreCls}">${Number.isFinite(score) ? score.toFixed(2) : '—'}</span>
       <span class="cb-score-label">${comparable ? 'score' : 'not ranked'}</span>
     </span>
-    <span class="cb-summary-categories" aria-label="Category score profile">${compactCategoryStrip(entry)}</span>
+    <span class="cb-summary-categories" style="--category-count:${CATEGORY_ORDER.length}" aria-label="Category score profile">${compactCategoryStrip(entry)}</span>
     <span class="cb-summary-pace">
       <strong>${esc(speedValue)}</strong><small>${esc(ttftValue)}</small>
     </span>
@@ -512,7 +515,7 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
       <div class="cb-detail-identity">
         <p class="cb-detail-kicker">Complete model evidence</p>
         <h3 id="cb-model-dialog-title">${esc(model)}</h3>
-        <div class="cb-detail-badges">${agentBadge}${readinessBadge}${unavailableBadge}${nonComparableBadge}<span class="cb-use-model-proof" data-evidence-level="${esc(evidenceLevel)}">${esc(evidenceProof)}</span></div>
+        <div class="cb-detail-badges">${agentBadge}${unavailableBadge}${nonComparableBadge}<span class="cb-use-model-proof" data-evidence-level="${esc(evidenceLevel)}">${esc(evidenceProof)}</span></div>
       </div>
       <div class="cb-detail-score" style="--score-pct:${scorePct}%">
         ${renderTrend(entry.trend)}
@@ -527,6 +530,7 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
       <div><span>Judge</span><strong>${esc(judgeModel || '—')}</strong><small>${judgeModel ? 'Observed judge target' : 'Judge identity unavailable'}</small></div>
       <div><span>Evidence</span><strong>${esc(evidenceProof)}</strong><small>${esc(entry.qualityCohortFingerprint || 'Cohort fingerprint unavailable')}</small></div>
     </section>
+    ${readinessBadge ? `<p class="cb-current-installation">${readinessBadge}. Current installation only; historical test qualification is shown below.</p>` : ''}
     ${verdictBlock(entry, rowGroup, comparable)}
 
     <div class="cb-detail-grid">
@@ -758,7 +762,7 @@ export async function renderCombinedBoard(container, input) {
     <span class="r-sec-icon">🏁</span>
     <span class="r-sec-heading">
       <span class="r-sec-title r-t-cyan">Model leaderboard</span>
-      <span class="cb-board-subtitle">${esc(boardSubtitle(groups))}</span>
+      <span class="cb-board-subtitle" title="${esc(boardSubtitle(groups))}">${comparableCount ? `Same test conditions · ${authoritativeCount === comparableCount ? 'validated ranking' : 'provisional ranking'}` : 'No comparable results yet'} · Open a model for details</span>
     </span>
     <span class="cb-board-count">${comparableCount} ranked${comparableCount ? ` (${authoritativeCount === comparableCount ? 'all' : authoritativeCount} authoritative)` : ''}${groups.length > comparableCount ? ` · ${groups.length - comparableCount} other` : ''}</span>
     <span class="r-sec-toggle">▼</span>

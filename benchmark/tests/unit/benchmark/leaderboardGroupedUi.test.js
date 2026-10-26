@@ -206,14 +206,14 @@ describe('grouped board rendering', () => {
         const qwen = html.slice(html.indexOf('<article class="cb-row cb-comparable" data-group-key="qwen3.8:27b'), html.indexOf('<article class="cb-row', html.indexOf('qwen3.8:27b@@') + 1));
 
         expect(qwen).toContain('Headline: cohort 3f9a2c7d1e because it is the cohort the board compares');
-        expect(qwen).toContain('data-comparable="true" data-partial="false">Provisional rank: Grader qualification unknown</span>');
+        expect(qwen).toContain('data-comparable="true" data-partial="false">Provisional · grading not calibrated</span>');
         expect(qwen).toContain('<dt>Judge</dt><dd>judge-qwen3:32b</dd>');
         expect(qwen).toContain('<dt>Scorer</dt><dd>2.16.0 ×42</dd>');
         expect(qwen).toContain('<dt>Contexts</dt><dd>65536 ×42</dd>');
         expect(qwen).toContain('<dt>Results</dt><dd>42</dd>');
         expect(qwen).toContain('<dt>Dates</dt><dd>2026-09-18 → 2026-09-21</dd>');
         expect(qwen).toContain('Score 8.24 / 10 = quality 8.61 coverage −0.00 (7 categories, 100 % coverage)');
-        expect(qwen).toContain('<strong>quality 8.61</strong><small>no adjustment</small>');
+        expect(qwen).toContain('<strong>quality 8.61</strong><small>42 results · no adjustment</small>');
         expect(qwen).toContain('<span>tok/s (total)</span><strong>38.4 tok/s</strong>');
         expect(qwen).toContain('<span>tok/s (generation)</span><strong>46.1 tok/s</strong>');
         expect(qwen).toContain('<span>latency mean / p95</span><strong>1.8 s / 3.3 s</strong>');
@@ -258,12 +258,12 @@ describe('grouped board rendering', () => {
         const rowOf = (model) => html.slice(html.indexOf(`data-group-key="${model}@@`), html.indexOf('<article class="cb-row', html.indexOf(`data-group-key="${model}@@`)) > -1 ? html.indexOf('<article class="cb-row', html.indexOf(`data-group-key="${model}@@`)) : undefined);
 
         const phi4 = rowOf('phi4:14b');
-        expect(phi4).toContain('data-comparable="true" data-partial="true">Provisional rank: Grader qualification unknown · Partial coverage</span>');
+        expect(phi4).toContain('data-comparable="true" data-partial="true">Provisional · grading not calibrated · Partial coverage</span>');
         expect(phi4).toContain('Score 6.17 / 10 = quality 7.90 coverage −1.25 (5 categories, 71 % coverage) hard-level −0.48');
         expect(phi4).toContain('<strong>unknown (3 attempts, 3 infrastructure errors, no denominator)</strong>');
         expect(phi4).not.toContain('100 %');
         expect(phi4).toContain('<span class="cb-score-label">score</span>');
-        expect(phi4).toContain('<small>coverage −1.25 · hard-level −0.48</small>');
+        expect(phi4).toMatch(/<small>\d+ results · coverage −1\.25 · hard-level −0\.48<\/small>/);
         expect(rowOf('llama3.3:70b')).toContain('Not ranked: Mixed scorer generations');
         expect(rowOf('llama3.3:70b')).toContain('not ranked</span>');
         expect(rowOf('mistral-small:24b')).toContain('Not ranked: Unversioned scorer');
@@ -485,5 +485,25 @@ describe('page wiring', () => {
         expect(css).toMatch(/@media \(max-width: 700px\)[\s\S]*\.cb-history-table thead \{ display: none; \}[\s\S]*\.cb-history-table td::before \{\s*content: attr\(data-label\);/);
         expect(css).toContain('.cb-toolbar { align-items: stretch; flex-direction: column; }');
         expect(read('public/css/leaderboard-v2.css').split('\n').length).toBeLessThanOrEqual(2776);
+    });
+});
+
+
+describe('daily row clarity', () => {
+    test('shows the dates and coverage behind the headline without opening its details', async () => {
+        const target = container();
+        await board.renderCombinedBoard(target, fixtureGroups());
+        expect(target.innerHTML).toContain('class="cb-summary-date">Tests: 2026-');
+        expect(target.innerHTML).toContain('Provisional · grading not calibrated');
+        expect(target.innerHTML).not.toContain('cb-summary-model">qwen3.8:27b<span class="ax-badge"');
+    });
+
+    test('compact categories distinguish missing, attempted and pending results', () => {
+        const compact = loadBrowserModule('leaderboard-v2/combined-board.js', 'compactCategoryStrip', boardStubs);
+        const html = compact.compactCategoryStrip({ categoryEvidence: { math: 'review_pending', coding: 'attempted_unscored' } });
+        expect(html).toContain('pending human review');
+        expect(html).toContain('attempted; score unavailable');
+        expect(html).toContain('not tested');
+        expect(html).not.toContain('not scored');
     });
 });

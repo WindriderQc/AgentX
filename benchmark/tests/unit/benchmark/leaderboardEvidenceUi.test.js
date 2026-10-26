@@ -350,7 +350,7 @@ describe('leaderboard evidence-honesty UI', () => {
         // Without an assessed grader the rank is provisional, never a medal.
         expect(container.innerHTML).toContain('>#1<small>provisional</small>');
         expect(container.innerHTML).not.toContain('cb-rank-none');
-        expect(container.innerHTML).toContain('data-partial="true">Provisional rank: Grader qualification unknown · Partial coverage</span>');
+        expect(container.innerHTML).toContain('data-partial="true">Provisional · grading not calibrated · Partial coverage</span>');
         expect(container.innerHTML).toContain('id="cb-model-dialog"');
         expect(container.innerHTML).not.toContain('🥇');
     });
