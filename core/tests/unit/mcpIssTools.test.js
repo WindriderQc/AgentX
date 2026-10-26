@@ -211,4 +211,10 @@ describe('iss_passes tool', () => {
     expect(res.result.isError).toBe(false);
     expect(res.result.structuredContent.status).toBe('ok');
   });
+
+  test('is discoverable by the words people use, even when a runtime defers shared tools behind search', async () => {
+    const list = await handleMcpMessage({ jsonrpc: '2.0', id: 9, method: 'tools/list' });
+    const tool = list.result.tools.find(t => t.name === 'iss_passes');
+    expect(tool.description).toMatch(/^ISS \(International Space Station, station spatiale\)/);
+  });
 });

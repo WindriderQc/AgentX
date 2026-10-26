@@ -805,6 +805,13 @@ and `agentx__iss_passes` in the agent's `tools.alsoAllow`); Hermes lists
 adapter is removed. See the
 [shared capability contract](SHARED_AGENT_CAPABILITIES.md).
 
+OpenClaw's `tools.toolSearch` directory mode lists only native OpenClaw tools to
+the model; MCP tools such as `agentx__iss_passes` are reachable only through
+`tool_search`. The `agentx-core` skill therefore names `iss_passes` for ISS
+questions and asks to search for it first, and the tool's description starts
+with "ISS (International Space Station, station spatiale)" so that search finds
+it. Install the updated skill in each runtime after a change.
+
 Famille conversations on the AgentX engine can call Core tools. Core lists the
 family-eligible tools in `core/surfaces/household/family-tools.js` (today
 `iss_passes`); the instance turns them on with `HOUSEHOLD_FAMILY_TOOLS`
