@@ -141,7 +141,10 @@ class ArchivedOriginalReadingTests(unittest.TestCase):
             part.set_param('charset', 'windows-874', header='Content-Type')
         self.preserve(message)
         original = self.file.read_bytes()
-        page = read_original(self.root, 'message1', self.sha)
+        # Python releases differ in whether get_content registers this alias;
+        # the native strict derivation must be stable on either release.
+        with mock.patch.object(EmailMessage, 'get_content', side_effect=AssertionError('Use the traced strict decoder')):
+            page = read_original(self.root, 'message1', self.sha)
         self.assertTrue(page['bodyReadable']); self.assertIn(text, page['body'])
         for part in page['bodyRepresentations']:
             self.assertEqual(part['decoding'], {'declaredCharset': 'windows-874', 'resolvedCodec': 'cp874', 'errors': 'strict'})

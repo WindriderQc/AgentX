@@ -128,7 +128,7 @@ class ObjectiveTests(unittest.TestCase):
         (self.root / row['path']).write_bytes(raw)
         save(self.root / 'raw-receipts/message01.json', row)
         client = Client()
-        with patch('archive_read.CHARSET_ALIASES', {}):
+        with patch('archive_read._text', side_effect=LookupError('Previous reader did not register this declared charset')):
             first = self.run_worker(client)
         self.assertEqual(first['coverage']['counts']['expectedPagesKnown'], 0)
         self.assertFalse(first['coverage']['allTargetTextCovered']); self.assertEqual(len(client.calls), 0)

@@ -21,17 +21,14 @@ class ArchiveReadError(RuntimeError):
 
 
 def _text(part):
-    try:
+    charset = part.get_content_charset()
+    codec = CHARSET_ALIASES.get(charset)
+    if codec is None:
         return part.get_content(), None
-    except LookupError:
-        charset = part.get_content_charset()
-        codec = CHARSET_ALIASES.get(charset)
-        if codec is None:
-            raise
-        payload = part.get_payload(decode=True)
-        if not isinstance(payload, bytes):
-            raise ValueError("No decoded MIME bytes for the declared charset alias")
-        return payload.decode(codec, errors="strict"), {"declaredCharset": charset, "resolvedCodec": codec, "errors": "strict"}
+    payload = part.get_payload(decode=True)
+    if not isinstance(payload, bytes):
+        raise ValueError("No decoded MIME bytes for the declared charset alias")
+    return payload.decode(codec, errors="strict"), {"declaredCharset": charset, "resolvedCodec": codec, "errors": "strict"}
 
 
 def representations(message):
