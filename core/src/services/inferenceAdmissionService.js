@@ -52,6 +52,7 @@ async function acquireInferenceAdmission({
   workloadGeneration = null,
   runtimeOptions = null,
   keepAlive,
+  contentRetention = null,
   hostIdle = false,
   ttlMs = DEFAULT_TTL_MS,
   signal: externalSignal
@@ -94,7 +95,8 @@ async function acquireInferenceAdmission({
       id: acquired.admissionId,
       generation: acquired.generation,
       principal: acquired.principal,
-      reason: reason?.message || reason || 'upstream terminal state unknown',
+      reason: contentRetention === 'ephemeral' ? 'ephemeral inference terminal state unknown'
+        : reason?.message || reason || 'upstream terminal state unknown',
       origin
     }).finally(onSettled);
   };

@@ -71,6 +71,15 @@ async function drain(stream) {
 }
 
 describe('trusted runtime services', () => {
+  test('ephemeral errors are redacted at the real attempt recorder and retain admission policy', async () => {
+    const deps = inferenceDeps({ fetch: jest.fn(async () => { throw new Error('SYNTHETIC_PRIVATE_PROVIDER_ERROR'); }) });
+    await expect(executeRoutedInference(deps, { mode: 'generate', model: 'model-a', prompt: 'SYNTHETIC_PRIVATE_PROMPT' },
+      { contentRetention: 'ephemeral' })).rejects.toThrow('Routed inference failed');
+    expect(deps.beginInferenceAdmission).toHaveBeenCalledWith(expect.objectContaining({ contentRetention: 'ephemeral' }));
+    expect(deps.recordInference).toHaveBeenCalledWith(expect.objectContaining({ error: 'ephemeral_inference_failed' }));
+    expect(JSON.stringify(deps.recordInference.mock.calls)).not.toMatch(/SYNTHETIC_PRIVATE_(PROVIDER_ERROR|PROMPT)/);
+  });
+
   test('coding inference borrows only the exact task reservation and checks it again after admission', async () => {
     const capacity = require('../../src/services/pipelineCodingCapacity');
     const proof = { principal: 'core-trusted-runtime', workloadAdmissionId: 'coding-admission', workloadGeneration: 'coding-generation' };

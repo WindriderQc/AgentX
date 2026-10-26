@@ -74,6 +74,8 @@ function publicSession(doc) {
     visual: value?.visual || null,
     agentId: agentIdFor(value || {}),
     backend: value?.backend || null,
+    ephemeral: value?.ephemeral === true,
+    ephemeralExplicit: value?.ephemeralExplicit === true,
     agentSessionKey: value?.agentSessionKey || null,
     ...(value?.llmx ? { llmx: { schemaVersion: 1, opening: llmx.publicOpening(value.llmx.opening) } } : {}),
     scopeId: value?.scopeId,

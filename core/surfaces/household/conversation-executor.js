@@ -75,9 +75,10 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
     const endTurn = interactivePriority.beginHouseholdTurn();
     const stopWaiting = interactivePriority.onWaiting(info => request.onWaiting?.(info));
     try {
+      if (request.session?.ephemeral && request.backend !== 'agentx') throw Object.assign(new Error('This native engine cannot guarantee ephemeral memory and history.'), { code: 'CONVERSATION_EPHEMERAL_UNSUPPORTED', statusCode: 409 });
       const accepted = await require('./native-work-acceptance').nativeWorkAcknowledgment(request);
       if (accepted) return accepted;
-      if (personalRecaps && request.session?.packId === 'personal_operator' && request.conversationFeatures?.recapContext !== false) {
+      if (personalRecaps && !request.session?.ephemeral && request.session?.packId === 'personal_operator' && request.conversationFeatures?.recapContext !== false) {
         const { recapContext } = require('../../src/services/conversationRecapService');
         const confirmed = (await personalRecaps.read((request.canonicalSession || request.session).sessionId)).recap || (await personalRecaps.latest())?.recap;
         const context = recapContext(confirmed);
@@ -140,7 +141,7 @@ function runTurn({ agentClient, hermesClient, inference, consumerContract, env }
       messages: [{ role: 'system', content: agentxInstructions }, ...prepared.map(({ attachments, ...message }) => message)],
       stream: request.streaming, think: false, temperature: pack.temperature, max_tokens: pack.maxTokens,
       callerDetail: `agentx-household/${pack.id}/${session.modeId}`, timeoutMs: 600000
-    }, { signal, consumerContract, ...(request.openTarget ? { hostUrl: request.openTarget.hostUrl } : {}) });
+    }, { signal, consumerContract, ...(session.ephemeral ? { contentRetention: 'ephemeral' } : {}), ...(request.openTarget ? { hostUrl: request.openTarget.hostUrl } : {}) });
     if (!result?.ok) {
       const error = result?.body?.error;
       throw Object.assign(new Error((typeof error === 'string' ? error : error?.message) || 'AgentX inference failed'), { statusCode: result?.status || 502 });

@@ -256,6 +256,7 @@ async function beginAdmittedOllamaAttempt(options, dependencies = {}) {
     model: options.model,
     kind,
     principal: options.principal || 'core-service',
+    contentRetention: options.contentRetention,
     requestId: options.requestId,
     workloadAdmissionId: options.workloadAdmissionId || null,
     workloadGeneration: options.workloadGeneration || null,

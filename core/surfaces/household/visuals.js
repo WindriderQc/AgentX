@@ -152,7 +152,7 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
   }
 
   // Resolves an image block in place, so the turn's display keeps the result.
-  async function present(block, { family = false, language = 'fr' } = {}) {
+  async function present(block, { family = false, language = 'fr', ephemeral = false } = {}) {
     if (block?.kind !== 'image') return block;
     if (block.source === 'generated') {
       const ref = generatedAllowed(family) ? generatedRef(block.ref) : '';
@@ -170,7 +170,7 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
       if (source === 'web') found = await fromWeb(block.body, { family, language });
       else if (FILE_SOURCES.includes(source)) found = await fromFiles(source, block.body, { family });
     } catch (error) {
-      logger?.warn?.('Household image lookup failed', { source, error: error.message });
+      logger?.warn?.('Household image lookup failed', ephemeral ? { source, code: 'EPHEMERAL_LOOKUP_FAILED' } : { source, error: error.message });
     }
     block.status = found ? 'found' : 'missing';
     block.image = found ? { ...found, sourceLabel: SOURCE_LABELS[source] || source } : null;

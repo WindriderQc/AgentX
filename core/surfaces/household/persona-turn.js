@@ -102,6 +102,9 @@ function createPersonaTurnHandler({
       if (!session || session.status !== 'active') {
         return fail(res, 404, 'Voice persona session not found', 'VOICE_PERSONA_SESSION_NOT_FOUND');
       }
+      // Policy is part of the immutable server context and frozen for this
+      // submission. A stale tab cannot silently reclassify an existing turn.
+      entry.ephemeral = session.ephemeral === true;
       if (isLlmX && !llmx.matchesSession(session, entry.profile)) {
         return fail(res, 404, 'LLMx conversation not found', 'LLMX_SESSION_NOT_FOUND');
       }
@@ -129,6 +132,15 @@ function createPersonaTurnHandler({
           'VOIX_FAMILY_SESSION_REQUIRED'
         );
       }
+      if (req.body?.ephemeral !== undefined && req.body.ephemeral !== entry.ephemeral) {
+        return fail(res, 409, 'The submitted privacy policy does not match this context.', 'CONVERSATION_PRIVACY_MISMATCH');
+      }
+      if (entry.ephemeral && (session.backend !== 'agentx' || isLlmX || consult)) {
+        return fail(res, 409, 'This runtime cannot guarantee ephemeral memory and history.', 'CONVERSATION_EPHEMERAL_UNSUPPORTED');
+      }
+      if (entry.ephemeral && clientTurnId && await conversations.getTurn({ sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId, clientTurnId })) {
+        return fail(res, 409, 'This ephemeral turn was already submitted.', 'CONVERSATION_TURN_REPLAY');
+      }
       if (clientTurnId) {
         entry.snapshot = { sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
       }
@@ -138,9 +150,9 @@ function createPersonaTurnHandler({
         ? personalAttachments(session.sessionId) : null;
       if (requestedAttachments.length && !attachmentStore) return fail(res, 400, 'Attachments are available in personal Nestor.', 'ATTACHMENTS_PERSONAL_ONLY');
       entry.attachments = requestedAttachments.length ? await attachmentStore.references(requestedAttachments) : [];
-      const workEligible = Boolean(conversationWorks?.eligible(session, req.body?.channel));
+      const workEligible = !entry.ephemeral && Boolean(conversationWorks?.eligible(session, req.body?.channel));
       const nativeDelegation = conversationEnv.PERSONAL_CONVERSATION_WORK_MODE === 'native' && workEligible;
-      const workCandidate = !consult && !isLlmX
+      const workCandidate = !entry.ephemeral && !consult && !isLlmX
         && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session), { nativeDelegation });
       const retainedWork = workCandidate && !workEligible ? await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel) : null;
       if (workCandidate && !workEligible && !retainedWork && features.inferenceProfile && features.inferenceProfile !== 'local'
@@ -201,7 +213,7 @@ function createPersonaTurnHandler({
       let fallbackReason = '';
       let holdState = null;
       let knowledge = {
-        status: safety.deterministicEscalation
+        status: entry.ephemeral ? 'skipped_ephemeral' : safety.deterministicEscalation
           ? 'skipped_safety_escalation'
           : childBoundary ? 'skipped_child_boundary' : knowledgeState.status.status,
         enabled: false,
@@ -262,7 +274,7 @@ function createPersonaTurnHandler({
           session.backend = backend;
         }
         let memories = [], savedNow = false, family = {}, members = '';
-        if (!isOpening) {
+        if (!isOpening && !entry.ephemeral) {
           const notes = notesFor(pack, session.scopeId);
           if (!pack.childSafe && features.householdContext !== false) members = await householdMembers(familyTasks, { logger });
           // Kids Room routines, and a child's idea or reminder kept for Dad (#41, #13).
@@ -315,9 +327,9 @@ function createPersonaTurnHandler({
         // model's prompt cache keeps them. Everything selected for this turn (notes,
         // members, knowledge, chores, saves, the sound note, the reply language, a team
         // member's last exchange and the reviewer's advice) goes last, beside the request.
-        const brainAdvice = isLlmX || features.reviewContext === false ? { text: '', refs: [] }
+        const brainAdvice = entry.ephemeral || isLlmX || features.reviewContext === false ? { text: '', refs: [] }
           : brain.contextWithRefs ? brain.contextWithRefs(session.sessionId) : { text: brain.contextFor(session.sessionId), refs: [] };
-        const workAdvice = !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
+        const workAdvice = !entry.ephemeral && !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
           ? conversationWorks?.guardianContextWithRefs
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
@@ -352,6 +364,7 @@ function createPersonaTurnHandler({
         // Child presentation follows the selected adult personality on both
         // transports. Adult conversations keep their normal style overlay order.
         const agentxInstructions = [pack.childSafe ? session.persona?.identity : '',
+          entry.ephemeral ? 'This is an ephemeral conversation. Use only its supplied active dialogue and attachments. Persistent personal memory and RAG are unavailable; no memory save or later recollection is confirmed.' : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,
           'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
           workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, pages: !pack.childSafe, pageCatalog: screenPages, imageSources: visuals.sources({ family: pack.childSafe }) }),
@@ -369,7 +382,7 @@ function createPersonaTurnHandler({
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {
             if (block.kind === 'image' && block.source === 'draw' && conversationImages) return;
-            visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage })
+            visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage, ephemeral: entry.ephemeral })
               .then(shown => { if (!res.writableEnded) event('show', { block: shown }); }));
           } });
         // The opening warm-up shares this native session: its run ends before the first real turn starts.
@@ -508,7 +521,7 @@ function createPersonaTurnHandler({
         if (routeTier === 'deterministic') await conversationWorks.handled(entry.workId);
         await conversationWorks.guardianSettled(entry.workId, 'completed', metadata.guardianDisposition);
       }
-      if (!entry.workId && !isLlmX && session.backend !== 'hermes' && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
+      if (!entry.ephemeral && !entry.workId && !isLlmX && session.backend !== 'hermes' && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
       entry.replyText = replyText;
       // The conversation's agent hears about a member's answer once, on its next turn.
       if (member) await conversations.updateSession({ sessionId: session.sessionId },
@@ -589,7 +602,7 @@ function createPersonaTurnHandler({
         return;
       }
       if (abort.signal.aborted) return;
-      logger?.error?.('Household persona turn failed', { error: error.message, ...(error.detail ? { detail: error.detail } : {}) });
+      logger?.error?.('Household persona turn failed', entry.ephemeral ? { code: 'EPHEMERAL_TURN_FAILED' } : { error: error.message, ...(error.detail ? { detail: error.detail } : {}) });
       if (res.headersSent) { event('error', { message: error.message }); return res.end(); }
       return fail(res, error.statusCode || 502, error.message || 'Voice persona turn failed', error.code || 'VOICE_PERSONA_INFERENCE_FAILED');
     } finally {

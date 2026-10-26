@@ -606,7 +606,7 @@
     }
     // One model turn, spoken or typed: stream the reply, speak it clause by
     // clause, play a structured recording, then listen again.
-    async respond(turn, text, epoch, detectedLanguage, { attachments = [], preferredLanguage = this.selection.language } = {}) {
+    async respond(turn, text, epoch, detectedLanguage, { attachments = [], preferredLanguage = this.selection.language, requestPolicy = this.io.requestPolicy?.() } = {}) {
       this.activeTurn = turn;
       this.io.message('user', text, false, null, attachments);
       this.show('thinking'); this.turnPending = true;
@@ -706,6 +706,11 @@
         return scheduled;
       };
       const dropHolding = () => { if (holdingSpeech && !holdingSpeech.playing) holdingSpeech.abort.abort(); };
+      if (this.io.prepareTurnSession) {
+        const prepared = await this.io.prepareTurnSession(this.session, requestPolicy, turn.request.signal);
+        if (!this.owns(turn)) return;
+        this.session = prepared;
+      }
       turn.session = this.session; turn.timeline?.mark('requestSent');
       const response = this.io.turn(this.session, text, turn.request.signal, delta => {
         if (!this.owns(turn)) return;
@@ -715,7 +720,7 @@
           if (speak(pending.slice(0, length))) firstChunk = false;
           pending = pending.slice(length);
         }
-      }, { turnId: turn.id, onNotice: text => speak(text, true),
+      }, { turnId: turn.id, requestPolicy, onNotice: text => speak(text, true),
         // The surface reports that every spoken word was sent: say the last clause
         // now rather than when the turn completes (its closing work can be slow).
         onSayEnd: () => { if (this.owns(turn) && streamed) { speak(pending); pending = ''; } },
@@ -780,7 +785,7 @@
     // A message typed while the voice conversation waits is the same turn as a
     // spoken one: Nestor answers on screen and aloud, then listens again.
     canType() { return this.state === 'listening' && !this.activeTurn && !this.turnPending && Boolean(this.session && this.audio); }
-    async typed(text, { attachments = [] } = {}) {
+    async typed(text, { attachments = [], requestPolicy = this.io.requestPolicy?.() } = {}) {
       const epoch = this.epoch;
       text = String(text || '').trim();
       if (!text || !this.canType() || !this.current(epoch)) return false;
@@ -791,7 +796,7 @@
       const cancel = () => { turn.request.abort(); turn.speech.abort(); this.releaseCandidate(turn); };
       lifetimeSignal.addEventListener('abort', cancel, { once: true });
       try {
-        await this.respond(turn, text, epoch, null, { attachments });
+        await this.respond(turn, text, epoch, null, { attachments, requestPolicy });
         return true;
       } catch (error) {
         if (!turn.interrupted && this.current(epoch)) this.fail(error, epoch);

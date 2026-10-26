@@ -32,6 +32,17 @@ function dataFetch(files, calls = []) {
   };
 }
 
+test('ephemeral image lookup failures retain no query or provider error text in application logs', async () => {
+  const logs = [];
+  const visuals = createVisuals({ env: { SEARXNG_URL: 'http://search.example.test' },
+    fetchImpl: async () => { throw new Error('SYNTHETIC_PRIVATE_LOOKUP_ERROR'); },
+    logger: { warn: (...args) => logs.push(args) } });
+  await visuals.present({ kind: 'image', source: 'web', body: 'SYNTHETIC_PRIVATE_IMAGE_QUERY' }, { ephemeral: true });
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][1].code, 'EPHEMERAL_LOOKUP_FAILED');
+  assert.doesNotMatch(JSON.stringify(logs), /SYNTHETIC_PRIVATE/);
+});
+
 function response() {
   const chunks = [];
   const res = new Writable({ write(chunk, _encoding, done) { chunks.push(chunk); done(); } });

@@ -392,7 +392,7 @@ async function executeRoutedInference(deps, request, options = {}) {
   const observePrefix = options.observePromptPrefix === true && request.mode === 'chat'
     && (deps.observePromptPrefix || observePromptPrefix);
   let promptPrefix = null;
-  const record = entry => deps.recordInference(promptPrefix ? { ...entry, promptPrefix } : entry);
+  const record = entry => deps.recordInference(require('../services/conversations/ephemeralTelemetry').redact(promptPrefix ? { ...entry, promptPrefix } : entry, options));
   // Core's coding budget must survive caller detachment while a stream drains.
   const codingTimeout = options.codingCapacity && Number.isFinite(options.codingDeadlineAt)
     ? Math.max(1, options.codingDeadlineAt - Date.now()) : Infinity;
@@ -419,7 +419,7 @@ async function executeRoutedInference(deps, request, options = {}) {
       // terminal evidence required to release the inference admission.
       ...(request.stream === true && { onDispatch: () => abortBridge.detachCaller() }),
       admissionKind: request.stream === true ? 'trusted-runtime-stream' : 'trusted-runtime', cacheLabels: { consumerContract, taskType },
-      principal: benchmarkClaim ? 'benchmark-service' : 'core-trusted-runtime',
+      principal: benchmarkClaim ? 'benchmark-service' : 'core-trusted-runtime', contentRetention: options.contentRetention,
       ...(capacity || {}),
       ...(benchmarkClaim && {
         workloadAdmissionId: benchmarkClaim.workloadAdmissionId,
