@@ -115,7 +115,7 @@ export async function readSource(id,{offset=0}={}){
   const nativePath=typeof source.nativePath==='string'?source.nativePath:'';
   const fileHash=/^[a-f0-9]{64}$/.test(source.contentSha256||'');
   const folderPointer=source.kind==='media'&&source.metadataOnly===true&&!source.contentSha256;
-  const filePointer=['document','media'].includes(source.kind)&&nativePath.startsWith('/')&&!nativePath.startsWith('//')&&!/^\/api(?:\/|$)/.test(nativePath)&&!nativePath.includes('\0');
+  const filePointer=nativePath.startsWith('/')&&!nativePath.startsWith('//')&&!/^\/api(?:\/|$)/.test(nativePath)&&!nativePath.includes('\0');
   const file=filePointer&&(fileHash||folderPointer)?await call(`/api/secretary/files/read?nativePath=${encodeURIComponent(nativePath)}&sha256=${source.contentSha256||''}`).catch(()=>null):null;
   value=projectContextSource(id,source,file);
  }

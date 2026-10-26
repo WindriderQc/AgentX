@@ -6,13 +6,13 @@ const atlas = path.join(__dirname, '..', 'public', 'atlas');
 const entryId = 'c'.repeat(24), hash = 'd'.repeat(64);
 const reply = data => ({ ok: true, json: async () => ({ status: 'success', data }) });
 
-test('source text stays readable without treating photo APIs, mail or public URLs as owner files', async () => {
+test('source text stays readable without treating photo APIs, Gmail or public URLs as owner files', async () => {
   const { readSource } = await import(path.join(atlas, 'data.js'));
   const original = global.fetch;
   try {
-    const pointers = ['/api/photos/assets/synthetic-asset', 'gmail:synthetic-message', 'https://example.invalid/source.pdf', '//example.invalid/source.pdf', '/owner/archive/synthetic.eml'];
+    const pointers = ['/api/photos/assets/synthetic-asset', 'gmail:synthetic-message', 'https://example.invalid/source.pdf', '//example.invalid/source.pdf'];
     for (const [n, nativePath] of pointers.entries()) {
-      const requests = [], source = { id: `reference-${n}`, kind: n === 4 ? 'mail' : 'media', metadataOnly: true, nativePath,
+      const requests = [], source = { id: `reference-${n}`, kind: 'media', metadataOnly: true, nativePath,
         body: '{"source":"exact retained metadata"}', bodySha256: hash, ...(n ? { contentSha256: hash } : {}) };
       global.fetch = async url => { requests.push(url); return reply({ source }); };
       const result = await readSource(`ctx|${entryId}|${source.id}`);
@@ -22,19 +22,20 @@ test('source text stays readable without treating photo APIs, mail or public URL
   } finally { global.fetch = original; }
 });
 
-test('a native document opens only with its binary content hash; missing or malformed hashes retain the text', async () => {
+test('native documents and stored mail open with binary hashes; missing or malformed hashes retain the text', async () => {
   const { readSource } = await import(path.join(atlas, 'data.js'));
   const original = global.fetch;
   try {
-    for (const [n, contentSha256] of [hash, undefined, 'not-a-binary-hash'].entries()) {
-      const requests = [], source = { id: `document-${n}`, kind: 'document', nativePath: '/owner/documents/synthetic.pdf',
+    for (const [n, contentSha256] of [hash, hash, undefined, 'not-a-binary-hash'].entries()) {
+      const requests = [], source = { id: `document-${n}`, kind: n === 1 ? 'mail' : 'document',
+        nativePath: n === 1 ? '/owner/documents/synthetic.eml' : '/owner/documents/synthetic.pdf',
         body: 'Exact documentary passage.', bodySha256: hash, contentSha256 };
       global.fetch = async url => { requests.push(url); return reply(url.includes('/files/read?')
         ? { kind: 'document', url: '/api/secretary/files/content?locator=documents:synthetic.pdf', type: 'application/pdf', bytes: 12 }
         : { source }); };
       const result = await readSource(`ctx|${entryId}|${source.id}`);
-      assert.equal(result.body, source.body);assert.equal(requests.length, n ? 1 : 2);
-      if (!n) {
+      assert.equal(result.body, source.body);assert.equal(requests.length, n < 2 ? 2 : 1);
+      if (n < 2) {
         const file = new URL(requests[1], 'http://atlas.test');
         assert.equal(file.searchParams.get('nativePath'), source.nativePath);assert.equal(file.searchParams.get('sha256'), hash);
         assert.match(result.fileUrl, /^\/api\/secretary\/files\/content\?/);
