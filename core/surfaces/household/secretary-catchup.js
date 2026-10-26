@@ -1,4 +1,5 @@
 'use strict';
+const { annualProjection } = require('./secretary-annual-coverage');
 
 // Owner confirmation for what the Secretary's archive catch-up found (#130).
 // The native job never writes tasks or memory: a current action or personal
@@ -64,13 +65,17 @@ function reviewProgress(body) {
       discoveringScopes: Array.isArray(archive.discoveringScopes) ? archive.discoveringScopes.filter(v => ['contact', 'invoices', 'mailbox'].includes(v)) : [],
       unavailableMessages: count(archive.unavailableMessages), unavailableDraftMessages: count(archive.unavailableDraftMessages)
     } : null,
-    objectiveReviews: (Array.isArray(body.objectiveReviews) ? body.objectiveReviews : []).slice(0, 100).map(v => ({
+    objectiveReviews: (Array.isArray(body.objectiveReviews) ? body.objectiveReviews : []).slice(0, 100).map(v => {
+      const annualCoverage = annualProjection(v.annualCoverage);
+      return {
       objectiveId: clean(v.objectiveId, 80), version: clean(v.version, 80), at: v.at || null, phase: clean(v.phase, 40),
       counts: Object.fromEntries(REVIEW_COUNTS.filter(k => v.counts && Number.isSafeInteger(v.counts[k]) && v.counts[k] >= 0).map(k => [k, v.counts[k]])),
       allTargetTextReviewed: v.allTargetTextReviewed === true, semanticAcceptance: 'not-established', userConfirmed: false,
       allTargetTextCovered: v.allTargetTextCovered === true,
-      newlyReviewedPages: count(v.newlyReviewedPages), elapsedSeconds: count(v.elapsedSeconds)
-    }))
+      newlyReviewedPages: count(v.newlyReviewedPages), elapsedSeconds: count(v.elapsedSeconds),
+      ...(annualCoverage ? { annualCoverage } : {})
+      };
+    })
   };
 }
 

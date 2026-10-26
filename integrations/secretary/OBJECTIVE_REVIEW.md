@@ -173,6 +173,30 @@ coverage/status receipts. Core preserves these at
 `GET /api/secretary/desk` → `data.mail.catchup`. Existing catch-up counters
 continue to describe the last general run, not all reviewed archive pages.
 
+Objective exports also retain `annualCoverage` (`secretary.annual-source-coverage/v1`):
+at most 512 observed mail-header years, a separate unknown-date bucket, and
+Gmail/Outlook totals. Each physical target remains counted, including copies.
+`targetedSources`, `availableSources`, `reviewedSources`, `coveredSources`,
+`rejectedSources`, `gapSources`, `sourceErrors` and `metadataErrors` are separate,
+potentially overlapping source counts. Year/system totals must reconcile.
+
+The year comes from a materialized source's `mailDate` bound to the frozen
+source identity, the Outlook container's archived RFC Date, or Gmail's existing
+thread-manifest Date header after matching its exact message/thread and native
+raw receipt path/hash to the frozen inventory. Missing, invalid or mismatched
+metadata stays unknown. Gmail provider milliseconds, retrieval time, filesystem
+mtime and extracted life-event dates never supply this year. Calendar years
+retain the header's timezone rather than shifting a December date into January.
+Availability checks only presence and expected byte size, never attest integrity.
+
+The aggregate is calculated at plan/export time and written with the existing
+atomic coverage receipt. Desk reads project that stored aggregate without
+opening all source files; both Python and Core retain only bounded count/year
+fields. The Atlas popup fills empty view/life years through today, retains
+observed years outside the displayed range, and shows unknown dates separately.
+This inventory/reading view stays distinct from the density of loaded moments,
+semantic acceptance, owner decisions and the factual chronology of a life.
+
 ## Publishing candidates to Core
 
 After the worker releases its lock, `objective_publish.cjs plan` validates every
