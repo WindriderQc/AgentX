@@ -104,6 +104,13 @@ class RagServiceClient {
     return payload?.data || payload;
   }
 
+  async setDocumentValidity(documentId, { invalidatedAt, supersededBy, expectedFingerprint }) {
+    const payload = await callRagService('POST', `/api/rag/documents/${encodeURIComponent(documentId)}/validity`, {
+      body: { invalidatedAt, supersededBy, expectedFingerprint }
+    });
+    return payload?.data || payload;
+  }
+
   async getDocument(documentId) {
     const payload = await callRagService('GET', `/api/rag/documents/${encodeURIComponent(documentId)}`);
     return payload?.data || payload;

@@ -678,7 +678,7 @@
       <p class="mr-statement">${esc(candidate.statement)}</p>
       ${candidate.review?.editedStatement ? `<p class="mr-edited"><i class="fas fa-pen"></i> Approved wording: ${esc(candidate.review.editedStatement)}</p>` : ''}
       ${candidate.rationale ? `<p class="mr-rationale">${esc(candidate.rationale)}</p>` : ''}
-      ${candidate.supersedes ? `<p class="mr-rationale">Replaces memory note ${esc(candidate.supersedes.ref)}. The previous wording stays in owner history.</p>` : ''}
+      ${candidate.supersedes ? `<p class="mr-rationale">Replaces ${candidate.supersedes.authority === 'rag' ? 'RAG document' : 'memory note'} ${esc(candidate.supersedes.ref)}. The previous wording stays in owner history.</p>` : ''}
       ${candidate.supersessionPreview?.text ? `<blockquote class="mr-rationale"><b>Previous fact:</b> ${esc(candidate.supersessionPreview.text)}${candidate.supersessionPreview.validFrom ? ` · valid from ${esc(shortDate(candidate.supersessionPreview.validFrom))}` : ''}</blockquote>` : ''}
       ${candidate.supersessionPreview?.unavailable ? '<p class="mr-rationale">The previous fact is no longer available. Refresh before applying a change.</p>' : ''}
       ${candidate.automation?.reason ? `<p class="mr-rationale"><b>${esc(label(candidate.automation.disposition))}:</b> ${esc(candidate.automation.reason)}</p>` : ''}

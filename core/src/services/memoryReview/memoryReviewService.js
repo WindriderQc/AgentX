@@ -584,6 +584,11 @@ async function getRunDetail(runId, { includeObservations = false } = {}) {
   const notes = require('../memoryNoteService').personal();
   await Promise.all(doc.candidates.filter(candidate => candidate.type === 'supersedes' && candidate.supersedes?.ref)
     .map(async candidate => {
+      if (candidate.supersedes.authority === 'rag') {
+        candidate.supersessionPreview = await require('./ragReplacement').createRagReplacement()
+          .preview(candidate.supersedes.ref).catch(() => ({ unavailable: true }));
+        return;
+      }
       const source = await notes.list({ id: candidate.supersedes.ref, includeHistory: true, limit: 1 });
       const previous = source.notes[0];
       candidate.supersessionPreview = previous ? { text: previous.text, validFrom: previous.validFrom,

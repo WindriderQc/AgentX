@@ -348,11 +348,14 @@ def validate_candidates(payload: object, known_observation_ids: set[str]) -> lis
         scope = _enum(item, "scope", MEMORY_SCOPES, "project", where)
         replacement = item.get("supersedes")
         if ctype == "supersedes":
+            ref = replacement.get("ref") if isinstance(replacement, dict) else None
+            exact = isinstance(ref, str) and (
+                (replacement.get("authority") == "local_memory" and re.fullmatch(r"[a-f0-9]{24}", ref))
+                or (replacement.get("authority") == "rag" and 0 < len(ref) <= 300 and ref == ref.strip()
+                    and not re.search(r"[\x00-\x1f\x7f]", ref)))
             if not isinstance(replacement, dict) or set(replacement) != {"authority", "ref"} \
-                    or replacement.get("authority") != "local_memory" \
-                    or not isinstance(replacement.get("ref"), str) \
-                    or not re.fullmatch(r"[a-f0-9]{24}", replacement["ref"]) or scope != "owner":
-                raise SynthesisOutputError(f"{where}.supersedes must name an exact owner local_memory conflict")
+                    or not exact or scope != "owner":
+                raise SynthesisOutputError(f"{where}.supersedes must name an exact owner local_memory or rag conflict")
         elif replacement is not None:
             raise SynthesisOutputError(f"{where}.supersedes requires type supersedes")
         sensitivity_default = "private" if scope in ("owner", "household", "private_domain") else "normal"

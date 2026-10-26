@@ -56,10 +56,13 @@ module.exports = ({ getRunOrThrow, audit, configureAutomation, refreshRunReviewS
     try {
       const observed = dedupService.duplicateConflictsFor({ evidence: item.clean.evidenceRefs.map(observationId => ({ observationId })) }, run.dedupContext?.ragMatches);
       const known = [...observed, ...(candidateRag.byId.get(item.candidateId) || [])];
-      if (!known.some(ref => ref.authority === 'local_memory' && ref.sourceRef === item.clean.supersedes.ref)) {
+      const { authority, ref } = item.clean.supersedes;
+      if (!known.some(conflict => conflict.authority === authority && conflict.sourceRef === ref)) {
         throw new MemoryReviewError('The replacement reference was not found by Core in this run');
       }
-      item.supersedes = await require('../memoryNoteService').personal().replacementSource(item.clean.supersedes.ref);
+      item.supersedes = authority === 'rag'
+        ? await require('./ragReplacement').createRagReplacement().source(ref)
+        : await require('../memoryNoteService').personal().replacementSource(ref);
     } catch (error) {
       item.refused = true;
       dropped.push({ index: item.index, code: error.code || 'MEMORY_REVIEW_SUPERSESSION_INVALID',

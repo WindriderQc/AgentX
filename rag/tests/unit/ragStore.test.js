@@ -846,3 +846,41 @@ describe('RagStore replaced facts (#896)', () => {
       .rejects.toMatchObject({ code: 'MEMORY_FACT_METADATA_CONFLICT' });
   });
 });
+
+describe('RagStore reviewed validity rewrite (#896)', () => {
+  const { revisionFingerprint } = require('../../src/services/ragStore');
+  const owner = { source: 'nestor-memory', scope: 'owner', sensitivity: 'private' };
+  const sourceRefs = [{ system: 'memory-review', id: 'synthetic-run:old' }];
+  let store;
+  beforeEach(async () => {
+    store = new RagStore({ type: 'memory' });
+    store.embeddingsService = { embedBatch: jest.fn(async (texts) => texts.map(() => [0.1, 0.2, 0.3, 0.4, 0.5])) };
+    await store.upsertDocumentWithChunks('Synthetic backup runs on host A', { ...owner, documentId: 'backup-a',
+      validFrom: '2026-01-05T00:00:00.000Z', sourceRefs, tags: ['memory'] });
+  });
+
+  test('changes only validity, keeps text, labels, provenance and first recording time', async () => {
+    const before = await store.getDocument('backup-a');
+    await store.setDocumentValidity('backup-a', { invalidatedAt: '2026-10-25T00:00:00.000Z', supersededBy: 'backup-b',
+      expectedFingerprint: revisionFingerprint(before) });
+    const after = await store.getDocument('backup-a');
+    expect(after).toMatchObject({ scope: 'owner', sensitivity: 'private', validFrom: '2026-01-05T00:00:00.000Z',
+      recordedAt: before.recordedAt, sourceRefs, tags: ['memory'], invalidatedAt: '2026-10-25T00:00:00.000Z', supersededBy: 'backup-b' });
+    expect((await store.getDocumentChunks('backup-a'))[0].text).toBe('Synthetic backup runs on host A');
+    expect(revisionFingerprint(after)).not.toBe(revisionFingerprint(before));
+    await store.setDocumentValidity('backup-a', { invalidatedAt: null, supersededBy: null, expectedFingerprint: revisionFingerprint(after) });
+    expect(await store.getDocument('backup-a')).toMatchObject({ invalidatedAt: null, supersededBy: null, recordedAt: before.recordedAt });
+  });
+
+  test('refuses a changed document, a missing one and incomplete input', async () => {
+    const reviewed = revisionFingerprint(await store.getDocument('backup-a'));
+    await store.upsertDocumentWithChunks('Synthetic backup runs on host A, edited', { ...owner, documentId: 'backup-a' });
+    await expect(store.setDocumentValidity('backup-a', { invalidatedAt: '2026-10-25T00:00:00.000Z', supersededBy: 'backup-b',
+      expectedFingerprint: reviewed })).rejects.toMatchObject({ statusCode: 409, code: 'MEMORY_FACT_CHANGED' });
+    await expect(store.setDocumentValidity('missing', { invalidatedAt: null, supersededBy: null, expectedFingerprint: reviewed }))
+      .rejects.toMatchObject({ statusCode: 404 });
+    await expect(store.setDocumentValidity('backup-a', { invalidatedAt: null, expectedFingerprint: reviewed }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect((await store.getDocument('backup-a')).invalidatedAt).toBeNull();
+  });
+});

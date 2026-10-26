@@ -375,9 +375,11 @@ function validateCandidateInput(input, index, knownObservationIds) {
   const scope = boundedEnum(input.scope, MEMORY_SCOPES, 'project', `${where}.scope`);
   if (input.type === 'supersedes') {
     const ref = input.supersedes;
-    if (!ref || Object.keys(ref).some(key => !['authority', 'ref'].includes(key))
-        || ref.authority !== 'local_memory' || typeof ref.ref !== 'string' || !/^[a-f0-9]{24}$/.test(ref.ref) || scope !== 'owner') {
-      throw new MemoryReviewError(`${where}.supersedes must name an exact owner local_memory conflict`);
+    const exactRef = ref?.authority === 'local_memory' ? /^[a-f0-9]{24}$/.test(ref.ref || '')
+      : ref?.authority === 'rag' && typeof ref.ref === 'string' && ref.ref.trim() === ref.ref
+        && ref.ref.length >= 1 && ref.ref.length <= 300 && !/[\x00-\x1f\x7f]/.test(ref.ref);
+    if (!ref || Object.keys(ref).some(key => !['authority', 'ref'].includes(key)) || !exactRef || scope !== 'owner') {
+      throw new MemoryReviewError(`${where}.supersedes must name an exact owner local_memory or rag conflict`);
     }
   } else if (input.supersedes !== undefined) throw new MemoryReviewError(`${where}.supersedes requires type supersedes`);
   const defaultSensitivity = ['owner', 'household', 'private_domain'].includes(scope) ? 'private' : 'normal';
@@ -388,7 +390,7 @@ function validateCandidateInput(input, index, knownObservationIds) {
   }
   return {
     type: input.type,
-    ...(input.type === 'supersedes' && { supersedes: { authority: 'local_memory', ref: input.supersedes.ref } }),
+    ...(input.type === 'supersedes' && { supersedes: { authority: input.supersedes.authority, ref: input.supersedes.ref } }),
     statement,
     rationale: normalizeText(input.rationale).slice(0, LIMITS.RATIONALE_MAX),
     target: {

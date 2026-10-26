@@ -51,7 +51,13 @@ through rewrites and embedding-collection migration. Every RAG retrieval mode
 excludes facts invalidated by now; Core rechecks returned rows so an older RAG
 service cannot reintroduce them. Only the owner audience may request
 `includeHistory`, which marks each row current or not with its successor and
-sources. The reviewed RAG replacement apply and restore remain under #896.
+sources. Reviewed `supersedes` candidates may also name an owner RAG memory
+document that Core's deduplication observed (`authority: "rag"`). Core captures
+the document's revision fingerprint, writes the successor in the same memory
+source, then marks the predecessor `invalidatedAt`/`supersededBy` through a
+validity-only rewrite that refuses a changed document. Retries resume by the
+review key; an explicit restore clears the predecessor's validity and removes
+the unchanged successor, refusing a successor that was itself replaced.
 
 Core exposes an audience-bound memory read capability. Owner reads keep all
 information scopes, including private-domain and unclassified historical

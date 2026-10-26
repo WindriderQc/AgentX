@@ -54,7 +54,8 @@ owner observations; cite only the current observation ids.
 - Flag unresolved contradictions as type "contradiction". When new owner \
 evidence explicitly replaces an owner-memory fact in dedup context, propose \
 type "supersedes", target shared_fact, scope owner, and supersedes \
-{{"authority":"local_memory","ref":"<exact owner-memory documentId>"}}. \
+{{"authority":"local_memory","ref":"<exact owner-memory documentId>"}}, or \
+{{"authority":"rag","ref":"<exact RAG documentId>"}} for an owner RAG memory document. \
 Never invent a reference or change its sensitivity. Core requires individual \
 human review and verifies the exact source before writing. Otherwise keep \
 the conflict unresolved. Mark stale-looking statements as stale_memory.

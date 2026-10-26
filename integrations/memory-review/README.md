@@ -77,7 +77,7 @@ The owner `personal_memory` tool exposes the same explicit history list through
 Core MCP and OpenClaw. Ordinary context and search keep current facts only.
 
 A `supersedes` candidate targets `shared_fact` and names an exact `local_memory`
-reference found by Core's deduplication in that run. Core captures the source
+or `rag` reference found by Core's deduplication in that run. Core captures the source
 fingerprint itself; the synthesis cannot provide one or self-certify a conflict.
 This type always requires individual review, server apply mode and an audited
 run authorization. Apply rechecks the source, space and exact classification.
@@ -93,8 +93,16 @@ the existing derivative cleanup. Changed successors or later replacements
 refuse rollback. Interrupted apply/rollback remains reviewable under its original
 identity; never create a replacement attempt to bypass it.
 
-Equivalent RAG replacement metadata/filter/history remains under
-[#896](https://github.com/WindriderQc/AgentX/issues/896).
+A `rag` reference names an owner document in the memory sources Core searches
+(`nestor-memory`, `agent-artifacts`). Core captures its revision fingerprint,
+writes the successor in the same source with the reviewed statement and
+`memory-review` provenance, then sets the predecessor's `invalidatedAt` and
+`supersededBy` through a validity-only rewrite that refuses a changed document.
+Current RAG recall excludes the predecessor; owner history keeps it. A retry
+resumes by the review key. Restore clears the predecessor's validity and removes
+the unchanged successor; a successor that was itself replaced refuses restore.
+Unlike notes, the successor is visible from its write until the link a moment
+later, so both can briefly appear current.
 
 The synthetic tests cover filtering of owner versus harness/tool content,
 secret sanitation, bounded/resumable collection, API retries, idempotent watermarks,
