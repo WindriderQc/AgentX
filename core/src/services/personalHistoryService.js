@@ -4,6 +4,9 @@ const { createHash } = require('node:crypto');
 const Entry = require('../../models/PersonalHistoryEntry');
 const { sealText } = require('./identifierVault');
 const privacy = require('./personalHistoryPrivacy');
+const temporal = require('./personalHistoryTemporal');
+const { SOURCE_SYSTEMS } = require('./personalHistoryContextContract');
+const { projectContext } = require('./personalHistoryContextProjection');
 
 const KINDS = ['action', 'fact', 'deliverable', 'invoice', 'calendar', 'contact'];
 const STATES = ['candidate', 'retained', 'resolved', 'dismissed', 'forgotten'];
@@ -28,29 +31,14 @@ const enumValue = (value, values, fallback) => {
   return value;
 };
 
-function date(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(value)
-      || !Number.isFinite(Date.parse(value))) throw failure('An ISO timestamp with timezone is required');
-  const day = value.slice(0, 10);
-  if (new Date(`${day}T00:00:00Z`).toISOString().slice(0, 10) !== day) throw failure('The calendar date is invalid');
-  return new Date(value);
-}
-
-function eventDate(value, precision) {
-  if (precision === 'unknown') {
-    if (value) throw failure('An unknown event date must remain empty');
-    return '';
-  }
-  if (precision === 'instant') return date(value).toISOString();
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)
-      || date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value) throw failure('A day must be YYYY-MM-DD');
-  return value;
-}
+const date = value => temporal.timestamp(value, failure);
+const eventDate = (value, precision) => temporal.eventDate(value, precision, failure);
 
 function sourceOf(source = {}) {
-  const system = enumValue(source.system, ['gmail', 'outlook-export']);
+  const system = enumValue(source.system, SOURCE_SYSTEMS);
   for (const key of ['sourceSha256', 'findingId']) if (!HASH.test(source[key] || '')) throw failure(`source.${key} must be a SHA-256`);
   if (system === 'gmail' && (!ID.test(source.messageId || '') || !ID.test(source.threadId || ''))) throw failure('Exact Gmail message and thread IDs are required');
+  if (!['gmail', 'outlook-export'].includes(system)) text(source.id, 256, true);
   return system;
 }
 // A consolidated assertion names its people and places and cites every other
@@ -62,7 +50,7 @@ const labels = (value = []) => {
 };
 function relatedSources(value = []) {
   if (!Array.isArray(value) || value.length > 18) throw failure('Cite at most 18 related sources');
-  return value.map(source => ({ system: sourceOf(source), threadId: text(source.threadId, 256),
+  return value.map(source => ({ system: sourceOf(source), id: text(source.id, 256), threadId: text(source.threadId, 256),
     messageId: text(source.messageId, 256), sourceSha256: source.sourceSha256, findingId: source.findingId }));
 }
 
@@ -72,31 +60,35 @@ function normalize(input = {}) {
   for (const key of ['evidenceHash', 'reviewSha256']) if (source[key] && !HASH.test(source[key])) throw failure(`source.${key} must be a SHA-256`);
   if (source.personalNoteId && !/^[a-f0-9]{24}$/.test(source.personalNoteId)) throw failure('source.personalNoteId is invalid');
   const kind = enumValue(input.kind, KINDS);
-  const precision = enumValue(input.eventDatePrecision, ['unknown', 'day', 'instant'], 'unknown');
+  const precision = enumValue(input.eventDatePrecision, temporal.PRECISIONS, 'unknown');
   const normalized = {
     scope: 'owner', sensitivity: input.sensitivity === 'highly_private' ? 'highly_private' : 'private',
     kind, text: text(input.text, 4000, true), actor: text(input.actor, 300),
-    sourceDate: date(input.sourceDate), eventDateAsWritten: text(input.eventDateAsWritten, 200),
+    sourceDate: input.sourceDate === null ? null : date(input.sourceDate), eventDateAsWritten: text(input.eventDateAsWritten, 200),
     eventDate: eventDate(input.eventDate || '', precision), eventDatePrecision: precision,
     // An importer records assertions, never independently confirms them.
     assertionState: 'unknown', sourceStatus: text(input.sourceStatus, 1000),
     people: labels(input.people), places: labels(input.places), relatedSources: relatedSources(input.relatedSources),
-    source: { system, sourceSha256: source.sourceSha256, findingId: source.findingId,
+    source: { system, id: text(source.id, 256), sourceSha256: source.sourceSha256, findingId: source.findingId,
       threadId: text(source.threadId, 256), messageId: text(source.messageId, 256),
       evidenceHash: source.evidenceHash || '', reviewSha256: source.reviewSha256 || '',
       personalNoteId: source.personalNoteId || '', direction: enumValue(source.direction, ['received', 'sent', 'draft', 'unknown'], 'unknown') }
   };
   normalized.key = digest([system, normalized.source.threadId, normalized.source.messageId,
-    source.sourceSha256, kind, source.findingId].join('\n'));
+    source.sourceSha256, kind, source.findingId, ...(!['gmail', 'outlook-export'].includes(system) ? [normalized.source.id] : [])].join('\n'));
   return normalized;
 }
 
-function project(row) {
+function project(row, options) {
   const forgotten = row.reviewState === 'forgotten';
+  const confirmationCurrent = !forgotten && row.assertionState === 'confirmed' && (!row.context ||
+    (row.confirmation?.contextRevision === row.context.revision && row.confirmation?.contextHash === row.context.inputHash));
   return { id: String(row._id), kind: row.kind, text: forgotten ? '' : row.text, actor: forgotten ? '' : row.actor,
     sourceDate: row.sourceDate, eventDate: forgotten ? '' : row.eventDate,
     eventDateAsWritten: forgotten ? '' : row.eventDateAsWritten, eventDatePrecision: row.eventDatePrecision,
-    assertionState: row.assertionState, sourceStatus: forgotten ? '' : row.sourceStatus,
+    assertionState: row.assertionState === 'confirmed' && !confirmationCurrent ? 'unknown' : row.assertionState,
+    recordedAssertionState: row.assertionState, confirmationCurrent, confirmation: forgotten ? null : row.confirmation || null,
+    sourceStatus: forgotten ? '' : row.sourceStatus,
     people: forgotten ? [] : row.people || [], places: forgotten ? [] : row.places || [],
     relatedSources: forgotten ? [] : row.relatedSources || [],
     reviewState: row.reviewState, revision: row.revision, sensitivity: row.sensitivity,
@@ -105,10 +97,11 @@ function project(row) {
       ? `https://mail.google.com/mail/#all/${encodeURIComponent(row.source.threadId)}` : null,
     archiveUrl: !forgotten && row.source?.system === 'gmail'
       ? `/api/secretary/archive/${encodeURIComponent(row.source.messageId)}?sha256=${row.source.sourceSha256}` : null,
-    decision: forgotten ? null : row.decision, souvenirNoteId: forgotten ? '' : row.souvenirNoteId || '', createdAt: row.createdAt, updatedAt: row.updatedAt };
+    decision: forgotten ? null : row.decision, souvenirNoteId: forgotten ? '' : row.souvenirNoteId || '', createdAt: row.createdAt, updatedAt: row.updatedAt,
+    ...projectContext(row, options) };
 }
 
-async function record(input) {
+async function record(input, { context, importKey } = {}) {
   const value = normalize(input);
   let existing = await Entry.findOne({ key: value.key, scope: 'owner' }).lean();
   if (existing) {
@@ -131,8 +124,9 @@ async function record(input) {
   const forgottenQuery = { noteId: value.source.personalNoteId, contentHash: value.contentHash };
   let suppressed = await privacy.forgottenSource(forgottenQuery);
   const insert = { ...value, reviewState: suppressed ? 'forgotten' : 'candidate', revision: 0,
+    ...(context ? { contextImportKey: importKey, ...(!suppressed ? { context: { ...context, revision: 1 } } : {}) } : {}),
     ...(suppressed ? { text: '', actor: '', sourceStatus: '', eventDateAsWritten: '', people: [], places: [], relatedSources: [],
-      forgottenAt: new Date(), decision: { reason: '', at: new Date() } } : {}) };
+      context: null, forgottenAt: new Date(), decision: { reason: '', at: new Date() } } : {}) };
   let row, created = false;
   try {
     const result = await Entry.findOneAndUpdate({ key: value.key, scope: 'owner' }, { $setOnInsert: insert },
@@ -161,7 +155,12 @@ async function list(input = {}) {
   ] }];
   else filter.reviewState = input.state ? enumValue(input.state, STATES) : { $ne: 'forgotten' };
   if (input.kind) filter.kind = enumValue(input.kind, KINDS);
-  if (input.source) filter['source.system'] = enumValue(input.source, ['gmail', 'outlook-export']);
+  if (input.source) filter['source.system'] = enumValue(input.source, SOURCE_SYSTEMS);
+  if (input.sourceKey) {
+    if (!HASH.test(input.sourceKey)) throw failure('sourceKey must be SHA-256');
+    filter.key = input.sourceKey;
+  }
+  if (input.importId) filter.contextImportKey = digest(text(input.importId, 256, true));
   if (input.souvenir) filter.souvenirNoteId = enumValue(input.souvenir, ['kept', 'not-kept']) === 'kept'
     ? { $nin: ['', null] } : { $in: ['', null] };
   if (input.before || input.since) filter.sourceDate = {
@@ -174,14 +173,14 @@ async function list(input = {}) {
   const limit = Math.max(1, Math.min(100, Math.trunc(Number(input.limit)) || 30));
   const offset = Math.max(0, Math.trunc(Number(input.offset)) || 0);
   const [rows, total] = await Promise.all([
-    Entry.find(filter).sort({ sourceDate: 1, _id: 1 }).skip(offset).limit(limit).lean(), Entry.countDocuments(filter)
+    Entry.find(filter).select('-context.sources.body').sort({ sourceDate: 1, _id: 1 }).skip(offset).limit(limit).lean(), Entry.countDocuments(filter)
   ]);
   // A kept entry shows its souvenir as it is now, with the owner's corrections.
   const kept = new Map((await notes().souvenirs(rows.map(row => row.souvenirNoteId).filter(Boolean))).map(note => [note.id, note]));
   const entries = rows.map(row => {
     const note = row.souvenirNoteId && row.reviewState !== 'forgotten' ? kept.get(String(row.souvenirNoteId)) : null;
     return { ...project(row), ...(note ? { souvenir: { id: note.id, revision: note.revision, text: note.text, eventDate: note.eventDate,
-      eventDatePrecision: note.eventDatePrecision, people: note.people, places: note.places } } : {}) };
+      eventDatePrecision: note.eventDatePrecision, people: note.people, places: note.places, historyContext: note.historyContext || null } } : {}) };
   });
   return { authority: 'agentx.core', entries, total, nextOffset: offset + rows.length < total ? offset + rows.length : null,
     ordering: 'source-date-oldest-first', eventDateCoverage: 'event-dates-are-independent-of-source-dates' };
@@ -197,16 +196,24 @@ async function review(id, input = {}) {
   if ((entry.reviewHistory || []).length >= 1000) throw failure('History decision capacity reached; retain the existing audit before continuing', 409);
   if (state === 'resolved' && !['action', 'deliverable'].includes(entry.kind)) throw failure('Only an action or deliverable can be resolved');
   const assertion = input.assertionState === undefined ? entry.assertionState : enumValue(input.assertionState, ASSERTIONS);
+  const confirmsContext = state !== 'forgotten' && input.assertionState === 'confirmed' && Boolean(entry.context);
+  if (confirmsContext && (!Number.isSafeInteger(input.contextRevision) || input.contextRevision < 1)) throw failure('The displayed contextRevision is required to confirm this assertion');
+  if (confirmsContext && input.contextRevision !== entry.context.revision) throw failure('History context changed; reload before confirming it', 409);
   const precision = input.eventDatePrecision === undefined ? entry.eventDatePrecision
-    : enumValue(input.eventDatePrecision, ['unknown', 'day', 'instant']);
+    : enumValue(input.eventDatePrecision, temporal.PRECISIONS);
   const when = eventDate(input.eventDate === undefined ? entry.eventDate : input.eventDate, precision);
   const changes = { reviewState: state, assertionState: assertion, eventDate: when,
     eventDatePrecision: precision, decision: { reason, at: new Date() } };
+  if (input.assertionState === 'confirmed') changes.confirmation = { revision: input.revision + 1,
+    contextRevision: entry.context?.revision || null, contextHash: entry.context?.inputHash || '', reason, at: changes.decision.at };
+  else if (input.assertionState !== undefined) changes.confirmation = null;
   if (state === 'forgotten') Object.assign(changes, { text: '', actor: '', sourceStatus: '', eventDate: '', people: [], places: [], relatedSources: [],
-    eventDateAsWritten: '', eventDatePrecision: 'unknown', reviewHistory: [], forgottenAt: new Date(), decision: { reason: '', at: new Date() } });
+    context: null, confirmation: null, eventDateAsWritten: '', eventDatePrecision: 'unknown', reviewHistory: [], forgottenAt: new Date(), decision: { reason: '', at: new Date() } });
   const decision = { revision: input.revision + 1, state, assertionState: assertion, eventDate: when,
-    eventDatePrecision: precision, reason, at: changes.decision.at };
-  const row = await Entry.findOneAndUpdate({ _id: id, scope: 'owner', revision: input.revision, reviewState: { $ne: 'forgotten' } },
+    eventDatePrecision: precision, reason, at: changes.decision.at,
+    ...(confirmsContext ? { contextRevision: entry.context.revision, contextHash: entry.context.inputHash } : {}) };
+  const row = await Entry.findOneAndUpdate({ _id: id, scope: 'owner', revision: input.revision, reviewState: { $ne: 'forgotten' },
+    ...(confirmsContext ? { 'context.revision': input.contextRevision } : {}) },
     { $set: changes, $inc: { revision: 1 }, ...(state === 'forgotten' ? {} : { $push: { reviewHistory: decision } }) },
     { new: true, runValidators: true }).lean();
   if (!row) throw failure('History changed; reload before reviewing it', 409);
@@ -230,29 +237,54 @@ async function keepAsSouvenir(id, input = {}) {
   const entry = await Entry.findOne({ _id: id, scope: 'owner' }).lean();
   if (!entry || entry.reviewState === 'forgotten') throw failure('History entry is unavailable', 404);
   if (entry.kind === 'action') throw failure('An action is resolved, not kept as a souvenir');
-  if (entry.souvenirNoteId) return { authority: 'agentx.core', created: false, entry: project(entry), souvenirNoteId: entry.souvenirNoteId };
+  if (entry.souvenirNoteId) {
+    const souvenir = await notes().finalizeSouvenir(entry.souvenirNoteId);
+    return { authority: 'agentx.core', created: false, entry: project(entry), souvenirNoteId: entry.souvenirNoteId, souvenir };
+  }
   if (entry.revision !== input.revision) throw failure('History changed; reload before reviewing it', 409);
-  const precision = input.eventDatePrecision === undefined ? entry.eventDatePrecision
-    : enumValue(input.eventDatePrecision, ['unknown', 'day', 'instant']);
-  const when = eventDate(input.eventDate === undefined ? entry.eventDate : input.eventDate, precision);
+  if (entry.context && (!Number.isSafeInteger(input.contextRevision) || input.contextRevision < 1)) throw failure('The displayed contextRevision is required to keep this assertion');
+  if (entry.context && input.contextRevision !== entry.context.revision) throw failure('History context changed; reload before keeping it', 409);
+  const current = entry.context ? { ...entry.context.timeline, ...(entry.context.overrides || {}) } : null;
+  let defaultDate = current?.date || entry.eventDate;
+  const defaultPrecision = current ? current.precision : entry.eventDatePrecision;
+  if (current && !current.date) defaultDate = '';
+  // Display anchors at year/month precision are not exact days in a souvenir.
+  if (defaultPrecision === 'year') defaultDate = defaultDate?.slice(0, 4);
+  if (defaultPrecision === 'month') defaultDate = defaultDate?.slice(0, 7);
+  const precision = input.eventDatePrecision === undefined ? defaultPrecision : enumValue(input.eventDatePrecision, temporal.PRECISIONS);
+  const when = eventDate(input.eventDate === undefined ? defaultDate : input.eventDate, precision);
   const cited = [entry.source, ...(entry.relatedSources || [])];
+  const contextSources = (entry.context?.sources || []).map(source => {
+    if (digest(source.body) !== source.bodySha256) throw failure('Stored source integrity check failed', 409);
+    return { system: ['media', 'ledger', 'testimony', 'conversation', 'calendar'].includes(source.kind) ? source.kind : 'document', sourceSha256: source.bodySha256 };
+  });
   const sources = [{ system: 'personal-history', id: String(entry._id) },
-    ...[...new Map(cited.map(s => [`${s.system}:${s.sourceSha256}`, { system: s.system, id: s.sourceSha256 }])).values()]];
+    ...[...new Map([...cited, ...contextSources].map(source => [`${source.system}:${source.sourceSha256}`,
+      { system: source.system, id: source.sourceSha256 }])).values()]];
   const people = entry.people?.length ? entry.people : entry.actor ? [entry.actor] : [];
-  const note = await notes().keepSouvenir({ text: souvenirText({ ...entry, eventDate: when }, input),
+  const content = current ? [...new Set([current.title, current.description].filter(Boolean))].join('\n\n') : entry.text;
+  const note = await notes().keepSouvenir({ text: souvenirText({ text: content, eventDate: when }, input),
     eventDate: when, eventDatePrecision: precision, people: input.people ?? people,
-    places: input.places ?? entry.places, sourceRefs: sources, source: 'secretary-history' });
+    places: input.places ?? (current?.place ? [current.place] : entry.places), sourceRefs: sources, source: 'secretary-history',
+    historyContext: require('./personalHistorySouvenirContext').snapshot(entry, current) }, { pending: true });
   const at = new Date();
   const reason = 'Kept as a souvenir';
   const state = entry.reviewState === 'resolved' ? 'resolved' : 'retained';
-  const row = await Entry.findOneAndUpdate({ _id: id, scope: 'owner', revision: input.revision, reviewState: { $ne: 'forgotten' } },
+  const row = await Entry.findOneAndUpdate({ _id: id, scope: 'owner', revision: input.revision, reviewState: { $ne: 'forgotten' },
+    ...(entry.context ? { 'context.revision': input.contextRevision } : {}) },
     { $set: { reviewState: state, souvenirNoteId: note.id, eventDate: when, eventDatePrecision: precision, decision: { reason, at } },
       $inc: { revision: 1 }, $push: { reviewHistory: { revision: input.revision + 1, state,
         assertionState: entry.assertionState, eventDate: when, eventDatePrecision: precision, reason, at } } },
     { new: true, runValidators: true }).lean();
-  // The note is idempotent by source: a reload and retry links the same one.
-  if (!row) throw failure('History changed; reload before reviewing it', 409);
-  return { authority: 'agentx.core', created: note.created, entry: project(row), souvenirNoteId: note.id };
+  // An interrupted link leaves a hidden pending note. A fresh owner request
+  // can prepare it again, or resume activation after a lost link response.
+  if (!row) {
+    const latest = await Entry.findById(id).lean();
+    if (latest?.reviewState === 'forgotten') await notes().forget(note.id);
+    throw failure('History changed; reload before keeping it', 409);
+  }
+  const souvenir = await notes().finalizeSouvenir(note.id);
+  return { authority: 'agentx.core', created: note.created, entry: project(row), souvenirNoteId: note.id, souvenir };
 }
 
 module.exports = { normalize, record, list, review, keepAsSouvenir, project };

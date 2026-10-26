@@ -59,6 +59,14 @@ test('the general note editor cannot change a kept souvenir\'s original source r
   expect(corrected.sourceRefs).toEqual(refs);
 });
 
+test('the general editor preserves every original citation of a multi-source souvenir', async () => {
+  const refs = Array.from({ length: 35 }, (_, i) => ({ system: 'document', id: `synthetic-source-${i}` }));
+  const kept = await owner.keepSouvenir({ text: 'Synthetic multi-source souvenir', sourceRefs: refs });
+  const corrected = await owner.remember({ id: kept.id, text: 'Synthetic corrected multi-source souvenir' });
+  expect(corrected.sourceRefs).toEqual(refs);
+  expect((await owner.list()).notes[0].sourceRefs).toEqual(refs);
+});
+
 test.each([
   { validFrom: 'yesterday' }, { validFrom: '2026-01-01T12:00:00' }, { validFrom: '2026-02-31T00:00:00Z' }, { validFrom: { $gt: 0 } },
   { sourceRefs: [{ system: 'memory-review', id: 'x\nforged' }] },
