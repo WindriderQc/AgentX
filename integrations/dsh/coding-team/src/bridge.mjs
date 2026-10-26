@@ -29,12 +29,13 @@ export class WorkerSessions {
             this.readers.set(worker.logs, backend);
           }
           for (const stored of await backend.list()) {
+            const key = `${worker.taskId}:${stored.header.id}`;
+            let record = this.records.get(key);
+            if (record?.revision === stored.revision) { record.updatedAt = Date.now(); continue; }
             const handle = await backend.open(stored.header.id, 'read');
             let events;
             try { ({ events } = await handle.read()); } finally { await handle.close(); }
             if (!events.length) continue;
-            const key = `${worker.taskId}:${stored.header.id}`;
-            let record = this.records.get(key);
             if (!record) {
               // Observation is ephemeral: the original native log is its durable owner.
               // Reconstruct from that owner after restart, never from a second task store.
@@ -79,18 +80,20 @@ export class WorkerSessions {
                 record.events.push(event);
               }
             }
+            record.revision = stored.revision;
             record.updatedAt = Date.now();
           }
         }
         this.error = undefined;
       } catch (error) {
-        this.error = 'Worker histories could not be refreshed';
+        this.error = 'Actualisation des historiques indisponible';
         throw error;
       }
     });
   }
   list() {
-    return { error: this.error ?? null, sessions: [...this.records.values()].map(record => ({
+    return { error: this.error ?? null, sessions: [...this.records.values()].sort((left, right) =>
+      (right.events.at(-1)?.time ?? 0) - (left.events.at(-1)?.time ?? 0)).map(record => ({
       sessionId: record.id, taskId: record.taskId, sourceId: record.sourceId,
       eventCount: record.events.length, updatedAt: record.updatedAt,
       lastEventAt: record.events.at(-1)?.time ?? null, error: record.error ?? null,
