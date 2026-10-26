@@ -2,36 +2,17 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from pathlib import Path
 
 from evidence_store import load, now
 from review_response import ReviewInvalidOutput
+from review_receipts import hashed, durable
+from review_recovery import selection, terminal_at
 
 
 class ReviewUncertain(RuntimeError):
     """The exact native request must be reconciled before another model call."""
-
-
-def hashed(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-
-
-def durable(file, value, exclusive=False):
-    file.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    target = file if exclusive else file.with_name(file.name + f".{os.getpid()}.tmp")
-    flags = os.O_WRONLY | os.O_CREAT | (os.O_EXCL if exclusive else os.O_TRUNC)
-    descriptor = os.open(target, flags, 0o600)
-    with os.fdopen(descriptor, "w", encoding="utf-8") as output:
-        json.dump(value, output, ensure_ascii=False, indent=2)
-        output.flush(); os.fsync(output.fileno())
-    if not exclusive:
-        target.replace(file)
-    if os.name != "nt":
-        directory = os.open(file.parent, os.O_RDONLY)
-        try: os.fsync(directory)
-        finally: os.close(directory)
 
 
 def completed(directory, state):
@@ -85,16 +66,23 @@ def unsettled(root, attempts="review-attempts"):
     result = []
     for file in (Path(root) / attempts).glob("*/attempt.json"):
         try:
+            directory, expected = selection(file.parent)
+            file = directory / "attempt.json"
+            if not file.exists() and expected is not None:
+                continue  # an explicit linked plan exists, but no child dispatch has started
             state = load(file, {})
+            if expected is not None and (state.get("intent") != expected or state.get("intentSha256") != hashed(expected)):
+                raise ValueError("The retained linked attempt differs from its authorized plan")
             if state.get("phase") == "refused":
                 continue
             if completed(file.parent, state) is not None:
                 continue
+            terminal = terminal_at(file.parent, state)
         except (OSError, ValueError, KeyError, TypeError):
-            state = {}
+            state, terminal = {}, None
         result.append({"requestId": state.get("requestId"), "pageId": state.get("pageId"),
                        "phase": state.get("phase", "unreadable"), "receipt": str(file),
-                       **({"outcome": "completed-invalid-output"} if state.get("phase") == "invalid-output" and response_received(file.parent, state) else {})})
+                       **({"outcome": "completed-invalid-output"} if terminal or state.get("phase") == "invalid-output" and response_received(file.parent, state) else {})})
     return result
 
 
@@ -107,15 +95,28 @@ def blocked_phase(held):
     return "validation-error" if held and blocked_counts(held)["unresolvedInferenceAttempts"] == 0 else "uncertain"
 
 
+def result_file(root, page_id, attempts="review-attempts"):
+    """Locate an explicitly linked retained result without issuing or authorizing a call."""
+    try:
+        directory, _ = selection(Path(root) / attempts / hashed(page_id))
+        return directory / "result.json"
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ReviewUncertain("The retained review chain needs native reconciliation") from error
+
+
 def extract_once(archive, client, system, prompt, page, light=False, attempts="review-attempts"):
     directory = archive.root / attempts / hashed(page["pageId"])
-    file = directory / "attempt.json"
     intent = {"pageId": page["pageId"], "systemSha256": hashed(system), "promptSha256": hashed(prompt),
               "core": getattr(client, "base", None), "taskType": getattr(client, "task_type", None),
               "lightModel": getattr(client, "light_model", None) if light else None,
               "lightHost": getattr(client, "light_host", None) if light else None, "light": light}
     if getattr(client, "max_output_tokens", None) is not None:
         intent["maxOutputTokens"] = client.max_output_tokens
+    try:
+        directory, intent = selection(directory, intent)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ReviewUncertain("The explicit native retry plan no longer matches this review intent") from error
+    file = directory / "attempt.json"
     identity = "secretary-review-" + hashed(intent)
     state = {"schema": "agentx.secretary-review-attempt/v1", "requestId": identity, "pageId": page["pageId"],
              "threadId": page["threadId"], "intentSha256": hashed(intent), "intent": intent,
@@ -133,6 +134,12 @@ def extract_once(archive, client, system, prompt, page, light=False, attempts="r
             return value
         if state.get("phase") == "invalid-output" and response_received(directory, state):
             raise ReviewInvalidOutput(state.get("invalidReason", "retained-invalid-response"), state.get("limits"))
+        try:
+            terminal = terminal_at(directory, state)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise ReviewUncertain("The saved terminal reconciliation needs inspection") from error
+        if terminal:
+            raise ReviewInvalidOutput("native-terminal-unusable-output", terminal["evidence"]["inferenceLog"])
         if state.get("phase") != "refused":
             raise ReviewUncertain("Page review outcome is unconfirmed; retain its native request identity")
         state.update(phase="pending", attempt=state["attempt"] + 1, updatedAt=now())
