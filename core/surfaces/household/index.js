@@ -248,7 +248,7 @@ function register(api) {
   ], require('../../src/ui/productShell').householdPage(app, path.join(publicRoot, 'index.html')));
   app.get('/api/household/avatar/llmx-face.js', createScriptRelay({ resolveUrl: avatarModuleUrl, fetchWithTimeout,
     unavailable: (res, error) => fail(res, error.status || 503, error.message, error.code || 'AVATAR_UNAVAILABLE') }));
-
+  require('./llmx-page').register({ app, env: conversationEnv, fetchWithTimeout });
   registerVoixRoutes(app, { express, standardJsonParser, envelope, fail, cleanText, normalizeVoixTranscriptionMultipart,
     interceptTranscript: (req, result) => ownerUnlock.intercept(req, result, { tokenHash: req.familyDevice?.tokenHash }) });
 

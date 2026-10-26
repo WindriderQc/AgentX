@@ -28,6 +28,8 @@ const STATIC_PATHS = [
 const FAMILY_APIS = [
   /^\/api\/voice-personas\/(?:catalog|packs|sounds|knowledge\/status|sessions|family)(?:\/|$)/,
   /^\/api\/voix\//,
+  /^\/api\/consumers\/nestor\/v1\/llmx\/family(?:\/|$)/,
+  /^\/api\/household\/llmx\/(?:room\.js$|assets\/)/,
   /^\/api\/family\//,
   /^\/api\/panel\/status$/,
   /^\/api\/household\/(?:avatar\/|device-acceptance|family-device(?:\/relock)?$)/
@@ -44,6 +46,7 @@ function allowedForFamilyDevice(req) {
   if (FAMILY_APIS.some((pattern) => pattern.test(path))) return true;
   if (req.method !== 'GET') return false;
   if (FAMILY_PAGES.has(path)) return true;
+  if (path === '/llmx') return req.query?.profile === 'family';
   // Children may change their own voice settings (owner decision), only in the family scope.
   return path === '/voice-lab' && req.query?.scope === 'family';
 }

@@ -1082,6 +1082,19 @@ The Super Dad and Famille avatar dock loads GraphysX's `<llmx-face>` module from
 relays it at `/api/household/avatar/llmx-face.js`, like the VoiX player, so the
 page CSP stays `'self'`; without it the dock shows a 2D orb driven by the same
 conversation signals.
+`/llmx` hosts GraphysX's existing Forge and conversation on Core's origin;
+`/llmx?profile=family` selects its existing Family contract. The page derives
+`/embed/llmx-room.js` beside the configured avatar module, relays up to 6 MiB
+of JavaScript, and relays graphical assets from that same configured host's
+`/assets/` tree (GET only, validated paths/types, 16 MiB maximum per asset,
+no credentials or redirects). The Forge uses native LLMx/VoiX routes and keeps
+the Family-device cookie. A pinned device cannot enter the personal Forge or
+consumer. Only this page adds the existing narrow WebAssembly CSP allowance;
+cross-site POSTs remain refused. Public GraphysX links to this LAN page and
+does not call private APIs. Each origin retains its own scene/session library.
+Publish the compatible GraphysX module before receiving the installed Core
+page; record both versions separately. No new service, token or instance env
+setting is required. A missing module leaves a link back to Nestor.
 `/diskx` shows GraphysX's `<diskx-city>`: the disks Data indexed and the latest
 Janitor duplicate report in 3D (cyan for the copy the report's survivor rule
 keeps, amber for the extra copies). Core relays the module from
