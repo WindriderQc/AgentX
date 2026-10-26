@@ -28,6 +28,7 @@ function configuration(value) {
   if (value.maxOutputTokens !== undefined && (!Number.isInteger(value.maxOutputTokens) || value.maxOutputTokens <= 0 || value.maxOutputTokens > 65536)) throw new Error('maxOutputTokens must be an explicit positive integer up to 65536');
   if (value.reviewBeforePublication !== undefined && typeof value.reviewBeforePublication !== 'boolean') throw new Error('reviewBeforePublication must be explicit boolean');
   if (value.publicationMode !== undefined && !['publish-candidates', 'review-only'].includes(value.publicationMode)) throw new Error('publicationMode must be publish-candidates or review-only');
+  if (value.onInvalidOutput !== undefined && (value.onInvalidOutput !== 'retain-and-continue' || value.publicationMode !== 'review-only')) throw new Error('onInvalidOutput retain-and-continue requires explicit review-only mode');
   if (value.existingQueueId !== undefined && (!/^[a-f0-9-]{36}$/.test(value.existingQueueId) || !/^[a-f0-9]{64}$/.test(value.expectedQueueIntentHash || ''))) throw new Error('Adoption needs an exact existing queue ID and immutable intent hash');
   return value;
 }
@@ -63,6 +64,7 @@ function dependencies(config, exec = spawnSync) {
         ...(config.archiveRoot ? ['--root', config.archiveRoot] : []),
         ...(config.maxPagesPerSource ? ['--max-pages-per-source', String(config.maxPagesPerSource)] : []),
         ...(config.maxOutputTokens ? ['--max-output-tokens', String(config.maxOutputTokens)] : []),
+        ...(config.onInvalidOutput === 'retain-and-continue' ? ['--retain-rejected-pages'] : []),
         ...(config.priorityFile ? ['--priority-file', config.priorityFile] : [])], { encoding: 'utf8' });
     },
     publish(directory) {

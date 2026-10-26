@@ -52,7 +52,8 @@ function registerSecretaryCatchupRoutes({ router, envelope, fail, ideaInbox = nu
 // Counts only, as the host reported them; never message content.
 const count = value => (Number.isFinite(Number(value)) && value !== null ? Number(value) : null);
 const REVIEW_COUNTS = ['targetSources', 'materializedSources', 'sourcesPendingMaterialization', 'sourcesTextReviewed',
-  'sourcesWithGaps', 'sourceErrors', 'expectedPagesKnown', 'reviewedPages', 'pendingPagesKnown', 'invalidReviewReceipts', 'extractedMoments', 'reviewGaps', 'sourcesTextCovered', 'equivalentPages'];
+  'sourcesWithGaps', 'sourceErrors', 'expectedPagesKnown', 'reviewedPages', 'pendingPagesKnown', 'invalidReviewReceipts', 'extractedMoments', 'reviewGaps', 'sourcesTextCovered', 'equivalentPages',
+  'rejectedPages', 'sourcesWithRejectedPages'];
 function reviewProgress(body) {
   const archive = body.archiveProgress;
   return {

@@ -35,6 +35,26 @@ Existing `reviewBeforePublication: true` pilot gates still stop after their
 bounded native release. Queue planning/admission, model routing and source
 reading receipts remain the same in both modes.
 
+Review-only campaigns can explicitly set
+`onInvalidOutput: "retain-and-continue"`. A certainly received terminal response
+which fails output validation then becomes an immutable
+`page-dispositions/<pageId>.json` gap. Its exact objective/source/page identity,
+text hash and range, native request identity, validation failure and retained
+HTTP/model/result hashes remain verifiable. The validator is unchanged; no
+quote or result is edited, published or retried. Previously received cached
+results can receive this disposition without another inference.
+
+This policy changes the immutable campaign configuration and requires a new
+campaign identity. It changes neither the frozen objective nor the model
+request. Unknown transport/status, missing or corrupt receipts, source errors
+and manifest/identity failures still stop for reconciliation. The page budget
+counts newly accepted and newly rejected pages together. A rejected page is
+excluded from accepted reviews, findings and text coverage, and remains visible
+in `rejectedPages`, `sourcesWithRejectedPages` and source gaps. It is removed
+only from `pendingPagesKnown` (work still eligible to attempt); when all other
+pages have been visited, coverage stays incomplete and the controller stops in
+`needs-source-review` instead of creating empty chunks.
+
 The controller records its native queue key before submission. It reconciles
 the same key/ID on a lost response, respects Core's placement, and obtains the
 operator dispatch only inside its reservation. Each chunk runs in one retained

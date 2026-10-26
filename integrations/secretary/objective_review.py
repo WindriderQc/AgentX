@@ -21,6 +21,7 @@ from mailbox_backfill import Lock
 from objective_schema import INSTRUCTIONS, SCHEMA, normalize_representation, validate
 from objective_sources import inventory, materialize, pages
 import objective_equivalence as equivalent
+import objective_dispositions as dispositions
 from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled, blocked_phase, blocked_counts, result_file
 from review_response import ReviewInvalidOutput
 from secretary_evidence import DEFAULT_ROOT
@@ -118,8 +119,12 @@ def coverage(objective, manifest):
     for source in manifest["sources"]:
         plan = load(objective / "sources" / (source_key(source) + ".json"), {})
         expected = plan.get("pageIds", [])
-        read = []
+        read, rejected = [], []
         for pid in expected:
+            rejected_row = dispositions.read(objective, manifest, pid)
+            if rejected_row:
+                rejected.append(pid)
+                continue
             file = objective / "page-reviews" / (pid + ".json")
             if not file.is_file():
                 continue
@@ -131,25 +136,30 @@ def coverage(objective, manifest):
                 read.append(pid)
             except (OSError, ValueError, KeyError, TypeError):
                 counts["invalidReviewReceipts"] += 1
-        reused = alias_index.get((source["system"], source["id"], source["sha256"]), set()) & (set(expected) - set(read))
+        reused = alias_index.get((source["system"], source["id"], source["sha256"]), set()) & (set(expected) - set(read) - set(rejected))
         complete = bool(plan) and len(read) == len(expected) and bool(expected) and not plan.get("error")
         covered = bool(plan) and len(read) + len(reused) == len(expected) and bool(expected) and not plan.get("error")
+        gaps = [*plan.get("gaps", []), *[{"code": "model-output-rejected", "pageId": pid,
+                "receipt": "page-dispositions/" + pid + ".json"} for pid in rejected]]
         row = {"system": source["system"], "messageId": source["id"], "sourceSha256": source["sha256"],
                "materialized": bool(plan), "expectedPages": len(expected) if plan else None,
                "reviewedPages": len(read), "equivalentPages": len(reused),
-               "pendingPages": len(expected) - len(read) - len(reused) if plan else None,
-               "textReviewComplete": complete, "textCovered": covered, "gaps": plan.get("gaps", []), "error": plan.get("error")}
+               "pendingPages": len(expected) - len(read) - len(reused) - len(rejected) if plan else None,
+               "rejectedPages": len(rejected),
+               "textReviewComplete": complete, "textCovered": covered, "gaps": gaps, "error": plan.get("error")}
         sources.append(row)
         counts["materializedSources"] += bool(plan)
         counts["sourcesPendingMaterialization"] += not bool(plan)
         counts["sourcesTextReviewed"] += complete
         counts["sourcesTextCovered"] += covered
         counts["equivalentPages"] += len(reused)
-        counts["sourcesWithGaps"] += bool(plan.get("gaps"))
+        counts["sourcesWithGaps"] += bool(gaps)
+        counts["sourcesWithRejectedPages"] += bool(rejected)
+        counts["rejectedPages"] += len(rejected)
         counts["sourceErrors"] += bool(plan.get("error"))
         counts["expectedPagesKnown"] += len(expected)
         counts["reviewedPages"] += len(read)
-        counts["pendingPagesKnown"] += len(expected) - len(read) - len(reused)
+        counts["pendingPagesKnown"] += len(expected) - len(read) - len(reused) - len(rejected)
         by_system[source["system"]] = by_system.get(source["system"], 0) + 1
     return {"schema": CONTRACT, "at": now(), "objectiveId": manifest["config"]["id"],
             "version": manifest["config"]["version"], "objectiveSha256": manifest["objectiveSha256"],
@@ -217,7 +227,7 @@ def export(objective, manifest):
 
 
 def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, per_source_pages=None,
-        max_seconds=1800, priority=(), sleep=time.sleep, clock=time.monotonic, stop=lambda: False):
+        max_seconds=1800, priority=(), retain_rejected_pages=False, sleep=time.sleep, clock=time.monotonic, stop=lambda: False):
     if not UUID.fullmatch(queue_id or "") or not UUID.fullmatch(dispatch_id or ""):
         raise ValueError("Native run requires its explicit Core operator queue/dispatch identities")
     if type(max_pages) is not int or max_pages <= 0:
@@ -230,6 +240,13 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         raise ValueError("The native client thinking mode differs from the frozen objective")
     fence = SimpleNamespace(root=objective)
     held = unsettled(objective)
+    cached_invalid_pages = set()
+    if retain_rejected_pages:
+        for row in held:
+            if row.get("outcome") == "completed-invalid-output":
+                dispositions.terminal(objective, row["pageId"], row["requestId"])
+                cached_invalid_pages.add(row["pageId"])
+        held = [row for row in held if row.get("outcome") != "completed-invalid-output"]
     if held:
         status = {"schema": CONTRACT, "startedAt": now(), "at": now(), "queueRequestId": queue_id,
                   "dispatchId": dispatch_id, "phase": blocked_phase(held), "attempts": held,
@@ -237,7 +254,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         durable(objective / "status.json", status)
         return {**status, "coverage": coverage(objective, manifest)}
     system = INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + manifest["config"]["instructions"]
-    started, made, inferences = clock(), 0, 0
+    started, made, rejected, inferences = clock(), 0, 0, 0
     requested_stop = stop
     stop = lambda: requested_stop() or clock() - started >= max_seconds
     status = {"schema": CONTRACT, "startedAt": now(), "queueRequestId": queue_id, "dispatchId": dispatch_id}
@@ -250,13 +267,15 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
     def finish(phase, **extra):
         status.update(phase=phase, at=now(), newlyReviewedPages=made, inferenceCalls=inferences,
                       elapsedSeconds=round(clock() - started, 3), **extra)
+        if retain_rejected_pages:
+            status.update(newlyRejectedPages=rejected, processedPages=made + rejected)
         durable(objective / "status.json", status)
         return {**status, "coverage": export(objective, manifest)}
 
     order = {value: index for index, value in enumerate(priority)}
     ordered = sorted(manifest["sources"], key=lambda source: order.get(source["system"] + ":" + source["id"], len(order)))
     for source in ordered:
-        if made >= max_pages or stop():
+        if made + rejected >= max_pages or stop():
             return finish("partial" if not stop() else "stopped")
         plan_file = objective / "sources" / (source_key(source) + ".json")
         previous = load(plan_file, {})
@@ -292,6 +311,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         for page in plan:
             if page["pageId"] in reused:
                 continue
+            if retain_rejected_pages and dispositions.read(objective, manifest, page["pageId"], expected_identity=page["identity"]):
+                continue
             if (objective / "page-reviews" / (page["pageId"] + ".json")).is_file():
                 read_receipt(objective / "page-reviews" / (page["pageId"] + ".json"), manifest)
                 continue
@@ -302,7 +323,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                 equivalent.alias(objective, current, unit, unit_pages, canonical, _source_record)
                 reused.update(p["pageId"] for p in unit_pages)
                 continue
-            if made >= max_pages or stop():
+            if made + rejected >= max_pages or stop():
                 return finish("partial" if not stop() else "stopped")
             if per_source_pages is not None and used >= per_source_pages:
                 break
@@ -319,7 +340,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                         "offset": page["offset"], "totalChars": page["totalChars"],
                         "moreOfThisRepresentation": page["moreOfThisRepresentation"], "sourceContext": page["sourceContext"],
                         "untrustedContent": page["content"]}, ensure_ascii=False)
-                    saved = result_file(objective, page["pageId"]).is_file()
+                    saved = result_file(objective, page["pageId"]).is_file() or page["pageId"] in cached_invalid_pages
                     raw = extract_once(fence, client, system, prompt, page)
                     inferences += not saved
                     normalized, changes = normalize_representation(raw, page["content"])
@@ -341,12 +362,25 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     return finish("uncertain", pageId=page["pageId"])
                 except ReviewInvalidOutput as error:
                     inferences += not saved
+                    if retain_rejected_pages:
+                        dispositions.retain(objective, manifest, page, error)
+                        rejected += 1
+                        break
                     return finish("validation-error", pageId=page["pageId"], errorType=type(error).__name__,
                                   validationReason=error.reason, outputLimits=error.limits)
                 except (ValueError, RuntimeError) as error:
+                    if retain_rejected_pages and isinstance(error, ValueError):
+                        dispositions.retain(objective, manifest, page, error)
+                        rejected += 1
+                        break
                     return finish("validation-error", pageId=page["pageId"], errorType=type(error).__name__)
-            made += 1
             used += 1
+            if retain_rejected_pages and dispositions.read(objective, manifest, page["pageId"], expected_identity=page["identity"]):
+                status.update(phase="reviewing", at=now(), newlyReviewedPages=made, newlyRejectedPages=rejected,
+                              lastRejectedPageId=page["pageId"])
+                durable(objective / "status.json", status)
+                continue
+            made += 1
             status.update(phase="reviewing", at=now(), newlyReviewedPages=made, lastPageId=page["pageId"])
             durable(objective / "status.json", status)
             equivalent.register(objective, current, unit, unit_pages, read_receipt, manifest)
@@ -367,6 +401,7 @@ def main(argv=None):
     parser.add_argument("--max-pages-per-source", type=int)
     parser.add_argument("--max-seconds", type=int, default=1800)
     parser.add_argument("--max-output-tokens", type=int, help="Explicit Core output budget; never changes the host pin or context")
+    parser.add_argument("--retain-rejected-pages", action="store_true", help="Review-only: preserve certain rejected outputs as gaps without retry or accepted coverage")
     parser.add_argument("--queue-request-id")
     parser.add_argument("--queue-dispatch-id")
     parser.add_argument("--priority-file", type=Path, help="Private native IDs; scheduling order only, never model instructions")
@@ -391,7 +426,8 @@ def main(argv=None):
                          caller="secretary-objective-review", max_output_tokens=args.max_output_tokens,
                          thinking=manifest["config"].get("thinking", False)), max_pages=args.max_pages, queue_id=args.queue_request_id,
                          dispatch_id=args.queue_dispatch_id, per_source_pages=args.max_pages_per_source,
-                         max_seconds=args.max_seconds, priority=priority, stop=lambda: bool(stopping))
+                         max_seconds=args.max_seconds, priority=priority, retain_rejected_pages=args.retain_rejected_pages,
+                         stop=lambda: bool(stopping))
         finally:
             lock.release()
     if args.command == "plan":
