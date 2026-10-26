@@ -19,6 +19,19 @@ test('Explorer resolves the current runtime icon exports when rendering', () => 
   assert.deepEqual(Array.from(context.result), ['left', 'right', 'close', 'folder', 'open', 'refresh']);
 });
 
+test('Explorer reads the explicitly bound session instead of removed global selection state', () => {
+  let registration;
+  const ctx = { slots: { inject: (name, callback) => callback(), register: (entry, render) => { registration = { entry, render }; } } };
+  const source = 'ctx.slots.inject(`shell.overlay`,()=>ctx.slots.register({name:`shell.overlay`},CM))';
+  const CM = props => props.useSessions(state => state.byId[state.current]?.cwd);
+  const context = { ctx, CM, m: { jsx: (render, props) => render(props) } };
+  vm.runInNewContext(adaptClient('dsh-client-ui-explorer', source), context);
+  assert.equal(registration.entry.name, 'conversation.session.header.actions');
+  const state = { byId: { active: { cwd: '/workspace/active' }, other: { cwd: '/workspace/other' } } };
+  assert.equal(registration.render({ sessionId: 'active', useSessions: select => select(state) }), '/workspace/active');
+  assert.equal(registration.render({ sessionId: 'other', useSessions: select => select(state) }), '/workspace/other');
+});
+
 test('Marketplace registers on the current settings section without changing its RPC', () => {
   const registrations = [];
   const ctx = { slots: { inject: (slot, callback) => callback(), register: (entry, component) => registrations.push({ entry, component }) } };
