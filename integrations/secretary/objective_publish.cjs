@@ -63,10 +63,10 @@ function applyDateReview(payload, review) {
   if (!review) return payload;
   const findingId = payload.timeline.legacyId;
   if (review.findingId !== findingId || !Array.isArray(review.clear) || !review.clear.length ||
-      review.clear.some(side => !['start', 'end'].includes(side)) || new Set(review.clear).size !== review.clear.length ||
+      review.clear.some(side => !['start', 'end', 'ongoing'].includes(side)) || new Set(review.clear).size !== review.clear.length ||
       typeof review.reason !== 'string' || !review.reason.trim() || review.reason.length > 2000 ||
       typeof review.question !== 'string' || !review.question.trim() || review.question.length > 2000 || !timestamp(review.reviewedAt)) {
-    throw new Error('Date adjudication needs its exact finding, absent-date sides, bounded reason/question and review timestamp');
+    throw new Error('Date adjudication needs its exact finding, temporal fields to clear, bounded reason/question and review timestamp');
   }
   const t = payload.timeline;
   const proposal = { date: t.date, precision: t.precision, endDate: t.endDate, endPrecision: t.endPrecision,
@@ -77,10 +77,11 @@ function applyDateReview(payload, review) {
     authority: 'automated-source-audit-not-owner-confirmation', modelProposal: proposal };
   if (review.clear.includes('start')) { t.date = null; t.precision = 'unknown'; payload.entry.eventDate = ''; payload.entry.eventDatePrecision = 'unknown'; }
   if (review.clear.includes('end')) { t.endDate = null; t.endPrecision = 'unknown'; }
+  if (review.clear.includes('ongoing')) t.ongoing = false;
   t.dateEstimateNote = review.reason;
   t.reviewQuestions = [review.question];
-  t.notes = 'Date d’événement à préciser; interprétation automatique non confirmée.';
-  t.tentativeDate = true;
+  t.notes = 'Temporalité à préciser; interprétation automatique non confirmée.';
+  if (review.clear.some(side => side !== 'ongoing')) t.tentativeDate = true;
   return payload;
 }
 function nativeDateReview(entry) { return entry?.context?.importedTimeline?.metadata?.dateReview || entry?.timeline?.metadata?.dateReview || null; }

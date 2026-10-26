@@ -73,6 +73,23 @@ test('date audit cannot invent a date or silently reuse another model proposal',
   base.clear = ['start']; base.modelProposal = { date: '2000' };
   assert.throws(() => publisher.build(finding, indexed, { dateReview: base }), /another model proposal/);
 });
+test('a historical ongoing statement can retain its known start without claiming continuation today', () => {
+  const { finding, source, indexed } = fixture();
+  finding.ongoing = true;
+  const review = { findingId: finding.id, clear: ['ongoing'], reason: 'Le statut actuel est déclaré seulement à la date du courriel.',
+    question: 'Quand cette résidence a-t-elle pris fin ?', reviewedAt: '2026-10-26T18:00:00Z' };
+  const result = publisher.build(finding, indexed, { dateReview: review });
+  assert.equal(result.timeline.date, '2014-08'); assert.equal(result.timeline.precision, 'month');
+  assert.equal(result.entry.eventDate, '2014-08');
+  assert.equal(result.timeline.endDate, null); assert.equal(result.timeline.endPrecision, 'unknown');
+  assert.equal(result.timeline.ongoing, false); assert.equal(result.timeline.tentativeDate, undefined);
+  assert.equal(result.timeline.metadata.dateReview.modelProposal.ongoing, true);
+  assert.equal(result.timeline.metadata.dateReview.modelProposal.date, '2014-08');
+  assert.deepEqual(result.timeline.claimsWithExactQuotes, finding.claimsWithExactQuotes);
+  assert.equal(result.sourceRecords[0].body, source.body); assert.equal(finding.ongoing, true);
+  const retained = publisher.nativeDateReview({ context: { importedTimeline: result.timeline } });
+  assert.deepEqual(publisher.build(finding, indexed, { dateReview: retained }), result);
+});
 test('a native date adjudication changed after planning cannot be overwritten by source enrichment', async t => {
   const dir = home(t), { finding, indexed } = fixture();
   const payload = publisher.build(finding, indexed);
