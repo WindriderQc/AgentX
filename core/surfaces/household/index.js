@@ -397,6 +397,9 @@ function register(api) {
   });
   const activePersonaTurns = new Map();
   require('./ephemeral-policy').registerPrivacyRoutes(personas, { conversations, activePersonaTurns, envelope, fail });
+  // The owner's own screen-command words, beside the other Mongo-backed conversation settings.
+  if (preferenceStore) require('./screen-command-phrases').register(personas, {
+    service: require('./screen-command-phrases').createScreenCommandPhrases(), envelope, fail });
   if (preferenceStore) require('../../src/services/conversationPreferences/routes').registerPreferenceRoutes(personas, {
     base: '/preferences', serviceFor: req => {
       if (req.query.space && !['nestor', 'family'].includes(req.query.space)) throw Object.assign(new Error('Choose Nestor or Family.'), { statusCode: 400 });

@@ -71,7 +71,7 @@ app.get('/fixture', (_req, res) => res.type('html').send(`<!doctype html><html l
 <section id="text"></section><section id="visual"></section></div></div></section></div></section></main>
 <script src="/vendor/marked.js"></script><script src="/vendor/purify.js"></script><script src="/js/presentation-markdown.js"></script>
 <script src="/js/screen-pages.js"></script><script src="/assets/household/presentation-observation.js"></script>
-<script src="/assets/household/page-presentation.js"></script><script src="/assets/household/display-board.js"></script>
+<script src="/assets/household/presentation-commands.js"></script><script src="/assets/household/page-presentation.js"></script><script src="/assets/household/display-board.js"></script>
 <script src="/assets/household/presentation-companion.js"></script><script>
 AgentXScreenPages.configure(${JSON.stringify(pages.entries)});
 window.session=${JSON.stringify(session)};
@@ -149,6 +149,12 @@ for(const line of (await response.text()).trim().split('\\n')){const event=JSON.
     await wait(1700);
     assert.match(await page.locator('.display-block:not([hidden])').textContent(), /Choix de Hermes/);
     checks.push('A manual selection wins over an already pending companion decision.');
+    await page.evaluate(text => start(text), cases.old); await wait(950);
+    assert.equal((await page.evaluate(() => board.command('close'))).applied, true);
+    await wait(1700);
+    assert.equal(await page.locator('.page-presentation').evaluate(element => element.classList.contains('is-active')), false);
+    assert.match(await page.locator('.display-block:not([hidden])').textContent(), /Choix de Hermes/);
+    checks.push('A local screen command pauses pending accompaniment and keeps the workspace closed.');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify({ status: 'passed', checks, decisions,
       qualification: 'Synthetic decisions and production browser modules; no model-quality or physical-device acceptance.' }, null, 2));

@@ -17,6 +17,7 @@
         <button type="button" class="button" data-action="expand" aria-pressed="false">Agrandir</button>
         <button type="button" class="button" data-action="toggle" aria-expanded="false" aria-controls="conversationPageBoard">Afficher le contenu</button>
       </div>
+      <p class="page-presentation-feedback" role="status" aria-live="polite"></p>
     </header><section id="conversationPageBoard" class="page-presentation-board conversation-board"></section>`;
     layout.prepend(region);
     const board = region.querySelector('.page-presentation-board');
@@ -25,6 +26,7 @@
     const expand = region.querySelector('[data-action="expand"]');
     const pin = region.querySelector('[data-action="pin"]');
     const manual = () => root.dispatchEvent(new CustomEvent('nestor-presentation-user-change'));
+    const feedback = region.querySelector('.page-presentation-feedback');
     let cards = [], latest = null, selected = null;
 
     function present(active) {
@@ -34,9 +36,11 @@
       board.hidden = !active;
       expand.hidden = !active;
       root.dispatchEvent(new CustomEvent('nestor-page-presentation'));
-      if (!active) {
-        region.classList.remove('is-expanded'); expand.setAttribute('aria-pressed', 'false'); expand.textContent = 'Agrandir';
-      }
+      if (!active) setExpanded(false);
+    }
+    function setExpanded(expanded) {
+      region.classList.toggle('is-expanded', expanded);
+      expand.setAttribute('aria-pressed', String(expanded)); expand.textContent = expanded ? 'Réduire' : 'Agrandir';
     }
     function select(card) {
       selected = card;
@@ -49,10 +53,7 @@
       const pinned = pin.getAttribute('aria-pressed') !== 'true'; pin.setAttribute('aria-pressed', String(pinned));
       pin.textContent = pinned ? 'Vue épinglée' : 'Épingler la vue'; manual();
     });
-    expand.addEventListener('click', () => {
-      const expanded = region.classList.toggle('is-expanded');
-      expand.setAttribute('aria-pressed', String(expanded)); expand.textContent = expanded ? 'Réduire' : 'Agrandir';
-    });
+    expand.addEventListener('click', () => { manual(); setExpanded(!region.classList.contains('is-expanded')); });
     region.addEventListener('keydown', event => {
       if (event.key === 'Escape' && region.classList.contains('is-active')) {
         event.preventDefault(); manual(); present(false); toggle.focus();
@@ -66,7 +67,17 @@
       root.dispatchEvent(new CustomEvent('nestor-page-presentation'));
     });
     observer.observe(layout.closest('#app'), { childList: true });
-    return { board, active: () => region.classList.contains('is-active'), canFollow: () => pin.getAttribute('aria-pressed') !== 'true', update(next) {
+
+    // Spoken and typed screen commands (#924) act through the same controls.
+    const commands = root.NestorPresentationCommands?.create({ region, picker, feedback, cards: () => cards,
+      selected: () => selected, select, present, setExpanded });
+    const command = action => {
+      const result = commands?.command(action) ?? null;
+      if (result) manual();
+      return result;
+    };
+
+    return { board, command, canFollow: () => pin.getAttribute('aria-pressed') !== 'true', active: () => region.classList.contains('is-active'), update(next) {
       cards = next;
       region.hidden = !cards.length;
       picker.replaceChildren(...cards.map((card, index) => {
