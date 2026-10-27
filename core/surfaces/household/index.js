@@ -219,7 +219,7 @@ function register(api) {
   const personas = express.Router();
   const screenPages = require('./screen-services').registerScreenServices({ app, router: personas, env: conversationEnv, logger, envelope });
   const presentationCompanion = require('./presentation-companion').registerPresentationCompanion({ router: personas,
-    conversations, inference: runtimeServices.inference, catalog: screenPages, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT,
+    conversations, memory: ownerMemory, inference: runtimeServices.inference, catalog: screenPages, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT,
     env: conversationEnv, envelope, fail });
   require('./calendar-routes').registerCalendarRoutes({ app, env: conversationEnv });
   // Resolved once at registration: the pack is read-only in the container, and

@@ -6,7 +6,7 @@
 // only available live; a restored one says it was not retained.
 (function exposeDisplayBoard(root) {
   const MAX_BLOCKS = 30;
-  const KIND_LABELS = { text: 'Note', list: 'List', table: 'Table', code: 'Code', link: 'Link', secret: 'Secret', image: 'Image', scene: '3D', page: 'Page' };
+  const KIND_LABELS = { text: 'Note', list: 'List', table: 'Table', code: 'Code', link: 'Link', secret: 'Secret', review: 'Proposition', image: 'Image', scene: '3D', page: 'Page' };
   const STAGE_WAIT_MS = 4000;
   let sequence = 0;
 
@@ -224,6 +224,7 @@
 
   function render(block, { secrets, space = 'personal' }) {
     if (!block || (block.kind === 'scene' ? !block.scene : typeof block.body !== 'string') || (block.kind === 'secret' && !secrets)) return null;
+    if (block.kind === 'review' && (space !== 'personal' || block.from !== 'companion')) return null;
     const target = block.kind === 'page' ? pageTarget(block, space) : null;
     if (block.kind === 'page' && !target) return null;
     const card = node('article', 'display-block');
@@ -251,6 +252,7 @@
       else content = root.AgentXPresentationMarkdown
         ? root.AgentXPresentationMarkdown.render(node('div', 'display-block-text display-block-markdown'), block.body, { links: linksClickable(space) })
         : inlineText(node('div', 'display-block-text'), block.body);
+      if (block.kind === 'review' && !root.NestorPresentationCollaboration?.review(block, { content, actions, space })) return null;
       actions.append(copyButton(block.body));
     }
     card.append(header, content);
@@ -320,6 +322,10 @@
           if (!presentation.canFollow()) return false;
           const current = presentation.active() ? board.context()[0] : null;
           if (block.kind === 'page' && current?.kind === 'page' && current.page === block.body) return true;
+          if (block.kind === 'page' && current?.kind === 'page') {
+            const card = presentation.board.querySelector('.display-block:not([hidden])');
+            if (root.NestorPresentationCollaboration?.focus(card, block)) return true;
+          }
           return board.add(block);
         },
         context: () => presentation.active() ? board.context() : [], clear: board.clear };

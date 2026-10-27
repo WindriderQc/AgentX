@@ -4,6 +4,17 @@
   const view = document.querySelector('agentx-ecosystem');
   const status = document.getElementById('diskx-status');
   if (!view || !status) return;
+  // Presentation-only control over the existing component. The component's
+  // rendered observation remains the acknowledgement, never this request.
+  window.AgentXPresentationControls = Object.freeze({
+    contract: 'agentx.presentation-control/v1',
+    present(input) {
+      const play = window.AgentXScreenPages?.ecosystemPlay(input?.play);
+      if (input?.page !== 'ecosystem' || !play || !view.state?.()?.presentation) return { accepted: false };
+      view.setAttribute('play', play);
+      return { accepted: true, requested: play, receipt: 'await_rendered_observation' };
+    }
+  });
   let unavailable = false;
   Object.defineProperty(window, 'AgentXPresentedContent', { configurable: true, get() {
     const observation = unavailable ? null : view.state?.()?.presentation;

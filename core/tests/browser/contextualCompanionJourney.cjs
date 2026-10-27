@@ -23,10 +23,12 @@ const session = { sessionId: 'synthetic-personal-session', backend: 'hermes', pa
 const cases = {
   ecosystem: 'Explique mon écosystème.', list: 'Construisons la liste alpha et bêta.',
   keep: 'Restons sur cette liste, sans autre vue.', old: 'Ancienne question sur mon écosystème.',
+  focus: 'Concentrons-nous sur le réseau de cet écosystème.', review: 'Préparons un changement à vérifier dans Pipeline.',
   offline: 'Continue pendant que le suivi visuel est indisponible.'
 };
 let decisions = 0;
 const companion = registerPresentationCompanion({ router: app, catalog: pages,
+  memory: { search: async () => [{ text: 'Core owns shared data in this synthetic source.', score: .9, metadata: { documentId: 'fixture-source', title: 'Shared architecture', source: 'fixture' } }] },
   conversations: { getSession: async query => query.sessionId === session.sessionId ? session : null },
   envelope: (res, data) => res.json({ ok: true, data }), fail: (res, status, message) => res.status(status).json({ message }),
   decide: async frame => {
@@ -36,7 +38,9 @@ const companion = registerPresentationCompanion({ router: app, catalog: pages,
     if (frame.request === cases.keep) return { decision: 'keep' };
     return { decision: 'present', reason: 'Accompagner le sujet actuel.',
       evidence: { source: 'request', quote: frame.request },
-      block: frame.request === cases.list ? { kind: 'list', title: 'Notre liste', body: '- alpha\n- bêta' }
+      block: frame.request === cases.review ? { kind: 'review', title: 'À vérifier', body: 'Vérifier la cible puis décider dans Pipeline.', destination: 'pipeline' }
+        : frame.request === cases.focus ? { kind: 'page', title: 'Réseau', body: 'ecosystem play=network' }
+        : frame.request === cases.list ? { kind: 'list', title: 'Notre liste', body: '- alpha\n- bêta' }
         : { kind: 'page', title: 'Écosystème', body: 'ecosystem play=overview' } };
   }
 });
@@ -49,7 +53,7 @@ app.use('/assets', express.static(path.resolve(graph, 'dist/assets')));
 app.get('/api/diskx/diskx.js', (_req, res) => res.sendFile(path.resolve(graph, 'dist/embed/diskx.js')));
 app.get('/diskx', (req, res) => res.type('html').send(renderPage({ roots: ['/fixture'], attributes: checkQuery(req.query, ['/fixture']) })));
 app.post('/fixture/turn', (req, res) => {
-  const handle = companion.begin({ session, turnId: req.body.turnId, enabled: req.body.enabled,
+  const handle = companion.begin({ session, turnId: req.body.turnId, enabled: req.body.enabled, paused: req.body.paused,
     frame: { text: req.body.text, history: [], context: '' } });
   res.type('application/x-ndjson');
   const delta = 'La conversation principale reste disponible.';
@@ -59,6 +63,7 @@ app.post('/fixture/turn', (req, res) => {
   }
   handle?.finish(); res.end(JSON.stringify({ type: 'done' }) + '\n');
 });
+app.post('/fixture/mcp', async (req, res) => res.json(await require('../../src/services/mcpOwnerTools').handleOwnerMcp(req.body)));
 app.get('/fixture/count', (_req, res) => res.json({ decisions }));
 app.get('/fixture', (_req, res) => res.type('html').send(`<!doctype html><html lang="fr"><head>
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Accompagnement contextuel · test isolé</title>
@@ -72,7 +77,7 @@ app.get('/fixture', (_req, res) => res.type('html').send(`<!doctype html><html l
 <script src="/vendor/marked.js"></script><script src="/vendor/purify.js"></script><script src="/js/presentation-markdown.js"></script>
 <script src="/js/screen-pages.js"></script><script src="/assets/household/presentation-observation.js"></script>
 <script src="/assets/household/presentation-commands.js"></script><script src="/assets/household/page-presentation.js"></script><script src="/assets/household/display-board.js"></script>
-<script src="/assets/household/presentation-companion.js"></script><script>
+<script src="/assets/household/presentation-collaboration.js"></script><script src="/assets/household/presentation-companion.js"></script><script>
 AgentXScreenPages.configure(${JSON.stringify(pages.entries)});
 window.session=${JSON.stringify(session)};
 const api=async(url,options={})=>{const response=await fetch(url,{...options,headers:{'Content-Type':'application/json'}});if(!response.ok)throw new Error('Fixture unavailable');return (await response.json()).data;};
@@ -80,7 +85,7 @@ window.board=DisplayBoard.createScreen({text:document.querySelector('#text'),vis
 window.helper=NestorPresentationCompanion.create({host:document.querySelector('#controls'),board,api,base:'/private/sessions',getSession:()=>session,pollMs:50});
 helper.configure('hermes');
 window.start=async(text,primary=false)=>{const turnId=crypto.randomUUID(),enabled=helper.begin(session,turnId);window.mainFinished=false;
-const response=await fetch('/fixture/turn',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,turnId,enabled,primary})});helper.follow();
+const response=await fetch('/fixture/turn',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,turnId,enabled,primary,paused:helper.pinned()})});helper.follow();
 for(const line of (await response.text()).trim().split('\\n')){const event=JSON.parse(line);if(event.type==='delta')document.querySelector('#reply').textContent=event.delta;if(event.type==='show'){helper.explicit();board.add(event.block);}if(event.type==='done')window.mainFinished=true;}return turnId;};
 </script></body></html>`));
 
@@ -112,6 +117,29 @@ for(const line of (await response.text()).trim().split('\\n')){const event=JSON.
     }
     checks.push('The main reply finishes independently and the real GraphysX ecosystem renders.');
     await page.screenshot({ path: path.join(output, 'ecosystem-desktop.png'), fullPage: true });
+    await page.evaluate(() => { window.retainedFrame = document.querySelector('iframe.display-block-page'); });
+    await page.evaluate(text => start(text), cases.focus);
+    await frame.waitForFunction(() => window.AgentXPresentedContent?.observation?.tour?.kind === 'network', null, { timeout: 15000 });
+    assert.equal(await page.evaluate(() => retainedFrame === document.querySelector('iframe.display-block-page')), true);
+    await page.waitForTimeout(1200);
+    const scoped = await page.evaluate(async () => {
+      const turn = document.querySelector('iframe.display-block-page');
+      const request = await fetch('/fixture/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'collaboration_context', arguments: { sessionId: session.sessionId } } }) });
+      return (await request.json()).result.structuredContent;
+    });
+    fs.writeFileSync(path.join(output, 'scoped-context.json'), JSON.stringify(scoped, null, 2));
+    assert.equal(scoped.research.sources[0].documentId, 'fixture-source');
+    assert.equal(scoped.selection.page, 'ecosystem play=network');
+    checks.push('The real 3D view changes focus in the retained frame and Hermes reads its current sourced collaboration context.');
+    await page.evaluate(text => start(text), cases.old); await wait(950);
+    await frame.evaluate(() => dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+    await wait(1700);
+    assert.equal(await page.evaluate(() => retainedFrame === document.querySelector('iframe.display-block-page')), true);
+    const manualContext = await page.request.post(new URL('/fixture/mcp', page.url()).href, { data: { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'collaboration_context', arguments: { sessionId: session.sessionId } } } });
+    assert.equal((await manualContext.json()).result.structuredContent.automaticDisplay, false);
+    checks.push('A gesture inside the actual 3D frame wins over an already running local decision.');
+
     await page.evaluate(text => start(text), cases.list);
     await page.waitForFunction(() => document.querySelector('.display-block:not([hidden])')?.textContent.includes('Notre liste'));
     assert.match(await page.locator('.display-block:not([hidden])').textContent(), /alpha.*bêta/s);
@@ -155,6 +183,18 @@ for(const line of (await response.text()).trim().split('\\n')){const event=JSON.
     assert.equal(await page.locator('.page-presentation').evaluate(element => element.classList.contains('is-active')), false);
     assert.match(await page.locator('.display-block:not([hidden])').textContent(), /Choix de Hermes/);
     checks.push('A local screen command pauses pending accompaniment and keeps the workspace closed.');
+    await page.evaluate(text => start(text), cases.review);
+    await page.getByRole('button', { name: 'Vérifier dans l’outil', exact: true }).waitFor();
+    assert.match(await page.locator('.display-block:not([hidden])').textContent(), /Aucun envoi, suppression ou changement/);
+    const reviewFrameCount = await page.locator('iframe.display-block-page').count();
+    assert.equal(reviewFrameCount, 0, 'the proposal did not open or execute its destination automatically');
+    let destination = null;
+    await page.exposeFunction('recordReviewDestination', value => { destination = value; });
+    await page.evaluate(() => addEventListener('nestor-review-destination', e => recordReviewDestination(e.detail)));
+    await page.getByRole('button', { name: 'Vérifier dans l’outil', exact: true }).click();
+    await page.waitForTimeout(100);
+    assert.equal(destination.body, 'pipeline');
+    checks.push('A review card leaves effects to the human and only requests the owning UI after a click.');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify({ status: 'passed', checks, decisions,
       qualification: 'Synthetic decisions and production browser modules; no model-quality or physical-device acceptance.' }, null, 2));
