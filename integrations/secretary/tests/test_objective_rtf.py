@@ -15,6 +15,7 @@ from objective_sources import materialize
 from archive_rtf import PROFILE
 from test_objective_review import Client, QUEUE, DISPATCH, moment
 import test_objective_dispositions as disposition_fixtures
+import test_objective_review as review_fixtures
 
 
 class ObjectiveRtfTests(unittest.TestCase):
@@ -26,15 +27,22 @@ class ObjectiveRtfTests(unittest.TestCase):
                        'selection':{'gmailMessageIds':['message01'],'outlookSha256':[]}}
         self.objective,self.manifest = None,None
 
-    def mail(self, raw, plain=None):
+    def mail(self, raw, plain=None, copies=1):
         message=EmailMessage();message['From']='Synthetic owner <owner@example.invalid>'
         message['To']='Synthetic friend <friend@example.invalid>';message['Date']='Fri, 1 Aug 2014 10:00:00 +0000'
         message['Message-ID']='<synthetic-rtf@example.invalid>';message['Subject']='Synthetic RTF'
         if plain:message.set_content(plain)
         message.add_attachment(raw,maintype='application',subtype='rtf',filename='rtf-body.rtf')
-        data=message.as_bytes();digest=hashlib.sha256(data).hexdigest();(self.root/'raw').mkdir()
+        data=message.as_bytes();digest=hashlib.sha256(data).hexdigest();(self.root/'raw').mkdir(exist_ok=True)
         (self.root/'raw/source.eml').write_bytes(data)
         save(self.root/'raw-receipts/message01.json',{'messageId':'message01','threadId':'thread001','sha256':digest,'bytes':len(data),'path':'raw/source.eml','labelIds':['SENT']})
+        for index in range(2,copies+1):
+            mid=f'message{index:02d}';copy=b'X-Synthetic-Copy: '+str(index).encode()+b'\n'+data
+            copy_sha=hashlib.sha256(copy).hexdigest();relative=f'raw/{mid}.eml'
+            (self.root/relative).write_bytes(copy)
+            save(self.root/f'raw-receipts/{mid}.json',{'messageId':mid,'threadId':'thread001','sha256':copy_sha,
+                 'bytes':len(copy),'path':relative,'labelIds':['SENT']})
+            self.config['selection']['gmailMessageIds'].append(mid)
         self.objective,self.manifest=worker.prepare(self.root,self.config)
         return data
 
@@ -144,6 +152,51 @@ class ObjectiveRtfTests(unittest.TestCase):
         self.assertFalse(second['coverage']['allTargetTextCovered']);self.assertEqual(len(client.calls),1)
         plan=load(next((self.objective/'sources').glob('*.json')))
         self.assertEqual(plan['rtfReaderProfile'],PROFILE)
+
+    def test_current_failed_rtf_and_terminal_rejected_header_do_not_reparse(self):
+        review_fixtures.ObjectiveTests.mail(self,'message02','An unrelated second message.')
+        self.config['selection']['gmailMessageIds'].append('message02')
+        self.mail(br'{\rtf1\ansicpg99999 Unreadable.}')
+        def invalid_header(prompt,reply):
+            if prompt['source']['id']=='message01':
+                value=json.loads(reply['response'])
+                value.update(classification='life-events',moments=[moment('Absent quote.')])
+                reply['response']=json.dumps(value)
+            return reply
+        client,calls=disposition_fixtures.DispositionTests.client(self,invalid_header)
+        first=worker.run(self.root,self.objective,self.manifest,client,max_pages=1,
+             queue_id=QUEUE,dispatch_id=DISPATCH,retain_rejected_pages=True)
+        self.assertEqual(first['newlyRejectedPages'],1)
+        rejected=next((self.objective/'page-dispositions').glob('*.json'));before=rejected.read_bytes()
+        def no_failed_reparse(root,source):
+            self.assertNotEqual(source['id'],'message01','Current failed RTF must not be reparsed')
+            return materialize(root,source)
+        with patch('objective_review.materialize',side_effect=no_failed_reparse):
+            second=worker.run(self.root,self.objective,self.manifest,client,max_pages=20,
+                 queue_id=QUEUE,dispatch_id=DISPATCH,retain_rejected_pages=True)
+        self.assertEqual(second['newlyReviewedPages'],1)
+        self.assertEqual(second['coverage']['counts']['pendingPagesKnown'],0)
+        self.assertFalse(second['coverage']['allTargetTextCovered'])
+        self.assertEqual(len(calls),2);self.assertEqual(rejected.read_bytes(),before)
+        with patch('objective_review.materialize',side_effect=AssertionError('No source requires rematerialization')):
+            worker.run(self.root,self.objective,self.manifest,client,max_pages=20,
+                 queue_id=QUEUE,dispatch_id=DISPATCH,retain_rejected_pages=True)
+        self.assertEqual(len(calls),2)
+
+    def test_old_accepted_header_alias_is_not_rewritten_during_rtf_upgrade(self):
+        self.mail(br'{\rtf1\ansi A shared RTF body.}',copies=2)
+        client=Client()
+        with patch('archive_read.is_rtf',return_value=False),patch('objective_equivalence.now',return_value='2020-01-01T00:00:00Z'):
+            self.run_worker(client)
+        self.assertEqual(len(client.calls),1)
+        self.assertEqual(len(list((self.objective/'equivalences').glob('*.json'))),1)
+        before={p:p.read_bytes() for directory in ['equivalences','equivalence-index','page-reviews','review-attempts']
+                for p in (self.objective/directory).rglob('*') if p.is_file()}
+        with patch('objective_equivalence.now',return_value='2021-01-01T00:00:00Z'):
+            result=self.run_worker(client)
+        self.assertTrue(result['coverage']['allTargetTextCovered'])
+        self.assertEqual(len(client.calls),2)
+        for p,data in before.items():self.assertEqual(p.read_bytes(),data,str(p))
 
     def test_plain_text_does_not_hide_a_known_unreadable_rtf_variant(self):
         self.mail(b'{\\rtf1 caf\xe9}',plain='Readable alternative without the extra detail.')

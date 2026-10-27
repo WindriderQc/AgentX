@@ -12,6 +12,11 @@ def upgrade_pending(plan):
     return known_rtf(plan) and plan.get("rtfReaderProfile") != PROFILE
 
 
+def current_failure(plan):
+    return plan.get("rtfReaderProfile") == PROFILE and any(
+        gap.get("code") == "rtf-text-unreadable" for gap in plan.get("gaps", []))
+
+
 def materialized_profile(units, gaps):
     # The plan owns reader progress; source dictionaries in historical
     # dispositions and equivalence indexes remain byte-for-byte compatible.

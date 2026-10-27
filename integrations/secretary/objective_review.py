@@ -315,6 +315,23 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
             for pid in previous["pageIds"]:
                 read_receipt(objective / "page-reviews" / (pid + ".json"), manifest)
             continue
+        if rtf_scope.current_failure(previous) and previous.get("pageIds"):
+            terminal = True
+            for pid in previous["pageIds"]:
+                file = objective / "page-reviews" / (pid + ".json")
+                if file.is_file():
+                    read_receipt(file, manifest)
+                elif pid in alias_pages:
+                    continue  # Exact aliases and canonical receipts validated above.
+                elif retain_rejected_pages and dispositions.read(objective, manifest, pid):
+                    continue
+                elif rejected_copies.read(objective, manifest, pid):
+                    continue
+                else:
+                    terminal = False
+                    break
+            if terminal:
+                continue  # A current-profile opaque body remains a gap, not work to retry.
         # A queue placement is planning; assert the *current* operator dispatch
         # before source work and every live call. Core still owns model admission.
         client._call("POST", "/api/cluster/schedule/work-queue/" + queue_id + "/assert-dispatch", {"dispatchId": dispatch_id})
@@ -340,6 +357,9 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                 equivalent.register(objective, current, unit, unit_pages, read_receipt, manifest)
                 if all((objective / "page-reviews" / (p["pageId"] + ".json")).is_file() for p in unit_pages):
                     continue
+                if unit_pages and all(p["pageId"] in alias_pages for p in unit_pages):
+                    reused.update(p["pageId"] for p in unit_pages)
+                    continue  # Preserve the immutable alias already validated at run start.
                 canonical = equivalent.find(objective, current, unit, read_receipt, manifest)
                 if canonical:
                     equivalent.alias(objective, current, unit, unit_pages, canonical, _source_record)
