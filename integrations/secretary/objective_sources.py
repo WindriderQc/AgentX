@@ -84,10 +84,15 @@ def materialize(root, source):
     source["direction"] = "draft" if "DRAFT" in labels else "sent" if "SENT" in labels else "received" if labels else "unknown"
     units = []
     gaps = []
+    has_rtf = any(body.get("extraction") for body in bodies)
     for body in bodies:
         ref = {"partIndex": body["partIndex"], "mimeType": body["mimeType"]}
         if body.get("decoding"):
             ref["decoding"] = body["decoding"]
+        if body.get("extraction"):
+            ref["extraction"] = body["extraction"]
+        gaps.extend({**gap, "partIndex": body["partIndex"], "mimeType": body["mimeType"]}
+                    for gap in body.get("extractionGaps", []))
         if not body["readable"]:
             gaps.append({"code": "mime-text-unreadable", **ref})
             continue
@@ -97,7 +102,7 @@ def materialize(root, source):
             units.append(_unit("html-inert-supplement", json.dumps(extra, ensure_ascii=False), **ref))
         if extra and extra.get("truncated"):
             gaps.append({"code": "html-supplement-truncated", **ref})
-    if not bodies:
+    if not bodies or not units and has_rtf:
         gaps.append({"code": "no-inline-text-representation"})
         units.append(_unit("message-headers", "\n".join(key + ": " + value for key, value in headers.items())))
     archived = {}
@@ -122,6 +127,12 @@ def materialize(root, source):
         gaps.append({"code": "attachment-content-not-exhaustively-qualified", "documents": documents,
                      "existingTextExtractions": len([u for u in units if u["representation"] == "attachment-existing-text"])})
     return source, units, gaps
+
+
+def retain_header_scope(source, units):
+    """An upgrade adds body text; it never erases an old header page identity."""
+    if not any(u["representation"] == "message-headers" for u in units):
+        units.append(_unit("message-headers", "\n".join(key + ": " + value for key, value in source["headers"].items())))
 
 
 def pages(source, units, objective_sha, page_chars=6000, overlap=300):

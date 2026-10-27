@@ -1,0 +1,16 @@
+{
+  "package": "striprtf",
+  "version": "0.0.34",
+  "license": "BSD-3-Clause",
+  "source": "https://github.com/joshy/striprtf",
+  "release": "https://pypi.org/project/striprtf/0.0.34/",
+  "distribution": "striprtf-0.0.34-py3-none-any.whl",
+  "distributionSha256": "32113e70a99d00e7f0f64d4850c3ad11126501e200aeb29c5270526a6eba52e2",
+  "files": {
+    "__init__.py": "6728002245fa35b8da83573359d41afb23fe18cd66044ffdb2cdb55e1fff2457",
+    "_version.py": "21e38016f7a7a2905662ff5a8da6258066223d7322193d34f2a9e96d34341cf5",
+    "striprtf.py": "4d03d30ac6d6080dbe205a3a149be73200d7d370f866b76a65792910e79274f4",
+    "LICENSE": "5e3d3399202cd1f80196a3b33836b67d5e27df6cbedd059c3aa6f4ae9f054278"
+  },
+  "modifications": "None. These files are exact bytes from the upstream distribution."
+}

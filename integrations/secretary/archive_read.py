@@ -9,6 +9,7 @@ import re
 
 from evidence_store import load
 from compound_sources import packet_scopes
+from archive_rtf import is_rtf, read_part as read_rtf_part
 
 MAX_BYTES = 64 * 1024 * 1024
 CHARSET_ALIASES = {"windows-874": "cp874"}
@@ -58,6 +59,12 @@ def representations(message):
                            "textSha256": hashlib.sha256(value.encode()).hexdigest() if readable else None,
                            "content": value, "part": part, "htmlEvidence": extra,
                            **({"decoding": decoding} if decoding else {})})
+        if not blocked and not part.is_multipart() and is_rtf(kind, part.get_filename()):
+            decoded = read_rtf_part(part)
+            value = decoded["content"]
+            bodies.append({"partIndex": current, "mimeType": kind, **decoded, "totalChars": len(value),
+                           "textSha256": hashlib.sha256(value.encode()).hexdigest() if decoded["readable"] else None,
+                           "part": part, "htmlEvidence": None, "documentPart": document})
         if part.is_multipart():
             stack.extend((child, blocked or document, depth + 1) for child in reversed(list(part.iter_parts())))
     return bodies, attachments
@@ -87,6 +94,8 @@ def read_original(root, message_id, source_sha256, offset=0, size=10000, part_in
     body = message.get_body(preferencelist=("plain", "html"))
     selected = next((part for part in bodies if part["partIndex"] == part_index), None) if part_index is not None \
         else next((part for part in bodies if part["part"] is body), None)
+    if part_index is None and selected is None:
+        selected = next((part for part in bodies if part.get("extraction") and part["readable"]), None)
     if part_index is not None and selected is None:
         raise ArchiveReadError("Choose a text representation of this original", "SECRETARY_ARCHIVE_INVALID", 400)
     content = selected["content"] if selected else ""
@@ -101,6 +110,10 @@ def read_original(root, message_id, source_sha256, offset=0, size=10000, part_in
         warnings.append("html_attributes_or_script_data_require_review")
     if extra and extra["truncated"]:
         warnings.append("html_supplement_truncated")
+    if selected and selected.get("extraction"):
+        warnings.append("rtf_text_only_not_visual_review")
+    if any(part.get("extractionGaps") for part in bodies):
+        warnings.append("rtf_content_has_explicit_gaps")
     thread = str(receipt.get("threadId") or "")
     manifest = load(root / "threads" / thread / "manifest.json", {}) \
         if re.fullmatch(r"[a-zA-Z0-9_-]{8,256}", thread) else {}
@@ -110,7 +123,8 @@ def read_original(root, message_id, source_sha256, offset=0, size=10000, part_in
         warnings.append("compound_attachment_members_require_separate_review")
     return {"messageId": message_id, "threadId": receipt.get("threadId"), "sourceSha256": source_sha256,
             "representation": "archived-original-message", "readerContract": "secretary.archive-reader/v3",
-            "bodyReadable": bool(selected and selected["readable"]), "bodyCompleteScope": "selected-mime-text-part",
+            "bodyReadable": bool(selected and selected["readable"]),
+            "bodyCompleteScope": "selected-mime-rtf-text-part" if selected and selected.get("extraction") else "selected-mime-text-part",
             "selectedPartIndex": selected["partIndex"] if selected else None,
             "bodyRepresentations": versions, "readingWarnings": warnings,
             "htmlEvidence": extra, "compoundAttachments": compound,
@@ -119,4 +133,4 @@ def read_original(root, message_id, source_sha256, offset=0, size=10000, part_in
             "offset": offset, "nextOffset": end if end < len(content) else None,
             "body": content[offset:end], "bodyTruncated": end < len(content), "totalChars": len(content),
             "attachments": attachments[:100], "attachmentCount": len(attachments),
-            "attachmentContentIncluded": False}
+            "attachmentContentIncluded": bool(selected and selected.get("documentPart"))}

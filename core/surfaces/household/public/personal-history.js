@@ -118,7 +118,7 @@
         if (!details.isConnected) return;
         const versions = source.bodyRepresentations || [];
         details.querySelector('[data-source-version-label]').hidden = versions.length < 2;
-        version.innerHTML = versions.map(item => `<option value="${esc(item.partIndex)}"${item.partIndex === source.selectedPartIndex ? ' selected' : ''}${item.readable === false ? ' disabled' : ''}>${item.mimeType === 'text/html' ? 'HTML converti en texte' : 'Texte brut'}${item.readable === false ? ' · à examiner' : ''}</option>`).join('');
+        version.innerHTML = versions.map(item => `<option value="${esc(item.partIndex)}"${item.partIndex === source.selectedPartIndex ? ' selected' : ''}${item.readable === false ? ' disabled' : ''}>${item.extraction?.processor === 'striprtf' ? 'RTF extrait en texte' : item.mimeType === 'text/html' ? 'HTML converti en texte' : 'Texte brut'}${item.readable === false ? ' · à examiner' : ''}</option>`).join('');
         version.onchange = () => void readSource(details, 0, Number(version.value));
         details.querySelector('[data-source-warning]').textContent = (versions.length > 1 ? 'Plusieurs versions du texte sont conservées. Elles peuvent contenir des informations différentes. ' : '')
           + (versions.some(item => item.readable === false) ? 'Une version demande une lecture complémentaire de l’original.' : '');
