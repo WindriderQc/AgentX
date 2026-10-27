@@ -72,6 +72,20 @@ test('review cards validate a plan and owning UI, never accept effects or arbitr
   assert.equal(validate(value), true); assert.equal(validate({ ...value, block: { ...value.block, execute: 'send' } }), false);
 });
 
+test('native target grammar prevents URL-shaped pages and review destinations before generation', () => {
+  const Ajv = require('ajv');
+  const validate = new Ajv({ strict: false }).compile(decisionSchema(null, pages));
+  const value = { decision: 'present', reason: 'Relevant existing view.', evidence: { source: 'request', quote: 'proposed change' },
+    block: { kind: 'page', title: 'Ecosystem', body: 'ecosystem', focus: { play: 'network' } } };
+  assert.equal(validate(value), true);
+  assert.equal(proposal(value, { request: 'proposed change' }, pages).block.body, 'ecosystem play=network');
+  assert.equal(proposal({ ...value, block: { ...value.block, focus: { execute: 'delete' } } }, { request: 'proposed change' }, pages), null);
+  for (const body of ['ecosystem?play=overview', 'https://external.invalid', 'unknown-page'])
+    assert.equal(validate({ ...value, block: { ...value.block, body } }), false);
+  assert.equal(validate({ ...value, block: { kind: 'review', title: 'Review', body: 'Check first.', destination: 'pipeline' } }), true);
+  assert.equal(validate({ ...value, block: { kind: 'review', title: 'Review', body: 'Check first.', destination: 'pipeline?status=review' } }), false);
+});
+
 test('source projection is bounded, deduplicated and cannot invent source identities', () => {
   const result = researchSources([hit, hit, { text: 'missing identity' }, { ...hit, text: 'x'.repeat(5000), metadata: { documentId: 'doc-beta' } }], '2026-01-01T00:00:00Z');
   assert.equal(result.length, 2); assert.equal(result[1].excerpt.length, 1200);
