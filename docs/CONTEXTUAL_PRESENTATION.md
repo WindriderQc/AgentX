@@ -68,6 +68,11 @@ turn or human pause invalidates it immediately. Readiness and the decision
 compute phase are separate. Structural validity does not itself establish semantic
 relevance: a real-model pilot must receive that separately.
 
+A validated catalogue page remains useful when its optional native focus is
+unsupported: Core omits that focus and displays the general view with an explicit
+limit. Unknown fields, URLs and unvalidated pages still fail. A requested or
+omitted focus never substitutes for the component's actual post-render receipt.
+
 There is one decision inference in flight and one latest pending frame per
 session. Deltas coalesce; six calls per turn, 32 active contexts and a five-minute
 inactivity TTL bound the work. A superseded admitted inference is allowed to

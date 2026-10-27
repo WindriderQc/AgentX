@@ -86,6 +86,19 @@ test('native target grammar prevents URL-shaped pages and review destinations be
   assert.equal(validate({ ...value, block: { kind: 'review', title: 'Review', body: 'Check first.', destination: 'pipeline?status=review' } }), false);
 });
 
+test('an unsupported optional focus degrades to the validated page with an explicit limit', () => {
+  const frame = { request: 'Explore our ecosystem together.' };
+  const value = { decision: 'present', reason: 'Orient the current discussion.', evidence: { source: 'request', quote: frame.request },
+    block: { kind: 'page', title: 'Ecosystem', body: 'ecosystem', focus: { play: 'invented-visit' } } };
+  const result = proposal(value, frame, pages);
+  assert.equal(result.block.body, 'ecosystem');
+  assert.deepEqual(result.focus, { status: 'unavailable', reason: 'unsupported_focus' });
+  assert.equal(proposal({ ...value, block: { ...value.block, focus: { execute: 'delete' } } }, frame, pages), null);
+  assert.equal(proposal({ ...value, block: { ...value.block, body: 'https://external.invalid' } }, frame, pages), null);
+  assert.equal(proposal({ ...value, block: { ...value.block, body: 'ecosystem play=invented-visit', focus: undefined } }, frame, pages), null);
+  assert.equal(proposal({ ...value, block: { ...value.block, focus: { play: 'network' } } }, frame, pages).block.body, 'ecosystem play=network');
+});
+
 test('source projection is bounded, deduplicated and cannot invent source identities', () => {
   const result = researchSources([hit, hit, { text: 'missing identity' }, { ...hit, text: 'x'.repeat(5000), metadata: { documentId: 'doc-beta' } }], '2026-01-01T00:00:00Z');
   assert.equal(result.length, 2); assert.equal(result[1].excerpt.length, 1200);

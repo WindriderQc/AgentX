@@ -35,7 +35,8 @@
           const block = data.suggestion?.block;
           if (block?.from === 'companion' && ['page', 'text', 'list', 'table', 'review'].includes(block.kind)
               && board.addCompanion?.(block)) {
-            fingerprint = data.suggestion.fingerprint; status.textContent = 'Affichage adapté au contexte.';
+            fingerprint = data.suggestion.fingerprint; status.textContent = data.suggestion.focus?.status === 'unavailable'
+              ? 'Vue générale affichée ; focus proposé indisponible.' : 'Affichage adapté au contexte.';
           }
         } else if (data.state === 'unavailable') status.textContent = 'Suivi visuel indisponible ; la conversation continue.';
         else if (data.state === 'limited') status.textContent = 'Suivi visuel en pause pour ce message.';
