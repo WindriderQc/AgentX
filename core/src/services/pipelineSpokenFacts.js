@@ -16,7 +16,8 @@ const LABELS = Object.freeze({
 const clean = (value, max) => String(value || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 const scope = () => ({ $and: [workerTaskScope(), { 'codingAutonomy.disposition.kind': { $ne: 'qualification' } }] });
 const row = task => ({ pipelineId: String(task.pipelineId), title: clean(task.title, 80), status: task.status,
-  ...(Number.isFinite(task.priority) && { priority: task.priority }) });
+  ...(Number.isFinite(task.priority) && { priority: task.priority }),
+  ...(task.codingAutonomy?.disposition?.kind === 'qualification' && { archivedQualification: true }) });
 
 async function read({ PipelineTask = require('../../models/PipelineTask'), taskIds = [], now = Date.now } = {}) {
   const counts = Object.fromEntries(STATUSES.map(status => [status, 0]));
@@ -27,7 +28,10 @@ async function read({ PipelineTask = require('../../models/PipelineTask'), taskI
     .select('pipelineId title status priority').lean();
   const [blocked, review] = await Promise.all([first('blocked'), first('review')]);
   const ids = [...new Set(taskIds.filter(id => /^\d{3,4}$/.test(id)))].slice(0, 3);
-  const named = ids.length ? await PipelineTask.find({ ...scope(), pipelineId: { $in: ids } }).select('pipelineId title status priority').lean() : [];
+  // A named task is found even when it is an archived qualification: the page
+  // opens its dossier, it is only left out of the counts.
+  const named = ids.length ? await PipelineTask.find({ $and: [workerTaskScope()], pipelineId: { $in: ids } })
+    .select('pipelineId title status priority codingAutonomy.disposition.kind').lean() : [];
   return { authority: 'core.pipeline', observedAt: new Date(now()).toISOString(), counts,
     keyTasks: { blocked: blocked.map(row), review: review.map(row) }, tasks: named.map(row),
     missingTasks: ids.filter(id => !named.some(task => String(task.pipelineId) === id)) };
@@ -57,7 +61,8 @@ function sentence(facts, focus = {}, language = 'fr') {
     if (!task) return lang === 'en' ? `Task ${focus.task} is not in the engineering Pipeline.` : `La tâche ${focus.task} n’est pas dans le pipeline d’ingénierie.`;
     const state = plural(lang, task.status, 1);
     const priority = task.priority ? (lang === 'en' ? `, priority ${task.priority}` : `, priorité ${task.priority}`) : '';
-    return lang === 'en' ? `Task ${task.pipelineId}, ${task.title}, is ${state}${priority}.` : `La tâche ${task.pipelineId}, ${task.title}, est ${state}${priority}.`;
+    const archived = task.archivedQualification ? (lang === 'en' ? ' It is an archived qualification, outside the counts.' : ' C’est une qualification archivée, hors des compteurs.') : '';
+    return (lang === 'en' ? `Task ${task.pipelineId}, ${task.title}, is ${state}${priority}.` : `La tâche ${task.pipelineId}, ${task.title}, est ${state}${priority}.`) + archived;
   }
   if (focus.status) {
     const count = facts.counts[focus.status] ?? 0;

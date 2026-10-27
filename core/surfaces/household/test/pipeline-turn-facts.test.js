@@ -30,6 +30,8 @@ test('the spoken sentence gives the count and key tasks for the shown focus', ()
   assert.equal(spoken.sentence(facts, {}), 'Le pipeline compte 3 en file, 0 en cours, 6 en revue et 9 bloquées. Bloquées en premier : 0917, Label normalization ; 0921, Active model check.');
   assert.equal(spoken.sentence(facts, { status: 'review' }), '6 tâches en revue.');
   assert.match(spoken.sentence(facts, { task: '0999' }), /0999 n’est pas/);
+  const archived = { ...facts, tasks: [{ ...facts.tasks[0], archivedQualification: true }] };
+  assert.equal(spoken.sentence(archived, { task: '0918' }), 'La tâche 0918, Review correction, est en revue, priorité 1. C’est une qualification archivée, hors des compteurs.');
   assert.match(spoken.sentence(facts, { status: 'blocked' }, 'en'), /^9 tasks blocked\. First: 0917/);
   assert.match(spoken.context(facts), /never answer with a screen pointer alone/);
   assert.equal(spoken.context(null), '');
@@ -40,15 +42,19 @@ test('the read uses the page scope: engineering tasks without archived qualifica
   const chain = rows => ({ sort: () => ({ limit: () => ({ select: () => ({ lean: async () => rows }) }) }), select: () => ({ lean: async () => rows }) });
   const PipelineTask = {
     aggregate: async pipeline => { calls.push(pipeline[0].$match); return [{ _id: 'blocked', count: 9 }, { _id: 'review', count: 6 }, { _id: 'weird', count: 1 }]; },
-    find: query => { calls.push(query); return query.pipelineId ? chain([{ pipelineId: '0918', title: 'Review correction', status: 'review', priority: 1 }])
+    find: query => { calls.push(query); return query.pipelineId ? chain([{ pipelineId: '0918', title: 'Review correction', status: 'review', priority: 1,
+      codingAutonomy: { disposition: { kind: 'qualification' } } }])
       : chain(query.status === 'blocked' ? [{ pipelineId: '0917', title: 'x'.repeat(200), status: 'blocked', priority: 1 }] : []); }
   };
   const result = await spoken.read({ PipelineTask, taskIds: ['0918', '0999', 'abc'], now: () => 0 });
   assert.deepEqual(result.counts, { queued: 0, in_progress: 0, review: 6, blocked: 9, done: 0 });
   assert.equal(result.keyTasks.blocked[0].title.length, 80);
-  assert.deepEqual(result.tasks.map(task => task.pipelineId), ['0918']);
+  assert.deepEqual(result.tasks, [{ pipelineId: '0918', title: 'Review correction', status: 'review', priority: 1, archivedQualification: true }]);
   assert.deepEqual(result.missingTasks, ['0999']);
-  for (const query of calls) {
+  const named = calls.find(query => query.pipelineId);
+  assert.equal(named.$and.length, 1, 'a named archived qualification is still found');
+  assert.ok(named.$and[0].service.$not.test('family'));
+  for (const query of calls.filter(query => !query.pipelineId)) {
     assert.deepEqual(query.$and[1], { 'codingAutonomy.disposition.kind': { $ne: 'qualification' } });
     assert.ok(query.$and[0].service.$not.test('personal'));
   }
