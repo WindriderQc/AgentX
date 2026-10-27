@@ -54,15 +54,23 @@ function proposal(raw, frame, catalog) {
       || !evidence || !['request', 'reply', 'context'].includes(evidence.source)
       || typeof evidence.quote !== 'string' || evidence.quote.trim().length < 8 || evidence.quote.length > 500
       || !frame[evidence.source].includes(evidence.quote)) return null;
-  let body = block.body.trim();
+  let body = block.body.trim(), focusStatus;
   if (block.kind === 'page') {
+    const base = body;
     if (block.focus !== undefined) {
       if (!block.focus || typeof block.focus !== 'object' || Array.isArray(block.focus) || Object.keys(block.focus).length > 8
           || !catalog.entries.some(row => row.id === body)
-          || Object.entries(block.focus).some(([key, value]) => !/^[a-z][a-z0-9_-]{0,31}$/.test(key) || typeof value !== 'string' || !value || value.length > 2000 || /\s/.test(value))) return null;
+          || Object.entries(block.focus).some(([key, value]) => !['play', 'status', 'task', 'group', 'report', 'start', 'end'].includes(key)
+            || typeof value !== 'string' || !value || value.length > 2000 || /\s/.test(value))) return null;
       body = [body, ...Object.entries(block.focus).map(([key, value]) => key + '=' + value)].join(' ');
     }
-    const target = catalog.parse(body);
+    let target = catalog.parse(body);
+    // A supported page can still help when its optional framing is unknown.
+    // Never forward that focus, accept arbitrary fields or claim it was applied.
+    if (block.focus !== undefined && (!target || catalog.canonical(target) !== body)) {
+      body = base; target = catalog.parse(base);
+      focusStatus = { status: 'unavailable', reason: 'unsupported_focus' };
+    }
     if (!target || catalog.mode(target) !== 'frame' || catalog.keepsConversation(target) !== true
         || catalog.canonical(target) !== body) return null;
     body = catalog.canonical(target);
@@ -76,7 +84,8 @@ function proposal(raw, frame, catalog) {
   }
   const selected = { ...(destination && { destination }), kind: block.kind, title: block.title.trim(), body, from: 'companion', key: 'companion-current' };
   return { decision: 'present', reason: value.reason.trim(), evidence: { source: evidence.source, quote: evidence.quote },
-    fingerprint: createHash('sha256').update(JSON.stringify(selected)).digest('hex'), block: selected };
+    fingerprint: createHash('sha256').update(JSON.stringify({ block: selected, focus: focusStatus || null })).digest('hex'), block: selected,
+    ...(focusStatus && { focus: focusStatus }) };
 }
 
 // Native structured output enforces the shape; Core still verifies quotes,

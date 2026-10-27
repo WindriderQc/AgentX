@@ -41,7 +41,7 @@ const companion = registerPresentationCompanion({ router: app, catalog: pages,
       block: frame.request === cases.review ? { kind: 'review', title: 'À vérifier', body: 'Vérifier la cible puis décider dans Pipeline.', destination: 'pipeline' }
         : frame.request === cases.focus ? { kind: 'page', title: 'Réseau', body: 'ecosystem play=network' }
         : frame.request === cases.list ? { kind: 'list', title: 'Notre liste', body: '- alpha\n- bêta' }
-        : { kind: 'page', title: 'Écosystème', body: 'ecosystem play=overview' } };
+        : { kind: 'page', title: 'Écosystème', body: 'ecosystem', focus: { play: 'unsupported-visit' } } };
   }
 });
 app.use('/assets/household', express.static(path.resolve(__dirname, '../../surfaces/household/public')));
@@ -104,6 +104,8 @@ for(const line of (await response.text()).trim().split('\\n')){const event=JSON.
     assert.equal(await page.evaluate(() => mainFinished), true);
     assert.equal(decisions, 0, 'main reply settled before any companion call');
     await page.locator('iframe.display-block-page').waitFor();
+    await page.getByRole('status').filter({ hasText: 'Vue générale affichée ; focus proposé indisponible.' }).waitFor();
+    checks.push('An unsupported optional focus keeps the validated general page and exposes its limit.');
     const frame = await page.locator('iframe.display-block-page').elementHandle().then(element => element.contentFrame());
     await frame.waitForURL('**/diskx?**');
     try {
