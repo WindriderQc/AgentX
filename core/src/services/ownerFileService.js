@@ -22,6 +22,9 @@ const INLINE = new Set([...Object.values(IMAGE_TYPES), 'application/pdf', 'text/
 const FOLDER_LIMIT = 60;
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
 const HASH_CACHE_LIMIT = 5000;
+// Downsized copies for views (Life Atlas tiles, timeline, viewer), kept in memory.
+const WIDTHS = new Set([240, 480, 1600]);
+const THUMB_CACHE_BYTES = 64 * 1024 * 1024;
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const failure = (message, statusCode = 400, code = 'OWNER_FILE_INVALID') => Object.assign(new Error(message), { statusCode, code });
@@ -45,8 +48,10 @@ function locatorOf(nativePath, env = process.env) {
   return null;
 }
 
-function createOwnerFiles({ env = process.env } = {}) {
+function createOwnerFiles({ env = process.env, resize = defaultResize } = {}) {
   const hashes = new Map();
+  const thumbs = new Map();
+  let thumbBytes = 0;
 
   // The real path behind a locator, only inside its mounted root.
   function resolve(locator) {
@@ -115,10 +120,31 @@ function createOwnerFiles({ env = process.env } = {}) {
   }
   const unavailable = res => res.status(404).json({ status: 'error', code: 'OWNER_FILE_UNAVAILABLE', message: 'File unavailable' });
 
+  // A verified image at a smaller width, as JPEG; other files are served as they are.
+  async function thumbnail(found, width) {
+    const key = `${found.target}\0${found.stat.size}\0${found.stat.mtimeMs}\0${width}`;
+    if (thumbs.has(key)) { const bytes = thumbs.get(key); thumbs.delete(key); thumbs.set(key, bytes); return bytes; }
+    const bytes = await resize(found.target, width);
+    thumbs.set(key, bytes); thumbBytes += bytes.length;
+    while (thumbBytes > THUMB_CACHE_BYTES && thumbs.size > 1) {
+      const [oldest, value] = thumbs.entries().next().value; thumbs.delete(oldest); thumbBytes -= value.length;
+    }
+    return bytes;
+  }
+
   async function sendContent(req, res) {
     const locator = req.query.locator || locatorOf(req.query.nativePath, env);
     const found = await verified(String(locator || ''), String(req.query.sha256 || ''));
-    return found && !found.folder ? stream(res, found.target) : unavailable(res);
+    if (!found || found.folder) return unavailable(res);
+    const width = Number(req.query.width);
+    if (WIDTHS.has(width) && IMAGE_TYPES[path.extname(found.target).toLowerCase()] && path.extname(found.target).toLowerCase() !== '.heic') {
+      try {
+        const bytes = await thumbnail(found, width);
+        res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+        return res.end(bytes);
+      } catch { /* an image libvips cannot read is served as it is */ }
+    }
+    return stream(res, found.target);
   }
 
   async function sendFolderImage(req, res) {
@@ -130,6 +156,12 @@ function createOwnerFiles({ env = process.env } = {}) {
   }
 
   return { read, sendContent, sendFolderImage, resolve };
+}
+
+function defaultResize(file, width) {
+  const sharp = require('sharp');
+  return sharp(file, { limitInputPixels: 80 * 1024 * 1024, failOn: 'none' }).rotate()
+    .resize({ width, withoutEnlargement: true }).jpeg({ quality: 80, mozjpeg: true }).toBuffer();
 }
 
 module.exports = { createOwnerFiles, folderHash, locatorOf, roots, IMAGE_TYPES };

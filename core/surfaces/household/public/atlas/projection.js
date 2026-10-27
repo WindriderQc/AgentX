@@ -148,6 +148,9 @@ export function collectMedia(events){
    caption:m.caption||'',album:m.album||'',date:null,precision:'unknown',associationBasis:m.associationBasis||'',dateBasis:m.dateBasis||'',dateNote:m.dateNote||'',cover:m.cover===true,filename:m.filename||m.originalPath?.split('/').pop()||'Photo'};
   for(const legacy of m.candidateEventIds||[])if(byLegacy.has(legacy))row.eventIds.add(byLegacy.get(legacy));
   const a=anchor(m.date,m.datePrecision);if(a.date&&(!row.date||a.date<row.date)){row.date=a.date;row.precision=a.precision;}
+  // Core's file reader downsizes on request; native asset thumbnails are already small.
+  if(row.url.startsWith('/api/secretary/files/')){row.small=`${row.url}&width=240`;row.thumb=`${row.url}&width=480`;row.large=`${row.url}&width=1600`;}
+  else{row.small=row.url;row.thumb=row.url;row.large=row.url;}
   photos.set(m.id,row);
  }
  return [...photos.values()].map(p=>({...p,eventIds:[...p.eventIds]}));

@@ -78,6 +78,7 @@ test('photos bound in a context are served by Core and linked to their moments',
   const events = [projectEntry(entry(1, context('lease', {}, { media }))), projectEntry(entry(2, context('purchase')))];
   const [photo] = collectMedia(events);
   assert.equal(photo.url, `/api/secretary/files/content?nativePath=${encodeURIComponent('/Host/images/trip/beach.jpg')}&sha256=${sha('e')}`);
+  assert.equal(photo.thumb, `${photo.url}&width=480`);
   assert.deepEqual(photo.eventIds.sort(), [`core-${id(1)}`, `core-${id(2)}`]);
   assert.deepEqual([photo.date, photo.precision], ['2005-05-15', 'month']);
 });
