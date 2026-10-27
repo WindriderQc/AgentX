@@ -17,13 +17,14 @@ const ISS_NORAD_ID = '25544';
 const TLE_STALE_EPOCH_MS = 3 * 24 * 3600 * 1000;
 const TLE_STALE_RETRIEVAL_MS = 18 * 3600 * 1000; // Data refreshes every 6 h
 const DATA_TIMEOUT_MS = 8000;
+const MAX_VISIBLE_LISTED = 24;
 const READ_ONLY = { readOnlyHint: true, idempotentHint: true, openWorldHint: false };
 
 const ISS_TOOLS = [
   {
     name: 'iss_passes',
     title: 'ISS Passes',
-    description: 'ISS (International Space Station, station spatiale) passes: when the space station passes over the house, computed from Data orbital elements. Location: explicit lat/lon, otherwise the household weather location, otherwise the configured default. Disclose the returned observer label, especially a default location. Each pass says whether it is observable to the naked eye (at least 10° high, station sunlit, Sun at least 6° below the observer’s horizon) or only geometric (above the horizon), with local times, directions and height. Weather is not known: say "si le ciel est dégagé". Quote the returned times and search window exactly; never estimate a pass time yourself or call it the best of the week when the window is shorter. Offer view.url when present; check view.observerSynchronized before claiming the view uses the same location; the view recalculates its own times.',
+    description: 'ISS (International Space Station, station spatiale) passes: when the space station passes over the house, computed from Data orbital elements. visiblePasses always lists every naked-eye pass of the window; passes may be a partial list. Location: explicit lat/lon, otherwise the household weather location, otherwise the configured default. Disclose the returned observer label, especially a default location. Each pass says whether it is observable to the naked eye (at least 10° high, station sunlit, Sun at least 6° below the observer’s horizon) or only geometric (above the horizon), with local times, directions and height. Weather is not known: say "si le ciel est dégagé". Quote the returned times and search window exactly; never estimate a pass time yourself or call it the best of the week when the window is shorter. Offer view.url when present; check view.observerSynchronized before claiming the view uses the same location; the view recalculates its own times.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -154,6 +155,19 @@ async function issPasses(args, deps = {}) {
   const all = result.passes;
   const selected = (input.visibleOnly ? all.filter(p => p.observable) : all).slice(0, input.maxPasses);
   const next = all.find(p => p.observable) || null;
+  // Every naked-eye pass of the window, whatever passes/max_passes hold: a
+  // partial geometric list must never read as "the only visible pass".
+  const visibleAll = all.filter(p => p.observable);
+  const visiblePasses = visibleAll.slice(0, MAX_VISIBLE_LISTED).map(p => ({
+    startLocal: local(p.visible.start.time),
+    endLocal: local(p.visible.end.time),
+    start: p.visible.start.time,
+    end: p.visible.end.time,
+    from: p.visible.start.direction,
+    to: p.visible.end.direction,
+    maxElDeg: p.visible.maxElDeg,
+    durationSec: p.visible.durationSec,
+  }));
 
   return {
     status: 'ok',
@@ -183,6 +197,8 @@ async function issPasses(args, deps = {}) {
       maxElDeg: next.visible.maxElDeg,
       durationSec: next.visible.durationSec,
     },
+    visiblePasses,
+    visiblePassesComplete: visibleAll.length <= MAX_VISIBLE_LISTED,
     passes: selected.map(p => ({
       riseLocal: local(p.rise.time),
       setLocal: local(p.set.time),
@@ -196,7 +212,7 @@ async function issPasses(args, deps = {}) {
       notObservableBecause: p.reason ? p.reason.text : null,
     })),
     view: observerView(observer, deps.env),
-    answerRules: 'Donne les heures locales telles quelles avec leur jour et la fenêtre calculée. Limite toute comparaison à la fenêtre window, jamais à une semaine entière si elle n’a pas été calculée. Les counts portent sur toute la fenêtre; la liste passes peut être limitée. Pour obtenir les prochains passages visibles, utilise visible_only=true plutôt que filtrer une liste géométrique tronquée. Une liste partielle ne prouve ni que ses passages sont les seuls ni qu’un passage est le meilleur de toute la période. Indique le lieu utilisé; si observer.defaulted est vrai, annonce explicitement que ce lieu par défaut ne prouve pas la position de la personne. Distingue « visible à l’œil nu si le ciel est dégagé » et « passe au-dessus de l’horizon mais pas visible ». Si tu expliques le critère solaire, le Soleil doit être à au moins 6° sous l’horizon (hauteur solaire ≤ −6°). Mentionne la date des éléments orbitaux si stale est vrai. Propose view.url quand il est présent. Si view.observerSynchronized est vrai, le lien transmet le même lieu arrondi au navigateur; conserve le lien exact. Sinon la vue règle son lieu séparément. La vue recalcule ses passages : ses heures peuvent différer si les éléments orbitaux ou la fenêtre changent.',
+    answerRules: 'Donne les heures locales telles quelles avec leur jour et la fenêtre calculée. visiblePasses liste tous les passages visibles à l’œil nu de la fenêtre (visiblePassesComplete vrai) : utilise-la pour dire combien il y en a et lesquels, jamais la liste passes. Limite toute comparaison à la fenêtre window, jamais à une semaine entière si elle n’a pas été calculée. Les counts portent sur toute la fenêtre; la liste passes peut être limitée. Pour obtenir les prochains passages visibles, utilise visible_only=true plutôt que filtrer une liste géométrique tronquée. Une liste partielle ne prouve ni que ses passages sont les seuls ni qu’un passage est le meilleur de toute la période. Indique le lieu utilisé; si observer.defaulted est vrai, annonce explicitement que ce lieu par défaut ne prouve pas la position de la personne. Distingue « visible à l’œil nu si le ciel est dégagé » et « passe au-dessus de l’horizon mais pas visible ». Si tu expliques le critère solaire, le Soleil doit être à au moins 6° sous l’horizon (hauteur solaire ≤ −6°). Mentionne la date des éléments orbitaux si stale est vrai. Propose view.url quand il est présent. Si view.observerSynchronized est vrai, le lien transmet le même lieu arrondi au navigateur; conserve le lien exact. Sinon la vue règle son lieu séparément. La vue recalcule ses passages : ses heures peuvent différer si les éléments orbitaux ou la fenêtre changent.',
   };
 }
 
