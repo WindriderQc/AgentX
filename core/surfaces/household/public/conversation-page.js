@@ -162,7 +162,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       const row = document.createElement('div'); row.className = 'conversation-message assistant interjection';
       const label = document.createElement('small'); label.className = 'interjection-label';
       label.textContent = spoken ? 'Brain remark · spoken' : 'Brain remark · shown only (Nestor was not speaking then)';
-      row.dataset.spoken = String(spoken); row.append(label, document.createTextNode(remark.text)); transcript.append(row); row.scrollIntoView({ block: 'nearest' });
+      row.dataset.spoken = String(spoken); row.append(label, document.createTextNode(remark.text)); transcript.append(row); transcript.scrollTop = transcript.scrollHeight;
     } });
   const work = family ? null : NestorWork.create({ host: el('conversationWork'), base: sessionBase, api,
     getConversation: () => conversation, getLanguage: () => language.value, maySpeak: () => !textBusy,
@@ -334,7 +334,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }; row.append(document.createElement('br'), button);
     }
     if (interrupted) { row.dataset.interrupted = 'true'; row.setAttribute('aria-label', 'Interrupted reply'); }
-    row.scrollIntoView({ block: 'nearest' });
+    transcript.scrollTop = transcript.scrollHeight;
   };
   async function createSession(prefs, signal) {
     recap?.clear();
@@ -401,7 +401,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
           if (line.spoken) {
             transcript.querySelector('.empty')?.remove();
             const row = document.createElement('div'); row.className = 'conversation-message activity'; row.textContent = line.text;
-            transcript.insertBefore(row, partial); row.scrollIntoView({ block: 'nearest' });
+            transcript.insertBefore(row, partial); transcript.scrollTop = transcript.scrollHeight;
             onNotice?.(line.text);
           }
         }
@@ -534,11 +534,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       const row = document.createElement('div');
       if (work.status !== 'answered' || !work.reply?.text) {
         row.className = 'conversation-message activity'; row.textContent = `${name} could not finish its answer.`;
-        transcript.append(row); row.scrollIntoView({ block: 'nearest' });
+        transcript.append(row); transcript.scrollTop = transcript.scrollHeight;
         return;
       }
       row.className = 'conversation-message assistant'; row.dataset.speaker = name; row.dataset.spoken = 'false';
-      row.textContent = work.reply.text; transcript.append(row); row.scrollIntoView({ block: 'nearest' });
+      row.textContent = work.reply.text; transcript.append(row); transcript.scrollTop = transcript.scrollHeight;
       // Said at the first pause; the text is already on screen and in the history.
       for (let attempt = 0; attempt < 90 && here(); attempt += 1) {
         if (await conversation.interject(work.reply)) { row.dataset.spoken = 'true'; return; }
