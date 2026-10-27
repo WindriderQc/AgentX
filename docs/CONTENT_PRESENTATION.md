@@ -7,6 +7,28 @@ it without destroying the conversation or a retained frame. Escape closes from
 the toolbar/content and returns focus to the toggle. Family keeps its scoped
 boards, secret restrictions and external-link preference.
 
+Short screen commands, spoken or typed, act on Nestor's workspace in the
+browser without a model call or conversation turn: expand/shrink ("agrandis",
+"zoom in", "réduis", "zoom out"), text size ("agrandis le texte", "réduis le
+texte"), close/show ("ferme", "cache l'écran", "réaffiche"), previous/next/
+first/last in the picker, scrolling ("descends", "monte") and opening the shown
+page in a tab. Only a complete short phrase counts, optionally with "Nestor" or
+"please"; "ferme la tâche 0918" stays a request. Without retained content the
+phrase goes to Nestor as before. On wake-word standby a command must name
+Nestor. A command spoken over a reply leaves that reply playing. A command that
+cannot apply only shows a short status line; none removes content. A frame from
+another origin cannot be scrolled, and browsers open a tab only after a recent
+click or key press, so a spoken "open in a tab" focuses the link instead.
+
+The **Commandes** button lists the built-in words for each action and edits the
+owner's own exact phrases. Core keeps them under
+`/api/voice-personas/private/screen-commands` with a revision; a family-pinned
+device cannot reach that route. Browser and Core apply one validator: at most
+40 phrases of 2-40 characters and five words, never a built-in phrase, never
+naming Nestor. Family has no workspace and gains no control. The grammar lives
+in `screen-commands.js`, the effects in `presentation-commands.js`; the voice
+loop calls them through the generic `localControl` hook.
+
 Voice and text use the same `show` blocks and canonical `display` history.
 An explicit display request needs a short announcement; reading aloud is a
 separate request. Incomplete show blocks retain `partial: true`, including in

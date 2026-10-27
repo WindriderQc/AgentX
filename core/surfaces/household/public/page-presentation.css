@@ -10,11 +10,16 @@
 .page-presentation .display-block { padding: 12px; }
 .page-presentation .display-block-actions { flex-wrap: wrap; }
 .page-presentation .display-page-expand { display: none; }
-.page-presentation .display-block-page { height: max(480px, calc(100dvh - 260px)); }
+.page-presentation .display-block-page { height: calc(max(480px, 100dvh - 260px) / var(--presentation-text-zoom, 1)); }
 .page-presentation .display-block-note { margin-bottom: 8px; font-size: .78rem; }
 .page-presentation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.page-presentation-feedback { flex-basis: 100%; margin: 0; color: var(--soft); font-size: .82rem; }
+/* Kept in the accessibility tree so a new message is announced. */
+.page-presentation-feedback:empty { height: 0; }
 .page-presentation .display-block-header { min-width: 0; }
-.page-presentation .display-block-text { max-height: 65dvh; overflow: auto; }
+.page-presentation .display-block-text { max-height: calc(65dvh / var(--presentation-text-zoom, 1)); overflow: auto; }
+/* "Agrandis le texte": the card content and a framed page grow; boxes keep their visible size. */
+.page-presentation .display-block > :not(.display-block-header) { zoom: var(--presentation-text-zoom, 1); }
 .page-presentation .display-block-markdown { white-space: normal; }
 .display-block-markdown :is(pre, table) { max-width: 100%; overflow: auto; display: block; }
 .display-block-markdown pre { white-space: pre; padding: 12px; background: #06111a; }
@@ -22,7 +27,7 @@
 .display-block-markdown :is(h1,h2,h3,h4) { font-size: 1.05rem; margin-block: 1em .5em; }
 .display-block-markdown :is(ul,ol) { padding-inline-start: 1.5em; }
 .display-block-markdown th, .display-block-markdown td { padding: 6px 10px; border: 1px solid var(--line); }
-.page-presentation.is-expanded :is(.display-block-page, .display-block-text) { height: 80dvh; max-height: 80dvh; }
+.page-presentation.is-expanded :is(.display-block-page, .display-block-text) { height: calc(80dvh / var(--presentation-text-zoom, 1)); max-height: calc(80dvh / var(--presentation-text-zoom, 1)); }
 .page-presentation select { min-width: 0; width: min(420px, 70vw); text-overflow: ellipsis; }
 .page-presentation [hidden] { display: none !important; }
 
@@ -50,3 +55,21 @@ body:has(.page-presentation.is-active) .avatar-dock-bar { display: none; }
   body:has(.page-presentation.is-active) .conversation-stage .conversation-actions { justify-content: start; }
   .page-presentation .display-block-page { height: max(360px, 65dvh); }
 }
+
+/* Screen commands (#924): the words Nestor's workspace obeys, and the owner's own. */
+.screen-commands-dialog { width: min(720px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 14px; background: var(--panel, #0d1b26); color: inherit; }
+.screen-commands-dialog::backdrop { background: rgb(0 0 0 / .55); }
+.screen-commands-dialog form { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.screen-commands-dialog header, .screen-commands-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.screen-commands-dialog footer { justify-content: flex-end; }
+.screen-commands-dialog h2 { margin: 0; font-size: 1.15rem; }
+.screen-commands-dialog [data-close] { min-width: 44px; min-height: 44px; }
+.screen-commands-help, .screen-commands-builtin { margin: 0; color: var(--soft); font-size: .85rem; }
+.screen-commands-action { display: grid; gap: 4px; padding: 8px 0; border-top: 1px solid var(--line); }
+.screen-commands-action h3 { margin: 0; font-size: .95rem; }
+.screen-commands-own { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 0; padding: 0; list-style: none; }
+.screen-commands-own li { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid var(--line); border-radius: 999px; }
+.screen-commands-own button { min-width: 32px; min-height: 32px; }
+.screen-commands-add { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 0; border: 1px solid var(--line); border-radius: 10px; }
+.screen-commands-add label { display: grid; gap: 4px; flex: 1 1 180px; font-size: .85rem; }
+.screen-commands-add :is(input, select, button) { min-height: 44px; }

@@ -314,7 +314,7 @@
     if (presentation) {
       text.hidden = visual.hidden = true;
       const board = create(presentation.board, { secrets, space, heading: 'Contenu', onChange: presentation.update });
-      return { add: board.add, restore: board.restore, has: board.has,
+      return { add: board.add, restore: board.restore, has: board.has, command: presentation.command,
         context: () => presentation.active() ? board.context() : [], clear: board.clear };
     }
     const boards = [create(text, { secrets, space, kinds: ['text', 'list', 'table', 'code', 'link', 'secret'] }),
