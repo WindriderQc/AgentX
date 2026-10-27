@@ -320,11 +320,12 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         client._call("POST", "/api/cluster/schedule/work-queue/" + queue_id + "/assert-dispatch", {"dispatchId": dispatch_id})
         try:
             current, units, gaps = materialize(root, source)
-            if refresh_rtf and rtf_scope.had_headers(previous):
+            if rtf_scope.known_rtf(previous) and rtf_scope.had_headers(previous):
                 retain_header_scope(current, units)
             plan = list(pages(current, units, manifest["objectiveSha256"], manifest["config"]["pageChars"], manifest["config"]["overlap"]))
             durable(plan_file, {"source": current, "pageIds": [p["pageId"] for p in plan], "gaps": gaps,
-                                "representations": [{k: v for k, v in u.items() if k != "content"} for u in units]})
+                                "representations": [{k: v for k, v in u.items() if k != "content"} for u in units],
+                                "rtfReaderProfile": rtf_scope.materialized_profile(units, gaps)})
             reused = set()
             for unit in units:
                 unit_pages = [p for p in plan if p["representation"] == equivalent.unit_ref(unit)]

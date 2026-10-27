@@ -164,7 +164,8 @@ retained byte for byte and the newly extracted RTF unit has new page identities.
 Existing receipts, request fences and the frozen objective/prompt remain
 unchanged. Until rematerialization, or while known RTF text remains opaque,
 source-level `textReviewComplete` and `textCovered` stay false; actual header
-page receipts remain counted. A failed extraction stamps the current profile
+page receipts remain counted. The plan stores the current reader profile without changing historical source
+metadata. A failed extraction stamps the current profile
 and its reason, so later runs do not reparse that same known failure forever.
 Native complete-text equivalence can cover the new representation only after
 its text and message context are verified; it never counts as another model

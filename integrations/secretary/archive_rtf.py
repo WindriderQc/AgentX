@@ -29,7 +29,7 @@ class RtfError(ValueError):
 
 def _convert(data):
     """Runs only in the bounded local Python child, not a document engine."""
-    from _vendor.striprtf.striprtf import PATTERN, FONTTABLE, charset_map, font_table_group, rtf_to_text
+    from _vendor.striprtf.striprtf import PATTERN, FONTTABLE, charset_map, destinations, font_table_group, rtf_to_text
     if not data or len(data) > MAX_PART_BYTES:
         raise RtfError("rtf-part-size-limit")
     try:
@@ -39,6 +39,7 @@ def _convert(data):
     if not re.match(r"\A\{\\rtf1(?=[\\\s{}])", text):
         raise RtfError("rtf-signature-invalid")
     depth, root_closed, omitted, used_fonts = 0, False, set(), set()
+    previous_star = False
     fonts = font_table_group(text)
     # Use upstream's lexer/grammar, never another text-stripping parser.
     inspection = text.replace(fonts, "", 1) if fonts else text
@@ -54,8 +55,12 @@ def _convert(data):
                 root_closed = True
         if word == "bin":
             raise RtfError("rtf-binary-unsupported")
-        if word and word != word.lower():
+        # Known upstream destinations are case sensitive. The converter marker
+        # is metadata only when explicitly inside an ignorable (\*) group.
+        if word and word != word.lower() and word not in destinations \
+                and not (word == "formatConverter" and previous_star):
             raise RtfError("rtf-control-case-unsupported")
+        previous_star = char == "*"
         if word in {"mac", "pc", "pca"}:
             raise RtfError("rtf-default-codepage-unsupported")
         if char == "'" or literal == "\\":

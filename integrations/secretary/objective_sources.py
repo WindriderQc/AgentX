@@ -12,7 +12,6 @@ from archive_read import MAX_BYTES, representations
 from evidence_attribution import body_segments, page_context
 from evidence_store import load
 from review_attempts import hashed
-from archive_rtf import PROFILE as RTF_PROFILE
 
 
 def inventory(root, selection=None):
@@ -85,8 +84,7 @@ def materialize(root, source):
     source["direction"] = "draft" if "DRAFT" in labels else "sent" if "SENT" in labels else "received" if labels else "unknown"
     units = []
     gaps = []
-    if any(body.get("extraction") for body in bodies):
-        source["rtfReaderProfile"] = RTF_PROFILE
+    has_rtf = any(body.get("extraction") for body in bodies)
     for body in bodies:
         ref = {"partIndex": body["partIndex"], "mimeType": body["mimeType"]}
         if body.get("decoding"):
@@ -104,7 +102,7 @@ def materialize(root, source):
             units.append(_unit("html-inert-supplement", json.dumps(extra, ensure_ascii=False), **ref))
         if extra and extra.get("truncated"):
             gaps.append({"code": "html-supplement-truncated", **ref})
-    if not bodies or not units and source.get("rtfReaderProfile"):
+    if not bodies or not units and has_rtf:
         gaps.append({"code": "no-inline-text-representation"})
         units.append(_unit("message-headers", "\n".join(key + ": " + value for key, value in headers.items())))
     archived = {}

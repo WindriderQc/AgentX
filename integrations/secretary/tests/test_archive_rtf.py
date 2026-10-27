@@ -57,6 +57,8 @@ class RtfTextTests(unittest.TestCase):
         raw = br"{\rtf1\ansi caf\u233? \u-10179?\u-8704? \{vrai\} \\fin\tab ok}"
         value = read_part(part(raw))
         self.assertEqual(value['content'], 'café 😀 {vrai} \\fin\tok')
+        marker = br'{\rtf1{\*\formatConverter converted from text} Visible.}'
+        self.assertEqual(read_part(part(marker))['content'], ' Visible.')
         cyrillic = br"{\rtf1\ansi{\fonttbl{\f0\fcharset204 Arial;}}\f0 \'cf\'f0\'e8\'e2\'e5\'f2}"
         self.assertEqual(read_part(part(cyrillic))['content'], 'Привет')
 
@@ -68,6 +70,7 @@ class RtfTextTests(unittest.TestCase):
             (br'{\rtf1\mac text}','rtf-default-codepage-unsupported'),
             (br'{\rtf1\bin3 abc}','rtf-binary-unsupported'),
             (br'{\rtf1\BIN3 abc}','rtf-control-case-unsupported'),
+            (br'{\rtf1\formatConverter text}','rtf-control-case-unsupported'),
             (br'{\rtf1\u0?}','rtf-decoded-control-invalid'),
             (br'{\rtf1\u-10179?}','rtf-text-decode-failed'),
             (br'{\rtf1\u999999?}','rtf-unicode-control-invalid'),

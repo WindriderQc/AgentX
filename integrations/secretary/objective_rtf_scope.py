@@ -9,7 +9,13 @@ def known_rtf(plan):
 
 
 def upgrade_pending(plan):
-    return known_rtf(plan) and plan.get("source", {}).get("rtfReaderProfile") != PROFILE
+    return known_rtf(plan) and plan.get("rtfReaderProfile") != PROFILE
+
+
+def materialized_profile(units, gaps):
+    # The plan owns reader progress; source dictionaries in historical
+    # dispositions and equivalence indexes remain byte-for-byte compatible.
+    return PROFILE if any(row.get("extraction", {}).get("profile") == PROFILE for row in [*units, *gaps]) else None
 
 
 def coverage_gaps(plan):
