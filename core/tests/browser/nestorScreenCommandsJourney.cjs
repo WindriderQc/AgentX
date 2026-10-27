@@ -11,6 +11,7 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const { randomUUID } = require('node:crypto');
 const core = path.resolve(__dirname, '../..'), publicDir = path.join(core, 'surfaces/household/public');
 const { generatedPersonas, snapshot } = require('../../surfaces/household/persona-catalog');
+const screenWords = require('../../surfaces/household/screen-command-phrases');
 const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture', version: 1 }));
 const sessions = new Map(), submissions = [], errors = [];
 let browser, server, heard = '';
@@ -49,6 +50,23 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
       });</script></body>`);
     res.type('html').send(html);
   });
+  // The owner's own words go through the real Core route, over an in-memory row.
+  let wordsRow = null;
+  const wordsModel = {
+    findOne: () => ({ lean: async () => wordsRow }),
+    findOneAndUpdate: (query, update) => ({ lean: async () => {
+      if ((wordsRow?.revision || 0) !== (typeof query.revision === 'number' ? query.revision : 0)) return null;
+      wordsRow = { ...update.$set }; return wordsRow;
+    } })
+  };
+  const personasRouter = express.Router();
+  screenWords.register(personasRouter, { service: screenWords.createScreenCommandPhrases({ Model: wordsModel }),
+    envelope: (res, data) => res.json({ data }), fail: (res, status, message, code) => res.status(status).json({ message, code }) });
+  app.use('/api/voice-personas', personasRouter);
+  app.get('/api/voice-personas/private/screen-pages', (_req, res) => res.json({ data: { destinations: [{ id: 'dad-day', label: 'Ma journée', href: '/dad/day', mode: 'frame' }] } }));
+  // A long same-origin page, so scrolling inside its frame can be observed.
+  app.get('/dad/day', (_req, res) => res.send(`<!doctype html><title>Ma journée</title><style>body{font:16px system-ui;background:#102333;color:#e1eef8;padding:24px}</style>
+    <h1>Ma journée</h1>${Array.from({ length: 60 }, (_, index) => `<p>Rendez-vous ${index + 1}</p>`).join('')}`));
   app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas, runtime: { defaultBackend: 'agentx' } } }));
   app.get('/api/voice-personas/private/agents', (_req, res) => res.json({ data: { agents: [] } }));
   app.post('/api/voice-personas/private/sessions', (req, res) => {
@@ -61,6 +79,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     const session = sessions.get(req.params.id); session.turnCount++;
     res.type('application/x-ndjson');
     if (submissions.length === 1) {
+      res.write(JSON.stringify({ type: 'show', block: { kind: 'page', title: 'Ma journée', body: 'dad-day' } }) + '\n');
       res.write(JSON.stringify({ type: 'show', block: { kind: 'list', title: 'Tâches clés', body: '- 0918 à revoir\n- 0921 en cours' } }) + '\n');
       res.write(JSON.stringify({ type: 'show', block: { kind: 'text', title: 'Note du jour', body: 'Deux tâches demandent une décision.' } }) + '\n');
     }
@@ -101,6 +120,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     await page.waitForFunction(message => document.querySelector('.page-presentation-feedback').textContent === message, expected.feedback);
     const now = await state();
     for (const [key, value] of Object.entries(expected)) assert.equal(now[key], value, `${how} « ${text} » → ${key}`);
+    if (how === 'spoken') await page.waitForFunction(() => document.querySelector('#conversationPresence').dataset.state === 'listening');
     assert.equal(submissions.length, before, `${how} « ${text} » reached the model`);
     assert.equal(now.draft, '', 'the composer is empty after a command');
     steps.push({ how, text, ...now });
@@ -109,7 +129,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
 
   // Content first: one ordinary request; the stand-in shows two blocks.
   await type('Montre-moi mes tâches clés');
-  await page.waitForFunction(() => document.querySelectorAll('.page-presentation .display-block').length === 2);
+  await page.waitForFunction(() => document.querySelectorAll('.page-presentation .display-block').length === 3);
   await page.waitForFunction(() => document.querySelectorAll('#conversationTranscript .assistant').length === 1);
   await page.waitForFunction(() => !document.querySelector('#conversationText textarea').disabled && document.querySelector('#conversationStatus').textContent !== 'Thinking…');
   assert.equal(submissions.length, 1);
@@ -157,7 +177,66 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   assert.equal(submissions.at(-1), 'Agrandis la photo et explique-la');
   assert.equal((await state()).expanded, false, 'a request is never acted on as a command');
 
+  const listening = () => page.waitForFunction(() => document.querySelector('#conversationPresence').dataset.state === 'listening');
+  await listening();
+  const before = submissions.length;
+  // Zoom words are the expand/shrink commands; "le texte" changes the text size.
+  await expectStep('typed', 'zoom in', { expanded: true, feedback: 'Contenu agrandi.' });
+  await expectStep('typed', 'zoom out', { expanded: false, feedback: 'Taille normale.' });
+  await expectStep('typed', 'premier contenu', { selected: 'Note du jour', feedback: 'Premier contenu : Note du jour' });
+  await expectStep('typed', 'dernier contenu', { selected: 'Ma journée', feedback: 'Dernier contenu : Ma journée' });
+  await page.frameLocator('.page-presentation iframe').getByRole('heading', { name: 'Ma journée' }).waitFor();
+  await expectStep('spoken', 'agrandis le texte', { feedback: 'Texte à 125 %.' });
+  await listening();
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.display-block:not([hidden]) .display-page-holder')).zoom), '1.25');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'bigger text does not widen the page');
+  const frameTop = () => page.evaluate(() => document.querySelector('.display-block:not([hidden]) iframe').contentDocument.scrollingElement.scrollTop);
+  await expectStep('spoken', 'descends', { feedback: 'Défilement vers le bas.' });
+  await listening();
+  await page.waitForFunction(() => document.querySelector('.display-block:not([hidden]) iframe').contentDocument.scrollingElement.scrollTop > 100);
+  await page.screenshot({ path: path.join(output, 'text-zoom-scrolled-desktop.png'), fullPage: true });
+  await expectStep('spoken', 'monte', { feedback: 'Défilement vers le haut.' });
+  await listening();
+  await page.waitForFunction(() => document.querySelector('.display-block:not([hidden]) iframe').contentDocument.scrollingElement.scrollTop === 0);
+  assert.equal(await frameTop(), 0);
+  await expectStep('typed', 'réduis le texte', { feedback: 'Texte à 100 %.' });
+  // A typed command follows a key press, so the browser lets the tab open.
+  const popup = page.waitForEvent('popup');
+  await expectStep('typed', 'ouvre dans un onglet', { feedback: 'Page ouverte dans un onglet.' });
+  const tab = await popup; await tab.waitForLoadState(); assert.match(tab.url(), /\/dad\/day/); await tab.close();
+  // Spoken, there is usually no recent gesture: Nestor points at the link instead of pretending.
+  // The test browser keeps the last click's activation, so its absence is simulated here.
+  await page.evaluate(() => Object.defineProperty(navigator, 'userActivation', { value: { isActive: false }, configurable: true }));
+  await expectStep('spoken', 'ouvre dans un onglet', { feedback: 'Touchez « Ouvrir dans un onglet » : le navigateur bloque l’ouverture à la voix.' });
+  await listening();
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Ouvrir dans un onglet');
+  await page.evaluate(() => delete navigator.userActivation);
+
+  // See and edit the words: the owner's phrase is saved by Core and heard at once.
+  await page.getByRole('button', { name: 'Commandes' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Commandes d’écran' });
+  await dialog.waitFor();
+  assert.match(await dialog.textContent(), /zoom in/);
+  await dialog.getByLabel('Phrase').fill('Agrandis');
+  await dialog.getByRole('button', { name: 'Ajouter' }).click();
+  assert.match(await dialog.locator('[data-status]').textContent(), /déjà reconnu/);
+  await dialog.getByLabel('Phrase').fill('Plein pot');
+  await dialog.getByLabel('Action').selectOption({ label: 'Agrandir la zone' });
+  await dialog.getByRole('button', { name: 'Ajouter' }).click();
+  await page.screenshot({ path: path.join(output, 'commands-editor-desktop.png') });
+  await dialog.getByRole('button', { name: 'Enregistrer' }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  assert.deepEqual(wordsRow.phrases, [{ phrase: 'Plein pot', action: 'expand' }]);
+  await expectStep('spoken', 'Plein pot !', { expanded: true, feedback: 'Contenu agrandi.' });
+  await listening();
+  assert.equal(submissions.length, before, 'no new command reached the model');
+
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole('button', { name: 'Commandes' }).click();
+  await dialog.waitFor();
+  assert.equal(await page.evaluate(() => document.querySelector('.screen-commands-dialog').getBoundingClientRect().width <= innerWidth), true);
+  await page.screenshot({ path: path.join(output, 'commands-editor-mobile.png') });
+  await dialog.getByRole('button', { name: 'Annuler' }).click();
   await page.screenshot({ path: path.join(output, 'mobile.png'), fullPage: true });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'no horizontal scroll on a phone');
   assert.equal(await region.isVisible(), true);

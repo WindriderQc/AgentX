@@ -105,7 +105,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   // Shown, never spoken (#167): secrets exist only in the private space.
   const board = window.DisplayBoard.createScreen({ text: el('conversationBoard'), visual: el('conversationVisual') }, { secrets: !family, space: family ? 'family' : 'personal' });
   // "Agrandis", "ferme", "suivant"… act on Nestor's content workspace without a turn. Famille has no such workspace.
-  const screenCommand = family ? null : window.NestorScreenCommands?.handler(board);
+  const screenWords = family ? null : window.NestorScreenCommandsEditor?.mount({ host: app.querySelector('.page-presentation-actions'), api });
+  const screenCommand = family ? null : window.NestorScreenCommands?.handler(board, { phrases: () => screenWords?.phrases() || [] });
   // The avatar dock paces a math picture to Nestor's first word; the Images zone draws it.
   // Shown live: in the avatar's interactive scene Nestor steps aside and that zone comes first.
   const show = block => {
