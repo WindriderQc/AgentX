@@ -547,8 +547,16 @@
           { ...(typeof result === 'object' && result ? result : {}), bytes: offered ? early.bytes : blob.size,
             captureBytes: blob.size, recognitionMode: offered ? early.progressive ? 'progressive' : 'early' : 'complete' });
         if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) { text = ''; captureOutcome = 'echo'; }
+        // A surface may act on a short command itself (a screen command): no model
+        // turn, and a reply under way goes on. On standby it must name Nestor.
+        const local = !stopControl && text.trim()
+          ? this.io.localControl?.(text, { followup: !this.selection.wakeWord || wakeFollowup }) : null;
+        if (local) {
+          captureOutcome = 'local';
+          if (local.addressed && this.selection.wakeWord) this.wake.extend();
+        }
         if (previous?.candidate && this.owns(previous)) {
-          if (!text.trim() && !stopControl) { this.resumeCandidate(previous); return; }
+          if (local || (!text.trim() && !stopControl)) { this.resumeCandidate(previous); return; }
           this.interrupt(previous, { stop: stopControl || isStopControl(text) });
           this.releaseCandidate(previous);
         }
@@ -557,7 +565,7 @@
           await previous.interruption;
         }
         if (!this.current(epoch)) return;
-        if (stopControl || isStopControl(text)) {
+        if (stopControl || isStopControl(text) || local) {
           // A confirmed stop is a local control in every listening phase,
           // before wake acknowledgement. Never start a model turn to say
           // speech has stopped. A correction/question still runs below.
