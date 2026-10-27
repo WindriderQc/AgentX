@@ -125,3 +125,11 @@ test('a published current-turn proposal survives coalesced reply updates and kee
     service.begin({ ...args, turnId: 'new-topic' }); assert.equal(service.read('personal', 'new-topic').suggestion, null);
   } finally { service.close(); }
 });
+
+
+test('keep carries a bounded display rationale without accepting effects or content payloads', () => {
+  const frame = { request: 'Keep this view.' };
+  assert.deepEqual(proposal({ decision: 'keep', reason: 'The user asked to retain the view.' }, frame, pages), { decision: 'keep', reason: 'The user asked to retain the view.' });
+  assert.equal(proposal({ decision: 'keep', reason: 'x'.repeat(161) }, frame, pages), null);
+  assert.equal(proposal({ decision: 'keep', execute: 'send' }, frame, pages), null);
+});
