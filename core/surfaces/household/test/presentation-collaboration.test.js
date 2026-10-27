@@ -77,3 +77,22 @@ test('source projection is bounded, deduplicated and cannot invent source identi
   assert.equal(result.length, 2); assert.equal(result[1].excerpt.length, 1200);
   assert.match(result[0].excerptSha256, /^[a-f0-9]{64}$/);
 });
+
+
+test('completed findings remain a bounded previous-request inbox without contaminating a new visual topic', async () => {
+  let reads = 0; const pending = deferred(); let clock = Date.parse('2026-01-01T00:00:00Z');
+  const service = make({ now: () => clock, research: () => ++reads === 1 ? Promise.resolve([hit]) : pending.promise });
+  try {
+    service.begin(args); await wait();
+    service.begin({ ...args, turnId: 'next-current-turn', frame: { text: 'A different topic.' } });
+    const current = service.context('personal');
+    assert.equal(current.research.status, 'pending');
+    assert.equal(current.research.sources.length, 0);
+    assert.equal(current.previousResearch.turnId, 'current-turn');
+    assert.equal(current.previousResearch.coverage, 'previous_request_only_not_current');
+    assert.equal(current.previousResearch.research.sources[0].documentId, 'doc-alpha');
+    clock += 300001;
+    assert.equal(service.context('personal').status, 'unavailable');
+    pending.resolve([]); await wait();
+  } finally { service.close(); }
+});

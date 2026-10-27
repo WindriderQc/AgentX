@@ -47,7 +47,10 @@ freshness and a prepared review, without starting research or inference. This
 tool is absent from the shared and family memory buses. Core tells the principal
 its session/turn reference in the ordinary selected context. Hermes can pull
 new material during its native tool loop; the next ordinary turn also carries
-its current selected context. This does not inject text into tokens a provider
+its current selected context. One completed previous-request research result
+remains in an explicitly labelled, expiring inbox so a follow-up can read it
+while new research is pending. It is never inserted into the new visual decision
+as current-topic evidence. This does not inject text into tokens a provider
 has already generated or force Hermes to wait for research.
 
 ## Visual decisions and human priority
