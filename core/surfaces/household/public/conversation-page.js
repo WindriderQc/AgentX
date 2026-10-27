@@ -104,6 +104,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const composer = window.ConversationComposer.mount({ input: el('conversationMessage'), form: el('conversationText'), family });
   // Shown, never spoken (#167): secrets exist only in the private space.
   const board = window.DisplayBoard.createScreen({ text: el('conversationBoard'), visual: el('conversationVisual') }, { secrets: !family, space: family ? 'family' : 'personal' });
+  // "Agrandis", "ferme", "suivant"… act on Nestor's content workspace without a turn. Famille has no such workspace.
+  const screenCommand = family ? null : window.NestorScreenCommands?.handler(board);
   // The avatar dock paces a math picture to Nestor's first word; the Images zone draws it.
   // Shown live: in the avatar's interactive scene Nestor steps aside and that zone comes first.
   const show = block => {
@@ -562,6 +564,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       partial = null;
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
+    localControl: (text, options) => screenCommand?.(text, options) || null,
     transcriptionStarted: turnId => workflow?.capture(conversation.session?.sessionId, turnId),
     transcriptionDone: (turnId, values) => { latestVoiceTimings = values || {}; workflow?.timings(turnId, values); },
     transcriptionEnded: (turnId, receipt) => workflow?.captureEnd(turnId, receipt),
@@ -805,6 +808,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   });
   el('conversationText').onsubmit = async event => {
     event.preventDefault();
+    const typed = el('conversationMessage');
+    if (!draftFiles.length && screenCommand?.(typed.value)) { typed.value = ''; composer.sync(); return; }
     if (!textBusy && conversation.canType()) return typedDuringVoice();
     if (textBusy || !['idle', 'paused', 'error'].includes(conversation.state)) return;
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;

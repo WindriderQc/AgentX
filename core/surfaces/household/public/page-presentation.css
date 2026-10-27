@@ -13,6 +13,9 @@
 .page-presentation .display-block-page { height: max(480px, calc(100dvh - 260px)); }
 .page-presentation .display-block-note { margin-bottom: 8px; font-size: .78rem; }
 .page-presentation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.page-presentation-feedback { flex-basis: 100%; margin: 0; color: var(--soft); font-size: .82rem; }
+/* Kept in the accessibility tree so a new message is announced. */
+.page-presentation-feedback:empty { height: 0; }
 .page-presentation .display-block-header { min-width: 0; }
 .page-presentation .display-block-text { max-height: 65dvh; overflow: auto; }
 .page-presentation .display-block-markdown { white-space: normal; }

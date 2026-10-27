@@ -7,6 +7,18 @@ it without destroying the conversation or a retained frame. Escape closes from
 the toolbar/content and returns focus to the toggle. Family keeps its scoped
 boards, secret restrictions and external-link preference.
 
+Short screen commands, spoken or typed, act on Nestor's workspace in the
+browser without a model call or conversation turn: expand/shrink ("agrandis",
+"réduis", "expand"), close/show ("ferme", "cache l'écran", "réaffiche",
+"show it again") and previous/next in the picker ("précédent", "suivant").
+Only a complete short phrase counts, optionally with "Nestor" or "please";
+"ferme la tâche 0918" stays a request. Without retained content the phrase goes
+to Nestor as before. On wake-word standby a command must name Nestor. A command
+spoken over a reply leaves that reply playing. A command that cannot apply only
+shows a short status line; none removes content. Family has no workspace and
+gains no control. The grammar lives in `screen-commands.js`; the voice loop
+calls it through the generic `localControl` hook.
+
 Voice and text use the same `show` blocks and canonical `display` history.
 An explicit display request needs a short announcement; reading aloud is a
 separate request. Incomplete show blocks retain `partial: true`, including in

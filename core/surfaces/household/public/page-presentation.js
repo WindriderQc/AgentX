@@ -16,13 +16,15 @@
         <button type="button" class="button" data-action="expand" aria-pressed="false">Agrandir</button>
         <button type="button" class="button" data-action="toggle" aria-expanded="false" aria-controls="conversationPageBoard">Afficher le contenu</button>
       </div>
+      <p class="page-presentation-feedback" role="status" aria-live="polite"></p>
     </header><section id="conversationPageBoard" class="page-presentation-board conversation-board"></section>`;
     layout.prepend(region);
     const board = region.querySelector('.page-presentation-board');
     const picker = region.querySelector('select');
     const toggle = region.querySelector('[data-action="toggle"]');
     const expand = region.querySelector('[data-action="expand"]');
-    let cards = [], latest = null, selected = null;
+    const feedback = region.querySelector('.page-presentation-feedback');
+    let cards = [], latest = null, selected = null, feedbackTimer = null;
 
     function present(active) {
       region.classList.toggle('is-active', active);
@@ -31,9 +33,11 @@
       board.hidden = !active;
       expand.hidden = !active;
       root.dispatchEvent(new CustomEvent('nestor-page-presentation'));
-      if (!active) {
-        region.classList.remove('is-expanded'); expand.setAttribute('aria-pressed', 'false'); expand.textContent = 'Agrandir';
-      }
+      if (!active) setExpanded(false);
+    }
+    function setExpanded(expanded) {
+      region.classList.toggle('is-expanded', expanded);
+      expand.setAttribute('aria-pressed', String(expanded)); expand.textContent = expanded ? 'Réduire' : 'Agrandir';
     }
     function select(card) {
       selected = card;
@@ -42,10 +46,7 @@
     }
     toggle.addEventListener('click', () => present(!region.classList.contains('is-active')));
     picker.addEventListener('change', () => { select(cards[Number(picker.value)]); present(true); });
-    expand.addEventListener('click', () => {
-      const expanded = region.classList.toggle('is-expanded');
-      expand.setAttribute('aria-pressed', String(expanded)); expand.textContent = expanded ? 'Réduire' : 'Agrandir';
-    });
+    expand.addEventListener('click', () => setExpanded(!region.classList.contains('is-expanded')));
     region.addEventListener('keydown', event => {
       if (event.key === 'Escape' && region.classList.contains('is-active')) {
         event.preventDefault(); present(false); toggle.focus();
@@ -59,7 +60,39 @@
       root.dispatchEvent(new CustomEvent('nestor-page-presentation'));
     });
     observer.observe(layout.closest('#app'), { childList: true });
-    return { board, active: () => region.classList.contains('is-active'), update(next) {
+
+    // A spoken or typed screen command does what the toolbar buttons do. It never
+    // removes content; a command that cannot apply only says so briefly.
+    function say(message) {
+      feedback.textContent = message;
+      clearTimeout(feedbackTimer);
+      feedbackTimer = setTimeout(() => { feedback.textContent = ''; }, 3000);
+    }
+    function move(step) {
+      const index = cards.indexOf(selected) + step;
+      if (!cards[index]) return step < 0 ? 'Déjà au premier contenu.' : 'Déjà au dernier contenu.';
+      select(cards[index]); present(true);
+      return null;
+    }
+    function command(action) {
+      if (!cards.length || region.hidden) return null;
+      const active = region.classList.contains('is-active'), expanded = region.classList.contains('is-expanded');
+      // Each branch yields a short refusal, or nothing once the change is applied.
+      let refusal = null;
+      if (action === 'expand') refusal = !active ? 'Le contenu est fermé.' : expanded ? 'Déjà agrandi.' : setExpanded(true);
+      else if (action === 'shrink') refusal = !expanded ? 'Déjà à la taille normale.' : setExpanded(false);
+      else if (action === 'close') refusal = !active ? 'Le contenu est déjà fermé.' : present(false);
+      else if (action === 'show') refusal = active ? 'Le contenu est déjà affiché.' : present(true);
+      else if (action === 'previous' || action === 'next') refusal = move(action === 'previous' ? -1 : 1);
+      else return null;
+      const label = picker.selectedOptions?.[0]?.textContent || '';
+      const message = refusal || ({ expand: 'Contenu agrandi.', shrink: 'Taille normale.', close: 'Contenu fermé.', show: 'Contenu affiché.',
+        previous: `Contenu précédent : ${label}`, next: `Contenu suivant : ${label}` })[action];
+      say(message);
+      return { action, applied: !refusal, message };
+    }
+
+    return { board, command, active: () => region.classList.contains('is-active'), update(next) {
       cards = next;
       region.hidden = !cards.length;
       picker.replaceChildren(...cards.map((card, index) => {
