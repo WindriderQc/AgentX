@@ -53,6 +53,7 @@ function createPresentationCompanion({ decide, research = null, catalog, now = D
       if (sessions.get(state.sessionId) !== state || revision !== state.revision || state.explicit || closed) return;
       const parsed = proposal(raw, frame, catalog);
       state.reason = parsed ? null : 'invalid_proposal';
+      state.lastDecision = parsed ? { decision: parsed.decision, reason: parsed.reason || null } : null;
       state.state = parsed ? parsed.decision === 'present' ? 'ready' : 'idle' : 'unavailable';
       if (parsed?.decision === 'present') state.suggestion = parsed;
     } catch {
@@ -128,7 +129,7 @@ function createPresentationCompanion({ decide, research = null, catalog, now = D
     if (!enabled || closed || signal?.aborted) return null;
     if (sessions.size >= maxSessions) return null;
     const state = { sessionId, turnId, revision: 0, frame: frameFor(frame), pending: false,
-      suggestion: null, previousResearch, reason: null, observationSequence: 0, researchRevision: 0, researchCalls: 0, researchBusy: false,
+      suggestion: null, previousResearch, lastDecision: null, reason: null, observationSequence: 0, researchRevision: 0, researchCalls: 0, researchBusy: false,
       research: { status: research ? 'pending' : 'unavailable', sources: [], coverage: 'retrieved_excerpts_only' }, state: 'idle', touchedAt: now(), lastStartedAt: -Infinity, calls: 0, explicit: paused };
     sessions.set(sessionId, state);
     const stop = () => { if (sessions.get(sessionId) === state) drop(sessionId); };
@@ -151,6 +152,7 @@ function createPresentationCompanion({ decide, research = null, catalog, now = D
       state: state?.turnId === turnId ? state.suggestion && !state.explicit ? 'ready' : state.state : 'idle',
       phase: state?.turnId === turnId ? state.state : 'idle',
       suggestion: state?.turnId === turnId ? state.suggestion : null, reason: state?.turnId === turnId ? state.reason : null,
+      decision: state?.turnId === turnId ? state.lastDecision : null,
       collaboration: context(sessionId, turnId), coverage: 'bounded_current_context' };
   }
   const eviction = setInterval(prune, Math.min(ttlMs, 60000)); eviction.unref?.();
