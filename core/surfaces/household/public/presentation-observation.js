@@ -5,7 +5,7 @@
   function observe(card) {
     const block = card._displayBlock;
     const base = { contract: 'agentx.presentation/v1', id: card.dataset.presentationId,
-      revision: card.dataset.presentationId, kind: block.kind, title: card.querySelector('.display-block-title')?.textContent || block.title || '', status: 'visible',
+      revision: card.dataset.presentationId, kind: block.kind === 'review' ? 'text' : block.kind, title: card.querySelector('.display-block-title')?.textContent || block.title || '', status: 'visible',
       ...(block.partial && { partial: true }) };
     if (block.kind === 'secret') return { ...base, status: 'unavailable' };
     if (block.kind !== 'page') {

@@ -1,124 +1,130 @@
-# Contextual presentation alongside Hermes
+# Local collaboration alongside Hermes
 
-The personal conversation has one principal agent: Hermes. Core supplies its
-shared tools and canonical conversation. An optional local presentation
-companion follows the active context and proposes useful content in the existing
-workspace while Hermes continues answering. The feature starts unchecked for
-each browser visit and applies to retained personal Hermes conversations only.
-
-## Responsibility and flow
+Hermes remains the principal conversation and keeps its native tools. In a
+retained personal Hermes conversation, **Affichage contextuel** enables a local
+collaborator: useful catalogue views, lists and notes; sourced internal research;
+current display observations; and action proposals for human review. The switch
+starts unchecked on each browser visit. Family, ephemeral and LLMx sessions do
+not enter this capability.
 
 ```mermaid
 flowchart LR
-    Person <--> Hermes
-    Hermes <--> Core[Core tools and conversation]
-    Core --> Companion[Local presentation companion]
-    Companion --> Workspace[Selected content workspace]
-    Workspace -->|Current presentation observation| Core
-    Person -->|Select, pin or close| Workspace
+  Person <--> Hermes
+  Hermes <--> Core[Core tools and canonical conversation]
+  Core --> Local[Local contextual collaborator]
+  Local --> Workspace[Selected content and 3D workspace]
+  Memory[Existing Core memory search] --> Local
+  Workspace -->|Validated current observation| Local
+  Local -->|Sourced context read| Hermes
+  Person -->|Select, pin, review in owning UI| Workspace
 ```
 
-The user selects **Affichage contextuel** before a message. The ordinary turn
-handler supplies the canonical request, a bounded portion of its already
-selected context/history and the current presentation observation. Only public
-spoken reply deltas enter subsequent frames; hidden reasoning, raw terminal
-output and secret display blocks do not enter this channel. This does not
-change Hermes tools, provider, model, context or native execution history.
+## Conversation and research
 
-The companion uses Core's existing local inference capability and the configured
-small conversation task, with native routing, pins and admission intact. It
-does not install an external agent or duplicate tools in Hermes. Its output
-budget and call count are bounded. There is one in-flight companion call across
-the service and one latest pending frame per participating session. Updates
-coalesce; there is no durable job for every fragment. Superseded admitted calls
-retain their native inference settlement and their obsolete output is discarded.
+The collaborator receives the current request, public reply deltas, bounded
+user/assistant history, the validated selected display and actual research
+excerpts. It never receives the principal's system, guardian or execution
+instructions as advisory data. Hidden reasoning, raw tool output and secret
+blocks do not enter this channel. Models, task routes, pins and context-window
+settings remain under the existing Core runtime authority.
 
-The main reply never awaits the companion. The browser reads advisory status on
-a separate, scoped route. Failure or unavailability leaves Hermes and manual
-presentation operational. Volatile context expires after five minutes; restart
-does not resume or replay accompaniment. Deleting a conversation drops its
-advisory context. GET polling never invokes a model.
+The existing owner memory-search capability supplies up to three actual document
+excerpts, with document/chunk identifiers, source, title, excerpt hash and an
+observation time. It retains current-fact filtering, configured relevance floors
+and native embedding admission. Missing source identity is rejected; identical
+excerpts are deduplicated. No model-named filesystem path is opened and no web
+research is duplicated. Hermes retains its own web tools.
 
-## Relevance and display authority
+Research runs independently of the principal and of visual decisions. Each turn
+allows one initial read and at most one refinement for an exactly selected
+entity; ambiguous scene candidates do not fan out into searches. Pending, empty,
+unavailable and limited research remain explicit. Superseded reads settle through
+their native owner and their old result is ignored.
 
-The decision is general contextual selection, not a keyword-to-page switch.
-The prompt prefers keeping a suitable view and doing nothing when no useful
-accompaniment is available. A proposed change needs a reason and an exact quote
-from the supplied context. Structural validation rejects unsupported output;
-semantic relevance remains something the real-model pilot must measure.
+The owner-only `collaboration_context` MCP tool reads one eligible session and
+optionally an exact current turn. It returns selected context, sourced excerpts,
+freshness and a prepared review, without starting research or inference. This
+tool is absent from the shared and family memory buses. Core tells the principal
+its session/turn reference in the ordinary selected context. Hermes can pull
+new material during its native tool loop; the next ordinary turn also carries
+its current selected context. This does not inject text into tokens a provider
+has already generated or force Hermes to wait for research.
 
-The first slice accepts catalogue pages, text, lists and tables. Pages use the
-existing validated identifiers and focus grammar; arbitrary URLs and action
-fields are rejected. The ecosystem page reuses GraphysX's rendered tour and node
-focus. Repeated requests for the same visible page keep its current frame.
-The companion does not generate arbitrary scene code or execute shell commands.
-It has no business-effect tools. The content is labelled **Suggestion du
-contexte**, and is neither a successful action receipt nor verified inventory.
+## Visual decisions and human priority
 
-An explicit display from Hermes pauses accompaniment for that turn. A person's
-selection, close or pin immediately stops automatic replacement for the current
-turn. **Épingler la vue** prevents companion replacement across later turns;
-unpinning permits following on the next message. Delayed stop requests are bound
-to their original turn and cannot stop a newer turn.
+Visual decisions use the existing local conversation inference task, with native
+admission and a structured JSON output schema. Core additionally checks exact
+supporting quotes, catalogue identifiers, focus grammar, allowed fields and
+inert block types. A relevant view can be selected without an explicit display
+command. An already useful screen stays in place; no useful grounded information
+means no new content. Structural validity does not itself establish semantic
+relevance: a real-model pilot must receive that separately.
 
-The selected content uses the existing presentation observation/read contract
-on the next ordinary message. The companion's volatile proposals are not a
-second conversation store. The browser does not claim the agent saw pixels,
-an external tab, or a result merely because content was proposed or opened.
+There is one decision inference in flight and one latest pending frame per
+session. Deltas coalesce; six calls per turn, 32 active contexts and a five-minute
+inactivity TTL bound the work. A superseded admitted inference is allowed to
+settle; its old output cannot replace the current topic. Principal progress never
+awaits it. GET polling invokes no model. Unavailable local work leaves the
+conversation usable and is shown explicitly.
 
-## Extension boundaries
+Manual selection, closing, pinning and explicit principal displays pause automatic
+replacement. Gestures inside the current same-origin 3D frame also take priority.
+Pinning keeps that visual priority across turns while research and current
+observations remain available. Deletion, browser reset and expiry drop the
+advisory state; a restart resumes no work. Advisory excerpts are volatile Core
+context, not another transcript, personal memory or task registry.
 
-This slice establishes asynchronous visual accompaniment. It does not yet add
-autonomous document retrieval, a research-result inbox for Hermes, a continuous
-server feed of selected-node events or incremental mutations of a live scene.
-Those extensions use the same Core-owned contracts: typed, sourced observations
-and suggestions linked to the current conversation and request. They must keep
-user selection priority, freshness, scope, one current pending context and the
-principal's independent progress. The [companion delivery issue](https://github.com/WindriderQc/AgentX/issues/1158)
-owns unfinished work.
+## Live display and 3D
 
-The architecture accommodates new views and read capabilities without making
-the initial ecosystem, list and terminal examples an exhaustive feature list.
-A terminal intervention needs an exact domain identity and read/result evidence
-before its visual state can represent a verified change. Sensitive effects stay
-prepared for an explicit human action in the owning interface. Privacy filtering
-and alternate hardware topologies are separate later choices.
+The browser publishes only the selected presentation through the existing
+`presentationEvidence` validator, bound to session, turn and a monotonic client
+sequence. Old turns and repeated sequences cannot replace current context.
+External frames expose no arbitrary DOM text, fields or control capability.
+The actual component's post-render observation remains distinct from a requested
+focus and from verified domain state.
 
-## Test and pilot contract
+The ecosystem view exposes a typed presentation-only control over its existing
+`play` grammar. The collaborator can change its tour/node focus in the retained
+frame without reloading it. Core uses the rendered GraphysX observation for the
+result, not the request acknowledgement. This is view control, not arbitrary
+scene code, live inventory verification or terminal/network execution. New
+views use the same typed control and observation boundary.
 
-CPU checks exercise proposal validation, coalescing, stale frames, newer user
-turns, call limits, expiry and failures. Isolated HTTP/Mongo tests use the real
-Hermes turn handler with synthetic native transport and local inference. They
-verify the principal can finish before the companion and preserve family scope.
-Browser fixtures use the production workspace, companion controller, scoped
-routes and GraphysX embed, with synthetic model decisions. They verify pin,
-manual and primary-display priority, topic changes, no-op decisions and failure
-isolation. They are not evidence of actual model relevance or physical audio.
+## Proposals and effects
+
+A `review` card contains a proposed plan and a validated owning catalogue UI.
+It states that no send, delete or change has occurred. **Vérifier dans l’outil**
+opens that interface only after a human click; the person acts through its
+existing controls, concurrency checks and receipts. The collaborator has no
+effect tools, credentials, execution grant or arbitrary navigation URL. A plan
+never becomes a successful action receipt merely because it is displayed.
+
+## Validation
+
+CPU checks cover coalescing, stale frames and research, bounded sources and
+budgets, source identity, expiry, pin/research independence and inert review
+validation. HTTP/Mongo tests compose the actual Hermes turn handler, current
+observation route and owner context reader with synthetic native transport.
+Browser fixtures use the production workspace, controller and actual GraphysX
+embed with synthetic decisions. They exercise retained-frame focus, sourced
+context reads, user gestures, stale updates, manual/primary priority, failure,
+review navigation and mobile presentation.
 
 ```bash
-node --test core/surfaces/household/test/presentation-companion.test.js
+node --test core/surfaces/household/test/presentation-companion.test.js \
+  core/surfaces/household/test/presentation-collaboration.test.js
 npm test --prefix core -- --runInBand --runTestsByPath \
   tests/integration/household-companion.test.js \
-  tests/integration/household-hermes.test.js
+  tests/integration/household-hermes.test.js tests/unit/mcpOwnerTools.test.js
 GRAPHYSX_CHECKOUT=/path/to/built/GraphysX-Web \
 COMPANION_REPORT_DIR=/path/outside/git \
 node core/tests/browser/contextualCompanionJourney.cjs
 ```
 
-Before a native pilot, submit the existing heavy-work queue request linked to
-the coding session and issue. Retain its stable identity and release receipt;
-preparing it does not launch a model or approve a campaign. Required deployment
-and native execution approvals remain in force.
-
-The pilot uses one new personal Hermes conversation and a small set of benign
-requests: discuss a component, build a list, switch subjects, select/pin a view,
-and continue while local inference is unavailable. Log actual engine/provider,
-principal first response, companion dispatch/result, displayed content and
-GraphysX's rendered observation separately. Every visible proposal must belong
-to the current subject; obsolete results must never replace the current view.
-An unrelated suggestion fails relevance acceptance. There is no latency promise
-until observed, and browser success does not qualify microphone/playback.
-
-Source/CI, installed files, native model behavior and owner-device interaction
-are separate acceptance stages. Private manifests, prompts, receipts and
-screenshots stay outside public Git.
+Native acceptance is separate: queue it with every inference/embedding host it
+can use, preserve the exact dispatch and release receipts, then verify cloud
+principal identity, local decisions, actual sourced excerpts and context-tool
+execution, rendered 3D focus, current-topic lists, human priority and a review
+without domain effects. An unrelated suggestion fails acceptance. Do not replay
+an uncertain request or claim latency, microphone/audio or device reception from
+CPU fixtures. Privacy filtering and alternate GPU topologies remain later choices.

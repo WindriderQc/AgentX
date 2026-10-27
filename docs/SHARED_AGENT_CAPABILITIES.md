@@ -99,6 +99,7 @@ new model-supplied audience. Do not configure it for a family runtime.
 
 | Capability | Shared execution |
 | --- | --- |
+| Current local collaboration | `collaboration_context`, scoped selected display and sourced research excerpts; no work dispatch or business effect |
 | Owner notes, mail journal and archive | Existing Core note, journal and owner-private recall services |
 | Secretary and Accountant records | `team_brief`, including freshness and unavailable sections |
 | Live specialist actions | `consult_team` with the installed native collaborator |

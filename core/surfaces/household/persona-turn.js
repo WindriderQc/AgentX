@@ -340,8 +340,14 @@ function createPersonaTurnHandler({
         const screen = !pack.childSafe && !isLlmX && !consult ? require('./screen-context') : null;
         entry.presentationContext = screen?.presentationEvidence(req.body?.screen, screenPages);
         entry.pipelineFacts = screen && !member ? await require('./pipeline-turn-facts').factsFor(userText, entry.presentationContext) : null;
+        // The collaborator sees public conversation data and sourced reads,
+        // never the principal's system/guardian instruction context.
+        entry.companion = !consult && !isLlmX ? presentationCompanion?.begin({ session,
+          turnId: clientTurnId || entry.imageTurnId, enabled: req.body?.presentationCompanion === true && !member, paused: req.body?.presentationPinned === true,
+          frame: { text: userText, history, screen: entry.presentationContext }, signal: abort.signal }) : null;
         const contextTail = [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
           screen?.screenContext(req.body?.screen, screenPages, entry.presentationContext) || '',
+          entry.companion ? presentationCompanion.contextFor(session.sessionId) : '',
           require('../../src/services/pipelineSpokenFacts').context(entry.pipelineFacts)].join('');
         const turnContext = [contextBase, brainAdvice.text, workAdvice.text, contextTail].join('').trim();
         const guardianContext = guardianSession ? dedicatedGuardian.selectedContext({
@@ -383,9 +389,6 @@ function createPersonaTurnHandler({
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        entry.companion = !consult && !isLlmX ? presentationCompanion?.begin({ session,
-          turnId: clientTurnId || entry.imageTurnId, enabled: req.body?.presentationCompanion === true && !member,
-          frame: { text: userText, context: turnContext, history, screen: entry.presentationContext }, signal: abort.signal }) : null;
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: !pack.childSafe, pageCatalog: screenPages,
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded) event('delta', { delta }); },
