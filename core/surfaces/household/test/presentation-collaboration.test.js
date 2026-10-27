@@ -96,3 +96,32 @@ test('completed findings remain a bounded previous-request inbox without contami
     pending.resolve([]); await wait();
   } finally { service.close(); }
 });
+
+
+test('the empty display is explicit and native evidence choices use exact current data', () => {
+  const { frameFor } = require('../../../src/services/conversations/presentationCompanionPolicy');
+  const frame = frameFor({ text: 'Prepare a useful review.', screen: { status: 'none' } });
+  assert.deepEqual(frame.screen, { status: 'none' });
+  const Ajv = require('ajv'); const validate = new Ajv({ strict: false }).compile(decisionSchema(frame));
+  const value = { decision: 'present', reason: 'Review the proposed plan.', evidence: { source: 'request', quote: frame.request },
+    block: { kind: 'review', title: 'Review', body: 'Verify then decide.', destination: 'pipeline' } };
+  assert.equal(validate(value), true);
+  assert.equal(validate({ ...value, evidence: { source: 'request', quote: 'Invented source quotation.' } }), false);
+});
+
+test('a published current-turn proposal survives coalesced reply updates and keep until the browser can receive it', async () => {
+  let calls = 0;
+  const service = make({ decide: async frame => ++calls === 1 ? { decision: 'present', reason: 'Show the requested architecture.',
+    evidence: { source: 'request', quote: frame.request }, block: { kind: 'page', title: 'Architecture', body: 'ecosystem' } } : { decision: 'keep' } });
+  try {
+    const handle = service.begin(args); await service.flush();
+    const fingerprint = service.read('personal', 'current-turn').suggestion.fingerprint;
+    handle.append('Public continuation.');
+    assert.equal(service.read('personal', 'current-turn').state, 'ready');
+    await service.flush();
+    assert.equal(service.read('personal', 'current-turn').phase, 'idle');
+    assert.equal(service.read('personal', 'current-turn').suggestion.fingerprint, fingerprint);
+    handle.explicit(); assert.equal(service.read('personal', 'current-turn').suggestion, null);
+    service.begin({ ...args, turnId: 'new-topic' }); assert.equal(service.read('personal', 'new-topic').suggestion, null);
+  } finally { service.close(); }
+});

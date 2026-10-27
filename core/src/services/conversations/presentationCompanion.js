@@ -33,7 +33,7 @@ function createPresentationCompanion({ decide, research = null, catalog, now = D
     if (closed || state.explicit || sessions.get(state.sessionId) !== state) return;
     const serialized = JSON.stringify(state.frame);
     if (serialized === state.lastQueued) return;
-    state.lastQueued = serialized; state.revision++; state.pending = true; state.suggestion = null;
+    state.lastQueued = serialized; state.revision++; state.pending = true;
     if (state.calls >= maxCallsPerTurn) { state.pending = false; state.state = 'limited'; return; }
     state.state = 'pending'; state.reason = null; state.touchedAt = now();
     state.dueAt = Math.max(now() + (final ? 0 : delayMs), state.lastStartedAt + minIntervalMs);
@@ -54,7 +54,7 @@ function createPresentationCompanion({ decide, research = null, catalog, now = D
       const parsed = proposal(raw, frame, catalog);
       state.reason = parsed ? null : 'invalid_proposal';
       state.state = parsed ? parsed.decision === 'present' ? 'ready' : 'idle' : 'unavailable';
-      state.suggestion = parsed?.decision === 'present' ? parsed : null;
+      if (parsed?.decision === 'present') state.suggestion = parsed;
     } catch {
       if (sessions.get(state.sessionId) === state && revision === state.revision) { state.state = 'unavailable'; state.reason = 'local_inference_unavailable'; }
     } finally { busy = false; schedule(); }
@@ -148,7 +148,8 @@ function createPresentationCompanion({ decide, research = null, catalog, now = D
   function read(sessionId, turnId) {
     prune(); const state = sessions.get(sessionId);
     return { contract: CONTRACT, turnId, revision: state?.turnId === turnId ? state.revision : 0,
-      state: state?.turnId === turnId ? state.state : 'idle',
+      state: state?.turnId === turnId ? state.suggestion && !state.explicit ? 'ready' : state.state : 'idle',
+      phase: state?.turnId === turnId ? state.state : 'idle',
       suggestion: state?.turnId === turnId ? state.suggestion : null, reason: state?.turnId === turnId ? state.reason : null,
       collaboration: context(sessionId, turnId), coverage: 'bounded_current_context' };
   }
