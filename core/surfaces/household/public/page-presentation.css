@@ -49,6 +49,11 @@ body:has(.page-presentation.is-active) .conversation-text textarea { flex: 1 1 1
 body:has(.page-presentation.is-active) .avatar-dock:not([data-mode=cache]) { top: 86px; right: 26px; bottom: auto; left: auto; width: 64px; height: 64px; box-sizing: border-box; border-radius: 18px; }
 body:has(.page-presentation.is-active) .avatar-dock-bar { display: none; }
 
+/* Keep incoming dialogue inside its rail instead of moving the shared workspace. */
+@media (min-width: 1001px) {
+  body:has(.page-presentation.is-active) .conversation-stage { position: sticky; top: 12px; max-height: calc(100dvh - 100px); overflow: auto; overscroll-behavior: contain; box-sizing: border-box; }
+}
+
 @media (max-width: 1000px) {
   body:has(.page-presentation.is-active) .conversation-shell .conversation-layout { grid-template-columns: minmax(0, 1fr); }
   body:has(.page-presentation.is-active) .conversation-stage { margin-top: 0; padding-bottom: 0; }
