@@ -13,6 +13,7 @@
     region.innerHTML = `<header class="page-presentation-toolbar">
       <label>Contenu <select aria-label="Contenu affiché"></select></label>
       <div class="page-presentation-actions">
+        <button type="button" class="button" data-action="pin" aria-pressed="false">Épingler la vue</button>
         <button type="button" class="button" data-action="expand" aria-pressed="false">Agrandir</button>
         <button type="button" class="button" data-action="toggle" aria-expanded="false" aria-controls="conversationPageBoard">Afficher le contenu</button>
       </div>
@@ -23,6 +24,8 @@
     const picker = region.querySelector('select');
     const toggle = region.querySelector('[data-action="toggle"]');
     const expand = region.querySelector('[data-action="expand"]');
+    const pin = region.querySelector('[data-action="pin"]');
+    const manual = () => root.dispatchEvent(new CustomEvent('nestor-presentation-user-change'));
     const feedback = region.querySelector('.page-presentation-feedback');
     let cards = [], latest = null, selected = null;
 
@@ -44,12 +47,16 @@
       cards.forEach(item => { item.hidden = item !== card; });
       picker.value = String(cards.indexOf(card));
     }
-    toggle.addEventListener('click', () => present(!region.classList.contains('is-active')));
-    picker.addEventListener('change', () => { select(cards[Number(picker.value)]); present(true); });
-    expand.addEventListener('click', () => setExpanded(!region.classList.contains('is-expanded')));
+    toggle.addEventListener('click', () => { manual(); present(!region.classList.contains('is-active')); });
+    picker.addEventListener('change', () => { manual(); select(cards[Number(picker.value)]); present(true); });
+    pin.addEventListener('click', () => {
+      const pinned = pin.getAttribute('aria-pressed') !== 'true'; pin.setAttribute('aria-pressed', String(pinned));
+      pin.textContent = pinned ? 'Vue épinglée' : 'Épingler la vue'; manual();
+    });
+    expand.addEventListener('click', () => { manual(); setExpanded(!region.classList.contains('is-expanded')); });
     region.addEventListener('keydown', event => {
       if (event.key === 'Escape' && region.classList.contains('is-active')) {
-        event.preventDefault(); present(false); toggle.focus();
+        event.preventDefault(); manual(); present(false); toggle.focus();
       }
     });
 
@@ -64,9 +71,13 @@
     // Spoken and typed screen commands (#924) act through the same controls.
     const commands = root.NestorPresentationCommands?.create({ region, picker, feedback, cards: () => cards,
       selected: () => selected, select, present, setExpanded });
-    const command = action => commands?.command(action) ?? null;
+    const command = action => {
+      const result = commands?.command(action) ?? null;
+      if (result) manual();
+      return result;
+    };
 
-    return { board, command, active: () => region.classList.contains('is-active'), update(next) {
+    return { board, command, canFollow: () => pin.getAttribute('aria-pressed') !== 'true', active: () => region.classList.contains('is-active'), update(next) {
       cards = next;
       region.hidden = !cards.length;
       picker.replaceChildren(...cards.map((card, index) => {
@@ -77,7 +88,10 @@
           || ({ text: 'Note', list: 'Liste', table: 'Tableau', code: 'Code', image: 'Image', scene: 'Scène', secret: 'Secret', link: 'Lien' }[card.dataset.kind] || 'Contenu');
         return option;
       }));
-      if (!cards.length) { latest = selected = null; present(false); return; }
+      if (!cards.length) {
+        latest = selected = null; pin.setAttribute('aria-pressed', 'false'); pin.textContent = 'Épingler la vue';
+        present(false); return;
+      }
       const added = cards[0] !== latest;
       select(added || !cards.includes(selected) ? cards[0] : selected);
       latest = cards[0];

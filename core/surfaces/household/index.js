@@ -218,6 +218,9 @@ function register(api) {
   const publicRoot = path.join(extensionRoot, 'public');
   const personas = express.Router();
   const screenPages = require('./screen-services').registerScreenServices({ app, router: personas, env: conversationEnv, logger, envelope });
+  const presentationCompanion = require('./presentation-companion').registerPresentationCompanion({ router: personas,
+    conversations, inference: runtimeServices.inference, catalog: screenPages, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT,
+    env: conversationEnv, envelope, fail });
   require('./calendar-routes').registerCalendarRoutes({ app, env: conversationEnv });
   // Resolved once at registration: the pack is read-only in the container, and
   // a clip that is not on disk is never advertised nor selected.
@@ -446,7 +449,7 @@ function register(api) {
   personas.delete('/:space(private|family)/sessions/:sessionId', async (req, res) => { // explicit confirmation, no authenticated human identity
     if (req.body?.confirmation !== 'DELETE CONVERSATION') return fail(res, 400, 'Confirm deleting this conversation.', 'CONVERSATION_DELETE_CONFIRMATION_REQUIRED');
     if (activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Stop the current answer before deleting the conversation.', 'VOICE_TURN_IN_PROGRESS');
-    try { return envelope(res, await conversations.deleteSession((req.params.space === 'family' ? familySessionScope : personalSessionScope)(req.params.sessionId))); }
+    try { presentationCompanion.drop(req.params.sessionId); return envelope(res, await conversations.deleteSession((req.params.space === 'family' ? familySessionScope : personalSessionScope)(req.params.sessionId))); }
     catch (error) { return fail(res, error.statusCode || 500, error.statusCode ? error.message : 'Deletion incomplete. Try again to finish.', error.code); }
   });
   require('./attachment-routes').registerAttachmentRoutes(personas, { express, personalAttachments, envelope, fail });
@@ -459,7 +462,7 @@ function register(api) {
   const handlePersonaTurn = createPersonaTurnHandler({
     logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor, conversationWorks,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-    sounds, visuals, brain, memberWork, conversationImages, screenPages, warmup, activePersonaTurns, validClientTurnId,
+    sounds, visuals, brain, memberWork, conversationImages, screenPages, warmup, presentationCompanion, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
     packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
     sessionHistoryMessages, loadSessionAuditRows,

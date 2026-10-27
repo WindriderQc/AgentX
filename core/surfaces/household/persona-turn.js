@@ -43,7 +43,7 @@ const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null, conversationWorks = null,
   familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
-  sounds, visuals, brain, memberWork, conversationImages, screenPages = require('../../public/js/screen-pages'), warmup = null, activePersonaTurns, validClientTurnId,
+  sounds, visuals, brain, memberWork, conversationImages, screenPages = require('../../public/js/screen-pages'), warmup = null, presentationCompanion = null, activePersonaTurns, validClientTurnId,
   envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
   packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
   sessionHistoryMessages, loadSessionAuditRows,
@@ -383,11 +383,15 @@ function createPersonaTurnHandler({
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
+        entry.companion = !consult && !isLlmX ? presentationCompanion?.begin({ session,
+          turnId: clientTurnId || entry.imageTurnId, enabled: req.body?.presentationCompanion === true && !member,
+          frame: { text: userText, context: turnContext, history, screen: entry.presentationContext }, signal: abort.signal }) : null;
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: !pack.childSafe, pageCatalog: screenPages,
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
-          onSay: delta => { if (!res.writableEnded) event('delta', { delta }); },
+          onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {
+            entry.companion?.explicit();
             if (block.kind === 'image' && block.source === 'draw' && conversationImages) return;
             visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage, ephemeral: entry.ephemeral })
               .then(shown => { if (!res.writableEnded) event('show', { block: shown }); }));
@@ -463,7 +467,7 @@ function createPersonaTurnHandler({
         if (channels && !channels.received) channels.push(result.text);
         // `say_end`: every spoken word is sent, so a voice page says its last clause
         // now instead of waiting for pictures, tool receipts and the record before `done`.
-        if (channels) { ({ display } = channels.end()); event('say_end'); await Promise.all(visualsWork); }
+        if (channels) { ({ display } = channels.end()); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
         if (channels && !abort.signal.aborted) await conversationImages?.complete({ session, pack, backend, display,
           evidence: toolEvidence, turnId: clientTurnId || entry.imageTurnId, signal: abort.signal, member: Boolean(member),
           onShow: block => event('show', { block }) });
@@ -638,6 +642,7 @@ function createPersonaTurnHandler({
         }
       } catch (error) { entry.error = error; }
       finally {
+        if (entry.error || abort.signal.aborted) entry.companion?.stop();
         entry.markReady(null);
         // A detached turn already gave its place to the next turn.
         if (activePersonaTurns.get(req.params.sessionId) === entry) activePersonaTurns.delete(req.params.sessionId);

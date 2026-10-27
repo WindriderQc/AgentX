@@ -104,18 +104,21 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const composer = window.ConversationComposer.mount({ input: el('conversationMessage'), form: el('conversationText'), family });
   // Shown, never spoken (#167): secrets exist only in the private space.
   const board = window.DisplayBoard.createScreen({ text: el('conversationBoard'), visual: el('conversationVisual') }, { secrets: !family, space: family ? 'family' : 'personal' });
+  const companion = family ? null : window.NestorPresentationCompanion?.create({ host: app.querySelector('.conversation-live'),
+    board, api, base: sessionBase, getSession: () => conversation.session });
   // "Agrandis", "ferme", "suivant"… act on Nestor's content workspace without a turn. Famille has no such workspace.
   const screenWords = family ? null : window.NestorScreenCommandsEditor?.mount({ host: app.querySelector('.page-presentation-actions'), api });
   const screenCommand = family ? null : window.NestorScreenCommands?.handler(board, { phrases: () => screenWords?.phrases() || [] });
   // The avatar dock paces a math picture to Nestor's first word; the Images zone draws it.
   // Shown live: in the avatar's interactive scene Nestor steps aside and that zone comes first.
   const show = block => {
+    companion?.explicit();
     if (!board.add(block)) return;
     el('conversationVisual').closest('.conversation-stage').dataset.shown = ['page', 'image', 'scene'].includes(block.kind) ? 'visual' : 'text';
     activity('show');
   };
   const pagePicker = family ? null : window.NestorScreenPicker.mount({ host: app.querySelector('.conversation-toolbar'), onShow: show });
-  const clearBoard = () => { board.clear(); activity('clear'); };
+  const clearBoard = () => { companion?.reset(); board.clear(); activity('clear'); };
   window.addEventListener('persona-scene', event => {
     const detail = event.detail || {};
     if (detail.space === (family ? 'family' : 'personal') && detail.scene) show({ key: 'scene', kind: 'scene', title: detail.caption || '', scene: detail.scene });
@@ -354,16 +357,17 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     signal.throwIfAborted(); conversation.session = session; describe();
     const turnLanguage = language.value === 'en' ? 'en' : 'fr';
     turnId ||= crypto.randomUUID();
+    const presentationCompanion = companion?.begin(session, turnId) === true;
     personalNotes.show(null);
     activeBrowserTurn = turnId; activity('turn'); brain.cancel(); turnSpeaker = null;
     workflow?.begin(session.sessionId, turnId, textBusy ? 'text' : 'voice');
     let response;
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
-        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, ...(!family && { ephemeral: session.ephemeral, screen: board.context() }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, ...(!family && { ephemeral: session.ephemeral, screen: board.context(), presentationCompanion }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
-    if (!session.ephemeral) work?.follow(session.sessionId);
+    if (!session.ephemeral) { work?.follow(session.sessionId); companion?.follow(); }
     if (response.status === 202) {
       workflow?.stream(turnId, { type: 'deferred' });
       const body = await response.json();
@@ -688,6 +692,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   function renderTeam(busy = false) {
     if (family) return '';
     const backend = conversation.session?.backend || backendPicker.value;
+    companion?.configure(backend);
     if (backend === 'hermes') {
       el('conversationTeam').hidden = true;
       const notice = conversation.session ? 'Hermes · start a new conversation to change engines.' : '';

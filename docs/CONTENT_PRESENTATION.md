@@ -7,6 +7,11 @@ it without destroying the conversation or a retained frame. Escape closes from
 the toolbar/content and returns focus to the toggle. Family keeps its scoped
 boards, secret restrictions and external-link preference.
 
+Personal Hermes conversations can opt into the local
+[contextual presentation companion](CONTEXTUAL_PRESENTATION.md). Its inert
+suggestions use this same workspace and current-selection contract; pin and
+manual selection take priority over automatic accompaniment.
+
 Short screen commands, spoken or typed, act on Nestor's workspace in the
 browser without a model call or conversation turn: expand/shrink ("agrandis",
 "zoom in", "réduis", "zoom out"), text size ("agrandis le texte", "réduis le
