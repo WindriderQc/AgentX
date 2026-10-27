@@ -16,7 +16,7 @@ function registerPresentationCompanion({ router, conversations, inference, catal
     // load option, topology, native agent, grant or external runtime is installed.
     const result = await inference.execute({ mode: 'chat', executionSource: 'local', taskType: voiceTask(env),
       messages: [{ role: 'system', content: instructions(catalog) }, { role: 'user', content: JSON.stringify(frame) }],
-      stream: false, think: false, temperature: 0, max_tokens: 900, format: decisionSchema(),
+      stream: false, think: false, temperature: 0, max_tokens: 900, format: decisionSchema(frame),
       callerDetail: 'agentx-household/presentation-companion', timeoutMs: 30000 }, { consumerContract,
       attribution: { runtime: 'agentx', correlationId: 'presentation-companion:' + observation.turnId } });
     if (!result?.ok) throw new Error('Presentation inference unavailable');

@@ -60,7 +60,12 @@ admission and a structured JSON output schema. Core additionally checks exact
 supporting quotes, catalogue identifiers, focus grammar, allowed fields and
 inert block types. A relevant view can be selected without an explicit display
 command. An already useful screen stays in place; no useful grounded information
-means no new content. Structural validity does not itself establish semantic
+means no new content. Native evidence choices are exact excerpts supplied by Core; a model does not
+retype a quotation from memory. An explicitly empty display stays distinct from
+unknown selection. A published valid proposal remains deliverable for its current
+turn while reply deltas coalesce, including after a keep decision; a new user
+turn or human pause invalidates it immediately. Readiness and the decision
+compute phase are separate. Structural validity does not itself establish semantic
 relevance: a real-model pilot must receive that separately.
 
 There is one decision inference in flight and one latest pending frame per
