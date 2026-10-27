@@ -812,6 +812,11 @@ questions and asks to search for it first, and the tool's description starts
 with "ISS (International Space Station, station spatiale)" so that search finds
 it. Install the updated skill in each runtime after a change.
 
+Every `iss_passes` answer also carries `visiblePasses`: all naked-eye passes of
+the window (up to 24, with `visiblePassesComplete`), independent of
+`visible_only` and `max_passes`, so a truncated geometric `passes` list is never
+read as the only visible passes.
+
 Famille conversations on the AgentX engine can call Core tools. Core lists the
 family-eligible tools in `core/surfaces/household/family-tools.js` (today
 `iss_passes`); the instance turns them on with `HOUSEHOLD_FAMILY_TOOLS`

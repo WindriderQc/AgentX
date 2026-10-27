@@ -217,4 +217,16 @@ describe('iss_passes tool', () => {
     const tool = list.result.tools.find(t => t.name === 'iss_passes');
     expect(tool.description).toMatch(/^ISS \(International Space Station, station spatiale\)/);
   });
+
+  test('visiblePasses lists every naked-eye pass of the window even when passes is truncated', async () => {
+    const { fetchData } = dataStub({ satellites: SATELLITES, weather: WEATHER });
+    const out = await issPasses({ hours: 72, max_passes: 2 }, { fetchData, now, env });
+    expect(out.passes).toHaveLength(2);
+    expect(out.passes.filter(p => p.observable).length).toBeLessThan(out.counts.observable);
+    expect(out.visiblePasses).toHaveLength(out.counts.observable);
+    expect(out.visiblePassesComplete).toBe(true);
+    expect(out.visiblePasses[0]).toEqual(expect.objectContaining({ from: 'N', to: 'ENE', maxElDeg: 34.1, startLocal: expect.stringMatching(/dim\. 25 oct\./) }));
+    expect(out.answerRules).toMatch(/visiblePasses liste tous les passages visibles/);
+  });
 });
+
