@@ -235,6 +235,7 @@
     const title = (typeof block.title === 'string' && block.title.trim()) || (target && root.AgentXScreenPages.label(target))
       || ({ text: 'Note', list: 'Liste', table: 'Tableau', code: 'Code', image: 'Image', scene: 'Scène', secret: 'Secret', link: 'Liens' }[block.kind] || 'Contenu');
     header.append(node('strong', 'display-block-title', title));
+    if (block.from === 'companion') header.append(node('span', 'display-block-note', 'Suggestion du contexte'));
     if (block.partial) header.append(node('span', 'display-block-note', 'Contenu partiel'));
     const actions = node('div', 'display-block-actions');
     header.append(actions);
@@ -314,7 +315,13 @@
     if (presentation) {
       text.hidden = visual.hidden = true;
       const board = create(presentation.board, { secrets, space, heading: 'Contenu', onChange: presentation.update });
-      return { add: board.add, restore: board.restore, has: board.has,
+      return { add: board.add, restore: board.restore, has: board.has, canFollow: presentation.canFollow,
+        addCompanion(block) {
+          if (!presentation.canFollow()) return false;
+          const current = presentation.active() ? board.context()[0] : null;
+          if (block.kind === 'page' && current?.kind === 'page' && current.page === block.body) return true;
+          return board.add(block);
+        },
         context: () => presentation.active() ? board.context() : [], clear: board.clear };
     }
     const boards = [create(text, { secrets, space, kinds: ['text', 'list', 'table', 'code', 'link', 'secret'] }),
