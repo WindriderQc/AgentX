@@ -1024,6 +1024,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     } catch { el('conversationStatus').textContent = 'Press Turn on Nestor to set up this device.'; }
   }
   if (!family) idlePhotos = window.NestorIdlePhotos?.mount({ host: app.querySelector('.conversation-toolbar'), api,
+    standby: () => !!conversation.selection?.wakeWord && !conversation.wake.active(),
     busy: () => textBusy || !['idle', 'paused', 'listening'].includes(conversation.state)
       || !el('conversationSettings').hidden || !!document.querySelector('dialog[open]')
       || !!el('conversationMessage').value.trim(),

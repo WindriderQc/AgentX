@@ -159,10 +159,13 @@ Active conversation work, a focused editor or embedded page, open settings or a 
 the frame from taking focus. Background tabs stop showing photos; leaving the
 conversation removes the component. A failed API/image leaves Nestor accessible.
 
-Existing speech capture and the existing screen-command grammar supply voice
-return: an addressed close/back/shrink command returns locally; ordinary
-requests retain the conversation path. Wake-word standby still requires the
-existing address. This feature changes no listening preference and enables no
+Existing speech capture and its `WakeWindow` grammar supply voice return:
+**Hey Nestor** (including existing Eille variants) returns locally without a
+model turn. Addressed close/back/shrink commands also work; ordinary requests
+retain the conversation path. While the existing wake gate is armed, ambient
+speech does not exit the photos. The microphone must already be active;
+when it is off, the on-screen button and touch/click/Escape remain available.
+This feature changes no listening preference and enables no
 new wake word or permanent capture. Family does not mount this component.
 Browser/OS kiosk startup, screen power, audio permission and real-device voice
 acceptance are separate instance steps.

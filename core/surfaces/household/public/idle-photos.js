@@ -1,14 +1,17 @@
 /* An inert photo surface on the existing page; never starts or changes the mic. */
 (function (root) {
   'use strict';
-  function mount({ host, api, busy = () => false, controls = {}, now = () => Date.now() }) {
+  function mount({ host, api, busy = () => false, standby = () => false, controls = {}, now = () => Date.now() }) {
     let enabled = false, active = false, disposed = false, loading = false, epoch = 0, voiceReturn = false;
+    let voiceState = 'idle';
     let idleMs = 120000, intervalMs = 30000, lastActivity = now(), nextImage = 0, previous = null, focused;
     const region = document.createElement('section');
     region.className = 'nestor-idle-photos'; region.hidden = true;
     region.setAttribute('aria-label', 'Cadre photo');
     const image = document.createElement('img'); image.alt = ''; image.draggable = false;
     const actions = document.createElement('nav'); actions.setAttribute('aria-label', 'Commandes du cadre photo');
+    const hint = document.createElement('p'); hint.textContent = 'Micro actif : dites « Hey Nestor ». Sinon, touchez l’écran.';
+    actions.append(hint);
     const button = (label, run) => {
       const element = document.createElement('button'); element.type = 'button'; element.className = 'button';
       element.textContent = label; element.onclick = run; actions.append(element); return element;
@@ -34,6 +37,9 @@
     }
     function presence(event) {
       if (event.detail?.space && event.detail.space !== 'personal') return;
+      voiceState = event.detail?.state;
+      // Energy/ambient recognition is not an activation while the existing wake gate is armed.
+      if (active && standby() && ['hearing', 'transcribing'].includes(voiceState)) return;
       if (!['idle', 'paused', 'listening'].includes(event.detail?.state)) {
         if (active && event.detail?.state === 'hearing') voiceReturn = true;
         leave();
@@ -62,7 +68,11 @@
       if (disposed || !enabled) return;
       const editing = !region.contains(document.activeElement)
         && (document.activeElement?.matches('input, textarea, select, iframe') || document.activeElement?.isContentEditable);
-      if (document.hidden || busy() || editing) { if (active) leave(); return; }
+      if (document.hidden || busy() || editing) {
+        const awaitingWake = standby() && ['hearing', 'transcribing'].includes(voiceState);
+        if (active && (document.hidden || editing || !awaitingWake)) leave();
+        return;
+      }
       if ((!active && now() - lastActivity >= idleMs && now() >= nextImage) || (active && now() >= nextImage)) void advance();
     }
     const events = ['pointerdown', 'keydown', 'input', 'focusin'];
@@ -93,11 +103,19 @@
       localControl(text, options = {}) {
         if (!active && !voiceReturn) return null;
         const hadFrame = active || voiceReturn; voiceReturn = false;
+        // Reuse the existing recognizer's grammar, including Hey/Eille variants.
+        // This hook receives already-transcribed text; it opens no audio input.
+        const Wake = root.NestorConversation?.WakeWindow;
+        const wake = Wake ? new Wake().accept(text, false) : null;
+        if (wake?.activated && !wake.text) {
+          leave();
+          return { action: 'wake', applied: true, addressed: true, message: 'Retour à Nestor.' };
+        }
         const command = root.NestorScreenCommands?.parse(text);
         if (options.followup === false && !command?.addressed) return null;
         leave();
         return hadFrame && ['close', 'previous', 'shrink'].includes(command?.action)
-          ? { action: command.action, applied: true, message: 'Retour à Nestor.' } : null;
+          ? { action: command.action, applied: true, addressed: command.addressed, message: 'Retour à Nestor.' } : null;
       },
       dispose,
     };
