@@ -874,8 +874,22 @@ pages and APIs retain the parental gateway guard.
   session voice choices take precedence.
   Its Super Dad and
   Famille conversations dock Nestor's GraphysX voxel face (`avatar-dock.js`),
-  driven only by observable conversation state: phase, microphone and speech
-  level, token rate, tool calls and a busy inference host. The dock opens as
+  driven by observable conversation state: phase, microphone and speech
+  level, token rate, tool calls and a busy inference host. In Famille, an explicit
+  camera button optionally directs the existing pointer gaze toward local movement
+  (`avatar-motion.js`). Capture requests no audio, at most 320 × 240 and 5 fps;
+  analysis uses 80 × 60 luminance differences, with exposure rejection, bounded
+  smoothing and a calm return to center. This is movement attention, not human eye
+  tracking, identification or emotion recognition. Frames stay transient in browser
+  memory: no recording, upload or persistence. Stop remains visible above the face
+  and idle photos. Hiding the document/face, opening idle photos, leaving the page,
+  disconnecting the camera or disposing the dock stops tracks; a late permission
+  result is also released. Re-enabling always requires another click. Refusal or
+  missing media support leaves the normal avatar and voice available. The embed's
+  existing non-bubbling window pointer input carries only synthetic screen
+  coordinates; it neither moves the system pointer nor triggers clicks, wake or
+  microphone activity. Its own rig owns easing and math-scene attention priority.
+  The dock opens as
   an interactive scene: the face fills the screen, moves to the top right
   corner while the shown zones take the screen, and a tap on it opens the page
   with its menus and transcript; the fixed sizes remain as choices. A child's counting

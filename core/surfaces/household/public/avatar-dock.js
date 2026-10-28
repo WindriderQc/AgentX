@@ -125,7 +125,15 @@
       clearTimeout(readyTimer);
       resolveReady(renderer);
     };
-    const showRenderer = renderer => { dock.dataset.renderer = renderer; finishReady(renderer); };
+    let motion = null;
+    const showRenderer = renderer => {
+      dock.dataset.renderer = renderer;
+      if (renderer !== 'face' && motion?.active) motion.stop();
+      finishReady(renderer);
+    };
+    if (family) motion = root.AvatarMotion?.mount({ documentRef: doc, face: () => face,
+      available: () => dock.dataset.renderer === 'face' && mode !== 'cache'
+        && !doc.querySelector?.('.nestor-idle-photos:not([hidden])') });
     // A slow 3D face must not hold Nestor's first words: the orb stands in meanwhile, and the
     // face still replaces it when it arrives (a phone often needs more than 7 s). Only a
     // missing module or a face error removes the face for the visit.
@@ -133,6 +141,7 @@
 
     function setMode(next, remember = true) {
       mode = next;
+      if (next === 'cache' && motion?.active) motion.stop();
       dock.dataset.mode = next;
       doc.body.classList.toggle('avatar-docked', next !== 'cache');
       doc.body.dataset.avatarMode = next;
@@ -289,6 +298,7 @@
       dispose() {
         if (disposed) return;
         disposed = true;
+        motion?.dispose();
         finishReady('orb');
         clearInterval(tick);
         clearTimeout(sceneTimer);
