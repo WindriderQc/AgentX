@@ -11,7 +11,6 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const { randomUUID } = require('node:crypto');
 const core = path.resolve(__dirname, '../..'), publicDir = path.join(core, 'surfaces/household/public');
 const { generatedPersonas, snapshot } = require('../../surfaces/household/persona-catalog');
-const screenWords = require('../../surfaces/household/screen-command-phrases');
 const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture', version: 1 }));
 const sessions = new Map(), submissions = [], errors = [];
 let browser, server, heard = '';
@@ -50,25 +49,8 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
       });</script></body>`);
     res.type('html').send(html);
   });
-  // The owner's own words go through the real Core route, over an in-memory row.
-  let wordsRow = null;
-  const wordsModel = {
-    findOne: () => ({ lean: async () => wordsRow }),
-    findOneAndUpdate: (query, update) => ({ lean: async () => {
-      if ((wordsRow?.revision || 0) !== (typeof query.revision === 'number' ? query.revision : 0)) return null;
-      wordsRow = { ...update.$set }; return wordsRow;
-    } })
-  };
-  const personasRouter = express.Router();
-  screenWords.register(personasRouter, { service: screenWords.createScreenCommandPhrases({ Model: wordsModel }),
-    envelope: (res, data) => res.json({ data }), fail: (res, status, message, code) => res.status(status).json({ message, code }) });
-  app.use('/api/voice-personas', personasRouter);
-  app.get('/api/voice-personas/private/screen-pages', (_req, res) => res.json({ data: { destinations: [{ id: 'dad-day', label: 'Ma journée', href: '/dad/day', mode: 'frame' }] } }));
-  // A long same-origin page, so scrolling inside its frame can be observed.
-  app.get('/dad/day', (_req, res) => res.send(`<!doctype html><title>Ma journée</title><style>body{font:16px system-ui;background:#102333;color:#e1eef8;padding:24px}</style>
-    <h1>Ma journée</h1>${Array.from({ length: 60 }, (_, index) => `<p>Rendez-vous ${index + 1}</p>`).join('')}`));
-  app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas, runtime: { defaultBackend: 'agentx' } } }));
-  app.get('/api/voice-personas/private/agents', (_req, res) => res.json({ data: { agents: [] } }));
+  app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas, runtime: { defaultBackend: 'openclaw', hermesConfigured: true } } }));
+  app.use('/api/voice-personas/private', (_req, res) => { errors.push('Private API requested by family'); res.sendStatus(403); });
   app.post('/api/voice-personas/family/sessions', (req, res) => {
     const session = { ...req.body, sessionId: randomUUID(), status: 'active', turnCount: 0 };
     sessions.set(session.sessionId, session); res.status(201).json({ data: { session } });
@@ -78,11 +60,6 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     submissions.push(req.body.text);
     const session = sessions.get(req.params.id); session.turnCount++;
     res.type('application/x-ndjson');
-    if (submissions.length === 1) {
-      res.write(JSON.stringify({ type: 'show', block: { kind: 'page', title: 'Ma journée', body: 'dad-day' } }) + '\n');
-      res.write(JSON.stringify({ type: 'show', block: { kind: 'list', title: 'Tâches clés', body: '- 0918 à revoir\n- 0921 en cours' } }) + '\n');
-      res.write(JSON.stringify({ type: 'show', block: { kind: 'text', title: 'Note du jour', body: 'Deux tâches demandent une décision.' } }) + '\n');
-    }
     res.end(JSON.stringify({ type: 'done', data: { session, traceId: randomUUID(), reply: { text: 'Voici.' }, routing: { backend: 'agentx' },
       tools: { status: 'not_supported', authority: 'agentx/ollama', receipts: [] } } }) + '\n');
   });
@@ -110,9 +87,8 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   assert.equal(await page.locator('#conversationWake').isChecked(), true);
   assert.equal(await page.locator('#conversationWorkflow').count(), 0);
   assert.equal(await page.locator('.page-presentation').count(), 0);
-  await page.locator('#conversationSettingsToggle').click();
-  await page.locator('#conversationBackend').selectOption('openclaw');
-  await page.locator('#conversationSettingsToggle').click();
+  assert.equal(await page.locator('#conversationBackend').inputValue(), 'openclaw');
+  assert.equal(await page.locator('#conversationBackend option[value=hermes]').count(), 0);
   await page.locator('#conversationStart').click();
   const listening = () => page.waitForFunction(() => document.getElementById('conversationPresence').dataset.state === 'listening');
   await listening();
