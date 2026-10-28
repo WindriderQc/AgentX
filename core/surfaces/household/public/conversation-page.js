@@ -366,7 +366,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     let response;
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
-        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, ...(!family && { ephemeral: session.ephemeral, screen: board.context(), presentationCompanion, presentationPinned: companion?.pinned() === true }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, screen: board.context(), ...(!family && { ephemeral: session.ephemeral, presentationCompanion, presentationPinned: companion?.pinned() === true }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
     if (!session.ephemeral) { work?.follow(session.sessionId); companion?.follow(); }

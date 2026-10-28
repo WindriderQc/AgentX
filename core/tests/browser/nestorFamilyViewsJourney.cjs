@@ -12,7 +12,7 @@ const { randomUUID } = require('node:crypto');
 const core = path.resolve(__dirname, '../..'), publicDir = path.join(core, 'surfaces/household/public');
 const { generatedPersonas, snapshot } = require('../../surfaces/household/persona-catalog');
 const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture', version: 1 }));
-const sessions = new Map(), submissions = [], errors = [];
+const sessions = new Map(), submissions = [], screens = [], errors = [];
 let browser, server, heard = '';
 const output = process.env.SCREEN_COMMANDS_BROWSER_OUTPUT_DIR || '/tmp/agentx-nestor-screen-commands-browser';
 fs.mkdirSync(output, { recursive: true });
@@ -67,6 +67,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   // The only model stand-in: every request that reaches it is counted.
   app.post('/api/voice-personas/family/sessions/:id/turns/text', (req, res) => {
     submissions.push(req.body.text);
+    screens.push(req.body.screen);
     const session = sessions.get(req.params.id); session.turnCount++;
 
     const channels=createReplyChannels({allowPages:true,pageCatalog:pages});
@@ -115,10 +116,19 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   await page.locator('#conversationSettingsToggle').click();
   await ask('describe');
   await page.waitForFunction(() => document.querySelectorAll('.conversation-message').length>=4);
+  assert.match(screens[1]?.[0]?.page || '', /^ecosystem play=network,memory$/);
+  assert.doesNotMatch(JSON.stringify(screens[1]), /pipeline|private/);
   await page.getByRole('button',{name:'Retour à Nestor',exact:true}).click();
   assert.equal(await frame.count(),0);
   assert.equal([...sessions.values()].at(-1).sessionId,sessionId);
   await page.setViewportSize({width:390,height:844});
+  await ask('earth'); await frame.waitFor();
+  const previous = await frame.elementHandle();
+  await ask('iss');
+  await page.waitForFunction(() => document.querySelector('#conversationVisual iframe')?.src.includes('/scene/iss'));
+  assert.equal(await frame.count(),1,'only the current Family 3D view stays mounted');
+  assert.equal(await previous.getAttribute('src'),'about:blank','replaced scene is disposed');
+  await page.getByRole('button',{name:'Retour à Nestor',exact:true}).click();
   for(const id of ['earth','iss']) {
     await ask(id); await frame.waitFor();
     await frame.contentFrame().getByRole('heading',{name:'Fixture scene'}).waitFor();
