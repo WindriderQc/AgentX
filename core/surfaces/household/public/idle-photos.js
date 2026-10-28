@@ -1,7 +1,7 @@
 /* An inert photo surface on the existing page; never starts or changes the mic. */
 (function (root) {
   'use strict';
-  function mount({ host, api, busy = () => false, standby = () => false, controls = {}, now = () => Date.now() }) {
+  function mount({ host, api, space = 'personal', busy = () => false, standby = () => false, controls = {}, now = () => Date.now() }) {
     let enabled = false, active = false, disposed = false, loading = false, epoch = 0, voiceReturn = false;
     let voiceState = 'idle';
     let idleMs = 120000, intervalMs = 30000, lastActivity = now(), nextImage = 0, previous = null, focused;
@@ -30,13 +30,14 @@
     toggle.onclick = () => { enabled = !enabled; toggle.setAttribute('aria-pressed', String(enabled)); leave(); };
     host.append(toggle); region.append(image, actions); document.body.append(region);
     function activity(event) {
+      if (event?.detail?.space && event.detail.space !== space) return;
       // Keep controls focusable/clickable until their own handler performs the action.
       if (active && actions.contains(event?.target) && !(event.type === 'keydown' && event.key === 'Escape')) return;
       voiceReturn = false;
       leave({ focus: event?.type === 'keydown' && event.key === 'Escape' });
     }
     function presence(event) {
-      if (event.detail?.space && event.detail.space !== 'personal') return;
+      if (event.detail?.space && event.detail.space !== space) return;
       voiceState = event.detail?.state;
       // Energy/ambient recognition is not an activation while the existing wake gate is armed.
       if (active && standby() && ['hearing', 'transcribing'].includes(voiceState)) return;

@@ -1023,14 +1023,14 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       } else el('conversationStatus').textContent = 'Turn on Nestor once to allow the mic and sound.';
     } catch { el('conversationStatus').textContent = 'Press Turn on Nestor to set up this device.'; }
   }
-  if (!family) idlePhotos = window.NestorIdlePhotos?.mount({ host: app.querySelector('.conversation-toolbar'), api,
+  idlePhotos = window.NestorIdlePhotos?.mount({ host: app.querySelector('.conversation-toolbar'), api, space,
     standby: () => !!conversation.selection?.wakeWord && !conversation.wake.active(),
     busy: () => textBusy || !['idle', 'paused', 'listening'].includes(conversation.state)
       || !el('conversationSettings').hidden || !!document.querySelector('dialog[open]')
       || !!el('conversationMessage').value.trim(),
     controls: {
       Settings: () => { if (el('conversationSettings').hidden) el('conversationSettingsToggle').click(); },
-      Flow: () => { diagnosticFlow.querySelectorAll('details').forEach(node => { node.open = true; }); diagnosticFlow.scrollIntoView({ block: 'start' }); },
+      Flow: () => { if (family) return el('conversationWorkshop').click(); diagnosticFlow.querySelectorAll('details').forEach(node => { node.open = true; }); diagnosticFlow.scrollIntoView({ block: 'start' }); },
       'Diagnostic micro': () => el('conversationWorkshop').click(),
       'Micro · activer / pause': () => el('conversationStart').click()
     }
