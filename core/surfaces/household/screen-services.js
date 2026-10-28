@@ -17,7 +17,7 @@ function loadServices(env, logger) {
       const row = pages.destination(value);
       if (!row || !/^https?:\/\//.test(row.href) || new URL(row.href).search) throw new Error('Invalid service destination');
       // Mixed-content HTTP cannot be framed from the private HTTPS entry.
-      return { ...row, mode: row.mode === 'frame' && row.href.startsWith('https://') ? 'frame' : 'link' };
+      return { ...row, ...(value.family === true && { family: true }), mode: row.mode === 'frame' && row.href.startsWith('https://') ? 'frame' : 'link' };
     });
   } catch (error) {
     if (error.code !== 'ENOENT') logger?.warn?.('Screen services unavailable: invalid instance configuration');
@@ -37,6 +37,8 @@ function createScreenServices({ app, env = process.env, logger, services = loadS
     return catalog;
   }
   return Object.freeze({
+    get family() { return pages.createCatalog([...current().entries.filter(row => row.id === 'ecosystem'),
+      ...services.filter(row => row.family === true && ['earth', 'iss'].includes(row.id))]); },
     get entries() { return current().entries; }, get PAGES() { return current().PAGES; },
     parse: value => current().parse(value), canonical: pages.canonical,
     url: (value, options) => current().url(value, options), label: value => current().label(value), mode: value => current().mode(value), keepsConversation: value => current().keepsConversation(value)
@@ -50,12 +52,14 @@ function screenPolicy(catalog) {
     .map(row => new URL(row.href, 'https://agentx.invalid').pathname));
   const origins = [...new Set(catalog.entries.filter(row => row.mode === 'frame' && row.href.startsWith('https://'))
     .map(row => new URL(row.href).origin))];
+  const familyOrigins = [...new Set((catalog.family?.entries || []).filter(row => row.mode === 'frame' && row.href.startsWith('https://')).map(row => new URL(row.href).origin))];
   return (req, res, next) => {
     if (req.method === 'GET' && req.query.view === 'screen' && localPaths.has(req.path)) allowScreenFrame(res);
-    if (req.method === 'GET' && ['/dad', '/voice', '/voix', '/voice.html'].includes(req.path) && origins.length) {
+    const allowedOrigins = req.path === '/panel' ? familyOrigins : origins;
+    if (req.method === 'GET' && ['/dad', '/voice', '/voix', '/voice.html', '/panel'].includes(req.path) && allowedOrigins.length) {
       const policy = res.getHeader('Content-Security-Policy');
       if (policy) res.setHeader('Content-Security-Policy', String(policy).replace(/(?:^|;)\s*frame-src [^;]*/g, '')
-        + `; frame-src 'self' ${origins.join(' ')}`);
+        + `; frame-src 'self' ${allowedOrigins.join(' ')}`);
     }
     next();
   };
@@ -75,6 +79,10 @@ function registerScreenServices({ app, router, env, logger, envelope }) {
   router.get('/private/screen-pages', (_req, res) => {
     res.setHeader('Cache-Control', 'private, no-store');
     return envelope(res, { destinations: catalog.entries });
+  });
+  router.get('/family/screen-pages', (_req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    return envelope(res, { destinations: catalog.family.entries });
   });
   return catalog;
 }

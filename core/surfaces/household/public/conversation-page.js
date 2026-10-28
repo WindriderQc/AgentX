@@ -26,8 +26,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const sessionBase = '/api/voice-personas/' + (family ? 'family' : 'private') + '/sessions';
   const [{ personas: catalog, runtime }, agentCatalog, screenCatalog] = await Promise.all([api('/api/voice-personas/catalog'),
     family ? Promise.resolve({ agents: [{ id: 'family', name: 'Nestor Family' }] }) : api('/api/voice-personas/private/agents').catch(() => null),
-    family ? null : api('/api/voice-personas/private/screen-pages').catch(() => null)]);
-  if (!family && screenCatalog) window.AgentXScreenPages?.configure(screenCatalog.destinations);
+    api('/api/voice-personas/' + (family ? 'family' : 'private') + '/screen-pages').catch(() => null)]);
+  if (screenCatalog) window.AgentXScreenPages?.configure(screenCatalog.destinations);
   const personas = family ? catalog.filter(p => p.id === 'nestor') : catalog;
   const agents = agentCatalog?.agents?.length ? agentCatalog.agents : [{ id: 'main', name: 'Main', personalNotes: true }];
   if (!personas?.length) throw new Error('No style is available. Choose one in Prompts.');
@@ -366,7 +366,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     let response;
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
-        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, ...(!family && { ephemeral: session.ephemeral, screen: board.context(), presentationCompanion, presentationPinned: companion?.pinned() === true }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, screen: board.context(), ...(!family && { ephemeral: session.ephemeral, presentationCompanion, presentationPinned: companion?.pinned() === true }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
     if (!session.ephemeral) { work?.follow(session.sessionId); companion?.follow(); }

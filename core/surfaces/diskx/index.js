@@ -9,7 +9,8 @@
 // presentation: it never scans, runs, approves, moves or deletes anything.
 //
 // File paths are private. This surface is full-profile only and, like the Data
-// Toolbox, is outside a family-pinned device's allowlist (family-device.js).
+// Toolbox, stays outside a family-pinned device's allowlist. The separate
+// ecosystem presentation and its static module are family-readable.
 
 const path = require('path');
 const { createScriptRelay, configuredModuleUrl } = require('../household/asset-relay');

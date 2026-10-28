@@ -194,6 +194,27 @@ test('Famille tools: a tool call runs through Core, then the model answers from 
   assert.equal(reply.metadata.toolRounds, 1);
 });
 
+test('family web and network reads use the native tool loop without changing the local inference transport', async () => {
+  const { familyToolset } = require('../family-tools');
+  const calls = [], bodies = [];
+  const tools = familyToolset({ HOUSEHOLD_FAMILY_TOOLS: 'web_search,network_devices' }, { toolDeps: {
+    web_search: async args => { calls.push(['web', args]); return { results: [{ title: 'Synthetic source', url: 'https://source.example' }] }; },
+    networkInventory: async args => { calls.push(['network', args]); return { observedAt: '2026-01-01T00:00:00Z', freshness: 'Synthetic stale observation', devices: [] }; }
+  } });
+  const replies = [{ message: { content: '', tool_calls: [
+    { function: { name: 'web_search', arguments: { query: 'orbit' } } },
+    { function: { name: 'network_devices', arguments: { scope: 'online' } } }
+  ] } }, { message: { content: 'Source: https://source.example. The network observation is stale.' } }];
+  const execute = createConversationExecutor({ agentClient: () => assert.fail('No native owner transport'),
+    inference: { execute: async body => { bodies.push(body); return { ok: true, body: replies.shift() }; } } });
+  const reply = await execute({ ...request(), familyTools: tools });
+  assert.equal(bodies.length, 2); assert.equal(calls.length, 2);
+  assert.deepEqual(reply.tools.offered, ['web_search', 'network_devices']);
+  assert.deepEqual(reply.tools.receipts.map(x => x.status), ['completed', 'completed']);
+  assert.match(reply.text, /source.example/);
+  assert.match(bodies[1].messages.find(m => m.tool_name === 'network_devices').content, /stale observation/);
+});
+
 test('Famille tools: a streamed reply without a tool call streams once, unchanged', async () => {
   const deltas = [];
   let calls = 0;

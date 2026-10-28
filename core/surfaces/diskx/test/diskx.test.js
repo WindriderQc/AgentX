@@ -135,14 +135,16 @@ test('the page assets are served and the status script shows only presentation r
   assert.doesNotMatch(page.text, /method:\s*['"](?:POST|PUT|PATCH|DELETE)/);
 });
 
-test('a family-pinned device and the demo profile reach neither the page, the module nor its data', () => {
-  const paths = ['/diskx', '/api/diskx/diskx.js', '/assets/diskx/diskx-page.js',
+test('family keeps DiskX reports private while the existing ecosystem relay is readable; demo stays disabled', () => {
+  const paths = ['/diskx', '/assets/diskx/diskx-page.js',
     '/api/data-toolbox/storage/tree', '/api/data-toolbox/janitor/strategy/latest/groups'];
   for (const path of paths) {
     assert.equal(allowedForFamilyDevice({ path, method: 'GET', query: {} }), false, path);
   }
   // The family pages themselves stay open on the pinned device.
   assert.equal(allowedForFamilyDevice({ path: '/panel', method: 'GET', query: {} }), true);
+  assert.equal(allowedForFamilyDevice({ path: '/diskx', method: 'GET', query: { app: 'ecosystem' } }), true);
+  assert.equal(allowedForFamilyDevice({ path: '/api/diskx/diskx.js', method: 'GET', query: {} }), true);
   for (const path of ['/diskx', '/api/diskx/diskx.js']) assert.equal(demoSurfaceDisabled(path), true, path);
 });
 

@@ -62,14 +62,19 @@ describe('DiskX access', () => {
     expect(module.text).toBe(MODULE);
   });
 
-  test('a family-pinned device is refused the page, the module and its data, like the Toolbox', async () => {
+  test('a family-pinned device gets the ecosystem view and relay, but no DiskX reports or Toolbox data', async () => {
     const tablet = await pinned(app());
-    for (const path of ['/diskx', '/diskx?janitor=latest', '/diskx?app=ecosystem', '/data-toolbox']) {
+    const ecosystem = await tablet.get('/diskx?app=ecosystem&play=network');
+    expect(ecosystem.status).toBe(200);
+    expect(ecosystem.text).toContain('<agentx-ecosystem app="ecosystem" play="network">');
+    expect(ecosystem.text).not.toContain('roots="/srv/lake"');
+    expect((await tablet.get('/api/diskx/diskx.js')).text).toBe(MODULE);
+    for (const path of ['/diskx', '/diskx?janitor=latest', '/diskx?app=diskx', '/data-toolbox']) {
       const page = await tablet.get(path);
       expect(page.status).toBe(302);
       expect(page.headers.location).toBe('/panel');
     }
-    for (const path of ['/api/diskx/diskx.js', '/api/diskx/presentation?report=2026-01-01T00:00:00Z', '/api/data-toolbox/janitor/strategy/latest']) {
+    for (const path of ['/api/diskx/presentation?report=2026-01-01T00:00:00Z', '/api/data-toolbox/janitor/strategy/latest']) {
       const answer = await tablet.get(path);
       expect(answer.status).toBe(403);
       expect(answer.body.code).toBe('FAMILY_DEVICE_PINNED');
