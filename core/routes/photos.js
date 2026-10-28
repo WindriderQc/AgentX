@@ -23,6 +23,7 @@
 
 const express = require('express');
 const { createPhotoService } = require('../src/services/photos/photoService');
+const { createPhotoFrameService } = require('../src/services/photos/photoFrameService');
 const { requestPrincipal } = require('../src/helpers/requestCaller');
 
 const actor = (req) => String(req.get('x-service-caller') || requestPrincipal(req)).slice(0, 100);
@@ -41,7 +42,7 @@ function sendError(res, error) {
   });
 }
 
-function createPhotoRoutes({ service = createPhotoService(), log = console } = {}) {
+function createPhotoRoutes({ service = createPhotoService(), frame = createPhotoFrameService(), log = console } = {}) {
   const router = express.Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
   const handle = (fn) => async (req, res) => {
@@ -49,6 +50,16 @@ function createPhotoRoutes({ service = createPhotoService(), log = console } = {
   };
 
   router.get('/status', handle(() => service.status()));
+  router.get('/frame/status', handle(() => frame.status()));
+  router.get('/frame/next', handle((req) => frame.next(req.query.exclude)));
+  router.get('/frame/:id/image', async (req, res) => {
+    try {
+      const image = await frame.image(req.params.id);
+      res.set({ 'Content-Type': image.contentType, 'Content-Length': String(image.bytes.length),
+        'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline' });
+      return res.end(image.bytes);
+    } catch (error) { return sendError(res, error); }
+  });
   router.get('/search/smart', handle((req) => service.smartSearch(req.query)));
   router.get('/search', handle((req) => service.metadataSearch(req.query)));
   router.get('/count', handle((req) => service.count(req.query)));

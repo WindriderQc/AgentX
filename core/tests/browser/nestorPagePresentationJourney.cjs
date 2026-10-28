@@ -8,7 +8,7 @@ const express = req('express'), { chromium } = require(process.env.AGENTX_PLAYWR
 const reportDir = process.env.PAGE_PRESENTATION_REPORT_DIR;
 if (!reportDir || path.resolve(reportDir).startsWith(path.resolve(core, '..') + path.sep)) throw Error('Set PAGE_PRESENTATION_REPORT_DIR outside the checkout');
 fs.mkdirSync(reportDir, { recursive: true });
-const source = fs.readFileSync(core + '/surfaces/household/public/conversation-page.js', 'utf8');
+const source = fs.readFileSync(core + '/surfaces/household/public/conversation-page.js', 'utf8').replace(/\r\n/g, '\n');
 const template = source.match(/app.innerHTML = (`[\s\S]*?`);\n  const el/)[1];
 const markup = new Function('family', 'personas', 'agents', 'runtime', 'esc', `return ${template}`)(false, [], [], {}, String);
 const styles = ['app', 'avatar-dock', 'display-board', 'conversation-experience', 'workflow-cockpit', 'page-presentation'];
@@ -88,7 +88,8 @@ let server, browser;
     assert.equal(await page.locator('#conversationVisual').isVisible(), false);
     assert.equal((await page.evaluate(() => board.context()))[0].kind, 'list');
     assert.equal(await page.locator('.conversation-text').isVisible(), true);
-    assert.equal(await page.locator('.conversation-workflow:visible').count(), 0);
+    assert.equal(await page.locator('#conversationWorkflow').isVisible(), true);
+    assert.equal(await page.locator('.conversation-toolbar').isVisible(), true);
     await page.evaluate(() => { dock.setMode('quart'); showPage(); });
     assert.ok(await page.locator('#app').evaluate(el => el.getBoundingClientRect().width >= innerWidth * .95));
     await page.getByRole('button', { name: 'Fermer le contenu' }).click();
