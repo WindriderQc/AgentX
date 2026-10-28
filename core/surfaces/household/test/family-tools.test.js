@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { FAMILY_ELIGIBLE_TOOLS, familyToolNames, familyToolset, parseArguments } = require('../family-tools');
 
 test('Famille is offered only family-eligible Core tools the instance turned on', () => {
-  assert.deepEqual(FAMILY_ELIGIBLE_TOOLS, ['iss_passes']);
+  assert.deepEqual(FAMILY_ELIGIBLE_TOOLS, ['iss_passes', 'web_search', 'network_devices']);
   assert.equal(familyToolset({}), null);
   assert.equal(familyToolset({ HOUSEHOLD_FAMILY_TOOLS: 'photo_search, create_todo' }), null);
   assert.deepEqual(familyToolNames({ HOUSEHOLD_FAMILY_TOOLS: ' iss_passes ,create_todo,iss_passes' }), ['iss_passes']);
@@ -12,6 +12,23 @@ test('Famille is offered only family-eligible Core tools the instance turned on'
   assert.deepEqual(toolset.definitions.map(d => [d.type, d.function.name]), [['function', 'iss_passes']]);
   assert.match(toolset.instructions, /iss_passes/);
   assert.match(toolset.instructions, /never invent a tool result/);
+});
+
+test('family reads dispatch the existing web and network handlers, without owner capabilities', async () => {
+  const calls = [];
+  const toolset = familyToolset({ HOUSEHOLD_FAMILY_TOOLS: 'web_search,network_devices,mail_journal,personal_memory,create_todo' }, {
+    toolDeps: { web_search: async input => { calls.push(['web', input]); return { results: [{ title: 'Source', url: 'https://science.example', snippet: 'Reference data' }] }; },
+      networkInventory: async input => { calls.push(['network', input]); return { observedAt: '2026-01-01T00:00:00Z', devices: [], freshness: 'stale; not confirmed now' }; } }
+  });
+  assert.deepEqual(toolset.names, ['web_search', 'network_devices']);
+  const web = await toolset.execute({ function: { name: 'web_search', arguments: { query: 'ISS orbit' } } });
+  assert.equal(web.receipt.status, 'completed'); assert.match(web.message.content, /science.example/);
+  const net = await toolset.execute({ function: { name: 'network_devices', arguments: { scope: 'online' } } });
+  assert.equal(net.receipt.status, 'completed'); assert.match(net.message.content, /stale/);
+  assert.deepEqual(calls, [['web', { query: 'ISS orbit' }], ['network', { scope: 'online' }]]);
+  const bad = await toolset.execute({ function: { name: 'web_search', arguments: { query: 'ISS', url: 'file:///private' } } });
+  assert.equal(bad.receipt.status, 'failed'); assert.equal(calls.length, 2);
+  assert.equal((await toolset.execute({ function: { name: 'personal_memory', arguments: {} } })).receipt.status, 'refused');
 });
 
 test('Famille cannot choose coordinates for the ISS: the household location is always used', async () => {

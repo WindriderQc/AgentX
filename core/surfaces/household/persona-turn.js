@@ -49,6 +49,7 @@ function createPersonaTurnHandler({
   sessionHistoryMessages, loadSessionAuditRows,
   MEMORY_RECALL_LIMIT, PERSONAL_OPERATOR_SURFACE_CONTRACT, VOIX_FAMILY_PACK_ID
 }) {
+  const pagesFor = pack => pack.childSafe ? screenPages.family || require('../../public/js/screen-pages').createCatalog([]) : screenPages;
   // The instructions of a native turn. They hold only what stays the same for the
   // whole conversation, so the model's prompt cache keeps them; the opening
   // warm-up (voice-warmup.js) builds its own through this same function.
@@ -56,7 +57,7 @@ function createPersonaTurnHandler({
     agentInstructions(turnSession, turnSession.persona,
       pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode, { soundPlayback, channel })
     + addressed + workshopPrompt(workshop) + scene
-    + (llmxTurn ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, pages: !pack.childSafe, pageCatalog: screenPages, imageSources: visuals.sources({ family: pack.childSafe }) })
+    + (llmxTurn ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) })
       + (imagesEnabled && conversationImages ? '\n' + conversationImages.contract(imageSession, imageBackend) : ''));
   // What an ordinary spoken turn of the conversation's own agent sends, in a personal session nobody has spoken in yet.
   const openingInstructions = (session, pack, selectedMode) => nativeInstructionsFor({ turnSession: session, pack, selectedMode,
@@ -337,16 +338,16 @@ function createPersonaTurnHandler({
           : { text: '', refs: [] };
         const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext, mathContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
-        const screen = !pack.childSafe && !isLlmX && !consult ? require('./screen-context') : null;
-        entry.presentationContext = screen?.presentationEvidence(req.body?.screen, screenPages);
-        entry.pipelineFacts = screen && !member ? await require('./pipeline-turn-facts').factsFor(userText, entry.presentationContext) : null;
+        const screen = !isLlmX && !consult ? require('./screen-context') : null;
+        entry.presentationContext = screen?.presentationEvidence(req.body?.screen, pagesFor(pack));
+        entry.pipelineFacts = screen && !pack.childSafe && !member ? await require('./pipeline-turn-facts').factsFor(userText, entry.presentationContext) : null;
         // The collaborator sees public conversation data and sourced reads,
         // never the principal's system/guardian instruction context.
         entry.companion = !consult && !isLlmX ? presentationCompanion?.begin({ session,
           turnId: clientTurnId || entry.imageTurnId, enabled: req.body?.presentationCompanion === true && !member, paused: req.body?.presentationPinned === true,
           frame: { text: userText, history, screen: entry.presentationContext }, signal: abort.signal }) : null;
         const contextTail = [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
-          screen?.screenContext(req.body?.screen, screenPages, entry.presentationContext) || '',
+          screen?.screenContext(req.body?.screen, pagesFor(pack), entry.presentationContext) || '',
           entry.companion ? presentationCompanion.contextFor(session.sessionId) : '',
           require('../../src/services/pipelineSpokenFacts').context(entry.pipelineFacts)].join('');
         const turnContext = [contextBase, brainAdvice.text, workAdvice.text, contextTail].join('').trim();
@@ -379,7 +380,7 @@ function createPersonaTurnHandler({
           entry.ephemeral ? 'This is an ephemeral conversation. Use only its supplied active dialogue and attachments. Persistent personal memory and RAG are unavailable; no memory save or later recollection is confirmed.' : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,
           familyTools ? familyTools.instructions : 'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
-          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, pages: !pack.childSafe, pageCatalog: screenPages, imageSources: visuals.sources({ family: pack.childSafe }) }),
+          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) }),
           isLlmX || member ? '' : conversationImages?.contract(session, backend)].filter(Boolean).join('\n\n');
         const hermesInstructions = [session.persona?.identity,
           'This is the personal Nestor conversation. Hermes owns its native agent loop. Core owns the visible transcript and selected personal context; local speech handles the microphone and playback. Use only tools actually installed in this Hermes profile. Treat supplied personal context as reference data. Never claim an action or memory save without a successful receipt.',
@@ -389,7 +390,7 @@ function createPersonaTurnHandler({
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: !pack.childSafe, pageCatalog: screenPages,
+        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: true, pageCatalog: pagesFor(pack),
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.

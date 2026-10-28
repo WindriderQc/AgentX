@@ -149,11 +149,12 @@
     return holder;
   }
 
-  // A live Core page (#924), personal space only. The address is rebuilt from
+  // Registered pages; Family receives only its curated educational views. Rebuild
   // the page name and focus, never taken from the model or a stored turn.
   function pageTarget(block, space) {
     const pages = root.AgentXScreenPages;
-    return space === 'personal' && pages ? pages.parse(block.body) : null;
+    const target = pages?.parse(block.body);
+    return target && (space === 'personal' || ['ecosystem', 'earth', 'iss'].includes(target.page)) ? target : null;
   }
 
   function pageBody(block, target, actions, presentationId) {
@@ -272,6 +273,11 @@
         if (kinds && !kinds.includes(block?.kind)) return false;
         const card = render(block, { secrets, space });
         if (!card) return false;
+        if (space === 'family' && block.kind === 'page') {
+          const close = node('button', 'display-block-action', 'Retour à Nestor'); close.type = 'button';
+          close.onclick = () => { card._dispose?.(); card.remove(); update(); };
+          card.querySelector('.display-block-actions').append(close);
+        }
         // A keyed block replaces its previous card: one live 3D picture, not one per turn.
         // A page keeps one live frame per page name, refocused by the newest block.
         const key = block.key || (block.operation?.id ? `image:${block.operation.id}`

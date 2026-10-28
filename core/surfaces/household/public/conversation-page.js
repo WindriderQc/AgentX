@@ -26,8 +26,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const sessionBase = '/api/voice-personas/' + (family ? 'family' : 'private') + '/sessions';
   const [{ personas: catalog, runtime }, agentCatalog, screenCatalog] = await Promise.all([api('/api/voice-personas/catalog'),
     family ? Promise.resolve({ agents: [{ id: 'family', name: 'Nestor Family' }] }) : api('/api/voice-personas/private/agents').catch(() => null),
-    family ? null : api('/api/voice-personas/private/screen-pages').catch(() => null)]);
-  if (!family && screenCatalog) window.AgentXScreenPages?.configure(screenCatalog.destinations);
+    api('/api/voice-personas/' + (family ? 'family' : 'private') + '/screen-pages').catch(() => null)]);
+  if (screenCatalog) window.AgentXScreenPages?.configure(screenCatalog.destinations);
   const personas = family ? catalog.filter(p => p.id === 'nestor') : catalog;
   const agents = agentCatalog?.agents?.length ? agentCatalog.agents : [{ id: 'main', name: 'Main', personalNotes: true }];
   if (!personas?.length) throw new Error('No style is available. Choose one in Prompts.');

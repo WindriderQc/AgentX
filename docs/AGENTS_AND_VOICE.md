@@ -130,10 +130,30 @@ uses admitted inference; `openclaw` uses the native agent conversation bridge.
 An optional `HOUSEHOLD_FAMILY_CONVERSATION_BACKEND` chooses the backend for new
 child-safe sessions without moving existing history between engines.
 
-Direct Core inference has no native agent tool loop. Core's deterministic family
-routines, captures, math picture and sounds still compose with it. Spoken Core
+Direct Core inference has no OpenClaw or Hermes tool loop. Family can use the
+bounded Core loop selected by `HOUSEHOLD_FAMILY_TOOLS`: `iss_passes`, `web_search`
+and `network_devices`. These dispatch the existing Core handlers, retain dated
+source results and tool receipts, and expose no owner memory, mail or mutation.
+Web results are untrusted references with URLs to cite; network reads use the
+existing collector inventory and disclose its freshness, without scanning.
+Core's deterministic family routines, captures, math picture and sounds still
+compose with it. Spoken Core
 turns use the configurable `HOUSEHOLD_VOICE_TASK` (default
-`voice_persona_chat`), except LLMx scenes. Typed turns keep their pack's task.
+  `voice_persona_chat`), except LLMx scenes. Typed turns keep their pack's task.
+The two routes can resolve different host pins and models; inspect the effective
+routing snapshot instead of inferring Family's model from personal Main.
+
+Family's `/api/voice-personas/family/screen-pages` catalogue exposes the existing
+ecosystem tour and instance-selected `earth` and `iss` views. Add the latter to
+`config/screen-services.json` with `family: true`; only these two service IDs
+enter Family's catalogue. HTTPS frames retain Nestor, Settings and the mic, with
+an explicit return button. The ecosystem accepts the existing `play=network`
+tour grammar. Its selected-component context comes from the current, versioned
+GraphysX display observation, a dated presentation rather than live inventory.
+ISS passes and network devices retain their native source dates. External
+frame loading does not prove its scene or data rendered. Private pages and
+DiskX file reports remain blocked on family-pinned browsers. These foreground
+views do not enable the Hermes-only presentation companion.
 
 Family follow-ups receive the most recent deterministic math picture in the
 existing bounded Core history, on both conversation backends. Core recomputes

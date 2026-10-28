@@ -258,7 +258,7 @@ test('a page block names a Core page and a bounded focus, never an address (#924
   assert.match(result.say, /Trois tâches bloquées/);
 });
 
-test('Famille and unknown pages never open a page block', () => {
+test('Famille without a curated catalogue and unknown pages never open a page block', () => {
   assert.deepEqual(run(['<show kind="page">pipeline</show>'], { allowPages: false }).display, []);
   assert.deepEqual(run(['<show kind="page">/admin</show>'], { allowPages: true }).display, []);
   assert.doesNotMatch(contract({ family: true, pages: true }), /kind="page"/);
