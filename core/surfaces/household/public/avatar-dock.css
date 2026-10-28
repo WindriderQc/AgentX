@@ -1,6 +1,22 @@
 /* The docked avatar (avatar-dock.js). Modes: scene (interactive: full screen, the top right
    corner beside what Nestor shows, or the open page), bulle, quart (a quarter of the screen),
    moitie (the right half; the conversation keeps the left), cache (a small reopen tab). */
+/* Camera consent and stop stay visible above the face AND the idle photo surface. */
+.avatar-camera { box-sizing: border-box; position: fixed; z-index: 1001; right: 16px; bottom: 16px;
+  max-width: min(310px, calc(100vw - 20px)); padding: 10px 12px; border: 1px solid #647b89;
+  border-radius: 16px; background: #0b1620f5; color: #e5f7fc; font-size: 13px; }
+.avatar-camera p { margin: 0 0 6px; }
+.avatar-camera .avatar-camera-help { font-size: 11px; max-width: 28em; margin: 6px 0 0; }
+.avatar-camera button { min-height: 44px; padding: 6px 14px; border: 1px solid #84a4b5; border-radius: 10px;
+  color: #fff; background: #203d4b; font: inherit; cursor: pointer; }
+.avatar-camera button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.avatar-camera[data-active=true] { border-color: #76eab3; }
+.avatar-camera[data-active=true] [role=status]::before { content: '● '; color: #76eab3; }
+.avatar-camera[data-active=paused] { border-color: #e2c77e; }
+body[data-avatar-view=plein] .avatar-camera { top: max(10px, env(safe-area-inset-top)); left: 10px; right: auto; bottom: auto; }
+@media (max-width: 700px) {
+  .avatar-camera { top: max(76px, env(safe-area-inset-top)); right: 10px; bottom: auto; max-width: min(280px, calc(100vw - 20px)); }
+}
 /* Below the sticky topbar (z-index 20), so its menus ("Réglages et outils") open over the dock. */
 .avatar-dock { --avatar-tint: #52cfc5; position: fixed; z-index: 15; right: 16px; bottom: 16px; display: grid;
   border: 1px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: var(--shadow);
