@@ -108,6 +108,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     board, api, base: sessionBase, getSession: () => conversation.session });
   // "Agrandis", "ferme", "suivant"… act on Nestor's content workspace without a turn. Famille has no such workspace.
   const screenWords = family ? null : window.NestorScreenCommandsEditor?.mount({ host: app.querySelector('.page-presentation-actions'), api });
+  let idlePhotos = null;
   const screenCommand = family ? null : window.NestorScreenCommands?.handler(board, { phrases: () => screenWords?.phrases() || [] });
   // The avatar dock paces a math picture to Nestor's first word; the Images zone draws it.
   // Shown live: in the avatar's interactive scene Nestor steps aside and that zone comes first.
@@ -570,7 +571,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       partial = null;
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
-    localControl: (text, options) => screenCommand?.(text, options) || null,
+    localControl: (text, options) => idlePhotos?.localControl(text, options) || screenCommand?.(text, options) || null,
     transcriptionStarted: turnId => workflow?.capture(conversation.session?.sessionId, turnId),
     transcriptionDone: (turnId, values) => { latestVoiceTimings = values || {}; workflow?.timings(turnId, values); },
     transcriptionEnded: (turnId, receipt) => workflow?.captureEnd(turnId, receipt),
@@ -1022,6 +1023,18 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       } else el('conversationStatus').textContent = 'Turn on Nestor once to allow the mic and sound.';
     } catch { el('conversationStatus').textContent = 'Press Turn on Nestor to set up this device.'; }
   }
+  if (!family) idlePhotos = window.NestorIdlePhotos?.mount({ host: app.querySelector('.conversation-toolbar'), api,
+    busy: () => textBusy || !['idle', 'paused', 'listening'].includes(conversation.state)
+      || !el('conversationSettings').hidden || !!document.querySelector('dialog[open]')
+      || !!el('conversationMessage').value.trim(),
+    controls: {
+      Settings: () => { if (el('conversationSettings').hidden) el('conversationSettingsToggle').click(); },
+      Flow: () => { diagnosticFlow.querySelectorAll('details').forEach(node => { node.open = true; }); diagnosticFlow.scrollIntoView({ block: 'start' }); },
+      'Diagnostic micro': () => el('conversationWorkshop').click(),
+      'Micro · activer / pause': () => el('conversationStart').click()
+    }
+  });
+  window.addEventListener('pagehide', () => idlePhotos?.dispose(), { once: true });
   enteringSpace = false;
   conversation.show(conversation.state, el('conversationStatus').textContent);
 
