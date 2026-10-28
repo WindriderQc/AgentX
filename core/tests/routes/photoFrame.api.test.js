@@ -65,6 +65,11 @@ test('invalid ids are refused before any upstream operation', async () => {
   expect((await request(app).get('/api/photos/frame/invalid/image')).status).toBe(400);
   expect(client.json).not.toHaveBeenCalled();
 });
+test('an oversized random answer is refused without publishing its items', async () => {
+  const { app } = fixture({ rows: [asset(), asset()] });
+  const result = await request(app).get('/api/photos/frame/next');
+  expect(result.status).toBe(502); expect(result.body.data).toBeUndefined();
+});
 test('instance configuration is bounded and rejects unconfined or malformed directories', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentx-frame-config-'));
   fs.mkdirSync(path.join(dir, 'config'));
@@ -78,6 +83,8 @@ test('instance configuration is bounded and rejects unconfined or malformed dire
       expect(() => loadFrameConfig(env)).toThrow('not configured');
     }
     fs.writeFileSync(file, JSON.stringify({ version: 1, originalPathPrefix: source, idleSeconds: 1 }));
+    expect(() => loadFrameConfig(env)).toThrow('not configured');
+    fs.writeFileSync(file, 'null');
     expect(() => loadFrameConfig(env)).toThrow('not configured');
     fs.writeFileSync(file, ' '.repeat(4097));
     expect(() => loadFrameConfig(env)).toThrow('not configured');

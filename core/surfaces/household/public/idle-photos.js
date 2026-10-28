@@ -28,7 +28,7 @@
     host.append(toggle); region.append(image, actions); document.body.append(region);
     function activity(event) {
       // Keep controls focusable/clickable until their own handler performs the action.
-      if (active && actions.contains(event?.target)) return;
+      if (active && actions.contains(event?.target) && !(event.type === 'keydown' && event.key === 'Escape')) return;
       voiceReturn = false;
       leave({ focus: event?.type === 'keydown' && event.key === 'Escape' });
     }
@@ -60,7 +60,9 @@
     }
     function tick() {
       if (disposed || !enabled) return;
-      if (document.hidden || busy()) { if (active) leave(); return; }
+      const editing = !region.contains(document.activeElement)
+        && (document.activeElement?.matches('input, textarea, select, iframe') || document.activeElement?.isContentEditable);
+      if (document.hidden || busy() || editing) { if (active) leave(); return; }
       if ((!active && now() - lastActivity >= idleMs && now() >= nextImage) || (active && now() >= nextImage)) void advance();
     }
     const events = ['pointerdown', 'keydown', 'input', 'focusin'];
@@ -70,12 +72,21 @@
     root.addEventListener('persona-presence', presence);
     root.addEventListener('persona-activity', activity);
     const timer = root.setInterval(tick, 1000);
+    const observer = new MutationObserver(() => { if (!host.isConnected) dispose(); });
+    observer.observe(document.body, { childList: true, subtree: true });
     void api('/api/photos/frame/status').then(value => {
       if (disposed || !value?.enabled) return;
       idleMs = Math.max(30000, Number(value.idleSeconds) * 1000 || 120000);
       intervalMs = Math.max(5000, Number(value.intervalSeconds) * 1000 || 30000);
       enabled = true; toggle.hidden = false; toggle.setAttribute('aria-pressed', 'true');
     }).catch(() => {});
+    function dispose() {
+      disposed = true; leave(); root.clearInterval(timer); observer.disconnect();
+      events.forEach(name => document.removeEventListener(name, activity, true));
+      document.removeEventListener('visibilitychange', visibility);
+      root.removeEventListener('persona-presence', presence); root.removeEventListener('persona-activity', activity);
+      region.remove(); toggle.remove();
+    }
     return {
       active: () => active, activity, tick,
       // Existing voice recognition calls this hook with its own wake/address decision.
@@ -88,13 +99,7 @@
         return hadFrame && ['close', 'previous', 'shrink'].includes(command?.action)
           ? { action: command.action, applied: true, message: 'Retour à Nestor.' } : null;
       },
-      dispose() {
-        disposed = true; leave(); root.clearInterval(timer);
-        events.forEach(name => document.removeEventListener(name, activity, true));
-        document.removeEventListener('visibilitychange', visibility);
-        root.removeEventListener('persona-presence', presence); root.removeEventListener('persona-activity', activity);
-        region.remove(); toggle.remove();
-      },
+      dispose,
     };
   }
   root.NestorIdlePhotos = { mount };

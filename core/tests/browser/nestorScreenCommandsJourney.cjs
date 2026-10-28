@@ -86,6 +86,10 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     res.end(JSON.stringify({ type: 'done', data: { session, traceId: randomUUID(), reply: { text: 'Voici.' }, routing: { backend: 'agentx' },
       tools: { status: 'not_supported', authority: 'agentx/ollama', receipts: [] } } }) + '\n');
   });
+  const photoId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  app.get('/api/photos/frame/status', (_req, res) => res.json({ data: { enabled: true, idleSeconds: 120, intervalSeconds: 30 } }));
+  app.get('/api/photos/frame/next', (_req, res) => res.json({ data: { id: photoId, src: '/api/photos/frame/' + photoId + '/image' } }));
+  app.get('/api/photos/frame/:id/image', (_req, res) => res.type('image/svg+xml').send('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450"><rect width="800" height="450" fill="#145e76"/></svg>'));
   app.use('/api', (req, res) => {
     if (req.path.endsWith('/recap/latest')) return res.json({ data: null });
     res.json({ data: { destinations: [], sessions: [], works: [], notes: [], active: 'primary', review: null } });
@@ -240,6 +244,31 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   await page.screenshot({ path: path.join(output, 'mobile.png'), fullPage: true });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'no horizontal scroll on a phone');
   assert.equal(await region.isVisible(), true);
+  // The idle frame is also mounted by the real conversation controller, not only a component fixture.
+  const photoFrame = page.locator('.nestor-idle-photos');
+  await page.clock.install();
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.clock.fastForward(121000);
+  await photoFrame.waitFor({ state: 'visible' });
+  await photoFrame.getByRole('button', { name: 'Settings', exact: true }).click();
+  assert.equal(await page.locator('#conversationSettings').isVisible(), true);
+  await page.locator('#conversationSettingsToggle').click();
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.clock.fastForward(121000);
+  await photoFrame.waitFor({ state: 'visible' });
+  await photoFrame.getByRole('button', { name: 'Flow', exact: true }).click();
+  assert.equal(await page.locator('#conversationWorkflow').isVisible(), true);
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.clock.fastForward(121000);
+  await photoFrame.waitFor({ state: 'visible' });
+  await page.screenshot({ path: path.join(output, 'idle-photos-integrated-mobile.png') });
+  const photoTurns = submissions.length, photoRows = (await state()).rows;
+  heard = 'Eille Nestor, ferme l’écran';
+  await page.evaluate(() => window.say());
+  await photoFrame.waitFor({ state: 'hidden' });
+  await listening();
+  assert.equal(submissions.length, photoTurns, 'voice return from photos creates no model request');
+  assert.equal((await state()).rows, photoRows, 'voice return preserves the conversation');
   assert.deepEqual(errors, []);
   fs.writeFileSync(path.join(output, 'steps.json'), JSON.stringify(steps, null, 2));
   console.log(JSON.stringify({ browser: 'Chromium', commands: steps.length, modelRequests: submissions, errors, output, liveModelCalls: 0 }));

@@ -1034,7 +1034,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       'Micro · activer / pause': () => el('conversationStart').click()
     }
   });
-  window.addEventListener('pagehide', () => idlePhotos?.dispose(), { once: true });
+  window.addEventListener('pagehide', event => { if (event.persisted) idlePhotos?.activity(); else idlePhotos?.dispose(); });
   enteringSpace = false;
   conversation.show(conversation.state, el('conversationStatus').textContent);
 

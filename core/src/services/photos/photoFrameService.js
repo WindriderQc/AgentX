@@ -19,7 +19,7 @@ function loadFrameConfig(env = process.env) {
     throw fail();
   }
   const prefix = raw?.originalPathPrefix;
-  if (raw.version !== 1 || typeof prefix !== 'string' || prefix.length > 1024
+  if (raw?.version !== 1 || typeof prefix !== 'string' || prefix.length > 1024
     || !prefix.startsWith('/') || prefix === '/' || prefix.includes('\\') || prefix.includes('\0')
     || path.posix.normalize(prefix) !== prefix || prefix.endsWith('/')) throw fail();
   const seconds = (value, fallback, min) => {
@@ -57,7 +57,7 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
         visibility: { eq: 'timeline' }, isOffline: { eq: false }, trashedAt: { eq: null } };
       if (exclude) filter.id = { ne: exclude };
       const rows = await client.json('/search/random', { method: 'POST', body: { size: 1, filter } });
-      if (!Array.isArray(rows) || rows.some(asset => !allowed(asset, value))) {
+      if (!Array.isArray(rows) || rows.length > 1 || rows.some(asset => !allowed(asset, value))) {
         throw photoError(502, 'PHOTO_FRAME_INVALID_RESULT', 'Photo frame received an invalid image');
       }
       const asset = rows[0];

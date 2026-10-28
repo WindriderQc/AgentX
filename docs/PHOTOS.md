@@ -110,9 +110,77 @@ any caller may omit it. Family surfaces and family agents must send it.
   Core's thumbnail links only open on the home network.
 - Other agents with plain HTTPS use the routes above.
 
+## Idle photo frame in personal Nestor
+
+The existing personal conversation can show one photo across the current
+browser viewport after inactivity. It uses Immich's native random search,
+the existing Core credential and preview transport; it does not scan the
+library or start inference, recognition, playback or camera capture.
+
+The instance enables it with a private file at
+`$AGENTX_INSTANCE_ROOT/config/photo-frame.json`:
+
+```json
+{
+  "version": 1,
+  "originalPathPrefix": "/mnt/media/photo-frame",
+  "idleSeconds": 120,
+  "intervalSeconds": 30
+}
+```
+
+`originalPathPrefix` is the directory **as Immich sees it**, without a trailing
+slash; verify it against an asset in the requested source before installation.
+It is not a browser-supplied path or a directory on the client. Missing,
+invalid or unreadable configuration leaves the feature off. The configuration
+is limited to 4 KiB; inactivity is 30–3600 seconds and rotation 5–3600 seconds.
+The defaults are two minutes and thirty seconds, with no transition effect.
+
+| Route | Answer |
+|---|---|
+| `GET /api/photos/frame/status` | Enabled state and intervals; no directory or credential. |
+| `GET /api/photos/frame/next?exclude=<previous-id>` | One random `{id, src}`, or `null` when none matches. |
+| `GET /api/photos/frame/:id/image` | Preview image after checking current membership again. |
+
+Selection sends one bounded `POST /search/random` to Immich, constrained to
+the configured directory and its descendants, timeline images, available
+files and no trash. Both selection and image delivery verify the returned
+path and reject siblings, non-normal paths, hidden/locked images and videos.
+Browser parameters cannot replace the configured source. No path, EXIF,
+description or face name is returned. Empty selections keep the current
+photo, or leave the conversation visible when none is showing. There is no
+unfiltered fallback. One-photo sources can therefore keep their current
+photo when the exclusion has no other match.
+
+When configured, **Photos en veille** toggles the feature for this visit.
+Touch/click or Escape returns to the same conversation. The photo controls
+also reach Settings, Flow, microphone diagnostics and the existing mic button.
+Active conversation work, a focused editor or embedded page, open settings or a dialog prevent
+the frame from taking focus. Background tabs stop showing photos; leaving the
+conversation removes the component. A failed API/image leaves Nestor accessible.
+
+Existing speech capture and the existing screen-command grammar supply voice
+return: an addressed close/back/shrink command returns locally; ordinary
+requests retain the conversation path. Wake-word standby still requires the
+existing address. This feature changes no listening preference and enables no
+new wake word or permanent capture. Family does not mount this component.
+Browser/OS kiosk startup, screen power, audio permission and real-device voice
+acceptance are separate instance steps.
+
+The Immich v3.3.3 [random controller](https://github.com/immich-app/immich/blob/v3.3.3/server/src/controllers/search.controller.ts)
+uses the existing `asset.read` permission, and its
+[search schema](https://github.com/immich-app/immich/blob/v3.3.3/server/src/dtos/search.dto.ts)
+supports the structured directory filter. No additional Immich key is needed.
+
+Checks: `core/tests/routes/photoFrame.api.test.js` uses synthetic assets and
+mocked Immich. `core/tests/browser/nestorIdlePhotosJourney.cjs` uses the shipped
+markup/component and loopback photo fixtures; set `IDLE_PHOTOS_REPORT_DIR`
+outside the checkout and, if needed, `AGENTX_PLAYWRIGHT_MODULE` and
+`AGENTX_BROWSER_EXECUTABLE`. It uses no real photos, microphone or model.
+
 ## Not covered
 
-No album, upload, delete, face naming or tagging route. Indexing and its
+No general album, upload, delete, face naming or tagging route. Indexing and its
 machine-learning jobs stay in Immich; a large run is heavy work for the
 instance queue.
 
