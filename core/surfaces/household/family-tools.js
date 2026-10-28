@@ -18,6 +18,21 @@ const MAX_TOOL_ROUNDS = 2;
 const MAX_CALLS_PER_ROUND = 3;
 const MAX_RESULT_CHARACTERS = 8000;
 
+function resultContent(value) {
+  let content = JSON.stringify(value ?? null);
+  if (content.length <= MAX_RESULT_CHARACTERS) return content;
+  const data = structuredClone(value), rows = data?.devices || data?.results;
+  if (Array.isArray(rows)) {
+    data.truncated = true;
+    if (data.results) delete data.formatted; // The structured source rows already carry this text.
+    while (rows.length && JSON.stringify(data).length > MAX_RESULT_CHARACTERS) rows.pop();
+    if (data.devices) data.returned = rows.length;
+    content = JSON.stringify(data);
+    if (content.length <= MAX_RESULT_CHARACTERS) return content;
+  }
+  return JSON.stringify({ truncated: true, error: 'RESULT_TOO_LARGE', message: 'The source result exceeds this turn budget; do not infer the missing data.' });
+}
+
 function familyToolNames(env = process.env) {
   const requested = String(env.HOUSEHOLD_FAMILY_TOOLS || '').split(',').map(name => name.trim()).filter(Boolean);
   return [...new Set(requested)].filter(name => FAMILY_ELIGIBLE_TOOLS.includes(name) && TOOLS.some(tool => tool.name === name));
@@ -88,7 +103,7 @@ function familyToolset(env = process.env, deps = {}) {
       const omit = FAMILY_TOOL_VIEWS[name]?.omit || [];
       const allowed = Object.fromEntries(Object.entries(args).filter(([key]) => !omit.includes(key)));
       const result = await run({ name, arguments: allowed }, deps.toolDeps || {}, tools);
-      const content = JSON.stringify(result.structuredContent ?? null).slice(0, MAX_RESULT_CHARACTERS);
+      const content = resultContent(result.structuredContent);
       return { message: message(content), receipt: { tool: name, status: result.isError ? 'failed' : 'completed', at,
         ...(result.isError ? { error: String(result.structuredContent?.error || 'TOOL_ERROR') } : {}) } };
     },

@@ -38,3 +38,24 @@ test('family CSP grants only its curated external scene origin', () => {
   }, () => {});
   assert.match(value, /https:\/\/science.example/); assert.doesNotMatch(value, /admin.example/);
 });
+
+test('the actual family middleware enforces the view boundary on HTTP requests', async () => {
+  const express = require('express'), request = require('supertest');
+  const server = express(); server.use(require('cookie-parser')());
+  require('../family-device').register({ app: server,
+    mongoose: { models: { AgentXHouseholdFamilyDevice: { findOneAndUpdate: () => ({ lean: async () => ({ label: 'Fixture family terminal' }) }) } } },
+    ownerUnlock: { activeUntil: async () => null }, standardJsonParser: express.json(),
+    envelope: (res, data) => res.json({ data }), fail: (res, code, message) => res.status(code).json({ message }) });
+  server.get('/diskx', (_req, res) => res.json({ scene: 'ecosystem' }));
+  server.get('/api/diskx/diskx.js', (_req, res) => res.type('js').send('export {};'));
+  server.get('/api/data-toolbox/storage', () => assert.fail('Owner handler must not run'));
+  const cookie = 'agentx_family_device=fixture-only';
+  await request(server).get('/diskx?app=ecosystem&play=network').set('Cookie', cookie).expect(200);
+  await request(server).get('/api/diskx/diskx.js').set('Cookie', cookie).expect(200);
+  for (const url of ['/diskx', '/diskx?app=diskx', '/diskx?app=ecosystem&app=diskx']) {
+    await request(server).get(url).set('Cookie', cookie).expect(302).expect('Location', '/panel');
+  }
+  await request(server).get('/api/data-toolbox/storage').set('Cookie', cookie).expect(403);
+  await request(server).get('/api/diskx/presentation').set('Cookie', cookie).expect(403);
+  await request(server).post('/diskx?app=ecosystem').set('Cookie', cookie).expect(403);
+});
