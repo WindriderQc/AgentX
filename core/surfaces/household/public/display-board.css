@@ -22,6 +22,12 @@
 .display-block-table th, .display-block-table td { padding: 6px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
 .display-block-table th { background: #0b1822; }
 .conversation-visual .display-board-list { grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+/* A resolved <show kind="image"> is the picture being presented, not a search-result thumbnail. */
+.conversation-visual .display-block[data-kind="image"] { grid-column: 1 / -1; }
+:is(.conversation-visual, .page-presentation) .display-block[data-kind="image"] .display-block-figure img { max-height: max(160px, calc(100dvh - 210px)); object-fit: contain; }
+@media (max-width: 700px) {
+  :is(.conversation-visual, .page-presentation) .display-block[data-kind="image"] .display-block-figure img { max-height: max(160px, calc(100dvh - 260px)); }
+}
 .display-block[data-kind="image"] { border-left-color: var(--green); }
 .display-block-figure { margin: 0; }
 .display-block-figure img { display: block; width: 100%; max-height: 60vh; object-fit: contain; border-radius: 8px; background: #06111a; }
