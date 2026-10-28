@@ -45,6 +45,8 @@ function allowedForFamilyDevice(req) {
   if (STATIC_PATHS.some((pattern) => pattern.test(path))) return true;
   if (FAMILY_APIS.some((pattern) => pattern.test(path))) return true;
   if (req.method !== 'GET') return false;
+  // Only the configured frame: no library search, metadata or other photo APIs.
+  if (/^\/api\/photos\/frame\/(?:status|next|[0-9a-f-]{36}\/image)$/i.test(path)) return true;
   if (FAMILY_PAGES.has(path)) return true;
   if (path === '/llmx') return req.query?.profile === 'family';
   // Children may change their own voice settings (owner decision), only in the family scope.

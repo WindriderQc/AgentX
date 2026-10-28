@@ -166,7 +166,10 @@ retain the conversation path. While the existing wake gate is armed, ambient
 speech does not exit the photos. The microphone must already be active;
 when it is off, the on-screen button and touch/click/Escape remain available.
 This feature changes no listening preference and enables no
-new wake word or permanent capture. Family does not mount this component.
+new wake word or permanent capture. Family mounts the same component; its Flow
+button opens the existing family voice workshop, without owner workflow data.
+Pinned family devices can GET only frame status, next image and the configured
+image proxy. Library search, metadata and other photo routes remain blocked.
 Browser/OS kiosk startup, screen power, audio permission and real-device voice
 acceptance are separate instance steps.
 
@@ -187,6 +190,8 @@ mocked Immich. `core/tests/browser/nestorIdlePhotosJourney.cjs` uses the shipped
 markup/component and loopback photo fixtures; set `IDLE_PHOTOS_REPORT_DIR`
 outside the checkout and, if needed, `AGENTX_PLAYWRIGHT_MODULE` and
 `AGENTX_BROWSER_EXECUTABLE`. It uses no real photos, microphone or model.
+`nestorFamilyPhotosJourney.cjs` checks the real family controller, scoped local
+session, wake return and family diagnostics with synthetic audio and photos.
 
 ## Not covered
 
