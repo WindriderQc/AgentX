@@ -884,7 +884,13 @@ pages and APIs retain the parental gateway guard.
   memory: no recording, upload or persistence. Stop remains visible above the face
   and idle photos. Hiding the document/face, opening idle photos, leaving the page,
   disconnecting the camera or disposing the dock stops tracks; a late permission
-  result is also released. Re-enabling always requires another click. Refusal or
+  result is also released. Photos and hidden documents pause capture while keeping
+  the explicit session choice. Returning to the visible avatar resumes only after
+  a successful earlier capture and a fresh native `camera` permission query reports
+  `granted`. A new prompt, denied/unsupported permission, or capture failure clears
+  the choice without automatic retries. Stop, navigation and a new visit also clear
+  it. Paused status explicitly says the camera is off; Stop stays available.
+  Refusal or
   missing media support leaves the normal avatar and voice available. The embed's
   existing non-bubbling window pointer input carries only synthetic screen
   coordinates; it neither moves the system pointer nor triggers clicks, wake or

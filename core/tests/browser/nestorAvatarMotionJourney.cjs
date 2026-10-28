@@ -18,6 +18,14 @@ const stub = `customElements.define('llmx-face', class extends HTMLElement {
 const fakeMedia = `
 window.mediaCalls=[]; window.tracks=[]; window.playFail=false; window.drawFail=false;
 window.mediaMode='success'; window.captures=0; window.points=[];
+window.cameraPermission='granted'; window.permissionMode='normal'; window.permissionCalls=0;
+Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:async descriptor=>{
+  if(descriptor.name!=='camera')throw Error('unexpected permission');
+  window.permissionCalls++;
+  if(window.permissionMode==='unsupported')throw TypeError('unsupported permission');
+  if(window.permissionMode==='pending')return new Promise(resolve=>{window.resolvePermission=()=>resolve({state:window.cameraPermission});});
+  return {state:window.cameraPermission};
+}}});
 window.addEventListener('pointermove', e=> { if(!e.isTrusted) window.points.push([e.clientX,e.clientY]); });
 window.deliver=()=> {
   const track=new EventTarget(); track.stopped=false;
@@ -138,14 +146,64 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); });
   await page.evaluate(() => { mediaMode = 'success'; }); await start(); await active();
   await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
-  assert.ok(await allStopped());
+  await page.waitForSelector('.avatar-camera[data-active=paused]'); assert.ok(await allStopped());
+  assert.match(await status(), /activé en pause.*éteinte/);
   await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); document.dispatchEvent(new Event('visibilitychange')); });
-  await page.waitForTimeout(250); assert.equal(await page.locator('.avatar-camera').getAttribute('data-active'), 'false');
+  await active();
   // Photo idle mode interrupts capture without generating wake/activity events.
-  await start(); await active();
   await page.evaluate(() => { const photo = document.createElement('section'); photo.className = 'nestor-idle-photos'; document.body.append(photo); });
-  await page.waitForSelector('.avatar-camera[data-active=false]'); assert.ok(await allStopped());
-  await page.evaluate(() => document.querySelector('.nestor-idle-photos').remove());
+  await page.waitForSelector('.avatar-camera[data-active=paused]'); assert.ok(await allStopped());
+  await capture('camera-paused');
+  const pausedCalls = await page.evaluate(() => mediaCalls.length);
+  await page.waitForTimeout(450); assert.equal(await page.evaluate(() => mediaCalls.length), pausedCalls);
+  await page.evaluate(() => { document.querySelector('.nestor-idle-photos').hidden = true; });
+  await active(); assert.equal(await page.evaluate(() => mediaCalls.length), pausedCalls + 1, 'photo return resumes once');
+  // Stop while paused clears session intent, including on later voice and visibility events.
+  await page.evaluate(() => { document.querySelector('.nestor-idle-photos').hidden = false; });
+  await page.waitForSelector('.avatar-camera[data-active=paused]'); await stop();
+  const stoppedCalls = await page.evaluate(() => mediaCalls.length);
+  await page.evaluate(() => { document.querySelector('.nestor-idle-photos').remove(); document.dispatchEvent(new Event('visibilitychange'));
+    dispatchEvent(new CustomEvent('persona-presence', { detail: { state: 'speaking' } })); });
+  await page.waitForTimeout(450); assert.equal(await page.evaluate(() => mediaCalls.length), stoppedCalls);
+  // A stopped resume cannot acquire after an asynchronous permission check completes.
+  await start(); await active();
+  await page.evaluate(() => { permissionMode='pending'; Object.defineProperty(document,'hidden',{configurable:true,value:true}); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForSelector('.avatar-camera[data-active=paused]');
+  await page.evaluate(() => { Object.defineProperty(document,'hidden',{configurable:true,value:false}); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForFunction(() => !!window.resolvePermission); await stop();
+  const checkedCalls = await page.evaluate(() => mediaCalls.length);
+  await start(); assert.match(await status(), /précédente en attente/);
+  await page.evaluate(() => { resolvePermission(); permissionMode='normal'; });
+  await page.waitForTimeout(100); assert.equal(await page.evaluate(() => mediaCalls.length), checkedCalls);
+  // Refusal, a required new prompt and unsupported query never re-open/retry automatically.
+  for (const permission of ['denied', 'prompt', 'unsupported']) {
+    await start(); await active();
+    await page.evaluate(permission => { cameraPermission=permission; permissionMode=permission==='unsupported'?'unsupported':'normal';
+      Object.defineProperty(document,'hidden',{configurable:true,value:true}); document.dispatchEvent(new Event('visibilitychange')); }, permission);
+    await page.waitForSelector('.avatar-camera[data-active=paused]');
+    const beforeResume = await page.evaluate(() => mediaCalls.length);
+    await page.evaluate(() => { Object.defineProperty(document,'hidden',{configurable:true,value:false}); document.dispatchEvent(new Event('visibilitychange')); });
+    await page.waitForSelector('.avatar-camera[data-active=false]'); assert.ok(await allStopped());
+    await page.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); document.body.append(document.createElement('span')); });
+    await page.waitForTimeout(250); assert.equal(await page.evaluate(() => mediaCalls.length), beforeResume);
+    await page.evaluate(() => { cameraPermission='granted'; permissionMode='normal'; });
+  }
+  // A lost camera on resume terminates intent, rather than retrying from every DOM change.
+  await start(); await active();
+  await page.evaluate(() => { mediaMode='missing'; Object.defineProperty(document,'hidden',{configurable:true,value:true}); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForSelector('.avatar-camera[data-active=paused]');
+  await page.evaluate(() => { Object.defineProperty(document,'hidden',{configurable:true,value:false}); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForSelector('.avatar-camera[data-active=false]');
+  const missingCalls = await page.evaluate(() => mediaCalls.length); await page.waitForTimeout(450);
+  assert.equal(await page.evaluate(() => mediaCalls.length), missingCalls); assert.ok(await allStopped());
+  await page.evaluate(() => { mediaMode='success'; });
+  // Stop while reacquisition is pending releases its late stream and never resumes.
+  await start(); await active();
+  await page.evaluate(() => { mediaMode='pending'; window.resolveMedia=null; Object.defineProperty(document,'hidden',{configurable:true,value:true}); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForSelector('.avatar-camera[data-active=paused]');
+  await page.evaluate(() => { Object.defineProperty(document,'hidden',{configurable:true,value:false}); document.dispatchEvent(new Event('visibilitychange')); });
+  await page.waitForFunction(() => !!window.resolveMedia); await stop();
+  await page.evaluate(() => { resolveMedia(); mediaMode='success'; }); await page.waitForTimeout(100); assert.ok(await allStopped());
   await start(); await active(); await page.evaluate(() => handle.setMode('cache'));
   assert.ok(await allStopped()); await page.evaluate(() => handle.setMode('scene'));
   await start(); await active(); await page.evaluate(() => tracks.at(-1).dispatchEvent(new Event('ended')));
@@ -175,7 +233,7 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   assert.deepEqual(errors, []);
   assert.ok(network.every(row => row.url.startsWith(origin) && row.method === 'GET'), 'no media/data uploads or outgoing requests');
   console.log(JSON.stringify({ result: 'passed', camera: 'synthetic only', captures: sample.count,
-    scenarios: 'opt-in, mobile, refusal, absent, bounded gaze, calm idle, voice interruption, stop, late permission, hidden, photos, masked, disconnect, play/draw failure, pagehide, dispose, personal/orb/missing API fallback',
+    scenarios: 'opt-in, mobile, refusal, absent, bounded gaze, calm idle, voice interruption, stop, late permission, hidden/photo pause/resume, stop-resume races, denied/prompt/unsupported query, missing-camera resume, masked, disconnect, play/draw failure, pagehide, dispose, personal/orb/missing API fallback',
     network: 'same-origin static GET only', errors, screenshots: output || null }, null, 2));
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   await browser?.close(); if (server) await new Promise(resolve => server.close(resolve));

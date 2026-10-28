@@ -74,24 +74,41 @@
     video.muted = true; video.autoplay = true; video.playsInline = true;
     const canvas = doc.createElement('canvas'); canvas.width = WIDTH; canvas.height = HEIGHT;
     let context = null, stream = null, timer = null, epoch = 0, disposed = false, wanted = false;
+    let phase = 'off', confirmed = false, opening = false;
     const detector = createDetector();
     const message = value => { status.textContent = value; };
     function idleControls() {
       panel.dataset.active = 'false'; button.textContent = 'Activer le regard caméra';
       button.setAttribute('aria-pressed', 'false');
     }
-    function stop(text = 'Caméra arrêtée.') {
-      wanted = false; epoch++; root.clearTimeout(timer); timer = null;
+    function release() {
+      epoch++; root.clearTimeout(timer); timer = null;
       const old = stream; stream = null;
       old?.getTracks().forEach(track => track.stop());
       video.pause(); video.srcObject = null;
       context?.clearRect(0, 0, WIDTH, HEIGHT); detector.reset();
       pointFace(face(), { x: 0, y: 0 });
+    }
+    function stop(text = 'Caméra arrêtée.') {
+      wanted = false; confirmed = false; phase = 'off'; release();
       idleControls(); message(text);
+    }
+    function suspend() {
+      if (!wanted || phase === 'paused') return;
+      // An initial permission prompt is never an authorization to start later unattended.
+      if (!confirmed) { stop('Activation interrompue. Caméra arrêtée.'); return; }
+      phase = 'paused'; release();
+      panel.dataset.active = 'paused';
+      message('Regard activé en pause · caméra éteinte');
+    }
+    function sync() {
+      if (disposed || !wanted) return;
+      if (doc.hidden || !available()) suspend();
+      else if (phase === 'paused' && !opening) void acquire(true);
     }
     function tick(token) {
       if (disposed || token !== epoch || !stream) return;
-      if (doc.hidden || !available()) { stop('Caméra arrêtée : Nestor n’est plus visible.'); return; }
+      if (doc.hidden || !available()) { suspend(); return; }
       const before = root.performance.now();
       try {
         if (video.readyState >= 2) {
@@ -106,16 +123,33 @@
     }
     async function start() {
       if (disposed || wanted) return;
+      if (opening) { message('Demande précédente en attente. Réessayez après sa fermeture.'); return; }
       if (doc.hidden || !available() || !face()) {
         message('Le regard caméra demande le visage de Nestor visible.'); return;
       }
       if (!root.navigator?.mediaDevices?.getUserMedia) {
         message('Caméra absente ou indisponible. Nestor continue normalement.'); return;
       }
-      wanted = true; const token = ++epoch;
+      wanted = true;
+      await acquire(false);
+    }
+    async function acquire(resuming) {
+      if (disposed || !wanted || opening) return;
+      opening = true; phase = 'pending'; const token = ++epoch;
       button.textContent = 'Arrêter la caméra'; button.setAttribute('aria-pressed', 'true');
-      panel.dataset.active = 'pending'; message('Autorisation caméra en attente.');
+      panel.dataset.active = 'pending';
+      message(resuming ? 'Regard activé · reprise caméra' : 'Autorisation caméra en attente.');
       try {
+        if (resuming) {
+          // Query never prompts. Fail closed on prompt/denied/unsupported browsers, rather
+          // than invoking getUserMedia automatically and asking for another permission.
+          const permission = await root.navigator.permissions?.query({ name: 'camera' });
+          if (token !== epoch || disposed || !wanted) return;
+          if (permission?.state !== 'granted') {
+            stop('Reprise non autorisée. Réactivez le regard caméra pour confirmer.'); return;
+          }
+        }
+        if (token !== epoch || disposed || !wanted || doc.hidden || !available()) return;
         context ||= canvas.getContext('2d', { willReadFrequently: true, alpha: false });
         if (!context) throw Error('canvas unavailable');
         const acquired = await root.navigator.mediaDevices.getUserMedia({ audio: false,
@@ -124,7 +158,7 @@
         // Stop was pressed, navigation occurred, or the page hid while the prompt was open.
         if (disposed || token !== epoch || doc.hidden || !available()) {
           acquired.getTracks().forEach(track => track.stop());
-          if (token === epoch) stop();
+          if (token === epoch) suspend();
           return;
         }
         stream = acquired; video.srcObject = acquired;
@@ -133,22 +167,29 @@
         }, { once: true }));
         await video.play();
         if (token !== epoch || disposed) return;
+        confirmed = true; phase = 'active';
         panel.dataset.active = 'true'; message('Caméra active · regard local'); tick(token);
       } catch {
         if (token === epoch && !disposed) stop('Caméra refusée ou indisponible. Nestor continue normalement.');
-      }
+      } finally { opening = false; sync(); }
     }
     const click = () => { if (wanted) stop(); else void start(); };
-    const visibility = () => { if (doc.hidden && wanted) stop(); };
+    const visibility = () => sync();
     const pagehide = () => { if (wanted) stop(); };
     button.addEventListener('click', click);
     doc.addEventListener('visibilitychange', visibility); root.addEventListener('pagehide', pagehide);
+    // Idle photos change their hidden attribute. Observe that existing surface instead of
+    // adding a camera polling loop or coupling camera activation to microphone events.
+    const observer = root.MutationObserver ? new root.MutationObserver(sync) : null;
+    observer?.observe(doc.body, { childList: true, subtree: true, attributes: true,
+      attributeFilter: ['hidden', 'data-mode', 'data-renderer'] });
     idleControls(); message('Caméra éteinte.');
     return { start, stop, get active() { return wanted; }, dispose() {
       if (disposed) return;
       stop(); disposed = true;
       button.removeEventListener('click', click); doc.removeEventListener('visibilitychange', visibility);
       root.removeEventListener('pagehide', pagehide); panel.remove();
+      observer?.disconnect();
       canvas.width = canvas.height = 0;
     } };
   }

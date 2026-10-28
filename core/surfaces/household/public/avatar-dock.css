@@ -12,6 +12,7 @@
 .avatar-camera button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .avatar-camera[data-active=true] { border-color: #76eab3; }
 .avatar-camera[data-active=true] [role=status]::before { content: '● '; color: #76eab3; }
+.avatar-camera[data-active=paused] { border-color: #e2c77e; }
 body[data-avatar-view=plein] .avatar-camera { top: max(10px, env(safe-area-inset-top)); left: 10px; right: auto; bottom: auto; }
 @media (max-width: 700px) {
   .avatar-camera { top: max(76px, env(safe-area-inset-top)); right: 10px; bottom: auto; max-width: min(280px, calc(100vw - 20px)); }
