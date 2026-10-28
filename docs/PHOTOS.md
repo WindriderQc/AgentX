@@ -170,6 +170,13 @@ new wake word or permanent capture. Family does not mount this component.
 Browser/OS kiosk startup, screen power, audio permission and real-device voice
 acceptance are separate instance steps.
 
+Photos work with OpenClaw or direct AgentX conversations as well as Hermes.
+For an existing conversation, start **New conversation**, then choose
+**Settings → Engine → OpenClaw** and the intended member before starting voice.
+The contextual presentation companion remains Hermes-only; photo inactivity
+does not enable it. The native agent's model/provider policy remains separate
+from this visual component.
+
 The Immich v3.3.3 [random controller](https://github.com/immich-app/immich/blob/v3.3.3/server/src/controllers/search.controller.ts)
 uses the existing `asset.read` permission, and its
 [search schema](https://github.com/immich-app/immich/blob/v3.3.3/server/src/dtos/search.dto.ts)

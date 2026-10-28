@@ -41,7 +41,7 @@
       // Energy/ambient recognition is not an activation while the existing wake gate is armed.
       if (active && standby() && ['hearing', 'transcribing'].includes(voiceState)) return;
       if (!['idle', 'paused', 'listening'].includes(event.detail?.state)) {
-        if (active && event.detail?.state === 'hearing') voiceReturn = true;
+        if (active && ['hearing', 'transcribing'].includes(voiceState)) voiceReturn = true;
         leave();
       }
     }

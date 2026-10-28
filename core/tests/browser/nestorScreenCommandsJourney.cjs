@@ -296,6 +296,22 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   await listening();
   assert.equal(submissions.length, photoTurns, 'Hey Nestor returns through the existing voice loop without a model turn');
   assert.equal((await state()).rows, photoRows);
+  // Local OpenClaw is selected through the existing UI; photos do not need Hermes's companion.
+  await page.locator('#conversationNew').click();
+  if (!await page.locator('#conversationSettings').isVisible()) await page.locator('#conversationSettingsToggle').click();
+  await page.locator('#conversationBackend').selectOption('openclaw');
+  assert.equal(await page.locator('#conversationAgent').inputValue(), 'main');
+  assert.equal(await page.locator('.presentation-companion-toggle').isVisible(), false);
+  await page.locator('#conversationSettingsToggle').click();
+  await page.locator('#conversationStart').click(); await listening();
+  assert.equal([...sessions.values()].at(-1).backend, 'openclaw');
+  assert.equal([...sessions.values()].at(-1).agentId, 'main');
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.clock.fastForward(121000);
+  await photoFrame.waitFor({ state: 'visible' });
+  heard = 'Hey Nestor'; await page.evaluate(() => window.say());
+  await photoFrame.waitFor({ state: 'hidden' }); await listening();
+  assert.equal(submissions.length, photoTurns, 'local-backend photo wake creates no model request');
   assert.deepEqual(errors, []);
   fs.writeFileSync(path.join(output, 'steps.json'), JSON.stringify(steps, null, 2));
   console.log(JSON.stringify({ browser: 'Chromium', commands: steps.length, modelRequests: submissions, errors, output, liveModelCalls: 0 }));
