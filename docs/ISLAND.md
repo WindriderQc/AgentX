@@ -1,0 +1,287 @@
+# Île : un agent seul sur une île Clawblox
+
+Mis à jour le 2026-10-29 à 02:00 America/Toronto.
+
+On refait l'expérience du MIT *Is this machine playing?*
+([arXiv 2610.07130](https://arxiv.org/abs/2610.07130)) : un agent sans tâche,
+seul sur une île simulée, avec une mémoire en fichiers. L'île est le moteur
+open source de l'article, [Clawblox](https://github.com/nacloos/clawblox)
+(licence MIT). L'agent est Codex, piloté par Clawblox. Il pense avec
+`agentx-primary` au travers de la porte OpenAI de Core : jamais un nom de
+modèle concret.
+
+Cette page décrit la première version produit : l'onglet **Île** de Benchmark
+et l'exécuteur de file `island`. Elle remplace les scripts du prototype
+(`work/island/` de l'instance : `run_eko.py`, `queue_watch_launch.py`).
+
+```
+ Benchmark (onglet Île)        Core (file des travaux lourds)       hôte d'opération
+ ┌──────────────────────┐      ┌───────────────────────────┐       ┌─────────────────────────┐
+ │ Lancer ──────────────┼─────►│ demande « other/island » │◄──────┤ heavy-work-queue.cjs    │
+ │ Parties, reçus       │◄─────┤ créneau, départ, reçu     │       │  island-watch / run     │
+ │ Vue 3D, mémoire      │◄─────┼───────── rapports ─────────┼───────┤  island-settle          │
+ └─────────┬────────────┘      └───────────────────────────┘       └───────────┬─────────────┘
+           │ iframe                                                        ssh │ (ou local)
+           ▼                                                                    ▼
+ ┌──────────────────────────────────────────────────────────────────────────────────────────┐
+ │ hôte d'exécution (devX par défaut)    island_runner.py                                    │
+ │   île Clawblox (vue en direct)   bac à sable : Codex ── relais ──► Core /api/llm/v1        │
+ │   clawblox app (relectures)      mémoire de l'agent entre les parties                      │
+ └──────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Ce qui décide d'un départ
+
+« Lancer » inscrit une demande dans la file de Core et peut demander à Core
+de placer un créneau (cette nuit ou dès que possible). **Un créneau ne lance
+rien.** Le départ demande deux choses :
+
+1. ton approbation : tu lances toi-même `island-watch` (ou `run`) sur l'hôte
+   d'opération pour cette demande ;
+2. l'admission de Core : la fenêtre est ouverte, aucun autre travail ne tient
+   la machine, et l'hôte principal est prêt (pas réservé par Benchmark).
+
+Core ne démarre jamais une partie seul : le lancement automatique
+(`autoStart`) et « Run now » refusent ce type de demande.
+
+## La demande de file
+
+Une partie est une demande `kind: "other"` avec un exécuteur typé. Elle ne
+porte ni commande, ni adresse, ni jeton, ni nom de modèle :
+
+```json
+{
+  "key": "island:<identifiant unique>",
+  "title": "Île — Eko, 60 min",
+  "kind": "other",
+  "hosts": ["<point d'accès Ollama du principal>"],
+  "estimatedMinutes": 70,
+  "source": {"type": "operator", "ref": "benchmark-island-tab"},
+  "executor": {"mode": "island", "receiptRef": "island/<identifiant>.json",
+               "agent": "Eko", "minutes": 60, "memory": "continue", "world": "mesa-island"}
+}
+```
+
+- `minutes` : de 5 à 720. `estimatedMinutes` doit couvrir `minutes + 10`
+  (démarrage de l'île, arrêt et preuve de libération).
+- `memory` : `continue` reprend l'espace de travail de la dernière partie
+  « continue » de cet agent ; `fresh` part des modèles et ne touche pas à la
+  mémoire de l'agent qui a joué.
+- `hosts` : le point d'accès de la voie principale au moment de « Lancer ».
+  Si le pin a changé d'hôte avant le départ, la partie refuse avant toute
+  marque de départ ; il faut alors une nouvelle demande.
+
+## Déroulement (exécuteur `island`)
+
+`node integrations/operations/heavy-work-queue.cjs` sur l'hôte d'opération
+(le même outil que les autres exécuteurs) :
+
+```bash
+# Attendre que Core place la demande (cette nuit), puis partir à l'heure du créneau
+node integrations/operations/heavy-work-queue.cjs island-watch --core <origine-core> --actor <toi> --id <demande> --when tonight
+
+# Partir tout de suite, pour une demande déjà réservée dont la fenêtre est ouverte
+node integrations/operations/heavy-work-queue.cjs run --core <origine-core> --actor <toi> --id <demande> --revision <révision>
+
+# Reprendre le suivi d'une partie déjà partie (par exemple après une coupure) : ne relance jamais
+node integrations/operations/heavy-work-queue.cjs island-settle --core <origine-core> --actor <toi> --id <demande>
+```
+
+Dans l'ordre :
+
+1. **Vérifications refusables, avant toute marque :** l'hôte d'exécution
+   répond, il est configuré et libre ; le principal est prêt, non réservé,
+   son contexte est connu et son point d'accès est dans `hosts` ; aucune
+   trace locale d'un départ précédent pour cette demande.
+2. **Marque de départ durable** (`begin`), puis vérification de la fenêtre.
+3. **Départ** sur l'hôte d'exécution, sous l'identifiant de la demande. Un
+   identifiant ne part qu'une fois : un second départ est refusé.
+   - L'hôte refuse (occupé, entrée invalide) : rien n'est parti, la marque
+     est levée avec un reçu `island:not-started`.
+   - Réponse perdue : on relit l'état de cette partie. Si elle n'y est pas
+     sous cette marque, la demande devient `uncertain` et attend l'opérateur.
+4. **Suivi** toutes les 30 s ; chaque lecture est rapportée à Benchmark.
+   Sans réponse de l'hôte pendant 15 minutes, l'outil s'arrête et laisse la
+   demande en cours : `island-settle` reprend plus tard.
+5. **Fin :** reçu `agentx.operator-heavy-work/v1` écrit dans
+   `$AGENTX_ACTION_RECEIPTS_DIR/island/<demande>-<départ>.receipt.json`, avec
+   l'état de la partie, ses relances et l'état du principal après coup.
+   - Libération prouvée (aucun processus de la partie restant, principal non
+     réservé) : `operator-finish` avec l'empreinte SHA-256 du reçu. Si Core
+     tient encore la dernière requête de l'agent, il refuse ; l'outil
+     réessaie toutes les 30 s, 20 fois au plus.
+   - Libération non prouvée : le reçu est gardé, la demande reste ouverte
+     pour l'opérateur.
+
+Le résultat dans Core porte l'autorité `operator-attestation` (opération
+`island`) : c'est une attestation, pas un reçu natif observé par Core.
+
+## L'hôte d'exécution
+
+Le propriétaire n'a pas encore choisi où vit l'île : devX, une VM dédiée
+« AgentX world » ou UGFrank. Le code ne dépend pas de ce choix : l'outil de
+file parle à `integrations/island/island_runner.py` en local ou par SSH, avec
+une petite interface en JSON (`check`, `start`, `status`, `stop`, `memory`).
+Par défaut, l'instance pointe sur devX.
+
+Réglages de l'outil de file (environnement de l'hôte d'opération) :
+
+| Variable | Rôle |
+|---|---|
+| `AGENTX_ISLAND_RUNNER` | `local`, ou `ssh:<cible>` (par exemple `ssh:devx`) |
+| `AGENTX_ISLAND_RUNNER_SCRIPT` | chemin absolu de `island_runner.py` sur l'hôte d'exécution |
+| `AGENTX_ISLAND_RUNNER_PYTHON` | interpréteur qui voit le module `clawblox` (le venv), `python3` par défaut |
+| `AGENTX_ISLAND_RUNNER_LABEL` | nom affiché dans l'onglet (sinon la cible SSH) |
+| `AGENTX_ACTION_RECEIPTS_DIR` | dossier privé des reçus (déjà utilisé par Benchmark) |
+
+Réglages de l'hôte d'exécution, dans `~/.config/agentx/island-runner.json`
+(ou `AGENTX_ISLAND_RUNNER_CONFIG`) :
+
+```json
+{
+  "runsRoot": "/home/<compte>/codes/clawblox-runs/agentx",
+  "worldsRoot": "/home/<compte>/codes/clawblox/worlds",
+  "clawbloxBin": "/home/<compte>/codes/clawblox/target/release",
+  "codex": "/home/<compte>/.local/bin/codex",
+  "tokenFile": "/home/<compte>/.config/agentx/llm-gateway-<client>.token",
+  "gatewayHost": "<nom public de Core>",
+  "gatewayGuestPort": 8443,
+  "worldPort": 18080,
+  "timeZone": "America/Toronto",
+  "netcheckBlocked": ["http://<core-lan>:3180/", "http://<ollama>:11434/api/tags"]
+}
+```
+
+Clawblox doit porter les correctifs AgentX (isolation réseau, espaces de
+processus et d'IPC propres, variables d'opérateur retirées, lecture des
+journaux Codex dans la relecture). Ils sont gardés dans l'instance
+(`work/island/clawblox-agentx.patch`).
+
+Chaque partie a son dossier `<runsRoot>/<demande>/` : `request.json`,
+`state.json` (phase, relances, lien de la vue en direct), `world.log`,
+`recordings/`, l'agent et son bac à sable, et `memory-after/`. La mémoire
+d'un agent entre les parties est dans `<runsRoot>/memory/<agent>/`.
+
+Ce que la partie fait, repris du prototype :
+
+- l'agent démarre avec `SOUL.md` (en lecture seule), les consignes de mémoire
+  et le prompt système, dont les variables sont remplies (Clawblox ne le fait
+  pas pour un prompt personnalisé) ;
+- **relance après un blocage** : un tour terminé sans suite depuis 90 s (ce
+  que laisse une réponse coupée par la limite de sortie) ou aucune activité
+  depuis 15 min. L'agent est arrêté puis la même session reprend avec
+  « continue » (Clawblox ne peut pas parler à un agent en cours). Au moins
+  2 min entre deux relances, 30 au plus ;
+- **rappel de mémoire** 5 minutes avant la fin, par le même arrêt-reprise ;
+- un échec de relance est noté et n'arrête pas la partie.
+
+Test du bac à sable sans modèle (ni file ni jeton) :
+
+```bash
+python island_runner.py start --run-id $(uuidgen) --netcheck --minutes 5
+```
+
+Le résultat est dans `agents/<agent>/workspace/netcheck.txt` de la partie.
+
+## L'onglet Île (Benchmark)
+
+- **Parties** : début avec son fuseau, durée réelle et prévue, état (celui de
+  la file de Core d'abord), alias du modèle, nombre de relances, reçus (la
+  fiche JSON de la partie, l'empreinte du reçu et l'autorité de Core).
+- **Lancer** : agent, durée, mémoire continue ou neuve, créneau (cette nuit,
+  dès que possible, ou sans créneau). Rien ne part.
+- **Direct** : la vue 3D de Clawblox pendant la partie (son propre
+  spectateur, aucun moteur 3D réécrit).
+- **Revoir** : la relecture de Clawblox, avec le panneau **Messages** qui
+  déroule les pensées et les commandes de l'agent. Benchmark demande au
+  serveur `clawblox app` de l'hôte d'exécution d'ouvrir l'enregistrement.
+- **Mémoire** : `SOUL.md`, `EPISODIC_MEMORY.jsonl` (en liste d'épisodes) et
+  `SEMANTIC_MEMORY.md` de chaque partie, avec un choix parmi les parties du
+  même agent.
+
+Réglages de Benchmark :
+
+| Variable | Rôle |
+|---|---|
+| `AGENTX_ISLAND_VIEW_ORIGIN` | schéma et hôte (sans port) de l'hôte d'exécution vus du navigateur |
+| `AGENTX_ISLAND_REPLAY_URL` | origine du serveur `clawblox app <runsRoot> --port <port>` |
+
+Le serveur de relecture se lance sur l'hôte d'exécution, à la racine des
+parties :
+
+```bash
+clawblox app <runsRoot> --port 18092
+```
+
+Une page Benchmark servie en HTTPS ne peut pas afficher une vue en HTTP dans
+la page : le navigateur la bloque. L'onglet propose alors « Ouvrir dans un
+nouvel onglet ». Pour l'intégrer dans la page, il faut publier la vue en
+HTTPS derrière le proxy de l'instance : c'est un choix d'instance, pas fait
+ici.
+
+Le port de l'île en direct sert aussi les commandes du monde (`/join`,
+`/input`). L'onglet ne lie que le spectateur ; l'exposition de ce port sur le
+réseau maison reste celle du prototype.
+
+## Conception (pas encore construite) : classer « a joué » contre « neuf »
+
+L'article mesure si le jeu libre rend l'agent meilleur sur quatre épreuves
+de l'île. On les ajouterait au classement existant de Benchmark, sans
+deuxième classement.
+
+**Les quatre épreuves.** Chacune est une partie courte (10 à 15 min) sur
+l'île, avec une consigne écrite au lieu de « tu n'as pas de tâche », et un
+score lu dans l'état du monde à la fin, sans juge :
+
+| Épreuve | Consigne | Score (0 à 10) |
+|---|---|---|
+| `many-5-towers` | faire le plus de tours de 5 blocs | nombre de tours de 5 blocs debout, plafonné |
+| `objects-on-spire` | poser le plus d'objets sur la Spire | objets au sommet de la Spire à la fin |
+| `tallest-tower` | construire la tour la plus haute | hauteur du plus haut empilement stable |
+| `throw-on-spire` | lancer des objets pour qu'ils restent sur la Spire | objets lancés restés sur la Spire |
+
+Les plafonds sont fixés après une première série de référence, puis figés
+dans la version de l'épreuve. Le monde `mesa-island` a déjà la Spire et
+l'action de lancer ; la consigne et la lecture du score restent à écrire.
+
+**Les bras comparés.** Même harnais (Codex), même alias `agentx-primary`,
+même île ; seule la mémoire change :
+
+- **Eko neuf** : espace de travail des modèles (`memory: fresh`) ;
+- **Eko a joué N h** : copie gelée de la mémoire d'Eko après N heures de jeu
+  libre (par exemple 3 h, 10 h). L'épreuve part de cette copie et ne la
+  modifie pas.
+
+**Dans le classement.** Chaque bras est une ligne d'agent, comme les agents
+natifs le sont déjà (« un agent est sa propre entrée ») :
+`harness:island:<agent>:<mémoire>` comme hôte, étiquetée avec la quantité de
+jeu et l'empreinte de la mémoire gelée. Une nouvelle catégorie `island`
+regroupe les quatre épreuves ; la ligne d'Eko neuf sert de bras témoin.
+L'écart « a joué − neuf » par épreuve, avec l'intervalle sur au moins trois
+répétitions, est le résultat de l'expérience.
+
+**Ce qu'il faudrait construire.** Un mode `task` dans `island_runner.py`
+(consigne et lecture du score par le script Lua du monde), un champ
+`task`/`memorySnapshot` dans l'exécuteur `island`, des résultats écrits dans
+`BenchmarkResult` avec le reçu de la partie, et la catégorie `island` dans
+la liste partagée. Chaque épreuve est du travail lourd : elle passe par la
+file comme une partie.
+
+## Limites connues
+
+- Core ne voit pas l'hôte d'exécution : la fin est une attestation de
+  l'opérateur, et une partie « en cours » ne se règle qu'avec
+  `island-settle` (ou `recover` après vérification).
+- Le trafic de l'agent passe par un client de passerelle existant de l'hôte
+  d'exécution ; un client dédié demanderait une modification de
+  `AGENTX_LLM_GATEWAY_CLIENTS` et un redémarrage de Core.
+- La limite de sortie par défaut de Core (`AGENTX_DEFAULT_MAX_OUTPUT_TOKENS`)
+  coupe parfois une réponse ; la relance la contourne.
+- Pas de remise à zéro horaire du contexte comme dans l'article ; à ajouter
+  pour les longues parties.
+- Les étiquettes de comportement (bouton **Behaviours** de la relecture)
+  demandent un modèle qui relit les parties : travail lourd, pas encore fait.
+- La vue 3D est celle de Clawblox. Une vue GraphysX attend la décision sur
+  son placement.
+- Remplacer Codex par un autre harnais (DSH, OpenCode) reste une décision du
+  propriétaire.

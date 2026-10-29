@@ -71,6 +71,15 @@ Supported executors:
   switch in (about 5 to 15 minutes), the hold and the switch back. Core runs
   each switch through its own switch workload; the queue only times them. See
   "Topology windows" below.
+- **Island run**: kind `other` with `{mode: "island", receiptRef, agent?, minutes,
+  memory?, world?}` runs one Clawblox island session (see [Île](ISLAND.md)).
+  The hosts are the principal endpoint; `estimatedMinutes` covers `minutes + 10`.
+  The CLI's `run` (or `island-watch`, which waits for Core's placement) checks
+  its configured runner and the principal before the dispatch mark, starts the
+  run once under the request id, and finishes with a hashed
+  `agentx.operator-heavy-work/v1` receipt after proving release.
+  `island-settle` follows an already dispatched run and never starts one. Core
+  never auto-starts it.
 - **Diagnostic/other** requests may be planned without an executor or may use
   `{mode: "operator", receiptRef: "<out-of-Git receipt reference>"}` for custom
   coding checks. The explicit operator protocol below starts no command.

@@ -8,7 +8,7 @@ const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const ROOT = path.resolve(__dirname, '../..');
 const { planId, planRef, batchRequest } = require('../../shared/benchmarkBatchPlan.cjs');
-const ACTIONS = new Set(['list', 'show', 'submit', 'reserve', 'cancel', 'run', 'begin-operator', 'finish-operator', 'reconcile', 'migrate', 'archive', 'recover']);
+const ACTIONS = new Set(['list', 'show', 'submit', 'reserve', 'cancel', 'run', 'begin-operator', 'finish-operator', 'reconcile', 'migrate', 'archive', 'recover', 'island-watch', 'island-settle']);
 
 function parse(argv) {
   const [action, ...args] = argv;
@@ -20,14 +20,14 @@ function parse(argv) {
     if (Object.hasOwn(options, key)) throw new Error(`Duplicate --${key}`);
     options[key] = args[i + 1];
   }
-  const allowed = ['core', 'actor', 'id', 'file', 'revision', 'start', 'priority', 'sha256', 'benchmark', 'dispatch-id', 'receipt', 'confirmation'];
+  const allowed = ['core', 'actor', 'id', 'file', 'revision', 'start', 'priority', 'sha256', 'benchmark', 'dispatch-id', 'receipt', 'confirmation', 'when'];
   if (Object.keys(options).some(key => !allowed.includes(key))) throw new Error('Unsupported option');
   const core = options.core || process.env.AGENTX_CORE_URL;
   if (!core) throw new Error('--core or AGENTX_CORE_URL required; use the instance operator address');
   const url = new URL(core);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error('Core needs an HTTP(S) origin');
   if (!['list', 'show'].includes(action) && !options.actor) throw new Error('--actor required');
-  if (['show', 'reserve', 'cancel', 'run', 'begin-operator', 'finish-operator', 'reconcile', 'recover'].includes(action) && !/^[a-f0-9-]{36}$/.test(options.id || '')) throw new Error('--id needs a queue request UUID');
+  if (['show', 'reserve', 'cancel', 'run', 'begin-operator', 'finish-operator', 'reconcile', 'recover', 'island-watch', 'island-settle'].includes(action) && !/^[a-f0-9-]{36}$/.test(options.id || '')) throw new Error('--id needs a queue request UUID');
   return { action, options, core: url.origin };
 }
 async function json(url, { body, actor = 'operator', fetchImpl = fetch, timeoutMs = 30000 } = {}) {
@@ -72,7 +72,15 @@ async function benchmarkStart(job, { actor, benchmark, assertDispatch }) {
     if (holder) maintenance.releaseLead(config.leadFile, holder, `Queue ${job.id}: read native plan and Core receipts for outcome.`);
   }
 }
-async function runJob(job, client, { actor, benchmark, benchmarkExecutor = benchmarkStart, fetchImpl = fetch }) {
+function islandDeps(core, { actor, benchmark, fetchImpl = fetch, island = {} } = {}) {
+  return { core, actor, request: url => json(url, { actor, fetchImpl }),
+    report: (id, body) => json(`${benchmark}/api/island/runs/${id}/report`, { actor, body, fetchImpl }), ...island };
+}
+async function runJob(job, client, { actor, benchmark, benchmarkExecutor = benchmarkStart, fetchImpl = fetch, core, island }) {
+  // Island runs: a named runner, the operator receipt protocol (docs/ISLAND.md).
+  if (job.kind === 'other' && job.executor?.mode === 'island') {
+    return require('./island-executor.cjs').runIsland(job, client, islandDeps(core, { actor, benchmark, fetchImpl, island }));
+  }
   if (!['benchmark', 'profiler', 'image'].includes(job.kind) || job.executor?.mode === 'image-operation') {
     throw new Error('Use the native image dispatcher or the explicit begin-operator protocol; no dispatch was recorded');
   }
@@ -140,6 +148,15 @@ async function main(argv = process.argv.slice(2), deps = {}) {
   if (action === 'reserve') return client(`/${options.id}/reserve`, { expectedRevision: revision(), start: options.start, priority: options.priority === undefined ? 5 : Number(options.priority) });
   if (action === 'cancel') return client(`/${options.id}/cancel`, { expectedRevision: revision() });
   if (action === 'reconcile') return client(`/${options.id}/reconcile`, {});
+  const benchmark = options.benchmark || `${core}/benchmark`;
+  if (action === 'island-watch') {
+    return require('./island-executor.cjs').watchIsland(options.id, client,
+      islandDeps(core, { actor: options.actor, benchmark, ...deps }), { when: options.when || 'tonight' });
+  }
+  if (action === 'island-settle') {
+    return require('./island-executor.cjs').settleIsland(await client(`/${options.id}`), client,
+      islandDeps(core, { actor: options.actor, benchmark, ...deps }));
+  }
   const job = await client(`/${options.id}`);
   if (job.revision !== revision()) throw new Error('Request changed; read its current revision');
   if (['begin-operator', 'finish-operator'].includes(action)) {
@@ -158,7 +175,7 @@ async function main(argv = process.argv.slice(2), deps = {}) {
       receiptSha256: require('node:crypto').createHash('sha256').update(bytes).digest('hex'),
       confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED' });
   }
-  return runJob(job, client, { actor: options.actor, benchmark: options.benchmark || `${core}/benchmark`, ...deps });
+  return runJob(job, client, { actor: options.actor, benchmark, core, ...deps });
 }
 if (require.main === module) main().then(data => {
   process.stdout.write(JSON.stringify({ ok: true, data }, null, 2) + '\n');

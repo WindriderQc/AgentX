@@ -1,0 +1,55 @@
+<main id="main-content" class="island-page" lang="fr">
+  <header class="island-head">
+    <h1 class="r-page-title">Île Clawblox</h1>
+    <p class="island-lede">Un agent seul sur une île, sans tâche, avec une mémoire en fichiers
+      (expérience du MIT <a href="https://arxiv.org/abs/2610.07130" target="_blank" rel="noopener">« Is this machine playing? »</a>).
+      Il pense avec <code>agentx-primary</code> au travers de Core.</p>
+  </header>
+
+  <section class="r-section island-launch" aria-labelledby="island-launch-title">
+    <h2 id="island-launch-title" class="r-sec-title">Lancer une partie</h2>
+    <form id="island-launch-form" class="island-form">
+      <label>Agent <input name="agent" value="Eko" pattern="[A-Za-z][A-Za-z0-9_-]{0,31}" required></label>
+      <label>Durée (min) <input name="minutes" type="number" min="5" max="720" value="60" required></label>
+      <label>Mémoire
+        <select name="memory"><option value="continue">continuer (agent qui a joué)</option><option value="fresh">neuve (agent neuf)</option></select>
+      </label>
+      <label>Créneau
+        <select name="when"><option value="tonight">cette nuit</option><option value="asap">dès que possible</option><option value="none">sans créneau</option></select>
+      </label>
+      <button type="submit" class="r-empty-btn">Lancer</button>
+    </form>
+    <p class="island-note">« Lancer » inscrit une demande dans la file des travaux lourds de Core. Un créneau ne lance rien :
+      le départ attend ton approbation (commande <code>island-watch</code> ou <code>run</code> sur l'hôte d'opération) et l'admission de Core.</p>
+    <p id="island-launch-result" class="island-result" role="status"></p>
+  </section>
+
+  <section class="r-section" aria-labelledby="island-runs-title">
+    <h2 id="island-runs-title" class="r-sec-title">Parties</h2>
+    <p id="island-runs-status" class="island-note" role="status">Chargement…</p>
+    <div class="island-table-wrap">
+      <table class="island-table">
+        <thead><tr><th>Début</th><th>Durée</th><th>État</th><th>Modèle</th><th>Relances</th><th>Reçus</th><th>Voir</th></tr></thead>
+        <tbody id="island-runs"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="island-viewer" class="r-section island-viewer" hidden aria-labelledby="island-viewer-title">
+    <h2 id="island-viewer-title" class="r-sec-title">Vue 3D</h2>
+    <p class="island-note"><a id="island-viewer-open" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>
+      · Le panneau <b>Messages</b>, en bas à gauche, montre les pensées et les commandes de l'agent.</p>
+    <iframe id="island-frame" title="Vue 3D de l'île (Clawblox)" allow="fullscreen"></iframe>
+  </section>
+
+  <section id="island-memory" class="r-section island-memory" hidden aria-labelledby="island-memory-title">
+    <h2 id="island-memory-title" class="r-sec-title">Mémoire</h2>
+    <label class="island-note">Partie <select id="island-memory-run"></select></label>
+    <div class="island-tabs" role="tablist">
+      <button type="button" role="tab" data-file="SOUL.md">SOUL.md</button>
+      <button type="button" role="tab" data-file="EPISODIC_MEMORY.jsonl">EPISODIC_MEMORY.jsonl</button>
+      <button type="button" role="tab" data-file="SEMANTIC_MEMORY.md">SEMANTIC_MEMORY.md</button>
+    </div>
+    <div id="island-memory-body" class="island-memory-body" role="tabpanel"></div>
+  </section>
+</main>

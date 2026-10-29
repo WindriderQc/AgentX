@@ -46,6 +46,8 @@ const CORE_OPERATIONS = Object.freeze({
   HEAVY_QUEUE_SUBMIT: 'benchmark.core-api.heavy-queue-submit',
   HEAVY_QUEUE_RESERVE: 'benchmark.core-api.heavy-queue-reserve',
   HEAVY_QUEUE_LIST: 'benchmark.core-api.heavy-queue-list',
+  HEAVY_QUEUE_PLACE: 'benchmark.core-api.heavy-queue-place',
+  RUNTIME_CONFIG_EXPORT: 'benchmark.core-api.runtime-config-export',
   CELL_BUDGET_OPEN: 'benchmark.core-api.cell-budget-open',
   CELL_BUDGET_CLOSE: 'benchmark.core-api.cell-budget-close',
 });
@@ -83,6 +85,15 @@ const CORE_OPERATION_SPECS = Object.freeze({
   // Reads planned work so lane slots avoid it and lane cards show their state.
   [CORE_OPERATIONS.HEAVY_QUEUE_LIST]: operation('GET', '^/api/cluster/schedule/work-queue$', {
     maxResponseBytes: 16 * 1024 * 1024,
+  }),
+  // The Île tab asks Core to place an island request it just recorded (tonight
+  // or as soon as possible); Core picks the slot, the start stays the owner's.
+  [CORE_OPERATIONS.HEAVY_QUEUE_PLACE]: operation('POST', '^/api/cluster/schedule/work-queue/[^/]+/place$', {
+    maxRequestBytes: 1024, maxResponseBytes: 256 * 1024,
+  }),
+  // Reads the principal endpoint an island request reserves (never its model).
+  [CORE_OPERATIONS.RUNTIME_CONFIG_EXPORT]: operation('GET', '^/api/nerve-center/agent-runtime-config/export$', {
+    allowSearch: true, maxResponseBytes: 2 * 1024 * 1024,
   }),
   [CORE_OPERATIONS.INFERENCE_CONTRACT]: operation('POST', '^/api/inference/contract/resolve$', {
     maxRequestBytes: 4 * 1024, maxResponseBytes: 256 * 1024,

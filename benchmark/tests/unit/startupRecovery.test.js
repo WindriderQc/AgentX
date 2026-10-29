@@ -85,7 +85,9 @@ describe('startup recovery', () => {
 // no Nerve Center, and coverage then covers the pinned models only. Rebuilding
 // a record-less quarantine reads the same coordination state, so it is full-only.
 const FULL_ONLY_OPERATIONS = ['PIN_CONTEXT_APPLY', 'ROUTING_CONFIG', 'RUNTIME_ACTIVE', 'HOUSEHOLD_IDLE',
-  'WORKLOAD_RECOVERY_LOOKUP', 'HEAVY_QUEUE_SUBMIT', 'HEAVY_QUEUE_RESERVE', 'HEAVY_QUEUE_LIST'];
+  'WORKLOAD_RECOVERY_LOOKUP', 'HEAVY_QUEUE_SUBMIT', 'HEAVY_QUEUE_RESERVE', 'HEAVY_QUEUE_LIST',
+  // The Île tab (full profile only) places island requests and reads the principal endpoint.
+  'HEAVY_QUEUE_PLACE', 'RUNTIME_CONFIG_EXPORT'];
 const DEMO_OPERATIONS = Object.keys(CORE_OPERATIONS).filter(name => !FULL_ONLY_OPERATIONS.includes(name));
 
 function samplePath(pattern) {

@@ -323,8 +323,8 @@ async function archive(actor) {
     return { readOnly: !terminal.length, value: { archived: terminal.length, actor: text(actor, 'actor', 100) } };
   });
 }
-// Custom coding checks have an explicit operator attestation, not a native
-// executor result. This never runs a command or releases runtime coordination.
+// Custom coding checks and island runs have an explicit operator attestation,
+// not a native executor result. This never runs a command or releases runtime coordination.
 async function operatorFinish(id, body, actor) {
   revision(body);
   if (body.confirmation !== 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED'
@@ -332,7 +332,7 @@ async function operatorFinish(id, body, actor) {
     || !/^[a-f0-9]{64}$/.test(body.receiptSha256 || '')) throw fail('Exact operator outcome, receipt hash and release confirmation required');
   return mutate(async state => {
     const job = jobIn(state, id, body.expectedRevision);
-    if (job.executor?.mode !== 'operator' || !['diagnostic', 'other'].includes(job.kind)
+    if (!(job.executor?.mode === 'operator' || (job.executor?.mode === 'island' && job.kind === 'other')) || !['diagnostic', 'other'].includes(job.kind)
       || !ACTIVE.includes(job.state) || !body.dispatchId || body.dispatchId !== job.dispatchId
       || body.receiptRef !== job.executor.receiptRef) throw fail('Exact active operator dispatch and planned receipt reference required', 409);
     const runtime = await require('../../models/RuntimeCoordination').findById('runtime').lean();
@@ -340,7 +340,7 @@ async function operatorFinish(id, body, actor) {
       throw fail('Native runtime authority remains held; reconcile it through its owner first', 409);
     }
     job.state = body.state; job.finishedAt = new Date().toISOString();
-    job.operation = { kind: 'operator', id: job.dispatchId, authority: 'operator-attestation' };
+    job.operation = { kind: job.executor.mode === 'island' ? 'island' : 'operator', id: job.dispatchId, authority: 'operator-attestation' };
     job.releaseReceipt = { authority: 'operator-attestation', operationId: job.dispatchId, state: body.state,
       receiptRef: body.receiptRef, receiptSha256: body.receiptSha256, confirmation: body.confirmation,
       actor, observedAt: job.finishedAt };

@@ -35,4 +35,22 @@ async function listHeavyWork() {
   return body?.data || null;
 }
 
-module.exports = { submitHeavyWork, reserveHeavyWork, listHeavyWork };
+async function placeHeavyWork(id, { expectedRevision, when }) {
+  const body = await coreRequest(`/api/cluster/schedule/work-queue/${encodeURIComponent(id)}/place`, {
+    method: 'POST',
+    operationId: CORE_OPERATIONS.HEAVY_QUEUE_PLACE,
+    body: JSON.stringify({ expectedRevision, when }),
+  });
+  return body?.data || null;
+}
+
+/** The principal lane's endpoint from Core's runtime export; its model is not read. */
+async function readPrincipalEndpoint() {
+  const body = await coreRequest('/api/nerve-center/agent-runtime-config/export?includeCandidates=false', {
+    method: 'GET',
+    operationId: CORE_OPERATIONS.RUNTIME_CONFIG_EXPORT,
+  });
+  return body?.data?.lanes?.daily?.hostUrl || null;
+}
+
+module.exports = { submitHeavyWork, reserveHeavyWork, listHeavyWork, placeHeavyWork, readPrincipalEndpoint };

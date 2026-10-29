@@ -55,7 +55,8 @@ async function preDispatch(job) {
     await require('./runtimeTopologyWindow').preDispatch(job, { exactHosts });
   } else if (job.kind === 'other' && job.executor.mode === 'pipeline-report') {
     await require('./pipelineReportResume').preDispatch(job);
-  } else if (!(['diagnostic', 'other'].includes(job.kind) && job.executor.mode === 'operator')) {
+  } else if (!(['diagnostic', 'other'].includes(job.kind) && job.executor.mode === 'operator')
+    && !(job.kind === 'other' && job.executor.mode === 'island')) {
     throw fail('This request has no supported executor', 409);
   }
 }

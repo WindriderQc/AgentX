@@ -149,6 +149,7 @@ const profilerPageView = path.resolve(__dirname, 'views/pages/profiler');
 const efficiencyMapPageView = path.resolve(__dirname, 'views/pages/efficiency-map');
 const resultsExplorerPageView = path.resolve(__dirname, 'views/pages/results-explorer');
 const setupPageView = path.resolve(__dirname, 'views/pages/setup');
+const islandPageView = path.resolve(__dirname, 'views/pages/island');
 
 app.get('/', (req, res) => {
   const { isConfigured } = require('./src/helpers/ollamaHostConfig');
@@ -268,6 +269,23 @@ app.get('/results-explorer', (req, res) => {
   });
 });
 
+// Île: island runs of the Clawblox free-play experiment (docs/ISLAND.md).
+app.get('/island', (req, res) => {
+  res.render('layouts/main', {
+    pageView: islandPageView,
+    title: 'Agent X Evaluation — Île',
+    pageLanguage: 'fr',
+    service: 'benchmark',
+    activePage: 'island',
+    headCss: [
+      '<link rel="stylesheet" href="/benchmark/css/redesign-tokens.css">',
+      '<link rel="stylesheet" href="/benchmark/css/redesign-components.css">',
+      '<link rel="stylesheet" href="/benchmark/css/island.css">'
+    ].join('\n'),
+    footerJs: '<script type="module" src="/benchmark/js/island/index.js"></script>'
+  });
+});
+
 app.get('/setup', (req, res) => {
   res.render('layouts/main', {
     pageView: setupPageView,
@@ -344,6 +362,9 @@ app.use('/api/benchmark', require('./routes/benchmark'));
 
 // Profiler API routes (includes host testing at /api/profiler/hosts/test/*)
 app.use('/api/profiler', require('./routes/profiler'));
+
+// Île: island runs, their reports and the queue request behind "Lancer".
+app.use('/api/island', require('./routes/island'));
 
 // Read-only configuration status, aggregated by Core's Nerve Center
 app.get('/api/config/status', (_req, res) => res.json(buildEnvStatus({ service: 'benchmark' })));

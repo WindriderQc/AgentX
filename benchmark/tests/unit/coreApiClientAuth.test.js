@@ -347,6 +347,8 @@ describe('Core API client scoped outbound execution', () => {
       ['POST', '/api/cluster/schedule/work-queue', CORE_OPERATIONS.HEAVY_QUEUE_SUBMIT],
       ['POST', '/api/cluster/schedule/work-queue/00000000-0000-4000-8000-000000000001/reserve', CORE_OPERATIONS.HEAVY_QUEUE_RESERVE],
       ['GET', '/api/cluster/schedule/work-queue', CORE_OPERATIONS.HEAVY_QUEUE_LIST],
+      ['POST', '/api/cluster/schedule/work-queue/00000000-0000-4000-8000-000000000001/place', CORE_OPERATIONS.HEAVY_QUEUE_PLACE],
+      ['GET', '/api/nerve-center/agent-runtime-config/export?includeCandidates=false', CORE_OPERATIONS.RUNTIME_CONFIG_EXPORT],
       ['POST', '/api/nerve-center/benchmark-cell-budgets', CORE_OPERATIONS.CELL_BUDGET_OPEN],
       ['POST', `/api/nerve-center/benchmark-cell-budgets/${'a'.repeat(32)}/close`, CORE_OPERATIONS.CELL_BUDGET_CLOSE],
     ].map(([method, path, operationId]) => classifyCoreOperation(path, method)))
