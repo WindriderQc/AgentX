@@ -333,15 +333,17 @@ def start_locked(config: dict, args) -> dict:
     return {"runId": args.run_id, "dispatchId": args.dispatch_id, "harness": args.harness, "phase": "starting", "pid": child.pid}
 
 
-def agent_messages(run: Path, agent: str | None, limit: int = AGENT_MESSAGES) -> list[dict]:
-    """The agent's latest thoughts, words and commands from its newest Codex session.
+def agent_messages(run: Path, agent: str | None, limit: int = AGENT_MESSAGES, harness: str = "codex") -> list[dict]:
+    """The agent's latest thoughts, words and commands from its newest Codex-shaped session.
+
+    Codex writes them natively; DSH and pi through the adapter's turn loop.
 
     Read-only and bounded (the file's tail, `limit` entries, `AGENT_TEXT` characters each).
     The text is the agent's own output: untrusted, shown escaped, never acted upon.
     """
-    if not agent or not NAME.match(agent):
+    if not agent or not NAME.match(agent) or harness not in HARNESSES:
         return []
-    sessions = run / "agents" / agent.lower() / "sandbox-home" / ".codex" / "sessions"
+    sessions = run / "agents" / agent.lower() / "sandbox-home" / episode.HARNESSES[harness][1]
     try:
         files = [p for p in sessions.rglob("*.jsonl") if p.is_file() and not p.is_symlink()] if sessions.is_dir() else []
         if not files:
@@ -414,7 +416,7 @@ def describe(config: dict, run_id: str) -> dict:
         "liveView": state.get("liveView") if phase == "running" else None,
         "recording": str(recordings[-1].relative_to(runs_root(config))) if recordings else None,
         "leftover": leftover, "processObservationOk": process_ok, "localStopped": state.get("localStopped") is True,
-        "agentMessages": agent_messages(run, request.get("agent")),
+        "agentMessages": agent_messages(run, request.get("agent"), harness=request.get("harness", "codex")),
     }
 
 

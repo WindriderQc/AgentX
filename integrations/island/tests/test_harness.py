@@ -441,6 +441,20 @@ class Metrics(unittest.TestCase):
             self.assertEqual(summary["pi"]["completed"], 1)
 
 
+class LiveMessages(unittest.TestCase):
+    def test_live_messages_follow_the_harness_rollouts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            run = Path(temp) / RUN
+            loop = run / "agents" / "eko" / "sandbox-home" / ".agentx-loop" / "sessions"
+            loop.mkdir(parents=True)
+            (loop / "rollout-s1.jsonl").write_text(json.dumps({"type": "response_item", "payload": {
+                "type": "function_call", "name": "bash", "arguments": json.dumps({"command": "ls /workspace"})}}) + "\n")
+            self.assertEqual(runner.agent_messages(run, "Eko"), [])
+            messages = runner.agent_messages(run, "Eko", harness="pi")
+            self.assertEqual([(m["kind"], m["text"]) for m in messages], [("command", "ls /workspace")])
+            self.assertEqual(runner.agent_messages(run, "Eko", harness="claude"), [])
+
+
 class PatchCopy(unittest.TestCase):
     def test_the_clawblox_patch_embeds_this_exact_turn_loop(self):
         patch = (KIT / "clawblox-isolation.patch").read_text()
