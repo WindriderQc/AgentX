@@ -257,5 +257,31 @@ class SafetyRegression(Fixture):
         self.assertFalse(data['processObservationOk']);self.assertIsNone(data['leftover'])
 
 
+class StopAction(Fixture):
+    def test_stop_signals_the_live_supervisor(self):
+        """`stop` sends SIGTERM to the run's supervisor (it raised NameError since the hourly reset)."""
+        import signal
+        import subprocess
+        run = self.root / "runs" / RUN
+        run.mkdir()
+        # A stand-in whose command line looks like the supervisor of this run.
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", "supervise", RUN])
+        try:
+            (run / "state.json").write_text(json.dumps({"runId": RUN, "pid": child.pid, "phase": "running"}))
+            deadline = time.monotonic() + 5
+            while not runner.pid_alive(child.pid, RUN) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            code, out = self.call("stop", "--run-id", RUN)
+            self.assertEqual(code, 0, out)
+            self.assertEqual(out["data"], {"runId": RUN, "signalled": True})
+            self.assertEqual(child.wait(timeout=5), -signal.SIGTERM)
+            code, out = self.call("stop", "--run-id", RUN)
+            self.assertEqual(out["data"]["signalled"], False, "a finished supervisor is not signalled again")
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
+
+
 if __name__ == "__main__":
     unittest.main()
