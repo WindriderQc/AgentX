@@ -211,6 +211,16 @@ and native release, an operator can record the external recovery receipt:
 node integrations/operations/heavy-work-queue.cjs recover --core <core-origin> --actor operator --id <request-id> --revision <current-revision> --dispatch-id <dispatch-id> --receipt <verified-receipt-reference> --confirmation EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED
 ```
 
+The read-only `GET /:id/operator-release?dispatchId=…` returns
+`agentx.operator-release/v1` from Core runtime coordination for an exact active
+operator dispatch. It accounts for overlapping workloads, inferences, physical
+aliases and uncertain holders. Missing runtime evidence refuses; a healthy read
+with `runtimeReleased: false` means the original native owner still holds it.
+This snapshot grants no release and changes no queue revision. `operator-finish`
+rechecks native authority at its terminal write; a holder arriving after the
+snapshot still refuses completion. See [the Clawblox adapter](../integrations/island/README.md)
+for an external operator consumer with model-free regression tests.
+
 This records **operator reconciliation**, not an independently verified native
 result. It refuses while overlapping native authority remains held and never
 stops a process, deletes an admission or clears quarantine.

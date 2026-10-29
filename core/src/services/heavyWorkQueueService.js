@@ -323,8 +323,21 @@ async function archive(actor) {
     return { readOnly: !terminal.length, value: { archived: terminal.length, actor: text(actor, 'actor', 100) } };
   });
 }
-// Custom coding checks and island runs have an explicit operator attestation,
-// not a native executor result. This never runs a command or releases runtime coordination.
+// Observation only. The terminal CAS rechecks runtime authority at finish.
+async function operatorRelease(id, dispatchId) {
+  const job = await get(id);
+  if (!(job.executor?.mode === 'operator' || (job.executor?.mode === 'island' && job.kind === 'other')) || !ACTIVE.includes(job.state)
+    || !dispatchId || dispatchId !== job.dispatchId) throw fail('Exact active operator dispatch required', 409);
+  const runtime = await require('../../models/RuntimeCoordination').findById('runtime').lean();
+  if (!runtime || !Array.isArray(runtime.workloads) || !Array.isArray(runtime.inferences)) {
+    throw fail('Native runtime release evidence unavailable', 503, 'HEAVY_QUEUE_RELEASE_UNAVAILABLE');
+  }
+  const held = [...runtime.workloads, ...runtime.inferences].some(item => runtimeOverlaps(job, item));
+  return { contract: 'agentx.operator-release/v1', authority: 'core.runtime-coordination',
+    queueRequestId: id, dispatchId, runtimeReleased: !held, observedAt: new Date().toISOString() };
+}
+// Custom coding checks and island runs retain operator attestation.
+
 async function operatorFinish(id, body, actor) {
   revision(body);
   if (body.confirmation !== 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED'
@@ -406,4 +419,4 @@ async function migrate(body, actor, { file = FILE } = {}) {
   return list();
 }
 
-module.exports = { AUTO_START_KINDS, autoStartable, submit, reserve, place, preview, slotFor, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorFinish, MAX_JOBS };
+module.exports = { AUTO_START_KINDS, autoStartable, submit, reserve, place, preview, slotFor, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorRelease, operatorFinish, MAX_JOBS };

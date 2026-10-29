@@ -99,7 +99,7 @@ async function readPrincipal(core, request) {
   const lane = data?.lanes?.daily || {};
   const preference = lane.hostPreference || {};
   return { hostUrl: lane.hostUrl || null, contextSize: Number(lane.contextSize) || null,
-    ready: preference.status === 'ready', claimed: Boolean(preference.benchmarkClaimed) };
+    ready: preference.status === 'ready', claimed: typeof preference.benchmarkClaimed === 'boolean' ? preference.benchmarkClaimed : null };
 }
 function assertPrincipal(job, principal) {
   if (!principal.hostUrl || !principal.contextSize) throw new Error('The principal endpoint or its context is unresolved; nothing was started');
@@ -108,22 +108,24 @@ function assertPrincipal(job, principal) {
   if (!key || !job.hosts.includes(key)) {
     throw new Error('The principal endpoint is not among this request\'s hosts; submit a new request for the current pin');
   }
-  if (!principal.ready || principal.claimed) throw new Error('The principal host is not free at the slot; the reservation is left for the owner');
+  if (!principal.ready || principal.claimed !== false) throw new Error('The principal host is not free at the slot; the reservation is left for the owner');
 }
 
 function ledger(receiptsDir, id) {
   if (!receiptsDir) throw new Error('Island execution requires AGENTX_ACTION_RECEIPTS_DIR');
   const dir = path.join(receiptsDir, 'island');
   const file = path.join(dir, `${id}.state.json`);
-  return {
-    dir,
-    read: () => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } },
-    write: value => {
-      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-      const current = (() => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; } })();
-      fs.writeFileSync(file, JSON.stringify({ ...current, ...value, updatedAt: stamp() }, null, 2) + '\n', { mode: 0o600 });
-    }
-  };
+  const read = () => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
+  return { dir, read, write: value => {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const bytes = JSON.stringify({ ...(read() || {}), ...value, updatedAt: stamp() }, null, 2) + '\n';
+    const temp = `${file}.tmp`;
+    const fd = fs.openSync(temp, 'w', 0o600);
+    try { fs.writeFileSync(fd, bytes); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    fs.renameSync(temp, file);
+    const parent = fs.openSync(dir, 'r');
+    try { fs.fsyncSync(parent); } finally { fs.closeSync(parent); }
+  } };
 }
 
 function outcomeState(status) {
@@ -168,7 +170,7 @@ async function runIsland(job, client, deps = {}) {
   const executor = islandExecutor(job.executor);
   const d = defaults(deps);
   const book = ledger(d.receiptsDir, job.id);
-  if (book.read()?.dispatchId) throw new Error('This request already has a dispatch here; use island-settle, never relaunch');
+  if (book.read()) throw new Error('This request already has a dispatch here; use island-settle, never relaunch');
   // Refusable checks, all before the durable dispatch mark.
   const check = await d.runner('check');
   if (!check.ready) throw new Error(`Runner is not ready: ${(check.problems || []).join('; ')}`);
@@ -176,6 +178,7 @@ async function runIsland(job, client, deps = {}) {
   const principal = await d.principal();
   assertPrincipal(job, principal);
 
+  book.write({ phase: 'begin-unclear', queueRequestId: job.id });
   const begun = await client(`/${job.id}/begin`, { expectedRevision: job.revision });
   const dispatchId = begun.dispatchId;
   book.write({ phase: 'dispatched', dispatchId, runner: d.label, dispatchedAt: stamp() });
@@ -263,7 +266,7 @@ async function followAndFinish(job, executor, client, d, book) {
     }
     if (status.dispatchId !== dispatchId) throw new Error('The runner\'s run belongs to another dispatch');
     await reportSafely(d, id, { queueRequestId: id, dispatchId, executor, status });
-    if (status.terminal) break;
+    if (status.terminal === true && status.alive === false) break;
     if (!stopAsked && d.now() > watchUntil) {
       stopAsked = true;
       log(`run ${id} passed its time; asking the runner to stop it`);
@@ -276,42 +279,53 @@ async function followAndFinish(job, executor, client, d, book) {
 
 async function finish(job, executor, status, client, d, book) {
   const { id, dispatchId } = job;
-  const principal = await d.principal().catch(error => ({ error: error.message }));
-  const released = status.terminal && (status.leftover || []).length === 0 && principal.claimed === false;
+  const localReleased = status.terminal === true && status.alive === false && status.localStopped === true
+    && status.processObservationOk === true && Array.isArray(status.leftover) && status.leftover.length === 0;
   const state = outcomeState(status);
-  const receipt = {
-    contract: RECEIPT_CONTRACT, queueRequestId: id, dispatchId, actor: d.actor, receiptRef: executor.receiptRef,
-    state, runtimeReleased: released,
-    evidence: { executor: 'island', runner: d.label, run: runSummary(status), leftoverProcesses: status.leftover || [],
-      principalAfter: { ready: principal.ready ?? null, claimed: principal.claimed ?? null, error: principal.error || null },
-      recordedAt: stamp() }
-  };
-  const bytes = Buffer.from(JSON.stringify(receipt, null, 2) + '\n');
   const file = path.join(book.dir, `${id}-${dispatchId}.receipt.json`);
   fs.mkdirSync(book.dir, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(file, bytes, { mode: 0o600 });
-  const receiptSha256 = crypto.createHash('sha256').update(bytes).digest('hex');
-  book.write({ phase: 'finishing', receiptFile: file, receiptSha256, state, released });
-  const memory = await d.runner('memory', { 'run-id': id }).catch(error => ({ error: error.message }));
-  await reportSafely(d, id, { queueRequestId: id, dispatchId, executor, status, memory: memory.files || null,
-    receipt: { file, sha256: receiptSha256, state, runtimeReleased: released } });
-  if (!released) {
-    book.write({ phase: 'needs-operator' });
-    throw Object.assign(new Error(`Release not proven (leftover processes or a held principal); receipt kept at ${file} for the operator`), { queueId: id });
-  }
   let lastError;
   for (let attempt = 1; attempt <= FINISH_ATTEMPTS; attempt++) {
+    const current = await client(`/${id}`);
+    if (['completed', 'failed', 'cancelled'].includes(current.state)) {
+      if (current.releaseReceipt?.operationId !== dispatchId) throw new Error('Terminal dispatch identity differs');
+      book.write({ phase: 'finished' }); return current;
+    }
+    if (current.dispatchId !== dispatchId) throw new Error('Active dispatch identity differs');
+    let native = null;
+    try { native = await client(`/${id}/operator-release?dispatchId=${encodeURIComponent(dispatchId)}`); }
+    catch (error) { lastError = error; }
+    const fresh = native && Number.isFinite(Date.parse(native.observedAt))
+      && Math.abs(Date.now() - Date.parse(native.observedAt)) <= 30000;
+    const released = localReleased && fresh && native.contract === 'agentx.operator-release/v1'
+      && native.authority === 'core.runtime-coordination' && native.queueRequestId === id
+      && native.dispatchId === dispatchId && native.runtimeReleased === true;
+    const receipt = { contract: RECEIPT_CONTRACT, queueRequestId: id, dispatchId, actor: d.actor,
+      receiptRef: executor.receiptRef, state, runtimeReleased: Boolean(released),
+      evidence: { executor: 'island', runner: d.label, run: runSummary(status),
+        leftoverProcesses: status.leftover ?? null, processObservationOk: status.processObservationOk === true,
+        nativeRelease: native, recordedAt: stamp() } };
+    const bytes = Buffer.from(JSON.stringify(receipt, null, 2) + '\n');
+    fs.writeFileSync(file, bytes, { mode: 0o600 });
+    const receiptSha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+    book.write({ phase: 'finishing', receiptFile: file, receiptSha256, state, released: Boolean(released) });
+    if (!released) {
+      // Missing/invalid evidence is not absence of native authority. Never attest it.
+      if (localReleased && native?.runtimeReleased === false && attempt < FINISH_ATTEMPTS) {
+        await d.sleep(d.pollMs); continue;
+      }
+      book.write({ phase: 'needs-operator' });
+      throw Object.assign(new Error(`Release not proven; receipt kept at ${file}`), { queueId: id });
+    }
+    const memory = await d.runner('memory', { 'run-id': id }).catch(() => ({}));
+    await reportSafely(d, id, { queueRequestId: id, dispatchId, executor, status, memory: memory.files || null,
+      receipt: { file, sha256: receiptSha256, state, runtimeReleased: true } });
     try {
-      const current = await client(`/${id}`);
-      if (['completed', 'failed', 'cancelled'].includes(current.state)) return current;
       const done = await client(`/${id}/operator-finish`, { expectedRevision: current.revision, dispatchId, state,
         receiptRef: executor.receiptRef, receiptSha256, confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED' });
-      book.write({ phase: 'finished' });
-      return done;
+      book.write({ phase: 'finished' }); return done;
     } catch (error) {
-      // Core refuses while the agent's last inference is still held; it clears within minutes.
       lastError = error;
-      log(`operator-finish attempt ${attempt} refused: ${error.message}`);
       await d.sleep(d.pollMs);
     }
   }

@@ -22,12 +22,13 @@ function fakeCore(state = { ...job }, { refuseFinish = 0 } = {}) {
   const calls = [];
   const client = async (endpoint = '', body) => {
     calls.push([endpoint, body]);
+    if (endpoint.includes('/operator-release?')) return { contract:'agentx.operator-release/v1', authority:'core.runtime-coordination', queueRequestId:ID, dispatchId:DISPATCH, runtimeReleased:true, observedAt:new Date().toISOString() };
     if (endpoint.endsWith('/begin')) { Object.assign(state, { state: 'dispatching', dispatchId: DISPATCH, revision: state.revision + 1 }); return { ...state }; }
     if (endpoint.endsWith('/record')) { Object.assign(state, { state: body.state, revision: state.revision + 1 }); return { ...state }; }
     if (endpoint.endsWith('/recover')) { Object.assign(state, { state: 'failed' }); return { ...state }; }
     if (endpoint.endsWith('/operator-finish')) {
       if (refuseFinish-- > 0) throw new Error('Native runtime authority remains held');
-      Object.assign(state, { state: body.state }); return { ...state, finishedWith: body };
+      Object.assign(state, { state: body.state, releaseReceipt:{operationId:DISPATCH} }); return { ...state, finishedWith: body };
     }
     if (endpoint.endsWith('/place')) { Object.assign(state, { state: 'reserved', revision: state.revision + 1, reservation: { start: new Date(0).toISOString() } }); return { ...state }; }
     return { ...state };
@@ -47,7 +48,7 @@ function fakeRunner({ polls = 2, start, outcome = 'completed', leftover = [] } =
       reads++;
       const done = reads > polls;
       return { runId: ID, dispatchId: DISPATCH, phase: done ? 'finished' : 'running', terminal: done, outcome: done ? outcome : null,
-        resumeCount: 1, events: [{ event: 'resumed', reason: 'memory-reminder' }], leftover: done ? leftover : [], model: 'agentx-primary' };
+        alive:!done, localStopped:done, processObservationOk:true, resumeCount: 1, events: [{ event: 'resumed', reason: 'memory-reminder' }], leftover: done ? leftover : [], model: 'agentx-primary' };
     }
     if (action === 'memory') return { files: { 'SEMANTIC_MEMORY.md': { text: '[verified] blocks stay put' } } };
     if (action === 'stop') return { signalled: true };
@@ -205,4 +206,66 @@ test('the queue CLI routes island requests and its new actions', async () => {
   const answers = { ...job, state: 'requested' };
   const fetchImpl = async () => ({ ok: true, json: async () => ({ ok: true, data: answers }) });
   await assert.rejects(main(['island-settle', '--core', 'http://127.0.0.1:3180', '--actor', 'fixture', '--id', ID], { fetchImpl, island: { runner: async () => ({}) } }), /nothing to settle/);
+});
+
+test('lost begin is durably fenced locally before the remote answer and never starts twice', async () => {
+  const dir=tempDir();
+  const fake=fakeRunner();
+  const core=fakeCore();
+  const client=async (endpoint,body) => {
+    if(endpoint.endsWith('/begin')) {
+      const saved=JSON.parse(fs.readFileSync(path.join(dir,'island',`${ID}.state.json`)));
+      assert.equal(saved.phase,'begin-unclear');
+      throw new Error('synthetic lost begin');
+    }
+    return core.client(endpoint,body);
+  };
+  try {
+    await assert.rejects(island.runIsland({...job},client,deps(dir,fake.runner)),/lost begin/);
+    await assert.rejects(island.runIsland({...job},client,deps(dir,fake.runner)),/never relaunch/);
+    assert.equal(fake.calls.some(([action])=>action==='start'),false);
+  } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('missing native release or incomplete local process evidence never attests release', async () => {
+  for(const variation of ['empty','held','wrong-dispatch','stale','bad-process','unknown-cleanup']) {
+    const dir=tempDir(),core=fakeCore(),fake=fakeRunner({polls:0});
+    const client=async (endpoint,body) => {
+      const result=await core.client(endpoint,body);
+      if(endpoint.includes('/operator-release?')) {
+        if(variation==='empty')return {};
+        if(variation==='held')return {...result,runtimeReleased:false};
+        if(variation==='wrong-dispatch')return {...result,dispatchId:'other'};
+        if(variation==='stale')return {...result,observedAt:'2000-01-01T00:00:00Z'};
+      }
+      return result;
+    };
+    const runner=async (action,args) => {
+      const result=await fake.runner(action,args);
+      if(action==='status'&&variation==='bad-process')return {...result,processObservationOk:false,leftover:null};
+      if(action==='status'&&variation==='unknown-cleanup')return {...result,localStopped:null};
+      return result;
+    };
+    try {
+      await assert.rejects(island.runIsland({...job},client,deps(dir,runner)),/Release not proven/);
+      assert.equal(core.calls.some(([endpoint])=>endpoint.endsWith('/operator-finish')),false);
+      assert.equal(JSON.parse(fs.readFileSync(path.join(dir,'island',`${ID}-${DISPATCH}.receipt.json`))).runtimeReleased,false);
+    } finally {fs.rmSync(dir,{recursive:true,force:true});}
+  }
+});
+
+test('a lost finish reply resolves the same native terminal receipt without another dispatch', async () => {
+  const dir=tempDir(),core=fakeCore(),fake=fakeRunner({polls:0});
+  let lost=false;
+  const client=async(endpoint,body)=>{
+    const result=await core.client(endpoint,body);
+    if(endpoint.endsWith('/operator-finish')&&!lost){lost=true;throw new Error('synthetic lost finish');}
+    return result;
+  };
+  try {
+    const done=await island.runIsland({...job},client,deps(dir,fake.runner));
+    assert.equal(done.state,'completed');
+    assert.equal(core.calls.filter(([e])=>e.endsWith('/begin')).length,1);
+    assert.equal(core.calls.filter(([e])=>e.endsWith('/operator-finish')).length,1);
+  } finally {fs.rmSync(dir,{recursive:true,force:true});}
 });

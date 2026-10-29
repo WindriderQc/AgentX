@@ -161,6 +161,23 @@ describe('durable heavy-work planning and dispatch fences', () => {
     await expect(queue.submit({ ...body, title: 'Different' }, 'test')).rejects.toMatchObject({ code: 'HEAVY_QUEUE_KEY_CONFLICT' });
   });
 
+  it('observes operator release read-only and rechecks a new native holder at terminal CAS', async () => {
+    const input = { ...request('operator-release'), kind: 'other', executor: { mode: 'operator', receiptRef: 'synthetic-plan' } };
+    const job = await begin(await reserve(await queue.submit(input, 'test')));
+    await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+    const observed = await queue.operatorRelease(job.id, job.dispatchId);
+    expect(observed.runtimeReleased).toBe(true);
+    expect((await queue.get(job.id)).revision).toBe(job.revision);
+    const receipt = { expectedRevision: job.revision, dispatchId: job.dispatchId, state: 'completed',
+      receiptRef: 'synthetic-plan', receiptSha256: 'a'.repeat(64), confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED' };
+    await Runtime.collection.updateOne({ _id: 'runtime' }, { $set: { inferences: [{ host: ALIAS, resourceIds: ['synthetic-gpu-a'], state: 'UNKNOWN' }] } });
+    expect((await queue.operatorRelease(job.id, job.dispatchId)).runtimeReleased).toBe(false);
+    await expect(queue.operatorFinish(job.id, receipt, 'test')).rejects.toMatchObject({ statusCode: 409 });
+    expect((await queue.get(job.id)).state).toBe('dispatching');
+    await Runtime.collection.updateOne({ _id: 'runtime' }, { $set: { inferences: [] } });
+    await expect(queue.operatorFinish(job.id, receipt, 'test')).resolves.toMatchObject({ state: 'completed' });
+  });
+
   it('requires an operator recovery receipt and refuses while native authority is still held', async () => {
     const job = await begin(await reserve(await queue.submit(request('recover'), 'test')));
     const body = { expectedRevision: job.revision, dispatchId: job.dispatchId,
