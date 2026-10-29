@@ -69,11 +69,12 @@ function viewerBase(value) {
 function graphysxViews(env = process.env) {
   const clawblox = clawbloxViews(env);
   const viewer = viewerBase(env.AGENTX_ISLAND_GRAPHYSX_URL);
-  const page = (source, token) => {
+  const page = (source, token, agent) => {
     const url = new URL(viewer);
     url.searchParams.set('app', 'island');
     url.searchParams.set('embed', '1');
     url.searchParams.set('source', source);
+    if (typeof agent === 'string' && /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(agent)) url.searchParams.set('agent', agent);
     if (token) url.hash = `spectator_token=${encodeURIComponent(token)}`;
     return url.toString();
   };
@@ -84,12 +85,12 @@ function graphysxViews(env = process.env) {
       const live = viewer ? clawblox.liveUrl(run) : null;
       if (!live) return null;
       const url = new URL(live);
-      return page(url.origin, url.searchParams.get('spectator_token'));
+      return page(url.origin, url.searchParams.get('spectator_token'), run.agent);
     },
     replayUrl: async (run, deps) => {
       if (!viewer) throw new ViewError('No GraphysX viewer is configured (AGENTX_ISLAND_GRAPHYSX_URL)', 409);
       const opened = await clawblox.replayUrl(run, deps);
-      return { ...opened, src: page(opened.src.replace(/\/+$/, '')) };
+      return { ...opened, src: page(opened.src.replace(/\/+$/, ''), null, run?.agent) };
     }
   };
 }

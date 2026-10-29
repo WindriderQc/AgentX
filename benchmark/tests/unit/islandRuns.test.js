@@ -110,6 +110,8 @@ describe('island run service', () => {
     expect(seen[0]).toEqual(['http://runner.lan:18092/api/open-replay', { path: `${ID}/recordings/20261029_030005.clawrec` }]);
     const evil = async () => ({ ok: true, json: async () => ({ url: 'https://elsewhere.example/x' }) });
     await expect(islands.openReplay(ID, { env, fetchImpl: evil })).rejects.toMatchObject({ statusCode: 502 });
+    const gx = await islands.openReplay(ID, { env: { ...env, AGENTX_ISLAND_GRAPHYSX_URL: 'http://viewer.lan/' }, fetchImpl });
+    expect(new URL(gx.src).searchParams.get('agent')).toBe('Eko');
   });
 
   it('keeps the 3D views behind one renderer interface with credential-free origins', () => {
@@ -131,16 +133,19 @@ describe('island run service', () => {
   it('draws the island in GraphysX-Web when its viewer is configured', async () => {
     const { islandViews } = require('../../src/services/island/islandViews');
     const gx = { ...env, AGENTX_ISLAND_GRAPHYSX_URL: 'http://viewer.lan:4231/' };
-    const running = { phase: 'running', liveView: { port: 18080, path: '/?spectator_token=tok-1' } };
+    const running = { phase: 'running', agent: 'Eko', liveView: { port: 18080, path: '/?spectator_token=tok-1' } };
     const views = islandViews(gx);
     expect(views.name).toBe('graphysx');
     expect(views.available()).toEqual({ live: true, replay: true });
     const live = new URL(views.liveUrl(running));
     expect(live.origin).toBe('http://viewer.lan:4231');
-    expect(Object.fromEntries(live.searchParams)).toEqual({ app: 'island', embed: '1', source: 'http://runner.lan:18080' });
+    expect(Object.fromEntries(live.searchParams)).toEqual({ app: 'island', embed: '1', source: 'http://runner.lan:18080', agent: 'Eko' });
     expect(live.hash).toBe('#spectator_token=tok-1');
     const fetchImpl = async () => ({ ok: true, json: async () => ({ url: '/sessions/abc/', agent_log: '/x' }) });
-    const replay = await views.replayUrl({ recording: 'r/x.clawrec' }, { fetchImpl });
+    const replay = await views.replayUrl({ recording: 'r/x.clawrec', agent: 'Eko' }, { fetchImpl });
+    expect(new URL(replay.src).searchParams.get('agent')).toBe('Eko');
+    const odd = await views.replayUrl({ recording: 'r/x.clawrec', agent: '<b>' }, { fetchImpl });
+    expect(new URL(odd.src).searchParams.has('agent')).toBe(false);
     expect(replay.agentLog).toBe(true);
     expect(new URL(replay.src).searchParams.get('source')).toBe('http://runner.lan:18092/sessions/abc');
     expect(islandViews({ ...gx, AGENTX_ISLAND_RENDERER: 'clawblox' }).name).toBe('clawblox');
