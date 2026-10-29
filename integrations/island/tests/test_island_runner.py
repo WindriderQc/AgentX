@@ -167,6 +167,27 @@ class Actions(Fixture):
             runner.main(["check", "--config", str(self.root / "absent.json")])
         self.assertEqual(json.loads(out.getvalue())["code"], "RUNNER_CONFIG")
 
+class RelaySocketPath(Fixture):
+    def test_check_and_start_refuse_a_runs_root_too_long_for_relay_sockets(self):
+        deep = self.root / ("d" * 60) / "runs"
+        deep.mkdir(parents=True)
+        self.config_path.write_text(json.dumps({"runsRoot": str(deep), "worldsRoot": str(self.root / "worlds")}))
+        code, answer = self.call("check")
+        self.assertFalse(answer["data"]["ready"])
+        self.assertTrue(any("relay sockets" in problem for problem in answer["data"]["problems"]))
+        with mock.patch.object(runner.subprocess, "Popen") as popen:
+            code, answer = self.call("start", "--run-id", RUN, "--dispatch-id", DISPATCH,
+                                     "--minutes", "60", "--context-window", "32768")
+        self.assertEqual((code, answer["code"]), (1, "RUNS_ROOT_TOO_LONG"))
+        popen.assert_not_called()
+        self.assertFalse((deep / RUN).exists())
+
+    def test_the_planned_runner_layout_fits(self):
+        self.assertIsNone(runner.relay_socket_problem({**self.config, "runsRoot": "/home/eko/island/runs"}, "Eko"))
+        self.assertIsNotNone(runner.relay_socket_problem(
+            {**self.config, "runsRoot": "/home/yb/codes/clawblox-runs/agentx-v1/runs"}, "Eko"))
+
+
 class SafetyRegression(Fixture):
     def test_memory_carries_only_four_regular_files_and_refuses_symlinks(self):
         source=self.root/'source';store=runner.memory_store(self.config,'Agent')
