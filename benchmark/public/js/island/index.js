@@ -27,7 +27,7 @@ export function when(iso, timeZone) {
 export function duration(run) {
   if (run.startedAt && run.endedAt) {
     const minutes = Math.round((Date.parse(run.endedAt) - Date.parse(run.startedAt)) / 60000);
-    if (Number.isFinite(minutes)) return `${minutes} min (prévu ${run.minutes ?? '?'})`;
+    if (Number.isFinite(minutes)) return `${minutes} min`;
   }
   return run.minutes ? `${run.minutes} min prévues` : '—';
 }
@@ -41,36 +41,41 @@ export function stateLabel(run) {
   return { key: run.phase || 'unknown', text: PHASES[run.phase] || run.phase || 'inconnu' };
 }
 
+/** Resumes, receipts and the run record: shown when the row is opened. */
+export function runDetailHtml(run) {
+  const items = [
+    `${escapeHtml(run.agent || '')} · mémoire ${run.memoryMode === 'fresh' ? 'neuve' : 'continue'}`,
+    `Relances : ${escapeHtml(run.resumeCount ?? 0)}`,
+    run.queue?.reservation?.start && !run.startedAt ? `Créneau : ${escapeHtml(when(run.queue.reservation.start, run.timeZone))}` : '',
+    run.outcome && run.outcome !== 'completed' ? `Issue : ${escapeHtml(run.outcome)}` : '',
+    run.receipt?.sha256 ? `<span title="${escapeHtml(run.receipt.file || '')}">Reçu ${escapeHtml(STATES[run.receipt.state] || run.receipt.state)} · ${escapeHtml(run.receipt.sha256.slice(0, 12))}…${run.receipt.runtimeReleased ? '' : ' · libération non prouvée'}</span>` : '',
+    run.queue?.releaseReceipt ? `Core : ${escapeHtml(run.queue.releaseReceipt.authority)}` : '',
+    `<a href="${API}/runs/${encodeURIComponent(run.id)}" target="_blank" rel="noopener">Fiche complète</a>`
+  ].filter(Boolean);
+  return `<ul class="island-detail">${items.map(item => `<li>${item}</li>`).join('')}</ul>`;
+}
+
 export function runRowHtml(run) {
   const state = stateLabel(run);
-  const slot = run.queue?.reservation?.start && !run.startedAt ? `<small>créneau ${escapeHtml(when(run.queue.reservation.start, run.timeZone))}</small>` : '';
-  const outcome = run.outcome && run.outcome !== 'completed' ? `<small>${escapeHtml(run.outcome)}</small>` : '';
-  const receipts = [
-    `<a href="${API}/runs/${encodeURIComponent(run.id)}" target="_blank" rel="noopener">fiche</a>`,
-    run.receipt?.sha256 ? `<small title="${escapeHtml(run.receipt.file || '')}">reçu ${escapeHtml(run.receipt.state)} · ${escapeHtml(run.receipt.sha256.slice(0, 12))}…${run.receipt.runtimeReleased ? '' : ' · libération non prouvée'}</small>` : '',
-    run.queue?.releaseReceipt ? `<small>Core : ${escapeHtml(run.queue.releaseReceipt.authority)}</small>` : ''
-  ].join('');
-  const actions = [
-    run.liveView ? `<button type="button" data-live="${escapeHtml(run.liveView)}">Direct</button>` : '',
-    run.replayable ? `<button type="button" data-replay="${escapeHtml(run.id)}">Revoir</button>` : '',
-    run.hasMemory ? `<button type="button" data-memory="${escapeHtml(run.id)}">Mémoire</button>` : ''
-  ].join('');
+  const id = escapeHtml(run.id);
+  const view = run.liveView ? `<button type="button" data-live="${escapeHtml(run.liveView)}" title="Vue en direct">Voir</button>`
+    : run.replayable ? `<button type="button" data-replay="${id}" title="Relecture avec les pensées">Voir</button>` : '';
+  const memory = run.hasMemory ? `<button type="button" data-memory="${id}">Mémoire</button>` : '';
   return `<tr>
-    <td>${escapeHtml(when(run.startedAt || run.requestedAt, run.timeZone))}<small>${escapeHtml(run.agent || '')} · mémoire ${run.memoryMode === 'fresh' ? 'neuve' : 'continue'}</small>${slot}</td>
+    <td><button type="button" class="island-open" data-detail="${id}" aria-expanded="false" aria-controls="island-detail-${id}">${escapeHtml(when(run.startedAt || run.queue?.reservation?.start || run.requestedAt, run.timeZone))}</button></td>
     <td>${escapeHtml(duration(run))}</td>
-    <td class="island-state-${escapeHtml(state.key)}">${escapeHtml(state.text)}${outcome}</td>
-    <td><code>${escapeHtml(run.model)}</code></td>
-    <td>${escapeHtml(run.resumeCount)}</td>
-    <td>${receipts}</td>
-    <td>${actions || '—'}</td>
-  </tr>`;
+    <td class="island-state-${escapeHtml(state.key)}">${escapeHtml(state.text)}</td>
+    <td class="island-actions">${view}${memory}</td>
+  </tr>
+  <tr id="island-detail-${id}" class="island-detail-row" hidden><td colspan="4">${runDetailHtml(run)}</td></tr>`;
 }
 
 export function episodesHtml(text) {
   const items = String(text || '').split('\n').filter(line => line.trim()).map(line => {
     try {
       const entry = JSON.parse(line);
-      return `<li><time>${escapeHtml(entry.time || '')}</time><div><b>${escapeHtml(entry.summary || '')}</b></div><div>${escapeHtml(entry.detail || '')}</div></li>`;
+      const at = when(entry.time);
+      return `<li><time datetime="${escapeHtml(entry.time || '')}">${escapeHtml(at === '—' ? entry.time || '' : at)}</time><div><b>${escapeHtml(entry.summary || '')}</b></div><div>${escapeHtml(entry.detail || '')}</div></li>`;
     } catch { return `<li><pre>${escapeHtml(line)}</pre></li>`; }
   });
   return items.length ? `<ol class="island-episodes">${items.join('')}</ol>` : '<p class="island-note">Aucun épisode.</p>';
@@ -103,15 +108,25 @@ async function openMemory(id) {
   $('island-memory').scrollIntoView({ behavior: 'smooth' });
 }
 
+const openDetails = new Set();
+function toggleDetail(id) {
+  const row = $(`island-detail-${id}`);
+  if (!row) return;
+  row.hidden = !row.hidden;
+  document.querySelector(`[data-detail="${CSS.escape(id)}"]`)?.setAttribute('aria-expanded', String(!row.hidden));
+  if (row.hidden) openDetails.delete(id); else openDetails.add(id);
+}
+
 async function loadRuns() {
   const status = $('island-runs-status');
   try {
     const data = (await apiFetch(`${API}/runs`)).data;
-    $('island-runs').innerHTML = data.runs.map(runRowHtml).join('') || '<tr><td colspan="7">Aucune partie.</td></tr>';
+    $('island-runs').innerHTML = data.runs.map(runRowHtml).join('') || '<tr><td colspan="4">Aucune partie.</td></tr>';
+    // A refresh keeps the rows the owner opened.
+    for (const id of [...openDetails]) { openDetails.delete(id); toggleDetail(id); }
     const notes = [];
-    if (!data.queueRead) notes.push('La file de Core est illisible : les états affichés viennent des derniers rapports.');
-    if (!data.view.live) notes.push('Vue en direct non configurée (AGENTX_ISLAND_VIEW_ORIGIN).');
-    if (!data.view.replay) notes.push('Serveur de relecture non configuré (AGENTX_ISLAND_REPLAY_URL).');
+    if (!data.queueRead) notes.push('File de Core illisible : états tirés des derniers rapports.');
+    if (!data.view.live && !data.view.replay) notes.push('Vue 3D non configurée.');
     status.textContent = notes.join(' ');
   } catch (err) {
     status.textContent = `Lecture impossible : ${err.message}`;
@@ -142,6 +157,7 @@ function bind() {
     const button = event.target.closest('button');
     if (!button) return;
     try {
+      if (button.dataset.detail) toggleDetail(button.dataset.detail);
       if (button.dataset.live) showFrame(button.dataset.live);
       if (button.dataset.replay) showFrame((await apiFetch(`${API}/runs/${encodeURIComponent(button.dataset.replay)}/replay`, { method: 'POST', body: {} })).data.src);
       if (button.dataset.memory) await openMemory(button.dataset.memory);

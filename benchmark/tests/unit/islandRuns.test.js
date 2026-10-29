@@ -144,7 +144,7 @@ describe('island routes', () => {
 });
 
 describe('island page helpers', () => {
-  const page = loadBrowserModule('island/index.js', 'escapeHtml, when, duration, stateLabel, runRowHtml, episodesHtml', { apiFetch: async () => ({}) });
+  const page = loadBrowserModule('island/index.js', 'escapeHtml, when, duration, stateLabel, runRowHtml, runDetailHtml, episodesHtml', { apiFetch: async () => ({}) });
 
   it('escapes run text and always shows a time zone', () => {
     expect(page.escapeHtml('<img onerror=x>')).toBe('&lt;img onerror=x&gt;');
@@ -153,15 +153,24 @@ describe('island page helpers', () => {
     expect(page.when(null)).toBe('—');
   });
 
-  it('renders a row with alias, resumes, receipt and only the views that exist', () => {
-    const html = page.runRowHtml({ id: ID, agent: 'Eko', minutes: 60, memoryMode: 'continue', model: 'agentx-primary', resumeCount: 3,
+  it('renders four columns, with resumes and receipts in the hidden detail row', () => {
+    const run = { id: ID, agent: 'Eko', minutes: 60, memoryMode: 'continue', model: 'agentx-primary', resumeCount: 3,
       startedAt: '2026-10-28T22:06:03Z', endedAt: '2026-10-28T23:06:03Z', timeZone: 'America/Toronto', replayable: true, hasMemory: true,
-      liveView: null, receipt: { state: 'completed', sha256: 'f'.repeat(64), runtimeReleased: true }, queue: { state: 'completed' } });
-    expect(html).toContain('agentx-primary');
-    expect(html).toContain('60 min (prévu 60)');
-    expect(html).toContain('data-replay');
-    expect(html).not.toContain('data-live');
-    expect(html).toContain('reçu completed');
+      liveView: null, receipt: { state: 'completed', sha256: 'f'.repeat(64), runtimeReleased: true }, queue: { state: 'completed' } };
+    const html = page.runRowHtml(run);
+    const [main, detail] = html.split('</tr>');
+    expect((main.match(/<td/g) || []).length).toBe(4);
+    expect(main).toContain('60 min');
+    expect(main).toContain('data-replay');
+    expect(main).not.toContain('data-live');
+    expect(main).toContain('>Voir<');
+    expect(main).toContain('>Mémoire<');
+    expect(main).not.toContain('agentx-primary');
+    expect(detail).toContain('hidden');
+    expect(detail).toContain('Relances : 3');
+    expect(detail).toContain('Reçu terminée');
+    // A running run's Voir opens the live view instead of the replay.
+    expect(page.runRowHtml({ ...run, liveView: 'http://runner.lan:18080/?t=1' })).toContain('data-live');
     expect(page.stateLabel({ queue: { state: 'reserved' } }).text).toBe('créneau réservé');
   });
 
