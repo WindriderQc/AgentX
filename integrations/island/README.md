@@ -66,6 +66,20 @@ Core rechecks at `operator-finish`; a holder arriving after the read still
 refuses completion. A lost finish answer is resolved from the same terminal
 Core receipt before any further finish attempt.
 
+## Remote worlds
+
+`remote_world.py` lets the runner use a world that is already running elsewhere (for
+example a GraphysX world service behind the instance's HTTPS proxy) without changing the
+runner or the Clawblox adapter. Clawblox starts it as a delegated world (`[run] command` in
+the world's `world.toml`, `WORLD_HOST`/`WORLD_PORT`); it relays only the agent routes of the
+world protocol (exact list in the module), forwards only `X-Session` and `Content-Type`,
+refuses redirects and cookies, requires verified TLS off loopback and listens on loopback
+only. The agent still reaches only its capability proxy, which reaches the relay. The remote
+world keeps recording, resume, spectating and images. A model-free netcheck through the
+relay passed 23/23 on devX (2026-10-29), with direct access to the world refused from the
+sandbox. Instance settings (the world folder with its target URL, the runner host firewall)
+stay in the instance repository.
+
 ## Tests without models
 
 ```bash
