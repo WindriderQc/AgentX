@@ -60,6 +60,23 @@ DEFAULTS = {
 }
 
 
+# A Unix socket path holds at most 107 bytes (sun_path is 108 with its NUL).
+# Clawblox puts the agent's network relays at
+# <runsRoot>/<run id>/agents/<agent>/runtime/netrelay/allow-<n>.sock, so a
+# long runsRoot makes every run fail at start with "required network relays
+# unavailable". Check it before the queue spends a slot.
+SOCKET_PATH_MAX = 107
+
+
+def relay_socket_problem(config: dict, agent: str) -> str | None:
+    sample = runs_root(config) / ("0" * 36) / "agents" / agent.lower() / "runtime" / "netrelay" / "allow-99.sock"
+    length = len(os.fsencode(str(sample)))
+    if length <= SOCKET_PATH_MAX:
+        return None
+    return (f"runsRoot is too long for the agent's relay sockets: {length} bytes for {agent}, "
+            f"limit {SOCKET_PATH_MAX}; shorten runsRoot by {length - SOCKET_PATH_MAX} characters")
+
+
 class RunnerError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -216,6 +233,9 @@ def action_check(config: dict, _args) -> dict:
             problems.append(f"{key} missing")
     if not config.get("gatewayHost") and not config.get("gatewayBaseUrl"):
         problems.append("gatewayHost missing")
+    socket_problem = relay_socket_problem(config, getattr(_args, "agent", None) or "Eko")
+    if socket_problem:
+        problems.append(socket_problem)
     try:
         import clawblox
         if getattr(clawblox, "agentx_isolation_version", lambda: 0)() != 1:
@@ -247,6 +267,9 @@ def start_locked(config: dict, args) -> dict:
         raise RunnerError("INVALID", "a real run needs the principal context window")
     if not (Path(config["worldsRoot"]).expanduser() / args.world).is_dir():
         raise RunnerError("INVALID", f"world {args.world} is not installed on this runner")
+    socket_problem = relay_socket_problem(config, args.agent)
+    if socket_problem:
+        raise RunnerError("RUNS_ROOT_TOO_LONG", socket_problem)
     run = run_dir(config, args.run_id)
     busy = active_run(config)
     if busy:

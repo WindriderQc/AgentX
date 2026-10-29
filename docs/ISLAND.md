@@ -166,6 +166,12 @@ Réglages de l'hôte d'exécution, dans `~/.config/agentx/island-runner.json`
 }
 ```
 
+`runsRoot` doit rester court : Clawblox place les sockets des relais de
+l'agent sous `<runsRoot>/<demande>/agents/<agent>/runtime/netrelay/`, et un
+chemin de socket Unix ne dépasse pas 107 octets. Pour Eko, `runsRoot` tient
+en 28 caractères au plus (par exemple `/home/eko/island/runs`) ; `check`
+et `start` refusent un chemin trop long avant tout départ.
+
 Clawblox doit porter les correctifs AgentX (isolation réseau, espaces de
 processus et d'IPC propres, variables d'opérateur retirées, lecture des
 journaux Codex dans la relecture). Le correctif versionné est dans
