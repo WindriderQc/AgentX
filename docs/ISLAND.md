@@ -199,7 +199,16 @@ Ce que la partie fait, repris du prototype :
   depuis 15 min. L'agent est arrêté puis la même session reprend avec
   « continue » (Clawblox ne peut pas parler à un agent en cours). Au moins
   2 min entre deux relances, 30 au plus ;
-- **rappel de mémoire** 5 minutes avant la fin, par le même arrêt-reprise ;
+- **rappel de mémoire** 5 minutes avant la fin de chaque épisode, par le même
+  arrêt-reprise ;
+- **remise à zéro du contexte chaque heure**, comme dans l'article : une partie
+  de plus d'une heure est une suite d'épisodes (`episodeMinutes`, 60 par
+  défaut, dans la configuration de l'hôte d'exécution). Le monde tourne d'un
+  bout à l'autre et les fichiers de l'espace de travail restent ; à chaque
+  épisode, Codex repart d'une session neuve avec « Begin. », donc sans
+  l'historique de l'heure précédente. Ça borne aussi le coût : la porte de
+  Core est sans cache et renvoie tout l'historique à chaque tour. Le reçu
+  liste les épisodes (`episodes`) ; une reprise ratée fait échouer la partie ;
 - un agent disparu, une absence d’activité initiale/récente, une relance
   impossible, un netcheck échoué ou un arrêt raté font échouer la partie.
 

@@ -56,6 +56,7 @@ DEFAULTS = {
     "stallIdleSeconds": 900,
     "minNudgeIntervalSeconds": 120,
     "maxNudges": 30,
+    "episodeMinutes": 60,
     "netcheckBlocked": [],
 }
 
@@ -367,6 +368,7 @@ def action_supervise(config: dict, args) -> dict:
                            ("min_nudge_interval_seconds", "minNudgeIntervalSeconds"), ("max_nudges", "maxNudges")]:
             setattr(a, field, config.get(key, getattr(a, field)))
         a.netcheck_blocked_url = config.get("netcheckBlocked") or []
+        a.episode_minutes = float(config["episodeMinutes"])
         episode.execute(a, prepared_workspace=workspace, on_event=event)
         receipt = read_json(run / "receipt.json") or receipt
     except Exception as error:

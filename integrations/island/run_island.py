@@ -96,41 +96,60 @@ def execute(a, runtime=None, clock=time, alive=pane_alive, activity=latest_activ
         world.connect(agent=agent)
         prompt = (a.templates_dir / "SYSTEM_PROMPT.md").read_text()
         if stopped: raise InterruptedError("episode stopped during startup")
-        started = agent.start(initial_prompt="Begin.", system_prompt=prompt
-                              .replace("${WORLD_AGENT_NAME}", a.name).replace("${WORKSPACE_DIR}", "/workspace"),
-                              env=agent_env)
+        system_prompt = prompt.replace("${WORLD_AGENT_NAME}", a.name).replace("${WORKSPACE_DIR}", "/workspace")
+        started = agent.start(initial_prompt="Begin.", system_prompt=system_prompt, env=agent_env)
         sessions = workspace.parent / "sandbox-home" / ".codex" / "sessions"
-        began = last_nudge = clock.monotonic()
-        deadline, warned, nudges, seen_activity = began + a.minutes * 60, False, 0, False
-        receipt["outcome"] = "running"
+        # A long run is a series of context resets (the paper's hourly reset): the world
+        # keeps running and the workspace files stay; each episode is a fresh session.
+        episode_minutes = min(a.episode_minutes or a.minutes, a.minutes)
+        episode_count = max(1, math.ceil(a.minutes / episode_minutes - 1e-9))
+        run_deadline = clock.monotonic() + a.minutes * 60
+        receipt.update(outcome="running", episodeMinutes=episode_minutes, episodes=[])
         note("running")
-        while not stopped and clock.monotonic() < deadline:
-            current = clock.monotonic()
-            if not alive(started): raise RuntimeError("agent exited before episode end")
-            observed = activity(sessions)
-            seen_activity = seen_activity or bool(observed and observed.get("modelActivity"))
-            if not seen_activity and current - began >= a.startup_seconds:
-                raise RuntimeError("agent produced no session activity before startup deadline")
-            if a.netcheck and (workspace / "netcheck.json").exists():
-                receipt["netcheckResult"] = netcheck_result(workspace)
-            if not warned and current >= deadline - a.memory_warning_minutes * 60:
-                warned = True
-                started = resume("This session ends in a few minutes. Update your memory files now.", "memory-reminder")
-                last_nudge = clock.monotonic()
-            elif observed and current - last_nudge >= a.min_nudge_interval_seconds:
-                ended = observed["payload"].get("type") == "task_complete"
-                stalled = observed["age"] >= (a.stall_after_turn_seconds if ended else a.stall_idle_seconds)
-                if stalled:
-                    if nudges >= a.max_nudges: raise RuntimeError("agent exhausted stall recovery budget")
-                    started = resume(CONTINUE, "finished-turn" if ended else "idle")
-                    last_nudge, nudges = clock.monotonic(), nudges + 1
-            clock.sleep(min(1, max(0, deadline - clock.monotonic())))
-        if not stopped:
+        index, nudges, since, seen_activity = 1, 0, None, False
+        while True:
+            began = last_nudge = clock.monotonic()
+            deadline = min(run_deadline, began + episode_minutes * 60)
+            warned, seen_activity, observed = False, False, None
+            receipt["episodes"].append({"index": index, "startedAt": stamp()})
+            while not stopped and clock.monotonic() < deadline:
+                current = clock.monotonic()
+                if not alive(started): raise RuntimeError("agent exited before episode end")
+                # After a reset, only the new session counts as activity.
+                observed = activity(sessions) if since is None else activity(sessions, since=since)
+                seen_activity = seen_activity or bool(observed and observed.get("modelActivity"))
+                if not seen_activity and current - began >= a.startup_seconds:
+                    raise RuntimeError("agent produced no session activity before startup deadline")
+                if a.netcheck and (workspace / "netcheck.json").exists():
+                    receipt["netcheckResult"] = netcheck_result(workspace)
+                if not warned and current >= deadline - a.memory_warning_minutes * 60:
+                    warned = True
+                    started = resume("This session ends in a few minutes. Update your memory files now.", "memory-reminder")
+                    last_nudge = clock.monotonic()
+                elif observed and current - last_nudge >= a.min_nudge_interval_seconds:
+                    ended = observed["payload"].get("type") == "task_complete"
+                    stalled = observed["age"] >= (a.stall_after_turn_seconds if ended else a.stall_idle_seconds)
+                    if stalled:
+                        if nudges >= a.max_nudges: raise RuntimeError("agent exhausted stall recovery budget")
+                        started = resume(CONTINUE, "finished-turn" if ended else "idle")
+                        last_nudge, nudges = clock.monotonic(), nudges + 1
+                clock.sleep(min(1, max(0, deadline - clock.monotonic())))
+            if stopped: break
             if not alive(started): raise RuntimeError("agent exited at episode end")
             if not seen_activity: raise RuntimeError("episode ended without observed session activity")
             if not observed or observed["age"] >= a.stall_idle_seconds:
                 raise RuntimeError("episode ended without recent session activity")
             if a.netcheck: receipt["netcheckResult"] = netcheck_result(workspace)
+            receipt["episodes"][-1].update(endedAt=stamp(), activityObserved=True)
+            atomic_json(run / "receipt.json", receipt)
+            if index >= episode_count or clock.monotonic() >= run_deadline: break
+            agent.stop(grace_seconds=20)
+            if a.netcheck: (workspace / "netcheck.json").unlink(missing_ok=True)
+            since = time.time()
+            started = agent.start(initial_prompt="Begin.", system_prompt=system_prompt, env=agent_env)
+            if not alive(started): raise RuntimeError("agent did not start after the context reset")
+            index += 1
+            note("episode", index=index, reason="context-reset")
         receipt["activityObserved"] = seen_activity
         receipt["outcome"] = "stopped" if stopped else "completed"
     except InterruptedError:
@@ -162,6 +181,7 @@ def parser():
     p.add_argument("--memory-from", type=Path, help="terminated previous episode; copy only its memory files")
     p.add_argument("--name", default="Agent")
     p.add_argument("--minutes", type=float, default=60)
+    p.add_argument("--episode-minutes", type=float, help="reset the agent's context this often; default: one episode")
     p.add_argument("--port", type=int, default=18080)
     p.add_argument("--codex", type=Path)
     p.add_argument("--token-file", type=Path, help="dedicated upstream client credential; never sent to agent")
@@ -186,6 +206,8 @@ def main(argv=None):
     for name in ("minutes", "startup_seconds", "stall_after_turn_seconds", "stall_idle_seconds", "min_nudge_interval_seconds"):
         if not math.isfinite(getattr(a, name)) or getattr(a, name) <= 0: p.error(name + " must be finite and positive")
     if not math.isfinite(a.memory_warning_minutes) or a.memory_warning_minutes < 0: p.error("invalid reminder time")
+    if a.episode_minutes is not None and (not math.isfinite(a.episode_minutes) or a.episode_minutes <= 0):
+        p.error("episode_minutes must be finite and positive")
     if a.max_nudges < 0: p.error("invalid nudge budget")
     if not 0 < a.port < 65536 or not 0 < a.gateway_guest_port < 65536: p.error("invalid port")
     if not a.netcheck and (not a.context_window or a.context_window <= 0 or not a.token_file or not a.gateway_base_url or not a.codex):
