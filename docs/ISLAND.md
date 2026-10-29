@@ -296,6 +296,42 @@ onglet depuis un Benchmark en HTTPS. La page publique de GraphysX (HTTPS) ne
 peut pas lire un `ws://` du réseau maison : il faut une version servie sur le
 réseau local, ou un relais HTTPS de même origine.
 
+## Passer au monde GraphysX : garanties à conserver
+
+Le service de monde GraphysX (GraphysX-Web, `docs/WORLD_SERVICE_DESIGN.md`)
+parle le protocole Clawblox. Ça ne suffit pas à le rendre sûr pour l'île :
+ces quatre garanties du runner doivent rester vraies après la migration, avec
+leurs tests sans modèle.
+
+| Garantie | Où | Tests |
+|---|---|---|
+| **Accès au modèle restreint.** Le bac à sable ne reçoit qu'une capacité éphémère par partie vers un relais local : liste des modèles et Responses, `agentx-primary` seulement. Le vrai jeton de passerelle reste hors du bac à sable ; le netcheck n'a aucune connexion vers Core. | `integrations/island/llm_proxy.py` | `tests/test_proxy.py` (routes, méthodes, encodages et redirections refusés ; pas d'amont en netcheck ; vrai espace réseau isolé) |
+| **Fin honnête.** Atteindre l'échéance ne prouve pas la réussite : il faut un agent vivant et une activité réelle du modèle. Une relance ratée, un netcheck incomplet ou un nettoyage raté donnent un échec. | `integrations/island/run_island.py`, `run_state.py` | `tests/test_runner.py` (agent mort, aucune activité, relance ratée, netcheck partiel, nettoyage raté, activité périmée) |
+| **Libération prouvée, reprise sûre.** Une observation manquante ou un `pgrep` en erreur ne prouvent pas la libération. On garde l'identité exacte de la demande et du départ, la preuve de nettoyage local et la lecture native `operator-release` de Core. Une réponse perdue se réconcilie sans relancer de partie. | `integrations/operations/island-executor.cjs`, Core | `integrations/operations/tests/island-executor.test.cjs`, `core/tests/unit/heavyWorkQueueOperatorRelease.test.js`, `heavyWorkQueue.mongo.test.js` |
+| **Seule la mémoire passe.** `SOUL.md`, `EPISODIC_MEMORY.md`, `EPISODIC_MEMORY.jsonl` et `SEMANTIC_MEMORY.md`, validés (fichiers ordinaires bornés, liens symboliques refusés). Sessions, jetons, outils générés et instantanés du monde restent à part. | `run_state.py`, `island_runner.py` | `test_memory_carries_only_four_regular_files_and_refuses_symlinks`, `test_healthy_episode_copies_only_memory_into_fresh_second_episode` |
+
+Points à vérifier pendant la migration :
+
+- **Relais des vues.** Le relais en service ne laisse passer que ce dont la
+  vue Clawblox a besoin (`/spectate/ws`, `/replay/info`). Le monde GraphysX
+  demande `/healthz` et le flux SSE `/spectate`. Il faut adapter la liste
+  explicite des routes, sans ouvrir `/join`, `/input`, `/observe`, `/chat`
+  ni `/snapshot` (agents et opérateur restent privés).
+- **Compatibilité du runner.** Parler le même protocole HTTP ne rend pas le
+  runner compatible : il construit encore les objets `World` et `Agent` de
+  Clawblox et vérifie l'adaptateur d'isolation. Il faut vérifier par ce même
+  chemin le lancement d'un monde externe, l'enregistrement, `status` et le
+  nettoyage, avec un netcheck qui passe.
+- **Conteneur d'images.** Si la vue image (`/observe/image`) arrive, ses
+  processus Node et Chromium entrent dans la propriété des processus et dans
+  la preuve de nettoyage. GraphysX annonce environ 1 Go de mémoire pour le
+  navigateur et beaucoup de CPU par image sur devX : la capacité d'UGStation
+  (i3-4160, 16 Go, kiosque) est à revoir avant de l'activer.
+- **Tests de non-régression.** On garde ceux du tableau, dont les routes
+  Core interdites, l'agent mort, la relance ratée, le netcheck incomplet, le
+  départ incertain, la course à la libération et le transfert de mémoire. Le
+  netcheck n'a jamais de connexion vers un modèle.
+
 ## Conception (pas encore construite) : classer « a joué » contre « neuf »
 
 L'article mesure si le jeu libre rend l'agent meilleur sur quatre épreuves
