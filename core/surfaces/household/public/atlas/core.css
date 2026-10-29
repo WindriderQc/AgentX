@@ -125,3 +125,31 @@
  .detail-popover .popup-hero{height:106px;align-items:flex-start;padding:14px 18px 28px}
  .detail-popover .pin-note{left:18px;bottom:9px;line-height:1.4}
 }
+
+/* Corrections Nestor proposed. */
+.proposals-button{border-color:color-mix(in srgb,var(--accent) 55%,var(--line));color:var(--ink)}
+.proposals-button span{display:inline-grid;place-items:center;min-width:1.4rem;height:1.4rem;margin-left:.35rem;border-radius:999px;background:var(--accent);color:var(--paper);font-size:.72rem;font-weight:700}
+.proposals-popover{max-width:min(860px,calc(100vw - 24px))}
+.proposals h3{margin:.2rem 0 .4rem}
+.proposal-card{margin:1rem 0;padding:1rem;border:1px solid var(--line);border-radius:16px;background:linear-gradient(160deg,var(--surface) 0%,var(--surface-soft) 100%)}
+.proposal-card header h4{margin:.2rem 0 .7rem;font-family:Georgia,serif;font-size:1.15rem;font-weight:500}
+.proposal-card.is-done{opacity:.6}
+.proposal-card.is-stale{border-color:color-mix(in srgb,var(--travel) 60%,var(--line))}
+.proposal-diff{width:100%;border-collapse:collapse;font-size:.84rem}
+.proposal-diff th,.proposal-diff td{text-align:left;padding:.45rem .5rem;border-bottom:1px solid var(--line);vertical-align:top}
+.proposal-diff thead th{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.proposal-diff tbody th{color:var(--muted);font-weight:500;white-space:nowrap}
+.proposal-diff td:nth-child(2){color:var(--muted);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--muted) 50%,transparent)}
+.proposal-new{color:var(--accent);font-weight:600}
+.proposal-why{margin:.8rem 0 .4rem;font-size:.9rem}
+.proposal-evidence figure{margin:.4rem 0;padding:.5rem .8rem;border-left:2px solid var(--accent);background:color-mix(in srgb,var(--accent) 7%,transparent);border-radius:0 10px 10px 0}
+.proposal-evidence blockquote{margin:0;font-style:italic}
+.proposal-evidence figcaption{font-size:.74rem;color:var(--muted);margin-top:.2rem}
+.proposal-actions{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin-top:.8rem}
+.proposal-done{margin:0;color:var(--accent);font-weight:600}
+.proposal-empty{color:var(--muted)}
+.proposal-banner{display:flex;gap:.6rem;align-items:center;width:100%;margin:0 0 .8rem;padding:.65rem .8rem;border-radius:12px;border:1px solid color-mix(in srgb,var(--accent) 55%,var(--line));background:color-mix(in srgb,var(--accent) 9%,var(--surface));color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.proposal-banner svg{width:16px;height:16px;flex:none}
+.proposal-banner span{display:grid;gap:.1rem;flex:1}
+.proposal-banner small{color:var(--muted)}
+@media (max-width:640px){.proposal-diff thead{display:none}.proposal-diff tr{display:grid;grid-template-columns:1fr 1fr}.proposal-diff tbody th{grid-column:1/-1;border-bottom:0;padding-bottom:0}}

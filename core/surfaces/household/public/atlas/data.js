@@ -132,3 +132,17 @@ export async function photoSearch(filters={}){
  for(const key of ['text','city','person','from','to','cursor'])if(filters[key])query.set(key,filters[key]);
  return call(`/api/photos/search?${query}`);
 }
+
+// Corrections Nestor proposed: the owner's inbox. Accepting applies through Core.
+export async function proposals(){return call('/api/secretary/proposals?state=pending');}
+export async function refuseProposal(proposal,reason){return post(`/api/secretary/proposals/${proposal.id}/refuse`,{reason});}
+export async function acceptProposal(proposal){
+ await post(`/api/secretary/proposals/${proposal.id}/accept`,{});
+ const {entry}=await call(`/api/secretary/history/${proposal.entryId}`);
+ let souvenir=null;
+ if(entry.souvenirNoteId){
+  const s=await call(`/api/secretary/souvenirs/${entry.souvenirNoteId}`).then(r=>r.souvenir).catch(()=>null);
+  if(s)souvenir={id:s.id,revision:s.revision??0,text:s.text,eventDate:s.eventDate,eventDatePrecision:s.eventDatePrecision,people:s.people,places:s.places,historyContext:s.historyContext||null};
+ }
+ return adopt(entry,souvenir);
+}

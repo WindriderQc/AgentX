@@ -308,6 +308,14 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
     envelope.success(res, { authority: 'agentx.core', query: query.trim(), results });
   }));
 
+  // Moments of the owner's history (Life Atlas): Nestor reads them and proposes
+  // corrections the owner accepts or refuses in the Atlas. Never an edit.
+  router.post('/memory/history', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    const { createHistoryProposals } = require('../src/services/historyProposalService');
+    envelope.success(res, await createHistoryProposals().operateForNestor(req.body || {}));
+  }));
+
   // Dated mail digests: owner-only journal, kept out of memory notes.
   router.post('/mail-journal', asyncRoute(async (req, res) => {
     res.set('Cache-Control', 'no-store');

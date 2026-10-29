@@ -153,3 +153,12 @@ the web-only limit does not consume its remaining non-web permissions.
 Ordinary guardian runs and specialist consultations preserve their native
 tools. This adds no model-visible tool or grant. Deployment requires matching
 Core and plugin versions; the continuity catalog advertises the budget hook.
+
+## Life Atlas corrections
+
+`life_atlas` (private owner context only) reads moments of the owner's life
+history in Core and proposes corrections through
+`POST /api/consumers/nestor/v1/memory/history` (`search`, `get`, `propose`,
+`status`). A proposal waits for the owner in Life Atlas; the tool cannot accept,
+refuse or edit. The session key is passed as the proposal's conversation
+reference.
