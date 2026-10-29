@@ -21,6 +21,9 @@ resource aliases, workload admissions and release receipts. A request has one
 immutable client identity and one queue identity. A repeated click, refresh or
 lost HTTP answer reuses that identity. A retry of a confirmed failed/cancelled
 attempt creates a linked identity; an unresolved attempt cannot be retried.
+A Mongo compare-and-swap admits only one active child retry per failed/cancelled
+attempt, including clicks from different tabs with different keys. A crash between accepting a retry and inserting its child is repaired under
+the already accepted identity. A lost reply reuses that child identity; a new deliberate retry waits for its terminal receipt.
 
 The same speech service and faster-whisper model serve interactive and long
 recognition. Long work does not unload Ollama models, change pins or select a
@@ -39,7 +42,8 @@ than holding an HTTP request open for an entire video. Native start is
 idempotent by identity and exact URL/language.
 
 Admission heartbeats run independently of potentially slow shared receipt
-sweeps; they never start or replace native work. Closing the page does not
+sweeps; they also renew immediately on startup/Mongo reconnection and never
+start or replace native work. Expired admissions are not revived. Closing the page does not
 affect execution. A Core restart observes the same
 native receipt. If Core loses its workload heartbeat beyond the native lease
 window, coordination can quarantine the resource: the UI shows an unresolved
@@ -47,11 +51,16 @@ receipt and does not launch replacement work. Use native workload recovery;
 never clear quarantine solely because the reservation's estimated end passed.
 
 A speech-service restart interrupts its active native job. Its exclusive
-process lock proves the prior worker is gone before recording that interruption
-as a failure and removing its temporary spool. It never silently restarts a
+process lock, inherited by the downloader, proves the prior writer is gone before recording that interruption
+as a failure and removing its temporary spool. On Linux the downloader binds
+its lifetime to the speech parent with a parent-death signal and kills only its
+owned session, including Deno, if the parent exits abruptly. This crash-path
+contract is tested on Linux; Windows/macOS abrupt-child cleanup is not qualified. It never silently restarts a
 download/model run. The owner can retry after Core confirms the terminal receipt
 and resource release. Cancellation stays nonterminal while a native decoder is
-still running, and is checked between decoded segments. Cancellation intent is
+still running, and is checked between decoded segments. A terminal receipt is
+published only after temporary audio cleanup; the final cancellation check and
+completion receipt share the cancellation lock. Cancellation intent is
 durable in Core even during the dispatch race.
 
 The interface reports downloading, decoding, transcription, cancellation or
@@ -152,3 +161,16 @@ refresh, HTTP-server restart, actual stages, errors, cancellation, retry,
 timestamped reading and subtitle download. It downloads no YouTube video and
 loads no model. Real YouTube extraction and a real speech GPU still require
 separate admitted qualification with an owner-approved small fixture.
+
+## YouTube solver dependency
+
+"Restricted official solver" means the yt-dlp project's own companion package
+`yt-dlp-ejs` (0.8.0, pinned transitively by the selected downloader), not a
+YouTube-provided API or an OpenAI transcription component. The optional dependency
+file selects `yt-dlp[default,deno]==2026.10.26`, `deno==2.9.8` and
+`av==18.1.0`. EJS resolves ordinary public-player JavaScript media URL
+signatures. Deno executes its locally installed code with yt-dlp's restricted
+run options, without filesystem/network grants and with remote/npm component
+downloads disabled. No login cookies, DRM, authentication, geographic-restriction
+bypass or private video access is added. A refused video stays a visible failure.
+See the [upstream EJS setup guide](https://github.com/yt-dlp/yt-dlp/wiki/EJS).

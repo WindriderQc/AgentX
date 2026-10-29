@@ -53,6 +53,8 @@ def download(url, directory, max_bytes, max_seconds):
 
 
 if __name__ == "__main__":
+    from app.long_transcription_process import arm_parent_lifetime
+    arm_parent_lifetime()
     # Prevent environment proxy bypass through NO_PROXY and optional plugins.
     for key in list(os.environ):
         if key.lower() in ("no_proxy", "http_proxy", "https_proxy", "all_proxy"):

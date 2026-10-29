@@ -4,7 +4,7 @@
   const form = $('transcriptionForm'), dialog = $('transcriptDialog');
   const states = { queued: 'En attente', running: 'En cours', completed: 'Terminée', failed: 'Échec', cancelled: 'Annulée', uncertain: 'À vérifier' };
   const stages = { queued: 'En attente du créneau', accepted: 'Prise en charge', dispatching: 'Envoi au service vocal',
-    downloading: 'Téléchargement de l’audio', decoding: 'Préparation de l’audio', transcribing: 'Reconnaissance vocale',
+    downloading: 'Téléchargement de l’audio', decoding: 'Préparation de l’audio', transcribing: 'Reconnaissance vocale', cleaning: 'Nettoyage des fichiers temporaires',
     cancelling: 'Annulation demandée · arrêt après l’opération en cours', reconciling: 'Vérification du reçu sur le serveur',
     completed: 'Prête à lire', failed: 'Traitement arrêté sur erreur', admission: 'Ressources indisponibles', interrupted: 'Service redémarré · tentative interrompue', cancelled: 'Traitement annulé' };
   let offset = 0, busy = false, searchTimer, lastRows = [], fetchSequence = 0;

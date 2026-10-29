@@ -6,6 +6,7 @@ const schema = new mongoose.Schema({
   url: { type: String, required: true },
   language: String, timeZone: String, requestedAt: Date,
   retryOf: { type: String, default: null },
+  retryRequestId: { type: String, default: null, select: false },
   queueId: { type: String, default: null, index: true },
   state: { type: String, default: 'queued', index: true },
   stage: { type: String, default: 'queued' },

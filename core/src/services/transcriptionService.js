@@ -37,7 +37,8 @@ async function enroll(row) {
   }
   return job;
 }
-async function create(body) {
+async function create(body, { linkedRetry = false } = {}) {
+  if (body?.retryOf && !linkedRetry) throw contract.fail('Utilisez l’action Réessayer pour lier une tentative.');
   contract.config();
   const input = contract.intent(body);
   const prior = await Transcription.findById(input.id).lean();
@@ -88,7 +89,31 @@ async function retry(id, body) {
   if (!['failed', 'cancelled'].includes(row.state) || (row.queueId && !TERMINAL.includes((await queue.get(row.queueId)).state))) {
     throw contract.fail('Attendez la fin confirmée de la tentative avant de réessayer.', 409);
   }
-  return create({ requestKey: body.requestKey, url: row.url, language: row.language, timeZone: row.timeZone, retryOf: id });
+  const request = { requestKey: body.requestKey, url: row.url, language: row.language, timeZone: row.timeZone, retryOf: id };
+  const input = contract.intent(request);
+  const replay = await Transcription.findById(input.id).lean();
+  if (replay) return create(request, { linkedRetry: true });
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const parent = await Transcription.findById(id).select('+retryRequestId').lean();
+    const current = parent.retryRequestId;
+    if (current === input.id) return create(request, { linkedRetry: true });
+    if (current) {
+      const child = await Transcription.findById(current).lean();
+      if (!child) {
+        // Recover the already accepted retry intent after a crash between its
+        // parent CAS and child insert. Never substitute this caller's new key.
+        await create({ ...request, requestKey: current }, { linkedRetry: true });
+        throw contract.fail('La tentative déjà acceptée a été récupérée. Actualisez la bibliothèque.', 409);
+      }
+      if (!TERMINAL.includes(child.state) || (child.queueId && !TERMINAL.includes((await queue.get(child.queueId)).state))) {
+        throw contract.fail('Une nouvelle tentative est déjà active ou en préparation. Consultez la bibliothèque.', 409);
+      }
+    }
+    const claimed = await Transcription.updateOne({ _id: id, retryRequestId: current || null },
+      { $set: { retryRequestId: input.id } }, { writeConcern: WC });
+    if (claimed.modifiedCount) return create(request, { linkedRetry: true });
+  }
+  throw contract.fail('La tentative a changé. Actualisez la bibliothèque.', 409);
 }
 async function sweep() {
   if (sweeping) return;

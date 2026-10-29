@@ -179,3 +179,58 @@ it('renews active admission independently of slow or unavailable native receipt 
   expect(global.fetch.mock.calls).toHaveLength(calls);
   expect(starts).toBe(1);
 });
+
+it('admits only one active retry across tabs carrying different request identities', async () => {
+  const row = await service.create(input()); await service.cancel(row._id);
+  const results = await Promise.allSettled([
+    service.retry(row._id, { requestKey: crypto.randomUUID() }),
+    service.retry(row._id, { requestKey: crypto.randomUUID() })
+  ]);
+  expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+  expect(await Model.countDocuments({ retryOf: row._id })).toBe(1);
+});
+it('does not wrap subtitle hours after a day when the configured resource budget permits it', () => {
+  expect(srt([{ start: 90000.125, end: 90001.75, text: 'Long fixture' }])).toContain('25:00:00,125 --> 25:00:01,750');
+});
+
+it('does not revive expired admission during restart recovery or replay native work', async () => {
+  const row = await service.create(input()); await launch(row);
+  await Runtime.updateOne({ _id: 'runtime' }, { $set: { 'workloads.0.expiresAt': new Date(Date.now() - 1000) } });
+  expect(await executor.heartbeatActive()).toEqual({ renewed: 0, refused: 1 });
+  await expect(evidence.reconcile(row.queueId, 'restarted-observer')).rejects.toThrow();
+  expect((await service.get(row._id)).state).toBe('uncertain');
+  expect(starts).toBe(1);
+  expect((await Runtime.findById('runtime').lean()).workloads).toHaveLength(1);
+});
+it('replays a lost retry answer and allows another deliberate retry only after the previous child settles', async () => {
+  const row = await service.create(input()); await service.cancel(row._id);
+  const key = crypto.randomUUID();
+  const child = await service.retry(row._id, { requestKey: key });
+  expect((await service.retry(row._id, { requestKey: key }))._id).toBe(child._id);
+  await service.cancel(child._id);
+  const next = await service.retry(row._id, { requestKey: crypto.randomUUID() });
+  expect(next._id).not.toBe(child._id);
+  expect(await Model.countDocuments({ retryOf: row._id })).toBe(2);
+});
+
+it('renews the same persisted lease from a fresh Core process after restart', async () => {
+  const row = await service.create(input()); await launch(row);
+  const script = "const m=require('mongoose');(async()=>{await m.connect(process.env.TRANSCRIPTION_FIXTURE_MONGO,{autoCreate:false,autoIndex:false});const e=require('./src/services/transcriptionExecutor');console.log(JSON.stringify(await e.heartbeatActive()));await m.disconnect()})().catch(e=>{console.error(e.message);process.exitCode=1})";
+  const { execFile } = require('node:child_process');
+  const output = await new Promise((resolve,reject) => execFile(process.execPath, ['-e', script], { cwd: require('node:path').resolve(__dirname, '../..'),
+    env: { ...process.env, TRANSCRIPTION_FIXTURE_MONGO: process.env.MONGODB_URI_TEST } }, (error,stdout) => error ? reject(error) : resolve(stdout)));
+  expect(output).toContain('"renewed":1');
+  expect(starts).toBe(1);
+  expect((await Runtime.findById('runtime').lean()).workloads).toHaveLength(1);
+});
+
+it('repairs a crash between retry acceptance and child creation under the original identity', async () => {
+  const row = await service.create(input()); await service.cancel(row._id);
+  const accepted = crypto.randomUUID();
+  await Model.updateOne({ _id: row._id }, { $set: { retryRequestId: accepted } });
+  await expect(service.retry(row._id, { requestKey: crypto.randomUUID() })).rejects.toThrow('récupérée');
+  const child = await service.get(accepted);
+  expect(child.retryOf).toBe(row._id);
+  expect((await service.retry(row._id, { requestKey: accepted }))._id).toBe(accepted);
+  expect(await Model.countDocuments({ retryOf: row._id })).toBe(1);
+});

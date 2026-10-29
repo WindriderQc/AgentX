@@ -226,3 +226,101 @@ def test_capability_probe_never_starts_a_model_and_requires_private_storage(tmp_
     monkeypatch.delenv('VOIX_LONG_TRANSCRIPTIONS_DIR')
     assert client.get('/v1/audio/long-transcriptions/capabilities').status_code == 503
     native.store.close()
+
+
+@pytest.mark.skipif(__import__("sys").platform != "linux", reason="Linux parent-death/session contract")
+def test_abrupt_speech_exit_stops_downloader_and_solver_before_spool_cleanup(tmp_path):
+    import os
+    import signal
+    import subprocess
+    import sys
+    root = Path(__file__).resolve().parents[1]
+    marker = tmp_path / "owned-pids.json"
+    child_code = """
+import json, os, subprocess, sys, time
+from pathlib import Path
+from app.long_transcription_process import arm_parent_lifetime
+arm_parent_lifetime()
+solver = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+Path(os.environ['FIXTURE_PID_MARKER']).write_text(json.dumps([os.getpid(), solver.pid]))
+while True: time.sleep(.1)
+"""
+    parent_code = """
+import os, subprocess
+from pathlib import Path
+import app.long_transcription as module
+from app.cancel import CancelToken
+owner = module.Owner(Path(os.environ['FIXTURE_STORE_ROOT']))
+original = subprocess.Popen
+def fixture_process(args, **kwargs):
+    return original([os.environ['FIXTURE_PYTHON'], '-c', os.environ['FIXTURE_CHILD_CODE']], **kwargs)
+module.subprocess.Popen = fixture_process
+directory = owner.store.root / 'audio-owned'; directory.mkdir()
+owner.download({'url': 'https://www.youtube.com/watch?v=abcdefghijk'}, directory, CancelToken())
+"""
+    env = {**os.environ, "FIXTURE_PID_MARKER": str(marker), "FIXTURE_STORE_ROOT": str(tmp_path / "store"),
+           "FIXTURE_PYTHON": sys.executable, "FIXTURE_CHILD_CODE": child_code}
+    parent = subprocess.Popen([sys.executable, "-c", parent_code], cwd=root, env=env,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    identities = []
+    def active(pid):
+        try:
+            return Path("/proc", str(pid), "stat").read_text().split()[2] != "Z"
+        except FileNotFoundError:
+            return False
+    try:
+        for _ in range(100):
+            if marker.exists():
+                identities = json.loads(marker.read_text()); break
+            if parent.poll() is not None:
+                raise AssertionError(parent.stderr.read().decode())
+            time.sleep(.03)
+        assert len(identities) == 2, "Owned child and solver did not start"
+        parent.kill(); parent.wait(timeout=3)
+        for _ in range(100):
+            if not any(active(pid) for pid in identities):
+                break
+            time.sleep(.03)
+        assert not any(active(pid) for pid in identities), "Downloader or solver survived the speech owner"
+        restarted = Store(tmp_path / "store")
+        assert not (tmp_path / "store" / "audio-owned").exists()
+        restarted.close()
+    finally:
+        if parent.poll() is None:
+            parent.kill(); parent.wait(timeout=3)
+        if identities:
+            try:
+                os.killpg(identities[0], signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        parent.stderr.close()
+
+
+def test_completion_waits_for_spool_cleanup_and_cancel_can_win_at_that_boundary(tmp_path, monkeypatch):
+    import tempfile
+    import app.long_transcription as module
+    entered, release = threading.Event(), threading.Event()
+    real_directory = tempfile.TemporaryDirectory
+    class SlowCleanup(real_directory):
+        def __exit__(self, *args):
+            entered.set()
+            assert release.wait(3)
+            return super().__exit__(*args)
+    monkeypatch.setattr(module.tempfile, "TemporaryDirectory", SlowCleanup)
+    def download(row, directory, token):
+        audio(directory / "fixture.wav")
+        return {"path": "fixture.wav", "duration": 1, "title": "Synthetic cleanup fixture"}
+    owner = Owner(tmp_path, downloader=download, transcriber=lambda *_: "Synthetic result")
+    identity = str(uuid.uuid4())
+    try:
+        owner.start(identity, "https://www.youtube.com/watch?v=abcdefghijk", "auto")
+        assert entered.wait(2)
+        row = owner.store.get(identity)
+        assert row["state"] == "running" and row["stage"] == "cleaning"
+        assert "result" not in row
+        owner.cancel(identity)
+    finally:
+        release.set()
+    assert wait(owner, identity)["state"] == "cancelled"
+    assert not list(tmp_path.glob("audio-*"))
+    owner.store.close()

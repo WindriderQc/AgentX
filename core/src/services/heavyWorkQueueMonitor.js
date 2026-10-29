@@ -7,6 +7,7 @@ const logger = require('../../config/logger');
 let timer;
 let codingTimer;
 let transcriptionHeartbeatTimer;
+let transcriptionConnectedListener;
 let busy = false;
 
 // Observe existing receipts and dispatch only images explicitly accepted by
@@ -46,10 +47,15 @@ function start() {
   if (timer || process.env.NODE_ENV === 'test') return;
   timer = setInterval(sweep, 15000);
   timer.unref();
-  transcriptionHeartbeatTimer = setInterval(() => {
+  const renewTranscriptions = () => {
+    if (mongoose.connection.readyState !== 1) return;
     require('./transcriptionExecutor').heartbeatActive().catch(error =>
       logger.warn('Transcription admission heartbeat awaits reconciliation', { code: error.code || 'HEARTBEAT_UNAVAILABLE' }));
-  }, 20000);
+  };
+  transcriptionConnectedListener = renewTranscriptions;
+  mongoose.connection.on('connected', transcriptionConnectedListener);
+  renewTranscriptions();
+  transcriptionHeartbeatTimer = setInterval(renewTranscriptions, 20000);
   transcriptionHeartbeatTimer.unref();
   codingTimer = setInterval(() => {
     require('./pipelineCodingAutonomyService').tick().catch(error =>
@@ -59,6 +65,6 @@ function start() {
   }, 15000);
   codingTimer.unref();
 }
-function stop() { if (transcriptionHeartbeatTimer) clearInterval(transcriptionHeartbeatTimer); transcriptionHeartbeatTimer = null; if (timer) clearInterval(timer); timer = null; if (codingTimer) clearInterval(codingTimer); codingTimer = null; }
+function stop() { if (transcriptionConnectedListener) mongoose.connection.off('connected', transcriptionConnectedListener); transcriptionConnectedListener = null; if (transcriptionHeartbeatTimer) clearInterval(transcriptionHeartbeatTimer); transcriptionHeartbeatTimer = null; if (timer) clearInterval(timer); timer = null; if (codingTimer) clearInterval(codingTimer); codingTimer = null; }
 
 module.exports = { start, stop, sweep };

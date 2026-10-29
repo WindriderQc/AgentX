@@ -99,7 +99,8 @@ class Owner:
         # One owned session contains the downloader and restricted Deno solver.
         with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
             process = subprocess.Popen(args, stdout=output, stderr=errors, cwd=Path(__file__).parent.parent,
-                                       env={**os.environ, "YTDLP_NO_PLUGINS": "1"},
+                                       env={**os.environ, "YTDLP_NO_PLUGINS": "1", "VOIX_LONG_OWNER_PID": str(os.getpid())},
+                                       pass_fds=(self.store.lockfile.fileno(),) if os.name != "nt" else (),
                                        start_new_session=(os.name != 'nt'),
                                        creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP if os.name == 'nt' else 0))
             try:
@@ -162,15 +163,24 @@ class Owner:
                           "detectedLanguage": getattr(text, "language", None)}
                 if len(json.dumps(result).encode()) > 8 * 1024**2:
                     raise RuntimeError("Résultat trop volumineux pour le stockage configuré.")
+                self.store.update(identity, stage="cleaning")
+            # Publish completion only after the spool context has removed audio.
+            # The same lock linearizes the final cancellation check and receipt.
+            with self.thread_lock:
+                if token.is_set():
+                    raise RecognitionCancelled()
                 self.store.update(identity, state="completed", stage="completed", result=result, finishedAt=time.time())
         except RecognitionCancelled:
-            self.store.update(identity, state="cancelled", stage="cancelled", finishedAt=time.time())
+            with self.thread_lock:
+                self.store.update(identity, state="cancelled", stage="cancelled", finishedAt=time.time())
         except Exception:
             stage = (self.store.get(identity) or {}).get("stage")
             message = {"downloading": "Téléchargement impossible. Vérifiez que la vidéo est publique et que yt-dlp est disponible.",
                        "decoding": "Décodage audio impossible ou budget de ressources dépassé.",
+                       "cleaning": "Le nettoyage des fichiers temporaires a échoué. Vérifiez le stockage privé avec l’opérateur.",
                        "transcribing": "Reconnaissance indisponible. Vérifiez le modèle et les ressources du service vocal."}.get(stage, "Traitement interrompu.")
-            self.store.update(identity, state="failed", error=message, finishedAt=time.time())
+            with self.thread_lock:
+                self.store.update(identity, state="failed", error=message, finishedAt=time.time())
         finally:
             with self.thread_lock:
                 self.tokens.pop(identity, None)

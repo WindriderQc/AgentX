@@ -50,7 +50,8 @@ function config() {
 }
 const timestamp = seconds => {
   const ms = Math.max(0, Math.round(Number(seconds) * 1000));
-  return new Date(ms).toISOString().slice(11, 23).replace('.', ',');
+  const hours = Math.floor(ms / 3600000), minutes = Math.floor(ms / 60000) % 60, secs = Math.floor(ms / 1000) % 60;
+  return String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(secs).padStart(2, '0') + ',' + String(ms % 1000).padStart(3, '0');
 };
 function srt(segments = []) {
   return segments.map((s, i) => `${i + 1}\n${timestamp(s.start)} --> ${timestamp(s.end)}\n${s.text}\n`).join('\n');
