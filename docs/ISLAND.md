@@ -1,6 +1,6 @@
 # Île : un agent seul sur une île Clawblox
 
-Mis à jour le 2026-10-29 à 02:00 America/Toronto.
+Mis à jour le 2026-10-29 à 03:00 America/Toronto.
 
 On refait l'expérience du MIT *Is this machine playing?*
 ([arXiv 2610.07130](https://arxiv.org/abs/2610.07130)) : un agent sans tâche,
@@ -24,9 +24,9 @@ et l'exécuteur de file `island`. Elle remplace les scripts du prototype
            │ iframe                                                        ssh │ (ou local)
            ▼                                                                    ▼
  ┌──────────────────────────────────────────────────────────────────────────────────────────┐
- │ hôte d'exécution (devX par défaut)    island_runner.py                                    │
- │   île Clawblox (vue en direct)   bac à sable : Codex ── relais ──► Core /api/llm/v1        │
- │   clawblox app (relectures)      mémoire de l'agent entre les parties                      │
+ │ hôte d'exécution (UGStation prévu)    island_runner.py                                   │
+ │   île Clawblox (vue en direct)   bac à sable : Codex ── relais ──► Core /api/llm/v1      │
+ │   clawblox app (relectures)      mémoire de l'agent entre les parties                    │
  └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -118,11 +118,25 @@ Le résultat dans Core porte l'autorité `operator-attestation` (opération
 
 ## L'hôte d'exécution
 
-Le propriétaire n'a pas encore choisi où vit l'île : devX, une VM dédiée
-« AgentX world » ou UGFrank. Le code ne dépend pas de ce choix : l'outil de
-file parle à `integrations/island/island_runner.py` en local ou par SSH, avec
-une petite interface en JSON (`check`, `start`, `status`, `stop`, `memory`).
-Par défaut, l'instance pointe sur devX.
+Décision du 2026-10-29 : l'île vivra sur **UGStation**, directement sous
+Linux, sans VM (Dell OptiPlex 7020, i3-4130, 8 Go, SSD 480 Go, toujours
+allumé ; aujourd'hui borne de la cuisine, jusqu'à ce qu'UGSmall la remplace).
+Mesuré : l'île seule prend environ 32 Mo et 6 % d'un cœur ; un agent Codex
+de 0,2 à 0,5 Go. Les deux premiers essais ont tourné sur devX.
+
+Le code ne dépend pas de ce choix : l'outil de file parle à
+`integrations/island/island_runner.py` en local ou par SSH, avec une petite
+interface en JSON (`check`, `start`, `status`, `stop`, `memory`). L'adresse
+et l'accès SSH d'UGStation ne sont pas encore connus ; ils restent des
+réglages d'instance (`AGENTX_ISLAND_RUNNER=ssh:<cible>`).
+
+Préparation prévue sur UGStation (rien n'y est installé à ce jour) :
+
+- un compte Linux dédié aux agents, distinct du compte de la borne ;
+- Clawblox avec les correctifs AgentX (bac à sable bubblewrap isolé) ;
+- un pare-feu sortant qui n'autorise que la porte de Core ;
+- `island_runner.py`, le venv Clawblox et la configuration ci-dessous sous ce
+  compte, avec le serveur de relecture `clawblox app`.
 
 Réglages de l'outil de file (environnement de l'hôte d'opération) :
 
@@ -223,6 +237,14 @@ Le port de l'île en direct sert aussi les commandes du monde (`/join`,
 `/input`). L'onglet ne lie que le spectateur ; l'exposition de ce port sur le
 réseau maison reste celle du prototype.
 
+**Vue 3D interchangeable.** L'onglet ne connaît que trois choses par partie :
+ce qu'on peut montrer, le lien en direct et le lien de relecture. Elles
+viennent d'un « rendu » (`benchmark/src/services/island/islandViews.js`) ;
+aujourd'hui le seul est celui de Clawblox. Un autre rendu, par exemple une
+vue GraphysX-Web alimentée par l'état des objets de Clawblox (qui reste
+maître de la physique), s'y ajouterait avec les mêmes trois fonctions, sans
+toucher à l'onglet.
+
 ## Conception (pas encore construite) : classer « a joué » contre « neuf »
 
 L'article mesure si le jeu libre rend l'agent meilleur sur quatre épreuves
@@ -281,7 +303,7 @@ file comme une partie.
   pour les longues parties.
 - Les étiquettes de comportement (bouton **Behaviours** de la relecture)
   demandent un modèle qui relit les parties : travail lourd, pas encore fait.
-- La vue 3D est celle de Clawblox. Une vue GraphysX attend la décision sur
-  son placement.
+- La vue 3D est celle de Clawblox. Une vue GraphysX-Web se brancherait comme
+  second rendu ; elle attend la décision sur le placement de GraphysX.
 - Remplacer Codex par un autre harnais (DSH, OpenCode) reste une décision du
   propriétaire.

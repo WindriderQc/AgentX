@@ -53,13 +53,14 @@ describe('island run service', () => {
   });
 
   it('lists recorded runs joined with Core queue state, live link only while running', async () => {
-    await islands.recordReport(ID, report());
+    await islands.recordReport(ID, report({ memory: { 'SEMANTIC_MEMORY.md': { bytes: 4, text: 'note' } } }));
     const waiting = job({ id: '00000000-0000-4000-8000-0000000000a2', state: 'reserved' });
     const other = { id: '00000000-0000-4000-8000-0000000000a3', kind: 'profiler', executor: { hostId: 'h' } };
     const data = await islands.listRuns({ env, queue: async () => ({ jobs: [job(), waiting, other] }) });
     expect(data.runs.map(run => run.id)).toEqual([ID, waiting.id]);
     expect(data.runs[0]).toMatchObject({ liveView: 'http://runner.lan:18080/?viewport=1&spectator_token=abc', replayable: true, resumeCount: 2,
-      queue: { state: 'running' } });
+      hasMemory: true, queue: { state: 'running' } });
+    expect(data.view).toEqual({ live: true, replay: true });
     expect(data.runs[1]).toMatchObject({ agent: 'Eko', model: 'agentx-primary', liveView: null, queue: { state: 'reserved' } });
     const unread = await islands.listRuns({ env: {}, queue: async () => { throw new Error('down'); } });
     expect(unread).toMatchObject({ queueRead: false, view: { live: false, replay: false } });
@@ -111,11 +112,20 @@ describe('island run service', () => {
     await expect(islands.openReplay(ID, { env, fetchImpl: evil })).rejects.toMatchObject({ statusCode: 502 });
   });
 
-  it('accepts only credential-free origins for the view settings', () => {
-    expect(islands.viewConfig({ AGENTX_ISLAND_VIEW_ORIGIN: 'http://u:p@runner.lan', AGENTX_ISLAND_REPLAY_URL: 'http://runner.lan:18092/x' }))
-      .toEqual({ liveOrigin: null, replayUrl: null });
-    expect(islands.viewConfig({ AGENTX_ISLAND_VIEW_ORIGIN: 'http://runner.lan:80', AGENTX_ISLAND_REPLAY_URL: 'https://runner.lan' }))
-      .toEqual({ liveOrigin: 'http://runner.lan', replayUrl: 'https://runner.lan' });
+  it('keeps the 3D views behind one renderer interface with credential-free origins', () => {
+    const { islandViews, RENDERERS } = require('../../src/services/island/islandViews');
+    const running = { phase: 'running', liveView: { port: 18080, path: '/?t=1' } };
+    const refused = islandViews({ AGENTX_ISLAND_VIEW_ORIGIN: 'http://u:p@runner.lan', AGENTX_ISLAND_REPLAY_URL: 'http://runner.lan:18092/x' });
+    expect(refused.available()).toEqual({ live: false, replay: false });
+    expect(refused.liveUrl(running)).toBeNull();
+    const views = islandViews({ AGENTX_ISLAND_VIEW_ORIGIN: 'http://runner.lan:80', AGENTX_ISLAND_REPLAY_URL: 'https://runner.lan' });
+    expect(views.available()).toEqual({ live: true, replay: true });
+    expect(views.liveUrl(running)).toBe('http://runner.lan:18080/?t=1');
+    expect(views.liveUrl({ ...running, phase: 'finished' })).toBeNull();
+    for (const make of Object.values(RENDERERS)) {
+      expect(Object.keys(make({})).sort()).toEqual(['available', 'liveUrl', 'name', 'replayUrl']);
+    }
+    expect(() => islandViews({}, 'unknown')).toThrow(/Unknown island renderer/);
   });
 });
 

@@ -12,6 +12,7 @@
 
 const IslandRun = require('../../../models/IslandRun');
 const { islandExecutor, islandEstimatedMinutes, PRINCIPAL_ALIAS } = require('../../../../shared/islandRun.cjs');
+const { islandViews } = require('./islandViews');
 
 const SOURCE_REF = 'benchmark-island-tab';
 const UUID = /^[a-f0-9-]{36}$/;
@@ -36,24 +37,6 @@ function defaults(deps = {}) {
   };
 }
 
-/** Browser-facing addresses of the runner host, from the instance settings. */
-function viewConfig(env = process.env) {
-  const origin = value => {
-    if (!value) return null;
-    try {
-      const url = new URL(value);
-      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) return null;
-      return url;
-    } catch { return null; }
-  };
-  const live = origin(env.AGENTX_ISLAND_VIEW_ORIGIN);
-  const replay = origin(env.AGENTX_ISLAND_REPLAY_URL);
-  return {
-    liveOrigin: live && !live.port ? `${live.protocol}//${live.hostname}` : null,
-    replayUrl: replay ? replay.origin : null
-  };
-}
-
 function text(value, max = 500) {
   return typeof value === 'string' ? value.slice(0, max) : undefined;
 }
@@ -75,8 +58,7 @@ function queueView(job) {
 
 function runRow(doc, job, view) {
   const executor = job?.executor || {};
-  const liveView = doc?.liveView?.port && doc?.liveView?.path && view.liveOrigin && doc.phase === 'running'
-    ? `${view.liveOrigin}:${doc.liveView.port}${doc.liveView.path}` : null;
+  const liveView = doc ? view.liveUrl(doc) : null;
   return {
     id: doc?._id || job.id,
     title: doc?.title || job?.title || null,
@@ -94,7 +76,7 @@ function runRow(doc, job, view) {
     timeZone: doc?.timeZone || null,
     resumeCount: doc?.resumeCount || 0,
     liveView,
-    replayable: Boolean(doc?.recording && view.replayUrl),
+    replayable: Boolean(doc?.recording && view.available().replay),
     hasMemory: Boolean(doc?.memory),
     receipt: doc?.receipt || null,
     queue: queueView(job),
@@ -114,25 +96,28 @@ async function readQueue(d) {
 /** Every island run: recorded runs and island requests still in Core's queue. */
 async function listRuns(deps = {}) {
   const d = defaults(deps);
-  const view = viewConfig(d.env);
+  const view = islandViews(d.env);
   const [docs, queue] = await Promise.all([
-    IslandRun.find({}).select('-memory -events').sort({ createdAt: -1 }).limit(200).lean(),
+    // Memory sizes stay so the row knows a memory exists; the texts do not.
+    IslandRun.find({}).select('-events -memory.soul.text -memory.episodic.text -memory.semantic.text')
+      .sort({ createdAt: -1 }).limit(200).lean(),
     readQueue(d)
   ]);
   const jobs = new Map(queue.jobs.map(job => [job.id, job]));
   const rows = docs.map(doc => runRow(doc, jobs.get(doc._id), view));
   for (const job of queue.jobs) if (!docs.some(doc => doc._id === job.id)) rows.push(runRow(null, job, view));
   rows.sort((a, b) => String(b.startedAt || b.requestedAt || '').localeCompare(String(a.startedAt || a.requestedAt || '')));
-  return { queueRead: queue.read, view: { live: Boolean(view.liveOrigin), replay: Boolean(view.replayUrl) }, runs: rows };
+  return { queueRead: queue.read, view: view.available(), runs: rows };
 }
 
 async function getRun(id, deps = {}) {
   if (!UUID.test(id || '')) throw new IslandError('Run id needs a queue request id');
   const d = defaults(deps);
-  const [doc, queue] = await Promise.all([IslandRun.findById(id).select('-memory').lean(), readQueue(d)]);
+  const [doc, queue] = await Promise.all([
+    IslandRun.findById(id).select('-memory.soul.text -memory.episodic.text -memory.semantic.text').lean(), readQueue(d)]);
   const job = queue.jobs.find(item => item.id === id);
   if (!doc && !job) throw new IslandError('No island run with this id', 404);
-  return { ...runRow(doc, job, viewConfig(d.env)), events: doc?.events || [], queueRead: queue.read };
+  return { ...runRow(doc, job, islandViews(d.env)), events: doc?.events || [], queueRead: queue.read };
 }
 
 /** The memory files a run left, and the agent's other runs that have some. */
@@ -241,22 +226,12 @@ async function launch(input = {}, deps = {}) {
     next: 'The start still waits for the owner (island-watch or run on the operator host) and Core admission.' };
 }
 
-/** Open a run's recording in the runner's Clawblox replay server. */
+/** Open a run's recording through the configured renderer (islandViews.js). */
 async function openReplay(id, deps = {}) {
   const d = defaults(deps);
-  const view = viewConfig(d.env);
-  if (!view.replayUrl) throw new IslandError('No replay server is configured (AGENTX_ISLAND_REPLAY_URL)', 409);
   if (!UUID.test(id || '')) throw new IslandError('Run id needs a queue request id');
-  const doc = await IslandRun.findById(id).select('recording').lean();
-  if (!doc?.recording) throw new IslandError('This run has no recording yet', 404);
-  const response = await d.fetchImpl(`${view.replayUrl}/api/open-replay`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: doc.recording }), signal: AbortSignal.timeout(20000)
-  });
-  if (!response.ok) throw new IslandError(`The replay server refused: HTTP ${response.status}`, 502);
-  const answer = await response.json();
-  if (typeof answer.url !== 'string' || !/^\/[\w/.-]*$/.test(answer.url)) throw new IslandError('The replay server gave no session', 502);
-  return { src: `${view.replayUrl}${answer.url}`, agentLog: Boolean(answer.agent_log) };
+  const doc = await IslandRun.findById(id).select('recording phase').lean();
+  return islandViews(d.env).replayUrl(doc, { fetchImpl: d.fetchImpl });
 }
 
-module.exports = { IslandError, SOURCE_REF, viewConfig, listRuns, getRun, getMemory, recordReport, launch, openReplay };
+module.exports = { IslandError, SOURCE_REF, listRuns, getRun, getMemory, recordReport, launch, openReplay };
