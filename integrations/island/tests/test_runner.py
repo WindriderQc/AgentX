@@ -114,7 +114,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(second['memoryFrom'],str(self.root/'run'))
         self.assertNotIn('synthetic-upstream-secret',json.dumps(second))
         self.assertTrue(self.agent_env['CLAWBLOX_NET_ALLOW'].startswith('127.0.0.1:'))
-        self.assertEqual(set(self.agent_env),{'CLAWBLOX_NET_ALLOW','AGENTX_LLM_CODEX_TOKEN','AGENTX_NETCHECK_PORT','AGENTX_NETCHECK_BLOCKED_URLS'})
+        self.assertEqual(set(self.agent_env),{'CLAWBLOX_NET_ALLOW','AGENTX_LLM_CODEX_TOKEN','AGENTX_NETCHECK_PORT','AGENTX_NETCHECK_BLOCKED_URLS','AGENTX_NETCHECK_HARNESS','AGENTX_NETCHECK_INFERENCE','AGENTX_NETCHECK_OTHER_INFERENCE'})
         with self.assertRaises(FileExistsError): self.run_episode()
 
     def test_symlink_memory_is_refused(self):

@@ -19,7 +19,11 @@ beforeEach(async () => { await Promise.all([Queue, Runtime].map(model => model.d
 
 test('the island executor is typed: defaults explicit; unknown fields, short time and model names refused', () => {
   const { request: saved } = validateRequest(request());
-  expect(saved.executor).toEqual({ ...executor, memory: 'continue', world: 'mesa-island' });
+  expect(saved.executor).toEqual({ ...executor, memory: 'continue', world: 'mesa-island', harness: 'codex' });
+  for (const harness of ['dsh', 'pi']) {
+    expect(validateRequest(request({ executor: { ...executor, harness } })).request.executor.harness).toBe(harness);
+  }
+  expect(() => validateRequest(request({ executor: { ...executor, harness: 'claude' } }))).toThrow(/codex, dsh or pi/);
   expect(() => validateRequest(request({ estimatedMinutes: 60 }))).toThrow(/at least 70/);
   expect(() => validateRequest(request({ executor: { ...executor, model: 'any-model' } }))).toThrow(/unsupported fields/);
   expect(() => validateRequest(request({ executor: { ...executor, command: 'rm -rf /' } }))).toThrow(/unsupported fields/);

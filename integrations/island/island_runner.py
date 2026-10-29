@@ -17,10 +17,10 @@ Actions:
 A run directory is created once. Starting an existing run id refuses, so a
 lost answer is resolved with `status`, never by starting again.
 
-The agent is the Codex CLI driven by Clawblox. It thinks through Core's
-OpenAI-compatible gateway with the principal alias, never a concrete model.
-`start --netcheck` replaces Codex by a probe that checks the sandbox; it
-invokes no model.
+The agent is a coding harness driven by Clawblox: Codex (default), DSH or pi
+(`--harness`). It thinks through Core's OpenAI-compatible gateway with the
+principal alias, never a concrete model. `start --netcheck` replaces the
+harness by a probe that checks the sandbox; it invokes no model.
 """
 from __future__ import annotations
 
@@ -45,6 +45,7 @@ DEFAULT_CONFIG = Path.home() / ".config" / "agentx" / "island-runner.json"
 RUN_ID = re.compile(r"^[a-f0-9-]{36}$")
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 WORLD = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+HARNESSES = tuple(episode.HARNESSES)
 MEMORY_FILES = ("SOUL.md", "EPISODIC_MEMORY.jsonl", "SEMANTIC_MEMORY.md")
 TEMPLATE_FILES = ("SOUL.md", "EPISODIC_MEMORY.md", "SEMANTIC_MEMORY.md")
 MAX_MEMORY_BYTES = 256 * 1024
@@ -63,6 +64,9 @@ DEFAULTS = {
     "maxNudges": 30,
     "episodeMinutes": 60,
     "netcheckBlocked": [],
+    # dsh/pi entries inside their installed node_modules trees, e.g.
+    # {"pi": "/opt/agentx-island/harness/pi-1.2.0/node_modules/.bin/pi"}
+    "harnesses": {},
 }
 
 
@@ -134,6 +138,25 @@ def templates_dir(config: dict) -> Path:
 
 def memory_store(config: dict, agent: str) -> Path:
     return runs_root(config) / "memory" / agent.lower()
+
+
+def harness_binary(config: dict, harness: str) -> Path | None:
+    value = config.get("codex") if harness == "codex" else (config.get("harnesses") or {}).get(harness)
+    return Path(value).expanduser() if isinstance(value, str) and value else None
+
+
+def harness_problems(config: dict, harness: str, version) -> list[str]:
+    """Why this runner cannot play this harness (binary, adapter version)."""
+    problems = []
+    if harness not in HARNESSES:
+        return [f"unknown harness {harness}"]
+    binary = harness_binary(config, harness)
+    if not binary or not binary.is_file():
+        problems.append("codex missing" if harness == "codex" else f"{harness} binary missing")
+    needed = episode.HARNESSES[harness][2]
+    if not isinstance(version, int) or version < needed:
+        problems.append(f"Clawblox isolation patch v{needed} required" + ("" if harness == "codex" else f" for {harness}"))
+    return problems
 
 
 # ── pure helpers (unit tested) ───────────────────────────────────────────────
@@ -234,22 +257,24 @@ def action_check(config: dict, _args) -> dict:
     for name in (*TEMPLATE_FILES, "SYSTEM_PROMPT.md"):
         if not (templates_dir(config) / name).is_file():
             problems.append(f"agent template missing: {name}")
-    for key in ("codex", "tokenFile"):
-        if not config.get(key) or not Path(config[key]).expanduser().is_file():
-            problems.append(f"{key} missing")
+    if not config.get("tokenFile") or not Path(config["tokenFile"]).expanduser().is_file():
+        problems.append("tokenFile missing")
     if not config.get("gatewayHost") and not config.get("gatewayBaseUrl"):
         problems.append("gatewayHost missing")
     socket_problem = relay_socket_problem(config, getattr(_args, "agent", None) or "Eko")
     if socket_problem:
         problems.append(socket_problem)
+    version = 0
     try:
         import clawblox
-        if getattr(clawblox, "agentx_isolation_version", lambda: 0)() != 1:
-            problems.append("Clawblox isolation patch v1 required")
+        version = getattr(clawblox, "agentx_isolation_version", lambda: 0)()
     except ImportError:
         problems.append("the clawblox Python module is not importable by this interpreter")
+    harness = getattr(_args, "harness", None) or "codex"
+    problems.extend(harness_problems(config, harness, version))
+    playable = [name for name in HARNESSES if not harness_problems(config, name, version)]
     return {"ready": not problems, "problems": problems, "activeRun": active_run(config),
-            "worldPort": config["worldPort"], "model": PRINCIPAL_ALIAS}
+            "worldPort": config["worldPort"], "model": PRINCIPAL_ALIAS, "harness": harness, "harnesses": playable}
 
 
 def action_start(config: dict, args) -> dict:
@@ -267,6 +292,11 @@ def start_locked(config: dict, args) -> dict:
         raise RunnerError("INVALID", "world needs a world directory name")
     if args.memory not in ("continue", "fresh"):
         raise RunnerError("INVALID", "memory needs continue or fresh")
+    if args.harness not in HARNESSES:
+        raise RunnerError("INVALID", "harness needs " + ", ".join(HARNESSES))
+    # Codex keeps its historical path; another harness must be installed before any file.
+    if args.harness != "codex" and not args.netcheck and not harness_binary(config, args.harness):
+        raise RunnerError("INVALID", f"harness {args.harness} is not installed on this runner")
     if not (5 <= args.minutes <= 720) and not args.netcheck:
         raise RunnerError("INVALID", "minutes needs 5 to 720")
     if not args.netcheck and not (args.context_window and args.context_window > 0):
@@ -285,7 +315,7 @@ def start_locked(config: dict, args) -> dict:
         run.mkdir()
     except FileExistsError:
         raise RunnerError("RUN_EXISTS", "this run id already exists; read its status, never start it again")
-    request = {"runId": args.run_id, "dispatchId": args.dispatch_id, "agent": args.agent,
+    request = {"runId": args.run_id, "dispatchId": args.dispatch_id, "agent": args.agent, "harness": args.harness,
                "minutes": args.minutes, "memory": args.memory, "world": args.world,
                "contextWindow": args.context_window, "netcheck": bool(args.netcheck), "requestedAt": now_iso()}
     write_json(run / "request.json", request)
@@ -300,7 +330,7 @@ def start_locked(config: dict, args) -> dict:
     state["pid"] = child.pid
     write_json(run / "state.json", state)
     write_json(runs_root(config) / "active.json", {"runId": args.run_id, "since": request["requestedAt"]})
-    return {"runId": args.run_id, "dispatchId": args.dispatch_id, "phase": "starting", "pid": child.pid}
+    return {"runId": args.run_id, "dispatchId": args.dispatch_id, "harness": args.harness, "phase": "starting", "pid": child.pid}
 
 
 def agent_messages(run: Path, agent: str | None, limit: int = AGENT_MESSAGES) -> list[dict]:
@@ -373,6 +403,7 @@ def describe(config: dict, run_id: str) -> dict:
         except RunnerError: process_ok, leftover = False, None
     return {
         "runId": run_id, "dispatchId": request.get("dispatchId"), "agent": request.get("agent"),
+        "harness": request.get("harness", "codex"),
         "minutes": request.get("minutes"), "memory": request.get("memory"), "world": request.get("world"),
         "netcheck": request.get("netcheck", False), "model": "netcheck" if request.get("netcheck") else PRINCIPAL_ALIAS,
         "phase": phase, "terminal": phase in ("finished", "interrupted"), "alive": alive,
@@ -434,15 +465,20 @@ def action_supervise(config: dict, args) -> dict:
     try:
         state["memorySource"] = seed_workspace(workspace, templates, store, request["memory"])
         save()
-        if config.get("clawbloxBin"):
-            os.environ["PATH"] = str(Path(config["clawbloxBin"]).expanduser()) + os.pathsep + os.environ.get("PATH", "")
+        # nodeBin: a Node runtime for the Node harnesses (pi needs >= 22.19), ahead of the system one.
+        for key in ("nodeBin", "clawbloxBin"):
+            if config.get(key):
+                os.environ["PATH"] = str(Path(config[key]).expanduser()) + os.pathsep + os.environ.get("PATH", "")
         a = episode.parser().parse_args(["--run-dir", str(run), "--templates-dir", str(templates),
                                         "--world-dir", str(Path(config["worldsRoot"]).expanduser() / request["world"])])
         a.name, a.minutes, a.netcheck = request["agent"], float(request["minutes"]), request["netcheck"]
         a.port, a.gateway_guest_port = int(config["worldPort"]), int(config["gatewayGuestPort"])
         a.gateway_base_url = config.get("gatewayBaseUrl") or "https://" + config.get("gatewayHost", "") + "/api/llm/v1"
         a.token_file = Path(config["tokenFile"]).expanduser() if config.get("tokenFile") else None
-        a.codex = Path(config["codex"]).expanduser() if config.get("codex") else None
+        a.harness = request.get("harness", "codex")
+        a.codex = harness_binary(config, "codex")
+        a.harness_bin = harness_binary(config, a.harness) if a.harness != "codex" else None
+        a.max_output_tokens = config.get("maxOutputTokens")
         a.context_window = request.get("contextWindow")
         for field, key in [("memory_warning_minutes", "memoryWarningMinutes"), ("startup_seconds", "startupSeconds"),
                            ("stall_after_turn_seconds", "stallAfterTurnSeconds"), ("stall_idle_seconds", "stallIdleSeconds"),
@@ -483,11 +519,12 @@ def parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--run-id")
     p.add_argument("--dispatch-id")
     p.add_argument("--agent", default="Eko")
+    p.add_argument("--harness", default="codex", help="codex, dsh or pi")
     p.add_argument("--minutes", type=int, default=60)
     p.add_argument("--memory", default="continue")
     p.add_argument("--world", default="mesa-island")
     p.add_argument("--context-window", type=int)
-    p.add_argument("--netcheck", action="store_true", help="replace Codex by the sandbox probe; no inference")
+    p.add_argument("--netcheck", action="store_true", help="replace the harness by the sandbox probe; no inference")
     return p.parse_args(argv)
 
 

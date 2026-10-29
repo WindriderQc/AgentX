@@ -12,8 +12,10 @@ from pathlib import Path
 
 REQUIRED_CHECKS = {"world", "llm-auth-required", "llm-authorized", "core-health", "core-queue",
                    "core-config", "llm-method", "encoded-path", "llm-query", "netcheck-no-inference",
-                   "docker-socket", "owner-home", "owner-auth", "host-processes", "operator-token",
-                   "world-internal-url"}
+                   "inference-route-exclusive", "docker-socket", "owner-home", "owner-auth", "host-processes",
+                   "operator-token", "world-internal-url"}
+# DSH and pi read a generated provider config: it must name only the local relay and no secret.
+HARNESS_CHECKS = {"codex": set(), "dsh": {"harness-config"}, "pi": {"harness-config"}}
 
 MEMORY = ("SOUL.md", "EPISODIC_MEMORY.md", "SEMANTIC_MEMORY.md", "EPISODIC_MEMORY.jsonl")
 
@@ -94,13 +96,15 @@ def pane_alive(started):
     return result.returncode == 0 and result.stdout.strip() == "0"
 
 
-def netcheck_result(workspace: Path):
+def netcheck_result(workspace: Path, harness: str = "codex"):
     path = workspace / "netcheck.json"
     if not path.is_file(): raise RuntimeError("netcheck has no terminal result")
     value = json.loads(path.read_text())
     checks = value.get("checks")
+    required = REQUIRED_CHECKS | HARNESS_CHECKS[harness]
     if (value.get("schema") != "agentx.island-netcheck/v1" or not isinstance(checks, list)
             or not checks or any(not isinstance(item, dict) or item.get("passed") is not True for item in checks)
-            or not REQUIRED_CHECKS.issubset({item.get("name") for item in checks})):
+            or not required.issubset({item.get("name") for item in checks})
+            or value.get("harness", "codex") != harness):
         raise RuntimeError("netcheck failed or incomplete")
     return value

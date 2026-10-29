@@ -9,6 +9,7 @@ const STATES = {
 };
 const PHASES = { queued: 'dans la file', starting: 'démarrage', running: 'en cours', stopping: 'arrêt', finished: 'terminée', interrupted: 'interrompue' };
 const KINDS = { thought: 'pense', say: 'dit', command: 'commande' };
+const HARNESS_LABELS = { codex: 'Codex', dsh: 'DSH', pi: 'Pi' };
 const $ = id => document.getElementById(id);
 
 export function escapeHtml(value) {
@@ -63,7 +64,7 @@ export function stateLabel(run) {
 /** Resumes, receipts and the run record: shown when the row is opened. */
 export function runDetailHtml(run) {
   const items = [
-    `${escapeHtml(run.agent || '')} · mémoire ${run.memoryMode === 'fresh' ? 'neuve' : 'continue'}`,
+    `${escapeHtml(run.agent || '')} · ${escapeHtml(HARNESS_LABELS[run.harness] || 'Codex')} · mémoire ${run.memoryMode === 'fresh' ? 'neuve' : 'continue'}`,
     `Relances : ${escapeHtml(run.resumeCount ?? 0)}`,
     run.queue?.reservation?.start && !run.startedAt ? `Créneau : ${escapeHtml(when(run.queue.reservation.start, run.timeZone))}` : '',
     run.outcome && run.outcome !== 'completed' ? `Issue : ${escapeHtml(run.outcome)}` : '',
@@ -183,7 +184,7 @@ function bind() {
     try {
       const data = (await apiFetch(`${API}/launch`, { method: 'POST', body: {
         clientKey: crypto.randomUUID(), agent: form.get('agent'), minutes: Number(form.get('minutes')),
-        memory: form.get('memory'), when: form.get('when') } })).data;
+        memory: form.get('memory'), harness: form.get('harness') || 'codex', when: form.get('when') } })).data;
       result.textContent = data.placed
         ? `Demande ${data.id} inscrite, créneau ${when(data.placed.start)}. Le départ attend ton approbation et l’admission de Core.`
         : `Demande ${data.id} inscrite (${STATES[data.state] || data.state}). ${data.note || ''}`;

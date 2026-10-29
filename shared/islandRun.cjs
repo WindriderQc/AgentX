@@ -17,6 +17,9 @@ const MAX_MINUTES = 720;
 // World start, agent stop and release proof around the agent's own time.
 const OVERHEAD_MINUTES = 10;
 const MEMORY_MODES = Object.freeze(['continue', 'fresh']);
+// The coding harness that plays: Codex (default), DeepSeek Harness or pi. All
+// three think with the principal alias through the run's capability relay.
+const HARNESSES = Object.freeze(['codex', 'dsh', 'pi']);
 const MEMORY_FILES = Object.freeze(['SOUL.md', 'EPISODIC_MEMORY.jsonl', 'SEMANTIC_MEMORY.md']);
 const NAME = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
 const WORLD = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -32,7 +35,7 @@ function isIslandExecutor(executor) {
 /** Validate an island executor; returns it with defaults made explicit. */
 function islandExecutor(executor) {
   if (!executor || typeof executor !== 'object' || Array.isArray(executor)) throw invalid('island executor required');
-  const allowed = ['mode', 'receiptRef', 'agent', 'minutes', 'memory', 'world'];
+  const allowed = ['mode', 'receiptRef', 'agent', 'minutes', 'memory', 'world', 'harness'];
   if (Object.keys(executor).some(key => !allowed.includes(key))) throw invalid('island executor contains unsupported fields');
   if (executor.mode !== ISLAND_MODE) throw invalid('island executor needs mode "island"');
   const receiptRef = executor.receiptRef;
@@ -49,7 +52,9 @@ function islandExecutor(executor) {
   if (!MEMORY_MODES.includes(memory)) throw invalid('island memory needs continue or fresh');
   const world = executor.world === undefined ? 'mesa-island' : executor.world;
   if (typeof world !== 'string' || !WORLD.test(world)) throw invalid('island world needs a world directory name');
-  return { mode: ISLAND_MODE, receiptRef: receiptRef.trim(), agent, minutes, memory, world };
+  const harness = executor.harness === undefined ? 'codex' : executor.harness;
+  if (!HARNESSES.includes(harness)) throw invalid('island harness needs codex, dsh or pi');
+  return { mode: ISLAND_MODE, receiptRef: receiptRef.trim(), agent, minutes, memory, world, harness };
 }
 
 /** The queue time an island run needs: its own minutes plus start and release. */
@@ -59,5 +64,5 @@ function islandEstimatedMinutes(minutes) {
 
 module.exports = {
   ISLAND_MODE, PRINCIPAL_ALIAS, RECEIPT_CONTRACT, RUNNER_CONTRACT, MIN_MINUTES, MAX_MINUTES,
-  OVERHEAD_MINUTES, MEMORY_MODES, MEMORY_FILES, isIslandExecutor, islandExecutor, islandEstimatedMinutes
+  OVERHEAD_MINUTES, MEMORY_MODES, MEMORY_FILES, HARNESSES, isIslandExecutor, islandExecutor, islandEstimatedMinutes
 };

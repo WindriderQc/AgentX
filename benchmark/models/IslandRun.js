@@ -21,6 +21,7 @@ const IslandRunSchema = new mongoose.Schema({
   agent: { type: String, required: true },
   minutes: Number,
   memoryMode: { type: String, enum: ['continue', 'fresh'] },
+  harness: { type: String, enum: ['codex', 'dsh', 'pi'], default: 'codex' },
   world: String,
   // The alias the agent thinks with; never a concrete model.
   model: { type: String, enum: ['agentx-primary', 'netcheck', null], default: null },
