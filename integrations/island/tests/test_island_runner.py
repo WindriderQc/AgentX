@@ -95,6 +95,44 @@ class Memory(Fixture):
         self.assertIsNone(files["SOUL.md"])
 
 
+class AgentMessages(Fixture):
+    def rollout(self, records):
+        sessions = self.root / "runs" / RUN / "agents" / "eko" / "sandbox-home" / ".codex" / "sessions" / "2026" / "10" / "29"
+        sessions.mkdir(parents=True)
+        (sessions / "rollout.jsonl").write_text("\n".join(json.dumps(r) for r in records) + "\n")
+
+    def test_thoughts_words_and_commands_only_bounded_and_elided(self):
+        item = lambda payload, at="2026-10-29T22:04:14Z": {"timestamp": at, "type": "response_item", "payload": payload}
+        self.rollout([
+            item({"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "system prompt"}]}),
+            item({"type": "reasoning", "summary": [{"type": "summary_text", "text": "Read my memory first."}]}),
+            item({"type": "function_call", "name": "exec_command",
+                  "arguments": json.dumps({"cmd": "curl -H 'X-Session: s' http://world/observe " + "A" * 60})}),
+            item({"type": "function_call_output", "output": "secret world dump"}),
+            item({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Both mysteries solved."}]}),
+            {"type": "event_msg", "payload": {"type": "token_count"}},
+            "not a dict",
+        ])
+        messages = runner.agent_messages(self.root / "runs" / RUN, "Eko")
+        self.assertEqual([m["kind"] for m in messages], ["thought", "command", "say"])
+        self.assertEqual(messages[0]["text"], "Read my memory first.")
+        self.assertNotIn("A" * 40, messages[1]["text"])
+        self.assertTrue(messages[1]["text"].endswith("…"))
+        self.assertNotIn("system prompt", json.dumps(messages))
+        self.assertNotIn("secret world dump", json.dumps(messages))
+
+    def test_limit_length_and_missing_sessions(self):
+        many = [{"timestamp": "t", "type": "response_item",
+                 "payload": {"type": "reasoning", "summary": [{"text": f"{i} " + "word " * 400}]}} for i in range(60)]
+        self.rollout(many)
+        messages = runner.agent_messages(self.root / "runs" / RUN, "Eko")
+        self.assertEqual(len(messages), runner.AGENT_MESSAGES)
+        self.assertTrue(messages[-1]["text"].startswith("59 "))
+        self.assertTrue(all(len(m["text"]) <= runner.AGENT_TEXT for m in messages))
+        self.assertEqual(runner.agent_messages(self.root / "runs" / "nothing", "Eko"), [])
+        self.assertEqual(runner.agent_messages(self.root / "runs" / RUN, "../eko"), [])
+
+
 class Actions(Fixture):
     def start(self, **extra):
         argv = ["start", "--run-id", RUN, "--dispatch-id", DISPATCH, "--minutes", "60", "--context-window", "32768"]

@@ -8,6 +8,7 @@ const STATES = {
   uncertain: 'incertain', completed: 'terminée', failed: 'échouée', cancelled: 'annulée'
 };
 const PHASES = { queued: 'dans la file', starting: 'démarrage', running: 'en cours', stopping: 'arrêt', finished: 'terminée', interrupted: 'interrompue' };
+const KINDS = { thought: 'pense', say: 'dit', command: 'commande' };
 const $ = id => document.getElementById(id);
 
 export function escapeHtml(value) {
@@ -22,6 +23,24 @@ export function when(iso, timeZone) {
   const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' };
   try { return new Intl.DateTimeFormat('fr-CA', { ...options, timeZone: timeZone || undefined }).format(date); }
   catch { return new Intl.DateTimeFormat('fr-CA', options).format(date); }
+}
+
+/** A time of day with its time zone (the thoughts panel). */
+export function clock(iso, timeZone) {
+  const date = new Date(iso || '');
+  if (Number.isNaN(date.getTime())) return '—';
+  const options = { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' };
+  try { return new Intl.DateTimeFormat('fr-CA', { ...options, timeZone: timeZone || undefined }).format(date); }
+  catch { return new Intl.DateTimeFormat('fr-CA', options).format(date); }
+}
+
+/** The agent's latest thoughts, newest first. Its text is untrusted: always escaped. */
+export function thoughtsHtml(messages, timeZone) {
+  const items = (Array.isArray(messages) ? messages : []).slice().reverse().map(entry => {
+    const body = entry.kind === 'command' ? `<code>${escapeHtml(entry.text)}</code>` : escapeHtml(entry.text);
+    return `<li class="island-thought-${escapeHtml(entry.kind)}"><span class="island-thought-meta"><time datetime="${escapeHtml(entry.at)}">${escapeHtml(clock(entry.at, timeZone))}</time> · ${escapeHtml(KINDS[entry.kind] || entry.kind)}</span> ${body}</li>`;
+  });
+  return items.join('') || '<li class="island-note">Rien pour l’instant.</li>';
 }
 
 export function duration(run) {
@@ -58,7 +77,7 @@ export function runDetailHtml(run) {
 export function runRowHtml(run) {
   const state = stateLabel(run);
   const id = escapeHtml(run.id);
-  const view = run.liveView ? `<button type="button" data-live="${escapeHtml(run.liveView)}" title="Vue en direct">Voir</button>`
+  const view = run.liveView ? `<button type="button" data-live="${escapeHtml(run.liveView)}" data-run="${id}" title="Vue en direct, avec les pensées">Voir</button>`
     : run.replayable ? `<button type="button" data-replay="${id}" title="Relecture avec les pensées">Voir</button>` : '';
   const memory = run.hasMemory ? `<button type="button" data-memory="${id}">Mémoire</button>` : '';
   return `<tr>
@@ -89,6 +108,27 @@ function showFrame(src) {
     $('island-viewer-open').textContent = 'Ouvrir dans un nouvel onglet (le navigateur bloque une vue http dans une page https)';
   }
   $('island-viewer').scrollIntoView({ behavior: 'smooth' });
+}
+
+// "Pensées en direct": the run's latest entries, refreshed while it plays.
+let thoughtsTimer = null;
+function stopThoughts() { clearInterval(thoughtsTimer); thoughtsTimer = null; }
+async function loadThoughts(id) {
+  try {
+    const run = (await apiFetch(`${API}/runs/${encodeURIComponent(id)}`)).data;
+    $('island-thoughts').hidden = false;
+    $('island-thoughts-list').innerHTML = thoughtsHtml(run.agentMessages, run.timeZone);
+    $('island-thoughts-note').textContent = run.phase === 'running' ? '· toutes les 15 s' : '· partie terminée';
+    if (run.phase !== 'running') stopThoughts();
+  } catch (err) {
+    $('island-thoughts-note').textContent = `· lecture impossible : ${err.message}`;
+  }
+}
+function followThoughts(id) {
+  stopThoughts();
+  if (!id) { $('island-thoughts').hidden = true; return; }
+  loadThoughts(id);
+  thoughtsTimer = setInterval(() => { if (!document.hidden) loadThoughts(id); }, 15000);
 }
 
 let memory = null;
@@ -158,7 +198,8 @@ function bind() {
     if (!button) return;
     try {
       if (button.dataset.detail) toggleDetail(button.dataset.detail);
-      if (button.dataset.live) showFrame(button.dataset.live);
+      if (button.dataset.live) { showFrame(button.dataset.live); followThoughts(button.dataset.run); }
+      if (button.dataset.replay) followThoughts(null);
       if (button.dataset.replay) showFrame((await apiFetch(`${API}/runs/${encodeURIComponent(button.dataset.replay)}/replay`, { method: 'POST', body: {} })).data.src);
       if (button.dataset.memory) await openMemory(button.dataset.memory);
     } catch (err) {

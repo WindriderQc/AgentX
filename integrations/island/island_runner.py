@@ -48,6 +48,11 @@ WORLD = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 MEMORY_FILES = ("SOUL.md", "EPISODIC_MEMORY.jsonl", "SEMANTIC_MEMORY.md")
 TEMPLATE_FILES = ("SOUL.md", "EPISODIC_MEMORY.md", "SEMANTIC_MEMORY.md")
 MAX_MEMORY_BYTES = 256 * 1024
+AGENT_MESSAGES = 40          # latest entries reported with each status
+AGENT_TEXT = 600             # characters kept per entry
+AGENT_TAIL_BYTES = 512 * 1024
+# Long opaque runs (keys, capabilities, digests) are elided from what leaves the runner.
+OPAQUE = re.compile(r"[A-Za-z0-9_\-+/=]{40,}")
 DEFAULTS = {
     "worldPort": 18080,
     "gatewayGuestPort": 8443,
@@ -298,6 +303,58 @@ def start_locked(config: dict, args) -> dict:
     return {"runId": args.run_id, "dispatchId": args.dispatch_id, "phase": "starting", "pid": child.pid}
 
 
+def agent_messages(run: Path, agent: str | None, limit: int = AGENT_MESSAGES) -> list[dict]:
+    """The agent's latest thoughts, words and commands from its newest Codex session.
+
+    Read-only and bounded (the file's tail, `limit` entries, `AGENT_TEXT` characters each).
+    The text is the agent's own output: untrusted, shown escaped, never acted upon.
+    """
+    if not agent or not NAME.match(agent):
+        return []
+    sessions = run / "agents" / agent.lower() / "sandbox-home" / ".codex" / "sessions"
+    try:
+        files = [p for p in sessions.rglob("*.jsonl") if p.is_file() and not p.is_symlink()] if sessions.is_dir() else []
+        if not files:
+            return []
+        newest = max(files, key=lambda p: p.stat().st_mtime)
+        with open(newest, "rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, stream.tell() - AGENT_TAIL_BYTES))
+            lines = stream.read().splitlines()
+    except OSError:
+        return []
+    found = []
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue  # the first line of a tail is usually cut
+        if not isinstance(record, dict) or record.get("type") != "response_item":
+            continue
+        payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+        kind, text = None, ""
+        if payload.get("type") == "reasoning":
+            kind = "thought"
+            text = " ".join(part.get("text", "") for part in payload.get("summary") or [] if isinstance(part, dict))
+        elif payload.get("type") == "message" and payload.get("role") == "assistant":
+            kind = "say"
+            text = " ".join(part.get("text", "") for part in payload.get("content") or [] if isinstance(part, dict))
+        elif payload.get("type") == "function_call":
+            kind = "command"
+            try:
+                args = json.loads(payload.get("arguments") or "{}")
+            except (TypeError, ValueError):
+                args = {}
+            command = args.get("cmd") or args.get("command") if isinstance(args, dict) else None
+            text = " ".join(map(str, command)) if isinstance(command, list) else str(command or payload.get("name") or "")
+        if not kind:
+            continue
+        text = OPAQUE.sub("…", " ".join(str(text).split()))[:AGENT_TEXT]
+        if text:
+            found.append({"at": str(record.get("timestamp") or "")[:40], "kind": kind, "text": text})
+    return found[-limit:]
+
+
 def describe(config: dict, run_id: str) -> dict:
     run = run_dir(config, run_id)
     if not run.is_dir():
@@ -326,6 +383,7 @@ def describe(config: dict, run_id: str) -> dict:
         "liveView": state.get("liveView") if phase == "running" else None,
         "recording": str(recordings[-1].relative_to(runs_root(config))) if recordings else None,
         "leftover": leftover, "processObservationOk": process_ok, "localStopped": state.get("localStopped") is True,
+        "agentMessages": agent_messages(run, request.get("agent")),
     }
 
 
