@@ -9,3 +9,6 @@ python-dotenv
 python-multipart
 requests
 soundfile
+
+# Exercise URL download options and bounded PCM without loading a model.
+-r requirements-long.txt
