@@ -1,8 +1,8 @@
 'use strict';
 
 /**
- * 3D views of an island run, behind one small interface so another renderer
- * can replace Clawblox's own frontend without touching the tab (docs/ISLAND.md):
+ * 3D views of an island run, behind one small interface so a renderer
+ * (Clawblox's own pages or GraphysX-Web) changes without touching the tab (docs/ISLAND.md):
  *
  *   available()           -> { live, replay }  what this renderer can show
  *   liveUrl(run)          -> URL or null       while the run is running
@@ -51,11 +51,57 @@ function clawbloxViews(env = process.env) {
   };
 }
 
-// A second renderer (for example a GraphysX-Web viewer fed by Clawblox's
-// entity state) registers here with the same three functions.
-const RENDERERS = Object.freeze({ clawblox: clawbloxViews });
+/** A viewer page address: http(s), no credentials, query or fragment; a path is kept. */
+function viewerBase(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null;
+    return url;
+  } catch { return null; }
+}
 
-function islandViews(env = process.env, name = 'clawblox') {
+/**
+ * GraphysX-Web's island page (`?app=island`), drawing the state that Clawblox
+ * streams on `/spectate/ws`. Clawblox still serves the world and the replay;
+ * only the page changes. The spectator token travels in the fragment.
+ */
+function graphysxViews(env = process.env) {
+  const clawblox = clawbloxViews(env);
+  const viewer = viewerBase(env.AGENTX_ISLAND_GRAPHYSX_URL);
+  const page = (source, token) => {
+    const url = new URL(viewer);
+    url.searchParams.set('app', 'island');
+    url.searchParams.set('embed', '1');
+    url.searchParams.set('source', source);
+    if (token) url.hash = `spectator_token=${encodeURIComponent(token)}`;
+    return url.toString();
+  };
+  return {
+    name: 'graphysx',
+    available: () => (viewer ? clawblox.available() : { live: false, replay: false }),
+    liveUrl: run => {
+      const live = viewer ? clawblox.liveUrl(run) : null;
+      if (!live) return null;
+      const url = new URL(live);
+      return page(url.origin, url.searchParams.get('spectator_token'));
+    },
+    replayUrl: async (run, deps) => {
+      if (!viewer) throw new ViewError('No GraphysX viewer is configured (AGENTX_ISLAND_GRAPHYSX_URL)', 409);
+      const opened = await clawblox.replayUrl(run, deps);
+      return { ...opened, src: page(opened.src.replace(/\/+$/, '')) };
+    }
+  };
+}
+
+const RENDERERS = Object.freeze({ clawblox: clawbloxViews, graphysx: graphysxViews });
+
+/** GraphysX when its viewer is configured, else Clawblox's own pages; AGENTX_ISLAND_RENDERER forces one. */
+function defaultRenderer(env) {
+  return env.AGENTX_ISLAND_RENDERER || (env.AGENTX_ISLAND_GRAPHYSX_URL ? 'graphysx' : 'clawblox');
+}
+
+function islandViews(env = process.env, name = defaultRenderer(env)) {
   const make = RENDERERS[name];
   if (!make) throw new ViewError(`Unknown island renderer: ${name}`, 500);
   return make(env);

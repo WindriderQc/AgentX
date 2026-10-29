@@ -127,6 +127,29 @@ describe('island run service', () => {
     }
     expect(() => islandViews({}, 'unknown')).toThrow(/Unknown island renderer/);
   });
+
+  it('draws the island in GraphysX-Web when its viewer is configured', async () => {
+    const { islandViews } = require('../../src/services/island/islandViews');
+    const gx = { ...env, AGENTX_ISLAND_GRAPHYSX_URL: 'http://viewer.lan:4231/' };
+    const running = { phase: 'running', liveView: { port: 18080, path: '/?spectator_token=tok-1' } };
+    const views = islandViews(gx);
+    expect(views.name).toBe('graphysx');
+    expect(views.available()).toEqual({ live: true, replay: true });
+    const live = new URL(views.liveUrl(running));
+    expect(live.origin).toBe('http://viewer.lan:4231');
+    expect(Object.fromEntries(live.searchParams)).toEqual({ app: 'island', embed: '1', source: 'http://runner.lan:18080' });
+    expect(live.hash).toBe('#spectator_token=tok-1');
+    const fetchImpl = async () => ({ ok: true, json: async () => ({ url: '/sessions/abc/', agent_log: '/x' }) });
+    const replay = await views.replayUrl({ recording: 'r/x.clawrec' }, { fetchImpl });
+    expect(replay.agentLog).toBe(true);
+    expect(new URL(replay.src).searchParams.get('source')).toBe('http://runner.lan:18092/sessions/abc');
+    expect(islandViews({ ...gx, AGENTX_ISLAND_RENDERER: 'clawblox' }).name).toBe('clawblox');
+    const unset = islandViews({ ...env, AGENTX_ISLAND_RENDERER: 'graphysx' });
+    expect(unset.available()).toEqual({ live: false, replay: false });
+    expect(unset.liveUrl(running)).toBeNull();
+    await expect(unset.replayUrl({ recording: 'r/x.clawrec' }, { fetchImpl })).rejects.toMatchObject({ statusCode: 409 });
+    expect(islandViews({ ...env, AGENTX_ISLAND_GRAPHYSX_URL: 'http://viewer.lan/?x=1' }).available()).toEqual({ live: false, replay: false });
+  });
 });
 
 describe('island routes', () => {

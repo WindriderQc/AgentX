@@ -112,6 +112,26 @@
       "secret": false,
       "description": "Container path of the mounted external instance directory read by runtime bridges (agent registry, coding dispatcher config). Unset: falls back to AGENTX_REPO_ROOT, then a built-in default."
     },
+    "AGENTX_ISLAND_GRAPHYSX_URL": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Île tab: address of a GraphysX-Web build (e.g. http://viewer-host:4231/) whose ?app=island page draws the island from the Clawblox stream, live and in replay. Set: the Voir button opens that page instead of the Clawblox pages; unset: the Clawblox pages."
+    },
+    "AGENTX_ISLAND_RENDERER": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Île tab: forces the 3D view renderer, clawblox or graphysx. Unset: graphysx when AGENTX_ISLAND_GRAPHYSX_URL is set, else clawblox."
+    },
     "AGENTX_ISLAND_REPLAY_URL": {
       "services": [
         "benchmark"

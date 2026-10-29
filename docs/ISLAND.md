@@ -239,6 +239,8 @@ Réglages de Benchmark :
 |---|---|
 | `AGENTX_ISLAND_VIEW_ORIGIN` | schéma et hôte (sans port) de l'hôte d'exécution vus du navigateur |
 | `AGENTX_ISLAND_REPLAY_URL` | origine du serveur `clawblox app <runsRoot> --port <port>` |
+| `AGENTX_ISLAND_GRAPHYSX_URL` | adresse d'une version de GraphysX-Web (par exemple `http://hôte:4231/`) ; « Voir » ouvre alors sa page `?app=island` |
+| `AGENTX_ISLAND_RENDERER` | `clawblox` ou `graphysx` pour forcer le rendu ; sinon GraphysX dès que son adresse est réglée |
 
 Le serveur de relecture se lance sur l'hôte d'exécution, à la racine des
 parties :
@@ -260,10 +262,24 @@ réseau maison reste celle du prototype.
 **Vue 3D interchangeable.** L'onglet ne connaît que trois choses par partie :
 ce qu'on peut montrer, le lien en direct et le lien de relecture. Elles
 viennent d'un « rendu » (`benchmark/src/services/island/islandViews.js`) ;
-aujourd'hui le seul est celui de Clawblox. Un autre rendu, par exemple une
-vue GraphysX-Web alimentée par l'état des objets de Clawblox (qui reste
-maître de la physique), s'y ajouterait avec les mêmes trois fonctions, sans
-toucher à l'onglet.
+il y en a deux :
+
+- **Clawblox** : ses propres pages (spectateur en direct, relecture de
+  `clawblox app`).
+- **GraphysX** : la page `?app=island` de GraphysX-Web (ciel, eau, ombres,
+  panneau Messages, barre de lecture), qui dessine l'état que Clawblox diffuse
+  sur `/spectate/ws`. Clawblox reste maître de la physique, du monde et des
+  enregistrements : seule la page change. En direct, la source est le port
+  du monde et le jeton spectateur passe dans le fragment
+  (`#spectator_token=…`), jamais dans la query string ; en relecture, la
+  source est la session ouverte par `clawblox app`
+  (`<AGENTX_ISLAND_REPLAY_URL>/sessions/<id>`). `embed=1` compacte l'en-tête
+  pour l'onglet.
+
+Comme pour Clawblox, une page GraphysX servie en HTTP s'ouvre dans un nouvel
+onglet depuis un Benchmark en HTTPS. La page publique de GraphysX (HTTPS) ne
+peut pas lire un `ws://` du réseau maison : il faut une version servie sur le
+réseau local, ou un relais HTTPS de même origine.
 
 ## Conception (pas encore construite) : classer « a joué » contre « neuf »
 
