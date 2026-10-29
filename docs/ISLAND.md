@@ -199,19 +199,25 @@ Le résultat est dans `agents/<agent>/workspace/netcheck.txt` de la partie.
 
 ## L'onglet Île (Benchmark)
 
-- **Parties** : début avec son fuseau, durée réelle et prévue, état (celui de
-  la file de Core d'abord), alias du modèle, nombre de relances, reçus (la
-  fiche JSON de la partie, l'empreinte du reçu et l'autorité de Core).
-- **Lancer** : agent, durée, mémoire continue ou neuve, créneau (cette nuit,
-  dès que possible, ou sans créneau). Rien ne part.
-- **Direct** : la vue 3D de Clawblox pendant la partie (son propre
-  spectateur, aucun moteur 3D réécrit).
-- **Revoir** : la relecture de Clawblox, avec le panneau **Messages** qui
-  déroule les pensées et les commandes de l'agent. Benchmark demande au
-  serveur `clawblox app` de l'hôte d'exécution d'ouvrir l'enregistrement.
-- **Mémoire** : `SOUL.md`, `EPISODIC_MEMORY.jsonl` (en liste d'épisodes) et
-  `SEMANTIC_MEMORY.md` de chaque partie, avec un choix parmi les parties du
-  même agent.
+Quatre sections, dans une seule entrée du menu de Benchmark :
+
+- **Lancer une partie** : agent, durée, mémoire (continuer ou neuve) et
+  créneau (cette nuit, dès que possible ou sans créneau). Rien ne part : la
+  demande attend ton approbation, puis l'admission de Core (voir
+  « Déroulement » plus haut pour les commandes).
+- **Parties** : début avec son fuseau, durée, état (celui de la file de Core
+  d'abord) et deux boutons. Un clic sur la date ouvre le détail : agent et
+  mémoire, relances, reçu (empreinte et autorité de Core) et la fiche JSON.
+  L'agent pense toujours avec `agentx-primary` au travers de Core.
+  - **Voir** : la vue 3D de Clawblox en direct pendant la partie, ou sa
+    relecture ensuite, avec le panneau **Messages** qui déroule les pensées
+    et les commandes de l'agent. Benchmark demande au serveur `clawblox app`
+    de l'hôte d'exécution d'ouvrir l'enregistrement.
+  - **Mémoire** : « Personnalité » (`SOUL.md`), « Journal »
+    (`EPISODIC_MEMORY.jsonl`, en liste d'épisodes) et « Savoir »
+    (`SEMANTIC_MEMORY.md`), avec un choix parmi les parties du même agent.
+- **Vue 3D** et **Mémoire** restent cachées tant qu'aucune partie n'est
+  choisie.
 
 Réglages de Benchmark :
 
