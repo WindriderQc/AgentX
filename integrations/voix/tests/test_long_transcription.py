@@ -153,7 +153,7 @@ console.log(denied);"""
     assert result.stdout.strip() == "2"
 
 
-def test_downloader_passes_only_native_https_audio_and_packaged_solver(tmp_path, monkeypatch):
+def test_downloader_passes_only_native_https_audio_and_packaged_solver(tmp_path, monkeypatch, capsys):
     import yt_dlp
     from app.long_transcription_download import download
     captured = {}
@@ -173,6 +173,8 @@ def test_downloader_passes_only_native_https_audio_and_packaged_solver(tmp_path,
             return str(tmp_path / "source.m4a")
     monkeypatch.setattr(yt_dlp, "YoutubeDL", FakeDownloader)
     download("https://youtu.be/abcdefghijk", tmp_path, 1024 * 1024, 10)
+    assert captured["noprogress"] is True
+    assert json.loads(capsys.readouterr().out)["path"] == "source.m4a"
     assert captured["format"] == "bestaudio[protocol=https]"
     assert captured["proxy"].startswith("http://127.0.0.1:")
     assert captured["remote_components"] == []

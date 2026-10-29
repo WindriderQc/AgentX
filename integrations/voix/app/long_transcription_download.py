@@ -31,7 +31,7 @@ def download(url, directory, max_bytes, max_seconds):
             "proxy": proxy, "geo_verification_proxy": proxy,
             "format": "bestaudio[protocol=https]",
             "outtmpl": str(directory / "source.%(ext)s"), "noplaylist": True,
-            "quiet": True, "no_warnings": True, "socket_timeout": 15,
+            "quiet": True, "noprogress": True, "no_warnings": True, "socket_timeout": 15,
             "retries": 0, "fragment_retries": 0, "extractor_retries": 0,
             "max_filesize": budget, "progress_hooks": [progress],
             "cachedir": False, "remote_components": [], "js_runtimes": {"deno": {"path": deno_path}},
