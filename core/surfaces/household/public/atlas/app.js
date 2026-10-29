@@ -55,7 +55,9 @@ function openLink(){
  if(found.ts)focus([found]);popup.open([found],null,true);
 }
 function adopt(raw){
- const updated=hydrate(raw);state.events=state.events.map(e=>e.id===updated.id?updated:e);
+ const updated=hydrate(raw);
+ // A moment Nestor proposed and the owner just accepted joins the page.
+ state.events=state.events.some(e=>e.id===updated.id)?state.events.map(e=>e.id===updated.id?updated:e):[...state.events,updated];
  const old=[...state.domain],whole=(state.range[1]-state.range[0])/(old[1]-old[0])>.98;state.domain=lifeDomain(state.events,{all:state.scope==='all'});if(whole)state.range=[...state.domain];
  updatePeriod();renderChapters(el('life-chapters'),api);applyFilters();return updated;
 }

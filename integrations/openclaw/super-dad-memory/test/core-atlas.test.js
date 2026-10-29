@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCoreAtlasClient, registerLifeAtlas } from '../core-atlas.js';
+import { createCoreAtlasClient, registerLifeAtlas, lifeAtlasBrief } from '../core-atlas.js';
 
 const config = { channels: { telegram: { allowFrom: ['12345'] } } };
 const ok = data => ({ ok: true, json: async () => ({ status: 'success', data: { authority: 'agentx.core', ...data } }) });
@@ -16,7 +16,7 @@ test('life_atlas sends only known fields to the Nestor history route and checks 
   assert.equal(captured.url, 'http://127.0.0.1:3180/api/consumers/nestor/v1/memory/history');
   assert.equal(captured.options.redirect, 'error');
   assert.deepEqual(Object.keys(JSON.parse(captured.options.body)).sort(), ['changes', 'entryId', 'evidence', 'operation', 'rationale']);
-  await assert.rejects(client({ operation: 'accept' }), /Choose search, get, propose, status/);
+  await assert.rejects(client({ operation: 'accept' }), /Choose search, get, propose, add, status/);
   const refused = createCoreAtlasClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async () => ({ ok: false, status: 409,
     json: async () => ({ status: 'error', message: 'The proposal changes nothing' }) }) });
   await assert.rejects(refused({ operation: 'propose' }), /changes nothing/);
@@ -39,4 +39,19 @@ test('only the private owner context receives life_atlas, and a proposal carries
   assert.deepEqual(sent, { operation: 'search', query: 'move' });
   await tool.execute('call', { operation: 'propose', entryId: 'a'.repeat(24), changes: { place: 'x' }, rationale: 'r' });
   assert.equal(sent.conversationRef, 'agent:main:telegram:direct:12345');
+});
+
+test('a new moment carries its conversation, and the morning brief names the proposals waiting', async () => {
+  let factory, sent;
+  registerLifeAtlas({ config, pluginConfig: { agentxUrl: 'http://core.test' }, registerTool(value) { factory = value; } },
+    { fetchImpl: async (_url, request) => { sent = JSON.parse(request.body); return ok({ created: true }); } });
+  const tool = factory({ agentId: 'main', sessionKey: 'agent:main:telegram:direct:12345' });
+  assert.match(tool.description, /add \{moment, rationale, evidence\}/);
+  await tool.execute('call', { operation: 'add', moment: { title: 'Synthetic canoe trip', date: '1998-07', precision: 'month' },
+    rationale: 'Told in conversation', evidence: [{ quote: 'in July 1998 we canoed' }] });
+  assert.deepEqual(Object.keys(sent).sort(), ['conversationRef', 'evidence', 'moment', 'operation', 'rationale']);
+  const status = pending => async () => ok({ pending, inbox: 'https://core.test/atlas/#proposals', proposals: [] });
+  assert.deepEqual(await lifeAtlasBrief({ baseUrl: 'http://core.test', fetchImpl: status(2) }),
+    { pending: 2, link: 'https://core.test/atlas/#proposals', text: 'Life Atlas : 2 propositions de Nestor à relire (https://core.test/atlas/#proposals).' });
+  assert.equal(await lifeAtlasBrief({ baseUrl: 'http://core.test', fetchImpl: status(0) }), null);
 });

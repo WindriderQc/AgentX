@@ -157,8 +157,9 @@ Core and plugin versions; the continuity catalog advertises the budget hook.
 ## Life Atlas corrections
 
 `life_atlas` (private owner context only) reads moments of the owner's life
-history in Core and proposes corrections through
+history in Core and proposes corrections or new moments through
 `POST /api/consumers/nestor/v1/memory/history` (`search`, `get`, `propose`,
-`status`). A proposal waits for the owner in Life Atlas; the tool cannot accept,
-refuse or edit. The session key is passed as the proposal's conversation
-reference.
+`add`, `status`). A proposal waits for the owner in Life Atlas; the tool cannot
+accept, refuse or edit. The session key is passed as the proposal's
+conversation reference. `nestor_briefing` adds a `lifeAtlas` line when
+proposals wait for the owner.

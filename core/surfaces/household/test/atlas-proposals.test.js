@@ -45,3 +45,22 @@ test('a card shows today and the proposal side by side, escapes text, and the do
   inbox.render();
   assert.equal(button.hidden, true);
 });
+
+test('a new moment shows only what Nestor heard, and a moment from the sources says the words become its source', async () => {
+  const { ProposalInbox } = await load();
+  const button = { hidden: true, innerHTML: '', setAttribute() {}, addEventListener() {} };
+  const inbox = new ProposalInbox({}, { state: { dataset: 'real', events: [] } }, button);
+  const fresh = { id: 'p2', entryId: '', target: 'new', title: 'Synthetic canoe trip', createdAt: '2026-10-29T12:00:00Z', changes: {}, before: {},
+    moment: { title: 'Synthetic canoe trip <i>', date: '1998-07', precision: 'month', place: 'Synthetic lake', people: [], dateWindow: { start: '1998-07-01', end: '1998-07-31' } },
+    rationale: 'Told in conversation.', evidence: [{ quote: 'in July 1998 we canoed' }], state: 'pending' };
+  const card = inbox.card(fresh);
+  assert.match(card, /NOUVEAU MOMENT/);
+  assert.match(card, /Synthetic canoe trip &lt;i&gt;/);
+  assert.doesNotMatch(card, /Aujourd’hui/);
+  assert.match(card, /<th>Précision de la date<\/th><td class="proposal-new">mois<\/td>/);
+  assert.doesNotMatch(card, /Personnes|Fenêtre de date|Ouvrir le moment/);
+  assert.match(card, /Ajouter au Life Atlas/);
+  const native = inbox.card({ ...proposal, id: 'p3', target: 'native' });
+  assert.match(native, /MOMENT DE TES SOURCES/);
+  assert.match(native, /Tes mots deviendront la source/);
+});

@@ -158,10 +158,12 @@ async function forget(documentId, deps) {
   return { authority: 'agentx.core', documentId, forgotten: true };
 }
 
+const configured = (env = process.env) => (env.OWNER_MAIL_RAG_TOKEN || '').length >= 32;
+
 async function status() {
   const rows = await Recall.aggregate([{ $match: { scope: 'owner' } }, { $group: { _id: { kind: '$kind', state: '$state' }, documents: { $sum: 1 }, chunks: { $sum: '$chunkCount' } } }]);
-  return { authority: 'agentx.core', configured: (process.env.OWNER_MAIL_RAG_TOKEN || '').length >= 32,
+  return { authority: 'agentx.core', configured: configured(),
     documents: rows.map(r => ({ kind: r._id.kind, state: r._id.state, documents: r.documents, chunks: r.chunks })) };
 }
 
-module.exports = { normalize, index, sync, search, forget, status };
+module.exports = { normalize, index, sync, search, forget, status, configured };

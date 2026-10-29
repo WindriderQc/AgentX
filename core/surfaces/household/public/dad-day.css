@@ -159,3 +159,7 @@
 .idea-chore-preview span { display: block; color: var(--amber); font-size: .72rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .idea-chore-form { display: grid; flex: 1 1 100%; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 600px) { .idea-chore-form { grid-template-columns: minmax(0, 1fr); } }
+
+/* Corrections Nestor proposed for the Life Atlas. */
+.dad-atlas-proposals { display: inline-flex; margin: .35rem 0 0; padding: .35rem .75rem; border-radius: 999px; border: 1px solid rgba(179,204,157,.5); color: inherit; text-decoration: none; font-size: .86rem; }
+.dad-atlas-proposals:hover { border-color: rgba(179,204,157,.9); }

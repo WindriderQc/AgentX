@@ -24,6 +24,14 @@ const hostRead = (read, pending) => Promise.race([
   new Promise((resolve) => { setTimeout(resolve, 6000, { error: pending }).unref?.(); })
 ]).catch((error) => ({ error: error.message }));
 
+// Corrections Nestor proposed for the owner's Life Atlas, as a count with the inbox link.
+async function lifeAtlasPending() {
+  try {
+    const pending = await require('../../models/HistoryProposal').countDocuments({ scope: 'owner', state: 'pending' });
+    return { pending, href: '/atlas/#proposals' };
+  } catch { return { pending: null, href: '/atlas/#proposals' }; }
+}
+
 function registerSecretaryRoutes(app, {
   express, standardJsonParser, envelope, personalTasks, fail, CORE_SELF_URL,
   bridgeProjection, secretaryMail, familyTasks, models, knowledgeState, mongoose, dossiers
@@ -48,7 +56,7 @@ function registerSecretaryRoutes(app, {
         ),
         personalTasks.snapshot()
       ]);
-      return envelope(res, dadBriefing(report, tasks));
+      return envelope(res, { ...dadBriefing(report, tasks), lifeAtlas: await lifeAtlasPending() });
     } catch (error) {
       return fail(res, 500, error.message, 'SECRETARY_BRIEFING_FAILED');
     }
@@ -92,7 +100,8 @@ function registerSecretaryRoutes(app, {
       });
       return envelope(res, {
         ...dadDesk(report, tasks, cron, new Date(), family, activation, budget, mailBacklog, mailCatchup),
-        activation
+        activation,
+        lifeAtlas: await lifeAtlasPending()
       });
     } catch (error) {
       return fail(res, 500, error.message, 'SECRETARY_DESK_FAILED');
@@ -154,4 +163,4 @@ function registerSecretaryRoutes(app, {
   app.use('/api/secretary', secretary);
 }
 
-module.exports = { registerSecretaryRoutes };
+module.exports = { registerSecretaryRoutes, lifeAtlasPending };

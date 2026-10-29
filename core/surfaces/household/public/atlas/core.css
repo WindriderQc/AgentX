@@ -153,3 +153,5 @@
 .proposal-banner span{display:grid;gap:.1rem;flex:1}
 .proposal-banner small{color:var(--muted)}
 @media (max-width:640px){.proposal-diff thead{display:none}.proposal-diff tr{display:grid;grid-template-columns:1fr 1fr}.proposal-diff tbody th{grid-column:1/-1;border-bottom:0;padding-bottom:0}}
+.proposal-note{margin:.45rem 0 0;color:var(--muted);font-size:.82rem}
+.proposal-card.is-new{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
