@@ -63,7 +63,7 @@ describe('shared navigation public URL contract', () => {
   test('Benchmark and RAG links are the same on every service', async () => {
     const serviceLinks = html => [...html.matchAll(/href="(https:\/\/core\.example\/(?:benchmark|rag)\/[^"]*)"/g)].map(match => match[1]);
     const core = serviceLinks(await renderNav('core'));
-    expect(core).toHaveLength(11);
+    expect(core).toHaveLength(12);
     expect(serviceLinks(await renderNav('benchmark'))).toEqual(core);
     expect(serviceLinks(await renderNav('rag'))).toEqual(core);
   });

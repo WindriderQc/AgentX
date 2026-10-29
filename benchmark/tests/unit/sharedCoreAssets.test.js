@@ -50,7 +50,7 @@ describe('shared Core assets', () => {
     expect(response.headers.location).toBeUndefined();
   });
 
-  it.each(['/leaderboard', '/courthouse', '/profiler', '/efficiency-map', '/results-explorer', '/setup'])(
+  it.each(['/leaderboard', '/courthouse', '/profiler', '/efficiency-map', '/results-explorer', '/island', '/setup'])(
     'renders %s directly', async (url) => {
       const response = await api.get(url).expect(200);
       expect(response.headers.location).toBeUndefined();

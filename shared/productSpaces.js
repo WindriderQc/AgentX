@@ -48,6 +48,9 @@ function productSpaces(link) {
         item('courthouse', 'Courthouse', '/courthouse', 'fa-gavel', 'benchmark'),
         item('results-explorer', 'Results Explorer', '/results-explorer', 'fa-table-list', 'benchmark'),
         item('efficiency-map', 'Efficiency Map', '/efficiency-map', 'fa-bolt', 'benchmark'),
+        item('island', 'Île', '/island', 'fa-umbrella-beach', 'benchmark', {
+          description: 'An agent alone on a Clawblox island: runs, 3D replay with its thoughts, and its memory files.'
+        }),
         { section: 'Experimental' },
         item('council', 'Council', '/council', 'fa-users'),
         item('prompts', 'Prompts', '/prompts', 'fa-pen-fancy'),

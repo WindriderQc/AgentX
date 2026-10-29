@@ -112,6 +112,26 @@
       "secret": false,
       "description": "Container path of the mounted external instance directory read by runtime bridges (agent registry, coding dispatcher config). Unset: falls back to AGENTX_REPO_ROOT, then a built-in default."
     },
+    "AGENTX_ISLAND_REPLAY_URL": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Île tab: origin of the Clawblox replay app server on the island runner host, as browsers reach it (e.g. http://runner-host:18092). Benchmark asks it to open a run recording and embeds the session. Unset: the replay button is hidden."
+    },
+    "AGENTX_ISLAND_VIEW_ORIGIN": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Île tab: scheme and host (no port) of the island runner host as browsers reach it; the live spectator link adds the world port the runner reports. Unset: the live button is hidden."
+    },
     "AGENTX_LLM_GATEWAY_CLIENTS": {
       "services": [
         "core"

@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { localUrl } = require('./images/config');
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const { planId, batchRequest } = require('../../../shared/benchmarkBatchPlan.cjs');
+const { islandExecutor, islandEstimatedMinutes } = require('../../../shared/islandRun.cjs');
 
 function fail(message, statusCode = 400, code = 'HEAVY_QUEUE_INVALID', details) {
   return Object.assign(new Error(message), { statusCode, code, details });
@@ -59,7 +60,7 @@ function validateRequest(body) {
   const normalizedSource = { type: source.type };
   for (const field of ['ref', 'taskId', 'issueUrl']) if (source[field] !== undefined) normalizedSource[field] = text(source[field], `source.${field}`, 500);
   if (normalizedSource.issueUrl && !/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+$/.test(normalizedSource.issueUrl)) throw fail('issueUrl needs a GitHub issue URL');
-  const executor = body.executor || null;
+  let executor = body.executor || null;
   if (executor) {
     if (Buffer.byteLength(JSON.stringify(executor)) > 16000) throw fail('Executor request exceeds 16000 bytes; use existing artifact references');
     if (kind === 'benchmark') {
@@ -91,6 +92,13 @@ function validateRequest(body) {
       // A report campaign Core starts and settles itself (#878).
       only(executor, ['mode', 'pipelineId'], 'report campaign executor');
       text(executor.pipelineId, 'executor.pipelineId', 160);
+    } else if (kind === 'other' && executor.mode === 'island') {
+      // A Clawblox island run the operator CLI starts on its configured runner
+      // and finishes with an attested receipt (docs/ISLAND.md).
+      try { executor = islandExecutor(executor); } catch (error) { throw fail(error.message); }
+      if (minutes < islandEstimatedMinutes(executor.minutes)) {
+        throw fail(`estimatedMinutes needs at least ${islandEstimatedMinutes(executor.minutes)} for this island run`);
+      }
     } else if (['diagnostic', 'other'].includes(kind)) {
       only(executor, ['mode', 'receiptRef'], 'operator executor');
       if (executor.mode !== 'operator') throw fail('Custom work needs the explicit operator receipt protocol');

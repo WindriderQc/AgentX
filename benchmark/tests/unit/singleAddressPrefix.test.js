@@ -8,7 +8,7 @@ const { startTestHttpHarness } = require('../helpers/testHttpServer');
 const { SHARED_ROOT_PATHS, prefixedAssets, unprefixedLiterals, unprefixedPaths }
   = require('../../../shared/testing/pathPrefixChecks');
 
-const PAGES = ['/', '/leaderboard', '/courthouse', '/profiler', '/efficiency-map', '/results-explorer', '/setup'];
+const PAGES = ['/', '/leaderboard', '/courthouse', '/profiler', '/efficiency-map', '/results-explorer', '/island', '/setup'];
 let httpHarness;
 let api;
 
@@ -82,7 +82,7 @@ describe('Benchmark browser files', () => {
       prefix: '/benchmark',
       // First path segments Benchmark routes itself (server.js, public/).
       ownedSegments: ['api', 'css', 'js', 'vendor', 'health', 'public',
-        'leaderboard', 'courthouse', 'profiler', 'efficiency-map', 'results-explorer', 'setup'],
+        'leaderboard', 'courthouse', 'profiler', 'efficiency-map', 'results-explorer', 'island', 'setup'],
       // No exception: Benchmark's own files address no shared path through one
       // of these segments. The two root paths they do use are not Benchmark
       // routes: `/playground` is resolved against Core's public URL

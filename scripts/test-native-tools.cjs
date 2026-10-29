@@ -4,10 +4,10 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const tests = [
   [process.execPath, ['--test', 'integrations/dsh/coding-team/test/client.test.mjs', 'integrations/dsh/coding-team/test/workspaces.test.mjs']],
-  [process.execPath, ['--test', 'integrations/operations/tests/heavy-work-queue.test.cjs', 'scripts/maintenance-benchmark.test.cjs']],
+  [process.execPath, ['--test', 'integrations/operations/tests/heavy-work-queue.test.cjs', 'integrations/operations/tests/island-executor.test.cjs', 'scripts/maintenance-benchmark.test.cjs']],
   [process.execPath, ['--test', ...['codex-usage-sync', 'alert-governance-sweep', 'sync-openclaw-schedule', 'native-data-collectors-verifier', 'alert-telegram-relay', 'council-telegram-relay'].map(name => `integrations/operations/tests/${name}.test.js`)]],
   [process.execPath, ['--test', 'integrations/openclaw/gmail-secretary/test/index.test.js', 'integrations/openclaw/gmail-secretary/test/triage-rules.test.js', 'integrations/openclaw/gmail-secretary/test/provenance.test.js', 'integrations/openclaw/dsh-coding-agent/test/index.test.js', 'integrations/openclaw/jobs/subscriptions/test/subscription-audit.test.js']],
-  ...['secretary', 'memory-review', 'coding', 'openclaw/jobs', 'operations'].map(name => [process.env.AGENTX_PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3'), ['-m', 'unittest', 'discover', '-s', `integrations/${name}/tests`, '-v']])
+  ...['secretary', 'memory-review', 'coding', 'openclaw/jobs', 'operations', 'island'].map(name => [process.env.AGENTX_PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3'), ['-m', 'unittest', 'discover', '-s', `integrations/${name}/tests`, '-v']])
 ];
 for (const [command, args] of tests) {
   const result = spawnSync(command, args, { cwd: root, stdio: 'inherit', windowsHide: true });

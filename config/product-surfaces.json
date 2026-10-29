@@ -39,6 +39,7 @@
     { "id": "benchmark-profiler", "service": "benchmark", "path": "/profiler", "profiles": ["demo", "full"], "journey": "evaluate", "critical": true, "performanceBudget": "visualization" },
     { "id": "benchmark-efficiency", "service": "benchmark", "path": "/efficiency-map", "profiles": ["demo", "full"], "journey": "compare", "critical": true, "performanceBudget": "visualization" },
     { "id": "benchmark-results", "service": "benchmark", "path": "/results-explorer", "profiles": ["demo", "full"], "journey": "understand", "critical": true, "performanceBudget": "visualization" },
+    { "id": "benchmark-island", "service": "benchmark", "path": "/island", "profiles": ["full"], "journey": "evaluate", "critical": false },
     { "id": "benchmark-setup", "service": "benchmark", "path": "/setup", "profiles": ["demo", "full"], "journey": "configure", "critical": false },
 
     { "id": "rag-home", "service": "rag", "path": "/", "profiles": ["demo", "full"], "journey": "knowledge", "critical": true, "performanceBudget": "standard" },

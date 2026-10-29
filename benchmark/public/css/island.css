@@ -1,0 +1,26 @@
+/* Île tab (docs/ISLAND.md). */
+.island-page { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 3rem; display: grid; gap: 1.25rem; }
+.island-lede, .island-note { color: var(--r-text-muted); margin: .25rem 0; }
+.island-form { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: end; margin: .75rem 0; }
+.island-form label { display: grid; gap: .25rem; font-size: .9rem; color: var(--r-text-dim); }
+.island-form input, .island-form select, .island-memory select {
+  background: var(--r-bg-inner); color: var(--r-text); border: 1px solid var(--r-border); border-radius: var(--r-radius); padding: .4rem .5rem; }
+.island-result:empty { display: none; }
+.island-result { padding: .5rem .75rem; border: 1px solid var(--r-border); border-radius: var(--r-radius); background: var(--r-bg-inner); }
+.island-result.is-error { border-color: var(--r-error); }
+.island-table-wrap { overflow-x: auto; }
+.island-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.island-table th, .island-table td { text-align: left; padding: .45rem .5rem; border-bottom: 1px solid var(--r-border); vertical-align: top; }
+.island-table td small { display: block; color: var(--r-text-muted); }
+.island-table button, .island-tabs button {
+  background: none; color: var(--r-active); border: 1px solid var(--r-border); border-radius: var(--r-radius); padding: .2rem .5rem; cursor: pointer; margin: 0 .25rem .25rem 0; }
+.island-state-running { color: var(--r-active); }
+.island-state-completed { color: var(--r-good); }
+.island-state-failed, .island-state-uncertain { color: var(--r-error); }
+.island-viewer iframe { width: 100%; height: min(75vh, 760px); border: 1px solid var(--r-border); border-radius: var(--r-radius); background: #000; }
+.island-tabs { display: flex; flex-wrap: wrap; margin: .5rem 0; }
+.island-tabs button[aria-selected="true"] { background: var(--r-bg-inner); color: var(--r-text); }
+.island-memory-body pre { white-space: pre-wrap; word-break: break-word; background: var(--r-bg-inner); padding: .75rem; border-radius: var(--r-radius); max-height: 60vh; overflow: auto; }
+.island-episodes { list-style: none; padding: 0; margin: 0; display: grid; gap: .5rem; }
+.island-episodes li { background: var(--r-bg-inner); padding: .5rem .75rem; border-radius: var(--r-radius); }
+.island-episodes time { color: var(--r-text-muted); font-size: .85rem; }
