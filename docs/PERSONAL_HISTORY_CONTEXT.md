@@ -198,6 +198,35 @@ suppression identity to prevent resurrection. Forgetting a source note also supp
 Neither these endpoints nor the context editor are added to Nestor consumer
 or family tool permissions.
 
+## Corrections proposed by Nestor
+
+Nestor reads moments and proposes corrections; only the owner decides. A
+proposal changes nothing by itself.
+
+- Nestor contract: `POST /api/consumers/nestor/v1/memory/history` with
+  `operation` `search` (`query`), `get` (`entryId`), `propose` (`entryId`,
+  `changes`, `rationale`, up to five `evidence` quotes) or `status`. The
+  OpenClaw tool `life_atlas` (super-dad-memory, private owner context only)
+  calls it. There is no accept, refuse or edit operation on this contract.
+- A moment with a context accepts `title`, `description`, `date`/`precision`,
+  `endDate`/`endPrecision`, `ongoing`, `category`, `place` and `notes`,
+  normalized by the context contract when proposed. A kept souvenir accepts
+  `eventDate` (day or empty), `people`, `places` and `text`. A native candidate
+  without context cannot be corrected this way yet. Sources, quotes, relations
+  and review decisions are never proposable.
+- Each proposal records what the moment said (`before`), the revision Nestor
+  saw (`baseRevision`) and its conversation reference. Identical proposals
+  against the same revision are stored once; at most 300 wait at a time.
+- Owner surface: `GET /api/secretary/proposals?state=pending|accepted|refused|stale|all`,
+  `POST /api/secretary/proposals/:id/accept`, `POST /api/secretary/proposals/:id/refuse`
+  with an optional `reason`. Accepting applies the changes through
+  `/history/:id/context` or the souvenir edit at `baseRevision`; when the
+  moment changed since, nothing is written and the proposal becomes `stale`.
+- Life Atlas shows the inbox (`/atlas/#proposals`, header button when
+  proposals wait) with each field before and after, the rationale and the
+  quotes, and a notice in the moment's dossier. Links returned to Nestor use
+  `CORE_PUBLIC_URL` when it is set.
+
 ## Deployment
 
 Deploy Core through the instance's existing procedure. The added unique sparse

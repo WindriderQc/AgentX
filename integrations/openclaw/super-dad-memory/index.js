@@ -17,6 +17,7 @@ import { registerWorkQueue, createWorkQueueClient } from "./work-queue.js";
 import { registerConversationWork } from './conversation-work.js';
 import { registerNativeReadBudget } from './native-read-budget.js';
 import { registerMailRecall } from './core-recall.js';
+import { registerLifeAtlas } from './core-atlas.js';
 import { registerPhotos } from './photos.js';
 import { registerPresentation } from './presentation.js';
 import { registerDossier } from './core-dossier.js';
@@ -30,6 +31,7 @@ export default definePluginEntry({
     registerDataTools(api);
     registerWorkQueue(api);
     registerMailRecall(api);
+    registerLifeAtlas(api);
     registerConversationWork(api);
     registerNativeReadBudget(api);
     registerPhotos(api);
