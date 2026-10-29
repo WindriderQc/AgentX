@@ -96,4 +96,17 @@ async function cancelNative(job) {
   if (!row.nativeBase) throw fail('Lancement en cours de réconciliation. Actualisez avant d’annuler.', 409);
   return native(row.nativeBase, 'POST', '/' + encodeURIComponent(job.id) + '/cancel');
 }
-module.exports = { start, observe, preDispatch, cancelNative, native };
+let heartbeating = false;
+async function heartbeatActive() {
+  if (heartbeating) return;
+  heartbeating = true;
+  try {
+    // A slow receipt/profiler request in the shared observer must not expire
+    // an unrelated transcription's known admission while its native job runs.
+    const active = await Model.find({ state: 'running', runtimeReleased: false }).select('+admission').lean();
+    const results = await Promise.all(active.filter(row => row.admission).map(row =>
+      coordination.heartbeat('workload', { ...proof(row.admission), ttl: 120000 })));
+    return { renewed: results.filter(row => row.heartbeat).length, refused: results.filter(row => !row.heartbeat).length };
+  } finally { heartbeating = false; }
+}
+module.exports = { start, observe, preDispatch, cancelNative, native, heartbeatActive };

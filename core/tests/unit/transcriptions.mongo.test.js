@@ -170,3 +170,12 @@ it('keeps an unconfigured or old speech service unstarted before acquiring GPU a
   expect((await service.get(row._id)).error).toContain('pas prêt');
   expect(starts).toBe(0);
 });
+
+it('renews active admission independently of slow or unavailable native receipt reads', async () => {
+  const row = await service.create(input()); await launch(row);
+  const calls = global.fetch.mock.calls.length;
+  global.fetch.mockRejectedValue(Error('Synthetic native outage'));
+  expect(await executor.heartbeatActive()).toEqual({ renewed: 1, refused: 0 });
+  expect(global.fetch.mock.calls).toHaveLength(calls);
+  expect(starts).toBe(1);
+});

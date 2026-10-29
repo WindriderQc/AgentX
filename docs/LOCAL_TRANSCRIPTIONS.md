@@ -38,7 +38,9 @@ The receipt and original speech origin are retained for reconciliation, rather
 than holding an HTTP request open for an entire video. Native start is
 idempotent by identity and exact URL/language.
 
-Closing the page does not affect execution. A Core restart observes the same
+Admission heartbeats run independently of potentially slow shared receipt
+sweeps; they never start or replace native work. Closing the page does not
+affect execution. A Core restart observes the same
 native receipt. If Core loses its workload heartbeat beyond the native lease
 window, coordination can quarantine the resource: the UI shows an unresolved
 receipt and does not launch replacement work. Use native workload recovery;
