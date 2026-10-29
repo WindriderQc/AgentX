@@ -36,7 +36,7 @@ def test_uploaded_speech_threshold_can_be_calibrated_by_the_instance(monkeypatch
         def transcribe(self, audio, **options):
             assert options["vad_parameters"]["threshold"] == 0.7
             assert options["vad_parameters"]["neg_threshold"] == 0.35
-            return iter([SimpleNamespace(text="Oui.")]), SimpleNamespace(language="fr", duration_after_vad=0.2)
+            return iter([SimpleNamespace(start=0.0, end=1.0, text="Oui.")]), SimpleNamespace(language="fr", duration_after_vad=0.2)
     assert _run(FakeModel(), "speech.wav", "fr", vad_filter=True) == "Oui."
 
 
@@ -55,8 +55,8 @@ def test_run_uses_quality_beam_and_requested_language():
         def transcribe(self, audio, **kwargs):
             self.kwargs = kwargs
             return iter([
-                SimpleNamespace(text=" Nestor "),
-                SimpleNamespace(text=" est prêt. "),
+                SimpleNamespace(start=0.0, end=1.0, text=" Nestor "),
+                SimpleNamespace(start=0.0, end=1.0, text=" est prêt. "),
             ]), SimpleNamespace(language=kwargs["language"])
 
     model = FakeModel()
@@ -85,7 +85,7 @@ def test_bilingual_transcription_does_not_force_french_or_translate(language, ex
             assert kwargs["task"] == "transcribe"
             assert kwargs["initial_prompt"] == whisper.settings.whisper_hotwords
             assert "français" not in kwargs["initial_prompt"]
-            return iter([SimpleNamespace(text="Because my Ollama server is not available.")]), SimpleNamespace(language="en")
+            return iter([SimpleNamespace(start=0.0, end=1.0, text="Because my Ollama server is not available.")]), SimpleNamespace(language="en")
 
     assert _run(FakeModel(), "audio.wav", language) == "Because my Ollama server is not available."
 
@@ -139,7 +139,7 @@ def test_real_subtitle_words_are_not_blacklisted():
     class FakeModel:
         def transcribe(self, audio, **kwargs):
             assert kwargs["vad_filter"] is True
-            return iter([SimpleNamespace(text="Explique le sous-titrage de Radio-Canada.")]), SimpleNamespace()
+            return iter([SimpleNamespace(start=0.0, end=1.0, text="Explique le sous-titrage de Radio-Canada.")]), SimpleNamespace()
 
     assert _run(FakeModel(), "speech.wav", "fr", vad_filter=True) == "Explique le sous-titrage de Radio-Canada."
 
@@ -151,7 +151,7 @@ def test_bilingual_mode_keeps_detected_french_or_english_in_one_pass(language):
         def transcribe(self, audio, **options):
             calls.append(options)
             assert options["language"] is None
-            return iter([SimpleNamespace(text="Bonjour" if language == "fr" else "Hello")]), SimpleNamespace(language=language)
+            return iter([SimpleNamespace(start=0.0, end=1.0, text="Bonjour" if language == "fr" else "Hello")]), SimpleNamespace(language=language)
     assert _run(FakeModel(), "speech.wav", "fr-en", vad_filter=True) == ("Bonjour" if language == "fr" else "Hello")
     assert len(calls) == 1
     assert calls[0]["vad_filter"] is True
@@ -172,7 +172,7 @@ def test_bilingual_mode_rewinds_upload_and_never_decodes_detected_japanese(selec
                 return wrong_language_segments(), SimpleNamespace(language="ja", all_language_probs=[
                     ("ja", 0.8), ("fr", 0.15 if selected == "fr" else 0.05), ("en", 0.15 if selected == "en" else 0.05)])
             assert options["language"] == selected
-            return iter([SimpleNamespace(text="Bonjour" if selected == "fr" else "Hello")]), SimpleNamespace(language=selected)
+            return iter([SimpleNamespace(start=0.0, end=1.0, text="Bonjour" if selected == "fr" else "Hello")]), SimpleNamespace(language=selected)
     with io.BytesIO(b"audio bytes") as audio:
         assert _run(FakeModel(), audio, "fr-en", vad_filter=True) == ("Bonjour" if selected == "fr" else "Hello")
     assert len(calls) == 2
@@ -199,7 +199,7 @@ def test_uploaded_memory_stream_rewinds_for_cpu_fallback(monkeypatch):
             payloads.append(audio.read())
             if self.device == "cuda":
                 raise RuntimeError("CUDA runtime unavailable")
-            return iter([SimpleNamespace(text="Bonjour")]), SimpleNamespace()
+            return iter([SimpleNamespace(start=0.0, end=1.0, text="Bonjour")]), SimpleNamespace()
 
     monkeypatch.setattr(whisper, "_prefer_cpu", False)
     monkeypatch.setattr(whisper, "_models", {})
@@ -214,7 +214,7 @@ def test_uploaded_memory_stream_rewinds_for_cpu_fallback(monkeypatch):
 def test_transcript_reports_the_language_whisper_decoded(language):
     class FakeModel:
         def transcribe(self, audio, **options):
-            return iter([SimpleNamespace(text="Bonjour" if language == "fr" else "Hello")]), SimpleNamespace(language=language)
+            return iter([SimpleNamespace(start=0.0, end=1.0, text="Bonjour" if language == "fr" else "Hello")]), SimpleNamespace(language=language)
     text = _run(FakeModel(), "speech.wav", "fr-en", vad_filter=True)
     assert text.language == language
 
@@ -225,7 +225,7 @@ class _RecordingModel:
 
     def transcribe(self, audio, **kwargs):
         self.calls.append((audio, kwargs))
-        return iter([SimpleNamespace(text="Bonjour")]), SimpleNamespace(language=kwargs["language"])
+        return iter([SimpleNamespace(start=0.0, end=1.0, text="Bonjour")]), SimpleNamespace(language=kwargs["language"])
 
 
 def _resident(monkeypatch, model):
@@ -314,3 +314,12 @@ def test_an_ordinary_transcription_refreshes_the_warm_window(monkeypatch, ordina
 
     assert whisper.warm() is None
     assert len(model.calls) == 1, "only the ordinary transcription ran the model"
+
+
+def test_recognition_preserves_exact_segment_timestamps():
+    class Model:
+        def transcribe(self, audio, **options):
+            return iter([SimpleNamespace(start=.125, end=1.75, text=" Bonjour. ")]), SimpleNamespace(language="fr", duration=2)
+    result = _run(Model(), "fixture.wav", "fr")
+    assert result.segments == [{"start": .125, "end": 1.75, "text": "Bonjour."}]
+    assert result.duration == 2

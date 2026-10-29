@@ -20,6 +20,8 @@ async function sweep() {
     catch (error) { logger.warn('Report native receipts await reconciliation', { code: error.code || 'REPORT_RECEIPTS_UNAVAILABLE' }); }
     try { await require('./images/imageService').dispatchQueued(); }
     catch (error) { logger.warn('Image dispatcher unavailable; other queue receipts remain observable', { code: error.code || 'IMAGE_QUEUE_UNAVAILABLE' }); }
+    try { await require('./transcriptionService').sweep(); }
+    catch (error) { logger.warn('Transcription planning awaits reconciliation', { code: error.code }); }
     try { await require('./heavyWorkQueueLauncher').dispatchDue(); }
     catch (error) { logger.warn('Automatic starts unavailable; reserved requests wait', { code: error.code || 'AUTO_START_UNAVAILABLE' }); }
     const current = await queue.list();

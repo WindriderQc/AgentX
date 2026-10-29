@@ -1,0 +1,28 @@
+<main class="tr-shell" lang="fr">
+  <header class="tr-header"><div><p class="tr-eyebrow">VOTRE BIBLIOTHÈQUE AUDIO</p><h1>Une vidéo. Le texte, à votre rythme.</h1><p>Transcrivez sur votre matériel et retrouvez chaque passage, quand vous en avez besoin.</p></div><span class="tr-local"><i class="fas fa-house" aria-hidden="true"></i> Reconnaissance locale</span></header>
+  <div class="tr-layout">
+    <section class="tr-compose" aria-labelledby="newTitle">
+      <p class="tr-eyebrow">NOUVELLE TRANSCRIPTION</p><h2 id="newTitle">Qu’allez-vous écouter ?</h2>
+      <form id="transcriptionForm">
+        <label for="sourceUrl">Lien de la vidéo YouTube</label>
+        <input id="sourceUrl" name="url" type="url" placeholder="https://www.youtube.com/watch?v=…" required autocomplete="off">
+        <p class="tr-help">Une vidéo publique. L’audio est téléchargé depuis YouTube, puis transcrit localement.</p>
+        <label for="transcriptionLanguage">Langue de l’audio</label><select id="transcriptionLanguage" name="language"><option value="auto">Détecter automatiquement</option><option value="fr">Français</option><option value="en">English</option><option value="fr-en">Français / English</option></select>
+        <fieldset class="tr-when"><legend>Quand commencer ?</legend><label><input type="radio" name="when" value="now" checked> Dès que possible</label><label><input type="radio" name="when" value="at"> Choisir un moment</label></fieldset>
+        <div id="scheduleFields" hidden><label for="startLocal">Date et heure</label><input id="startLocal" type="datetime-local" step="60"><label for="timeZone">Fuseau horaire</label><input id="timeZone" list="timeZones" required autocomplete="off"><datalist id="timeZones"><option value="America/Toronto"><option value="Europe/Paris"><option value="UTC"></datalist><p id="schedulePreview" class="tr-help"></p></div>
+        <p class="tr-warning"><i class="fas fa-microphone-lines" aria-hidden="true"></i> Pendant le traitement, les réponses vocales peuvent être plus lentes.</p>
+        <button id="submitTranscription" class="tr-button tr-primary" type="submit"><i class="fas fa-plus" aria-hidden="true"></i> Transcrire la vidéo</button>
+        <p class="tr-help">Vous pouvez fermer cette page : la tâche et son résultat restent sur le serveur.</p>
+        <p id="formError" role="alert" class="tr-error"></p>
+      </form>
+    </section>
+    <section class="tr-library" aria-labelledby="libraryTitle">
+      <div class="tr-library-heading"><div><p class="tr-eyebrow">TOUT RESTE ICI</p><h2 id="libraryTitle">Mes transcriptions <span id="transcriptionCount"></span></h2></div><button id="refreshTranscriptions" class="tr-button">Actualiser</button></div>
+      <label class="tr-search" for="transcriptionSearch"><i class="fas fa-search" aria-hidden="true"></i><input id="transcriptionSearch" type="search" placeholder="Rechercher un titre, une source, un passage…"></label>
+      <p id="connectionStatus" class="tr-help" role="status" aria-live="polite">Connexion à votre bibliothèque…</p>
+      <div id="transcriptionList" aria-busy="true"></div>
+      <nav class="tr-pagination" aria-label="Pages de la bibliothèque"><button id="previousPage" class="tr-button" disabled>Précédent</button><span id="pagePosition"></span><button id="nextPage" class="tr-button" disabled>Suivant</button></nav>
+    </section>
+  </div>
+  <dialog id="transcriptDialog" aria-labelledby="transcriptTitle"><div class="tr-detail-heading"><div><p class="tr-eyebrow">TRANSCRIPTION</p><h2 id="transcriptTitle"></h2></div><button id="closeTranscript" class="tr-button" aria-label="Fermer la transcription">Fermer</button></div><p id="transcriptMetadata" class="tr-help"></p><div id="transcriptLinks" class="tr-actions"></div><div id="transcriptText" class="tr-segments"></div></dialog>
+</main>

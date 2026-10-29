@@ -1,0 +1,5 @@
+# Optional URL-job dependencies; use the existing speech environment/model.
+# Official yt-dlp and matching offline EJS package; restricted Deno runtime.
+yt-dlp[default,deno]==2026.10.26
+deno==2.9.8
+av==18.1.0

@@ -21,7 +21,7 @@ node integrations/operations/heavy-work-queue.cjs run --core <core-origin> --act
 
 `run` explicitly launches the saved request. Some kinds start without a person
 at the slot: an image already accepted by Core's image service, and a Profiler,
-embedding reindex or topology request whose reservation the owner marked
+embedding reindex, topology or local transcription request whose reservation the owner marked
 `autoStart: true` (see below). No
 queued command is executed. Existing approval requirements still apply. Smaller
 priority numbers appear first; the owner chooses the slot and launch. Benchmark
@@ -80,6 +80,11 @@ Supported executors:
   `agentx.operator-heavy-work/v1` receipt after proving release.
   `island-settle` follows an already dispatched run and never starts one. Core
   never auto-starts it.
+- **Transcription**: `{transcriptionId}` names the immutable Core personal-library
+  request. Core checks the speech origin's physical GPU mapping, acquires native
+  workload admission and starts the same speech service under the queue identity.
+  The service's SQLite receipt proves completion and cancellation; no lost
+  HTTP response authorizes a replacement. See [local transcriptions](LOCAL_TRANSCRIPTIONS.md).
 - **Diagnostic/other** requests may be planned without an executor or may use
   `{mode: "operator", receiptRef: "<out-of-Git receipt reference>"}` for custom
   coding checks. The explicit operator protocol below starts no command.

@@ -3479,6 +3479,36 @@
       "secret": false,
       "description": "RAG vector store, qdrant or memory. Unset: RAG refuses to create a store."
     },
+    "TRANSCRIPTIONS_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Opt-in full-profile local YouTube transcription UI and durable jobs. Requires a configured primary speech service, private native receipt storage and its physical GPU mapping. Unset: disabled."
+    },
+    "TRANSCRIPTION_RESERVATION_MINUTES": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "180",
+      "category": "household",
+      "secret": false,
+      "description": "Planning reservation for a long transcription in minutes (1 to 10080), not a decoding timeout or completion estimate. Running and uncertain jobs retain their fence beyond the window. Unset: 180."
+    },
+    "TRANSCRIPTION_RESOURCE_HOSTS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional JSON array of additional runtime resource origins held by a long transcription. The primary speech origin is always included and must be mapped to its native physical GPU. Unset: only that mapped origin."
+    },
     "VOIX_BASE_URL": {
       "services": [
         "core"
@@ -3497,7 +3527,7 @@
       "default": null,
       "category": "household",
       "secret": false,
-      "description": "Optional backup VoiX base URL. Transcription, synthesis, the voice catalog and the player script use it while VOIX_BASE_URL fails its cached /health probe (15 s period, 1.5 s timeout), and retry on it once after a primary network error or 502/503/504. Native sessions, media vault and config stay on the primary. Unset: no failover."
+      "description": "Optional backup VoiX base URL. Transcription, synthesis, the voice catalog and the player script use it while VOIX_BASE_URL fails its cached /health probe (15 s period, 1.5 s timeout), and retry on it once after a primary network error or 502/503/504. Native sessions, media vault, config and durable long URL jobs stay on the primary. Unset: no failover."
     },
     "VOIX_LONG_TIMEOUT_MS": {
       "services": [

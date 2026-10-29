@@ -31,7 +31,7 @@ def install_model(monkeypatch, action):
         class Model:
             def transcribe(self, audio, **options):
                 action(device, audio, options)
-                return iter([SimpleNamespace(text="Bonjour.")]), SimpleNamespace(language="fr")
+                return iter([SimpleNamespace(start=0.0, end=1.0, text="Bonjour.")]), SimpleNamespace(language="fr")
         return Model()
     monkeypatch.setattr(whisper, "_build_model", build)
 

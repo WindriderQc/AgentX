@@ -11,6 +11,7 @@ function productSpaces(link) {
         item('dad-day', 'My day', '/dad/day', 'fa-calendar-day'),
         item('personal-calendar', 'Calendar', '/dad/calendar', 'fa-calendar-days'),
         item('dad-memories', 'Memories', '/dad/memories', 'fa-bookmark'),
+        item('transcriptions', 'Transcriptions', '/transcriptions', 'fa-file-audio'),
         item('dad-history', 'Archives à revoir', '/dad/history', 'fa-clock-rotate-left'),
         item('finance', 'Finance', '/finance', 'fa-wallet'),
         item('psyx', 'PsyX', '/psyx', 'fa-brain')
