@@ -33,6 +33,25 @@ global.document = { createElement: tag => new Element(tag) };
 require('../public/display-board');
 const { create, safeUrl } = globalThis.DisplayBoard;
 
+test('only an explicitly shown image reveals the workspace; history, companion and search cards do not', () => {
+  const previous = globalThis.NestorPagePresentation;
+  let reveals = 0;
+  globalThis.NestorPagePresentation = { mount: () => ({ board: new Element('section'), update() {},
+    canFollow: () => true, active: () => false, revealImage: () => { reveals++; } }) };
+  try {
+    const screen = globalThis.DisplayBoard.createScreen({ text: new Element('section'), visual: new Element('section') });
+    const image = { kind: 'image', body: 'Synthetic landscape', source: 'web', status: 'found',
+      image: { url: 'https://images.example.test/picture.jpg', sourceLabel: 'Synthetic source' } };
+    assert.equal(screen.add(image), true);
+    assert.equal(reveals, 1);
+    screen.restore([image]);
+    screen.addCompanion(image);
+    screen.add({ kind: 'link', body: 'https://source.example.test/article' });
+    screen.add({ kind: 'image' }); // invalid block
+    assert.equal(reveals, 1, 'Only the explicit, accepted image add requests focus on its content');
+  } finally { globalThis.NestorPagePresentation = previous; }
+});
+
 test('the board stays hidden until something is shown, newest first', () => {
   const container = new Element('section');
   const board = create(container, { secrets: true });

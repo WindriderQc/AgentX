@@ -326,7 +326,11 @@
     if (presentation) {
       text.hidden = visual.hidden = true;
       const board = create(presentation.board, { secrets, space, heading: 'Contenu', onChange: presentation.update });
-      return { add: board.add, restore: board.restore, has: board.has, canFollow: presentation.canFollow, command: presentation.command,
+      return { add(block) {
+        const added = board.add(block);
+        if (added && block.kind === 'image') presentation.revealImage?.();
+        return added;
+      }, restore: board.restore, has: board.has, canFollow: presentation.canFollow, command: presentation.command,
         addCompanion(block) {
           if (!presentation.canFollow()) return false;
           const current = presentation.active() ? board.context()[0] : null;

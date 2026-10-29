@@ -77,7 +77,20 @@
       return result;
     };
 
-    return { board, command, canFollow: () => pin.getAttribute('aria-pressed') !== 'true', active: () => region.classList.contains('is-active'), update(next) {
+    // A typed request may leave the browser scrolled to its composer below
+    // this workspace. Reveal only the explicitly requested, selected picture
+    // once its pixels are ready; a late load cannot replace another selection.
+    function revealImage() {
+      const card = selected, image = card?.dataset.kind === 'image' && card.querySelector('img');
+      if (!image || document.hidden) return;
+      const reveal = () => {
+        if (selected === card && card.isConnected && region.classList.contains('is-active') && !document.hidden) region.scrollIntoView({ block: 'start' });
+      };
+      if (image.complete && image.naturalWidth) reveal();
+      else image.addEventListener('load', reveal, { once: true });
+    }
+
+    return { board, command, revealImage, canFollow: () => pin.getAttribute('aria-pressed') !== 'true', active: () => region.classList.contains('is-active'), update(next) {
       cards = next;
       region.hidden = !cards.length;
       picker.replaceChildren(...cards.map((card, index) => {
