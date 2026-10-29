@@ -60,8 +60,10 @@ def copy_memory_files(source: Path, workspace: Path, require_all=True):
     os.chmod(workspace / "SOUL.md", 0o444)
 
 
-def latest_activity(sessions: Path):
+def latest_activity(sessions: Path, since: float | None = None):
     files = list(sessions.rglob("*.jsonl")) if sessions.is_dir() else []
+    if since is not None:
+        files = [path for path in files if path.stat().st_mtime >= since]
     if not files: return None
     newest = max(files, key=lambda p: p.stat().st_mtime)
     age = max(0, time.time() - newest.stat().st_mtime)

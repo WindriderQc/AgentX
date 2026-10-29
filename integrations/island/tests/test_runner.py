@@ -147,6 +147,72 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(code,2);self.assertEqual(receipt['outcome'],'stopped')
         self.assertNotIn('agent_env',self.__dict__)
 
+    def reset_runtime(self, fail_second_start=False):
+        test=self;test.starts=[];test.actions=[]
+        class World:
+            def __init__(self,**kw): pass
+            def start(self,**kw): test.actions.append('world-start')
+            def connect(self,**kw): pass
+            def stop(self,**kw): test.actions.append('world-stop')
+        class Agent:
+            def __init__(self,**kw): self.dir=kw['dir']
+            def start(self,**kw):
+                test.starts.append(kw['initial_prompt']);test.actions.append('agent-start')
+                if fail_second_start and len(test.starts)==2: raise RuntimeError('synthetic restart failure')
+                data={'schema':'agentx.island-netcheck/v1','checks':[{'name':n,'passed':True} for n in REQUIRED_CHECKS]}
+                (self.dir/'workspace'/'netcheck.json').write_text(json.dumps(data))
+                return SimpleNamespace(tmux_pane_id='%'+str(len(test.starts)))
+            def send(self,**kw): test.actions.append('agent-send');return SimpleNamespace(tmux_pane_id='%9')
+            def stop(self,**kw): test.actions.append('agent-stop')
+        return SimpleNamespace(agentx_isolation_version=lambda:1,World=World,Agent=Agent)
+
+    def test_long_run_resets_the_context_each_episode_and_keeps_one_world(self):
+        self.a.minutes=0.1;self.a.episode_minutes=0.05;self.a.memory_warning_minutes=0.02
+        seen=[]
+        def activity(_sessions,since=None):
+            seen.append(since)
+            return {"age":0,"payload":{},"modelActivity":True}
+        code=run_island.execute(self.a,self.reset_runtime(),clock=Clock(),alive=lambda _:True,activity=activity)
+        receipt=json.loads((self.a.run_dir/'receipt.json').read_text())
+        self.assertEqual(code,0,receipt.get('error'))
+        self.assertEqual(self.starts,['Begin.','Begin.'])
+        self.assertEqual(self.actions.count('world-start'),1)
+        self.assertEqual([e['index'] for e in receipt['episodes']],[1,2])
+        self.assertTrue(all(e.get('activityObserved') for e in receipt['episodes']))
+        self.assertEqual(receipt['episodeMinutes'],0.05)
+        self.assertEqual(sum(1 for e in receipt['events'] if e['event']=='episode'),1)
+        self.assertEqual(sum(1 for e in receipt['events'] if e.get('reason')=='memory-reminder'),2)
+        # The first episode reads all sessions; after the reset, only newer ones.
+        self.assertIsNone(seen[0]);self.assertIsNotNone(seen[-1])
+        reset=[i for i,x in enumerate(self.actions) if x=='agent-start'][1]
+        self.assertEqual(self.actions[reset-1],'agent-stop')
+
+    def test_a_failed_context_reset_fails_the_run_and_stops_everything(self):
+        self.a.minutes=0.1;self.a.episode_minutes=0.05
+        code=run_island.execute(self.a,self.reset_runtime(fail_second_start=True),clock=Clock(),alive=lambda _:True,
+                                activity=lambda _s,since=None:{"age":0,"payload":{},"modelActivity":True})
+        receipt=json.loads((self.a.run_dir/'receipt.json').read_text())
+        self.assertEqual(code,1);self.assertIn('restart failure',receipt['error'])
+        self.assertEqual(self.actions[-2:],['agent-stop','world-stop'])
+        self.assertTrue(receipt['localStopped'])
+
+    def test_one_episode_by_default(self):
+        self.a.minutes=0.05
+        code=run_island.execute(self.a,self.reset_runtime(),clock=Clock(),alive=lambda _:True,
+                                activity=lambda _s:{"age":0,"payload":{},"modelActivity":True})
+        self.assertEqual(code,0);self.assertEqual(self.starts,['Begin.'])
+
+    def test_activity_after_a_reset_ignores_older_sessions(self):
+        from run_state import latest_activity
+        import os,time
+        sessions=self.root/'sessions';sessions.mkdir()
+        old=sessions/'old.jsonl';old.write_text('{"type":"response_item","payload":{"type":"message","role":"assistant"}}\n')
+        os.utime(old,(time.time()-100,time.time()-100))
+        self.assertTrue(latest_activity(sessions)['modelActivity'])
+        self.assertIsNone(latest_activity(sessions,since=time.time()-10))
+        (sessions/'new.jsonl').write_text('{"type":"session_meta","payload":{}}\n')
+        self.assertFalse(latest_activity(sessions,since=time.time()-10)['modelActivity'])
+
     def test_finished_turn_recovery_failure_or_exhausted_budget_is_failed(self):
         for maximum in [0,1]:
             self.a.run_dir=self.root/('stall-'+str(maximum))
