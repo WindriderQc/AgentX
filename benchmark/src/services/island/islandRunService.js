@@ -19,6 +19,8 @@ const UUID = /^[a-f0-9-]{36}$/;
 const MEMORY_KEYS = Object.freeze({ 'SOUL.md': 'soul', 'EPISODIC_MEMORY.jsonl': 'episodic', 'SEMANTIC_MEMORY.md': 'semantic' });
 const MAX_MEMORY_TEXT = 256 * 1024;
 const START_WINDOW_HOURS = 48;
+const AGENT_MESSAGES = 40;
+const AGENT_KINDS = new Set(['thought', 'say', 'command']);
 
 class IslandError extends Error {
   constructor(message, statusCode = 400) { super(message); this.statusCode = statusCode; }
@@ -99,7 +101,7 @@ async function listRuns(deps = {}) {
   const view = islandViews(d.env);
   const [docs, queue] = await Promise.all([
     // Memory sizes stay so the row knows a memory exists; the texts do not.
-    IslandRun.find({}).select('-events -memory.soul.text -memory.episodic.text -memory.semantic.text')
+    IslandRun.find({}).select('-events -agentMessages -memory.soul.text -memory.episodic.text -memory.semantic.text')
       .sort({ createdAt: -1 }).limit(200).lean(),
     readQueue(d)
   ]);
@@ -117,7 +119,8 @@ async function getRun(id, deps = {}) {
     IslandRun.findById(id).select('-memory.soul.text -memory.episodic.text -memory.semantic.text').lean(), readQueue(d)]);
   const job = queue.jobs.find(item => item.id === id);
   if (!doc && !job) throw new IslandError('No island run with this id', 404);
-  return { ...runRow(doc, job, islandViews(d.env)), events: doc?.events || [], queueRead: queue.read };
+  return { ...runRow(doc, job, islandViews(d.env)), events: doc?.events || [], agentMessages: doc?.agentMessages || [],
+    queueRead: queue.read };
 }
 
 /** The memory files a run left, and the agent's other runs that have some. */
@@ -170,6 +173,11 @@ async function recordReport(id, body = {}) {
   if (Array.isArray(status.events)) {
     set.events = status.events.slice(-200).map(event => ({ at: text(event?.at, 40), event: text(event?.event, 60),
       reason: text(event?.reason), error: text(event?.error) }));
+  }
+  if (Array.isArray(status.agentMessages)) {
+    set.agentMessages = status.agentMessages.slice(-AGENT_MESSAGES)
+      .map(entry => ({ at: text(entry?.at, 40) || '', kind: entry?.kind, text: text(entry?.text, 600) }))
+      .filter(entry => AGENT_KINDS.has(entry.kind) && entry.text);
   }
   const live = status.liveView;
   set.liveView = live && Number.isInteger(live.port) && live.port > 0 && live.port < 65536 && typeof live.path === 'string' && live.path.startsWith('/')

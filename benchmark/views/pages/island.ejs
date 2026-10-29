@@ -34,8 +34,12 @@
   <section id="island-viewer" class="r-section island-viewer" hidden aria-labelledby="island-viewer-title">
     <h2 id="island-viewer-title" class="r-sec-title">Vue 3D</h2>
     <p class="island-note"><a id="island-viewer-open" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>
-      · Le panneau <b>Messages</b> montre les pensées de l'agent.</p>
+      · En direct, les pensées de l'agent s'affichent sous la vue ; en relecture, dans le panneau <b>Messages</b>.</p>
     <iframe id="island-frame" title="Vue 3D de l'île" allow="fullscreen"></iframe>
+    <div id="island-thoughts" class="island-thoughts" hidden>
+      <h3 class="island-thoughts-title">Pensées en direct <span id="island-thoughts-note" class="island-thoughts-note"></span></h3>
+      <ol id="island-thoughts-list" aria-live="polite"></ol>
+    </div>
   </section>
 
   <section id="island-memory" class="r-section island-memory" hidden aria-labelledby="island-memory-title">

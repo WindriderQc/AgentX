@@ -248,6 +248,14 @@ Quatre sections, dans une seule entrée du menu de Benchmark :
 - **Vue 3D** et **Mémoire** restent cachées tant qu'aucune partie n'est
   choisie.
 
+**Pensées en direct.** Pendant une partie, `island_runner.py status` renvoie
+les 40 dernières pensées, paroles et commandes de l'agent (`agentMessages`),
+lues dans la fin de sa session Codex, 600 caractères au plus chacune, les longues
+suites opaques remplacées par « … ». L'outil de file les transmet à Benchmark dans
+son rapport habituel (toutes les 30 s) ; l'onglet les affiche sous la vue en direct,
+les plus récentes en haut, rafraîchies toutes les 15 s. C'est du texte produit par
+l'agent : toujours échappé, jamais exécuté, absent des reçus. Aucun port nouveau.
+
 Réglages de Benchmark :
 
 | Variable | Rôle |

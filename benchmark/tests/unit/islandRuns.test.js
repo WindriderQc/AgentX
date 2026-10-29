@@ -101,6 +101,24 @@ describe('island run service', () => {
       .rejects.toMatchObject({ statusCode: 409 });
   });
 
+  it('keeps only typed recent agent messages, in the run detail and not in the list', async () => {
+    const entries = [
+      { at: '2026-10-29T22:04:14Z', kind: 'thought', text: 'Read my memory first.' },
+      { at: '2026-10-29T22:11:08Z', kind: 'say', text: 'Both mysteries solved.' },
+      { at: 'x', kind: 'shell', text: 'not a known kind' },
+      { at: 'x', kind: 'command', text: 42 },
+      ...Array.from({ length: 50 }, (_, i) => ({ at: 't', kind: 'command', text: `cmd ${i} ` + 'x'.repeat(700) }))
+    ];
+    await islands.recordReport(ID, report({ status: { ...report().status, agentMessages: entries } }));
+    const quiet = { env, queue: async () => ({ jobs: [] }) };
+    const run = await islands.getRun(ID, quiet);
+    expect(run.agentMessages.length).toBeLessThanOrEqual(40);
+    expect(run.agentMessages.every(m => ['thought', 'say', 'command'].includes(m.kind) && m.text.length <= 600)).toBe(true);
+    expect(run.agentMessages.at(-1).text.startsWith('cmd 49 ')).toBe(true);
+    const listed = await islands.listRuns(quiet);
+    expect(listed.runs.find(r => r.id === ID)).not.toHaveProperty('agentMessages');
+  });
+
   it('opens a recording in the configured replay server only', async () => {
     await expect(islands.openReplay(ID, { env: {} })).rejects.toMatchObject({ statusCode: 409 });
     await islands.recordReport(ID, report());
@@ -172,7 +190,19 @@ describe('island routes', () => {
 });
 
 describe('island page helpers', () => {
-  const page = loadBrowserModule('island/index.js', 'escapeHtml, when, duration, stateLabel, runRowHtml, runDetailHtml, episodesHtml', { apiFetch: async () => ({}) });
+  const page = loadBrowserModule('island/index.js', 'escapeHtml, when, clock, duration, stateLabel, runRowHtml, runDetailHtml, episodesHtml, thoughtsHtml', { apiFetch: async () => ({}) });
+
+  it('shows the latest thoughts newest first, escaped, with a time zone', () => {
+    const html = page.thoughtsHtml([
+      { at: '2026-10-29T22:04:14Z', kind: 'thought', text: 'Read <b>memory</b>' },
+      { at: '2026-10-29T22:04:15Z', kind: 'command', text: 'curl "http://world/observe"' }], 'America/Toronto');
+    expect(html.indexOf('commande')).toBeLessThan(html.indexOf('pense'));
+    expect(html).toContain('&lt;b&gt;memory&lt;/b&gt;');
+    expect(html).toContain('<code>curl &quot;http://world/observe&quot;</code>');
+    expect(html).toMatch(/18:04|18 h 04/);
+    expect(html).toMatch(/HAE|EDT|UTC−4|GMT-4/);
+    expect(page.thoughtsHtml([])).toContain('Rien');
+  });
 
   it('escapes run text and always shows a time zone', () => {
     expect(page.escapeHtml('<img onerror=x>')).toBe('&lt;img onerror=x&gt;');

@@ -36,6 +36,8 @@ const IslandRunSchema = new mongoose.Schema({
   liveView: { type: new mongoose.Schema({ port: Number, path: String }, { _id: false }), default: null },
   recording: { type: String, default: null },
   memorySource: String,
+  // The agent's latest thoughts, words and commands while it plays (untrusted text, shown escaped).
+  agentMessages: { type: [{ _id: false, at: String, kind: { type: String, enum: ['thought', 'say', 'command'] }, text: String }], default: [] },
   // SOUL.md, EPISODIC_MEMORY.jsonl and SEMANTIC_MEMORY.md after the run.
   memory: {
     type: new mongoose.Schema({ soul: memoryFile, episodic: memoryFile, semantic: memoryFile }, { _id: false }),
