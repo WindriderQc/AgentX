@@ -25,16 +25,18 @@ invokes no model.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import datetime as dt
 import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
+
+import run_island as episode
+from run_state import MEMORY, atomic_json, copy_memory_files
 
 CONTRACT = "agentx.island-runner/v1"
 PRINCIPAL_ALIAS = "agentx-primary"
@@ -46,10 +48,6 @@ WORLD = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 MEMORY_FILES = ("SOUL.md", "EPISODIC_MEMORY.jsonl", "SEMANTIC_MEMORY.md")
 TEMPLATE_FILES = ("SOUL.md", "EPISODIC_MEMORY.md", "SEMANTIC_MEMORY.md")
 MAX_MEMORY_BYTES = 256 * 1024
-MAX_WORKSPACE_BYTES = 64 * 1024 * 1024
-CONTINUE_PROMPT = "Please don't stop. Just continue doing whatever you want to do."
-MEMORY_REMINDER = ("This session ends in a few minutes. Update your memory files now "
-                   "so the future you remembers what happened and what you learned.")
 DEFAULTS = {
     "worldPort": 18080,
     "gatewayGuestPort": 8443,
@@ -73,9 +71,7 @@ def now_iso() -> str:
 
 
 def write_json(path: Path, value) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(value, indent=2) + "\n")
-    os.replace(tmp, path)
+    atomic_json(path, value)
 
 
 def read_json(path: Path, default=None):
@@ -125,47 +121,8 @@ def render_system_prompt(template: str, agent: str) -> str:
 
 
 def codex_provider_args(gateway_host: str, guest_port: int, context_window: int) -> list[str]:
-    base_url = f"https://{gateway_host}:{guest_port}/api/llm/v1"
-    return [
-        "-c", 'model_provider="agentx"',
-        "-c", 'model_providers.agentx.name="AgentX"',
-        "-c", f'model_providers.agentx.base_url="{base_url}"',
-        "-c", 'model_providers.agentx.wire_api="responses"',
-        "-c", 'model_providers.agentx.env_key="AGENTX_LLM_CODEX_TOKEN"',
-        "-c", f"model_context_window={context_window}",
-        "-c", f"model_auto_compact_token_limit={int(context_window * 0.9)}",
-    ]
-
-
-def stall_reason(sessions: Path, after_turn_seconds: float, idle_seconds: float, now: float | None = None) -> str | None:
-    """Why the agent looks stuck, from its newest Codex rollout, or None.
-
-    A finished turn normally triggers Clawblox's Stop hook within seconds. A
-    turn that ended in error (an output-token cutoff, for example) does not,
-    so the TUI just sits idle. Also catch a session with no activity at all.
-    """
-    rollouts = sorted(sessions.rglob("*.jsonl"), key=lambda p: p.stat().st_mtime) if sessions.is_dir() else []
-    if not rollouts:
-        return None
-    newest = rollouts[-1]
-    age = (now or time.time()) - newest.stat().st_mtime
-    last = {}
-    with open(newest, "rb") as f:
-        f.seek(0, os.SEEK_END)
-        f.seek(max(0, f.tell() - 65536))
-        lines = [line for line in f.read().splitlines() if line.strip()]
-    if lines:
-        try:
-            last = json.loads(lines[-1])
-        except json.JSONDecodeError:
-            last = {}
-    payload = last.get("payload") or {}
-    if payload.get("type") == "task_complete" and age >= after_turn_seconds:
-        error = (payload.get("error") or {}).get("message")
-        return f"turn ended without continuing ({error})" if error else "turn ended without continuing"
-    if age >= idle_seconds:
-        return f"no activity for {int(age)} s"
-    return None
+    # The hostname is not exposed to the sandbox; it reaches only the local capability.
+    return episode.codex_args(guest_port, context_window)
 
 
 def spectator_path(world_log: Path) -> dict | None:
@@ -180,43 +137,22 @@ def spectator_path(world_log: Path) -> dict | None:
     return {"port": int(match.group(1)), "path": match.group(2)}
 
 
-def workspace_bytes(path: Path) -> int:
-    return sum(p.stat().st_size for p in path.rglob("*") if p.is_file() and not p.is_symlink())
-
-
 def seed_workspace(workspace: Path, templates: Path, store: Path, memory: str) -> str:
-    """Fill a new workspace; returns where the memory came from."""
-    workspace.parent.mkdir(parents=True, exist_ok=True)
-    source = "template"
-    if memory == "continue" and store.is_dir() and any(store.iterdir()):
-        shutil.copytree(store, workspace, symlinks=False)
-        source = "previous-run"
-    workspace.mkdir(parents=True, exist_ok=True)
-    for name in TEMPLATE_FILES:
-        target = workspace / name
-        if name == "SOUL.md" and target.exists():
-            target.chmod(0o644)
-            target.unlink()  # the soul always comes from the template
-        if not target.exists():
-            shutil.copy2(templates / name, target)
-    (workspace / "EPISODIC_MEMORY.jsonl").touch(exist_ok=True)
-    os.chmod(workspace / "SOUL.md", 0o444)
-    return source
+    source = store if memory == "continue" and store.is_dir() and any(store.iterdir()) else templates
+    copy_memory_files(source, workspace, require_all=source == store)
+    return "previous-run" if source == store else "template"
 
 
 def save_memory(workspace: Path, store: Path) -> dict:
-    """Copy the workspace back to the agent's store, replacing it whole."""
-    size = workspace_bytes(workspace)
-    if size > MAX_WORKSPACE_BYTES:
-        return {"saved": False, "reason": f"workspace is {size} bytes, above {MAX_WORKSPACE_BYTES}"}
+    """Persist the four memory files only, never tools, sessions or credentials."""
     store.parent.mkdir(parents=True, exist_ok=True)
     staging = store.with_name(store.name + ".incoming")
     old = store.with_name(store.name + ".previous")
     shutil.rmtree(staging, ignore_errors=True)
-    shutil.copytree(workspace, staging, symlinks=False)
+    copy_memory_files(workspace, staging)
+    size = sum((staging / name).stat().st_size for name in MEMORY)
     shutil.rmtree(old, ignore_errors=True)
-    if store.exists():
-        os.replace(store, old)
+    if store.exists(): os.replace(store, old)
     os.replace(staging, store)
     shutil.rmtree(old, ignore_errors=True)
     return {"saved": True, "bytes": size}
@@ -226,7 +162,7 @@ def memory_snapshot(workspace: Path) -> dict:
     files = {}
     for name in MEMORY_FILES:
         path = workspace / name
-        if not path.is_file():
+        if path.is_symlink() or not path.is_file():
             files[name] = None
             continue
         data = path.read_bytes()
@@ -247,7 +183,10 @@ def pid_alive(pid, run_id: str) -> bool:
 
 def leftover_processes(run: Path) -> list[int]:
     # Agent, sandbox and world processes carry the run directory in their command line.
-    out = subprocess.run(["pgrep", "-f", str(run) + "/"], capture_output=True, text=True).stdout.split()
+    result = subprocess.run(["pgrep", "-f", "--", re.escape(str(run)) + "/"], capture_output=True, text=True, timeout=10)
+    if result.returncode not in (0, 1) or (result.returncode == 1 and result.stdout.strip()):
+        raise RunnerError("PROCESS_OBSERVATION", "process termination observation failed")
+    out = result.stdout.split()
     return sorted(int(pid) for pid in out if pid.isdigit() and int(pid) != os.getpid())
 
 
@@ -258,7 +197,7 @@ def active_run(config: dict) -> str | None:
     run_id = marker.get("runId")
     if run_id and RUN_ID.match(run_id):
         state = read_json(runs_root(config) / run_id / "state.json") or {}
-        if pid_alive(state.get("pid"), run_id):
+        if pid_alive(state.get("pid"), run_id) or state.get("localStopped") is not True:
             return run_id
     return None
 
@@ -275,10 +214,12 @@ def action_check(config: dict, _args) -> dict:
     for key in ("codex", "tokenFile"):
         if not config.get(key) or not Path(config[key]).expanduser().is_file():
             problems.append(f"{key} missing")
-    if not config.get("gatewayHost"):
+    if not config.get("gatewayHost") and not config.get("gatewayBaseUrl"):
         problems.append("gatewayHost missing")
     try:
-        import clawblox  # noqa: F401
+        import clawblox
+        if getattr(clawblox, "agentx_isolation_version", lambda: 0)() != 1:
+            problems.append("Clawblox isolation patch v1 required")
     except ImportError:
         problems.append("the clawblox Python module is not importable by this interpreter")
     return {"ready": not problems, "problems": problems, "activeRun": active_run(config),
@@ -286,6 +227,14 @@ def action_check(config: dict, _args) -> dict:
 
 
 def action_start(config: dict, args) -> dict:
+    runs_root(config).mkdir(parents=True, exist_ok=True)
+    with open(runs_root(config) / "runner.lock", "a") as lock:
+        try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError: raise RunnerError("RUNNER_BUSY", "runner start is already being coordinated")
+        return start_locked(config, args)
+
+
+def start_locked(config: dict, args) -> dict:
     if not NAME.match(args.agent or ""):
         raise RunnerError("INVALID", "agent needs a short name")
     if not WORLD.match(args.world or ""):
@@ -314,11 +263,11 @@ def action_start(config: dict, args) -> dict:
     state = {"runId": args.run_id, "dispatchId": args.dispatch_id, "phase": "starting", "events": [],
              "requestedAt": request["requestedAt"], "timeZone": config.get("timeZone")}
     write_json(run / "state.json", state)
-    log = open(run / "supervisor.log", "ab")
-    child = subprocess.Popen(
-        [sys.executable, str(Path(__file__).resolve()), "supervise", "--run-id", args.run_id,
-         "--config", config["configPath"]],
-        stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
+    with open(run / "supervisor.log", "ab") as log:
+        child = subprocess.Popen(
+            [sys.executable, str(Path(__file__).resolve()), "supervise", "--run-id", args.run_id,
+             "--config", config["configPath"]],
+            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
     state["pid"] = child.pid
     write_json(run / "state.json", state)
     write_json(runs_root(config) / "active.json", {"runId": args.run_id, "since": request["requestedAt"]})
@@ -337,6 +286,10 @@ def describe(config: dict, run_id: str) -> dict:
         phase = "interrupted"  # the supervisor died; nothing restarts it
     recordings = sorted((run / "recordings").glob("*.clawrec")) if (run / "recordings").is_dir() else []
     events = state.get("events") or []
+    process_ok, leftover = True, []
+    if phase in ("finished", "interrupted"):
+        try: leftover = leftover_processes(run)
+        except RunnerError: process_ok, leftover = False, None
     return {
         "runId": run_id, "dispatchId": request.get("dispatchId"), "agent": request.get("agent"),
         "minutes": request.get("minutes"), "memory": request.get("memory"), "world": request.get("world"),
@@ -348,7 +301,7 @@ def describe(config: dict, run_id: str) -> dict:
         "memorySource": state.get("memorySource"), "memorySaved": state.get("memorySaved"),
         "liveView": state.get("liveView") if phase == "running" else None,
         "recording": str(recordings[-1].relative_to(runs_root(config))) if recordings else None,
-        "leftover": leftover_processes(run) if phase in ("finished", "interrupted") else [],
+        "leftover": leftover, "processObservationOk": process_ok, "localStopped": state.get("localStopped") is True,
     }
 
 
@@ -383,142 +336,57 @@ def action_supervise(config: dict, args) -> dict:
     state = read_json(run / "state.json", {}) or {}
     state.update(pid=os.getpid(), phase="starting")
     events = state.setdefault("events", [])
-
-    def save():
-        write_json(run / "state.json", state)
-
-    def note(kind: str, **detail):
-        events.append({"at": now_iso(), "event": kind, **detail})
-        save()
-        print(f"{now_iso()} {kind} {detail}", flush=True)
-
-    stopping = False
-
-    def request_stop(_signum, _frame):
-        nonlocal stopping
-        stopping = True
-
-    signal.signal(signal.SIGTERM, request_stop)
-    signal.signal(signal.SIGINT, request_stop)
-
-    agent_name = request["agent"]
-    agent_dir = run / "agents" / agent_name.lower()
-    workspace = agent_dir / "workspace"
-    store = memory_store(config, agent_name)
+    workspace = run / "agents" / request["agent"].lower() / "workspace"
+    store = memory_store(config, request["agent"])
     templates = templates_dir(config)
-    state["memorySource"] = seed_workspace(workspace, templates, store, request["memory"])
-    save()
 
-    # Clawblox copies ~/.codex/auth.json into the agent home. Give it an empty
-    # HOME so the owner's OpenAI login never enters the sandbox.
-    runner_home = str(Path.home())
-    host_home = run / "host-home"
-    host_home.mkdir(exist_ok=True)
-    os.environ["HOME"] = str(host_home)
-    os.environ.pop("CODEX_HOME", None)
-    if config.get("clawbloxBin"):
-        os.environ["PATH"] = str(Path(config["clawbloxBin"]).expanduser()) + os.pathsep + os.environ.get("PATH", "")
+    def save(): write_json(run / "state.json", state)
 
-    from clawblox import Agent, World  # imported after HOME is set
+    def event(kind, detail):
+        events.append({"at": now_iso(), "event": kind, **detail})
+        if kind == "running":
+            state.update(phase="running", startedAt=now_iso(), liveView=spectator_path(run / "world.log"))
+        save()
 
-    gateway_host = config.get("gatewayHost", "")
-    guest_port = int(config["gatewayGuestPort"])
-    agent_env = {"CLAWBLOX_NET_ALLOW": f"{gateway_host}:443@{guest_port}"}
-    if request["netcheck"]:
-        binary = HERE / "netcheck_probe.js"
-        model = "netcheck"
-        extra_args: list[str] = []
-        agent_env.update(AGENTX_LLM_CODEX_TOKEN="netcheck-no-token",
-                         NETCHECK_GATEWAY=f"https://{gateway_host}:{guest_port}/api/llm/v1/models",
-                         NETCHECK_GATEWAY_DIRECT=f"https://{gateway_host}/api/llm/v1/models",
-                         NETCHECK_BLOCKED=" ".join(config.get("netcheckBlocked") or []),
-                         NETCHECK_HOST_HOME=runner_home)
-    else:
-        binary = Path(config["codex"]).expanduser().resolve()
-        model = PRINCIPAL_ALIAS
-        extra_args = codex_provider_args(gateway_host, guest_port, int(request["contextWindow"]))
-        agent_env["AGENTX_LLM_CODEX_TOKEN"] = Path(config["tokenFile"]).expanduser().read_text().strip()
-
-    world = World(dir=str(Path(config["worldsRoot"]).expanduser() / request["world"]))
-    agent = Agent(agent="codex", name=agent_name, dir=agent_dir, model=model, binary=binary,
-                  sandbox=True, extra_args=extra_args, auto_continue_prompt=CONTINUE_PROMPT)
-
-    def resume_with(prompt: str, reason: str) -> bool:
-        # Clawblox's send resumes the saved Codex session in a new process. It
-        # needs the agent stopped first: stopping also records the session id.
-        try:
-            agent.stop(grace_seconds=20)
-            agent.send(prompt=prompt, env=agent_env)
-            note("resumed", reason=reason)
-            return True
-        except Exception as err:  # noted, the run goes on
-            note("resume-failed", reason=reason, error=str(err)[:500])
-            return False
-
-    outcome = "completed"
+    receipt = {"outcome": "failed", "localStopped": False}
     try:
-        world.start(port=int(config["worldPort"]), record=True, record_dir=run / "recordings", log_file=run / "world.log")
-        world.connect(agent=agent)
-        agent.start(initial_prompt="Begin.",
-                    system_prompt=render_system_prompt((templates / "SYSTEM_PROMPT.md").read_text(), agent_name),
-                    env=agent_env)
-        state.update(phase="running", startedAt=now_iso(), liveView=spectator_path(run / "world.log"))
-        note("started", model=model)
-        sessions = agent_dir / "sandbox-home" / ".codex" / "sessions"
-        deadline = time.monotonic() + float(request["minutes"]) * 60
-        warn_at = deadline - float(config["memoryWarningMinutes"]) * 60
-        warned = False
-        last_nudge = time.monotonic()
-        nudges = 0
-        while not stopping and time.monotonic() < deadline:
-            if not state.get("liveView"):
-                state["liveView"] = spectator_path(run / "world.log")
-            if not warned and time.monotonic() >= warn_at:
-                warned = True
-                resume_with(MEMORY_REMINDER, "memory-reminder")
-                last_nudge = time.monotonic()
-            elif (time.monotonic() - last_nudge >= float(config["minNudgeIntervalSeconds"])
-                  and nudges < int(config["maxNudges"])):
-                reason = stall_reason(sessions, float(config["stallAfterTurnSeconds"]), float(config["stallIdleSeconds"]))
-                if reason:
-                    nudges += 1
-                    last_nudge = time.monotonic()
-                    resume_with(CONTINUE_PROMPT, reason)
-            time.sleep(5)
-        if stopping:
-            outcome = "stopped"
-    except Exception as err:  # keep the state honest
-        outcome = f"failed: {str(err)[:500]}"
-    finally:
-        state["phase"] = "stopping"
+        state["memorySource"] = seed_workspace(workspace, templates, store, request["memory"])
         save()
+        if config.get("clawbloxBin"):
+            os.environ["PATH"] = str(Path(config["clawbloxBin"]).expanduser()) + os.pathsep + os.environ.get("PATH", "")
+        a = episode.parser().parse_args(["--run-dir", str(run), "--templates-dir", str(templates),
+                                        "--world-dir", str(Path(config["worldsRoot"]).expanduser() / request["world"])])
+        a.name, a.minutes, a.netcheck = request["agent"], float(request["minutes"]), request["netcheck"]
+        a.port, a.gateway_guest_port = int(config["worldPort"]), int(config["gatewayGuestPort"])
+        a.gateway_base_url = config.get("gatewayBaseUrl") or "https://" + config.get("gatewayHost", "") + "/api/llm/v1"
+        a.token_file = Path(config["tokenFile"]).expanduser() if config.get("tokenFile") else None
+        a.codex = Path(config["codex"]).expanduser() if config.get("codex") else None
+        a.context_window = request.get("contextWindow")
+        for field, key in [("memory_warning_minutes", "memoryWarningMinutes"), ("startup_seconds", "startupSeconds"),
+                           ("stall_after_turn_seconds", "stallAfterTurnSeconds"), ("stall_idle_seconds", "stallIdleSeconds"),
+                           ("min_nudge_interval_seconds", "minNudgeIntervalSeconds"), ("max_nudges", "maxNudges")]:
+            setattr(a, field, config.get(key, getattr(a, field)))
+        a.netcheck_blocked_url = config.get("netcheckBlocked") or []
+        episode.execute(a, prepared_workspace=workspace, on_event=event)
+        receipt = read_json(run / "receipt.json") or receipt
+    except Exception as error:
+        receipt.update(outcome="failed", error=str(error))
+    if receipt.get("error"): event("failed", {"error": receipt["error"]})
+    if receipt.get("localStopped") is True and workspace.is_dir():
         try:
-            agent.stop(grace_seconds=20)
-        except Exception as err:
-            note("agent-stop-failed", error=str(err)[:500])
-        try:
-            world.stop(grace_seconds=10)
-        except Exception as err:
-            note("world-stop-failed", error=str(err)[:500])
-        try:
-            if workspace.is_dir():
-                after = run / "memory-after"
-                shutil.rmtree(after, ignore_errors=True)
-                after.mkdir()
-                for name in MEMORY_FILES:
-                    if (workspace / name).is_file():
-                        shutil.copy2(workspace / name, after / name)
-                # A fresh agent leaves the played agent's memory untouched.
-                if request["memory"] == "continue" and not request["netcheck"]:
-                    state["memorySaved"] = save_memory(workspace, store)
-        except Exception as err:
-            note("memory-save-failed", error=str(err)[:500])
-        state.update(phase="finished", outcome=outcome, endedAt=now_iso(), liveView=None)
-        save()
-        marker = read_json(runs_root(config) / "active.json") or {}
-        if marker.get("runId") == args.run_id:
-            (runs_root(config) / "active.json").unlink(missing_ok=True)
-    return {"runId": args.run_id, "outcome": outcome}
+            copy_memory_files(workspace, run / "memory-after")
+            if request["memory"] == "continue" and not request["netcheck"]:
+                state["memorySaved"] = save_memory(workspace, store)
+        except Exception as error:
+            receipt["outcome"] = "failed"
+            event("memory-save-failed", {"error": str(error)})
+    state.update(phase="finished", outcome=receipt["outcome"], endedAt=now_iso(), liveView=None,
+                 localStopped=receipt.get("localStopped") is True, activityObserved=receipt.get("activityObserved") is True)
+    save()
+    marker = read_json(runs_root(config) / "active.json") or {}
+    if marker.get("runId") == args.run_id and state["localStopped"]:
+        (runs_root(config) / "active.json").unlink(missing_ok=True)
+    return {"runId": args.run_id, "outcome": state["outcome"]}
 
 
 ACTIONS = {"check": action_check, "start": action_start, "status": action_status, "stop": action_stop,

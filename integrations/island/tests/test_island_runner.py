@@ -47,25 +47,17 @@ class PureHelpers(Fixture):
 
     def test_provider_uses_the_gateway_and_never_a_model_name(self):
         args = " ".join(runner.codex_provider_args("gateway.example", 8443, 32768))
-        self.assertIn('base_url="https://gateway.example:8443/api/llm/v1"', args)
+        self.assertIn('base_url="http://127.0.0.1:8443/api/llm/v1"', args)
         self.assertIn("model_auto_compact_token_limit=29491", args)
         self.assertEqual(runner.PRINCIPAL_ALIAS, "agentx-primary")
 
-    def test_stall_reason_reads_the_newest_rollout(self):
-        sessions = self.root / "sessions"
-        sessions.mkdir()
-        self.assertIsNone(runner.stall_reason(sessions, 90, 900))
-        rollout = sessions / "a.jsonl"
-        rollout.write_text(json.dumps({"payload": {"type": "task_complete",
-                                                   "error": {"message": "max_output_tokens"}}}) + "\n")
-        now = rollout.stat().st_mtime
-        self.assertIsNone(runner.stall_reason(sessions, 90, 900, now=now + 10))
-        self.assertEqual(runner.stall_reason(sessions, 90, 900, now=now + 100),
-                         "turn ended without continuing (max_output_tokens)")
-        rollout.write_text(json.dumps({"payload": {"type": "user_message"}}) + "\n")
-        now = rollout.stat().st_mtime
-        self.assertIsNone(runner.stall_reason(sessions, 90, 900, now=now + 100))
-        self.assertEqual(runner.stall_reason(sessions, 90, 900, now=now + 1000), "no activity for 1000 s")
+    def test_activity_requires_model_output_instead_of_session_metadata(self):
+        sessions=self.root/'sessions';sessions.mkdir()
+        log=sessions/'rollout.jsonl'
+        log.write_text('{"type":"session_meta","payload":{}}\n')
+        self.assertFalse(runner.episode.latest_activity(sessions)['modelActivity'])
+        log.write_text('{"type":"response_item","payload":{"type":"message","role":"assistant"}}\n')
+        self.assertTrue(runner.episode.latest_activity(sessions)['modelActivity'])
 
     def test_spectator_link_is_read_from_the_world_log(self):
         log = self.root / "world.log"
@@ -88,7 +80,7 @@ class Memory(Fixture):
         played = self.root / "w2"
         self.assertEqual(runner.seed_workspace(played, templates, store, "continue"), "previous-run")
         self.assertIn("built a tower", (played / "EPISODIC_MEMORY.jsonl").read_text())
-        self.assertTrue((played / "w.sh").exists())
+        self.assertFalse((played / "w.sh").exists())
         other = self.root / "w3"
         self.assertEqual(runner.seed_workspace(other, templates, store, "fresh"), "template")
         self.assertEqual((other / "EPISODIC_MEMORY.jsonl").read_text(), "")
@@ -174,6 +166,36 @@ class Actions(Fixture):
         with redirect_stdout(out):
             runner.main(["check", "--config", str(self.root / "absent.json")])
         self.assertEqual(json.loads(out.getvalue())["code"], "RUNNER_CONFIG")
+
+class SafetyRegression(Fixture):
+    def test_memory_carries_only_four_regular_files_and_refuses_symlinks(self):
+        source=self.root/'source';store=runner.memory_store(self.config,'Agent')
+        runner.seed_workspace(source,runner.templates_dir(self.config),store,'fresh')
+        (source/'tool.sh').write_text('not persistent memory')
+        (source/'auth.json').write_text('synthetic secret')
+        (source/'EPISODIC_MEMORY.jsonl').write_text('{"summary":"first episode"}\n')
+        runner.save_memory(source,store)
+        second=self.root/'second'
+        runner.seed_workspace(second,runner.templates_dir(self.config),store,'continue')
+        self.assertEqual({p.name for p in second.iterdir()},set(runner.MEMORY))
+        self.assertIn('first episode',(second/'EPISODIC_MEMORY.jsonl').read_text())
+        (source/'SEMANTIC_MEMORY.md').unlink()
+        (source/'SEMANTIC_MEMORY.md').symlink_to(source/'auth.json')
+        with self.assertRaises(ValueError):runner.save_memory(source,store)
+        self.assertNotIn('synthetic secret',(store/'SEMANTIC_MEMORY.md').read_text())
+
+    def test_failed_pgrep_is_not_an_empty_process_list(self):
+        result=mock.Mock(returncode=2,stdout='',stderr='synthetic error')
+        with mock.patch.object(runner.subprocess,'run',return_value=result):
+            with self.assertRaises(runner.RunnerError):runner.leftover_processes(self.root)
+
+    def test_status_marks_process_observation_unavailable(self):
+        run=self.root/'runs'/RUN;run.mkdir()
+        runner.write_json(run/'request.json',{'runId':RUN,'dispatchId':DISPATCH})
+        runner.write_json(run/'state.json',{'phase':'finished','outcome':'completed','localStopped':True})
+        with mock.patch.object(runner,'leftover_processes',side_effect=runner.RunnerError('PROCESS_OBSERVATION','synthetic')):
+            data=runner.describe(self.config,RUN)
+        self.assertFalse(data['processObservationOk']);self.assertIsNone(data['leftover'])
 
 
 if __name__ == "__main__":

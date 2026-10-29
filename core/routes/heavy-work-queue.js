@@ -63,6 +63,7 @@ router.post('/:id/assert-dispatch', wrap(req => queue.assertDispatch(req.params.
 router.post('/:id/cancel', wrap(req => queue.cancel(req.params.id, req.body, actor(req))));
 router.post('/:id/reconcile', wrap(req => evidence.reconcile(req.params.id, actor(req))));
 router.post('/:id/recover', wrap(req => queue.recover(req.params.id, req.body, actor(req))));
+router.get('/:id/operator-release', wrap(req => queue.operatorRelease(req.params.id, req.query.dispatchId)));
 router.post('/:id/operator-finish', wrap(req => queue.operatorFinish(req.params.id, req.body, actor(req))));
 
 module.exports = router;

@@ -168,13 +168,26 @@ Réglages de l'hôte d'exécution, dans `~/.config/agentx/island-runner.json`
 
 Clawblox doit porter les correctifs AgentX (isolation réseau, espaces de
 processus et d'IPC propres, variables d'opérateur retirées, lecture des
-journaux Codex dans la relecture). Ils sont gardés dans l'instance
-(`work/island/clawblox-agentx.patch`).
+journaux Codex dans la relecture). Le correctif versionné est dans
+`integrations/island/clawblox-isolation.patch`, sur la base upstream `8be90a0`.
+Le module doit annoncer `agentx_isolation_version() == 1` ; une version ancienne
+est refusée avant de démarrer. Aucun changement du HOME du contrôleur n’est fait.
 
 Chaque partie a son dossier `<runsRoot>/<demande>/` : `request.json`,
 `state.json` (phase, relances, lien de la vue en direct), `world.log`,
 `recordings/`, l'agent et son bac à sable, et `memory-after/`. La mémoire
 d'un agent entre les parties est dans `<runsRoot>/memory/<agent>/`.
+Seuls `SOUL.md`, `EPISODIC_MEMORY.md`, `EPISODIC_MEMORY.jsonl` et
+`SEMANTIC_MEMORY.md` passent d’une partie à l’autre. Les autres fichiers,
+les sessions et les credentials ne sont jamais repris ; les symlinks refusent.
+
+Le bac à sable n’atteint plus le domaine Core entier : il reçoit un jeton
+éphémère vers un relais local qui n’expose que les routes LLM nécessaires et
+l’alias `agentx-primary`. Le vrai jeton d’un client de passerelle dédié reste
+sur l’hôte. La clôture exige une observation native de libération du dispatch,
+et non seulement l’absence de claim Benchmark. Voir le
+[contrat de sécurité](../integrations/island/README.md).
+
 
 Ce que la partie fait, repris du prototype :
 
@@ -187,7 +200,8 @@ Ce que la partie fait, repris du prototype :
   « continue » (Clawblox ne peut pas parler à un agent en cours). Au moins
   2 min entre deux relances, 30 au plus ;
 - **rappel de mémoire** 5 minutes avant la fin, par le même arrêt-reprise ;
-- un échec de relance est noté et n'arrête pas la partie.
+- un agent disparu, une absence d’activité initiale/récente, une relance
+  impossible, un netcheck échoué ou un arrêt raté font échouer la partie.
 
 Test du bac à sable sans modèle (ni file ni jeton) :
 
@@ -195,7 +209,7 @@ Test du bac à sable sans modèle (ni file ni jeton) :
 python island_runner.py start --run-id $(uuidgen) --netcheck --minutes 5
 ```
 
-Le résultat est dans `agents/<agent>/workspace/netcheck.txt` de la partie.
+Le résultat est dans `agents/<agent>/workspace/netcheck.json` de la partie.
 
 ## L'onglet Île (Benchmark)
 

@@ -1,0 +1,2 @@
+# Empty unified-diff context lines intentionally contain one space.
+clawblox-isolation.patch whitespace=-blank-at-eol

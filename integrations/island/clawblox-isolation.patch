@@ -1,0 +1,424 @@
+--- a/src/agent.rs
++++ b/src/agent.rs
+@@ -1156,6 +1156,10 @@
+ }
+ 
+ fn sync_codex_user_state(ctx: &AgentContext) -> AgentResult<()> {
++    // Isolated local inference must never import owner login, skills or rules.
++    if crate::net_isolation::enabled(ctx) {
++        return Ok(());
++    }
+     let Some(user_home) = std::env::var_os("HOME").map(PathBuf::from) else {
+         return Ok(());
+     };
+@@ -1409,6 +1413,14 @@
+     let mut hosts = "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n".to_string();
+     if let Some(host) = env_value(ctx, "WORLD_BASE_URL").and_then(|url| parse_http_host(&url)) {
+         if !matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1") && !hosts.contains(&host) {
++            hosts = format!("{}\n127.0.0.1 {host}\n", hosts.trim_end());
++        }
++    }
++    for host in crate::net_isolation::extra_hostnames(ctx) {
++        let known = hosts
++            .lines()
++            .any(|line| line.split_whitespace().skip(1).any(|name| name == host));
++        if !known {
+             hosts = format!("{}\n127.0.0.1 {host}\n", hosts.trim_end());
+         }
+     }
+--- a/src/agent_sandbox.rs
++++ b/src/agent_sandbox.rs
+@@ -207,6 +207,10 @@
+     needs_socat: bool,
+ ) -> Result<CommandSpec, String> {
+     validate_runtime(layout, needs_socat)?;
++    if crate::net_isolation::enabled(ctx) {
++        crate::net_isolation::prepare(ctx)
++            .map_err(|err| format!("required network relays unavailable: {err}"))?;
++    }
+     Ok(wrap_command_unchecked(ctx, layout, command))
+ }
+ 
+@@ -424,7 +428,42 @@
+         ]);
+     }
+ 
++    let mut relay_prefix = Vec::new();
++    if crate::net_isolation::enabled(ctx) {
++        // Empty network namespace; only explicit relays reach the outside.
++        // Hide host sockets under /run (Docker, D-Bus, agents) behind a tmpfs.
++        // Own PID and IPC namespaces too: without them the agent lists every
++        // host process (`ps aux`) and can read same-user /proc/<pid>/environ.
++        // The world operator token and loopback URL are host-side only.
++        args.extend([
++            "--unshare-net".to_string(),
++            "--unshare-pid".to_string(),
++            "--unshare-ipc".to_string(),
++            "--tmpfs".to_string(),
++            "/run".to_string(),
++            "--unsetenv".to_string(),
++            "WORLD_OPERATOR_TOKEN".to_string(),
++            "--unsetenv".to_string(),
++            "WORLD_INTERNAL_BASE_URL".to_string(),
++        ]);
++        match crate::net_isolation::prepare(ctx) {
++            Ok(prefix) => {
++                args.extend([
++                    "--ro-bind".to_string(),
++                    crate::net_isolation::host_relay_dir(ctx).display().to_string(),
++                    crate::net_isolation::GUEST_RELAY_DIR.to_string(),
++                ]);
++                relay_prefix = prefix;
++            }
++            Err(err) => {
++                eprintln!("clawblox: required network relays unavailable: {err}");
++                relay_prefix = vec!["/nonexistent/clawblox-required-net-relay".to_string()];
++            }
++        }
++    }
++
+     args.push("--".to_string());
++    args.extend(relay_prefix);
+     args.push(command.program.display().to_string());
+     args.extend(command.args);
+ 
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -12,6 +12,7 @@
+ pub mod db;
+ pub mod game;
+ pub mod manifest;
++pub mod net_isolation;
+ pub mod paths;
+ pub mod r2;
+ pub mod recording;
+--- /dev/null
++++ b/src/net_isolation.rs
+@@ -0,0 +1,258 @@
++//! Optional network isolation for sandboxed agents.
++//!
++//! Enabled when the agent env contains `CLAWBLOX_NET_ALLOW`. The agent then
++//! runs in its own empty network, PID and IPC namespaces and `/run` is
++//! replaced by an empty tmpfs, so host processes and host Unix sockets such
++//! as the Docker socket are out of reach. The world operator token and the
++//! world's loopback URL are removed from its environment. The only routes out are explicit relays:
++//!
++//! * the world capability proxy port, always;
++//! * each `host:port@guest_port` entry of `CLAWBLOX_NET_ALLOW`
++//!   (comma-separated). Inside the sandbox, `host` resolves to 127.0.0.1 and
++//!   `127.0.0.1:guest_port` is relayed to `host:port` on the real network.
++//!   TLS still verifies `host`, so use `https://host:guest_port/...` URLs.
++//!
++//! Each relay is a Unix socket under `<runtime_dir>/netrelay`, served by a
++//! thread in this process and bridged to loopback inside the sandbox by a
++//! small Python helper that wraps the agent command.
++
++use std::{
++    collections::HashSet,
++    io,
++    net::{Shutdown, TcpStream},
++    os::unix::net::{UnixListener, UnixStream},
++    path::{Path, PathBuf},
++    sync::{Mutex, OnceLock},
++    thread,
++};
++
++use crate::agent::AgentContext;
++
++pub const ALLOW_ENV: &str = "CLAWBLOX_NET_ALLOW";
++pub const GUEST_RELAY_DIR: &str = "/netrelay";
++const INNER_RELAY_FILE: &str = "inner_relay.py";
++
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub struct Route {
++    pub guest_port: u16,
++    pub target: String,
++    pub socket_name: String,
++    pub hostname: Option<String>,
++}
++
++fn env_value(ctx: &AgentContext, key: &str) -> Option<String> {
++    ctx.settings
++        .env
++        .iter()
++        .rev()
++        .find_map(|(name, value)| (name == key).then(|| value.clone()))
++}
++
++pub fn enabled(ctx: &AgentContext) -> bool {
++    env_value(ctx, ALLOW_ENV).is_some()
++}
++
++/// Parse `host:port@guest_port` entries. Invalid entries are skipped (fail closed).
++pub fn parse_allow(spec: &str) -> Vec<Route> {
++    spec.split(',')
++        .map(str::trim)
++        .filter(|entry| !entry.is_empty())
++        .enumerate()
++        .filter_map(|(index, entry)| {
++            let (target, guest) = entry.rsplit_once('@')?;
++            let guest_port: u16 = guest.parse().ok()?;
++            let (host, port) = target.rsplit_once(':')?;
++            let _: u16 = port.parse().ok()?;
++            if host.is_empty() || guest_port == 0 {
++                return None;
++            }
++            Some(Route {
++                guest_port,
++                target: target.to_string(),
++                socket_name: format!("allow-{index}.sock"),
++                hostname: Some(host.to_string()),
++            })
++        })
++        .collect()
++}
++
++pub fn routes(ctx: &AgentContext) -> Vec<Route> {
++    let mut routes = Vec::new();
++    if let Some(port) = env_value(ctx, "CLAWBLOX_WORLD_HTTP_PROXY_PORT")
++        .and_then(|value| value.parse::<u16>().ok())
++    {
++        routes.push(Route {
++            guest_port: port,
++            target: format!("127.0.0.1:{port}"),
++            socket_name: "world.sock".to_string(),
++            hostname: None,
++        });
++    }
++    if let Some(spec) = env_value(ctx, ALLOW_ENV) {
++        routes.extend(parse_allow(&spec));
++    }
++    routes
++}
++
++/// Hostnames that must resolve to 127.0.0.1 inside the sandbox.
++pub fn extra_hostnames(ctx: &AgentContext) -> Vec<String> {
++    if !enabled(ctx) {
++        return Vec::new();
++    }
++    routes(ctx).into_iter().filter_map(|route| route.hostname).collect()
++}
++
++pub fn host_relay_dir(ctx: &AgentContext) -> PathBuf {
++    ctx.paths.runtime_dir.join("netrelay")
++}
++
++/// Start host relays and write the inner helper. Returns the argv prefix that
++/// must run before the agent program inside the sandbox.
++pub fn prepare(ctx: &AgentContext) -> io::Result<Vec<String>> {
++    let dir = host_relay_dir(ctx);
++    std::fs::create_dir_all(&dir)?;
++    std::fs::write(dir.join(INNER_RELAY_FILE), INNER_RELAY_PY)?;
++    let mut prefix = vec![
++        "python3".to_string(),
++        format!("{GUEST_RELAY_DIR}/{INNER_RELAY_FILE}"),
++    ];
++    for route in routes(ctx) {
++        start_host_relay(&dir.join(&route.socket_name), route.target.clone())?;
++        prefix.push(format!(
++            "{}={GUEST_RELAY_DIR}/{}",
++            route.guest_port, route.socket_name
++        ));
++    }
++    prefix.push("--".to_string());
++    Ok(prefix)
++}
++
++fn start_host_relay(socket: &Path, target: String) -> io::Result<()> {
++    static STARTED: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
++    let started = STARTED.get_or_init(|| Mutex::new(HashSet::new()));
++    let mut started = started
++        .lock()
++        .map_err(|_| io::Error::other("net relay registry lock poisoned"))?;
++    if started.contains(socket) && socket.exists() {
++        return Ok(());
++    }
++    let _ = std::fs::remove_file(socket);
++    let listener = UnixListener::bind(socket)?;
++    started.insert(socket.to_path_buf());
++    thread::Builder::new()
++        .name("clawblox-net-relay".to_string())
++        .spawn(move || {
++            for conn in listener.incoming() {
++                let Ok(unix) = conn else { continue };
++                let target = target.clone();
++                let _ = thread::Builder::new()
++                    .name("clawblox-net-relay-conn".to_string())
++                    .spawn(move || {
++                        if let Ok(tcp) = TcpStream::connect(&target) {
++                            pipe(unix, tcp);
++                        }
++                    });
++            }
++        })?;
++    Ok(())
++}
++
++fn pipe(unix: UnixStream, tcp: TcpStream) {
++    let (Ok(mut unix_read), Ok(mut tcp_read)) = (unix.try_clone(), tcp.try_clone()) else {
++        return;
++    };
++    let mut unix_write = unix;
++    let mut tcp_write = tcp;
++    let upstream = thread::spawn(move || {
++        let _ = io::copy(&mut unix_read, &mut tcp_write);
++        let _ = tcp_write.shutdown(Shutdown::Write);
++    });
++    let _ = io::copy(&mut tcp_read, &mut unix_write);
++    let _ = unix_write.shutdown(Shutdown::Write);
++    let _ = upstream.join();
++}
++
++const INNER_RELAY_PY: &str = r#"#!/usr/bin/env python3
++# Bridges 127.0.0.1:<port> inside an isolated network namespace to Unix
++# sockets served by the Clawblox host, then runs the agent command.
++import signal, socket, subprocess, sys, threading
++
++def pump(src, dst):
++    try:
++        while True:
++            data = src.recv(65536)
++            if not data:
++                break
++            dst.sendall(data)
++    except OSError:
++        pass
++    finally:
++        try:
++            dst.shutdown(socket.SHUT_WR)
++        except OSError:
++            pass
++
++def handle(client, path):
++    upstream = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
++    try:
++        upstream.connect(path)
++    except OSError:
++        client.close()
++        return
++    t = threading.Thread(target=pump, args=(client, upstream), daemon=True)
++    t.start()
++    pump(upstream, client)
++    t.join()
++    client.close()
++    upstream.close()
++
++def serve(server, path):
++    while True:
++        client, _ = server.accept()
++        threading.Thread(target=handle, args=(client, path), daemon=True).start()
++
++def main(argv):
++    sep = argv.index("--")
++    for spec in argv[:sep]:
++        port, path = spec.split("=", 1)
++        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
++        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
++        server.bind(("127.0.0.1", int(port)))
++        server.listen(64)
++        threading.Thread(target=serve, args=(server, path), daemon=True).start()
++    child = subprocess.Popen(argv[sep + 1:])
++    for sig in (signal.SIGTERM, signal.SIGHUP):
++        signal.signal(sig, lambda s, _f: child.send_signal(s))
++    signal.signal(signal.SIGINT, signal.SIG_IGN)
++    sys.exit(child.wait())
++
++if __name__ == "__main__":
++    main(sys.argv[1:])
++"#;
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn parses_allow_entries_and_skips_invalid_ones() {
++        let routes = parse_allow("example.com:443@8443, bad, :1@2, host:x@3, h:80@0,other.test:80@9080");
++        assert_eq!(
++            routes,
++            vec![
++                Route {
++                    guest_port: 8443,
++                    target: "example.com:443".to_string(),
++                    socket_name: "allow-0.sock".to_string(),
++                    hostname: Some("example.com".to_string()),
++                },
++                Route {
++                    guest_port: 9080,
++                    target: "other.test:80".to_string(),
++                    socket_name: "allow-5.sock".to_string(),
++                    hostname: Some("other.test".to_string()),
++                },
++            ]
++        );
++    }
++}
+--- a/src/replay_agent_log.rs
++++ b/src/replay_agent_log.rs
+@@ -142,11 +142,17 @@
+ 
+ impl TranscriptLineParser for CodexTranscriptParser {
+     fn parse_timestamp_ms(&self, value: &Value) -> Option<i64> {
+-        // Codex transcripts embed an integer ms timestamp inside the message object.
++        // Codex transcripts embed an integer ms timestamp inside the message
++        // object. Interactive Codex rollouts (`sessions/.../rollout-*.jsonl`)
++        // instead carry an ISO-8601 "timestamp" at the top level.
+         value
+             .get("message")
+             .and_then(|m| m.get("timestamp"))
+             .and_then(|v| v.as_i64())
++            .or_else(|| {
++                let iso = value.get("timestamp").and_then(|v| v.as_str())?;
++                Some(DateTime::parse_from_rfc3339(iso).ok()?.timestamp_millis())
++            })
+     }
+ 
+     fn parse_message(&self, value: &Value, ts_ms: i64) -> Option<RawReplayAgentMessage> {
+@@ -388,7 +394,8 @@
+                 if value
+                     .get("type")
+                     .and_then(|v| v.as_str())
+-                    .map(|t| t == "response_item" || t == "event_msg")
++                    // Interactive Codex rollouts open with a session_meta line.
++                    .map(|t| t == "response_item" || t == "event_msg" || t == "session_meta")
+                     .unwrap_or(false)
+                 {
+                     return Box::new(CodexTranscriptParser);
+--- a/python/clawblox/src/lib.rs
++++ b/python/clawblox/src/lib.rs
+@@ -2557,6 +2557,7 @@
+     m.add_class::<PyAgentStartResult>()?;
+     m.add_class::<PyAgentStopResult>()?;
+     m.add_function(wrap_pyfunction!(default_system_prompt, m)?)?;
++    m.add_function(wrap_pyfunction!(agentx_isolation_version, m)?)?;
+     Ok(())
+ }
+ 
+@@ -2564,3 +2565,9 @@
+ fn default_system_prompt() -> &'static str {
+     rust_default_system_prompt()
+ }
++
++// Adapter gate: PID/network isolation, no owner state import, required relays.
++#[pyfunction]
++fn agentx_isolation_version() -> u32 {
++    1
++}
+--- a/python/clawblox/clawblox/__init__.py
++++ b/python/clawblox/clawblox/__init__.py
+@@ -1,6 +1,6 @@
+ """Python orchestration API for Clawblox."""
+ 
+-from ._clawblox import Agent, World, default_system_prompt
++from ._clawblox import Agent, World, default_system_prompt, agentx_isolation_version
+ from .checkpoint import (
+     CheckpointError,
+     CheckpointSecretError,
+@@ -10,6 +10,7 @@
+ )
+ 
+ __all__ = [
++    "agentx_isolation_version",
+     "Agent",
+     "World",
+     "default_system_prompt",
