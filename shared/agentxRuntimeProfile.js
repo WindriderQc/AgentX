@@ -5,6 +5,7 @@ const DEMO_PROFILE = 'demo';
 const FULL_PROFILE = 'full';
 
 const DEMO_DISABLED_PREFIXES = Object.freeze([
+  '/api/transcriptions',
   '/api/automations',
   '/api/agent-ops',
   '/api/alerts',
@@ -53,6 +54,7 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/backup',
   '/cluster-schedule',
   '/operations-jobs',
+  '/transcriptions',
   '/automations',
   '/dad',
   '/data-toolbox',

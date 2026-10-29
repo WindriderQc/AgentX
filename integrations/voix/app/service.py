@@ -63,6 +63,8 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="VoiX", version=VERSION, lifespan=lifespan)
+from app.long_transcription import router as long_transcription_router
+app.include_router(long_transcription_router)
 
 
 @app.exception_handler(RecognitionBusy)

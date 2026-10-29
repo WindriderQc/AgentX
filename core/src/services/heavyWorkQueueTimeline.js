@@ -15,7 +15,7 @@ async function reservations(dayStart, dayEnd) {
     for (const endpoint of job.hosts) {
       const host = configured.find(item => hostUrlKey(item.url) === endpoint);
       entries.push({ id: `${job.id}:${endpoint}`, name: `${job.title} (estimated)`, source: 'agentx', sourceId: job.id,
-        taskType: job.kind === 'profiler' ? 'diagnostics' : job.kind === 'image' ? 'inference' : job.kind,
+        taskType: job.kind === 'profiler' ? 'diagnostics' : ['image', 'transcription'].includes(job.kind) ? 'inference' : job.kind,
         host: host?.id || null, model: null, agent: null, priority: job.priority,
         estimatedDurationMs: job.estimatedMinutes * 60000, vramMb: null, scheduleType: 'one-off',
         lastRun: job.dispatchedAt || null,

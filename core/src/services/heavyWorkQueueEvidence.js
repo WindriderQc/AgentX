@@ -19,6 +19,9 @@ async function preDispatch(job) {
   if (!job.executor) throw fail('No supported executor on this request', 409);
   // Inside a topology window: wait until the window has reached its mode.
   if (job.withinWindow) await require('./runtimeTopologyWindow').assertWindowReady(job);
+  if (job.kind === 'transcription') {
+    return require('./transcriptionExecutor').preDispatch(job);
+  }
   if (job.kind === 'benchmark') {
     const request = batchRequest(job.executor.request, { judgeRequired: true });
     if (job.executor.prepare !== true && planRef(planId(job.executor.plan), request) !== job.executor.plan) throw fail('Benchmark plan reference differs from its request', 409);
@@ -61,6 +64,7 @@ async function preDispatch(job) {
   }
 }
 async function observe(job) {
+  if (job.kind === 'transcription') return require('./transcriptionExecutor').observe(job);
   let operationId = job.operation?.id;
   let receipt;
   if (job.kind === 'benchmark') {

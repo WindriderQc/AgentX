@@ -6,6 +6,8 @@ const evidence = require('./heavyWorkQueueEvidence');
 const logger = require('../../config/logger');
 let timer;
 let codingTimer;
+let transcriptionHeartbeatTimer;
+let transcriptionConnectedListener;
 let busy = false;
 
 // Observe existing receipts and dispatch only images explicitly accepted by
@@ -20,6 +22,8 @@ async function sweep() {
     catch (error) { logger.warn('Report native receipts await reconciliation', { code: error.code || 'REPORT_RECEIPTS_UNAVAILABLE' }); }
     try { await require('./images/imageService').dispatchQueued(); }
     catch (error) { logger.warn('Image dispatcher unavailable; other queue receipts remain observable', { code: error.code || 'IMAGE_QUEUE_UNAVAILABLE' }); }
+    try { await require('./transcriptionService').sweep(); }
+    catch (error) { logger.warn('Transcription planning awaits reconciliation', { code: error.code }); }
     try { await require('./heavyWorkQueueLauncher').dispatchDue(); }
     catch (error) { logger.warn('Automatic starts unavailable; reserved requests wait', { code: error.code || 'AUTO_START_UNAVAILABLE' }); }
     const current = await queue.list();
@@ -43,6 +47,16 @@ function start() {
   if (timer || process.env.NODE_ENV === 'test') return;
   timer = setInterval(sweep, 15000);
   timer.unref();
+  const renewTranscriptions = () => {
+    if (mongoose.connection.readyState !== 1) return;
+    require('./transcriptionExecutor').heartbeatActive().catch(error =>
+      logger.warn('Transcription admission heartbeat awaits reconciliation', { code: error.code || 'HEARTBEAT_UNAVAILABLE' }));
+  };
+  transcriptionConnectedListener = renewTranscriptions;
+  mongoose.connection.on('connected', transcriptionConnectedListener);
+  renewTranscriptions();
+  transcriptionHeartbeatTimer = setInterval(renewTranscriptions, 20000);
+  transcriptionHeartbeatTimer.unref();
   codingTimer = setInterval(() => {
     require('./pipelineCodingAutonomyService').tick().catch(error =>
       logger.warn('Coding autonomy awaits reconciliation', { code: error.code || 'CODING_AUTONOMY_UNAVAILABLE' }));
@@ -51,6 +65,6 @@ function start() {
   }, 15000);
   codingTimer.unref();
 }
-function stop() { if (timer) clearInterval(timer); timer = null; if (codingTimer) clearInterval(codingTimer); codingTimer = null; }
+function stop() { if (transcriptionConnectedListener) mongoose.connection.off('connected', transcriptionConnectedListener); transcriptionConnectedListener = null; if (transcriptionHeartbeatTimer) clearInterval(transcriptionHeartbeatTimer); transcriptionHeartbeatTimer = null; if (timer) clearInterval(timer); timer = null; if (codingTimer) clearInterval(codingTimer); codingTimer = null; }
 
 module.exports = { start, stop, sweep };

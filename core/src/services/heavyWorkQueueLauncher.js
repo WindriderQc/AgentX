@@ -23,6 +23,10 @@ async function startProfile(body) {
 // Each request Core launches: its native start and the receipt identity it
 // returns. `start` replaces the Profiler start only (tests, Run now).
 const STARTERS = {
+  transcription: {
+    start: job => require('./transcriptionExecutor').start(job),
+    operationId: result => result?.id, name: 'local transcription'
+  },
   profiler: {
     start: (begun, start) => (start || startProfile)({ ...begun.executor, queueRequestId: begun.id }),
     operationId: result => result?.queueId,
@@ -50,7 +54,7 @@ function starterFor(job) {
 function startable(job) {
   const starter = queue.autoStartable(job) && starterFor(job);
   if (!starter) {
-    throw fail('Core launches Profiler, embedding reindex, topology and report campaign requests only; use the request\'s own executor protocol', 409, 'HEAVY_QUEUE_LAUNCH_UNSUPPORTED');
+    throw fail('Core launches Profiler, embedding reindex, topology, local transcription and report campaign requests only; use the request\'s own executor protocol', 409, 'HEAVY_QUEUE_LAUNCH_UNSUPPORTED');
   }
   return starter;
 }

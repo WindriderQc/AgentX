@@ -35,6 +35,10 @@ the configured models. AgentX runs locally or on a private network. See
 The [agents, personalities and voice reference](docs/AGENTS_AND_VOICE.md)
 explains selection, execution attribution, speech fallback and qualification.
 
+[Local long transcriptions](docs/LOCAL_TRANSCRIPTIONS.md) adds URL intake, scheduled
+resource-aware execution and a searchable timestamped library in the full profile.
+It reuses the existing local speech service and is opt-in.
+
 ## Start locally
 
 You need Git and Docker with Compose v2. Start Docker, then clone the repository:

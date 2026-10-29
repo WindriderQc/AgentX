@@ -46,7 +46,7 @@ function only(object, keys, label) {
 function validateRequest(body) {
   only(body, ['key', 'title', 'kind', 'hosts', 'estimatedMinutes', 'notBefore', 'startBefore', 'source', 'executor', 'withinWindow'], 'request');
   const kind = body.kind;
-  if (!['benchmark', 'profiler', 'image', 'embedding-reindex', 'topology', 'diagnostic', 'other'].includes(kind)) throw fail('Unsupported heavy-work kind');
+  if (!['benchmark', 'profiler', 'image', 'embedding-reindex', 'topology', 'diagnostic', 'other', 'transcription'].includes(kind)) throw fail('Unsupported heavy-work kind');
   // A request that needs a topology mode names the window that provides it (#360).
   if (body.withinWindow !== undefined) {
     if (kind === 'topology') throw fail('A topology request cannot sit inside another window');
@@ -70,6 +70,9 @@ function validateRequest(body) {
         else if (executor.plan !== undefined) throw new Error('Preparation cannot name an existing plan');
         batchRequest(executor.request, { judgeRequired: true });
       } catch (error) { throw fail(error.message); }
+    } else if (kind === 'transcription') {
+      only(executor, ['transcriptionId'], 'transcription executor');
+      if (!require('./transcriptionContract').UUID.test(executor.transcriptionId || '')) throw fail('Exact transcription identity required');
     } else if (kind === 'profiler') {
       only(executor, ['hostId', 'depth', 'skipRecentDays', 'modelNames'], 'profiler executor');
       if (!/^[a-zA-Z0-9_.:-]{1,100}$/.test(executor.hostId || '')) throw fail('profiler hostId required');

@@ -254,8 +254,11 @@ def _run(model, audio: np.ndarray | str | BinaryIO, language: str, *, vad_filter
     text = " ".join(seg.text.strip() for seg in decoded).strip()
     normalized = normalize_transcript(text)
     _last_run_at = time.monotonic()
-    return _transcript(normalized, getattr(info, "language", ""), recognition_evidence(
+    result = _transcript(normalized, getattr(info, "language", ""), recognition_evidence(
         info, decoded, requested_language, constrained=constrained, changed=normalized != text))
+    result.segments = [{"start": float(seg.start), "end": float(seg.end), "text": seg.text.strip()} for seg in decoded]
+    result.duration = getattr(info, "duration", None)
+    return result
 
 
 def _transcribe_locked(audio, language: str, *, vad_filter: bool = False, cpu_fallback: bool = True, cancel=None):
