@@ -40,24 +40,29 @@ export class ProposalInbox{
   return `<button type="button" class="proposal-banner" data-open-proposals>${icon('link')}<span><strong>Nestor propose ${list.length>1?`${list.length} corrections`:'une correction'}</strong><small>${escape(list[0].rationale.slice(0,140))}</small></span><span aria-hidden="true">↗</span></button>`;
  }
  card(p){
-  const event=this.api.state.events.find(e=>e.id===`core-${p.entryId}`);
-  const rows=Object.keys(p.changes).filter(k=>!['dateWindow','ageStartWindow','ageEndWindow'].includes(k)||p.before[k]);
-  return `<article class="proposal-card" data-proposal="${escape(p.id)}"><header><p class="eyebrow">${p.target==='souvenir'?'SOUVENIR GARDÉ':'MOMENT À PRÉCISER'} · ${escape(when(p.createdAt))}</p><h4>${escape(event?.title||p.title)}</h4></header>
-  <table class="proposal-diff"><thead><tr><th>Champ</th><th>Aujourd’hui</th><th>Nestor propose</th></tr></thead><tbody>${rows.map(k=>`<tr><th>${escape(labels[k]||k)}</th><td>${escape(show(k,p.before[k]))}</td><td class="proposal-new">${escape(show(k,p.changes[k]))}</td></tr>`).join('')}</tbody></table>
+  const fresh=p.target==='new';
+  const event=fresh?null:this.api.state.events.find(e=>e.id===`core-${p.entryId}`);
+  const kind=fresh?'NOUVEAU MOMENT':p.target==='souvenir'?'SOUVENIR GARDÉ':p.target==='native'?'MOMENT DE TES SOURCES':'MOMENT À PRÉCISER';
+  // A new moment has no "today" column: everything in it is what Nestor heard.
+  const table=fresh
+   ?`<table class="proposal-diff proposal-new-moment"><thead><tr><th>Champ</th><th>Nestor propose</th></tr></thead><tbody>${Object.keys(p.moment||{}).filter(k=>p.moment[k]!==null&&p.moment[k]!==''&&!(Array.isArray(p.moment[k])&&!p.moment[k].length)&&!['dateWindow','ageStartWindow','ageEndWindow','sourceIds','legacyId','confirmationBasis'].includes(k)&&labels[k]).map(k=>`<tr><th>${escape(labels[k])}</th><td class="proposal-new">${escape(show(k,p.moment[k]))}</td></tr>`).join('')}</tbody></table><p class="proposal-note">Accepter l’ajoute comme candidat à relire, avec tes mots pour source.</p>`
+   :`<table class="proposal-diff"><thead><tr><th>Champ</th><th>Aujourd’hui</th><th>Nestor propose</th></tr></thead><tbody>${Object.keys(p.changes).filter(k=>!['dateWindow','ageStartWindow','ageEndWindow'].includes(k)||p.before[k]).map(k=>`<tr><th>${escape(labels[k]||k)}</th><td>${escape(show(k,p.before[k]))}</td><td class="proposal-new">${escape(show(k,p.changes[k]))}</td></tr>`).join('')}</tbody></table>${p.target==='native'?'<p class="proposal-note">Tes mots deviendront la source de cette précision.</p>':''}`;
+  return `<article class="proposal-card${fresh?' is-new':''}" data-proposal="${escape(p.id)}"><header><p class="eyebrow">${kind} · ${escape(when(p.createdAt))}</p><h4>${escape(event?.title||p.moment?.title||p.title)}</h4></header>
+  ${table}
   <p class="proposal-why"><strong>Pourquoi :</strong> ${escape(p.rationale)}</p>${p.evidence.length?`<div class="proposal-evidence">${p.evidence.map(e=>`<figure><blockquote>${escape(e.quote)}</blockquote>${e.source?`<figcaption>${escape(e.source)}</figcaption>`:''}</figure>`).join('')}</div>`:''}
-  <div class="proposal-actions"><button type="button" class="confirm-button" data-accept>✓ Accepter</button><button type="button" class="secondary-button" data-refuse>Refuser</button>${event?'<button type="button" class="text-button" data-open-moment>Ouvrir le moment ↗</button>':''}</div><p class="review-error" data-proposal-error role="alert" hidden></p></article>`;
+  <div class="proposal-actions"><button type="button" class="confirm-button" data-accept>${fresh?'✓ Ajouter au Life Atlas':'✓ Accepter'}</button><button type="button" class="secondary-button" data-refuse>Refuser</button>${event?'<button type="button" class="text-button" data-open-moment>Ouvrir le moment ↗</button>':''}</div><p class="review-error" data-proposal-error role="alert" hidden></p></article>`;
  }
  async open(anchor){
   await this.refresh();
   const pending=this.items.filter(p=>p.state==='pending');
-  this.popup.info(`<div class="proposals"><p class="eyebrow">NESTOR · PROPOSITIONS</p><h3>${pending.length?'Des précisions à valider.':'Rien en attente.'}</h3><p>Nestor propose des corrections à partir de vos conversations ou de tes sources. Rien ne change dans ta mémoire tant que tu n’acceptes pas.</p>${pending.map(p=>this.card(p)).join('')||'<p class="proposal-empty">Quand Nestor remarquera une date ou un détail à corriger, il le déposera ici.</p>'}</div>`,anchor);
+  this.popup.info(`<div class="proposals"><p class="eyebrow">NESTOR · PROPOSITIONS</p><h3>${pending.length?'Des précisions à valider.':'Rien en attente.'}</h3><p>Nestor propose des corrections et des moments à partir de vos conversations ou de tes sources. Rien ne change dans ta mémoire tant que tu n’acceptes pas.</p>${pending.map(p=>this.card(p)).join('')||'<p class="proposal-empty">Quand Nestor remarquera une date à corriger ou un moment que tu lui racontes, il le déposera ici.</p>'}</div>`,anchor);
   this.popup.makeModal();this.popup.root.querySelector('.popover').classList.add('proposals-popover');this.popup.position();
   for(const card of this.popup.root.querySelectorAll('[data-proposal]')){
    const p=pending.find(x=>x.id===card.dataset.proposal),error=card.querySelector('[data-proposal-error]');
    const busy=on=>card.querySelectorAll('button').forEach(b=>{b.disabled=on;});
    card.querySelector('[data-accept]').addEventListener('click',async()=>{
     busy(true);error.hidden=true;
-    try{const result=await data.acceptProposal(p);this.api.adoptResult?.(result);toast('Correction appliquée dans AgentX.');card.classList.add('is-done');card.querySelector('.proposal-actions').innerHTML='<p class="proposal-done">✓ Acceptée</p>';}
+    try{const result=await data.acceptProposal(p);this.api.adoptResult?.(result);toast(p.target==='new'?'Moment ajouté dans AgentX, à relire comme candidat.':'Correction appliquée dans AgentX.');card.classList.add('is-done');card.querySelector('.proposal-actions').innerHTML='<p class="proposal-done">✓ Acceptée</p>';}
     catch(e){error.textContent=e.message;error.hidden=false;busy(false);if(e.status===409)card.classList.add('is-stale');}
     await this.refresh();
    });

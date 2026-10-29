@@ -248,6 +248,8 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     if (!row) row = await MemoryNote.findOne({ ...boundary, _id: id, kind: 'souvenir', status: 'active' });
     if (!row) throw error('This souvenir is unavailable', 409);
     if (activated && !row.embeddedHash) indexLater(row);
+    // A newly kept souvenir reaches the private recall right away.
+    if (activated) require('./souvenirRecallSync').scheduleSouvenirRecallSync();
     return project(row);
   }
 
@@ -286,6 +288,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
       { $set: { ...changes, revision: current + 1 } }, { new: true, runValidators: true }).lean();
     if (!row) throw error('Souvenir changed; reload before correcting it', 409);
     if (changes.text) indexLater(row);
+    require('./souvenirRecallSync').scheduleSouvenirRecallSync();
     return { ok: true, authority: 'agentx.core', ...project(row), changed: true };
   }
 
@@ -305,6 +308,8 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
       // Retry a failed derivative cleanup without reviving the selected note.
       const forgotten = row || await MemoryNote.findOne({ ...boundary, _id: id, status: 'forgotten' }).lean();
       if (forgotten) await require('./personalHistoryPrivacy').forgetSourceNote(forgotten);
+      // A forgotten souvenir leaves the private recall at once (sync removes inactive souvenirs).
+      if (row?.kind === 'souvenir') require('./souvenirRecallSync').scheduleSouvenirRecallSync();
     }
     return { ok: true, authority: 'agentx.core', id, removed: Boolean(row) };
   }

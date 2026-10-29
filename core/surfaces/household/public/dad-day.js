@@ -97,7 +97,7 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
           <button type="button" data-day-view="email" data-finding-category="email" aria-pressed="false">Courriels <span id="dadReviewCount">…</span></button>
           <button type="button" data-day-view="background" data-finding-category="background" aria-pressed="false">Autres suivis <span id="dadBackgroundCount">…</span></button>
         </nav>
-        <p class="dad-day-insight" id="dad-focus"><span class="dad-today-symbol" aria-hidden="true">${icon(ICONS.day)}</span><span id="dadDayInsight">Lecture de vos actions…</span><span class="dad-day-totals"><span><b id="dadToday">…</b> aujourd’hui</span><span><b id="dadOverdue">…</b> en retard</span></span></p>
+        <p class="dad-day-insight" id="dad-focus"><span class="dad-today-symbol" aria-hidden="true">${icon(ICONS.day)}</span><span id="dadDayInsight">Lecture de vos actions…</span><span class="dad-day-totals"><span><b id="dadToday">…</b> aujourd’hui</span><span><b id="dadOverdue">…</b> en retard</span></span></p><a class="dad-atlas-proposals" id="dadAtlasProposals" href="/atlas/#proposals" hidden></a>
       <section class="dad-grid">
         <div class="dad-side">
           <article class="card dad-capture" id="dad-capture"><p class="card-kicker">POUR LIBÉRER L’ESPRIT</p><h2>Une chose à faire ?</h2><form id="dadCaptureForm" class="stack"><label class="sr-only" for="dadCaptureTitle">Mon action</label><input id="dadCaptureTitle" maxlength="200" required placeholder="Ex. Prendre rendez-vous au garage"><details class="dad-capture-options"><summary>Ajouter une date ou une priorité</summary><div class="stack"><label>Date <small>facultative</small><input id="dadCaptureDue" type="date"></label><label>Priorité<select id="dadCapturePriority"><option value="3">Normale</option><option value="2">Haute</option><option value="4">Basse</option></select></label></div></details><button class="primary">Ajouter mon action <span aria-hidden="true">＋</span></button></form></article>
@@ -207,6 +207,9 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
         byId('dadOverdue').textContent = data.metrics.overdue;
         app.querySelector('.dad-day-totals').hidden = !data.metrics.today && !data.metrics.overdue;
         byId('dadDayInsight').textContent = data.metrics.today ? 'Voici vos actions datées pour aujourd’hui.' : 'Rien de daté aujourd’hui. Avancez à votre rythme.';
+        const atlasPending = Number(data.lifeAtlas?.pending) || 0;
+        byId('dadAtlasProposals').hidden = !atlasPending;
+        byId('dadAtlasProposals').textContent = atlasPending ? `✦ Nestor propose ${atlasPending} correction${atlasPending > 1 ? 's' : ''} pour ton Life Atlas ↗` : '';
         await actions.refresh();
         setPill('dadMailPill', mailState[0], mailState[1]);
         byId('dadMailSummary').textContent = data.mail.summary;

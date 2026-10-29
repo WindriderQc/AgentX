@@ -8,8 +8,11 @@ const mongoose = require('mongoose');
 const schema = new mongoose.Schema({
   key: { type: String, required: true, unique: true },
   scope: { type: String, enum: ['owner'], default: 'owner', required: true },
-  entryId: { type: String, required: true, index: true, match: /^[a-f0-9]{24}$/ },
-  target: { type: String, enum: ['context', 'souvenir'], required: true },
+  // Empty for a new moment until the owner accepts it.
+  entryId: { type: String, default: '', index: true, match: /^(?:[a-f0-9]{24})?$/ },
+  target: { type: String, enum: ['context', 'souvenir', 'native', 'new'], required: true },
+  // A new moment as Nestor proposes it.
+  moment: { type: mongoose.Schema.Types.Mixed, default: null },
   souvenirNoteId: { type: String, default: '', maxlength: 24 },
   baseRevision: { type: Number, required: true, min: 0 },
   title: { type: String, default: '', maxlength: 500 },
@@ -23,7 +26,8 @@ const schema = new mongoose.Schema({
   decision: {
     reason: { type: String, default: '', maxlength: 2000 },
     at: { type: Date, default: null },
-    appliedRevision: { type: Number, default: null }
+    appliedRevision: { type: Number, default: null },
+    createdEntryId: { type: String, default: '' }
   }
 }, { timestamps: true, collection: 'history_proposals' });
 

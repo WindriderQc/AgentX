@@ -200,20 +200,35 @@ or family tool permissions.
 
 ## Corrections proposed by Nestor
 
-Nestor reads moments and proposes corrections; only the owner decides. A
-proposal changes nothing by itself.
+Nestor reads moments, proposes corrections and proposes new moments the owner
+told it; only the owner decides. A proposal changes nothing by itself.
 
 - Nestor contract: `POST /api/consumers/nestor/v1/memory/history` with
   `operation` `search` (`query`), `get` (`entryId`), `propose` (`entryId`,
-  `changes`, `rationale`, up to five `evidence` quotes) or `status`. The
+  `changes`, `rationale`, up to five `evidence` quotes), `add` (`moment`,
+  `rationale`, `evidence`) or `status` (pending count, inbox link, recent
+  proposals and decisions). The
   OpenClaw tool `life_atlas` (super-dad-memory, private owner context only)
   calls it. There is no accept, refuse or edit operation on this contract.
 - A moment with a context accepts `title`, `description`, `date`/`precision`,
   `endDate`/`endPrecision`, `ongoing`, `category`, `place` and `notes`,
   normalized by the context contract when proposed. A kept souvenir accepts
   `eventDate` (day or empty), `people`, `places` and `text`. A native candidate
-  without context cannot be corrected this way yet. Sources, quotes, relations
-  and review decisions are never proposable.
+  without context (read from mail, for example) accepts the context fields
+  only with at least one quote of the owner's words: on acceptance Core imports
+  a context whose timeline is built from the entry, with the quote as a
+  `testimony` source (`direct-owner-statement`, `owner-testimony` basis), then
+  applies the changes as an owner edit at context revision 1. The entry must
+  not have changed since the proposal (same revision, still no context or
+  souvenir), otherwise the proposal becomes `stale`. Sources, quotes,
+  relations and review decisions are never proposable.
+- `add` proposes a moment that is not in the history: `title` (required),
+  `description`, `date`/`precision`, `endDate`/`endPrecision`, `ongoing`,
+  `category`, `place` and `people`, normalized by the context contract, with
+  at least one quote. Nothing is created until the owner accepts; Core then
+  imports a new `candidate` entry whose source is the owner's words
+  (`system: testimony`) and the proposal receives its `entryId`. The owner
+  then reviews it like any candidate.
 - Each proposal records what the moment said (`before`), the revision Nestor
   saw (`baseRevision`) and its conversation reference. Identical proposals
   against the same revision are stored once; at most 300 wait at a time.
@@ -224,8 +239,20 @@ proposal changes nothing by itself.
   moment changed since, nothing is written and the proposal becomes `stale`.
 - Life Atlas shows the inbox (`/atlas/#proposals`, header button when
   proposals wait) with each field before and after, the rationale and the
-  quotes, and a notice in the moment's dossier. Links returned to Nestor use
-  `CORE_PUBLIC_URL` when it is set.
+  quotes, and a notice in the moment's dossier. A new moment shows only the
+  proposed fields. Links returned to Nestor use `CORE_PUBLIC_URL` when it is
+  set.
+- The pending count reaches the owner in "Ma journée" (`lifeAtlas` on
+  `/api/secretary/desk` and `/api/secretary/briefing`) and in Nestor's morning
+  brief (`nestor_briefing` relays `lifeAtlas.text` with the inbox link).
+
+## Kept souvenirs in the private recall
+
+Keeping, correcting or forgetting a souvenir schedules a debounced sync of the
+private recall (`ownerRecallService.sync`, three seconds later, at most fifty
+records) so Nestor's `mail_recall` sees the change without waiting for the
+next indexing run. Only an instance with `OWNER_MAIL_RAG_TOKEN` syncs; a
+failure is logged and never affects the owner's action.
 
 ## Deployment
 

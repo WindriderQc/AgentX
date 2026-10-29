@@ -17,7 +17,7 @@ import { registerWorkQueue, createWorkQueueClient } from "./work-queue.js";
 import { registerConversationWork } from './conversation-work.js';
 import { registerNativeReadBudget } from './native-read-budget.js';
 import { registerMailRecall } from './core-recall.js';
-import { registerLifeAtlas } from './core-atlas.js';
+import { registerLifeAtlas, lifeAtlasBrief } from './core-atlas.js';
 import { registerPhotos } from './photos.js';
 import { registerPresentation } from './presentation.js';
 import { registerDossier } from './core-dossier.js';
@@ -175,7 +175,7 @@ export default definePluginEntry({
       if (!privateOwnerContext(context, api.config) && !morningContext(context)) return null;
       return {
         name: "nestor_briefing", label: "Nestor Personal Briefing",
-        description: "Get the French morning brief composed by AgentX Core from all open personal tasks (at most six lines), plus pending heavy-work outcomes from Core alerts. Relay the personal text as is, then mention up to two verified queue outcomes if present. If finance.text is present, relay it as the Finances line (labels and counts only, never amounts). Read-only; does not acknowledge results, deliver a message or imply calendar access.",
+        description: "Get the French morning brief composed by AgentX Core from all open personal tasks (at most six lines), plus pending heavy-work outcomes from Core alerts. Relay the personal text as is, then mention up to two verified queue outcomes if present. If finance.text is present, relay it as the Finances line (labels and counts only, never amounts). If lifeAtlas.text is present, relay it with its link. Read-only; does not acknowledge results, deliver a message or imply calendar access.",
         parameters: { type: "object", properties: {}, additionalProperties: false },
         async execute() {
           const brief = briefingFromCore(await agentxRead(api.pluginConfig?.agentxUrl, "personal_briefing", {}));
@@ -184,6 +184,9 @@ export default definePluginEntry({
           // The finance line is optional: when Core has nothing or does not answer, the brief goes on without it.
           const finance = await financeBrief().catch(() => null);
           if (finance) brief.finance = finance;
+          // Proposals waiting in the Life Atlas; optional like the finance line.
+          const lifeAtlas = await lifeAtlasBrief({ baseUrl: api.pluginConfig?.agentxUrl }).catch(() => null);
+          if (lifeAtlas) brief.lifeAtlas = lifeAtlas;
           return receipt(brief);
         },
       };

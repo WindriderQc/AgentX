@@ -96,9 +96,9 @@ describe('corrections Nestor proposes and the owner decides', () => {
     await expect(nestor({ operation: 'propose', entryId: 'f'.repeat(24), changes: { title: 'x' }, rationale: 'r' })).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  test('a native candidate without context cannot be corrected by Nestor yet', async () => {
+  test('a native candidate is corrected only from quoted owner words', async () => {
     const { entry } = await history.record({ kind: 'fact', text: 'Synthetic native fact', sourceDate: '2014-06-02T10:00:00-04:00',
       source: { system: 'gmail', threadId: 'thread0001', messageId: 'message0001', sourceSha256: 'a'.repeat(64), findingId: 'f'.repeat(64) } });
-    await expect(nestor({ operation: 'propose', entryId: entry.id, changes: { title: 'x' }, rationale: 'r' })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(nestor({ operation: 'propose', entryId: entry.id, changes: { title: 'x' }, rationale: 'r' })).rejects.toMatchObject({ statusCode: 400 });
   });
 });

@@ -137,8 +137,10 @@ export async function photoSearch(filters={}){
 export async function proposals(){return call('/api/secretary/proposals?state=pending');}
 export async function refuseProposal(proposal,reason){return post(`/api/secretary/proposals/${proposal.id}/refuse`,{reason});}
 export async function acceptProposal(proposal){
- await post(`/api/secretary/proposals/${proposal.id}/accept`,{});
- const {entry}=await call(`/api/secretary/history/${proposal.entryId}`);
+ const accepted=await post(`/api/secretary/proposals/${proposal.id}/accept`,{});
+ // A new moment only gets its history id once the owner accepts it.
+ const entryId=accepted?.proposal?.entryId||proposal.entryId;
+ const {entry}=await call(`/api/secretary/history/${entryId}`);
  let souvenir=null;
  if(entry.souvenirNoteId){
   const s=await call(`/api/secretary/souvenirs/${entry.souvenirNoteId}`).then(r=>r.souvenir).catch(()=>null);
