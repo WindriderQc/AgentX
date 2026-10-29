@@ -196,6 +196,24 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(self.actions[-2:],['agent-stop','world-stop'])
         self.assertTrue(receipt['localStopped'])
 
+    def test_memory_reminder_waits_for_the_first_session_activity(self):
+        # A run shorter than the reminder lead time must not resume a session that does not exist yet.
+        self.a.minutes=0.1;self.a.memory_warning_minutes=5
+        calls={'n':0}
+        def activity(_s,since=None):
+            calls['n']+=1
+            seen=calls['n']>=3
+            self.actions.append('activity' if seen else 'no-session')
+            return {"age":0,"payload":{},"modelActivity":True} if seen else None
+        code=run_island.execute(self.a,self.reset_runtime(),clock=Clock(),alive=lambda _:True,activity=activity)
+        receipt=json.loads((self.a.run_dir/'receipt.json').read_text())
+        self.assertEqual(code,0,receipt.get('error'))
+        sends=[i for i,x in enumerate(self.actions) if x=='agent-send']
+        self.assertEqual(len(sends),1)
+        reminder=[e for e in receipt['events'] if e.get('reason')=='memory-reminder']
+        self.assertEqual(len(reminder),1)
+        self.assertGreater(sends[0],self.actions.index('activity'))
+
     def test_one_episode_by_default(self):
         self.a.minutes=0.05
         code=run_island.execute(self.a,self.reset_runtime(),clock=Clock(),alive=lambda _:True,

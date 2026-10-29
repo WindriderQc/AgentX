@@ -122,7 +122,9 @@ def execute(a, runtime=None, clock=time, alive=pane_alive, activity=latest_activ
                     raise RuntimeError("agent produced no session activity before startup deadline")
                 if a.netcheck and (workspace / "netcheck.json").exists():
                     receipt["netcheckResult"] = netcheck_result(workspace)
-                if not warned and current >= deadline - a.memory_warning_minutes * 60:
+                # The reminder resumes the agent's session, so it waits for that session to
+                # exist: a short episode would otherwise stop the agent before its first turn.
+                if not warned and seen_activity and current >= deadline - a.memory_warning_minutes * 60:
                     warned = True
                     started = resume("This session ends in a few minutes. Update your memory files now.", "memory-reminder")
                     last_nudge = clock.monotonic()
