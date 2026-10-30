@@ -67,6 +67,7 @@ function runRow(doc, job, view) {
     agent: doc?.agent || executor.agent || null,
     minutes: doc?.minutes ?? executor.minutes ?? null,
     memoryMode: doc?.memoryMode || executor.memory || null,
+    harness: doc?.harness || executor.harness || 'codex',
     world: doc?.world || executor.world || null,
     model: doc?.model || PRINCIPAL_ALIAS,
     runner: doc?.runner || null,
@@ -160,7 +161,7 @@ async function recordReport(id, body = {}) {
   if (existing?.dispatchId && existing.dispatchId !== body.dispatchId) throw new IslandError('This run already belongs to another dispatch', 409);
   const status = body.status && typeof body.status === 'object' ? body.status : {};
   const set = {
-    dispatchId: body.dispatchId, agent: executor.agent, minutes: executor.minutes, memoryMode: executor.memory, world: executor.world,
+    dispatchId: body.dispatchId, agent: executor.agent, harness: executor.harness, minutes: executor.minutes, memoryMode: executor.memory, world: executor.world,
     model: status.model === 'netcheck' ? 'netcheck' : PRINCIPAL_ALIAS,
     runner: text(body.runner, 120), reportedAt: new Date()
   };
@@ -205,20 +206,20 @@ async function launch(input = {}, deps = {}) {
   let executor;
   try {
     executor = islandExecutor({ mode: 'island', receiptRef: `island/${input.clientKey}.json`, agent: input.agent,
-      minutes: Number(input.minutes), memory: input.memory, world: input.world });
+      minutes: Number(input.minutes), memory: input.memory, world: input.world, harness: input.harness });
   } catch (error) { throw new IslandError(error.message); }
   const principal = await d.principalEndpoint();
   if (!principal) throw new IslandError('Core does not name a principal endpoint; nothing was recorded', 409);
   const now = d.now();
   const request = {
-    key, title: `Île — ${executor.agent}, ${executor.minutes} min (${executor.memory === 'fresh' ? 'mémoire neuve' : 'mémoire continue'})`,
+    key, title: `Île — ${executor.agent}${executor.harness === 'codex' ? '' : ` (${executor.harness})`}, ${executor.minutes} min (${executor.memory === 'fresh' ? 'mémoire neuve' : 'mémoire continue'})`,
     kind: 'other', hosts: [principal], estimatedMinutes: islandEstimatedMinutes(executor.minutes),
     startBefore: new Date(now.getTime() + START_WINDOW_HOURS * 3600000).toISOString(),
     source: { type: 'operator', ref: SOURCE_REF }, executor
   };
   const job = await d.submit(request);
   if (!job?.id) throw new IslandError('Core returned no request', 502);
-  await IslandRun.updateOne({ _id: job.id }, { $setOnInsert: { title: request.title, agent: executor.agent, minutes: executor.minutes,
+  await IslandRun.updateOne({ _id: job.id }, { $setOnInsert: { title: request.title, agent: executor.agent, harness: executor.harness, minutes: executor.minutes,
     memoryMode: executor.memory, world: executor.world, model: PRINCIPAL_ALIAS, phase: 'queued', requestedAt: now.toISOString() } }, { upsert: true });
   let placed = null;
   let note = when === 'none' ? 'Recorded without a slot; plan it in Automations → Calendar.' : null;

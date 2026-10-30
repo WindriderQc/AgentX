@@ -14,13 +14,27 @@ separate checkout, then build its CLI and Python package. Upstream is
 is in `CLAWBLOX-LICENSE`. The patch includes network/PID/IPC isolation, hidden
 host sockets and operator variables, interactive replay parsing, refusal when
 required relays cannot be created, and exclusion of the owner's Codex login,
-rules and skills. The Python package exports `agentx_isolation_version() == 1`.
-Both readiness and episode startup refuse older adapters. Controller HOME is
-never reassigned.
+rules and skills. The Python package exports `agentx_isolation_version()`:
+version 1 serves Codex; version 2 adds the one-turn harness adapters `dsh`
+(DeepSeek Harness, `dsh headless`) and `pi` (`pi -p`). Both readiness and
+episode startup refuse an adapter older than the requested harness needs.
+Controller HOME is never reassigned.
+
+DSH and pi answer one prompt and exit, so the v2 adapter runs them through
+`harness_loop.py` inside the sandbox (the patch embeds the same file as
+`src/agentx_harness_loop.py`; a test keeps both identical). The loop keeps one
+session per episode, continues it with the auto-continue prompt like Codex's
+Stop hook, writes Codex-shaped rollouts to `~/.agentx-loop/sessions` for the
+supervisor and the replay, and pauses after a turn with no model output or an
+error. The generated HOME holds only the provider config (local relay URL,
+alias, capability variable name) and loop state; DSH's subagent, workflow,
+title, telemetry, web and DeepSeek-account plugins are disabled.
 
 The only LLM relay from the sandbox leads to a per-episode loopback HTTP proxy.
 It authenticates a new ephemeral capability and accepts exactly
-`GET /api/llm/v1/models` and `POST /api/llm/v1/responses`. Discovery returns only
+`GET /api/llm/v1/models` and one inference route: `POST /api/llm/v1/responses`
+for Codex or `POST /api/llm/v1/chat/completions` for DSH and pi. The other
+inference route refuses like any unknown path. Discovery returns only
 `agentx-primary`, and inference bodies must select that alias. Other paths,
 methods, queries and encoded alternatives refuse. Core still owns admission.
 
@@ -83,7 +97,7 @@ stay in the instance repository.
 ## Tests without models
 
 ```bash
-python3 -m unittest discover -s integrations/island/tests -v
+python3 -m unittest discover -s integrations/island/tests -v   # includes test_harness.py
 node --test integrations/operations/tests/island-executor.test.cjs integrations/operations/tests/heavy-work-queue.test.cjs
 ```
 
@@ -93,9 +107,12 @@ checks that the general Core-shaped paths refuse while the model route works.
 Core's tests also use a disposable MongoDB to cover a holder arriving between
 release observation and terminal CAS. No test calls a model or production queue.
 
-The native runner's `start --netcheck` runs the fake Codex binary with a proxy
-that has **no upstream**. Its authenticated Responses call must return 503, so
-positive network checks cannot infer. Every required check in `netcheck.json`
+The native runner's `start --netcheck` runs a model-free stand-in for the
+selected harness (`netcheck_probe.js`; for DSH and pi it also drives the v2
+turn loop) with a proxy that has **no upstream**. Its authenticated call on
+the harness's inference route must return 503 and the other route 403, so
+positive network checks cannot infer. DSH and pi also check their generated
+provider config (`harness-config`). Every required check in `netcheck.json`
 must pass; missing/failed checks fail the episode. Instance `netcheckBlocked`
 URLs add direct-network checks. Run only with the patched Clawblox package in
 a disposable environment when qualifying source changes; this is not deployment

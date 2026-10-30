@@ -10,6 +10,9 @@
     <form id="island-launch-form" class="island-form">
       <label>Agent <input name="agent" value="Eko" pattern="[A-Za-z][A-Za-z0-9_-]{0,31}" required></label>
       <label>Durée (min) <input name="minutes" type="number" min="5" max="720" value="60" required></label>
+      <label>Harnais
+        <select name="harness"><option value="codex">Codex</option><option value="dsh">DSH</option><option value="pi">Pi</option></select>
+      </label>
       <label>Mémoire
         <select name="memory"><option value="continue">continuer</option><option value="fresh">neuve</option></select>
       </label>

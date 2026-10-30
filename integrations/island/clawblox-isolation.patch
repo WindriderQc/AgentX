@@ -1,6 +1,63 @@
+diff --git a/python/clawblox/clawblox/__init__.py b/python/clawblox/clawblox/__init__.py
+index d0b1cd5..cf6828c 100644
+--- a/python/clawblox/clawblox/__init__.py
++++ b/python/clawblox/clawblox/__init__.py
+@@ -1,6 +1,6 @@
+ """Python orchestration API for Clawblox."""
+ 
+-from ._clawblox import Agent, World, default_system_prompt
++from ._clawblox import Agent, World, default_system_prompt, agentx_isolation_version
+ from .checkpoint import (
+     CheckpointError,
+     CheckpointSecretError,
+@@ -10,6 +10,7 @@ from .checkpoint import (
+ )
+ 
+ __all__ = [
++    "agentx_isolation_version",
+     "Agent",
+     "World",
+     "default_system_prompt",
+diff --git a/python/clawblox/src/lib.rs b/python/clawblox/src/lib.rs
+index 362e538..95eeeed 100644
+--- a/python/clawblox/src/lib.rs
++++ b/python/clawblox/src/lib.rs
+@@ -2557,6 +2557,7 @@ fn _clawblox(m: &Bound<'_, PyModule>) -> PyResult<()> {
+     m.add_class::<PyAgentStartResult>()?;
+     m.add_class::<PyAgentStopResult>()?;
+     m.add_function(wrap_pyfunction!(default_system_prompt, m)?)?;
++    m.add_function(wrap_pyfunction!(agentx_isolation_version, m)?)?;
+     Ok(())
+ }
+ 
+@@ -2564,3 +2565,10 @@ fn _clawblox(m: &Bound<'_, PyModule>) -> PyResult<()> {
+ fn default_system_prompt() -> &'static str {
+     rust_default_system_prompt()
+ }
++
++// Adapter gate: PID/network isolation, no owner state import, required relays.
++// Version 2 adds the one-turn harness adapters `dsh` and `pi`.
++#[pyfunction]
++fn agentx_isolation_version() -> u32 {
++    2
++}
+diff --git a/src/agent.rs b/src/agent.rs
+index 17354db..cb33199 100644
 --- a/src/agent.rs
 +++ b/src/agent.rs
-@@ -1156,6 +1156,10 @@
+@@ -7,6 +7,11 @@ use std::{
+ };
+ 
+ use crate::agent_sandbox::SandboxLayout;
++
++// AgentX: one-turn harnesses (DSH headless, pi -p) driven turn by turn.
++#[path = "agentx_harness.rs"]
++mod agentx_harness;
++pub use agentx_harness::{LoopAgent, LoopKind};
+ use crate::replay_agent_log::{
+     ClaudeTranscriptParser, CodexTranscriptParser, KimiTranscriptParser, TranscriptLineParser,
+ };
+@@ -1156,6 +1161,10 @@ fn prepare_codex_home(ctx: &AgentContext) -> AgentResult<()> {
  }
  
  fn sync_codex_user_state(ctx: &AgentContext) -> AgentResult<()> {
@@ -11,24 +68,53 @@
      let Some(user_home) = std::env::var_os("HOME").map(PathBuf::from) else {
          return Ok(());
      };
-@@ -1409,6 +1413,14 @@
-     let mut hosts = "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n".to_string();
-     if let Some(host) = env_value(ctx, "WORLD_BASE_URL").and_then(|url| parse_http_host(&url)) {
-         if !matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1") && !hosts.contains(&host) {
-+            hosts = format!("{}\n127.0.0.1 {host}\n", hosts.trim_end());
-+        }
-+    }
+@@ -1412,6 +1421,14 @@ fn write_sandbox_hosts_file(ctx: &AgentContext) -> AgentResult<()> {
+             hosts = format!("{}\n127.0.0.1 {host}\n", hosts.trim_end());
+         }
+     }
 +    for host in crate::net_isolation::extra_hostnames(ctx) {
 +        let known = hosts
 +            .lines()
 +            .any(|line| line.split_whitespace().skip(1).any(|name| name == host));
 +        if !known {
-             hosts = format!("{}\n127.0.0.1 {host}\n", hosts.trim_end());
-         }
++            hosts = format!("{}\n127.0.0.1 {host}\n", hosts.trim_end());
++        }
++    }
+     write_file(&path, &hosts)
+ }
+ 
+@@ -2371,6 +2388,8 @@ pub fn build_agent(
+         "kimi" => Ok(Box::new(KimiAgent {
+             binary: binary.unwrap_or_else(|| KimiAgent::default().binary),
+         })),
++        "dsh" => Ok(Box::new(LoopAgent::new(LoopKind::Dsh, binary))),
++        "pi" => Ok(Box::new(LoopAgent::new(LoopKind::Pi, binary))),
+         other => Err(format!("unknown agent kind '{other}'")),
      }
+ }
+diff --git a/src/agent_sandbox.rs b/src/agent_sandbox.rs
+index 008b0e8..95a8895 100644
 --- a/src/agent_sandbox.rs
 +++ b/src/agent_sandbox.rs
-@@ -207,6 +207,10 @@
+@@ -123,9 +123,15 @@ impl SandboxLayout {
+         self
+     }
+ 
+-    pub fn with_codex_binary_root(mut self, host_root: PathBuf, rel: PathBuf) -> Self {
++    pub fn with_codex_binary_root(self, host_root: PathBuf, rel: PathBuf) -> Self {
++        self.with_binary_root(host_root, PathBuf::from("/sandbox-codex"), rel)
++    }
++
++    /// Mount a whole installed tool tree read-only (for Node CLIs whose entry
++    /// script needs its sibling node_modules).
++    pub fn with_binary_root(mut self, host_root: PathBuf, guest_root: PathBuf, rel: PathBuf) -> Self {
+         self.host_binary_root = Some(host_root);
+-        self.guest_binary_root = Some(PathBuf::from("/sandbox-codex"));
++        self.guest_binary_root = Some(guest_root);
+         self.guest_binary_rel = Some(rel);
+         self
+     }
+@@ -207,6 +213,10 @@ pub fn wrap_command(
      needs_socat: bool,
  ) -> Result<CommandSpec, String> {
      validate_runtime(layout, needs_socat)?;
@@ -39,7 +125,7 @@
      Ok(wrap_command_unchecked(ctx, layout, command))
  }
  
-@@ -424,7 +428,42 @@
+@@ -424,7 +434,42 @@ fn wrap_command_unchecked(
          ]);
      }
  
@@ -82,9 +168,877 @@
      args.push(command.program.display().to_string());
      args.extend(command.args);
  
+diff --git a/src/agentx_harness.rs b/src/agentx_harness.rs
+new file mode 100644
+index 0000000..d61079d
+--- /dev/null
++++ b/src/agentx_harness.rs
+@@ -0,0 +1,544 @@
++//! AgentX one-turn harness adapters: DeepSeek Harness (`dsh headless`) and pi
++//! (`pi -p`).
++//!
++//! Both answer one prompt and exit, so they cannot loop through a Stop hook as
++//! Codex and Claude do. The agent command is `agentx_harness_loop.py`, which
++//! runs the harness turn after turn in one session with the auto-continue
++//! prompt and writes Codex-shaped rollouts (`~/.agentx-loop/sessions`). The
++//! replay reads them with the Codex parser; the AgentX island runner reads the
++//! same files for activity and stall recovery.
++//!
++//! The harness talks to one OpenAI-compatible base URL given by the caller in
++//! `AGENTX_LLM_BASE_URL`, with its capability in `AGENTX_LLM_TOKEN`. With
++//! network isolation the base URL must be a loopback relay of
++//! `CLAWBLOX_NET_ALLOW`. The generated HOME holds only the provider config,
++//! the loop state and what the harness writes itself; owner state is never
++//! copied in.
++
++use std::path::{Path, PathBuf};
++
++use super::{
++    agent_home_dir, create_parent_dir, env_value, node_root_for_path, require_nonempty,
++    require_program, resolve_node_root, write_file, write_json_file, write_sandbox_hosts_file,
++    Agent, AgentContext, AgentError, AgentResult, CommandSpec, SandboxRequirements,
++};
++use crate::agent_sandbox::SandboxLayout;
++use crate::replay_agent_log::{CodexTranscriptParser, TranscriptLineParser};
++
++pub const LOOP_PY: &str = include_str!("agentx_harness_loop.py");
++const LOOP_FILE: &str = "agentx_harness_loop.py";
++const STATE_DIR: &str = ".agentx-loop";
++const GUEST_HARNESS_ROOT: &str = "/sandbox-harness";
++pub const BASE_URL_ENV: &str = "AGENTX_LLM_BASE_URL";
++pub const TOKEN_ENV: &str = "AGENTX_LLM_TOKEN";
++pub const CONTEXT_ENV: &str = "AGENTX_LLM_CONTEXT_WINDOW";
++pub const MAX_OUTPUT_ENV: &str = "AGENTX_LLM_MAX_OUTPUT_TOKENS";
++const PROVIDER: &str = "agentx-core";
++const DSH_PATCH: &str = ".dsh/agentx-island.patch.json";
++
++/// DSH plugins that would add hidden concurrency, background model calls,
++/// telemetry or a second provider. Same list as AgentX's coding-team guard,
++/// plus the web and DeepSeek-account plugins (there is no network anyway).
++const DSH_DISABLED: &[&str] = &[
++    "tool-subagent-control",
++    "tool-subagent-list-agents",
++    "tool-subagent",
++    "tool-subagent-fork",
++    "tool-subagent-report",
++    "tool-workflow",
++    "tool-plugin-manager",
++    "session-title-llm",
++    "session-telemetry-otel",
++    "web-search-deepseek",
++    "web-deepseek-api",
++    "tool-web",
++    "llm-deepseek",
++    "llm-deepseek-account",
++];
++
++#[derive(Clone, Copy, Debug, Eq, PartialEq)]
++pub enum LoopKind {
++    Dsh,
++    Pi,
++}
++
++impl LoopKind {
++    fn name(self) -> &'static str {
++        match self {
++            Self::Dsh => "dsh",
++            Self::Pi => "pi",
++        }
++    }
++}
++
++#[derive(Clone, Debug, Eq, PartialEq)]
++pub struct LoopAgent {
++    pub kind: LoopKind,
++    pub binary: PathBuf,
++}
++
++impl LoopAgent {
++    pub fn new(kind: LoopKind, binary: Option<PathBuf>) -> Self {
++        Self {
++            kind,
++            binary: binary.unwrap_or_else(|| PathBuf::from(kind.name())),
++        }
++    }
++}
++
++/// `<root>/node_modules/...` → (root, "/node_modules/..."), for the outermost
++/// node_modules so the whole installed tree is mounted read-only.
++pub fn harness_root_for_bin(path: &Path) -> Option<(PathBuf, PathBuf)> {
++    let path = std::fs::canonicalize(path).ok()?;
++    let text = path.to_string_lossy().to_string();
++    let index = text.find("/node_modules/")?;
++    Some((PathBuf::from(&text[..index]), PathBuf::from(&text[index..])))
++}
++
++fn state_dir(ctx: &AgentContext) -> PathBuf {
++    agent_home_dir(ctx).join(STATE_DIR)
++}
++
++fn guest_state_dir(ctx: &AgentContext) -> PathBuf {
++    ctx.guest_home().join(STATE_DIR)
++}
++
++fn guest_prompt_file(ctx: &AgentContext) -> PathBuf {
++    match &ctx.sandbox {
++        Some(layout) => layout.guest_runtime.join("system_prompt.md"),
++        None => ctx.paths.prompt_file.clone(),
++    }
++}
++
++fn guest_loop_file(ctx: &AgentContext) -> PathBuf {
++    ctx.guest_path(&ctx.paths.runtime_dir.join(LOOP_FILE))
++}
++
++fn positive_env(ctx: &AgentContext, key: &str, default: Option<u64>) -> AgentResult<Option<u64>> {
++    match env_value(ctx, key) {
++        None => Ok(default),
++        Some(value) => match value.trim().parse::<u64>() {
++            Ok(number) if number > 0 => Ok(Some(number)),
++            _ => Err(AgentError::InvalidConfig(format!("{key} must be a positive integer"))),
++        },
++    }
++}
++
++/// The provider base URL; with network isolation it must be a loopback relay.
++pub fn provider_base_url(ctx: &AgentContext) -> AgentResult<String> {
++    let url = env_value(ctx, BASE_URL_ENV)
++        .ok_or_else(|| AgentError::InvalidConfig(format!("{BASE_URL_ENV} is required")))?;
++    let rest = url
++        .strip_prefix("http://127.0.0.1:")
++        .ok_or_else(|| AgentError::InvalidConfig(format!("{BASE_URL_ENV} must be http://127.0.0.1:<port>/<path>")))?;
++    let (port, path) = rest.split_once('/').unwrap_or((rest, ""));
++    let port: u16 = port
++        .parse()
++        .map_err(|_| AgentError::InvalidConfig(format!("{BASE_URL_ENV} has an invalid port")))?;
++    if path.is_empty() || path.contains(['?', '#', '@']) || path.split('/').any(|part| part == "..") {
++        return Err(AgentError::InvalidConfig(format!("{BASE_URL_ENV} needs an explicit API path")));
++    }
++    if crate::net_isolation::enabled(ctx)
++        && !crate::net_isolation::routes(ctx)
++            .iter()
++            .any(|route| route.hostname.is_some() && route.guest_port == port)
++    {
++        return Err(AgentError::InvalidConfig(format!(
++            "{BASE_URL_ENV} port {port} is not a relay of {}",
++            crate::net_isolation::ALLOW_ENV
++        )));
++    }
++    Ok(url.trim_end_matches('/').to_string())
++}
++
++fn model_entry(ctx: &AgentContext) -> AgentResult<serde_json::Value> {
++    let mut model = serde_json::json!({ "id": ctx.settings.model, "name": ctx.settings.model });
++    if let Some(window) = positive_env(ctx, CONTEXT_ENV, None)? {
++        model["contextWindow"] = window.into();
++    }
++    model["maxTokens"] = positive_env(ctx, MAX_OUTPUT_ENV, Some(32768))?.unwrap_or(32768).into();
++    Ok(model)
++}
++
++/// Same compatibility notes as AgentX's coding-team DSH provider.
++fn compat() -> serde_json::Value {
++    serde_json::json!({ "supportsDeveloperRole": false, "maxTokensField": "max_tokens", "thinkingFormat": "deepseek" })
++}
++
++pub fn pi_models_json(ctx: &AgentContext) -> AgentResult<serde_json::Value> {
++    Ok(serde_json::json!({ "providers": { PROVIDER: {
++        "baseUrl": provider_base_url(ctx)?,
++        "api": "openai-completions",
++        "apiKey": format!("${TOKEN_ENV}"),
++        "compat": compat(),
++        "models": [model_entry(ctx)?],
++    }}}))
++}
++
++pub fn dsh_patch(ctx: &AgentContext) -> AgentResult<serde_json::Value> {
++    let mut model = model_entry(ctx)?;
++    if let Some(object) = model.as_object_mut() {
++        object.remove("name");
++    }
++    let suffix = std::fs::read_to_string(&ctx.paths.prompt_file).unwrap_or_default();
++    let mut patch = vec![
++        serde_json::json!({ "id": "llm-pi-ai", "config": { "providers": { PROVIDER: {
++            "displayName": "AgentX Core",
++            "apiKeyEnv": TOKEN_ENV,
++            "api": "openai-completions",
++            "baseURL": provider_base_url(ctx)?,
++            "compat": compat(),
++            "models": [model],
++        }}}}),
++        serde_json::json!({ "id": "agent-default-model",
++                            "config": { "provider": PROVIDER, "model": ctx.settings.model } }),
++        // Keep DSH's own persona and add the island prompt after it, as Codex
++        // does with developer_instructions.
++        serde_json::json!({ "id": "system-prompt", "config": {
++            "personaPrefix": "You are a coding agent powered by the {{model}} model.",
++            "personaSuffix": suffix,
++        }}),
++        serde_json::json!({ "id": "session-persistence-jsonl", "config": {
++            "root": ctx.guest_home().join(".dsh/sessions").display().to_string(),
++            "compression": "none",
++        }}),
++    ];
++    patch.extend(DSH_DISABLED.iter().map(|id| serde_json::json!({ "id": id, "disabled": true })));
++    Ok(serde_json::Value::Array(patch))
++}
++
++impl Agent for LoopAgent {
++    fn name(&self) -> &'static str {
++        self.kind.name()
++    }
++
++    fn default_model(&self) -> &'static str {
++        "agentx-primary"
++    }
++
++    fn binary(&self) -> &Path {
++        &self.binary
++    }
++
++    fn configure_sandbox_layout(&self, layout: SandboxLayout, host_binary: &Path) -> AgentResult<SandboxLayout> {
++        let mut layout = layout;
++        if let Some((root, rel)) = harness_root_for_bin(host_binary) {
++            layout = layout.with_binary_root(root, PathBuf::from(GUEST_HARNESS_ROOT), rel);
++        }
++        if let Some(root) = node_root_for_path(host_binary).or_else(resolve_node_root) {
++            layout = layout.with_node_root(root);
++        }
++        Ok(layout)
++    }
++
++    fn check_setup(&self, ctx: &AgentContext) -> AgentResult<()> {
++        ctx.validate()?;
++        require_program(&self.binary, &format!("{} CLI", self.kind.name()))?;
++        provider_base_url(ctx)?;
++        model_entry(ctx)?;
++        Ok(())
++    }
++
++    fn start(&self, ctx: &AgentContext) -> AgentResult<CommandSpec> {
++        ctx.validate()?;
++        Ok(self.loop_command(ctx, &ctx.settings.initial_prompt, false))
++    }
++
++    fn continue_session(&self, ctx: &AgentContext, prompt: &str) -> AgentResult<CommandSpec> {
++        ctx.validate()?;
++        require_nonempty("prompt", prompt)?;
++        let session = std::fs::read_to_string(state_dir(ctx).join("session_id")).unwrap_or_default();
++        require_nonempty("session_id", session.trim())?;
++        Ok(self.loop_command(ctx, prompt, true))
++    }
++
++    fn configure_auto_continue(&self, ctx: &AgentContext) -> AgentResult<()> {
++        ctx.validate()?;
++        write_file(&ctx.paths.runtime_dir.join(LOOP_FILE), LOOP_PY)?;
++        std::fs::create_dir_all(state_dir(ctx).join("sessions"))?;
++        let home = agent_home_dir(ctx);
++        match self.kind {
++            LoopKind::Pi => {
++                std::fs::create_dir_all(home.join(".pi/agent/sessions"))?;
++                write_json_file(&home.join(".pi/agent/models.json"), &pi_models_json(ctx)?)?;
++            }
++            LoopKind::Dsh => {
++                std::fs::create_dir_all(home.join(".dsh/sessions"))?;
++                write_json_file(&home.join(DSH_PATCH), &dsh_patch(ctx)?)?;
++            }
++        }
++        if ctx.settings.sandbox_enabled {
++            write_sandbox_hosts_file(ctx)?;
++        }
++        Ok(())
++    }
++
++    fn transcript_parser(&self) -> Box<dyn TranscriptLineParser> {
++        Box::new(CodexTranscriptParser)
++    }
++
++    fn collect_transcripts(&self, ctx: &AgentContext) -> AgentResult<()> {
++        let sessions = state_dir(ctx).join("sessions");
++        let Ok(entries) = std::fs::read_dir(&sessions) else {
++            return Ok(());
++        };
++        std::fs::create_dir_all(&ctx.paths.transcript_dir)?;
++        for entry in entries.flatten() {
++            let path = entry.path();
++            let name = entry.file_name();
++            let is_rollout = name.to_str().is_some_and(|n| n.starts_with("rollout-") && n.ends_with(".jsonl"));
++            // Regular files only: the sandbox can write here.
++            if is_rollout && std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_file()) {
++                std::fs::copy(&path, ctx.paths.transcript_dir.join(&name))?;
++            }
++        }
++        if let Ok(session) = std::fs::read_to_string(state_dir(ctx).join("session_id")) {
++            if !session.trim().is_empty() {
++                create_parent_dir(&ctx.paths.session_id_file)?;
++                std::fs::write(&ctx.paths.session_id_file, format!("{}\n", session.trim()))?;
++            }
++        }
++        Ok(())
++    }
++
++    fn sandbox_requirements(&self, ctx: &AgentContext) -> AgentResult<SandboxRequirements> {
++        ctx.validate()?;
++        Ok(SandboxRequirements {
++            read_only_paths: vec![ctx.paths.prompt_file.clone(), self.binary.clone()],
++            writable_paths: vec![
++                ctx.paths.workspace_dir.clone(),
++                ctx.paths.agent_home_dir.clone(),
++                ctx.paths.runtime_dir.clone(),
++                ctx.paths.transcript_dir.clone(),
++                ctx.paths.log_file.parent().unwrap_or_else(|| Path::new("")).to_path_buf(),
++            ],
++            env_vars: vec![
++                "HOME".to_string(),
++                "PATH".to_string(),
++                BASE_URL_ENV.to_string(),
++                TOKEN_ENV.to_string(),
++            ],
++            needs_network: ctx.settings.sandbox_enabled,
++        })
++    }
++}
++
++impl LoopAgent {
++    fn harness_argv(&self, ctx: &AgentContext) -> Vec<String> {
++        let sandbox = ctx.sandbox.as_ref();
++        let node = sandbox
++            .and_then(|layout| layout.codex_guest_node())
++            .map(|path| path.display().to_string())
++            .unwrap_or_else(|| "node".to_string());
++        let program = sandbox
++            .map(|layout| layout.codex_guest_program())
++            .unwrap_or_else(|| self.binary.clone());
++        let mut argv = vec![node, program.display().to_string()];
++        match self.kind {
++            LoopKind::Pi => {
++                let prompt = guest_prompt_file(ctx).display().to_string();
++                argv.extend(
++                    [
++                        "--provider", PROVIDER, "--model", ctx.settings.model.as_str(), "-p", "--mode", "json",
++                        "--offline", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-mcp",
++                        "--no-themes", "--append-system-prompt", prompt.as_str(),
++                    ]
++                    .map(str::to_string),
++                );
++            }
++            LoopKind::Dsh => {
++                let patch = ctx.guest_home().join(DSH_PATCH).display().to_string();
++                argv.extend(["headless", "--patch", patch.as_str(), "--json"].map(str::to_string));
++            }
++        }
++        argv.extend(ctx.settings.extra_args.clone());
++        argv
++    }
++
++    fn loop_command(&self, ctx: &AgentContext, prompt: &str, resume: bool) -> CommandSpec {
++        let home = ctx.guest_home();
++        let mut command = CommandSpec::new("python3", ctx.guest_path(&ctx.paths.workspace_dir))
++            .arg(guest_loop_file(ctx).display().to_string())
++            .arg("--kind")
++            .arg(self.kind.name())
++            .arg("--state-dir")
++            .arg(guest_state_dir(ctx).display().to_string())
++            .arg("--prompt")
++            .arg(prompt)
++            .arg("--continue-prompt")
++            .arg(&ctx.settings.auto_continue_prompt);
++        if resume {
++            command = command.arg("--resume");
++        }
++        command = command.arg("--");
++        command.args.extend(self.harness_argv(ctx));
++        let command = command
++            .envs(ctx.settings.env.clone())
++            .env("HOME", home.display().to_string());
++        match self.kind {
++            LoopKind::Pi => command
++                .env("PI_CODING_AGENT_DIR", home.join(".pi/agent").display().to_string())
++                .env("PI_OFFLINE", "1")
++                .env("PI_TELEMETRY", "0"),
++            // The Clawblox bubblewrap is the boundary, as for Codex's
++            // externally sandboxed mode; headless DSH has nobody to approve.
++            LoopKind::Dsh => command
++                .env("DSH_HOME", home.join(".dsh").display().to_string())
++                .env("DSH_TELEMETRY_MODE", "DISABLED")
++                .env("DSH_PERMISSION_MODE", "danger-full-access"),
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::agent::{AgentPaths, AgentSettings};
++
++    fn context(env: Vec<(&str, &str)>) -> AgentContext {
++        let root = std::env::temp_dir().join(format!("clawblox-loop-test-{}-{}", std::process::id(), rand_suffix()));
++        AgentContext {
++            paths: AgentPaths {
++                workspace_dir: root.join("workspace"),
++                prompt_file: root.join("runtime/system_prompt.md"),
++                session_id_file: root.join("loop_session_id.txt"),
++                transcript_dir: root.join("session"),
++                runtime_dir: root.join("runtime"),
++                log_file: root.join("logs/agent.log"),
++                agent_home_dir: root.join("home"),
++            },
++            settings: AgentSettings {
++                model: "agentx-primary".to_string(),
++                permission_mode: "bypassPermissions".to_string(),
++                initial_prompt: "Begin.".to_string(),
++                lifecycle_prompt: "Wrap up".to_string(),
++                auto_continue_prompt: "Keep going".to_string(),
++                extra_args: Vec::new(),
++                env: env.into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
++                sandbox_enabled: true,
++                version: None,
++            },
++            sandbox: None,
++        }
++    }
++
++    fn rand_suffix() -> u128 {
++        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
++    }
++
++    fn isolated() -> Vec<(&'static str, &'static str)> {
++        vec![
++            ("CLAWBLOX_NET_ALLOW", "127.0.0.1:41000@8443"),
++            (BASE_URL_ENV, "http://127.0.0.1:8443/api/llm/v1"),
++            (TOKEN_ENV, "ephemeral"),
++            (CONTEXT_ENV, "65536"),
++        ]
++    }
++
++    #[test]
++    fn base_url_must_be_an_allowed_loopback_relay() {
++        assert_eq!(provider_base_url(&context(isolated())).unwrap(), "http://127.0.0.1:8443/api/llm/v1");
++        for url in [
++            "https://agentx.example/api/llm/v1",
++            "http://127.0.0.1:9999/api/llm/v1",
++            "http://127.0.0.1:8443",
++            "http://127.0.0.1:8443/api/../health",
++            "http://127.0.0.1:8443/api/llm/v1?x=1",
++        ] {
++            let mut env = isolated();
++            env[1] = (BASE_URL_ENV, url);
++            assert!(provider_base_url(&context(env)).is_err(), "{url} must refuse");
++        }
++        let mut env = isolated();
++        env.remove(1);
++        assert!(provider_base_url(&context(env)).is_err());
++    }
++
++    #[test]
++    fn generated_configs_name_only_the_alias_and_never_the_token_value() {
++        let ctx = context(isolated());
++        ctx.prepare_paths().unwrap();
++        std::fs::write(&ctx.paths.prompt_file, "Island prompt").unwrap();
++        let pi = pi_models_json(&ctx).unwrap().to_string();
++        assert!(pi.contains("\"$AGENTX_LLM_TOKEN\"") && !pi.contains("ephemeral"));
++        assert!(pi.contains("\"id\":\"agentx-primary\"") && pi.contains("\"contextWindow\":65536"));
++        let dsh = dsh_patch(&ctx).unwrap().to_string();
++        assert!(dsh.contains("\"apiKeyEnv\":\"AGENTX_LLM_TOKEN\"") && !dsh.contains("ephemeral"));
++        assert!(dsh.contains("\"personaSuffix\":\"Island prompt\""));
++        for id in DSH_DISABLED {
++            assert!(dsh.contains(&format!("{{\"disabled\":true,\"id\":\"{id}\"}}")), "{id} must be disabled");
++        }
++    }
++
++    #[test]
++    fn configure_writes_loop_and_config_into_the_generated_home_only() {
++        for kind in [LoopKind::Pi, LoopKind::Dsh] {
++            let ctx = context(isolated());
++            ctx.prepare_paths().unwrap();
++            std::fs::write(&ctx.paths.prompt_file, "Island prompt").unwrap();
++            LoopAgent::new(kind, Some(PathBuf::from("/bin/echo"))).configure_auto_continue(&ctx).unwrap();
++            assert_eq!(std::fs::read_to_string(ctx.paths.runtime_dir.join(LOOP_FILE)).unwrap(), LOOP_PY);
++            let home = super::super::sandbox_home_dir(&ctx);
++            let config = match kind {
++                LoopKind::Pi => home.join(".pi/agent/models.json"),
++                LoopKind::Dsh => home.join(DSH_PATCH),
++            };
++            assert!(config.is_file());
++            assert!(!home.join(".codex/auth.json").exists() && !home.join(".pi/agent/auth.json").exists());
++        }
++    }
++
++    #[test]
++    fn start_is_a_fresh_session_and_continue_resumes_the_recorded_one() {
++        let ctx = context(isolated());
++        ctx.prepare_paths().unwrap();
++        let agent = LoopAgent::new(LoopKind::Pi, Some(PathBuf::from("/bin/echo")));
++        let start = agent.start(&ctx).unwrap();
++        assert_eq!(start.program, PathBuf::from("python3"));
++        assert!(!start.args.contains(&"--resume".to_string()));
++        assert!(start.args.windows(2).any(|w| w == ["--prompt", "Begin."]));
++        assert!(start.args.windows(2).any(|w| w == ["--continue-prompt", "Keep going"]));
++        assert!(start.args.iter().any(|a| a == "--append-system-prompt"));
++        assert!(start.env.iter().any(|(k, v)| k == "PI_OFFLINE" && v == "1"));
++        assert!(agent.continue_session(&ctx, "continue").is_err(), "no recorded session yet");
++        let state = super::state_dir(&ctx);
++        std::fs::create_dir_all(&state).unwrap();
++        std::fs::write(state.join("session_id"), "abc-123\n").unwrap();
++        let resume = agent.continue_session(&ctx, "Update your memory").unwrap();
++        assert!(resume.args.contains(&"--resume".to_string()));
++        assert!(resume.args.windows(2).any(|w| w == ["--prompt", "Update your memory"]));
++
++        let dsh = LoopAgent::new(LoopKind::Dsh, Some(PathBuf::from("/bin/echo"))).start(&ctx).unwrap();
++        assert!(dsh.args.windows(2).any(|w| w == ["headless", "--patch"]));
++        assert!(dsh.env.iter().any(|(k, v)| k == "DSH_PERMISSION_MODE" && v == "danger-full-access"));
++    }
++
++    #[test]
++    fn collect_copies_regular_rollouts_only() {
++        let ctx = context(isolated());
++        ctx.prepare_paths().unwrap();
++        let sessions = super::state_dir(&ctx).join("sessions");
++        std::fs::create_dir_all(&sessions).unwrap();
++        std::fs::write(sessions.join("rollout-s1.jsonl"), "{}\n").unwrap();
++        std::fs::write(sessions.join("notes.txt"), "x").unwrap();
++        std::os::unix::fs::symlink("/etc/passwd", sessions.join("rollout-evil.jsonl")).unwrap();
++        std::fs::write(super::state_dir(&ctx).join("session_id"), "s1\n").unwrap();
++        LoopAgent::new(LoopKind::Pi, None).collect_transcripts(&ctx).unwrap();
++        assert!(ctx.paths.transcript_dir.join("rollout-s1.jsonl").is_file());
++        assert!(!ctx.paths.transcript_dir.join("notes.txt").exists());
++        assert!(!ctx.paths.transcript_dir.join("rollout-evil.jsonl").exists());
++        assert_eq!(std::fs::read_to_string(&ctx.paths.session_id_file).unwrap(), "s1\n");
++    }
++
++    #[test]
++    fn harness_root_is_the_outermost_node_modules() {
++        let root = std::env::temp_dir().join(format!("clawblox-harness-root-{}", rand_suffix()));
++        let entry = root.join("node_modules/@scope/tool/node_modules/dep/cli.js");
++        std::fs::create_dir_all(entry.parent().unwrap()).unwrap();
++        std::fs::write(&entry, "").unwrap();
++        let (found, rel) = harness_root_for_bin(&entry).unwrap();
++        assert_eq!(found, std::fs::canonicalize(&root).unwrap());
++        assert_eq!(rel, PathBuf::from("/node_modules/@scope/tool/node_modules/dep/cli.js"));
++        assert!(harness_root_for_bin(Path::new("/bin/sh")).is_none());
++    }
++}
+diff --git a/src/agentx_harness_loop.py b/src/agentx_harness_loop.py
+new file mode 100755
+index 0000000..5611e2d
+--- /dev/null
++++ b/src/agentx_harness_loop.py
+@@ -0,0 +1,310 @@
++#!/usr/bin/env python3
++"""Keep a one-turn harness playing in one session, inside the agent sandbox.
++
++Codex and Claude loop through a Clawblox Stop hook. DSH headless (`dsh headless`)
++and pi print mode (`pi -p`) answer one prompt and exit. This driver runs them turn
++after turn in the same session with the auto-continue prompt, which is what the
++Stop hook does, and writes every turn as Codex rollout lines. The island runner
++(activity, stall recovery) and the replay's Messages panel then read every
++harness the same way.
++
++    harness_loop.py --kind dsh|pi --state-dir DIR --prompt TEXT
++                    --continue-prompt TEXT [--resume] -- HARNESS ARGV...
++
++Without --resume a new session starts (a context reset). With --resume the
++session recorded in DIR/session_id continues with --prompt. The driver never
++talks to a model itself and holds no credential: the harness reads its
++capability from the environment that Clawblox passes into the sandbox.
++
++Clawblox copies this file into its patch as src/agentx_harness_loop.py; the
++AgentX tests check that both copies are identical.
++"""
++from __future__ import annotations
++
++import argparse
++import datetime as dt
++import json
++import os
++import re
++import signal
++import subprocess
++import sys
++import time
++import uuid
++from pathlib import Path
++
++SESSION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,95}$")
++MAX_TEXT = 16 * 1024
++BACKOFF_FIRST, BACKOFF_MAX = 5, 120
++
++
++def stamp() -> str:
++    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
++
++
++def bounded(text) -> str:
++    text = text if isinstance(text, str) else json.dumps(text, ensure_ascii=False)
++    return text if len(text) <= MAX_TEXT else text[:MAX_TEXT] + "\n[truncated]"
++
++
++def blocks_text(content) -> str:
++    if isinstance(content, str):
++        return content
++    if not isinstance(content, list):
++        return ""
++    return "".join(item.get("text", "") for item in content if isinstance(item, dict) and item.get("type") == "text")
++
++
++class Rollout:
++    """Codex-shaped transcript of one session: session_meta, response_item, event_msg."""
++
++    def __init__(self, directory: Path, session_id: str, kind: str):
++        directory.mkdir(parents=True, exist_ok=True)
++        self.activity, self.errors = 0, 0
++        self.path = directory / f"rollout-{session_id}.jsonl"
++        fresh = not self.path.exists()
++        self.stream = open(self.path, "a", encoding="utf-8")
++        if fresh:
++            self.write("session_meta", {"id": session_id, "cwd": os.getcwd(), "originator": "agentx-harness-loop",
++                                        "harness": kind})
++
++    def write(self, kind: str, payload: dict) -> None:
++        self.stream.write(json.dumps({"timestamp": stamp(), "type": kind, "payload": payload}, ensure_ascii=False) + "\n")
++        self.stream.flush()
++
++    def message(self, role: str, text: str) -> None:
++        part = "output_text" if role == "assistant" else "input_text"
++        self.activity += role == "assistant"
++        self.write("response_item", {"type": "message", "role": role, "content": [{"type": part, "text": bounded(text)}]})
++
++    def reasoning(self, text: str) -> None:
++        self.activity += 1
++        self.write("response_item", {"type": "reasoning", "summary": [{"type": "summary_text", "text": bounded(text)}]})
++
++    def call(self, call_id, name, arguments) -> None:
++        self.activity += 1
++        self.write("response_item", {"type": "function_call", "call_id": str(call_id or ""), "name": str(name or "tool"),
++                                     "arguments": bounded(arguments if isinstance(arguments, str) else json.dumps(arguments))})
++
++    def output(self, call_id, text) -> None:
++        self.write("response_item", {"type": "function_call_output", "call_id": str(call_id or ""), "output": bounded(text)})
++
++    def usage(self, input_tokens, output_tokens, cached=0) -> None:
++        info = {"input_tokens": int(input_tokens or 0), "output_tokens": int(output_tokens or 0),
++                "cached_input_tokens": int(cached or 0)}
++        info["total_tokens"] = info["input_tokens"] + info["output_tokens"]
++        self.write("event_msg", {"type": "token_count", "info": {"last_token_usage": info}})
++
++    def complete(self, reason: str) -> None:
++        self.write("event_msg", {"type": "task_complete", "reason": reason})
++
++    def error(self, message: str) -> None:
++        self.errors += 1
++        self.write("event_msg", {"type": "error", "message": bounded(message)})
++
++    def close(self) -> None:
++        self.stream.close()
++
++
++def translate_pi(event: dict, out: Rollout) -> None:
++    kind = event.get("type")
++    if kind == "message_end":
++        message = event.get("message") or {}
++        if message.get("role") != "assistant":
++            return
++        for block in message.get("content") or []:
++            if not isinstance(block, dict):
++                continue
++            if block.get("type") == "text" and block.get("text"):
++                out.message("assistant", block["text"])
++            elif block.get("type") == "thinking" and block.get("thinking"):
++                out.reasoning(block["thinking"])
++            elif block.get("type") == "toolCall":
++                out.call(block.get("id"), block.get("name"), block.get("arguments") or {})
++        usage = message.get("usage") or {}
++        if usage:
++            out.usage(usage.get("input"), usage.get("output"), usage.get("cacheRead"))
++        if message.get("stopReason") in ("error", "aborted"):
++            out.error(message.get("errorMessage") or message.get("stopReason"))
++    elif kind == "tool_execution_end":
++        result = event.get("result") or {}
++        out.output(event.get("toolCallId"), blocks_text(result.get("content")) if isinstance(result, dict) else result)
++    elif kind == "agent_settled":
++        out.complete("aborted" if event.get("aborted") else "completed")
++
++
++def translate_dsh(event: dict, out: Rollout) -> None:
++    kind = event.get("type")
++    if kind == "text" and event.get("text"):
++        out.message("assistant", event["text"])
++    elif kind in ("reasoning", "thinking") and event.get("text"):
++        out.reasoning(event["text"])
++    elif kind == "tool_call":
++        out.call(event.get("callId"), event.get("tool"), event.get("input") or {})
++    elif kind == "tool_result":
++        out.output(event.get("callId"), event.get("result", ""))
++    elif kind == "error":
++        out.error(event.get("message") or json.dumps(event))
++    elif kind == "status" and event.get("phase") == "step_end":
++        usage = event.get("usage") or {}
++        if usage:
++            out.usage(usage.get("inputTokens"), usage.get("outputTokens"), usage.get("cachedInputTokens"))
++    elif kind == "status" and event.get("phase") == "turn_end":
++        reason = event.get("reason") or {}
++        out.complete(reason.get("kind", "completed") if isinstance(reason, dict) else str(reason))
++
++
++TRANSLATE = {"pi": translate_pi, "dsh": translate_dsh}
++
++
++def session_from_event(kind: str, event: dict) -> str | None:
++    if event.get("type") != "session":
++        return None
++    value = event.get("sessionId") if kind == "dsh" else event.get("id")
++    return value if isinstance(value, str) and SESSION_ID.match(value) else None
++
++
++class Loop:
++    def __init__(self, args):
++        self.args = args
++        self.state = Path(args.state_dir)
++        self.state.mkdir(parents=True, exist_ok=True)
++        self.session_file = self.state / "session_id"
++        self.child = None
++        self.stopping = False
++
++    def read_session(self) -> str | None:
++        try:
++            value = self.session_file.read_text().strip()
++        except FileNotFoundError:
++            return None
++        return value if SESSION_ID.match(value) else None
++
++    def write_session(self, value: str) -> None:
++        temp = self.session_file.with_suffix(".tmp")
++        temp.write_text(value + "\n")
++        os.replace(temp, self.session_file)
++
++    def stop(self, signum, _frame) -> None:
++        self.stopping = True
++        if self.child and self.child.poll() is None:
++            try: self.child.send_signal(signum)
++            except ProcessLookupError: pass
++
++    def argv(self, session: str | None) -> list[str]:
++        argv = list(self.args.harness)
++        if self.args.kind == "pi":
++            return [*argv, "--session-id", session, "--", self.prompt]
++        return [*argv, *(["--session-id", session] if session else []), "-"]
++
++    def turn(self, session: str | None) -> tuple[int, str | None]:
++        out = None
++        if session:
++            out = Rollout(self.state / "sessions", session, self.args.kind)
++            out.message("user", self.prompt)
++        self.child = subprocess.Popen(self.argv(session), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
++                                      stderr=None, text=True, encoding="utf-8", errors="replace")
++        try:
++            if self.args.kind == "dsh":
++                self.child.stdin.write(self.prompt)
++            self.child.stdin.close()
++        except BrokenPipeError:
++            pass
++        try:
++            for line in self.child.stdout:
++                try:
++                    event = json.loads(line)
++                except ValueError:
++                    continue
++                if not isinstance(event, dict):
++                    continue
++                found = session_from_event(self.args.kind, event)
++                if found and out is None:
++                    session = found
++                    self.write_session(session)
++                    out = Rollout(self.state / "sessions", session, self.args.kind)
++                    out.message("user", self.prompt)
++                if out is not None:
++                    TRANSLATE[self.args.kind](event, out)
++                    echo(event)
++            code = self.child.wait()
++            if code != 0 and out is not None and not self.stopping:
++                out.error(f"{self.args.kind} exited with status {code}")
++            # A turn without model output or with an error (a refused or failed
++            # inference the harness swallowed) pauses like a failed exit:
++            # the loop never hammers Core.
++            healthy = code == 0 and out is not None and out.activity > 0 and out.errors == 0
++            return (0 if healthy else code or 1), session
++        finally:
++            if out is not None:
++                out.close()
++
++    def run(self) -> int:
++        for signum in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
++            signal.signal(signum, self.stop)
++        session = None
++        if self.args.resume:
++            session = self.read_session()
++            if not session:
++                print("harness loop: no session to resume", file=sys.stderr)
++                return 2
++        else:
++            self.session_file.unlink(missing_ok=True)
++            if self.args.kind == "pi":
++                session = str(uuid.uuid4())
++                self.write_session(session)
++        self.prompt = self.args.prompt
++        backoff = 0
++        while not self.stopping:
++            code, session = self.turn(session)
++            if self.stopping:
++                break
++            if code == 0:
++                backoff = 0
++            else:
++                backoff = min(max(BACKOFF_FIRST, backoff * 2), BACKOFF_MAX)
++                print(f"harness loop: {self.args.kind} turn failed (status {code}); retrying in {backoff}s", file=sys.stderr)
++                deadline = time.monotonic() + backoff
++                while not self.stopping and time.monotonic() < deadline:
++                    time.sleep(0.5)
++            # The next turn continues the session; a session never opened restarts with the first prompt.
++            if session:
++                self.prompt = self.args.continue_prompt
++        return 0
++
++
++def echo(event: dict) -> None:
++    """One short human line per event for the tmux pane and agent.log."""
++    kind = event.get("type")
++    text = None
++    if kind in ("text", "message_end"):
++        message = event.get("message") or {}
++        text = event.get("text") or (blocks_text(message.get("content")) if message.get("role") == "assistant" else None)
++    elif kind in ("tool_call", "tool_execution_start"):
++        text = f"$ {event.get('tool') or event.get('toolName')} {json.dumps(event.get('input') or event.get('args') or {})}"
++    if text:
++        print(text[:400].replace("\n", " "), flush=True)
++
++
++def parser() -> argparse.ArgumentParser:
++    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    p.add_argument("--kind", required=True, choices=sorted(TRANSLATE))
++    p.add_argument("--state-dir", required=True)
++    p.add_argument("--prompt", required=True)
++    p.add_argument("--continue-prompt", required=True)
++    p.add_argument("--resume", action="store_true")
++    p.add_argument("harness", nargs=argparse.REMAINDER)
++    return p
++
++
++def main(argv=None) -> int:
++    args = parser().parse_args(argv)
++    if args.harness[:1] == ["--"]:
++        args.harness = args.harness[1:]
++    if not args.harness or not args.prompt.strip() or not args.continue_prompt.strip():
++        parser().error("a harness command, a prompt and a continue prompt are required")
++    return Loop(args).run()
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/src/lib.rs b/src/lib.rs
+index c81d813..007ba98 100644
 --- a/src/lib.rs
 +++ b/src/lib.rs
-@@ -12,6 +12,7 @@
+@@ -12,6 +12,7 @@ pub mod config;
  pub mod db;
  pub mod game;
  pub mod manifest;
@@ -92,6 +1046,9 @@
  pub mod paths;
  pub mod r2;
  pub mod recording;
+diff --git a/src/net_isolation.rs b/src/net_isolation.rs
+new file mode 100644
+index 0000000..2ff849d
 --- /dev/null
 +++ b/src/net_isolation.rs
 @@ -0,0 +1,258 @@
@@ -353,9 +1310,11 @@
 +        );
 +    }
 +}
+diff --git a/src/replay_agent_log.rs b/src/replay_agent_log.rs
+index 3271da6..6c5ad85 100644
 --- a/src/replay_agent_log.rs
 +++ b/src/replay_agent_log.rs
-@@ -142,11 +142,17 @@
+@@ -142,11 +142,17 @@ pub struct CodexTranscriptParser;
  
  impl TranscriptLineParser for CodexTranscriptParser {
      fn parse_timestamp_ms(&self, value: &Value) -> Option<i64> {
@@ -374,7 +1333,7 @@
      }
  
      fn parse_message(&self, value: &Value, ts_ms: i64) -> Option<RawReplayAgentMessage> {
-@@ -388,7 +394,8 @@
+@@ -388,7 +394,8 @@ pub fn detect_transcript_parser(path: &Path) -> Box<dyn TranscriptLineParser> {
                  if value
                      .get("type")
                      .and_then(|v| v.as_str())
@@ -384,41 +1343,3 @@
                      .unwrap_or(false)
                  {
                      return Box::new(CodexTranscriptParser);
---- a/python/clawblox/src/lib.rs
-+++ b/python/clawblox/src/lib.rs
-@@ -2557,6 +2557,7 @@
-     m.add_class::<PyAgentStartResult>()?;
-     m.add_class::<PyAgentStopResult>()?;
-     m.add_function(wrap_pyfunction!(default_system_prompt, m)?)?;
-+    m.add_function(wrap_pyfunction!(agentx_isolation_version, m)?)?;
-     Ok(())
- }
- 
-@@ -2564,3 +2565,9 @@
- fn default_system_prompt() -> &'static str {
-     rust_default_system_prompt()
- }
-+
-+// Adapter gate: PID/network isolation, no owner state import, required relays.
-+#[pyfunction]
-+fn agentx_isolation_version() -> u32 {
-+    1
-+}
---- a/python/clawblox/clawblox/__init__.py
-+++ b/python/clawblox/clawblox/__init__.py
-@@ -1,6 +1,6 @@
- """Python orchestration API for Clawblox."""
- 
--from ._clawblox import Agent, World, default_system_prompt
-+from ._clawblox import Agent, World, default_system_prompt, agentx_isolation_version
- from .checkpoint import (
-     CheckpointError,
-     CheckpointSecretError,
-@@ -10,6 +10,7 @@
- )
- 
- __all__ = [
-+    "agentx_isolation_version",
-     "Agent",
-     "World",
-     "default_system_prompt",

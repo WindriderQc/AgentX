@@ -109,6 +109,24 @@ test('marks dispatch before the start, follows the run and finishes with a hashe
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
+test('the harness reaches the runner only for dsh or pi; Codex keeps the historical argv', async () => {
+  const config = island.runnerConfig({ AGENTX_ISLAND_RUNNER: 'local', AGENTX_ISLAND_RUNNER_SCRIPT: '/x.py' });
+  assert.deepEqual(island.runnerArgv(config, 'start', { harness: 'pi' }).args.slice(-2), ['--harness', 'pi']);
+  assert.throws(() => island.runnerArgv(config, 'start', { harness: 'claude' }), /Invalid runner argument/);
+  for (const [harness, expected] of [[undefined, undefined], ['codex', undefined], ['dsh', 'dsh'], ['pi', 'pi']]) {
+    const dir = tempDir();
+    try {
+      const withHarness = harness ? { ...executor, harness } : executor;
+      const core = fakeCore({ ...job, executor: withHarness });
+      const { runner, calls } = fakeRunner();
+      await island.runIsland({ ...job, executor: withHarness }, core.client, deps(dir, runner));
+      const start = calls.find(([a]) => a === 'start')[1];
+      assert.equal(start.harness, expected, `harness ${harness}`);
+      assert.ok(!('harness' in start) || expected, 'Codex never sends --harness');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
 test('refusable checks happen before the mark: busy runner, moved pin, claimed host', async () => {
   const dir = tempDir();
   try {

@@ -49,7 +49,7 @@ function runnerConfig(env = process.env) {
 const ARGUMENTS = {
   'run-id': value => UUID.test(value), 'dispatch-id': value => UUID.test(value),
   agent: value => /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(value), world: value => /^[a-z0-9][a-z0-9-]{0,63}$/.test(value),
-  memory: value => ['continue', 'fresh'].includes(value),
+  memory: value => ['continue', 'fresh'].includes(value), harness: value => ['codex', 'dsh', 'pi'].includes(value),
   minutes: value => /^\d{1,4}$/.test(value), 'context-window': value => /^\d{1,8}$/.test(value)
 };
 
@@ -135,7 +135,7 @@ function outcomeState(status) {
 }
 
 function runSummary(status) {
-  const keep = ['phase', 'outcome', 'agent', 'minutes', 'memory', 'world', 'model', 'requestedAt', 'startedAt', 'endedAt',
+  const keep = ['phase', 'outcome', 'agent', 'harness', 'minutes', 'memory', 'world', 'model', 'requestedAt', 'startedAt', 'endedAt',
     'timeZone', 'resumeCount', 'recording', 'memorySource', 'memorySaved', 'liveView'];
   return { ...Object.fromEntries(keep.map(key => [key, status[key] ?? null])), events: (status.events || []).slice(-100) };
 }
@@ -187,8 +187,10 @@ async function runIsland(job, client, deps = {}) {
   try {
     await client(`/${job.id}/assert-dispatch`, { dispatchId });
     try {
+      // Codex stays the runner's default: an older runner without --harness keeps working.
+      const harness = executor.harness && executor.harness !== 'codex' ? { harness: executor.harness } : {};
       started = await d.runner('start', { 'run-id': job.id, 'dispatch-id': dispatchId, agent: executor.agent,
-        minutes: executor.minutes, memory: executor.memory, world: executor.world, 'context-window': principal.contextSize });
+        minutes: executor.minutes, memory: executor.memory, world: executor.world, ...harness, 'context-window': principal.contextSize });
     } catch (error) {
       if (error.runnerRefused && NOT_STARTED.includes(error.code)) throw Object.assign(error, { notStarted: true });
       // A lost answer: read the same run identity. Never start it again.

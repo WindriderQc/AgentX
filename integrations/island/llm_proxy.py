@@ -1,7 +1,9 @@
-"""Per-run loopback capability: only the logical model and Responses transport.
+"""Per-run loopback capability: only the logical model and one inference transport.
 
 The sandbox receives an ephemeral capability, never the upstream credential.
 Core still owns inference admission. This proxy cannot redirect or retry a call.
+Each run opens exactly one inference route: Responses (Codex) or Chat
+Completions (DSH, pi). The other one refuses like any unknown path.
 """
 from __future__ import annotations
 
@@ -16,10 +18,15 @@ from urllib.parse import urlsplit
 PREFIX = "/api/llm/v1"
 MODEL = "agentx-primary"
 MAX_BODY = 8 * 1024 * 1024
+# The single inference route a run may open, by wire API.
+INFERENCE = {"responses": PREFIX + "/responses", "chat": PREFIX + "/chat/completions"}
 
 
 class LLMProxy:
-    def __init__(self, upstream: str | None, token: str = "", timeout: float = 1200):
+    def __init__(self, upstream: str | None, token: str = "", timeout: float = 1200, wire: str = "responses"):
+        if wire not in INFERENCE:
+            raise ValueError("inference wire must be responses or chat")
+        self.wire, self.inference_path = wire, INFERENCE[wire]
         self.target = urlsplit(upstream or "http://127.0.0.1")
         if upstream and (self.target.scheme not in ("http", "https") or not self.target.hostname
                          or self.target.username or self.target.password or self.target.query
@@ -49,7 +56,7 @@ class LLMProxy:
                 self.close_connection = True
 
             def handle_request(self):
-                allowed = {("GET", PREFIX + "/models"), ("POST", PREFIX + "/responses")}
+                allowed = {("GET", PREFIX + "/models"), ("POST", proxy.inference_path)}
                 # Compare the raw request target; no normalization, query, redirects or CONNECT.
                 if (self.command, self.path) not in allowed:
                     return self.reject(403)
@@ -86,7 +93,7 @@ class LLMProxy:
                 with proxy.lock: proxy.connections.add(conn)
                 sent = False
                 try:
-                    conn.request("POST", PREFIX + "/responses", body=body, headers={
+                    conn.request("POST", proxy.inference_path, body=body, headers={
                         "Authorization": "Bearer " + proxy.token,
                         "Content-Type": "application/json", "Connection": "close",
                     })

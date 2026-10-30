@@ -1,12 +1,13 @@
 # Île : un agent seul sur une île Clawblox
 
-Mis à jour le 2026-10-29 à 03:00 America/Toronto.
+Mis à jour le 2026-10-29 à 19:30 America/Toronto.
 
 On refait l'expérience du MIT *Is this machine playing?*
 ([arXiv 2610.07130](https://arxiv.org/abs/2610.07130)) : un agent sans tâche,
 seul sur une île simulée, avec une mémoire en fichiers. L'île est le moteur
 open source de l'article, [Clawblox](https://github.com/nacloos/clawblox)
-(licence MIT). L'agent est Codex, piloté par Clawblox. Il pense avec
+(licence MIT). L'agent est un harnais de programmation piloté par Clawblox :
+Codex par défaut, ou DSH ou Pi (voir « Les harnais » plus bas). Il pense avec
 `agentx-primary` au travers de la porte OpenAI de Core : jamais un nom de
 modèle concret.
 
@@ -58,7 +59,8 @@ porte ni commande, ni adresse, ni jeton, ni nom de modèle :
   "estimatedMinutes": 70,
   "source": {"type": "operator", "ref": "benchmark-island-tab"},
   "executor": {"mode": "island", "receiptRef": "island/<identifiant>.json",
-               "agent": "Eko", "minutes": 60, "memory": "continue", "world": "mesa-island"}
+               "agent": "Eko", "minutes": 60, "memory": "continue", "world": "mesa-island",
+               "harness": "codex"}
 }
 ```
 
@@ -67,6 +69,9 @@ porte ni commande, ni adresse, ni jeton, ni nom de modèle :
 - `memory` : `continue` reprend l'espace de travail de la dernière partie
   « continue » de cet agent ; `fresh` part des modèles et ne touche pas à la
   mémoire de l'agent qui a joué.
+- `harness` : `codex` (par défaut), `dsh` ou `pi`. L'exécuteur ne passe
+  `--harness` au runner que pour `dsh` et `pi` ; un runner plus ancien joue
+  donc toujours Codex comme avant.
 - `hosts` : le point d'accès de la voie principale au moment de « Lancer ».
   Si le pin a changé d'hôte avant le départ, la partie refuse avant toute
   marque de départ ; il faut alors une nouvelle demande.
@@ -157,6 +162,10 @@ Réglages de l'hôte d'exécution, dans `~/.config/agentx/island-runner.json`
   "worldsRoot": "/home/<compte>/codes/clawblox/worlds",
   "clawbloxBin": "/home/<compte>/codes/clawblox/target/release",
   "codex": "/home/<compte>/.local/bin/codex",
+  "harnesses": {"dsh": "/opt/<runtime-dsh>/node_modules/.bin/dsh",
+                "pi": "/opt/<runtime-pi>/node_modules/.bin/pi"},
+  "nodeBin": "/opt/<node>/bin",
+  "maxOutputTokens": 32768,
   "tokenFile": "/home/<compte>/.config/agentx/llm-gateway-<client>.token",
   "gatewayHost": "<nom public de Core>",
   "gatewayGuestPort": 8443,
@@ -165,6 +174,11 @@ Réglages de l'hôte d'exécution, dans `~/.config/agentx/island-runner.json`
   "netcheckBlocked": ["http://<core-lan>:3180/", "http://<ollama>:11434/api/tags"]
 }
 ```
+
+`harnesses`, `nodeBin` et `maxOutputTokens` ne servent qu'à DSH et Pi ;
+`check` les vérifie et liste les harnais jouables (`harnesses` dans sa
+réponse). `nodeBin` passe devant le Node du système : Pi demande Node 22.19
+ou plus, et Node sert alors aussi à Codex.
 
 `runsRoot` doit rester court : Clawblox place les sockets des relais de
 l'agent sous `<runsRoot>/<demande>/agents/<agent>/runtime/netrelay/`, et un
@@ -176,8 +190,9 @@ Clawblox doit porter les correctifs AgentX (isolation réseau, espaces de
 processus et d'IPC propres, variables d'opérateur retirées, lecture des
 journaux Codex dans la relecture). Le correctif versionné est dans
 `integrations/island/clawblox-isolation.patch`, sur la base upstream `8be90a0`.
-Le module doit annoncer `agentx_isolation_version() == 1` ; une version ancienne
-est refusée avant de démarrer. Aucun changement du HOME du contrôleur n’est fait.
+Le module annonce `agentx_isolation_version()` : 1 suffit pour Codex, 2 (qui
+ajoute les adaptateurs `dsh` et `pi`) est exigé pour DSH et Pi ; une version
+trop ancienne est refusée avant de démarrer. Aucun changement du HOME du contrôleur n’est fait.
 
 Chaque partie a son dossier `<runsRoot>/<demande>/` : `request.json`,
 `state.json` (phase, relances, lien de la vue en direct), `world.log`,
@@ -226,11 +241,53 @@ python island_runner.py start --run-id $(uuidgen) --netcheck --minutes 5
 
 Le résultat est dans `agents/<agent>/workspace/netcheck.json` de la partie.
 
+## Les harnais : Codex, DSH, Pi
+
+Trois harnais peuvent jouer, avec le même modèle (`agentx-primary`), la même
+île, les mêmes prompts (`SOUL.md`, consignes, prompt système) et le même
+superviseur (relances, rappel de mémoire, remise à zéro horaire, fin honnête).
+
+| Harnais | Lancement dans le bac à sable | Route du relais | Prompt de l'île |
+|---|---|---|---|
+| Codex (`codex`) | TUI interactif ; un crochet d'arrêt Clawblox le relance | Responses | `developer_instructions`, après le prompt de Codex |
+| DSH (`dsh`) | `dsh headless --json`, un tour par appel | Chat Completions | `personaSuffix`, après la persona de DSH |
+| Pi (`pi`) | `pi -p --mode json`, un tour par appel | Chat Completions | `--append-system-prompt`, après le prompt de Pi |
+
+DSH et Pi répondent à une consigne puis s'arrêtent. L'adaptateur Clawblox
+v2 (`dsh`, `pi`) les lance par une petite boucle dans le bac à sable
+(`harness_loop.py`, copiée dans le correctif) : premier tour avec « Begin. »,
+puis la même session continue avec la consigne de relance, comme le crochet
+d'arrêt de Codex. La boucle écrit chaque tour au format des sessions Codex
+(`~/.agentx-loop/sessions`) : le superviseur y lit l'activité et la relecture
+y trouve les messages. Un tour sans réponse du modèle ou en erreur attend
+avant le suivant (5 s, puis jusqu'à 2 min) : la boucle ne martèle pas Core.
+
+Le HOME du bac à sable ne contient que la config générée (`~/.pi/agent/models.json`
+ou `~/.dsh/agentx-island.patch.json`) : une adresse de relais local, l'alias
+et le nom de la variable de la capacité, jamais sa valeur. DSH garde ses
+outils de fichiers et de shell ; ses sous-agents, flux de travail,
+titres par modèle, télémétrie, recherche web et fournisseurs DeepSeek sont
+coupés (même liste que le Coding Team, plus le web). Pi part sans extensions,
+skills, modèles de prompt ni MCP, et hors ligne.
+
+Le relais de la partie n'ouvre qu'une route d'inférence : Responses pour
+Codex, Chat Completions pour DSH et Pi. L'autre route refuse comme un chemin
+inconnu (testé dans `tests/test_harness.py` et dans le netcheck,
+vérification `inference-route-exclusive`). Le netcheck de DSH et Pi vérifie
+aussi la config générée (`harness-config`).
+
+Différences qui restent entre les harnais (à garder en tête pour comparer) :
+le prompt de base et les outils propres à chaque harnais, la limite de
+sortie (Codex prend celle de Core ; DSH et Pi demandent `maxOutputTokens`,
+que Core plafonne), et le coût d'un tour (DSH et Pi relancent leur
+processus à chaque tour). La comparaison chiffrée est un plan de
+l'instance, à approuver avant toute partie.
+
 ## L'onglet Île (Benchmark)
 
 Quatre sections, dans une seule entrée du menu de Benchmark :
 
-- **Lancer une partie** : agent, durée, mémoire (continuer ou neuve) et
+- **Lancer une partie** : agent, harnais (Codex, DSH, Pi), durée, mémoire (continuer ou neuve) et
   créneau (cette nuit, dès que possible ou sans créneau). Rien ne part : la
   demande attend ton approbation, puis l'admission de Core (voir
   « Déroulement » plus haut pour les commandes).
@@ -313,7 +370,7 @@ leurs tests sans modèle.
 
 | Garantie | Où | Tests |
 |---|---|---|
-| **Accès au modèle restreint.** Le bac à sable ne reçoit qu'une capacité éphémère par partie vers un relais local : liste des modèles et Responses, `agentx-primary` seulement. Le vrai jeton de passerelle reste hors du bac à sable ; le netcheck n'a aucune connexion vers Core. | `integrations/island/llm_proxy.py` | `tests/test_proxy.py` (routes, méthodes, encodages et redirections refusés ; pas d'amont en netcheck ; vrai espace réseau isolé) |
+| **Accès au modèle restreint.** Le bac à sable ne reçoit qu'une capacité éphémère par partie vers un relais local : liste des modèles et une seule route d'inférence (Responses pour Codex, Chat Completions pour DSH et Pi), `agentx-primary` seulement. Le vrai jeton de passerelle reste hors du bac à sable ; le netcheck n'a aucune connexion vers Core. | `integrations/island/llm_proxy.py` | `tests/test_proxy.py` (routes, méthodes, encodages et redirections refusés ; pas d'amont en netcheck ; vrai espace réseau isolé), `tests/test_harness.py` (route exclusive par harnais) |
 | **Fin honnête.** Atteindre l'échéance ne prouve pas la réussite : il faut un agent vivant et une activité réelle du modèle. Une relance ratée, un netcheck incomplet ou un nettoyage raté donnent un échec. | `integrations/island/run_island.py`, `run_state.py` | `tests/test_runner.py` (agent mort, aucune activité, relance ratée, netcheck partiel, nettoyage raté, activité périmée) |
 | **Libération prouvée, reprise sûre.** Une observation manquante ou un `pgrep` en erreur ne prouvent pas la libération. On garde l'identité exacte de la demande et du départ, la preuve de nettoyage local et la lecture native `operator-release` de Core. Une réponse perdue se réconcilie sans relancer de partie. | `integrations/operations/island-executor.cjs`, Core | `integrations/operations/tests/island-executor.test.cjs`, `core/tests/unit/heavyWorkQueueOperatorRelease.test.js`, `heavyWorkQueue.mongo.test.js` |
 | **Seule la mémoire passe.** `SOUL.md`, `EPISODIC_MEMORY.md`, `EPISODIC_MEMORY.jsonl` et `SEMANTIC_MEMORY.md`, validés (fichiers ordinaires bornés, liens symboliques refusés). Sessions, jetons, outils générés et instantanés du monde restent à part. | `run_state.py`, `island_runner.py` | `test_memory_carries_only_four_regular_files_and_refuses_symlinks`, `test_healthy_episode_copies_only_memory_into_fresh_second_episode` |
@@ -442,5 +499,5 @@ file comme une partie.
   demandent un modèle qui relit les parties : travail lourd, pas encore fait.
 - La vue 3D est celle de Clawblox. Une vue GraphysX-Web se brancherait comme
   second rendu ; elle attend la décision sur le placement de GraphysX.
-- Remplacer Codex par un autre harnais (DSH, OpenCode) reste une décision du
-  propriétaire.
+- DSH et Pi sont branchés (adaptateur Clawblox v2) et qualifiés sans modèle ;
+  aucun n'a encore joué une vraie partie. OpenCode n'est pas branché.
