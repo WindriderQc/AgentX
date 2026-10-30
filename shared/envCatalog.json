@@ -152,6 +152,16 @@
       "secret": false,
       "description": "Île tab: scheme and host (no port) of the island runner host as browsers reach it; the live spectator link adds the world port the runner reports. Unset: the live button is hidden."
     },
+    "AGENTX_ISLAND_WORLDS": {
+      "services": [
+        "benchmark"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Île tab: JSON list of the terrains Lancer offers, each {id, label, live?}: id is the runner's world directory, live the origin of a world service's stream (e.g. https://host:18794) for a terrain that runs on its own, watched through AGENTX_ISLAND_GRAPHYSX_URL. Unset: the single terrain mesa-island."
+    },
     "AGENTX_LLM_GATEWAY_CLIENTS": {
       "services": [
         "core"
