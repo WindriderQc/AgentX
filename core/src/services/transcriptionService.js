@@ -15,7 +15,8 @@ async function get(id, result = false) {
 async function project(row, jobs) {
   if (!row.queueId || TERMINAL.includes(row.state)) return row;
   let job;
-  try { job = jobs ? jobs.find(item => item.id === row.queueId) : await queue.get(row.queueId); } catch { return row; }
+  try { job = jobs ? jobs.find(item => item.id === row.queueId) : await queue.get(row.queueId); } catch { return { ...row, planning: { available: false } }; }
+  row = { ...row, planning: require('./transcriptionPresentation').planning(job) };
   if (job?.state === 'uncertain' || row.stage === 'reconciling') return { ...row, state: 'uncertain', stage: 'reconciling', error: 'La réponse du service vocal est à vérifier. Cette tentative reste réservée ; aucun doublon ne sera lancé.' };
   return row;
 }

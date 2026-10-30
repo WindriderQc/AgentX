@@ -10,6 +10,7 @@ const schema = new mongoose.Schema({
   queueId: { type: String, default: null, index: true },
   state: { type: String, default: 'queued', index: true },
   stage: { type: String, default: 'queued' },
+  execution: { type: mongoose.Schema.Types.Mixed, default: null },
   title: String, duration: Number, detectedLanguage: String,
   startedAt: Date, finishedAt: Date, error: String, planningError: String,
   nativeBase: { type: String, select: false },

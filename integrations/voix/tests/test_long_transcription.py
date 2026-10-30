@@ -73,6 +73,7 @@ def test_small_nonprivate_audio_fixture_uses_same_transcriber_contract(tmp_path)
         calls.append(path)
         class Text(str):
             language = "fr"
+            evidence = {"device": "cpu", "computeType": "int8"}
             segments = [{"start": 0, "end": 1, "text": "Synthetic fixture"}]
         return Text("Synthetic fixture")
     owner = Owner(tmp_path, downloader=download, transcriber=transcribe)
@@ -81,6 +82,7 @@ def test_small_nonprivate_audio_fixture_uses_same_transcriber_contract(tmp_path)
     result = wait(owner, identity)
     assert result["state"] == "completed"
     assert result["result"]["segments"][0]["end"] == 1
+    assert result["result"]["execution"]["device"] == "cpu"
     assert result["duration"] == 1
     owner.start(identity, result["url"], "auto")
     assert len(calls) == 1
@@ -326,3 +328,29 @@ def test_completion_waits_for_spool_cleanup_and_cancel_can_win_at_that_boundary(
     assert wait(owner, identity)["state"] == "cancelled"
     assert not list(tmp_path.glob("audio-*"))
     owner.store.close()
+
+
+def test_capability_observes_only_active_metadata_and_effective_disk_budget(tmp_path, monkeypatch):
+    import app.long_transcription as module
+    entered, release = threading.Event(), threading.Event()
+    def download(row, directory, token):
+        entered.set()
+        release.wait(5)
+        from app.stt.requests import RecognitionCancelled
+        raise RecognitionCancelled()
+    native = Owner(tmp_path, downloader=download, transcriber=lambda *_: pytest.fail("must not load a model"))
+    monkeypatch.setattr(module, "owner", lambda: native)
+    key = str(uuid.uuid4())
+    native.start(key, "https://youtu.be/abcdefghijk", "auto")
+    assert entered.wait(2)
+    try:
+        cap = module.capabilities()
+        jobs = cap["observation"]["activeJobs"]
+        assert jobs == [{"id": key, "stage": "downloading", "startedAt": native.store.get(key)["startedAt"]}]
+        assert "url" not in json.dumps(cap) and "text" not in json.dumps(cap)
+        assert 0 <= cap["effectiveDownloadBytes"] <= cap["maxDownloadBytes"]
+        assert cap["maxDecodedBytes"] > 0 and cap["reserveDiskBytes"] == 512 * 1024**2
+    finally:
+        release.set()
+        wait(native, key)
+        native.store.close()

@@ -67,6 +67,35 @@ The interface reports downloading, decoding, transcription, cancellation or
 reconciliation and elapsed time. It reports neither a fabricated percentage nor
 a predicted completion time.
 
+## Read the request path
+
+The personal page shows the serial path using the conversation workflow's
+node, LED and evidence-wire vocabulary. Its explanatory view starts no job.
+Selecting a library entry follows that entry's receipts: URL acceptance, queue
+and physical admission, native download, bounded decoding, Whisper, cleanup and
+durable storage, then reading and on-demand TXT/SRT exports. Admission precedes
+download in this implementation. Exports are not separate background jobs.
+
+Animation follows a receipt observed within 20 seconds and stops on old or
+unknown observations, cancellation, failure and historical completion. It is
+not GPU utilization telemetry. Whole-job elapsed time uses persisted start/end
+instants; per-stage durations are not recorded and are not fabricated. The
+queue's existing presentation provides earliest start, timezone and wait reasons.
+
+GET /api/transcriptions/status is a bounded, cached composition of the existing
+speech model catalog, health, native capabilities and runtime coordination.
+Configured model/device are labelled as configuration, not active inference.
+The capability response adds metadata-only active long jobs and effective
+download-disk budget; it neither loads a model nor exposes source URLs/text.
+Older native services remain readable with activity explicitly unavailable.
+Completed new receipts retain the decoder's model/device/compute evidence;
+older results without it are labelled unattributed, not assigned today's model.
+The current host label comes from Core's existing host registry when matched.
+
+Language and timezone preferences stay in this browser's local storage. The
+accepted request and schedule remain durable Core data. This page offers no
+per-request model selector because the native service does not support one.
+
 ## Configuration
 
 Both sides are disabled until explicitly configured. Keep origins and paths
