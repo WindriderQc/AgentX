@@ -6,6 +6,7 @@ import argparse
 import datetime as dt
 import importlib
 import math
+import os
 import re
 import signal
 import sys
@@ -120,6 +121,11 @@ def execute(a, runtime=None, clock=time, alive=pane_alive, activity=latest_activ
             handlers[sig] = signal.signal(sig, stop)
         world = runtime.World(dir=str(a.world_dir))
         world.start(port=a.port, record=True, record_dir=run / "recordings", log_file=run / "world.log")
+        # The world keeps the system tools: with a full Node (npx) on PATH its renderer rebuild
+        # tries to download esbuild, and the runner account has no network, so the world hangs.
+        # The harness Node is added afterwards, where the Clawblox adapter resolves it.
+        if getattr(a, "node_bin", None):
+            os.environ["PATH"] = str(a.node_bin) + os.pathsep + os.environ.get("PATH", "")
         agent = runtime.Agent(agent=harness, name=a.name, dir=workspace.parent, model=MODEL,
                               binary=binary, sandbox=True, extra_args=extra,
                               auto_continue_prompt=CONTINUE)
