@@ -37,7 +37,7 @@ import sys
 from pathlib import Path
 
 import run_island as episode
-from run_state import MEMORY, atomic_json, copy_memory_files
+from run_state import MEMORY, atomic_json, copy_memory_files, read_regular
 
 CONTRACT = "agentx.island-runner/v1"
 PRINCIPAL_ALIAS = "agentx-primary"
@@ -212,9 +212,13 @@ def memory_snapshot(workspace: Path) -> dict:
         if path.is_symlink() or not path.is_file():
             files[name] = None
             continue
-        data = path.read_bytes()
-        files[name] = {"bytes": len(data), "truncated": len(data) > MAX_MEMORY_BYTES,
-                       "text": data[-MAX_MEMORY_BYTES:].decode("utf-8", errors="replace")}
+        try:
+            data, info = read_regular(path, MAX_MEMORY_BYTES, tail=True)
+        except ValueError:
+            files[name] = None
+            continue
+        files[name] = {"bytes": info.st_size, "truncated": info.st_size > MAX_MEMORY_BYTES,
+                       "text": data.decode("utf-8", errors="replace")}
     return files
 
 
@@ -323,14 +327,22 @@ def start_locked(config: dict, args) -> dict:
     state = {"runId": args.run_id, "dispatchId": args.dispatch_id, "phase": "starting", "events": [],
              "requestedAt": request["requestedAt"], "timeZone": config.get("timeZone")}
     write_json(run / "state.json", state)
-    with open(run / "supervisor.log", "ab") as log:
-        child = subprocess.Popen(
-            [sys.executable, str(Path(__file__).resolve()), "supervise", "--run-id", args.run_id,
-             "--config", config["configPath"]],
-            stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
+    # Publish ownership before spawning, including if the caller dies before it
+    # receives the child's PID. The child waits on runner.lock before writing.
+    write_json(runs_root(config) / "active.json", {"runId": args.run_id, "since": request["requestedAt"]})
+    try:
+        with open(run / "supervisor.log", "ab") as log:
+            child = subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve()), "supervise", "--run-id", args.run_id,
+                 "--config", config["configPath"]],
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, start_new_session=True, close_fds=True)
+    except OSError as error:
+        state.update(phase="finished", outcome="failed", localStopped=True, endedAt=now_iso())
+        write_json(run / "state.json", state)
+        (runs_root(config) / "active.json").unlink(missing_ok=True)
+        raise RunnerError("RUNNER_START_FAILED", f"supervisor was not spawned: {error}") from error
     state["pid"] = child.pid
     write_json(run / "state.json", state)
-    write_json(runs_root(config) / "active.json", {"runId": args.run_id, "since": request["requestedAt"]})
     return {"runId": args.run_id, "dispatchId": args.dispatch_id, "harness": args.harness, "phase": "starting", "pid": child.pid}
 
 
@@ -448,9 +460,14 @@ def action_memory(config: dict, args) -> dict:
 
 def action_supervise(config: dict, args) -> dict:
     run = run_dir(config, args.run_id)
-    request = read_json(run / "request.json")
-    state = read_json(run / "state.json", {}) or {}
-    state.update(pid=os.getpid(), phase="starting")
+    # start holds this lock through its last state write. Without this barrier
+    # a fast failure can be replaced by the parent's stale "starting" state.
+    with open(runs_root(config) / "runner.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        request = read_json(run / "request.json")
+        state = read_json(run / "state.json", {}) or {}
+        state.update(pid=os.getpid(), phase="starting")
+        write_json(run / "state.json", state)
     events = state.setdefault("events", [])
     workspace = run / "agents" / request["agent"].lower() / "workspace"
     store = memory_store(config, request["agent"])
@@ -464,7 +481,8 @@ def action_supervise(config: dict, args) -> dict:
             state.update(phase="running", startedAt=now_iso(), liveView=spectator_path(run / "world.log"))
         save()
 
-    receipt = {"outcome": "failed", "localStopped": False}
+    receipt = {"outcome": "failed", "localStopped": True}
+    execution_entered = False
     try:
         state["memorySource"] = seed_workspace(workspace, templates, store, request["memory"])
         save()
@@ -489,10 +507,12 @@ def action_supervise(config: dict, args) -> dict:
             setattr(a, field, config.get(key, getattr(a, field)))
         a.netcheck_blocked_url = config.get("netcheckBlocked") or []
         a.episode_minutes = float(config["episodeMinutes"])
+        execution_entered = True
+        receipt["localStopped"] = False
         episode.execute(a, prepared_workspace=workspace, on_event=event)
         receipt = read_json(run / "receipt.json") or receipt
     except Exception as error:
-        receipt.update(outcome="failed", error=str(error))
+        receipt.update(outcome="failed", error=str(error), localStopped=not execution_entered)
     if receipt.get("error"): event("failed", {"error": receipt["error"]})
     if receipt.get("localStopped") is True and workspace.is_dir():
         try:
@@ -505,9 +525,11 @@ def action_supervise(config: dict, args) -> dict:
     state.update(phase="finished", outcome=receipt["outcome"], endedAt=now_iso(), liveView=None,
                  localStopped=receipt.get("localStopped") is True, activityObserved=receipt.get("activityObserved") is True)
     save()
-    marker = read_json(runs_root(config) / "active.json") or {}
-    if marker.get("runId") == args.run_id and state["localStopped"]:
-        (runs_root(config) / "active.json").unlink(missing_ok=True)
+    with open(runs_root(config) / "runner.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        marker = read_json(runs_root(config) / "active.json") or {}
+        if marker.get("runId") == args.run_id and state["localStopped"]:
+            (runs_root(config) / "active.json").unlink(missing_ok=True)
     return {"runId": args.run_id, "outcome": state["outcome"]}
 
 

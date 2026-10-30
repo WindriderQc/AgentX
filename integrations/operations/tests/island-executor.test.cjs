@@ -122,7 +122,26 @@ test('the harness reaches the runner only for dsh or pi; Codex keeps the histori
       await island.runIsland({ ...job, executor: withHarness }, core.client, deps(dir, runner));
       const start = calls.find(([a]) => a === 'start')[1];
       assert.equal(start.harness, expected, `harness ${harness}`);
+      assert.deepEqual(calls.find(([a]) => a === 'check')[1], { agent: executor.agent, ...(expected ? { harness: expected } : {}) });
       assert.ok(!('harness' in start) || expected, 'Codex never sends --harness');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
+
+test('selected harness and agent readiness refuse before any Core dispatch', async () => {
+  for (const selected of [{ agent: 'LongAgentName', harness: 'codex' }, { agent: 'Agent', harness: 'pi' }]) {
+    const dir = tempDir();
+    const core = fakeCore();
+    const runner = async (action, args) => {
+      assert.equal(action, 'check');
+      assert.equal(args.agent, selected.agent);
+      assert.equal(args.harness || 'codex', selected.harness);
+      return { ready: false, problems: ['selected runtime unavailable'] };
+    };
+    try {
+      await assert.rejects(island.runIsland({ ...job, executor: { ...executor, ...selected } }, core.client, deps(dir, runner)), /not ready/);
+      assert.equal(core.calls.length, 0);
+      assert.equal(fs.existsSync(path.join(dir, 'island', `${ID}.state.json`)), false);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });

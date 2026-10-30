@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from contextlib import redirect_stdout
@@ -59,6 +60,23 @@ class PureHelpers(Fixture):
         log.write_text('{"type":"response_item","payload":{"type":"message","role":"assistant"}}\n')
         self.assertTrue(runner.episode.latest_activity(sessions)['modelActivity'])
 
+    def test_error_traffic_does_not_refresh_the_last_model_activity(self):
+        import datetime as dt
+        sessions = self.root / 'sessions'
+        sessions.mkdir()
+        old = dt.datetime.fromtimestamp(time.time() - 1000, dt.timezone.utc).isoformat()
+        records = [
+            {'timestamp': old, 'type': 'response_item', 'payload': {'type': 'message', 'role': 'assistant'}},
+            {'timestamp': runner.now_iso(), 'type': 'event_msg', 'payload': {'type': 'error', 'message': 'upstream unavailable'}},
+        ]
+        log = sessions / 'rollout.jsonl'
+        log.write_text('\n'.join(map(json.dumps, records)))
+        self.assertGreater(runner.episode.latest_activity(sessions)['age'], 900)
+        log.write_text(json.dumps(records[-1]))
+        activity = runner.episode.latest_activity(sessions)
+        self.assertFalse(activity['modelActivity'])
+        self.assertGreater(activity['age'], 900)
+
     def test_spectator_link_is_read_from_the_world_log(self):
         log = self.root / "world.log"
         log.write_text("boot\nSpectator frontend: http://localhost:18080/?spectator_token=abc\n")
@@ -93,6 +111,26 @@ class Memory(Fixture):
         self.assertTrue(files["SEMANTIC_MEMORY.md"]["truncated"])
         self.assertEqual(len(files["SEMANTIC_MEMORY.md"]["text"]), runner.MAX_MEMORY_BYTES)
         self.assertIsNone(files["SOUL.md"])
+
+    def test_snapshot_reads_only_the_tail_and_never_follows_links_or_fifos(self):
+        workspace = self.root / 'ws'
+        workspace.mkdir()
+        path = workspace / 'SEMANTIC_MEMORY.md'
+        with path.open('wb') as stream:
+            stream.truncate(64 * 1024 * 1024)
+            stream.seek(-4, os.SEEK_END)
+            stream.write(b'tail')
+        with mock.patch.object(Path, 'read_bytes', side_effect=AssertionError('unbounded read')):
+            file = runner.memory_snapshot(workspace)['SEMANTIC_MEMORY.md']
+        self.assertEqual(file['bytes'], 64 * 1024 * 1024)
+        self.assertEqual(len(file['text']), runner.MAX_MEMORY_BYTES)
+        self.assertTrue(file['text'].endswith('tail'))
+        path.unlink()
+        path.symlink_to(self.config_path)
+        self.assertIsNone(runner.memory_snapshot(workspace)['SEMANTIC_MEMORY.md'])
+        path.unlink()
+        os.mkfifo(path)
+        self.assertIsNone(runner.memory_snapshot(workspace)['SEMANTIC_MEMORY.md'])
 
 
 class AgentMessages(Fixture):
@@ -227,6 +265,72 @@ class RelaySocketPath(Fixture):
 
 
 class SafetyRegression(Fixture):
+    def test_fast_supervisor_cannot_be_overwritten_by_the_starting_parent(self):
+        workers, errors = [], []
+        attempted, finished = threading.Event(), threading.Event()
+        args = runner.parse(['start', '--run-id', RUN, '--netcheck', '--minutes', '1'])
+
+        def supervise():
+            attempted.set()
+            try:
+                runner.action_supervise(self.config, args)
+            except Exception as error:
+                errors.append(error)
+            finally:
+                finished.set()
+
+        def spawn(*_args, **_kwargs):
+            worker = threading.Thread(target=supervise)
+            workers.append(worker)
+            worker.start()
+            self.assertTrue(attempted.wait(5))
+            # Force the child to run before the parent's last state write. It
+            # must wait on the start lock rather than finish under the parent.
+            finished.wait(0.2)
+            return mock.Mock(pid=12345)
+
+        def execute(a, **_kwargs):
+            runner.write_json(a.run_dir / 'receipt.json', {'outcome': 'failed', 'localStopped': True})
+
+        try:
+            with mock.patch.object(runner.subprocess, 'Popen', side_effect=spawn), \
+                 mock.patch.object(runner.episode, 'execute', side_effect=execute):
+                runner.action_start(self.config, args)
+                for worker in workers:
+                    worker.join(5)
+                self.assertTrue(finished.is_set())
+            self.assertEqual(errors, [])
+            state = runner.read_json(self.root / 'runs' / RUN / 'state.json')
+            self.assertEqual(state['phase'], 'finished')
+            self.assertTrue(state['localStopped'])
+            self.assertIsNone(runner.active_run(self.config))
+        finally:
+            for worker in workers:
+                worker.join(5)
+
+    def test_spawn_failure_releases_only_the_runner_that_never_started(self):
+        with mock.patch.object(runner.subprocess, 'Popen', side_effect=OSError('synthetic spawn failure')):
+            code, answer = self.call('start', '--run-id', RUN, '--netcheck')
+        self.assertEqual((code, answer['code']), (1, 'RUNNER_START_FAILED'))
+        state = runner.read_json(self.root / 'runs' / RUN / 'state.json')
+        self.assertTrue(state['localStopped'])
+        self.assertEqual(state['phase'], 'finished')
+        self.assertIsNone(runner.active_run(self.config))
+
+    def test_preparation_failure_has_no_runtime_to_release(self):
+        run = self.root / 'runs' / RUN
+        run.mkdir()
+        runner.write_json(run / 'request.json', {'agent': 'Agent', 'memory': 'fresh'})
+        runner.write_json(self.root / 'runs' / 'active.json', {'runId': RUN})
+        with mock.patch.object(runner, 'seed_workspace', side_effect=ValueError('invalid memory')), \
+             mock.patch.object(runner.episode, 'execute') as execute:
+            runner.action_supervise(self.config, runner.parse(['supervise', '--run-id', RUN]))
+        execute.assert_not_called()
+        state = runner.read_json(run / 'state.json')
+        self.assertEqual(state['outcome'], 'failed')
+        self.assertTrue(state['localStopped'])
+        self.assertIsNone(runner.active_run(self.config))
+
     def test_memory_carries_only_four_regular_files_and_refuses_symlinks(self):
         source=self.root/'source';store=runner.memory_store(self.config,'Agent')
         runner.seed_workspace(source,runner.templates_dir(self.config),store,'fresh')

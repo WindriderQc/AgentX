@@ -54,6 +54,11 @@ stall recovery, memory reminder and cleanup. Early exit, no initial model
 activity, stale final activity, failed/exhausted resume, failed/incomplete
 netcheck or cleanup failure produces a failed result. SIGINT/SIGTERM produces
 stopped, not completed. A completed duration is not a scientific success claim.
+Readiness checks use the requested agent and harness before the dispatch mark.
+The start and supervisor share a lock through the parent's last state write;
+a fast startup failure cannot be overwritten by a stale starting state. Memory
+preparation errors before execution prove that no local runtime was started.
+Error traffic and metadata do not refresh the last timestamp of model output.
 
 The native per-agent store copies only `SOUL.md`, `EPISODIC_MEMORY.md`,
 `EPISODIC_MEMORY.jsonl` and `SEMANTIC_MEMORY.md`. All must be bounded regular
@@ -62,6 +67,8 @@ sessions and recordings are not transferred. `continue` uses this store;
 `fresh` starts from templates and leaves the existing store untouched.
 The optional direct episode entry also supports `--memory-from` for a terminated
 previous episode. Native run IDs remain single-use.
+Memory snapshots read at most the displayed tail, and file reads reject
+symlinks and non-regular files using the opened descriptor.
 
 ## Release and uncertain responses
 
@@ -79,6 +86,8 @@ quarantined holders. Missing or malformed evidence keeps the request open.
 Core rechecks at `operator-finish`; a holder arriving after the read still
 refuses completion. A lost finish answer is resolved from the same terminal
 Core receipt before any further finish attempt.
+Missing or malformed native runtime records refuse terminal attestation too;
+an earlier successful release observation is insufficient on its own.
 
 ## Remote worlds
 

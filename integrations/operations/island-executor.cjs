@@ -17,7 +17,7 @@ const { hostUrlKey } = require('../../shared/ollamaHostConfig');
 const { islandExecutor, isIslandExecutor, RECEIPT_CONTRACT, RUNNER_CONTRACT } = require('../../shared/islandRun.cjs');
 
 const UUID = /^[a-f0-9-]{36}$/;
-const NOT_STARTED = ['RUNNER_BUSY', 'INVALID', 'RUN_ID', 'RUNNER_CONFIG'];
+const NOT_STARTED = ['RUNNER_BUSY', 'INVALID', 'RUN_ID', 'RUNNER_CONFIG', 'RUNS_ROOT_TOO_LONG', 'RUNNER_START_FAILED'];
 const POLL_MS = 30000;
 const RUNNER_SILENCE_MS = 15 * 60000;
 const FINISH_ATTEMPTS = 20;
@@ -172,7 +172,10 @@ async function runIsland(job, client, deps = {}) {
   const book = ledger(d.receiptsDir, job.id);
   if (book.read()) throw new Error('This request already has a dispatch here; use island-settle, never relaunch');
   // Refusable checks, all before the durable dispatch mark.
-  const check = await d.runner('check');
+  // Readiness depends on the selected agent's socket path and harness adapter.
+  // Keep Codex implicit for runners that predate --harness.
+  const harness = executor.harness !== 'codex' ? { harness: executor.harness } : {};
+  const check = await d.runner('check', { agent: executor.agent, ...harness });
   if (!check.ready) throw new Error(`Runner is not ready: ${(check.problems || []).join('; ')}`);
   if (check.activeRun) throw new Error(`Runner is busy with run ${check.activeRun}`);
   const principal = await d.principal();
