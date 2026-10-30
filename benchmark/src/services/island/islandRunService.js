@@ -189,7 +189,15 @@ async function recordReport(id, body = {}) {
   if (receipt && /^[a-f0-9]{64}$/.test(receipt.sha256 || '')) {
     set.receipt = { file: text(receipt.file), sha256: receipt.sha256, state: text(receipt.state, 20), runtimeReleased: receipt.runtimeReleased === true };
   }
-  await IslandRun.updateOne({ _id: id }, { $set: set, $setOnInsert: { title: `Île — ${executor.agent}, ${executor.minutes} min` } }, { upsert: true });
+  try {
+    await IslandRun.updateOne({ _id: id, $or: [{ dispatchId: body.dispatchId }, { dispatchId: null }] },
+      { $set: set, $setOnInsert: { title: `Île — ${executor.agent}, ${executor.minutes} min` } }, { upsert: true });
+  } catch (error) {
+    if (error.code === 11000) {
+      const retry = await IslandRun.updateOne({ _id: id, dispatchId: body.dispatchId }, { $set: set });
+      if (!retry.matchedCount) throw new IslandError('This run already belongs to another dispatch', 409);
+    } else throw error;
+  }
   return { id, saved: true };
 }
 
@@ -208,19 +216,43 @@ async function launch(input = {}, deps = {}) {
     executor = islandExecutor({ mode: 'island', receiptRef: `island/${input.clientKey}.json`, agent: input.agent,
       minutes: Number(input.minutes), memory: input.memory, world: input.world, harness: input.harness });
   } catch (error) { throw new IslandError(error.message); }
-  const principal = await d.principalEndpoint();
-  if (!principal) throw new IslandError('Core does not name a principal endpoint; nothing was recorded', 409);
-  const now = d.now();
-  const request = {
-    key, title: `Île — ${executor.agent}${executor.harness === 'codex' ? '' : ` (${executor.harness})`}, ${executor.minutes} min (${executor.memory === 'fresh' ? 'mémoire neuve' : 'mémoire continue'})`,
-    kind: 'other', hosts: [principal], estimatedMinutes: islandEstimatedMinutes(executor.minutes),
-    startBefore: new Date(now.getTime() + START_WINDOW_HOURS * 3600000).toISOString(),
-    source: { type: 'operator', ref: SOURCE_REF }, executor
+  const reconcile = async () => {
+    const current = await d.queue();
+    if (!Array.isArray(current?.jobs)) throw new IslandError('Core returned no readable queue; retry this same request', 502);
+    const prior = current.jobs.find(item => item.key === key);
+    if (!prior) return null;
+    let saved;
+    try { saved = islandExecutor(prior.executor); } catch { /* another operation owns the key */ }
+    if (!isIsland(prior) || JSON.stringify(saved) !== JSON.stringify(executor)) {
+      throw new IslandError('This request identity already belongs to another intent', 409);
+    }
+    return prior;
   };
-  const job = await d.submit(request);
+  // A lost submit/response is resolved from the same native identity. Rebuilding
+  // startBefore on a retry changes Core's intent hash even with the same key.
+  let job = await reconcile();
+  const now = d.now();
+  const title = `Île — ${executor.agent}${executor.harness === 'codex' ? '' : ` (${executor.harness})`}, ${executor.minutes} min (${executor.memory === 'fresh' ? 'mémoire neuve' : 'mémoire continue'})`;
+  if (!job) {
+    const principal = await d.principalEndpoint();
+    if (!principal) throw new IslandError('Core does not name a principal endpoint; nothing was recorded', 409);
+    const request = {
+      key, title,
+      kind: 'other', hosts: [principal], estimatedMinutes: islandEstimatedMinutes(executor.minutes),
+      startBefore: new Date(now.getTime() + START_WINDOW_HOURS * 3600000).toISOString(),
+      source: { type: 'operator', ref: SOURCE_REF }, executor
+    };
+    try { job = await d.submit(request); }
+    catch (error) {
+      // A concurrent retry may have won between the read and submit.
+      if (![error.statusCode, error.status].includes(409) && error.code !== 'HEAVY_QUEUE_KEY_CONFLICT') throw error;
+      job = await reconcile();
+      if (!job) throw error;
+    }
+  }
   if (!job?.id) throw new IslandError('Core returned no request', 502);
-  await IslandRun.updateOne({ _id: job.id }, { $setOnInsert: { title: request.title, agent: executor.agent, harness: executor.harness, minutes: executor.minutes,
-    memoryMode: executor.memory, world: executor.world, model: PRINCIPAL_ALIAS, phase: 'queued', requestedAt: now.toISOString() } }, { upsert: true });
+  await IslandRun.updateOne({ _id: job.id }, { $setOnInsert: { title: job.title || title, agent: executor.agent, harness: executor.harness, minutes: executor.minutes,
+    memoryMode: executor.memory, world: executor.world, model: PRINCIPAL_ALIAS, phase: 'queued', requestedAt: job.createdAt || now.toISOString() } }, { upsert: true });
   let placed = null;
   let note = when === 'none' ? 'Recorded without a slot; plan it in Automations → Calendar.' : null;
   if (when !== 'none' && job.state === 'requested') {
