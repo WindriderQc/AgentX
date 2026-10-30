@@ -321,6 +321,30 @@ Réglages de Benchmark :
 | `AGENTX_ISLAND_REPLAY_URL` | origine du serveur `clawblox app <runsRoot> --port <port>` |
 | `AGENTX_ISLAND_GRAPHYSX_URL` | adresse d'une version de GraphysX-Web (par exemple `http://hôte:4231/`) ; « Voir » ouvre alors sa page `?app=island` |
 | `AGENTX_ISLAND_RENDERER` | `clawblox` ou `graphysx` pour forcer le rendu ; sinon GraphysX dès que son adresse est réglée |
+| `AGENTX_ISLAND_WORLDS` | les terrains offerts par « Lancer » (voir « Terrains » plus bas) ; sans réglage, le seul terrain `mesa-island` |
+
+### Terrains
+
+Un terrain est un dossier de monde de l'hôte d'exécution (`world` dans la
+demande de la file). Le formulaire « Lancer » propose ceux de
+`AGENTX_ISLAND_WORLDS`, une liste JSON :
+
+```json
+[{"id":"mesa-island","label":"Île Clawblox"},
+ {"id":"ile-de-frank","label":"Île de Frank","live":"https://hôte:18794"}]
+```
+
+- `id` : le nom du dossier de monde ; Benchmark refuse un terrain absent de la liste.
+- `label` : le nom affiché.
+- `live` (facultatif) : l'origine du flux d'un terrain qui tourne tout seul (un
+  service de monde de GraphysX-Web). Avec `AGENTX_ISLAND_GRAPHYSX_URL`, le
+  bouton « Regarder … en direct » ouvre GraphysX-screen sur ce terrain, partie
+  en cours ou non, et « Voir » d'une partie en cours y suit l'agent. Les
+  reprises par partie de ces terrains ne sont pas encore branchées : « Voir »
+  n'apparaît pas après la partie.
+
+Un réglage illisible est refusé en entier : l'onglet garde `mesa-island` et le
+dit sous « Parties ».
 
 Le serveur de relecture se lance sur l'hôte d'exécution, à la racine des
 parties :

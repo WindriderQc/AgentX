@@ -1,5 +1,5 @@
-// Île tab (docs/ISLAND.md): island runs, "Lancer", the Clawblox 3D view and
-// the agent's memory files. Reads Benchmark's /api/island; starts nothing.
+// Île tab (docs/ISLAND.md): island runs on the configured terrains, "Lancer",
+// the 3D view and the agent's memory files. Reads Benchmark's /api/island; starts nothing.
 import { apiFetch } from '../utils/api.js';
 
 const API = '/benchmark/api/island';
@@ -61,10 +61,22 @@ export function stateLabel(run) {
   return { key: run.phase || 'unknown', text: PHASES[run.phase] || run.phase || 'inconnu' };
 }
 
+/** The run's terrain label from the configured list; the id when it is no longer listed. */
+export function terrainLabel(run, worlds) {
+  const id = run.world || 'mesa-island';
+  return (Array.isArray(worlds) ? worlds : []).find(world => world.id === id)?.label || id;
+}
+
+/** The terrain choice: one option per configured world, keeping the current choice. */
+export function worldOptionsHtml(worlds, selected) {
+  return (Array.isArray(worlds) ? worlds : []).map(world =>
+    `<option value="${escapeHtml(world.id)}"${world.id === selected ? ' selected' : ''}>${escapeHtml(world.label)}</option>`).join('');
+}
+
 /** Resumes, receipts and the run record: shown when the row is opened. */
-export function runDetailHtml(run) {
+export function runDetailHtml(run, worlds) {
   const items = [
-    `${escapeHtml(run.agent || '')} · ${escapeHtml(HARNESS_LABELS[run.harness] || 'Codex')} · mémoire ${run.memoryMode === 'fresh' ? 'neuve' : 'continue'}`,
+    `${escapeHtml(terrainLabel(run, worlds))} · ${escapeHtml(run.agent || '')} · ${escapeHtml(HARNESS_LABELS[run.harness] || 'Codex')} · mémoire ${run.memoryMode === 'fresh' ? 'neuve' : 'continue'}`,
     `Relances : ${escapeHtml(run.resumeCount ?? 0)}`,
     run.queue?.reservation?.start && !run.startedAt ? `Créneau : ${escapeHtml(when(run.queue.reservation.start, run.timeZone))}` : '',
     run.outcome && run.outcome !== 'completed' ? `Issue : ${escapeHtml(run.outcome)}` : '',
@@ -75,7 +87,7 @@ export function runDetailHtml(run) {
   return `<ul class="island-detail">${items.map(item => `<li>${item}</li>`).join('')}</ul>`;
 }
 
-export function runRowHtml(run) {
+export function runRowHtml(run, worlds) {
   const state = stateLabel(run);
   const id = escapeHtml(run.id);
   const view = run.liveView ? `<button type="button" data-live="${escapeHtml(run.liveView)}" data-run="${id}" title="Vue en direct, avec les pensées">Voir</button>`
@@ -83,11 +95,11 @@ export function runRowHtml(run) {
   const memory = run.hasMemory ? `<button type="button" data-memory="${id}">Mémoire</button>` : '';
   return `<tr>
     <td><button type="button" class="island-open" data-detail="${id}" aria-expanded="false" aria-controls="island-detail-${id}">${escapeHtml(when(run.startedAt || run.queue?.reservation?.start || run.requestedAt, run.timeZone))}</button></td>
-    <td>${escapeHtml(duration(run))}</td>
+    <td>${escapeHtml(duration(run))}${Array.isArray(worlds) && worlds.length > 1 ? `<span class="island-terrain">${escapeHtml(terrainLabel(run, worlds))}</span>` : ''}</td>
     <td class="island-state-${escapeHtml(state.key)}">${escapeHtml(state.text)}</td>
     <td class="island-actions">${view}${memory}</td>
   </tr>
-  <tr id="island-detail-${id}" class="island-detail-row" hidden><td colspan="4">${runDetailHtml(run)}</td></tr>`;
+  <tr id="island-detail-${id}" class="island-detail-row" hidden><td colspan="4">${runDetailHtml(run, worlds)}</td></tr>`;
 }
 
 export function episodesHtml(text) {
@@ -149,6 +161,17 @@ async function openMemory(id) {
   $('island-memory').scrollIntoView({ behavior: 'smooth' });
 }
 
+// The terrains from the last read: the choice in "Lancer" and "Regarder … en direct".
+let worlds = [];
+function showWorldChoice() {
+  const select = $('island-world');
+  const current = select.value;
+  if (worlds.length) select.innerHTML = worldOptionsHtml(worlds, current);
+  const world = worlds.find(entry => entry.id === select.value);
+  $('island-watch').hidden = !world?.liveUrl;
+  $('island-watch-label').textContent = world?.label || '';
+}
+
 const openDetails = new Set();
 function toggleDetail(id) {
   const row = $(`island-detail-${id}`);
@@ -162,12 +185,15 @@ async function loadRuns() {
   const status = $('island-runs-status');
   try {
     const data = (await apiFetch(`${API}/runs`)).data;
-    $('island-runs').innerHTML = data.runs.map(runRowHtml).join('') || '<tr><td colspan="4">Aucune partie.</td></tr>';
+    worlds = Array.isArray(data.worlds) ? data.worlds : [];
+    showWorldChoice();
+    $('island-runs').innerHTML = data.runs.map(run => runRowHtml(run, worlds)).join('') || '<tr><td colspan="4">Aucune partie.</td></tr>';
     // A refresh keeps the rows the owner opened.
     for (const id of [...openDetails]) { openDetails.delete(id); toggleDetail(id); }
     const notes = [];
     if (!data.queueRead) notes.push('File de Core illisible : états tirés des derniers rapports.');
     if (!data.view.live && !data.view.replay) notes.push('Vue 3D non configurée.');
+    if (data.worldsError) notes.push(`Terrains : réglage refusé (${data.worldsError}).`);
     status.textContent = notes.join(' ');
   } catch (err) {
     status.textContent = `Lecture impossible : ${err.message}`;
@@ -184,7 +210,8 @@ function bind() {
     try {
       const data = (await apiFetch(`${API}/launch`, { method: 'POST', body: {
         clientKey: crypto.randomUUID(), agent: form.get('agent'), minutes: Number(form.get('minutes')),
-        memory: form.get('memory'), harness: form.get('harness') || 'codex', when: form.get('when') } })).data;
+        memory: form.get('memory'), harness: form.get('harness') || 'codex', world: form.get('world') || undefined,
+        when: form.get('when') } })).data;
       result.textContent = data.placed
         ? `Demande ${data.id} inscrite, créneau ${when(data.placed.start)}. Le départ attend ton approbation et l’admission de Core.`
         : `Demande ${data.id} inscrite (${STATES[data.state] || data.state}). ${data.note || ''}`;
@@ -193,6 +220,11 @@ function bind() {
       result.classList.add('is-error');
       result.textContent = `Rien n’a été inscrit : ${err.message}`;
     }
+  });
+  $('island-world').addEventListener('change', showWorldChoice);
+  $('island-watch').addEventListener('click', () => {
+    const world = worlds.find(entry => entry.id === $('island-world').value);
+    if (world?.liveUrl) { followThoughts(null); showFrame(world.liveUrl); }
   });
   $('island-runs').addEventListener('click', async event => {
     const button = event.target.closest('button');
