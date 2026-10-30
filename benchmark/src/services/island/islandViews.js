@@ -7,10 +7,16 @@
  *   available()           -> { live, replay }  what this renderer can show
  *   liveUrl(run)          -> URL or null       while the run is running
  *   replayUrl(run, deps)  -> { src, agentLog } opens the run's recording
+ *   worldUrl(world)       -> URL or null       watches a terrain that runs on its own
  *
- * `run` is the stored run record (phase, liveView {port, path}, recording).
- * The physics and the recording stay Clawblox's; a renderer only shows them.
+ * `run` is the stored run record (phase, world, liveView {port, path}, recording).
+ * On a Clawblox world the physics and the recording stay Clawblox's; a world
+ * with a `live` origin (islandWorlds.js) is a GraphysX-Web world service that
+ * runs on its own: only GraphysX-Web's page can show it, and its per-run
+ * replays are not wired yet.
  */
+
+const { islandWorlds, findWorld } = require('./islandWorlds');
 
 class ViewError extends Error {
   constructor(message, statusCode) { super(message); this.statusCode = statusCode; }
@@ -25,8 +31,19 @@ function origin(value) {
   } catch { return null; }
 }
 
+/** The run's terrain when it runs on its own (a world service), else null. */
+function remoteWorld(worlds, run) {
+  const world = run?.world ? findWorld(worlds, run.world) : null;
+  return world?.live ? world : null;
+}
+
+function refuseRemoteReplay(world) {
+  throw new ViewError(`Replays of ${world.label} are not available here yet`, 409);
+}
+
 /** Clawblox's own spectator (live) and `clawblox app` replay server. */
 function clawbloxViews(env = process.env) {
+  const { worlds } = islandWorlds(env);
   const live = origin(env.AGENTX_ISLAND_VIEW_ORIGIN);
   const replay = origin(env.AGENTX_ISLAND_REPLAY_URL);
   const liveOrigin = live && !live.port ? `${live.protocol}//${live.hostname}` : null;
@@ -34,9 +51,12 @@ function clawbloxViews(env = process.env) {
   return {
     name: 'clawblox',
     available: () => ({ live: Boolean(liveOrigin), replay: Boolean(replayBase) }),
-    liveUrl: run => (liveOrigin && run?.phase === 'running' && run.liveView?.port && run.liveView?.path
+    liveUrl: run => (liveOrigin && run?.phase === 'running' && !remoteWorld(worlds, run) && run.liveView?.port && run.liveView?.path
       ? `${liveOrigin}:${run.liveView.port}${run.liveView.path}` : null),
+    worldUrl: () => null,
     replayUrl: async (run, { fetchImpl = fetch } = {}) => {
+      const remote = remoteWorld(worlds, run);
+      if (remote) refuseRemoteReplay(remote);
       if (!replayBase) throw new ViewError('No replay server is configured (AGENTX_ISLAND_REPLAY_URL)', 409);
       if (!run?.recording) throw new ViewError('This run has no recording yet', 404);
       const response = await fetchImpl(`${replayBase}/api/open-replay`, {
@@ -62,11 +82,13 @@ function viewerBase(value) {
 }
 
 /**
- * GraphysX-Web's island page (`?app=island`), drawing the state that Clawblox
- * streams on `/spectate/ws`. Clawblox still serves the world and the replay;
- * only the page changes. The spectator token travels in the fragment.
+ * GraphysX-Web's island page (`?app=island`, "GraphysX-screen"), drawing the
+ * state that Clawblox streams on `/spectate/ws`, or a world service's
+ * `/spectate` stream. Clawblox still serves its world and the replay; only the
+ * page changes. The spectator token travels in the fragment.
  */
 function graphysxViews(env = process.env) {
+  const { worlds } = islandWorlds(env);
   const clawblox = clawbloxViews(env);
   const viewer = viewerBase(env.AGENTX_ISLAND_GRAPHYSX_URL);
   const page = (source, token, agent) => {
@@ -82,12 +104,17 @@ function graphysxViews(env = process.env) {
     name: 'graphysx',
     available: () => (viewer ? clawblox.available() : { live: false, replay: false }),
     liveUrl: run => {
+      const remote = remoteWorld(worlds, run);
+      if (remote) return viewer && run.phase === 'running' ? page(remote.live, null, run.agent) : null;
       const live = viewer ? clawblox.liveUrl(run) : null;
       if (!live) return null;
       const url = new URL(live);
       return page(url.origin, url.searchParams.get('spectator_token'), run.agent);
     },
+    worldUrl: world => (viewer && world?.live ? page(world.live, null, null) : null),
     replayUrl: async (run, deps) => {
+      const remote = remoteWorld(worlds, run);
+      if (remote) refuseRemoteReplay(remote);
       if (!viewer) throw new ViewError('No GraphysX viewer is configured (AGENTX_ISLAND_GRAPHYSX_URL)', 409);
       const opened = await clawblox.replayUrl(run, deps);
       return { ...opened, src: page(opened.src.replace(/\/+$/, ''), null, run?.agent) };

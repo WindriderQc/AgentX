@@ -13,6 +13,7 @@
 const IslandRun = require('../../../models/IslandRun');
 const { islandExecutor, islandEstimatedMinutes, PRINCIPAL_ALIAS } = require('../../../../shared/islandRun.cjs');
 const { islandViews } = require('./islandViews');
+const { islandWorlds, findWorld } = require('./islandWorlds');
 
 const SOURCE_REF = 'benchmark-island-tab';
 const UUID = /^[a-f0-9-]{36}$/;
@@ -58,9 +59,12 @@ function queueView(job) {
   };
 }
 
-function runRow(doc, job, view) {
+function runRow(doc, job, view, worlds) {
   const executor = job?.executor || {};
   const liveView = doc ? view.liveUrl(doc) : null;
+  const world = doc?.world || executor.world || null;
+  // Per-run replays of a world that runs on its own are not wired yet (islandViews.js).
+  const remote = Boolean(world && findWorld(worlds, world)?.live);
   return {
     id: doc?._id || job.id,
     title: doc?.title || job?.title || null,
@@ -68,7 +72,7 @@ function runRow(doc, job, view) {
     minutes: doc?.minutes ?? executor.minutes ?? null,
     memoryMode: doc?.memoryMode || executor.memory || null,
     harness: doc?.harness || executor.harness || 'codex',
-    world: doc?.world || executor.world || null,
+    world,
     model: doc?.model || PRINCIPAL_ALIAS,
     runner: doc?.runner || null,
     phase: doc?.phase || null,
@@ -79,7 +83,7 @@ function runRow(doc, job, view) {
     timeZone: doc?.timeZone || null,
     resumeCount: doc?.resumeCount || 0,
     liveView,
-    replayable: Boolean(doc?.recording && view.available().replay),
+    replayable: Boolean(doc?.recording && view.available().replay && !remote),
     hasMemory: Boolean(doc?.memory),
     receipt: doc?.receipt || null,
     queue: queueView(job),
@@ -100,6 +104,7 @@ async function readQueue(d) {
 async function listRuns(deps = {}) {
   const d = defaults(deps);
   const view = islandViews(d.env);
+  const { worlds, error: worldsError } = islandWorlds(d.env);
   const [docs, queue] = await Promise.all([
     // Memory sizes stay so the row knows a memory exists; the texts do not.
     IslandRun.find({}).select('-events -agentMessages -memory.soul.text -memory.episodic.text -memory.semantic.text')
@@ -107,10 +112,14 @@ async function listRuns(deps = {}) {
     readQueue(d)
   ]);
   const jobs = new Map(queue.jobs.map(job => [job.id, job]));
-  const rows = docs.map(doc => runRow(doc, jobs.get(doc._id), view));
-  for (const job of queue.jobs) if (!docs.some(doc => doc._id === job.id)) rows.push(runRow(null, job, view));
+  const rows = docs.map(doc => runRow(doc, jobs.get(doc._id), view, worlds));
+  for (const job of queue.jobs) if (!docs.some(doc => doc._id === job.id)) rows.push(runRow(null, job, view, worlds));
   rows.sort((a, b) => String(b.startedAt || b.requestedAt || '').localeCompare(String(a.startedAt || a.requestedAt || '')));
-  return { queueRead: queue.read, view: view.available(), runs: rows };
+  return {
+    queueRead: queue.read, view: view.available(), runs: rows, worldsError,
+    // The terrains "Lancer" offers; liveUrl watches one that runs on its own, with or without a run.
+    worlds: worlds.map(world => ({ id: world.id, label: world.label, liveUrl: view.worldUrl(world) }))
+  };
 }
 
 async function getRun(id, deps = {}) {
@@ -120,7 +129,7 @@ async function getRun(id, deps = {}) {
     IslandRun.findById(id).select('-memory.soul.text -memory.episodic.text -memory.semantic.text').lean(), readQueue(d)]);
   const job = queue.jobs.find(item => item.id === id);
   if (!doc && !job) throw new IslandError('No island run with this id', 404);
-  return { ...runRow(doc, job, islandViews(d.env)), events: doc?.events || [], agentMessages: doc?.agentMessages || [],
+  return { ...runRow(doc, job, islandViews(d.env), islandWorlds(d.env).worlds), events: doc?.events || [], agentMessages: doc?.agentMessages || [],
     queueRead: queue.read };
 }
 
@@ -211,10 +220,13 @@ async function launch(input = {}, deps = {}) {
   const when = input.when === undefined ? 'tonight' : input.when;
   if (!['tonight', 'asap', 'none'].includes(when)) throw new IslandError('when needs tonight, asap or none');
   const key = `island:${input.clientKey}`;
+  const { worlds } = islandWorlds(d.env);
+  const world = findWorld(worlds, input.world === undefined || input.world === null || input.world === '' ? worlds[0].id : input.world);
+  if (!world) throw new IslandError(`world needs one of the configured terrains: ${worlds.map(entry => entry.id).join(', ')}`);
   let executor;
   try {
     executor = islandExecutor({ mode: 'island', receiptRef: `island/${input.clientKey}.json`, agent: input.agent,
-      minutes: Number(input.minutes), memory: input.memory, world: input.world, harness: input.harness });
+      minutes: Number(input.minutes), memory: input.memory, world: world.id, harness: input.harness });
   } catch (error) { throw new IslandError(error.message); }
   const reconcile = async () => {
     const current = await d.queue();
@@ -227,12 +239,13 @@ async function launch(input = {}, deps = {}) {
       throw new IslandError('This request identity already belongs to another intent', 409);
     }
     return prior;
+
   };
   // A lost submit/response is resolved from the same native identity. Rebuilding
   // startBefore on a retry changes Core's intent hash even with the same key.
   let job = await reconcile();
   const now = d.now();
-  const title = `Île — ${executor.agent}${executor.harness === 'codex' ? '' : ` (${executor.harness})`}, ${executor.minutes} min (${executor.memory === 'fresh' ? 'mémoire neuve' : 'mémoire continue'})`;
+  const title = `Île — ${executor.agent}${executor.harness === 'codex' ? '' : ` (${executor.harness})`}, ${executor.minutes} min (${executor.memory === 'fresh' ? 'mémoire neuve' : 'mémoire continue'})${worlds.length > 1 ? `, ${world.label}` : ''}`;
   if (!job) {
     const principal = await d.principalEndpoint();
     if (!principal) throw new IslandError('Core does not name a principal endpoint; nothing was recorded', 409);
@@ -271,7 +284,7 @@ async function launch(input = {}, deps = {}) {
 async function openReplay(id, deps = {}) {
   const d = defaults(deps);
   if (!UUID.test(id || '')) throw new IslandError('Run id needs a queue request id');
-  const doc = await IslandRun.findById(id).select('recording phase agent').lean();
+  const doc = await IslandRun.findById(id).select('recording phase agent world').lean();
   return islandViews(d.env).replayUrl(doc, { fetchImpl: d.fetchImpl });
 }
 

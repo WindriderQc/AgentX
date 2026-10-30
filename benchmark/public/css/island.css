@@ -12,6 +12,10 @@
   border: 1px solid var(--r-border); border-radius: var(--r-radius); padding: .4rem .5rem; }
 .island-memory select { width: auto; max-width: 100%; }
 .island-form button { flex: 0 0 auto; }
+.island-terrain { display: block; font-size: .8rem; color: var(--r-text-dim); }
+.island-watch {
+  background: none; color: var(--r-active); border: 1px solid var(--r-border); border-radius: var(--r-radius);
+  padding: .25rem .6rem; cursor: pointer; margin-left: .5rem; font: inherit; }
 .island-result:empty, .island-note:empty { display: none; }
 .island-result { padding: .5rem .75rem; border: 1px solid var(--r-border); border-radius: var(--r-radius); background: var(--r-bg-inner); }
 .island-result.is-error { border-color: var(--r-error); }

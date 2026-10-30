@@ -15,6 +15,8 @@ const DISPATCH = '00000000-0000-4000-8000-0000000000d1';
 const CLIENT_KEY = '00000000-0000-4000-8000-0000000000c1';
 const executor = { mode: 'island', receiptRef: 'island/x.json', agent: 'Eko', minutes: 60, memory: 'continue', world: 'mesa-island' };
 const env = { AGENTX_ISLAND_VIEW_ORIGIN: 'http://runner.lan', AGENTX_ISLAND_REPLAY_URL: 'http://runner.lan:18092' };
+const FRANK = { id: 'ile-de-frank', label: 'Île de Frank', live: 'https://frank.lan:18794' };
+const WORLDS = JSON.stringify([{ id: 'mesa-island', label: 'Île Clawblox' }, FRANK]);
 const job = (extra = {}) => ({ id: ID, kind: 'other', state: 'running', revision: 4, title: 'Île — Eko, 60 min', executor,
   reservation: { start: '2026-10-29T03:00:00.000Z', end: '2026-10-29T04:10:00.000Z' }, createdAt: '2026-10-28T20:00:00.000Z', ...extra });
 
@@ -67,6 +69,37 @@ describe('island run service', () => {
     expect(unread.runs[0].liveView).toBeNull();
   });
 
+  it('offers the configured terrains and watches one that runs on its own', async () => {
+    const gx = { ...env, AGENTX_ISLAND_GRAPHYSX_URL: 'http://viewer.lan:4231/', AGENTX_ISLAND_WORLDS: WORLDS };
+    await islands.recordReport(ID, report({ executor: { ...executor, world: 'ile-de-frank' } }));
+    const data = await islands.listRuns({ env: gx, queue: async () => ({ jobs: [] }) });
+    expect(data.worldsError).toBeNull();
+    expect(data.worlds.map(world => [world.id, world.label])).toEqual([['mesa-island', 'Île Clawblox'], ['ile-de-frank', 'Île de Frank']]);
+    expect(data.worlds[0].liveUrl).toBeNull();
+    expect(Object.fromEntries(new URL(data.worlds[1].liveUrl).searchParams)).toEqual({ app: 'island', embed: '1', source: 'https://frank.lan:18794' });
+    // A running run on that terrain follows its agent there; its recording is not offered as a replay yet.
+    expect(data.runs[0]).toMatchObject({ world: 'ile-de-frank', replayable: false });
+    expect(Object.fromEntries(new URL(data.runs[0].liveView).searchParams)).toMatchObject({ source: 'https://frank.lan:18794', agent: 'Eko' });
+    await expect(islands.openReplay(ID, { env: gx })).rejects.toMatchObject({ statusCode: 409, message: expect.stringMatching(/Île de Frank/) });
+    // Without the setting the tab keeps its single terrain.
+    expect((await islands.listRuns({ env, queue: async () => ({ jobs: [] }) })).worlds).toEqual([{ id: 'mesa-island', label: 'Île Clawblox', liveUrl: null }]);
+  });
+
+  it('launches on the chosen terrain and refuses one that is not configured', async () => {
+    const calls = [];
+    const deps = { queue: async () => ({ jobs: [] }), env: { ...env, AGENTX_ISLAND_WORLDS: WORLDS }, now: () => new Date('2026-10-28T20:00:00Z'), principalEndpoint: async () => 'http://gpu.lan:11434',
+      submit: async body => { calls.push(body); return { id: ID, state: 'requested', revision: 1 }; }, place: async () => ({}) };
+    await islands.launch({ clientKey: CLIENT_KEY, agent: 'Eko', minutes: 60, memory: 'fresh', world: 'ile-de-frank', when: 'none' }, deps);
+    expect(calls[0].executor.world).toBe('ile-de-frank');
+    expect(calls[0].title).toMatch(/Île de Frank$/);
+    expect((await IslandRun.findById(ID).lean()).world).toBe('ile-de-frank');
+    await expect(islands.launch({ clientKey: CLIENT_KEY, agent: 'Eko', minutes: 60, world: 'elsewhere', when: 'none' }, deps))
+      .rejects.toMatchObject({ statusCode: 400, message: expect.stringMatching(/mesa-island, ile-de-frank/) });
+    await expect(islands.launch({ clientKey: CLIENT_KEY, agent: 'Eko', minutes: 60, world: 'ile-de-frank', when: 'none' }, { ...deps, env }))
+      .rejects.toMatchObject({ statusCode: 400 });
+    expect(calls).toHaveLength(1);
+  });
+
   it('keeps one dispatch when the first reports arrive concurrently', async () => {
     const other = '00000000-0000-4000-8000-0000000000d2';
     const results = await Promise.allSettled([
@@ -115,6 +148,7 @@ describe('island run service', () => {
     await expect(islands.launch(input, { ...deps, queue: async () => ({}), submit }))
       .rejects.toMatchObject({ statusCode: 502 });
     expect(submit).not.toHaveBeenCalled();
+
   });
 
   it('shows the memory files of a run and the agent\'s other runs', async () => {
@@ -193,9 +227,43 @@ describe('island run service', () => {
     expect(views.liveUrl(running)).toBe('http://runner.lan:18080/?t=1');
     expect(views.liveUrl({ ...running, phase: 'finished' })).toBeNull();
     for (const make of Object.values(RENDERERS)) {
-      expect(Object.keys(make({})).sort()).toEqual(['available', 'liveUrl', 'name', 'replayUrl']);
+      expect(Object.keys(make({})).sort()).toEqual(['available', 'liveUrl', 'name', 'replayUrl', 'worldUrl']);
     }
     expect(() => islandViews({}, 'unknown')).toThrow(/Unknown island renderer/);
+  });
+
+  it('reads the terrains setting and refuses a bad one whole', () => {
+    const { islandWorlds } = require('../../src/services/island/islandWorlds');
+    expect(islandWorlds({})).toMatchObject({ worlds: [{ id: 'mesa-island', live: null }], error: null });
+    expect(islandWorlds({ AGENTX_ISLAND_WORLDS: WORLDS }).worlds[1]).toEqual(FRANK);
+    expect(islandWorlds({ AGENTX_ISLAND_WORLDS: '[{"id":"x-1"}]' }).worlds).toEqual([{ id: 'x-1', label: 'x-1', live: null }]);
+    for (const bad of ['{', '[]', '{"id":"a"}', '[{"id":"A b"}]', '[{"id":"a"},{"id":"a"}]',
+      '[{"id":"a","live":"https://h:1/path"}]', '[{"id":"a","live":"https://u:p@h:1"}]', '[{"id":"a","live":"ftp://h"}]']) {
+      const read = islandWorlds({ AGENTX_ISLAND_WORLDS: bad });
+      expect(read.worlds.map(world => world.id)).toEqual(['mesa-island']);
+      expect(read.error).toMatch(/AGENTX_ISLAND_WORLDS/);
+    }
+  });
+
+  it('shows a terrain that runs on its own only through GraphysX-Web', async () => {
+    const { islandViews } = require('../../src/services/island/islandViews');
+    const running = { phase: 'running', agent: 'Eko', world: 'ile-de-frank', liveView: { port: 18080, path: '/?spectator_token=tok-1' }, recording: 'r/x.clawrec' };
+    const fetchImpl = async () => { throw new Error('the replay server must not be asked'); };
+    const gx = islandViews({ ...env, AGENTX_ISLAND_GRAPHYSX_URL: 'http://viewer.lan:4231/', AGENTX_ISLAND_WORLDS: WORLDS });
+    const live = new URL(gx.liveUrl(running));
+    expect(Object.fromEntries(live.searchParams)).toEqual({ app: 'island', embed: '1', source: 'https://frank.lan:18794', agent: 'Eko' });
+    expect(live.hash).toBe('');
+    expect(gx.liveUrl({ ...running, phase: 'finished' })).toBeNull();
+    expect(gx.worldUrl({ id: 'mesa-island', live: null })).toBeNull();
+    await expect(gx.replayUrl(running, { fetchImpl })).rejects.toMatchObject({ statusCode: 409 });
+    // A Clawblox world in the same list keeps the Clawblox stream.
+    expect(new URL(gx.liveUrl({ ...running, world: 'mesa-island' })).searchParams.get('source')).toBe('http://runner.lan:18080');
+    const own = islandViews({ ...env, AGENTX_ISLAND_WORLDS: WORLDS });
+    expect(own.name).toBe('clawblox');
+    expect(own.liveUrl(running)).toBeNull();
+    expect(own.worldUrl(FRANK)).toBeNull();
+    await expect(own.replayUrl(running, { fetchImpl })).rejects.toMatchObject({ statusCode: 409 });
+    expect(own.liveUrl({ ...running, world: 'mesa-island' })).toBe('http://runner.lan:18080/?spectator_token=tok-1');
   });
 
   it('draws the island in GraphysX-Web when its viewer is configured', async () => {
@@ -240,7 +308,7 @@ describe('island routes', () => {
 });
 
 describe('island page helpers', () => {
-  const page = loadBrowserModule('island/index.js', 'escapeHtml, when, clock, duration, stateLabel, runRowHtml, runDetailHtml, episodesHtml, thoughtsHtml', { apiFetch: async () => ({}) });
+  const page = loadBrowserModule('island/index.js', 'escapeHtml, when, clock, duration, stateLabel, runRowHtml, runDetailHtml, episodesHtml, thoughtsHtml, terrainLabel, worldOptionsHtml', { apiFetch: async () => ({}) });
 
   it('reuses the same pending launch after a lost response, double click and page reload', async () => {
     const stored = new Map();
@@ -256,13 +324,16 @@ describe('island page helpers', () => {
     };
     function mount() {
       const listeners = {};
-      const fields = Object.fromEntries(Object.entries({ agent: 'Agent', minutes: '60', memory: 'continue', harness: 'pi', when: 'none' })
+      const fields = Object.fromEntries(Object.entries({ agent: 'Agent', minutes: '60', memory: 'continue', harness: 'pi', world: 'ile-de-frank', when: 'none' })
         .map(([key, value]) => [key, { value, disabled: false }]));
       const button = {};
       const form = { elements: { namedItem: key => fields[key] }, querySelector: () => button,
         addEventListener: (kind, fn) => { listeners[kind] = fn; } };
       const node = () => ({ addEventListener() {}, classList: { remove() {}, add() {} } });
-      const nodes = { 'island-launch-form': form, 'island-launch-result': node(), 'island-runs': node(), 'island-runs-status': node(), 'island-memory-run': node() };
+      fields.world.dataset = {};
+      fields.world.addEventListener = () => {};
+      const nodes = { 'island-world': fields.world, 'island-watch': node(), 'island-watch-label': node(),
+        'island-launch-form': form, 'island-launch-result': node(), 'island-runs': node(), 'island-runs-status': node(), 'island-memory-run': node() };
       loadBrowserModule('island/index.js', 'readPendingLaunch', {
         apiFetch, window: { sessionStorage: storage }, crypto: { randomUUID: uuid },
         FormData: class { get(key) { return fields[key].disabled ? null : fields[key].value; } },
@@ -281,6 +352,9 @@ describe('island page helpers', () => {
     expect(first.fields.agent.disabled).toBe(true);
     expect(stored.size).toBe(1);
     const reloaded = mount();
+    expect(reloaded.fields.world.value).toBe('ile-de-frank');
+    expect(reloaded.fields.world.disabled).toBe(true);
+    expect(calls[0].world).toBe('ile-de-frank');
     await reloaded.submit();
     expect(calls[1]).toEqual(calls[0]);
     expect(calls[1].harness).toBe('pi');
@@ -299,6 +373,21 @@ describe('island page helpers', () => {
     expect(html).toMatch(/18:04|18 h 04/);
     expect(html).toMatch(/HAE|EDT|UTC−4|GMT-4/);
     expect(page.thoughtsHtml([])).toContain('Rien');
+  });
+
+  it('offers the terrains escaped and names each run\'s terrain once there is a choice', () => {
+    const worlds = [{ id: 'mesa-island', label: 'Île Clawblox' }, { id: 'ile-de-frank', label: 'Île <de> Frank', liveUrl: 'http://v/' }];
+    const options = page.worldOptionsHtml(worlds, 'ile-de-frank');
+    expect(options).toContain('<option value="ile-de-frank" selected>Île &lt;de&gt; Frank</option>');
+    expect(options).not.toContain('mesa-island" selected');
+    expect(page.terrainLabel({ world: null }, worlds)).toBe('Île Clawblox');
+    expect(page.terrainLabel({ world: 'gone' }, worlds)).toBe('gone');
+    const run = { id: ID, agent: 'Eko', minutes: 60, world: 'ile-de-frank', queue: { state: 'reserved' } };
+    const [main, detail] = page.runRowHtml(run, worlds).split('</tr>');
+    expect((main.match(/<td/g) || []).length).toBe(4);
+    expect(main).toContain('<span class="island-terrain">Île &lt;de&gt; Frank</span>');
+    expect(detail).toContain('Île &lt;de&gt; Frank · Eko');
+    expect(page.runRowHtml(run, [worlds[0]])).not.toContain('island-terrain');
   });
 
   it('escapes run text and always shows a time zone', () => {

@@ -1,6 +1,6 @@
 <main id="main-content" class="island-page" lang="fr">
   <header class="island-head">
-    <h1 class="r-page-title">Île Clawblox</h1>
+    <h1 class="r-page-title">Île</h1>
     <p class="island-lede">Un agent seul sur une île, sans tâche, avec une mémoire en fichiers
       (<a href="https://arxiv.org/abs/2610.07130" target="_blank" rel="noopener">« Is this machine playing? »</a>).</p>
   </header>
@@ -8,7 +8,10 @@
   <section class="r-section island-launch" aria-labelledby="island-launch-title">
     <h2 id="island-launch-title" class="r-sec-title">Lancer une partie</h2>
     <form id="island-launch-form" class="island-form">
-      <label>Agent <input name="agent" value="Eko" pattern="[A-Za-z][A-Za-z0-9_-]{0,31}" required></label>
+      <label>Terrain
+        <select name="world" id="island-world"><option value="mesa-island">Île Clawblox</option></select>
+      </label>
+      <label>Agent <input name="agent" value="Eko" pattern="[A-Za-z][A-Za-z0-9_\-]{0,31}" required></label>
       <label>Durée (min) <input name="minutes" type="number" min="5" max="720" value="60" required></label>
       <label>Harnais
         <select name="harness"><option value="codex">Codex</option><option value="dsh">DSH</option><option value="pi">Pi</option></select>
@@ -21,7 +24,8 @@
       </label>
       <button type="submit" class="r-empty-btn">Lancer</button>
     </form>
-    <p class="island-note">Lancer inscrit une demande dans la file ; le départ attend ton approbation.</p>
+    <p class="island-note">Lancer inscrit une demande dans la file ; le départ attend ton approbation.
+      <button type="button" id="island-watch" class="island-watch" hidden>Regarder <span id="island-watch-label"></span> en direct</button></p>
     <p id="island-launch-result" class="island-result" role="status"></p>
   </section>
 
