@@ -46,9 +46,12 @@ function parseModel(model) {
   }
 
   const parts = model.split(':');
-  if (parts.length >= 2) {
+  const provider = parts[0].toLowerCase().trim();
+  // A colon is also Ollama's tag separator (and may be a registry port).
+  // Only the pricing schema's supported providers are explicit prefixes.
+  if (parts.length >= 2 && ModelPricingConfig.schema.path('provider').enumValues.includes(provider)) {
     return {
-      provider: parts[0].toLowerCase().trim(),
+      provider,
       modelName: parts.slice(1).join(':').toLowerCase().trim()
     };
   }

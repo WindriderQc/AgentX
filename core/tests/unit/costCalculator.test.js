@@ -67,6 +67,53 @@ describe('Cost Calculator Service', () => {
     });
   });
 
+  describe('tagged Ollama regression (#1195)', () => {
+    const Pricing = require('../../models/ModelPricingConfig');
+    const originalEnv = { ...process.env };
+    beforeEach(() => {
+      for (const key of Object.keys(process.env)) {
+        if (/^(OLLAMA_.*COST|DEFAULT_FALLBACK_.*COST|COST_TRACKING_ENABLED)/.test(key)) delete process.env[key];
+      }
+      clearPricingCache();
+    });
+    afterEach(() => { process.env = { ...originalEnv }; jest.restoreAllMocks(); clearPricingCache(); });
+
+    test.each(['llama3.2:1b', 'ax/qwen3:30b', 'localhost:5000/team/model:q4', 'unknown:model:v2'])('keeps complete local model %s', modelName => {
+      expect(parseModel(modelName)).toEqual({ provider: 'ollama', modelName });
+    });
+    test.each(Pricing.schema.path('provider').enumValues)('retains known provider %s', provider => {
+      expect(parseModel(` ${provider.toUpperCase()} : Model:Tag `)).toEqual({ provider, modelName: 'model:tag' });
+    });
+    test('an explicit Ollama prefix disambiguates a local model named after a provider', () => {
+      expect(parseModel('ollama:openai:latest')).toEqual({ provider: 'ollama', modelName: 'openai:latest' });
+      expect(parseModel('openai:latest')).toEqual({ provider: 'openai', modelName: 'latest' });
+    });
+    test('uses tagged model-specific pricing and provenance', async () => {
+      process.env.OLLAMA_LLAMA3_2_1B_PROMPT_COST_PER_1M = '2';
+      process.env.OLLAMA_LLAMA3_2_1B_COMPLETION_COST_PER_1M = '3';
+      const cost = await calculateMessageCost('llama3.2:1b', { usage: { promptTokens: 1000000, completionTokens: 2000000, totalTokens: 3000000 } });
+      expect(cost.totalCost).toBe(8);
+      expect(cost.pricingSource).toMatchObject({ provider: 'ollama', modelName: 'llama3.2:1b', source: 'environment', sourceDetail: 'model-specific' });
+    });
+    test('uses Ollama defaults for tagged models', async () => {
+      process.env.OLLAMA_DEFAULT_PROMPT_COST_PER_1M = '4';
+      process.env.OLLAMA_DEFAULT_COMPLETION_COST_PER_1M = '5';
+      const cost = await calculateMessageCost('llama3.2:1b', { usage: { promptTokens: 1000000, completionTokens: 1000000, totalTokens: 2000000 } });
+      expect(cost.totalCost).toBe(9);
+      expect(cost.pricingSource).toMatchObject({ provider: 'ollama', modelName: 'llama3.2:1b', sourceDetail: 'provider-default' });
+    });
+    test('looks up database prices with complete tagged identity', async () => {
+      const lookup = jest.spyOn(Pricing, 'findActivePrice').mockResolvedValue({
+        _id: 'fixture-price', source: 'manual', isCurrentlyValid: () => true,
+        pricing: { promptTokenCost: 6, completionTokenCost: 7 }
+      });
+      const cost = await calculateMessageCost('llama3.2:1b', { usage: { promptTokens: 1000000, completionTokens: 1000000, totalTokens: 2000000 } });
+      expect(lookup).toHaveBeenCalledWith('ollama', 'llama3.2:1b');
+      expect(cost.totalCost).toBe(13);
+      expect(cost.pricingSource).toMatchObject({ source: 'database', provider: 'ollama', modelName: 'llama3.2:1b' });
+    });
+  });
+
   describe('calculateMessageCost', () => {
     beforeEach(() => {
       // Set test environment variables
