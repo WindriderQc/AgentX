@@ -19,9 +19,9 @@ class NestorMemoryError extends Error {
 const SECRET_PATTERNS = [
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/i,
   /\b(sk-[A-Za-z0-9_-]{20,})\b/,
-  /\b(ghp_[A-Za-z0-9_]{20,})\b/,
+  /\b((?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,})\b/,
   /\b(xox[baprs]-[A-Za-z0-9-]{20,})\b/,
-  /\b(api[_-]?key|secret|token|password|passwd)\s*[:=]\s*['"]?[A-Za-z0-9_./+=-]{12,}/i,
+  /\b(api[_-]?key|secret|token|password|passwd)['"]?\s*[:=]\s*['"]?[^\s'"]{8,}/i,
 ];
 
 function assertMemoryText(text) {

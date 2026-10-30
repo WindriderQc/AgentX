@@ -21,6 +21,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from .unicode_joiners import is_allowed_joiner
+
 # --- secret patterns ---------------------------------------------------------
 # Base five mirror core/src/services/nestorMemoryService.js
 # SECRET_PATTERNS;
@@ -28,16 +30,16 @@ import unicodedata
 SECRET_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----", re.IGNORECASE),
     re.compile(r"\b(sk-[A-Za-z0-9_-]{20,})\b"),
-    re.compile(r"\b(gh[pousr]_[A-Za-z0-9_]{20,})\b"),
+    re.compile(r"\b((?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,})\b"),
     re.compile(r"\b(xox[baprs]-[A-Za-z0-9-]{20,})\b"),
     re.compile(
         r"\b(api[_-]?key|secret|token|password|passwd|access[_-]?token|refresh[_-]?token|client[_-]?secret)"
-        r"\s*[:=]\s*['\"]?[A-Za-z0-9_./+=-]{8,}",
+        r"['\"]?\s*[:=]\s*['\"]?[^\s'\"]{8,}",
         re.IGNORECASE,
     ),
     re.compile(r"\bbearer\s+[A-Za-z0-9._~+/=-]{12,}", re.IGNORECASE),
     re.compile(r"\bauthorization\s*[:=]\s*(?:[A-Za-z][A-Za-z0-9-]*\s+)?\S{8,}", re.IGNORECASE),
-    re.compile(r"\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|redis|amqps?|https?)://[^/\s:@]+:[^@\s]+@", re.IGNORECASE),
+    re.compile(r"\b(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|rediss?|amqps?|https?)://[^/\s:@]*:[^@\s]+@", re.IGNORECASE),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\b"),
 )
@@ -62,7 +64,7 @@ _BASE64_BLOB = re.compile(r"[A-Za-z0-9+/=]{200,}")
 # Invisible / bidi-control characters (Hermes/AgentX policies detect these too).
 # Explicit escapes only - literal invisibles in source would be unauditable.
 _INVISIBLE = re.compile(
-    "[\u200b-\u200f"  # zero-width space/joiners + LRM/RLM
+    "[\u200b\u200e\u200f"  # zero-width space + LRM/RLM (joiners checked contextually)
     "\u202a-\u202e"    # bidi embedding/override
     "\u2060-\u2064"    # word-joiner + invisible operators
     "\u2066-\u2069"    # bidi isolates
@@ -134,10 +136,12 @@ def find_injection(text: str) -> str | None:
 
 
 def strip_invisible(text: str) -> tuple[str, bool]:
-    found = bool(_INVISIBLE.search(text))
-    if not found:
-        return text, False
-    return _INVISIBLE.sub("", text), True
+    value = "".join(
+        ch for index, ch in enumerate(text)
+        if not _INVISIBLE.fullmatch(ch)
+        and (ch not in "\u200c\u200d" or is_allowed_joiner(text, index))
+    )
+    return value, value != text
 
 
 def strip_harness_context(text: str) -> str:
@@ -165,5 +169,6 @@ def looks_pasted(text: str) -> bool:
 def has_control_chars(text: str) -> bool:
     return any(
         unicodedata.category(ch) in ("Cc", "Cf") and ch not in "\n\r\t"
-        for ch in text
+        and not is_allowed_joiner(text, index)
+        for index, ch in enumerate(text)
     )

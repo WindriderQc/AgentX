@@ -974,3 +974,99 @@ describe('reads and reporting', () => {
     expect(full.body.data.observations).toHaveLength(1);
   });
 });
+
+describe('synthetic guard regressions (#1196, #1197)', () => {
+  const fixtures = require('../../../test/fixtures/memory-content-guard.json');
+  test('shadow candidates reject newly covered secrets before any persistence', async () => {
+    const { run, observationId } = await seedRunWithObservation('fixture-guard-shadow');
+    const base = `/api/memory-review/runs/${run.runId}`;
+    await harness.request.post(`${base}/finalize`).expect(200);
+    const res = await harness.request.post(`${base}/candidates`).send({ candidates:
+      fixtures.secret.map(({ text }) => candidate(`Synthetic statement: ${text}`, { evidenceRefs: [observationId] }))
+    }).expect(200);
+    expect(res.body.data.accepted).toBe(0);
+    expect(res.body.data.dropped).toHaveLength(fixtures.secret.length);
+    expect(res.body.data.dropped.every(item => item.code === 'MEMORY_REVIEW_SECRET_REFUSED')).toBe(true);
+    const stored = await MemoryReviewRun.findOne({ runId: run.runId }).lean();
+    expect(stored.candidates).toHaveLength(0);
+    for (const { text } of fixtures.secret) expect(JSON.stringify(res.body)).not.toContain(text);
+    expect(fakeRag.upsertDocumentWithChunks).not.toHaveBeenCalled();
+  });
+  test('observations reject the same shared synthetic secret corpus', async () => {
+    const run = await openRun('fixture-secret-observations');
+    const res = await harness.request.post(`/api/memory-review/runs/${run.runId}/observations`).send({
+      collector: collectorMeta(), observations: fixtures.secret.map(({ text }) => obs(text))
+    }).expect(200);
+    expect(res.body.data.accepted).toBe(0);
+    expect(res.body.data.rejected).toHaveLength(fixtures.secret.length);
+    expect(res.body.data.rejected.every(item => item.code === 'MEMORY_REVIEW_SECRET_REFUSED')).toBe(true);
+    const stored = await MemoryReviewRun.findOne({ runId: run.runId }).lean();
+    expect(stored.observations).toHaveLength(0);
+    for (const { text } of fixtures.secret) expect(JSON.stringify(stored)).not.toContain(text);
+  });
+  test('candidate rationale is guarded independently of its safe statement', async () => {
+    const { run, observationId } = await seedRunWithObservation('fixture-secret-rationale');
+    const base = `/api/memory-review/runs/${run.runId}`;
+    await harness.request.post(`${base}/finalize`).expect(200);
+    const res = await harness.request.post(`${base}/candidates`).send({ candidates:
+      fixtures.secret.map(({ text }, index) => candidate(`Synthetic preference ${index}`, { rationale: text, evidenceRefs: [observationId] }))
+    }).expect(200);
+    expect(res.body.data.accepted).toBe(0);
+    expect(res.body.data.dropped).toHaveLength(fixtures.secret.length);
+    expect(res.body.data.dropped.every(item => item.code === 'MEMORY_REVIEW_SECRET_REFUSED')).toBe(true);
+    const stored = await MemoryReviewRun.findOne({ runId: run.runId }).lean();
+    expect(stored.candidates).toHaveLength(0);
+    for (const { text } of fixtures.secret) expect(JSON.stringify(stored)).not.toContain(text);
+  });
+  test('bidi and arbitrary joiners in synthesis are still refused', async () => {
+    const { run, observationId } = await seedRunWithObservation('fixture-unsafe-unicode');
+    const base = `/api/memory-review/runs/${run.runId}`;
+    await harness.request.post(`${base}/finalize`).expect(200);
+    const res = await harness.request.post(`${base}/candidates`).send({ candidates:
+      fixtures.unicodeUnsafe.map(({ text }) => candidate(`Synthetic preference: ${text}`, { evidenceRefs: [observationId] }))
+    }).expect(200);
+    expect(res.body.data.accepted).toBe(0);
+    expect(res.body.data.dropped).toHaveLength(fixtures.unicodeUnsafe.length);
+    expect(res.body.data.dropped.every(item => item.code === 'MEMORY_REVIEW_INVISIBLE_REFUSED')).toBe(true);
+    expect((await MemoryReviewRun.findOne({ runId: run.runId }).lean()).candidates).toHaveLength(0);
+  });
+  test('synthesized compound emoji and script joiners survive unchanged', async () => {
+    const { run, observationId } = await seedRunWithObservation('fixture-unicode-candidates');
+    const base = `/api/memory-review/runs/${run.runId}`;
+    await harness.request.post(`${base}/finalize`).expect(200);
+    const res = await harness.request.post(`${base}/candidates`).send({ candidates:
+      fixtures.unicodeSafe.map(({ text }) => candidate(`Synthetic preference: ${text}`, { rationale: text, evidenceRefs: [observationId] }))
+    }).expect(200);
+    expect(res.body.data.dropped).toEqual([]);
+    expect(res.body.data.accepted).toBe(fixtures.unicodeSafe.length);
+    const stored = await MemoryReviewRun.findOne({ runId: run.runId }).lean();
+    for (const { text } of fixtures.unicodeSafe) expect(stored.candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ statement: `Synthetic preference: ${text}`, rationale: text.normalize('NFC') })
+    ]));
+    expect(fakeRag.upsertDocumentWithChunks).not.toHaveBeenCalled();
+  });
+});
+
+describe('apply-time guard synthetic regression', () => {
+  test('a previously stored candidate with an empty-user URL cannot be applied', async () => {
+    process.env.MEMORY_REVIEW_MODE = 'apply';
+    const { run, observationId } = await seedRunWithObservation('fixture-apply-secret');
+    const base = `/api/memory-review/runs/${run.runId}`;
+    await harness.request.post(`${base}/finalize`).expect(200);
+    const submitted = await harness.request.post(`${base}/candidates`).send({ candidates: [
+      candidate('Synthetic safe preference', { evidenceRefs: [observationId] })
+    ] }).expect(200);
+    expect(submitted.body.data.accepted).toBe(1);
+    const stored = await MemoryReviewRun.findOne({ runId: run.runId });
+    const candidateId = stored.candidates[0].candidateId;
+    await harness.request.post(`${base}/candidates/${candidateId}/review`).send({ action: 'approve', by: 'fixture-operator' }).expect(200);
+    await harness.request.post(`${base}/authorize-apply`).send({ by: 'fixture-operator' }).expect(200);
+    await MemoryReviewRun.updateOne({ runId: run.runId }, {
+      $set: { 'candidates.0.statement': 'redis://:synthetic123@fixture.invalid:6379' }
+    });
+    const res = await harness.request.post(`${base}/candidates/${candidateId}/apply`).expect(400);
+    expect(res.body.code).toBe('MEMORY_REVIEW_SECRET_REFUSED');
+    expect(fakeRag.upsertDocumentWithChunks).not.toHaveBeenCalled();
+    expect(await MemoryNote.countDocuments({})).toBe(0);
+  });
+});
