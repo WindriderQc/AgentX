@@ -36,6 +36,12 @@ const IslandRunSchema = new mongoose.Schema({
   events: [{ _id: false, at: String, event: String, reason: String, error: String }],
   liveView: { type: new mongoose.Schema({ port: Number, path: String }, { _id: false }), default: null },
   recording: { type: String, default: null },
+  // Where the agent played: a world the runner simulates (`local`) or a shared world it joins
+  // (`remote`, which records itself: `recordDir` is that recording on the world's host).
+  worldView: {
+    type: new mongoose.Schema({ kind: { type: String, enum: ['local', 'remote'] }, world: String, recordDir: String }, { _id: false }),
+    default: null
+  },
   memorySource: String,
   // The agent's latest thoughts, words and commands while it plays (untrusted text, shown escaped).
   agentMessages: { type: [{ _id: false, at: String, kind: { type: String, enum: ['thought', 'say', 'command'] }, text: String }], default: [] },

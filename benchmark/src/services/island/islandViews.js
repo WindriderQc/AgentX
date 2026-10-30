@@ -34,7 +34,9 @@ function origin(value) {
 /** The run's terrain when it runs on its own (a world service), else null. */
 function remoteWorld(worlds, run) {
   const world = run?.world ? findWorld(worlds, run.world) : null;
-  return world?.live ? world : null;
+  if (world?.live) return world;
+  // A changed/missing catalogue must not turn a recorded remote world into a local one.
+  return run?.worldView?.kind === 'remote' ? { id: run.world, label: world?.label || run.world || 'Remote world', live: null } : null;
 }
 
 function refuseRemoteReplay(world) {
@@ -105,7 +107,7 @@ function graphysxViews(env = process.env) {
     available: () => (viewer ? clawblox.available() : { live: false, replay: false }),
     liveUrl: run => {
       const remote = remoteWorld(worlds, run);
-      if (remote) return viewer && run.phase === 'running' ? page(remote.live, null, run.agent) : null;
+      if (remote) return viewer && remote.live && run.phase === 'running' ? page(remote.live, null, run.agent) : null;
       const live = viewer ? clawblox.liveUrl(run) : null;
       if (!live) return null;
       const url = new URL(live);

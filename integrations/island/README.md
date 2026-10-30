@@ -103,6 +103,29 @@ relay passed 23/23 on devX (2026-10-29), with direct access to the world refused
 sandbox. Instance settings (the world folder with its target URL, the runner host firewall)
 stay in the instance repository.
 
+An instance may guard that relay with `--access-token-file` (a runner-owned regular
+file, mode 0600) and `--expect-world <world-id>`. The relay adds `X-Island-Access`
+outside the sandbox, replaces a caller-supplied header, and refuses a different
+world. `--probe` reads health and API access without joining. `check --world …`
+and `start --world …` refuse an unavailable or wrong remote world before starting
+an episode. During play the runner watches the relay's health; sustained failure
+or an unreachable world at completion fails the run while retaining cleanup.
+`worldHealthSeconds` and `worldDownSeconds` configure its default 30-second
+probe interval and 120-second failure threshold.
+
+`AGENTX_ISLAND_WORLD_PREPARE` optionally names an absolute instance hook executable.
+The queue calls `check <runner-world>` before dispatch and
+`prepare <runner-world> <queue-request-id>` after the durable fence, before runner
+start. Each prints one JSON object: `{ok, managed, world, recordDir, message}`.
+The hook owns deployment choices, credentials and world selection; it must refuse
+if another session owns the world. With a hook, preflight checks runner/harness
+readiness separately because the selected terrain may not be running yet. Runner
+start still validates that terrain after preparation. A preparation refusal is
+recorded as not started. The immutable ledger, terminal receipt and Benchmark
+report retain its world and recording directory, including when settling later.
+The terrain UI is configured through `AGENTX_ISLAND_WORLDS` (see the terrain
+selector change); these guards do not create a second world catalogue or viewer.
+
 ## Tests without models
 
 ```bash

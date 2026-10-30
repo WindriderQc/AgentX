@@ -17,7 +17,9 @@ const { hostUrlKey } = require('../../shared/ollamaHostConfig');
 const { islandExecutor, isIslandExecutor, RECEIPT_CONTRACT, RUNNER_CONTRACT } = require('../../shared/islandRun.cjs');
 
 const UUID = /^[a-f0-9-]{36}$/;
-const NOT_STARTED = ['RUNNER_BUSY', 'INVALID', 'RUN_ID', 'RUNNER_CONFIG', 'RUNNER_STATE', 'RUNS_ROOT_TOO_LONG', 'RUNNER_START_FAILED'];
+const NOT_STARTED = ['RUNNER_BUSY', 'INVALID', 'RUN_ID', 'RUNNER_CONFIG', 'RUNNER_STATE', 'RUNS_ROOT_TOO_LONG', 'RUNNER_START_FAILED', 'WORLD_UNAVAILABLE', 'WORLD_PREPARE'];
+const WORLD = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const RECORD_DIR = /^[\w./-]{1,300}$/;
 const POLL_MS = 30000;
 const RUNNER_SILENCE_MS = 15 * 60000;
 const FINISH_ATTEMPTS = 20;
@@ -91,6 +93,61 @@ function createRunner(config, { spawnImpl = spawn, timeoutMs = 120000 } = {}) {
   });
 }
 
+// ── shared world preparation (instance hook) ────────────────────────────────
+
+/**
+ * An optional instance command on the operator host that prepares a shared world before a
+ * run (docs/ISLAND.md, "Choisir le monde"): for example it selects the GraphysX island and
+ * starts it fresh, with the world service's operator token, which never leaves that host.
+ *
+ *   <hook> check <world>              read only, before the dispatch mark
+ *   <hook> prepare <world> <request>  after the mark, just before the runner starts
+ *
+ * The last stdout line is JSON {ok, managed, world?, recordDir?, message?}; `managed: false`
+ * means the hook does not own this world (a world the runner simulates itself).
+ */
+function worldPrepareConfig(env = process.env) {
+  const hook = env.AGENTX_ISLAND_WORLD_PREPARE || '';
+  if (!hook) return null;
+  if (!hook.startsWith('/') || /[\s'"`$\\]/.test(hook)) {
+    throw new Error('AGENTX_ISLAND_WORLD_PREPARE needs the absolute path of the instance hook');
+  }
+  return hook;
+}
+
+function cleanPrepared(answer, world) {
+  const managed = answer.managed === true;
+  return { ok: answer.ok === true, managed, world: WORLD.test(answer.world || '') ? answer.world : (managed ? null : world),
+    recordDir: typeof answer.recordDir === 'string' && RECORD_DIR.test(answer.recordDir) && !answer.recordDir.includes('..') ? answer.recordDir : null,
+    message: typeof answer.message === 'string' ? answer.message.slice(0, 300) : null };
+}
+
+function createWorldPrepare(hook, { spawnImpl = spawn, timeoutMs = 90000 } = {}) {
+  return (action, world, requestId) => new Promise((resolve, reject) => {
+    if (!['check', 'prepare'].includes(action) || !WORLD.test(world || '') || (action === 'prepare' && !UUID.test(requestId || ''))) {
+      return reject(new Error('Invalid world preparation arguments'));
+    }
+    const argv = action === 'prepare' ? [action, world, requestId] : [action, world];
+    const child = spawnImpl(hook, argv, { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    let out = '';
+    let err = '';
+    const timer = setTimeout(() => child.kill('SIGTERM'), timeoutMs);
+    child.stdout.on('data', chunk => { out += chunk; });
+    child.stderr.on('data', chunk => { err += chunk; });
+    child.on('error', error => { clearTimeout(timer); reject(error); });
+    child.on('close', code => {
+      clearTimeout(timer);
+      let answer;
+      try { answer = JSON.parse(out.trim().split('\n').pop() || ''); } catch {
+        return reject(new Error(`World hook gave no answer (${action}): ${(err || out).trim().slice(-300)}`));
+      }
+      const prepared = cleanPrepared(answer && typeof answer === 'object' ? answer : {}, world);
+      if (code !== 0 || !prepared.ok) return reject(new Error(`World hook refused (${action}): ${prepared.message || `exit ${code}`}`));
+      resolve(prepared);
+    });
+  });
+}
+
 // ── principal and receipts ──────────────────────────────────────────────────
 
 /** The principal lane's endpoint, context and claim; never its model name. */
@@ -136,7 +193,7 @@ function outcomeState(status) {
 
 function runSummary(status) {
   const keep = ['phase', 'outcome', 'agent', 'harness', 'minutes', 'memory', 'world', 'model', 'requestedAt', 'startedAt', 'endedAt',
-    'timeZone', 'resumeCount', 'recording', 'memorySource', 'memorySaved', 'liveView'];
+    'timeZone', 'resumeCount', 'recording', 'memorySource', 'memorySaved', 'liveView', 'worldKind', 'remoteWorld', 'worldHealth'];
   return { ...Object.fromEntries(keep.map(key => [key, status[key] ?? null])), events: (status.events || []).slice(-100) };
 }
 
@@ -145,7 +202,9 @@ function runSummary(status) {
 function defaults(deps = {}) {
   const env = deps.env || process.env;
   const config = deps.runner ? null : runnerConfig(env);
+  const hook = deps.worldPrepare === undefined ? worldPrepareConfig(env) : null;
   return {
+    worldPrepare: deps.worldPrepare === undefined ? (hook ? createWorldPrepare(hook) : null) : deps.worldPrepare,
     runner: deps.runner || createRunner(config),
     label: deps.label || config?.label || 'runner',
     principal: deps.principal || (() => readPrincipal(deps.core, deps.request)),
@@ -175,11 +234,16 @@ async function runIsland(job, client, deps = {}) {
   // Readiness depends on the selected agent's socket path and harness adapter.
   // Keep Codex implicit for runners that predate --harness.
   const harness = executor.harness !== 'codex' ? { harness: executor.harness } : {};
-  const check = await d.runner('check', { agent: executor.agent, ...harness });
+  // A managed world may still run another terrain before preparation. Its hook checks
+  // availability here; start validates the selected terrain after the hook switches it.
+  const check = await d.runner('check', { agent: executor.agent, ...harness,
+    ...(d.worldPrepare ? {} : { world: executor.world }) });
+
   if (!check.ready) throw new Error(`Runner is not ready: ${(check.problems || []).join('; ')}`);
   if (check.activeRun) throw new Error(`Runner is busy with run ${check.activeRun}`);
   const principal = await d.principal();
   assertPrincipal(job, principal);
+  if (d.worldPrepare) await d.worldPrepare('check', executor.world);
 
   book.write({ phase: 'begin-unclear', queueRequestId: job.id });
   const begun = await client(`/${job.id}/begin`, { expectedRevision: job.revision });
@@ -187,8 +251,15 @@ async function runIsland(job, client, deps = {}) {
   book.write({ phase: 'dispatched', dispatchId, runner: d.label, dispatchedAt: stamp() });
   log(`dispatch fence crossed for ${job.id}: ${dispatchId}`);
   let started = null;
+  let worldPrepared = null;
   try {
     await client(`/${job.id}/assert-dispatch`, { dispatchId });
+    if (d.worldPrepare) {
+      // A shared world starts fresh for this run; nothing has started on the runner yet.
+      try { worldPrepared = await d.worldPrepare('prepare', executor.world, job.id); }
+      catch (error) { throw Object.assign(error, { notStarted: true, code: 'WORLD_PREPARE' }); }
+      book.write({ worldPrepared });
+    }
     try {
       // Codex stays the runner's default: an older runner without --harness keeps working.
       const harness = executor.harness && executor.harness !== 'codex' ? { harness: executor.harness } : {};
@@ -225,7 +296,7 @@ async function runIsland(job, client, deps = {}) {
     }
     log(`run started but Core bookkeeping failed (${error.message}); following the run anyway`);
   }
-  await reportSafely(d, job.id, { queueRequestId: job.id, dispatchId, executor, status: started });
+  await reportSafely(d, job.id, { queueRequestId: job.id, dispatchId, executor, status: started, worldPrepared });
   return followAndFinish({ ...job, dispatchId }, executor, client, d, book);
 }
 
@@ -252,6 +323,7 @@ async function settleIsland(job, client, deps = {}) {
 
 async function followAndFinish(job, executor, client, d, book) {
   const { id, dispatchId } = job;
+  const worldPrepared = book.read()?.worldPrepared || null;
   const watchUntil = d.now() + (executor.minutes + 30) * 60000;
   let lastSeen = d.now();
   let stopAsked = false;
@@ -270,7 +342,7 @@ async function followAndFinish(job, executor, client, d, book) {
       continue;
     }
     if (status.dispatchId !== dispatchId) throw new Error('The runner\'s run belongs to another dispatch');
-    await reportSafely(d, id, { queueRequestId: id, dispatchId, executor, status });
+    await reportSafely(d, id, { queueRequestId: id, dispatchId, executor, status, worldPrepared });
     if (status.terminal === true && status.alive === false) break;
     if (!stopAsked && d.now() > watchUntil) {
       stopAsked = true;
@@ -287,6 +359,7 @@ async function finish(job, executor, status, client, d, book) {
   const localReleased = status.terminal === true && status.alive === false && status.localStopped === true
     && status.processObservationOk === true && Array.isArray(status.leftover) && status.leftover.length === 0;
   const state = outcomeState(status);
+  const worldPrepared = book.read()?.worldPrepared || null;
   const file = path.join(book.dir, `${id}-${dispatchId}.receipt.json`);
   fs.mkdirSync(book.dir, { recursive: true, mode: 0o700 });
   let lastError;
@@ -307,7 +380,7 @@ async function finish(job, executor, status, client, d, book) {
       && native.dispatchId === dispatchId && native.runtimeReleased === true;
     const receipt = { contract: RECEIPT_CONTRACT, queueRequestId: id, dispatchId, actor: d.actor,
       receiptRef: executor.receiptRef, state, runtimeReleased: Boolean(released),
-      evidence: { executor: 'island', runner: d.label, run: runSummary(status),
+      evidence: { executor: 'island', runner: d.label, run: runSummary(status), worldPrepared,
         leftoverProcesses: status.leftover ?? null, processObservationOk: status.processObservationOk === true,
         nativeRelease: native, recordedAt: stamp() } };
     const bytes = Buffer.from(JSON.stringify(receipt, null, 2) + '\n');
@@ -323,7 +396,7 @@ async function finish(job, executor, status, client, d, book) {
       throw Object.assign(new Error(`Release not proven; receipt kept at ${file}`), { queueId: id });
     }
     const memory = await d.runner('memory', { 'run-id': id }).catch(() => ({}));
-    await reportSafely(d, id, { queueRequestId: id, dispatchId, executor, status, memory: memory.files || null,
+    await reportSafely(d, id, { queueRequestId: id, dispatchId, executor, status, worldPrepared, memory: memory.files || null,
       receipt: { file, sha256: receiptSha256, state, runtimeReleased: true } });
     try {
       const done = await client(`/${id}/operator-finish`, { expectedRevision: current.revision, dispatchId, state,
@@ -368,4 +441,5 @@ async function watchIsland(id, client, deps = {}, { when = 'tonight' } = {}) {
   }
 }
 
-module.exports = { runnerConfig, runnerArgv, createRunner, readPrincipal, assertPrincipal, runIsland, settleIsland, watchIsland, outcomeState };
+module.exports = { runnerConfig, runnerArgv, createRunner, readPrincipal, assertPrincipal, runIsland, settleIsland, watchIsland, outcomeState,
+  worldPrepareConfig, createWorldPrepare };

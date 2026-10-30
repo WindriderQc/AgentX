@@ -40,6 +40,33 @@ function report(extra = {}) {
 }
 
 describe('island run service', () => {
+  it('retains a remote world recording receipt and filters untrusted paths', async () => {
+    await islands.recordReport(ID, report({
+      worldPrepared: { world: 'living-island', recordDir: '/data/recordings/run-1', token: 'never-kept' },
+      status: { phase: 'running', worldKind: 'remote', remoteWorld: { world: 'living-island' },
+        recording: `${ID}/recordings/delegated.clawrec`, liveView: { port: 18080, path: '/' } }
+    }));
+    expect((await IslandRun.findById(ID).lean()).worldView).toEqual({
+      kind: 'remote', world: 'living-island', recordDir: '/data/recordings/run-1'
+    });
+    expect((await islands.getRun(ID, { env, queue: async () => ({ jobs: [] }) })).worldView).toEqual({
+      kind: 'remote', world: 'living-island', recordDir: '/data/recordings/run-1'
+    });
+    for (const renderer of ['clawblox', 'graphysx']) {
+      const deps = { env: { ...env, AGENTX_ISLAND_RENDERER: renderer, AGENTX_ISLAND_GRAPHYSX_URL: 'https://viewer.lan' },
+        queue: async () => ({ jobs: [] }) };
+      expect(await islands.getRun(ID, deps)).toMatchObject({ liveView: null, replayable: false });
+      await expect(islands.openReplay(ID, deps)).rejects.toMatchObject({ statusCode: 409 });
+    }
+    await islands.recordReport(ID, report({
+      worldPrepared: { world: '../wrong', recordDir: '/data/../secret' },
+      status: { phase: 'finished', worldKind: 'remote', remoteWorld: { world: 'living-island' } }
+    }));
+    expect((await IslandRun.findById(ID).lean()).worldView).toEqual({
+      kind: 'remote', world: 'living-island', recordDir: null
+    });
+  });
+
   it('keeps only typed report fields and refuses another dispatch of the same request', async () => {
     await islands.recordReport(ID, report());
     const saved = await IslandRun.findById(ID).lean();

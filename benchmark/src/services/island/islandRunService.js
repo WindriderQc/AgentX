@@ -22,6 +22,8 @@ const MAX_MEMORY_TEXT = 256 * 1024;
 const START_WINDOW_HOURS = 48;
 const AGENT_MESSAGES = 40;
 const AGENT_KINDS = new Set(['thought', 'say', 'command']);
+const WORLD_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const RECORD_DIR = /^[\w./-]{1,300}$/;
 
 class IslandError extends Error {
   constructor(message, statusCode = 400) { super(message); this.statusCode = statusCode; }
@@ -64,7 +66,7 @@ function runRow(doc, job, view, worlds) {
   const liveView = doc ? view.liveUrl(doc) : null;
   const world = doc?.world || executor.world || null;
   // Per-run replays of a world that runs on its own are not wired yet (islandViews.js).
-  const remote = Boolean(world && findWorld(worlds, world)?.live);
+  const remote = doc?.worldView?.kind === 'remote' || Boolean(world && findWorld(worlds, world)?.live);
   return {
     id: doc?._id || job.id,
     title: doc?.title || job?.title || null,
@@ -73,6 +75,7 @@ function runRow(doc, job, view, worlds) {
     memoryMode: doc?.memoryMode || executor.memory || null,
     harness: doc?.harness || executor.harness || 'codex',
     world,
+    worldView: doc?.worldView || null,
     model: doc?.model || PRINCIPAL_ALIAS,
     runner: doc?.runner || null,
     phase: doc?.phase || null,
@@ -189,6 +192,15 @@ async function recordReport(id, body = {}) {
       .map(entry => ({ at: text(entry?.at, 40) || '', kind: entry?.kind, text: text(entry?.text, 600) }))
       .filter(entry => AGENT_KINDS.has(entry.kind) && entry.text);
   }
+  // Where the agent played. A remote world names its own world id and recording folder.
+  if (['local', 'remote'].includes(status.worldKind)) {
+    const remote = status.worldKind === 'remote';
+    const prepared = body.worldPrepared && typeof body.worldPrepared === 'object' ? body.worldPrepared : {};
+    const world = [prepared.world, status.remoteWorld?.world].find(value => typeof value === 'string' && WORLD_ID.test(value));
+    const recordDir = typeof prepared.recordDir === 'string' && RECORD_DIR.test(prepared.recordDir) && !prepared.recordDir.includes('..')
+      ? prepared.recordDir : null;
+    set.worldView = { kind: status.worldKind, world: remote ? world || null : executor.world, recordDir: remote ? recordDir : null };
+  }
   const live = status.liveView;
   set.liveView = live && Number.isInteger(live.port) && live.port > 0 && live.port < 65536 && typeof live.path === 'string' && live.path.startsWith('/')
     ? { port: live.port, path: live.path.slice(0, 500) } : null;
@@ -284,7 +296,7 @@ async function launch(input = {}, deps = {}) {
 async function openReplay(id, deps = {}) {
   const d = defaults(deps);
   if (!UUID.test(id || '')) throw new IslandError('Run id needs a queue request id');
-  const doc = await IslandRun.findById(id).select('recording phase agent world').lean();
+  const doc = await IslandRun.findById(id).select('recording phase agent world worldView').lean();
   return islandViews(d.env).replayUrl(doc, { fetchImpl: d.fetchImpl });
 }
 
