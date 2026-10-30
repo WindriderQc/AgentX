@@ -43,13 +43,30 @@ test('an island run crosses the fence, refuses Core launch and finishes only by 
   const running = await queue.get(begun.id);
   // Core cannot observe the runner; only the operator attestation settles it.
   await expect(evidence.observe(running)).rejects.toMatchObject({ statusCode: 409 });
-  await Runtime.collection.insertOne({ _id: 'runtime', inferences: [{ host: A, state: 'ACTIVE', expiresAt: new Date(Date.now() + 60000) }] });
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [{ host: A, state: 'ACTIVE', expiresAt: new Date(Date.now() + 60000) }] });
   await expect(queue.operatorFinish(running.id, finish(running), 'fixture')).rejects.toMatchObject({ statusCode: 409 });
   await Runtime.deleteMany({});
+  await expect(queue.operatorFinish(running.id, finish(running), 'fixture'))
+    .rejects.toMatchObject({ code: 'HEAVY_QUEUE_RELEASE_UNAVAILABLE' });
+  expect((await queue.get(running.id)).state).toBe('running');
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
   await expect(queue.operatorFinish(running.id, { ...finish(running), receiptRef: 'other' }, 'fixture'))
     .rejects.toMatchObject({ statusCode: 409 });
   const done = await queue.operatorFinish(running.id, finish(running), 'fixture');
   expect(done.state).toBe('completed');
   expect(done.operation).toMatchObject({ kind: 'island', authority: 'operator-attestation' });
   expect(done.releaseReceipt.receiptSha256).toBe('b'.repeat(64));
+});
+
+test('terminal attestation refuses a malformed runtime record even after an earlier release read', async () => {
+  const submitted = await queue.submit(request(), 'fixture');
+  const slot = await queue.reserve(submitted.id, { expectedRevision: submitted.revision, start: new Date().toISOString() }, 'fixture');
+  const begun = await queue.begin(slot.id, { expectedRevision: slot.revision }, 'fixture');
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  expect((await queue.operatorRelease(begun.id, begun.dispatchId)).runtimeReleased).toBe(true);
+  // Native storage is no longer a complete observation at the terminal boundary.
+  await Runtime.collection.updateOne({ _id: 'runtime' }, { $set: { inferences: null } });
+  await expect(queue.operatorFinish(begun.id, finish(begun), 'fixture'))
+    .rejects.toMatchObject({ code: 'HEAVY_QUEUE_RELEASE_UNAVAILABLE' });
+  expect((await queue.get(begun.id)).state).toBe('dispatching');
 });

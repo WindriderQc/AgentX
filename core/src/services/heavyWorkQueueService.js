@@ -349,6 +349,9 @@ async function operatorFinish(id, body, actor) {
       || !ACTIVE.includes(job.state) || !body.dispatchId || body.dispatchId !== job.dispatchId
       || body.receiptRef !== job.executor.receiptRef) throw fail('Exact active operator dispatch and planned receipt reference required', 409);
     const runtime = await require('../../models/RuntimeCoordination').findById('runtime').lean();
+    if (!runtime || !Array.isArray(runtime.workloads) || !Array.isArray(runtime.inferences)) {
+      throw fail('Native runtime release evidence unavailable', 503, 'HEAVY_QUEUE_RELEASE_UNAVAILABLE');
+    }
     if ([...(runtime?.workloads || []), ...(runtime?.inferences || [])].some(item => runtimeOverlaps(job, item))) {
       throw fail('Native runtime authority remains held; reconcile it through its owner first', 409);
     }

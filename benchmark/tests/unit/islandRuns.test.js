@@ -87,7 +87,7 @@ describe('island run service', () => {
 
   it('launches on the chosen terrain and refuses one that is not configured', async () => {
     const calls = [];
-    const deps = { env: { ...env, AGENTX_ISLAND_WORLDS: WORLDS }, now: () => new Date('2026-10-28T20:00:00Z'), principalEndpoint: async () => 'http://gpu.lan:11434',
+    const deps = { queue: async () => ({ jobs: [] }), env: { ...env, AGENTX_ISLAND_WORLDS: WORLDS }, now: () => new Date('2026-10-28T20:00:00Z'), principalEndpoint: async () => 'http://gpu.lan:11434',
       submit: async body => { calls.push(body); return { id: ID, state: 'requested', revision: 1 }; }, place: async () => ({}) };
     await islands.launch({ clientKey: CLIENT_KEY, agent: 'Eko', minutes: 60, memory: 'fresh', world: 'ile-de-frank', when: 'none' }, deps);
     expect(calls[0].executor.world).toBe('ile-de-frank');
@@ -98,6 +98,57 @@ describe('island run service', () => {
     await expect(islands.launch({ clientKey: CLIENT_KEY, agent: 'Eko', minutes: 60, world: 'ile-de-frank', when: 'none' }, { ...deps, env }))
       .rejects.toMatchObject({ statusCode: 400 });
     expect(calls).toHaveLength(1);
+  });
+
+  it('keeps one dispatch when the first reports arrive concurrently', async () => {
+    const other = '00000000-0000-4000-8000-0000000000d2';
+    const results = await Promise.allSettled([
+      islands.recordReport(ID, report()), islands.recordReport(ID, report({ dispatchId: other }))
+    ]);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find(result => result.status === 'rejected').reason.statusCode).toBe(409);
+    const saved = await IslandRun.findById(ID).lean();
+    expect([DISPATCH, other]).toContain(saved.dispatchId);
+    await Promise.all([islands.recordReport(ID, report({ dispatchId: saved.dispatchId })),
+      islands.recordReport(ID, report({ dispatchId: saved.dispatchId }))]);
+    expect((await IslandRun.findById(ID).lean()).dispatchId).toBe(saved.dispatchId);
+  });
+
+  it('reconciles a lost submit response by its native key despite a later clock or moved pin', async () => {
+    let native = null;
+    let clock = new Date('2026-10-29T01:00:00Z');
+    const principalEndpoint = jest.fn(async () => 'http://gpu.lan:11434');
+    const submit = jest.fn(async body => {
+      native = { ...body, id: ID, revision: 1, state: 'requested', createdAt: clock.toISOString() };
+      throw new Error('synthetic lost answer after native save');
+    });
+    const deps = { env, queue: async () => ({ jobs: native ? [native] : [] }), now: () => clock, principalEndpoint, submit };
+    const input = { clientKey: CLIENT_KEY, agent: 'Agent', minutes: 60, when: 'none' };
+    await expect(islands.launch(input, deps)).rejects.toThrow(/lost answer/);
+    clock = new Date('2026-10-29T02:00:00Z');
+    principalEndpoint.mockRejectedValue(new Error('pin changed'));
+    const reconciled = await islands.launch(input, deps);
+    expect(reconciled.id).toBe(ID);
+    expect(submit).toHaveBeenCalledTimes(1);
+    expect(principalEndpoint).toHaveBeenCalledTimes(1);
+    expect((await IslandRun.findById(ID).lean()).requestedAt).toBe(native.createdAt);
+    await expect(islands.launch({ ...input, minutes: 120 }, deps)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('reconciles a concurrent native key conflict and refuses an unreadable queue', async () => {
+    let native = null;
+    const deps = { env, queue: async () => ({ jobs: native ? [native] : [] }), principalEndpoint: async () => 'http://gpu.lan:11434',
+      submit: async body => {
+        native = { ...body, id: ID, revision: 1, state: 'requested' };
+        throw Object.assign(new Error('another retry won'), { statusCode: 409 });
+      } };
+    const input = { clientKey: CLIENT_KEY, minutes: 60, when: 'none' };
+    expect((await islands.launch(input, deps)).id).toBe(ID);
+    const submit = jest.fn();
+    await expect(islands.launch(input, { ...deps, queue: async () => ({}), submit }))
+      .rejects.toMatchObject({ statusCode: 502 });
+    expect(submit).not.toHaveBeenCalled();
+
   });
 
   it('shows the memory files of a run and the agent\'s other runs', async () => {
@@ -112,7 +163,7 @@ describe('island run service', () => {
 
   it('Lancer records one queue request on the principal endpoint and lets Core place it; nothing starts', async () => {
     const calls = [];
-    const deps = { env, now: () => new Date('2026-10-28T20:00:00Z'), principalEndpoint: async () => 'http://gpu.lan:11434',
+    const deps = { env, queue: async () => ({ jobs: [] }), now: () => new Date('2026-10-28T20:00:00Z'), principalEndpoint: async () => 'http://gpu.lan:11434',
       submit: async body => { calls.push(['submit', body]); return { id: ID, state: 'requested', revision: 1 }; },
       place: async (id, body) => { calls.push(['place', id, body]); return { reservation: { start: '2026-10-29T03:00:00Z', end: '2026-10-29T04:10:00Z' } }; } };
     const result = await islands.launch({ clientKey: CLIENT_KEY, agent: 'Eko', minutes: 60, memory: 'fresh', when: 'tonight' }, deps);
@@ -258,6 +309,59 @@ describe('island routes', () => {
 
 describe('island page helpers', () => {
   const page = loadBrowserModule('island/index.js', 'escapeHtml, when, clock, duration, stateLabel, runRowHtml, runDetailHtml, episodesHtml, thoughtsHtml, terrainLabel, worldOptionsHtml', { apiFetch: async () => ({}) });
+
+  it('reuses the same pending launch after a lost response, double click and page reload', async () => {
+    const stored = new Map();
+    const storage = { getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key) };
+    const uuid = jest.fn(() => CLIENT_KEY);
+    const calls = [];
+    let rejectFirst;
+    const apiFetch = async (url, options) => {
+      if (!url.endsWith('/launch')) return { data: { runs: [], view: {}, queueRead: true } };
+      calls.push(JSON.parse(JSON.stringify(options.body)));
+      if (calls.length === 1) return new Promise((_resolve, reject) => { rejectFirst = reject; });
+      return { data: { id: ID, state: 'requested' } };
+    };
+    function mount() {
+      const listeners = {};
+      const fields = Object.fromEntries(Object.entries({ agent: 'Agent', minutes: '60', memory: 'continue', harness: 'pi', world: 'ile-de-frank', when: 'none' })
+        .map(([key, value]) => [key, { value, disabled: false }]));
+      const button = {};
+      const form = { elements: { namedItem: key => fields[key] }, querySelector: () => button,
+        addEventListener: (kind, fn) => { listeners[kind] = fn; } };
+      const node = () => ({ addEventListener() {}, classList: { remove() {}, add() {} } });
+      fields.world.dataset = {};
+      fields.world.addEventListener = () => {};
+      const nodes = { 'island-world': fields.world, 'island-watch': node(), 'island-watch-label': node(),
+        'island-launch-form': form, 'island-launch-result': node(), 'island-runs': node(), 'island-runs-status': node(), 'island-memory-run': node() };
+      loadBrowserModule('island/index.js', 'readPendingLaunch', {
+        apiFetch, window: { sessionStorage: storage }, crypto: { randomUUID: uuid },
+        FormData: class { get(key) { return fields[key].disabled ? null : fields[key].value; } },
+        document: { getElementById: id => nodes[id], querySelector: () => node(), hidden: false },
+        setInterval: () => 0, clearInterval() {}
+      });
+      return { fields, result: nodes['island-launch-result'], submit: () => listeners.submit({ preventDefault() {}, target: form }) };
+    }
+    const first = mount();
+    const pending = first.submit();
+    await first.submit(); // A second click while awaiting Core must do nothing.
+    expect(calls).toHaveLength(1);
+    rejectFirst(new Error('lost response'));
+    await pending;
+    expect(first.result.textContent).toContain('non confirmée');
+    expect(first.fields.agent.disabled).toBe(true);
+    expect(stored.size).toBe(1);
+    const reloaded = mount();
+    expect(reloaded.fields.world.value).toBe('ile-de-frank');
+    expect(reloaded.fields.world.disabled).toBe(true);
+    expect(calls[0].world).toBe('ile-de-frank');
+    await reloaded.submit();
+    expect(calls[1]).toEqual(calls[0]);
+    expect(calls[1].harness).toBe('pi');
+    expect(uuid).toHaveBeenCalledTimes(1);
+    expect(stored.size).toBe(0);
+    expect(reloaded.fields.agent.disabled).toBe(false);
+  });
 
   it('shows the latest thoughts newest first, escaped, with a time zone', () => {
     const html = page.thoughtsHtml([

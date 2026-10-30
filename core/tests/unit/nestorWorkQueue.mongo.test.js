@@ -17,15 +17,23 @@ const ready = async key => {
 };
 const finish = job => ({ expectedRevision: job.revision, dispatchId: job.dispatchId, state: 'completed',
   receiptRef: 'synthetic-receipt.json', receiptSha256: 'a'.repeat(64), confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED' });
+const observeIdleRuntime = () => Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
 beforeEach(async () => { await Promise.all([Queue, Archive, Runtime, Alert].map(model => model.deleteMany({}))); });
 test('operator attestation requires the exact dispatch and refuses held inference, including UNKNOWN', async () => {
   const job = await ready('operator');
   await expect(queue.operatorFinish(job.id, { ...finish(job), dispatchId: 'another' }, 'fixture')).rejects.toMatchObject({ statusCode: 409 });
   await expect(queue.operatorFinish(job.id, { ...finish(job), receiptRef: 'different' }, 'fixture')).rejects.toMatchObject({ statusCode: 409 });
-  await Runtime.collection.insertOne({ _id: 'runtime', inferences: [{ host: A, state: 'UNKNOWN' }] });
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [{ host: A, state: 'UNKNOWN' }] });
   await expect(queue.operatorFinish(job.id, finish(job), 'fixture')).rejects.toMatchObject({ statusCode: 409 });
   expect((await queue.get(job.id)).state).toBe('dispatching');
   await Runtime.deleteMany({});
+  await expect(queue.operatorFinish(job.id, finish(job), 'fixture'))
+    .rejects.toMatchObject({ statusCode: 503, code: 'HEAVY_QUEUE_RELEASE_UNAVAILABLE' });
+  const unobserved = await queue.get(job.id);
+  expect(unobserved.state).toBe('dispatching');
+  expect(unobserved.revision).toBe(job.revision);
+  expect(unobserved.releaseReceipt).toBeFalsy();
+  await observeIdleRuntime();
   const done = await queue.operatorFinish(job.id, finish(job), 'fixture');
   expect(done.releaseReceipt.authority).toBe('operator-attestation');
   expect(done.releaseReceipt.receiptSha256).toBe('a'.repeat(64));
@@ -36,6 +44,7 @@ test('notifications survive archive and acknowledgment without duplicate resurre
   const unknown = await queue.get(job.id);
   await Promise.all([notices.publishJobs([unknown]), notices.publishJobs([unknown])]);
   expect((await notices.inbox()).count).toBe(1);
+  await observeIdleRuntime();
   const done = await queue.operatorFinish(job.id, finish(unknown), 'fixture');
   // archive materializes the outbox before removing the active request.
   await queue.archive('fixture');
@@ -51,6 +60,7 @@ test('notifications survive archive and acknowledgment without duplicate resurre
 });
 test('one-off queue results stay pending until acknowledgment instead of expiring as stale incidents', async () => {
   const job = await ready('stale');
+  await observeIdleRuntime();
   const done = await queue.operatorFinish(job.id, finish(job), 'fixture');
   await notices.publishJobs([done]);
   await Alert.updateMany({ ruleId: notices.RULE }, { $set: { lastOccurrence: new Date('2000-01-01') } });

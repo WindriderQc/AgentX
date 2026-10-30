@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import json
+import datetime as dt
 import os
 import re
-import shutil
 import stat
 import subprocess
 import time
@@ -18,6 +18,24 @@ REQUIRED_CHECKS = {"world", "llm-auth-required", "llm-authorized", "core-health"
 HARNESS_CHECKS = {"codex": set(), "dsh": {"harness-config"}, "pi": {"harness-config"}}
 
 MEMORY = ("SOUL.md", "EPISODIC_MEMORY.md", "SEMANTIC_MEMORY.md", "EPISODIC_MEMORY.jsonl")
+
+
+def read_regular(path: Path, limit: int, *, tail=False):
+    """Read a bounded regular file without following a replaced symlink or blocking on a FIFO."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as error:
+        raise ValueError("memory/log must be a readable regular file: " + path.name) from error
+    with os.fdopen(fd, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or (not tail and info.st_size > limit):
+            raise ValueError("memory/log must be a bounded regular file: " + path.name)
+        if tail:
+            stream.seek(max(0, info.st_size - limit))
+        data = stream.read(limit if tail else limit + 1)
+        if len(data) > limit:
+            raise ValueError("memory/log grew beyond its bound: " + path.name)
+        return data, info
 
 
 def atomic_json(path, value):
@@ -51,39 +69,46 @@ def copy_memory_files(source: Path, workspace: Path, require_all=True):
         if name == "EPISODIC_MEMORY.jsonl" and not require_all and not path.exists():
             (workspace / name).touch()
             continue
-        info = path.lstat()
-        if not stat.S_ISREG(info.st_mode) or info.st_size > 8 * 1024 * 1024:
-            raise ValueError("memory must be a bounded regular file: " + name)
+        data, _info = read_regular(path, 8 * 1024 * 1024)
         if name.endswith(".jsonl"):
-            for line in path.read_text().splitlines():
+            for line in data.decode("utf-8").splitlines():
                 if line.strip() and not isinstance(json.loads(line), dict):
                     raise ValueError("invalid episodic memory record")
-        shutil.copyfile(path, workspace / name)
+        (workspace / name).write_bytes(data)
     os.chmod(workspace / "SOUL.md", 0o444)
 
 
 def latest_activity(sessions: Path, since: float | None = None):
-    files = list(sessions.rglob("*.jsonl")) if sessions.is_dir() else []
+    files = [p for p in sessions.rglob("*.jsonl") if p.is_file() and not p.is_symlink()] if sessions.is_dir() else []
     if since is not None:
         files = [path for path in files if path.stat().st_mtime >= since]
     if not files: return None
     newest = max(files, key=lambda p: p.stat().st_mtime)
-    age = max(0, time.time() - newest.stat().st_mtime)
-    with open(newest, "rb") as stream:
-        stream.seek(0, os.SEEK_END)
-        stream.seek(max(0, stream.tell() - 65536))
-        lines = stream.read().splitlines()
+    try:
+        data, info = read_regular(newest, 65536, tail=True)
+    except ValueError:
+        return None
+    lines = data.splitlines()
     records = []
     for line in lines:
         try: value = json.loads(line)
         except ValueError: continue
         if isinstance(value, dict): records.append(value)
     last = records[-1] if records else {}
-    meaningful = any(value.get("type") == "response_item" and
-                     (value.get("payload") or {}).get("type") in ("message", "reasoning", "function_call") and
-                     (value.get("payload") or {}).get("role", "assistant") == "assistant"
-                     for value in records)
-    return {"age": age, "payload": last.get("payload") or {}, "modelActivity": meaningful}
+    meaningful = [value for value in records if value.get("type") == "response_item" and
+                  isinstance(value.get("payload"), dict) and
+                  value["payload"].get("type") in ("message", "reasoning", "function_call") and
+                  value["payload"].get("role", "assistant") == "assistant"]
+    # Errors, user prompts and session metadata must not refresh model activity:
+    # a failed turn loop keeps writing these while no inference succeeds.
+    at = None
+    if meaningful:
+        try:
+            at = dt.datetime.fromisoformat(meaningful[-1]["timestamp"].replace("Z", "+00:00")).timestamp()
+        except (KeyError, TypeError, ValueError, AttributeError):
+            at = info.st_mtime  # Older/synthetic rollouts without timestamps.
+    age = max(0, time.time() - at) if at is not None else float("inf")
+    return {"age": age, "payload": last.get("payload") or {}, "modelActivity": bool(meaningful)}
 
 
 def pane_alive(started):

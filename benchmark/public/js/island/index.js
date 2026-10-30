@@ -11,6 +11,22 @@ const PHASES = { queued: 'dans la file', starting: 'démarrage', running: 'en co
 const KINDS = { thought: 'pense', say: 'dit', command: 'commande' };
 const HARNESS_LABELS = { codex: 'Codex', dsh: 'DSH', pi: 'Pi' };
 const $ = id => document.getElementById(id);
+const PENDING_LAUNCH = 'agentx.island.pending-launch';
+
+/** A response can be lost after Core records the request. Keep its identity across retries/reloads. */
+export function readPendingLaunch(storage) {
+  try {
+    const value = JSON.parse(storage.getItem(PENDING_LAUNCH));
+    return value && /^[a-f0-9-]{36}$/.test(value.clientKey || '') ? value : null;
+  } catch { return null; }
+}
+
+export function savePendingLaunch(storage, intent) {
+  try {
+    if (intent) storage.setItem(PENDING_LAUNCH, JSON.stringify(intent));
+    else storage.removeItem(PENDING_LAUNCH);
+  } catch { /* The in-page intent still protects retries when storage is disabled. */ }
+}
 
 export function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
@@ -165,7 +181,7 @@ async function openMemory(id) {
 let worlds = [];
 function showWorldChoice() {
   const select = $('island-world');
-  const current = select.value;
+  const current = select.dataset.pendingWorld || select.value;
   if (worlds.length) select.innerHTML = worldOptionsHtml(worlds, current);
   const world = worlds.find(entry => entry.id === select.value);
   $('island-watch').hidden = !world?.liveUrl;
@@ -201,24 +217,56 @@ async function loadRuns() {
 }
 
 function bind() {
-  $('island-launch-form').addEventListener('submit', async event => {
+  const launchForm = $('island-launch-form');
+  let storage;
+  try { storage = window.sessionStorage; } catch { /* Private browsing may refuse storage. */ }
+  let pending = readPendingLaunch(storage);
+  let submitting = false;
+  const syncForm = () => {
+    $('island-world').dataset.pendingWorld = pending?.world || '';
+    for (const name of ['agent', 'minutes', 'memory', 'harness', 'world', 'when']) {
+      const field = launchForm.elements.namedItem(name);
+      if (!field) continue;
+      if (pending && pending[name] !== undefined) field.value = String(pending[name]);
+      field.disabled = Boolean(pending);
+    }
+    launchForm.querySelector('[type="submit"]').disabled = submitting;
+  };
+  syncForm();
+  if (pending) $('island-launch-result').textContent = 'Une inscription attend confirmation. Réessayez pour retrouver la même demande.';
+  launchForm.addEventListener('submit', async event => {
     event.preventDefault();
+    if (submitting) return;
     const form = new FormData(event.target);
     const result = $('island-launch-result');
     result.classList.remove('is-error');
     result.textContent = 'Inscription…';
+    pending ||= {
+      clientKey: crypto.randomUUID(), agent: form.get('agent'), minutes: Number(form.get('minutes')),
+      memory: form.get('memory'), harness: form.get('harness') || 'codex', world: form.get('world') || 'mesa-island', when: form.get('when')
+    };
+    savePendingLaunch(storage, pending);
+    submitting = true;
+    syncForm();
     try {
-      const data = (await apiFetch(`${API}/launch`, { method: 'POST', body: {
-        clientKey: crypto.randomUUID(), agent: form.get('agent'), minutes: Number(form.get('minutes')),
-        memory: form.get('memory'), harness: form.get('harness') || 'codex', world: form.get('world') || undefined,
-        when: form.get('when') } })).data;
+      const data = (await apiFetch(`${API}/launch`, { method: 'POST', body: pending })).data;
+      pending = null;
+      savePendingLaunch(storage, null);
+
       result.textContent = data.placed
         ? `Demande ${data.id} inscrite, créneau ${when(data.placed.start)}. Le départ attend ton approbation et l’admission de Core.`
         : `Demande ${data.id} inscrite (${STATES[data.state] || data.state}). ${data.note || ''}`;
       loadRuns();
     } catch (err) {
       result.classList.add('is-error');
-      result.textContent = `Rien n’a été inscrit : ${err.message}`;
+      if (err.status === 400) {
+        pending = null; // Validation refused before any native submission.
+        savePendingLaunch(storage, null);
+        result.textContent = `Demande invalide : ${err.message}`;
+      } else result.textContent = `Inscription non confirmée : ${err.message}. Réessayez pour retrouver la même demande.`;
+    } finally {
+      submitting = false;
+      syncForm();
     }
   });
   $('island-world').addEventListener('change', showWorldChoice);
