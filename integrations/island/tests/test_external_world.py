@@ -248,6 +248,17 @@ class ExternalCheck(RunnerFixture):
 
 
 class SupervisorWiring(RunnerFixture):
+    def test_bad_watch_configuration_keeps_proof_that_execution_never_started(self):
+        self.start("mesa-island")
+        self.config["worldHealthSeconds"] = "not-a-number"
+        args = runner.parse(["supervise", "--run-id", RUN])
+        with mock.patch.object(runner.episode, "execute") as execute:
+            runner.action_supervise(self.config, args)
+        execute.assert_not_called()
+        state = json.loads((self.root / "runs" / RUN / "state.json").read_text())
+        self.assertEqual((state["phase"], state["outcome"], state["localStopped"]),
+                         ("finished", "failed", True))
+
     def supervise(self, world):
         with FakeWorld() as fake:
             fake.world_id, fake.access = "living-island", TOKEN

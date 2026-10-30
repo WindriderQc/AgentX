@@ -599,13 +599,13 @@ def action_supervise(config: dict, args) -> dict:
             setattr(a, field, config.get(key, getattr(a, field)))
         a.netcheck_blocked_url = config.get("netcheckBlocked") or []
         a.episode_minutes = float(config["episodeMinutes"])
-        execution_entered = True
-        receipt["localStopped"] = False
         a.world_health_seconds = float(config.get("worldHealthSeconds", 30))
         a.world_down_seconds = float(config.get("worldDownSeconds", 120))
         # A remote world can fall or be switched while the agent plays: the run watches it.
         port = a.port
         health = (lambda: world_healthy(port)) if request.get("worldKind") == "remote" else None
+        execution_entered = True
+        receipt["localStopped"] = False
         episode.execute(a, prepared_workspace=workspace, on_event=event, world_health=health)
 
         receipt = read_json(run / "receipt.json") or receipt
