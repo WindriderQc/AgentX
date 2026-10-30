@@ -1,5 +1,6 @@
 <main class="tr-shell" lang="fr">
   <header class="tr-header"><div><p class="tr-eyebrow">VOTRE BIBLIOTHÈQUE AUDIO</p><h1>Une vidéo. Le texte, à votre rythme.</h1><p>Transcrivez sur votre matériel et retrouvez chaque passage, quand vous en avez besoin.</p></div><span class="tr-local"><i class="fas fa-house" aria-hidden="true"></i> Reconnaissance locale</span></header>
+  <section id="transcriptionFlow" class="tr-flow" aria-label="Chemin de la transcription"></section>
   <div class="tr-layout">
     <section class="tr-compose" aria-labelledby="newTitle">
       <p class="tr-eyebrow">NOUVELLE TRANSCRIPTION</p><h2 id="newTitle">Qu’allez-vous écouter ?</h2>
@@ -12,7 +13,7 @@
         <div id="scheduleFields" hidden><label for="startLocal">Date et heure</label><input id="startLocal" type="datetime-local" step="60"><label for="timeZone">Fuseau horaire</label><input id="timeZone" list="timeZones" required autocomplete="off"><datalist id="timeZones"><option value="America/Toronto"><option value="Europe/Paris"><option value="UTC"></datalist><p id="schedulePreview" class="tr-help"></p></div>
         <p class="tr-warning"><i class="fas fa-microphone-lines" aria-hidden="true"></i> Pendant le traitement, les réponses vocales peuvent être plus lentes.</p>
         <button id="submitTranscription" class="tr-button tr-primary" type="submit"><i class="fas fa-plus" aria-hidden="true"></i> Transcrire la vidéo</button>
-        <p class="tr-help">Vous pouvez fermer cette page : la tâche et son résultat restent sur le serveur.</p>
+        <p class="tr-help">Vous pouvez fermer cette page : la tâche et son résultat restent sur le serveur. Langue et fuseau sont mémorisés sur cet appareil.</p>
         <p id="formError" role="alert" class="tr-error"></p>
       </form>
     </section>
