@@ -1,0 +1,249 @@
+{
+  "secret": [
+    {
+      "name": "private-key",
+      "text": "-----BEGIN RSA PRIVATE KEY-----"
+    },
+    {
+      "name": "openai",
+      "text": "sk-aaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "ghp",
+      "text": "ghp_AAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "gho",
+      "text": "gho_AAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "ghu",
+      "text": "ghu_AAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "ghs",
+      "text": "ghs_AAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "ghr",
+      "text": "ghr_AAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "fine-grained",
+      "text": "github_pat_AAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "slack",
+      "text": "xoxb-aaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "password",
+      "text": "password: abcde12345"
+    },
+    {
+      "name": "passwd",
+      "text": "passwd: abcde12345"
+    },
+    {
+      "name": "secret",
+      "text": "secret: abcde12345"
+    },
+    {
+      "name": "token",
+      "text": "token: abcde12345"
+    },
+    {
+      "name": "api_key",
+      "text": "api_key: abcde12345"
+    },
+    {
+      "name": "access_token",
+      "text": "access_token: abcde12345"
+    },
+    {
+      "name": "refresh-token",
+      "text": "refresh-token: abcde12345"
+    },
+    {
+      "name": "client_secret",
+      "text": "client_secret: abcde12345"
+    },
+    {
+      "name": "minimum-assignment",
+      "text": "password: abcde123"
+    },
+    {
+      "name": "quoted-assignment",
+      "text": "password = \"abcde12345\""
+    },
+    {
+      "name": "redis-empty-user",
+      "text": "redis://:synthetic123@fixture.invalid:6379"
+    },
+    {
+      "name": "https-empty-user",
+      "text": "https://:synthetic123@fixture.invalid/path"
+    },
+    {
+      "name": "mongodb",
+      "text": "mongodb://fixture:synthetic123@fixture.invalid/db"
+    },
+    {
+      "name": "bearer",
+      "text": "Bearer abcDEF123456789012345"
+    },
+    {
+      "name": "authorization",
+      "text": "Authorization: Basic QWxhZGRpbjpvcGVuc2VzYW1l"
+    },
+    {
+      "name": "aws",
+      "text": "AKIAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "jwt",
+      "text": "eyJaaaaaaaaaaaa.bbbbbbbbbbbb.cccccccc"
+    },
+    {
+      "name": "quoted-json-key",
+      "text": "'password': 'fixture123'"
+    },
+    {
+      "name": "punctuated-password",
+      "text": "password: Fi!2@e#8"
+    },
+    {
+      "name": "rediss-empty-user",
+      "text": "rediss://:fixture123@fixture.invalid:6379"
+    },
+    {
+      "name": "quoted-json-api-key",
+      "text": "{\"api_key\": \"Fi!2@e#8\"}"
+    }
+  ],
+  "safe": [
+    "Prefer concise replies and local-first tooling.",
+    "The token bucket algorithm is useful.",
+    "My password manager is great.",
+    "https://fixture.invalid:8443/docs",
+    "redis://fixture.invalid:6379",
+    "Contact fixture@example.invalid.",
+    "api_key is configured outside Git.",
+    "\"password\": \"short\"",
+    "password = \"\"",
+    "secret: tiny",
+    "redis://:@fixture.invalid:6379"
+  ],
+  "unicodeSafe": [
+    {
+      "name": "family",
+      "text": "Synthetic family: \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67"
+    },
+    {
+      "name": "profession-skin",
+      "text": "Synthetic profession: \ud83d\udc69\ud83c\udffd\u200d\u2695\ufe0f"
+    },
+    {
+      "name": "rainbow-flag",
+      "text": "Synthetic flag: \ud83c\udff3\ufe0f\u200d\ud83c\udf08"
+    },
+    {
+      "name": "trans-flag",
+      "text": "Synthetic flag: \ud83c\udff3\ufe0f\u200d\u26a7\ufe0f"
+    },
+    {
+      "name": "couple",
+      "text": "Synthetic couple: \ud83d\udc69\u200d\u2764\ufe0f\u200d\ud83d\udc69"
+    },
+    {
+      "name": "persian",
+      "text": "\u0645\u06cc\u200c\u0631\u0648\u0645"
+    },
+    {
+      "name": "devanagari-zwj",
+      "text": "\u0915\u094d\u200d\u0937"
+    },
+    {
+      "name": "devanagari-zwnj",
+      "text": "\u0915\u094d\u200c\u0937"
+    },
+    {
+      "name": "bengali-joiner",
+      "text": "\u0995\u09cd\u200c\u09b7"
+    },
+    {
+      "name": "arabic-mark-joiner",
+      "text": "\u0628\u064e\u200c\u062a"
+    },
+    {
+      "name": "recent-telugu-letter",
+      "text": "\u0c5c\u200c\u0c5c"
+    },
+    {
+      "name": "recent-kannada-letter",
+      "text": "\u0cdc\u200c\u0cdc"
+    },
+    {
+      "name": "recent-arabic-mark",
+      "text": "\u0645\u0897\u200c\u0645"
+    },
+    {
+      "name": "recent-kannada-mark",
+      "text": "\u0c95\u0cf3\u200c\u0c95"
+    }
+  ],
+  "unicodeUnsafe": [
+    {
+      "name": "bidi",
+      "text": "a\u202eb"
+    },
+    {
+      "name": "zero-space",
+      "text": "a\u200bb"
+    },
+    {
+      "name": "latin-zwj",
+      "text": "pass\u200dword"
+    },
+    {
+      "name": "latin-zwnj",
+      "text": "to\u200cken"
+    },
+    {
+      "name": "lone",
+      "text": "\u200d"
+    },
+    {
+      "name": "double",
+      "text": "\ud83d\udc69\u200d\u200d\ud83d\udc67"
+    },
+    {
+      "name": "emoji-zwnj",
+      "text": "\ud83d\udc69\u200c\ud83d\udc67"
+    },
+    {
+      "name": "ltr",
+      "text": "a\u200eb"
+    },
+    {
+      "name": "word-joiner",
+      "text": "a\u2060b"
+    },
+    {
+      "name": "mixed-script-joiner",
+      "text": "\u0645\u200cA"
+    },
+    {
+      "name": "mixed-indic-joiner",
+      "text": "\u0915\u094d\u200d\u0995"
+    },
+    {
+      "name": "emoji-letter-joiner",
+      "text": "\ud83d\udc69\u200dA"
+    },
+    {
+      "name": "double-script-joiner",
+      "text": "\u0645\u200c\u200c\u0645"
+    }
+  ]
+}
