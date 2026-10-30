@@ -296,7 +296,7 @@ async function launch(input = {}, deps = {}) {
 async function openReplay(id, deps = {}) {
   const d = defaults(deps);
   if (!UUID.test(id || '')) throw new IslandError('Run id needs a queue request id');
-  const doc = await IslandRun.findById(id).select('recording phase agent world').lean();
+  const doc = await IslandRun.findById(id).select('recording phase agent world worldView').lean();
   return islandViews(d.env).replayUrl(doc, { fetchImpl: d.fetchImpl });
 }
 
