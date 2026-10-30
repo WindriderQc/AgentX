@@ -180,6 +180,32 @@ class HarnessEpisode(unittest.TestCase):
                 self.assertTrue(env["AGENTX_LLM_TOKEN"])
                 self.assertNotIn("AGENTX_LLM_CONTEXT_WINDOW", env)
 
+    def test_harness_node_reaches_the_agent_but_not_the_world(self):
+        seen = {}
+        world_cls, agent_cls = self.runtime.World, self.runtime.Agent
+
+        class World(world_cls):
+            def start(self, **kw):
+                seen["world"] = os.environ.get("PATH", "")
+                return super().start(**kw)
+
+        class Agent(agent_cls):
+            def start(self, **kw):
+                seen["agent"] = os.environ.get("PATH", "")
+                return super().start(**kw)
+
+        self.runtime.World, self.runtime.Agent = World, Agent
+        a = self.args("pi")
+        a.node_bin = self.root / "node" / "bin"
+        before = os.environ.get("PATH", "")
+        try:
+            code, receipt = self.run_episode(a)
+        finally:
+            os.environ["PATH"] = before
+        self.assertEqual(code, 0, receipt)
+        self.assertNotIn(str(a.node_bin), seen["world"])
+        self.assertTrue(seen["agent"].startswith(str(a.node_bin) + os.pathsep))
+
     def test_codex_keeps_responses_and_its_token_name(self):
         env = run_island.harness_env("codex", SimpleNamespace(port=41000, capability="cap"), 8443, 65536)
         self.assertEqual(env, {"CLAWBLOX_NET_ALLOW": "127.0.0.1:41000@8443", "AGENTX_LLM_CODEX_TOKEN": "cap"})

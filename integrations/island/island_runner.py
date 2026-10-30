@@ -468,10 +468,8 @@ def action_supervise(config: dict, args) -> dict:
     try:
         state["memorySource"] = seed_workspace(workspace, templates, store, request["memory"])
         save()
-        # nodeBin: a Node runtime for the Node harnesses (pi needs >= 22.19), ahead of the system one.
-        for key in ("nodeBin", "clawbloxBin"):
-            if config.get(key):
-                os.environ["PATH"] = str(Path(config[key]).expanduser()) + os.pathsep + os.environ.get("PATH", "")
+        if config.get("clawbloxBin"):
+            os.environ["PATH"] = str(Path(config["clawbloxBin"]).expanduser()) + os.pathsep + os.environ.get("PATH", "")
         a = episode.parser().parse_args(["--run-dir", str(run), "--templates-dir", str(templates),
                                         "--world-dir", str(Path(config["worldsRoot"]).expanduser() / request["world"])])
         a.name, a.minutes, a.netcheck = request["agent"], float(request["minutes"]), request["netcheck"]
@@ -482,6 +480,8 @@ def action_supervise(config: dict, args) -> dict:
         a.codex = harness_binary(config, "codex")
         a.harness_bin = harness_binary(config, a.harness) if a.harness != "codex" else None
         a.max_output_tokens = config.get("maxOutputTokens")
+        # nodeBin (pi needs Node >= 22.19) reaches the agent only, after the world has started.
+        a.node_bin = Path(config["nodeBin"]).expanduser() if config.get("nodeBin") else None
         a.context_window = request.get("contextWindow")
         for field, key in [("memory_warning_minutes", "memoryWarningMinutes"), ("startup_seconds", "startupSeconds"),
                            ("stall_after_turn_seconds", "stallAfterTurnSeconds"), ("stall_idle_seconds", "stallIdleSeconds"),
