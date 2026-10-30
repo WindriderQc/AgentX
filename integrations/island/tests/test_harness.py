@@ -343,19 +343,21 @@ class TurnLoop(unittest.TestCase):
         self.tmp.cleanup()
 
     def loop(self, kind, *extra, turns=2, env=None):
+        # Each invocation waits for its own calls, never those of a prior loop.
+        before = len(self.log.read_text().splitlines()) if self.log.exists() else 0
         argv = [sys.executable, str(KIT / "harness_loop.py"), "--kind", kind, "--state-dir", str(self.root / "state"),
                 "--prompt", "Begin.", "--continue-prompt", "Keep going", *extra,
                 "--", sys.executable, str(self.fake), kind, str(self.log)]
         child = subprocess.Popen(argv, cwd=self.root, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                  env={**os.environ, "AGENTX_LLM_TOKEN": "ephemeral", **(env or {})})
         deadline = time.monotonic() + 30
-        while time.monotonic() < deadline and (not self.log.exists() or sum(1 for _ in open(self.log)) < turns):
+        while time.monotonic() < deadline and (not self.log.exists() or len(self.log.read_text().splitlines()) < before + turns):
             if child.poll() is not None:
                 break
             time.sleep(0.05)
         child.send_signal(signal.SIGTERM)
         out, err = child.communicate(timeout=15)
-        return child.returncode, out, err, [json.loads(line) for line in open(self.log)] if self.log.exists() else []
+        return child.returncode, out, err, [json.loads(line) for line in self.log.read_text().splitlines()] if self.log.exists() else []
 
     def rollout(self, session):
         path = self.root / "state" / "sessions" / f"rollout-{session}.jsonl"

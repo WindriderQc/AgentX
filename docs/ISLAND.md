@@ -45,6 +45,12 @@ rien.** Le départ demande deux choses :
 Core ne démarre jamais une partie seul : le lancement automatique
 (`autoStart`) et « Run now » refusent ce type de demande.
 
+Si la réponse de « Lancer » est perdue, le formulaire garde la même demande
+pour réessayer (également après rechargement si le stockage de session du
+navigateur est disponible). Benchmark retrouve sa clé dans Core avant toute
+nouvelle soumission ; il ne recrée pas une demande avec une nouvelle fenêtre.
+Pendant cette incertitude, les paramètres restent ceux du premier clic.
+
 ## La demande de file
 
 Une partie est une demande `kind: "other"` avec un exécuteur typé. Elle ne
