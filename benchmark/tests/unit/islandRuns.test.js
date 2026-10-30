@@ -38,6 +38,23 @@ function report(extra = {}) {
 }
 
 describe('island run service', () => {
+  it('retains a remote world recording receipt and filters untrusted paths', async () => {
+    await islands.recordReport(ID, report({
+      worldPrepared: { world: 'living-island', recordDir: '/data/recordings/run-1', token: 'never-kept' },
+      status: { phase: 'running', worldKind: 'remote', remoteWorld: { world: 'living-island' } }
+    }));
+    expect((await IslandRun.findById(ID).lean()).worldView).toEqual({
+      kind: 'remote', world: 'living-island', recordDir: '/data/recordings/run-1'
+    });
+    await islands.recordReport(ID, report({
+      worldPrepared: { world: '../wrong', recordDir: '/data/../secret' },
+      status: { phase: 'finished', worldKind: 'remote', remoteWorld: { world: 'living-island' } }
+    }));
+    expect((await IslandRun.findById(ID).lean()).worldView).toEqual({
+      kind: 'remote', world: 'living-island', recordDir: null
+    });
+  });
+
   it('keeps only typed report fields and refuses another dispatch of the same request', async () => {
     await islands.recordReport(ID, report());
     const saved = await IslandRun.findById(ID).lean();

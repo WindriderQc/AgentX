@@ -157,6 +157,7 @@ Réglages de l'outil de file (environnement de l'hôte d'opération) :
 | `AGENTX_ISLAND_RUNNER_SCRIPT` | chemin absolu de `island_runner.py` sur l'hôte d'exécution |
 | `AGENTX_ISLAND_RUNNER_PYTHON` | interpréteur qui voit le module `clawblox` (le venv), `python3` par défaut |
 | `AGENTX_ISLAND_RUNNER_LABEL` | nom affiché dans l'onglet (sinon la cible SSH) |
+| `AGENTX_ISLAND_WORLD_PREPARE` | exécutable d'instance facultatif : vérifie puis prépare le monde après la barrière de dispatch, avant le départ du runner ; contrat dans [le guide du runner](../integrations/island/README.md#remote-worlds) |
 | `AGENTX_ACTION_RECEIPTS_DIR` | dossier privé des reçus (déjà utilisé par Benchmark) |
 
 Réglages de l'hôte d'exécution, dans `~/.config/agentx/island-runner.json`

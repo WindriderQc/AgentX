@@ -21,6 +21,8 @@ const MAX_MEMORY_TEXT = 256 * 1024;
 const START_WINDOW_HOURS = 48;
 const AGENT_MESSAGES = 40;
 const AGENT_KINDS = new Set(['thought', 'say', 'command']);
+const WORLD_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const RECORD_DIR = /^[\w./-]{1,300}$/;
 
 class IslandError extends Error {
   constructor(message, statusCode = 400) { super(message); this.statusCode = statusCode; }
@@ -179,6 +181,15 @@ async function recordReport(id, body = {}) {
     set.agentMessages = status.agentMessages.slice(-AGENT_MESSAGES)
       .map(entry => ({ at: text(entry?.at, 40) || '', kind: entry?.kind, text: text(entry?.text, 600) }))
       .filter(entry => AGENT_KINDS.has(entry.kind) && entry.text);
+  }
+  // Where the agent played. A remote world names its own world id and recording folder.
+  if (['local', 'remote'].includes(status.worldKind)) {
+    const remote = status.worldKind === 'remote';
+    const prepared = body.worldPrepared && typeof body.worldPrepared === 'object' ? body.worldPrepared : {};
+    const world = [prepared.world, status.remoteWorld?.world].find(value => typeof value === 'string' && WORLD_ID.test(value));
+    const recordDir = typeof prepared.recordDir === 'string' && RECORD_DIR.test(prepared.recordDir) && !prepared.recordDir.includes('..')
+      ? prepared.recordDir : null;
+    set.worldView = { kind: status.worldKind, world: remote ? world || null : executor.world, recordDir: remote ? recordDir : null };
   }
   const live = status.liveView;
   set.liveView = live && Number.isInteger(live.port) && live.port > 0 && live.port < 65536 && typeof live.path === 'string' && live.path.startsWith('/')

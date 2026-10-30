@@ -13,7 +13,7 @@ from pathlib import Path
 
 KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT))
-from remote_world import MAX_BODY, RemoteWorldRelay, parse_target  # noqa: E402
+from remote_world import ACCESS_HEADER, MAX_BODY, RemoteWorldRelay, Upstream, parse_target, read_access_token  # noqa: E402
 
 PNG = b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 4
 
@@ -24,6 +24,11 @@ class FakeWorld:
     def __init__(self):
         self.calls = []
         calls = self.calls
+        # world_id: /healthz answers {ok, tick, world} like a GraphysX world service (None: legacy
+        # shape). access: the token an instance proxy would demand on the agent routes.
+        self.world_id = None
+        self.access = None
+        fake = self
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *_):
@@ -43,6 +48,11 @@ class FakeWorld:
                 body = self.rfile.read(length) if length else b""
                 calls.append({"method": self.command, "path": self.path, "headers": dict(self.headers), "body": body})
                 path = self.path.partition("?")[0]
+                if fake.access is not None and path != "/healthz" and self.headers.get(ACCESS_HEADER) != fake.access:
+                    return self.answer(403, b"Island access token required", "text/plain")
+                if path == "/healthz" and (fake.world_id is not None or fake.access is not None):
+                    extra = {"world": fake.world_id} if fake.world_id else {}
+                    return self.answer(200, json.dumps({"ok": True, "tick": 7, **extra}).encode())
                 if path == "/observe/image":
                     return self.answer(200, PNG, "image/png")
                 if path == "/redirect-me" or self.headers.get("X-Session") == "redirect":
@@ -211,6 +221,144 @@ class CommandTests(unittest.TestCase):
                                     env={**os.environ, **env}, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 2, env)
 
+
+TOKEN = "t" * 40
+
+
+class AccessAndWorldGuardTests(unittest.TestCase):
+    def setUp(self):
+        self.world = FakeWorld().__enter__()
+        self.world.world_id = "living-island"
+        self.world.access = TOKEN
+        self.lines = []
+
+    def tearDown(self):
+        self.world.__exit__(None, None, None)
+
+    def test_access_header_reaches_the_world_but_never_the_agent_or_the_log(self):
+        with RemoteWorldRelay(self.world.url, log=self.lines.append, access_token=TOKEN) as relay:
+            status, headers, body = request(relay.port, "POST", "/join?name=Eko", headers={ACCESS_HEADER: "forged-by-agent"})
+            self.assertEqual(status, 200)
+            self.assertEqual(self.world.calls[-1]["headers"].get(ACCESS_HEADER), TOKEN, "the runner's token replaces any caller value")
+            self.assertNotIn(TOKEN, json.dumps(headers) + body.decode())
+            for method, path in [("GET", "/observe"), ("POST", "/input"), ("GET", "/api.md"), ("GET", "/observe/image")]:
+                request(relay.port, method, path, headers={"X-Session": "s-1"})
+                self.assertEqual(self.world.calls[-1]["headers"].get(ACCESS_HEADER), TOKEN, path)
+        self.assertFalse(any(TOKEN in line for line in self.lines), "the access token is never logged")
+
+    def test_without_the_token_the_gate_refuses(self):
+        with RemoteWorldRelay(self.world.url, log=lambda _: None) as relay:
+            self.assertEqual(request(relay.port, "POST", "/join?name=Eko")[0], 403)
+
+    def test_healthz_turns_503_when_the_shared_world_changes(self):
+        with RemoteWorldRelay(self.world.url, log=lambda _: None, access_token=TOKEN, expect_world="living-island") as relay:
+            self.assertEqual(request(relay.port, "GET", "/healthz")[0], 200)
+            self.world.world_id = "mesa-island"  # an operator switched the island under the run
+            status, _, body = request(relay.port, "GET", "/healthz")
+            self.assertEqual(status, 503)
+            self.assertIn("mesa-island, not living-island", json.loads(body)["error"])
+
+    def test_legacy_healthz_counts_as_mesa(self):
+        self.world.world_id = None
+        upstream = Upstream(self.world.url, access_token=TOKEN)
+        self.assertTrue(upstream.check("mesa-island")["ok"])
+        self.assertEqual(upstream.check("living-island")["problems"], ["the remote world runs mesa-island, not living-island"])
+
+    def test_check_reports_world_gate_and_reachability(self):
+        good = Upstream(self.world.url, access_token=TOKEN).check("living-island")
+        self.assertEqual((good["ok"], good["world"], good["tick"], good["accessHeader"]), (True, "living-island", 7, True))
+        self.assertNotIn(TOKEN, json.dumps(good))
+        gated = Upstream(self.world.url).check("living-island")
+        self.assertFalse(gated["ok"])
+        self.assertIn("/api.md answered 403 (access gate or world)", gated["problems"])
+        self.assertFalse(any(call["path"].startswith("/join") for call in self.world.calls), "a check never joins")
+        down = FakeWorld()
+        port = down.server.server_port
+        down.server.server_close()
+        gone = Upstream(f"http://127.0.0.1:{port}", access_token=TOKEN).check("living-island")
+        self.assertEqual(gone["problems"][0], "/healthz answered 502")
+
+
+class AccessTokenFileTests(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        self.dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def write(self, name, text, mode=0o600):
+        path = self.dir / name
+        path.write_text(text)
+        path.chmod(mode)
+        return path
+
+    def test_reads_a_private_token(self):
+        self.assertEqual(read_access_token(str(self.write("ok", TOKEN + "\n"))), TOKEN)
+
+    def test_refuses_shared_symlinked_missing_or_malformed_files(self):
+        shared = self.write("shared", TOKEN, 0o644)
+        link = self.dir / "link"
+        link.symlink_to(self.write("target", TOKEN))
+        for path, why in [(shared, "group or others"), (link, "regular file"), (self.dir / "absent", "unreadable"),
+                          (self.write("short", "abc"), "32 to 512"), (self.write("spaces", "a b" * 20), "32 to 512")]:
+            with self.assertRaises(ValueError, msg=str(path)) as caught:
+                read_access_token(str(path))
+            self.assertIn(why, str(caught.exception))
+
+
+class GuardedCommandTests(unittest.TestCase):
+    def free_port(self):
+        probe = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
+        port = probe.server_port
+        probe.server_close()
+        return port
+
+    def test_probe_prints_one_json_line_and_serves_nothing(self):
+        import tempfile
+        with FakeWorld() as world, tempfile.TemporaryDirectory() as tmp:
+            world.world_id, world.access = "living-island", TOKEN
+            token = Path(tmp) / "world.token"
+            token.write_text(TOKEN)
+            token.chmod(0o600)
+            env = {key: value for key, value in os.environ.items() if not key.startswith("WORLD_")}
+            base = [sys.executable, "-I", str(KIT / "remote_world.py"), "--target", world.url, "--probe"]
+            ok = subprocess.run(base + ["--expect-world", "living-island", "--access-token-file", str(token)],
+                                env=env, capture_output=True, text=True, timeout=20)
+            self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
+            self.assertTrue(json.loads(ok.stdout)["ok"])
+            self.assertNotIn(TOKEN, ok.stdout + ok.stderr)
+            wrong = subprocess.run(base + ["--expect-world", "mesa-island", "--access-token-file", str(token)],
+                                   env=env, capture_output=True, text=True, timeout=20)
+            self.assertEqual(wrong.returncode, 1)
+            self.assertIn("runs living-island, not mesa-island", json.loads(wrong.stdout)["problems"][0])
+            token.chmod(0o640)
+            shared = subprocess.run(base + ["--access-token-file", str(token)], env=env, capture_output=True, text=True, timeout=20)
+            self.assertEqual(shared.returncode, 1)
+            self.assertFalse(json.loads(shared.stdout)["ok"])
+            self.assertFalse(any(call["path"].startswith("/join") for call in world.calls))
+
+    def test_start_refuses_another_world_before_listening(self):
+        with FakeWorld() as world:
+            world.world_id = "mesa-island"
+            port = self.free_port()
+            env = {**os.environ, "WORLD_HOST": "127.0.0.1", "WORLD_PORT": str(port), "WORLD_BASE_PATH": "/"}
+            result = subprocess.run([sys.executable, "-I", str(KIT / "remote_world.py"), "--target", world.url,
+                                     "--expect-world", "living-island"], env=env, capture_output=True, text=True, timeout=20)
+            self.assertEqual(result.returncode, 3)
+            self.assertIn("runs mesa-island, not living-island", result.stderr)
+            with self.assertRaises(OSError):
+                request(port, "GET", "/api.md")
+
+    def test_start_refuses_an_unreachable_world(self):
+        down = self.free_port()
+        port = self.free_port()
+        env = {**os.environ, "WORLD_HOST": "127.0.0.1", "WORLD_PORT": str(port), "WORLD_BASE_PATH": "/"}
+        result = subprocess.run([sys.executable, "-I", str(KIT / "remote_world.py"), "--target", f"http://127.0.0.1:{down}",
+                                 "--expect-world", "living-island"], env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 3)
+        self.assertIn("/healthz answered 502", result.stderr)
 
 if __name__ == "__main__":
     unittest.main()

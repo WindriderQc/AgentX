@@ -52,7 +52,58 @@ def codex_args(port, context):
             "-c", f"model_auto_compact_token_limit={int(context * 0.9)}"]
 
 
-def execute(a, runtime=None, clock=time, alive=pane_alive, activity=latest_activity, prepared_workspace=None, on_event=None):
+class WorldWatch:
+    """Whether the world still answers during the run (a remote world can fall or be switched).
+
+    `probe()` returns True while the world answers healthy. A world that keeps failing for
+    `down_seconds` fails the run: reaching the deadline with the agent talking to a dead world
+    is not a completed run.
+    """
+
+    def __init__(self, probe, every_seconds=30, down_seconds=120, note=None, sleep=time.sleep):
+        self.probe, self.every, self.down_limit, self.note, self.sleep = probe, every_seconds, down_seconds, note, sleep
+        self.last = None
+        self.down_since = None
+        self.summary = {"checks": 0, "failures": 0, "longestDownSeconds": 0}
+
+    def tick(self, now):
+        if self.last is not None and now - self.last < self.every:
+            return
+        self.last = now
+        self.summary["checks"] += 1
+        try:
+            healthy = bool(self.probe())
+        except Exception:
+            healthy = False
+        if healthy:
+            if self.down_since is not None and self.note:
+                self.note("world-back", downSeconds=round(now - self.down_since))
+            self.down_since = None
+            return
+        self.summary["failures"] += 1
+        if self.down_since is None:
+            self.down_since = now
+            if self.note: self.note("world-unreachable")
+        down = now - self.down_since
+        self.summary["longestDownSeconds"] = max(self.summary["longestDownSeconds"], round(down))
+        if down >= self.down_limit:
+            raise RuntimeError(f"world unreachable for {round(down)} s")
+
+    def final(self, attempts=3, pause=5):
+        """At the end the world must still answer, or the run did not end in its world."""
+        for attempt in range(attempts):
+            self.summary["checks"] += 1
+            try:
+                if self.probe(): return
+            except Exception:
+                pass
+            self.summary["failures"] += 1
+            if attempt + 1 < attempts: self.sleep(pause)
+        raise RuntimeError("world unreachable at the end of the run")
+
+
+def execute(a, runtime=None, clock=time, alive=pane_alive, activity=latest_activity, prepared_workspace=None, on_event=None,
+            world_health=None):
     run = a.run_dir.resolve()
     run.parent.mkdir(parents=True, exist_ok=True)
     if prepared_workspace is None:
@@ -67,6 +118,7 @@ def execute(a, runtime=None, clock=time, alive=pane_alive, activity=latest_activ
                "memoryFrom": str(a.memory_from.resolve()) if a.memory_from else None}
     atomic_json(run / "receipt.json", receipt)
     world = agent = proxy = None
+    watch = None
     stopped = False
     handlers = {}
     local_stopped = False
@@ -130,6 +182,8 @@ def execute(a, runtime=None, clock=time, alive=pane_alive, activity=latest_activ
                               binary=binary, sandbox=True, extra_args=extra,
                               auto_continue_prompt=CONTINUE)
         world.connect(agent=agent)
+        if world_health is not None:
+            watch = WorldWatch(world_health, getattr(a, "world_health_seconds", 30), getattr(a, "world_down_seconds", 120), note, clock.sleep)
         prompt = (a.templates_dir / "SYSTEM_PROMPT.md").read_text()
         if stopped: raise InterruptedError("episode stopped during startup")
         system_prompt = prompt.replace("${WORLD_AGENT_NAME}", a.name).replace("${WORKSPACE_DIR}", "/workspace")
@@ -151,6 +205,7 @@ def execute(a, runtime=None, clock=time, alive=pane_alive, activity=latest_activ
             while not stopped and clock.monotonic() < deadline:
                 current = clock.monotonic()
                 if not alive(started): raise RuntimeError("agent exited before episode end")
+                if watch: watch.tick(current)
                 # After a reset, only the new session counts as activity.
                 observed = activity(sessions) if since is None else activity(sessions, since=since)
                 seen_activity = seen_activity or bool(observed and observed.get("modelActivity"))
@@ -188,6 +243,7 @@ def execute(a, runtime=None, clock=time, alive=pane_alive, activity=latest_activ
             if not alive(started): raise RuntimeError("agent did not start after the context reset")
             index += 1
             note("episode", index=index, reason="context-reset")
+        if watch and not stopped: watch.final()
         receipt["activityObserved"] = seen_activity
         receipt["outcome"] = "stopped" if stopped else "completed"
     except InterruptedError:
@@ -195,6 +251,7 @@ def execute(a, runtime=None, clock=time, alive=pane_alive, activity=latest_activ
     except Exception as error:
         receipt.update(outcome="failed", error=str(error))
     finally:
+        if watch: receipt["worldHealth"] = watch.summary
         errors = []
         for obj, seconds in ((agent, 20), (world, 10)):
             if obj is not None:
@@ -237,6 +294,8 @@ def parser():
     p.add_argument("--max-nudges", type=int, default=30)
     p.add_argument("--netcheck", action="store_true")
     p.add_argument("--netcheck-blocked-url", action="append", default=[])
+    p.add_argument("--world-health-seconds", type=float, default=30, help="how often the runner reads the world's /healthz")
+    p.add_argument("--world-down-seconds", type=float, default=120, help="a world unreachable this long fails the run")
     return p
 
 

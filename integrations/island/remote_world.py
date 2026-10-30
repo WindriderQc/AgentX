@@ -15,8 +15,22 @@ reaches its own capability proxy, which reaches this relay). A non-loopback targ
 TLS with a verified certificate. Recording, resume and spectating belong to the remote
 world, which records itself.
 
+Two optional guards for a shared world (docs/ISLAND.md, "Se joindre à un monde déjà en marche"):
+
+- ``--access-token-file``: a private file (mode 0600, owned by the runner account, not a
+  symlink) whose value is sent as ``X-Island-Access`` on every relayed request, so the
+  instance proxy admits only this runner to the agent routes. The agent never sees it: this
+  process runs outside the sandbox and the header is never echoed back.
+- ``--expect-world``: the world id the remote server must report on ``/healthz``. The relay
+  refuses to start on another world, and answers its own ``/healthz`` with 503 when the
+  remote world changes during the run (the runner's watchdog then fails the run).
+
+``--probe`` checks the remote world once (``/healthz``, the expected world, ``/api.md``
+through the access gate) and prints one JSON line; it serves nothing and joins nothing.
+
   [run]
-  command = ["python3", "-I", "/path/to/remote_world.py", "--target", "https://world.example:18794"]
+  command = ["python3", "-I", "/path/to/remote_world.py", "--target", "https://world.example:18794",
+             "--expect-world", "living-island", "--access-token-file", "/home/eko/.config/agentx/world.token"]
 """
 from __future__ import annotations
 
@@ -25,8 +39,10 @@ import http.client
 import ipaddress
 import json
 import os
+import re
 import signal
 import ssl
+import stat
 import sys
 import threading
 import time
@@ -49,6 +65,12 @@ ROUTES = {
     ("GET", "/chat/messages"): True,
 }
 LOOPBACK_NAMES = ("localhost",)
+ACCESS_HEADER = "X-Island-Access"
+ACCESS_TOKEN = re.compile(r"^[A-Za-z0-9._~-]{32,512}$")
+WORLD_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+# World services from before the world selector (GraphysX-Web#94) answer /healthz without a
+# world id; they could only run Mesa.
+LEGACY_WORLD = "mesa-island"
 
 
 def is_loopback(host: str | None) -> bool:
@@ -72,14 +94,106 @@ def parse_target(value: str):
     return target
 
 
-class RemoteWorldRelay:
-    def __init__(self, target: str, host: str = "127.0.0.1", port: int = 0, timeout: float = 90,
-                 log=None, context: ssl.SSLContext | None = None):
-        if not is_loopback(host):
-            raise ValueError("the relay listens on loopback only")
+def read_access_token(path: str) -> str:
+    """The runner's world access token: a private regular file of this account, never a symlink."""
+    try:
+        info = os.lstat(path)
+    except OSError as error:
+        raise ValueError(f"access token file unreadable: {error.strerror}") from None
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError("access token file must be a regular file (no symlink)")
+    if info.st_mode & 0o077:
+        raise ValueError("access token file must not be readable by group or others (chmod 600)")
+    if hasattr(os, "getuid") and info.st_uid != os.getuid():
+        raise ValueError("access token file must belong to the runner account")
+    with open(path, "rb") as stream:
+        value = stream.read(1024).decode("ascii", errors="replace").strip()
+    if not ACCESS_TOKEN.match(value):
+        raise ValueError("access token file must hold one token of 32 to 512 URL-safe characters")
+    return value
+
+
+def world_of(health) -> str | None:
+    """The world id a /healthz answer names (legacy servers name none and run Mesa)."""
+    if not isinstance(health, dict) or health.get("ok") is not True:
+        return None
+    world = health.get("world", LEGACY_WORLD)
+    return world if isinstance(world, str) and WORLD_ID.match(world) else None
+
+
+class Upstream:
+    """One remote world origin: exact requests, verified TLS, the runner's access header."""
+
+    def __init__(self, target: str, timeout: float = 90, context: ssl.SSLContext | None = None,
+                 access_token: str | None = None):
         self.target = parse_target(target)
         self.timeout = timeout
         self.context = context or ssl.create_default_context()
+        if access_token is not None and not ACCESS_TOKEN.match(access_token):
+            raise ValueError("invalid access token")
+        self.access_token = access_token
+
+    def forward(self, method: str, target_path: str, headers: dict, body: bytes = b""):
+        target = self.target
+        # The access header is the runner's own; a caller never chooses it.
+        headers = {key: value for key, value in headers.items() if key.lower() != ACCESS_HEADER.lower()}
+        if self.access_token:
+            headers[ACCESS_HEADER] = self.access_token
+        if target.scheme == "https":
+            conn = http.client.HTTPSConnection(target.hostname, target.port or 443, timeout=self.timeout, context=self.context)
+        else:
+            conn = http.client.HTTPConnection(target.hostname, target.port or 80, timeout=self.timeout)
+        try:
+            conn.request(method, target_path, body=body or None, headers=headers)
+            response = conn.getresponse()
+            # Never pass a redirect or a cookie on to a model-controlled client.
+            if 300 <= response.status < 400:
+                return 502, "application/json", json.dumps({"error": "The remote world answered with a redirect"}).encode()
+            payload = response.read(MAX_RESPONSE + 1)
+            if len(payload) > MAX_RESPONSE:
+                return 502, "application/json", json.dumps({"error": "The remote world answer is too large"}).encode()
+            return response.status, response.getheader("Content-Type", "application/octet-stream"), payload
+        except (OSError, http.client.HTTPException) as error:
+            reason = "refusing TLS (certificate or protocol)" if isinstance(error, ssl.SSLError) else "unreachable"
+            return 502, "application/json", json.dumps({"error": f"The remote world is {reason}"}).encode()
+        finally:
+            conn.close()
+
+    def check(self, expect_world: str | None = None) -> dict:
+        """One read of the remote world: reachable, the expected world, agent routes admitted."""
+        problems = []
+        status, _type, payload = self.forward("GET", "/healthz", {"Connection": "close", "Accept": "application/json"})
+        try:
+            health = json.loads(payload) if status == 200 else None
+        except ValueError:
+            health = None
+        world = world_of(health)
+        if status != 200:
+            problems.append(f"/healthz answered {status}")
+        elif world is None:
+            problems.append("/healthz named no usable world")
+        elif expect_world and world != expect_world:
+            problems.append(f"the remote world runs {world}, not {expect_world}")
+        api_status, _type, _payload = self.forward("GET", "/api.md", {"Connection": "close", "Accept": "*/*"})
+        if api_status != 200:
+            problems.append(f"/api.md answered {api_status} (access gate or world)")
+        tick = health.get("tick") if isinstance(health, dict) and isinstance(health.get("tick"), int) else None
+        return {"ok": not problems, "target": f"{self.target.scheme}://{self.target.netloc}", "world": world,
+                "expected": expect_world, "tick": tick, "accessHeader": bool(self.access_token), "problems": problems}
+
+
+class RemoteWorldRelay:
+    def __init__(self, target: str, host: str = "127.0.0.1", port: int = 0, timeout: float = 90,
+                 log=None, context: ssl.SSLContext | None = None, access_token: str | None = None,
+                 expect_world: str | None = None):
+        if not is_loopback(host):
+            raise ValueError("the relay listens on loopback only")
+        if expect_world is not None and not WORLD_ID.match(expect_world):
+            raise ValueError("expected world needs a world id, for example living-island")
+        self.upstream = Upstream(target, timeout=timeout, context=context, access_token=access_token)
+        self.target = self.upstream.target
+        self.timeout = timeout
+        self.expect_world = expect_world
         self.log = log or (lambda line: print(line, flush=True))
         relay = self
 
@@ -141,6 +255,15 @@ class RemoteWorldRelay:
                     headers["Content-Type"] = self.headers.get("Content-Type", "application/json")
                     headers["Content-Length"] = str(len(body))
                 status, content_type, payload = relay.forward(self.command, self.path, headers, body)
+                if path == "/healthz" and relay.expect_world and status == 200:
+                    try:
+                        world = world_of(json.loads(payload))
+                    except ValueError:
+                        world = None
+                    if world != relay.expect_world:
+                        # The shared world was switched to another island: not this run's world.
+                        status, content_type = 503, "application/json"
+                        payload = json.dumps({"error": f"The remote world is {world or 'unknown'}, not {relay.expect_world}"}).encode()
                 self.reply(status, payload, content_type)
                 relay.note(self.command, path, status, started)
 
@@ -156,30 +279,11 @@ class RemoteWorldRelay:
         return self.server.server_port
 
     def note(self, method: str, path: str, status: int, started: float) -> None:
-        # Never the session token or the body: they belong to the agent's run.
+        # Never the session token, the access token or the body: they belong to the run.
         self.log(f"remote-world {status} {method} {path} {round((time.monotonic() - started) * 1000)}ms")
 
     def forward(self, method: str, target_path: str, headers: dict, body: bytes):
-        target = self.target
-        if target.scheme == "https":
-            conn = http.client.HTTPSConnection(target.hostname, target.port or 443, timeout=self.timeout, context=self.context)
-        else:
-            conn = http.client.HTTPConnection(target.hostname, target.port or 80, timeout=self.timeout)
-        try:
-            conn.request(method, target_path, body=body or None, headers=headers)
-            response = conn.getresponse()
-            # Never pass a redirect or a cookie on to a model-controlled client.
-            if 300 <= response.status < 400:
-                return 502, "application/json", json.dumps({"error": "The remote world answered with a redirect"}).encode()
-            payload = response.read(MAX_RESPONSE + 1)
-            if len(payload) > MAX_RESPONSE:
-                return 502, "application/json", json.dumps({"error": "The remote world answer is too large"}).encode()
-            return response.status, response.getheader("Content-Type", "application/octet-stream"), payload
-        except (OSError, http.client.HTTPException) as error:
-            reason = "refusing TLS (certificate or protocol)" if isinstance(error, ssl.SSLError) else "unreachable"
-            return 502, "application/json", json.dumps({"error": f"The remote world is {reason}"}).encode()
-        finally:
-            conn.close()
+        return self.upstream.forward(method, target_path, headers, body)
 
     def __enter__(self):
         self.thread.start()
@@ -195,7 +299,24 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--target", required=True, help="remote world origin, https://host:port")
     parser.add_argument("--timeout", type=float, default=90, help="seconds per relayed request (images take a while)")
+    parser.add_argument("--expect-world", help="world id the remote /healthz must report, for example living-island")
+    parser.add_argument("--access-token-file", help="private file whose token is sent as X-Island-Access")
+    parser.add_argument("--probe", action="store_true", help="check the remote world once, print JSON, serve nothing")
     args = parser.parse_args(argv)
+    if args.expect_world is not None and not WORLD_ID.match(args.expect_world):
+        parser.error("--expect-world needs a world id")
+    try:
+        token = read_access_token(args.access_token_file) if args.access_token_file else None
+        upstream = Upstream(args.target, timeout=min(args.timeout, 20) if args.probe else args.timeout, access_token=token)
+    except ValueError as error:
+        if args.probe:
+            print(json.dumps({"ok": False, "problems": [str(error)]}), flush=True)
+            return 1
+        parser.error(str(error))
+    if args.probe:
+        result = upstream.check(args.expect_world)
+        print(json.dumps(result), flush=True)
+        return 0 if result["ok"] else 1
     # Clawblox's delegated-start contract (docs/world-interface.md): WORLD_HOST/PORT/BASE_PATH.
     host = os.environ.get("WORLD_HOST", "127.0.0.1")
     port = os.environ.get("WORLD_PORT", "")
@@ -203,8 +324,16 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("WORLD_PORT must be set by Clawblox")
     if os.environ.get("WORLD_BASE_PATH", "/") not in ("", "/"):
         parser.error("a remote world is served at /")
+    if args.expect_world:
+        # Never serve another island under this world's name: Clawblox then sees the world
+        # process exit before it is healthy, and the run fails before the agent starts.
+        found = upstream.check(args.expect_world)
+        if not found["ok"]:
+            print("remote world refused: " + "; ".join(found["problems"]), file=sys.stderr, flush=True)
+            return 3
     try:
-        relay = RemoteWorldRelay(args.target, host=host, port=int(port), timeout=args.timeout)
+        relay = RemoteWorldRelay(args.target, host=host, port=int(port), timeout=args.timeout,
+                                 access_token=token, expect_world=args.expect_world)
     except ValueError as error:
         parser.error(str(error))
     stop = threading.Event()
@@ -212,7 +341,9 @@ def main(argv: list[str] | None = None) -> int:
         signal.signal(sig, lambda *_: stop.set())
     with relay:
         target = relay.target
-        print(f"remote world relay on http://{host}:{relay.port} -> {target.scheme}://{target.netloc}", flush=True)
+        guard = f", world {args.expect_world}" if args.expect_world else ""
+        access = ", access header" if token else ""
+        print(f"remote world relay on http://{host}:{relay.port} -> {target.scheme}://{target.netloc}{guard}{access}", flush=True)
         stop.wait()
     return 0
 

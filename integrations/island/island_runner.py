@@ -34,6 +34,9 @@ import shutil
 import signal
 import subprocess
 import sys
+import tomllib
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import run_island as episode
@@ -160,6 +163,64 @@ def harness_problems(config: dict, harness: str, version) -> list[str]:
     return problems
 
 
+# ── remote worlds (remote_world.py, docs/ISLAND.md) ─────────────────────────
+
+REMOTE_WORLD_SCRIPT = "remote_world.py"
+REMOTE_PROBE_SECONDS = 45
+
+
+def remote_world(config: dict, world: str) -> dict | None:
+    """The remote world a world directory delegates to, or None for a world that runs here.
+
+    A delegated world's `[run] command` that runs AgentX's remote_world.py relays a world
+    already running elsewhere (for example the GraphysX island on the operator host).
+    """
+    manifest = Path(config["worldsRoot"]).expanduser() / world / "world.toml"
+    try:
+        command = tomllib.loads(manifest.read_text()).get("run", {}).get("command")
+    except (OSError, tomllib.TOMLDecodeError, AttributeError):
+        return None
+    if not isinstance(command, list) or not all(isinstance(part, str) for part in command):
+        return None
+    script = next((i for i, part in enumerate(command) if Path(part).name == REMOTE_WORLD_SCRIPT), None)
+    if script is None:
+        return None
+    flags, rest = {}, command[script + 1:]
+    for name, value in zip(rest, rest[1:]):
+        if name in ("--target", "--expect-world", "--access-token-file"):
+            flags[name] = value
+    return {"command": command, "origin": flags.get("--target"), "world": flags.get("--expect-world"),
+            "accessHeader": "--access-token-file" in flags}
+
+
+def probe_remote_world(info: dict) -> dict:
+    """One model-free read of the remote world from this host (remote_world.py --probe)."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("WORLD_")}
+    try:
+        result = subprocess.run([*info["command"], "--probe"], capture_output=True, text=True,
+                                timeout=REMOTE_PROBE_SECONDS, env=env, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return {"ok": False, "problems": [f"remote world probe did not answer: {type(error).__name__}"]}
+    try:
+        answer = json.loads((result.stdout.strip().splitlines() or [""])[-1])
+    except ValueError:
+        answer = None
+    if not isinstance(answer, dict):
+        return {"ok": False, "problems": ["remote world probe gave no answer"]}
+    problems = [str(item)[:300] for item in answer.get("problems") or []][:5]
+    return {"ok": result.returncode == 0 and answer.get("ok") is True and not problems,
+            "world": answer.get("world"), "problems": problems}
+
+
+def world_healthy(port: int, timeout: float = 10) -> bool:
+    """The world as the agent reaches it (for a remote world, through its relay) answers /healthz."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{int(port)}/healthz", timeout=timeout) as response:
+            return response.status == 200
+    except (OSError, urllib.error.URLError, ValueError):
+        return False
+
+
 # ── pure helpers (unit tested) ───────────────────────────────────────────────
 
 def render_system_prompt(template: str, agent: str) -> str:
@@ -282,9 +343,22 @@ def action_check(config: dict, _args) -> dict:
         problems.append("the clawblox Python module is not importable by this interpreter")
     harness = getattr(_args, "harness", None) or "codex"
     problems.extend(harness_problems(config, harness, version))
+    world = getattr(_args, "world", None)
+    world_kind = None
+    if world:
+        if not WORLD.match(world) or not (Path(config["worldsRoot"]).expanduser() / world).is_dir():
+            problems.append(f"world {world} is not installed on this runner")
+        else:
+            remote = remote_world(config, world)
+            world_kind = "remote" if remote else "local"
+            if remote:
+                found = probe_remote_world(remote)
+                if not found["ok"]:
+                    problems.append(f"remote world {world} unavailable: " + "; ".join(found["problems"] or ["no detail"]))
     playable = [name for name in HARNESSES if not harness_problems(config, name, version)]
     return {"ready": not problems, "problems": problems, "activeRun": active_run(config),
-            "worldPort": config["worldPort"], "model": PRINCIPAL_ALIAS, "harness": harness, "harnesses": playable}
+            "worldPort": config["worldPort"], "model": PRINCIPAL_ALIAS, "harness": harness, "harnesses": playable,
+            **({"world": world, "worldKind": world_kind} if world else {})}
 
 
 def action_start(config: dict, args) -> dict:
@@ -296,6 +370,7 @@ def action_start(config: dict, args) -> dict:
 
 
 def start_locked(config: dict, args) -> dict:
+    args.world = args.world or "mesa-island"
     if not NAME.match(args.agent or ""):
         raise RunnerError("INVALID", "agent needs a short name")
     if not WORLD.match(args.world or ""):
@@ -320,6 +395,14 @@ def start_locked(config: dict, args) -> dict:
     busy = active_run(config)
     if busy:
         raise RunnerError("RUNNER_BUSY", f"run {busy} is still active on this runner")
+    # A remote world is read before anything exists: unreachable, another island or a closed
+    # access gate refuses here, so nothing started and the queue lifts its mark.
+    remote = remote_world(config, args.world)
+    if remote:
+        found = probe_remote_world(remote)
+        if not found["ok"]:
+            raise RunnerError("WORLD_UNAVAILABLE", f"remote world {args.world} unavailable: "
+                              + "; ".join(found["problems"] or ["no detail"]))
     runs_root(config).mkdir(parents=True, exist_ok=True)
     try:
         run.mkdir()
@@ -327,7 +410,9 @@ def start_locked(config: dict, args) -> dict:
         raise RunnerError("RUN_EXISTS", "this run id already exists; read its status, never start it again")
     request = {"runId": args.run_id, "dispatchId": args.dispatch_id, "agent": args.agent, "harness": args.harness,
                "minutes": args.minutes, "memory": args.memory, "world": args.world,
-               "contextWindow": args.context_window, "netcheck": bool(args.netcheck), "requestedAt": now_iso()}
+               "contextWindow": args.context_window, "netcheck": bool(args.netcheck), "requestedAt": now_iso(),
+               "worldKind": "remote" if remote else "local",
+               "remoteWorld": {"origin": remote["origin"], "world": remote["world"]} if remote else None}
     write_json(run / "request.json", request)
     state = {"runId": args.run_id, "dispatchId": args.dispatch_id, "phase": "starting", "events": [],
              "requestedAt": request["requestedAt"], "timeZone": config.get("timeZone")}
@@ -434,6 +519,8 @@ def describe(config: dict, run_id: str) -> dict:
         "liveView": state.get("liveView") if phase == "running" else None,
         "recording": str(recordings[-1].relative_to(runs_root(config))) if recordings else None,
         "leftover": leftover, "processObservationOk": process_ok, "localStopped": state.get("localStopped") is True,
+        "worldKind": request.get("worldKind", "local"), "remoteWorld": request.get("remoteWorld"),
+        "worldHealth": state.get("worldHealth"),
         "agentMessages": agent_messages(run, request.get("agent"), harness=request.get("harness", "codex")),
     }
 
@@ -514,7 +601,13 @@ def action_supervise(config: dict, args) -> dict:
         a.episode_minutes = float(config["episodeMinutes"])
         execution_entered = True
         receipt["localStopped"] = False
-        episode.execute(a, prepared_workspace=workspace, on_event=event)
+        a.world_health_seconds = float(config.get("worldHealthSeconds", 30))
+        a.world_down_seconds = float(config.get("worldDownSeconds", 120))
+        # A remote world can fall or be switched while the agent plays: the run watches it.
+        port = a.port
+        health = (lambda: world_healthy(port)) if request.get("worldKind") == "remote" else None
+        episode.execute(a, prepared_workspace=workspace, on_event=event, world_health=health)
+
         receipt = read_json(run / "receipt.json") or receipt
     except Exception as error:
         receipt.update(outcome="failed", error=str(error), localStopped=not execution_entered)
@@ -527,6 +620,7 @@ def action_supervise(config: dict, args) -> dict:
         except Exception as error:
             receipt["outcome"] = "failed"
             event("memory-save-failed", {"error": str(error)})
+    if receipt.get("worldHealth"): state["worldHealth"] = receipt["worldHealth"]
     state.update(phase="finished", outcome=receipt["outcome"], endedAt=now_iso(), liveView=None,
                  localStopped=receipt.get("localStopped") is True, activityObserved=receipt.get("activityObserved") is True)
     save()
@@ -552,7 +646,7 @@ def parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--harness", default="codex", help="codex, dsh or pi")
     p.add_argument("--minutes", type=int, default=60)
     p.add_argument("--memory", default="continue")
-    p.add_argument("--world", default="mesa-island")
+    p.add_argument("--world", help="world directory name (start: mesa-island by default; check: also probes it)")
     p.add_argument("--context-window", type=int)
     p.add_argument("--netcheck", action="store_true", help="replace the harness by the sandbox probe; no inference")
     return p.parse_args(argv)

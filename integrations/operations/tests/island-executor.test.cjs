@@ -122,7 +122,7 @@ test('the harness reaches the runner only for dsh or pi; Codex keeps the histori
       await island.runIsland({ ...job, executor: withHarness }, core.client, deps(dir, runner));
       const start = calls.find(([a]) => a === 'start')[1];
       assert.equal(start.harness, expected, `harness ${harness}`);
-      assert.deepEqual(calls.find(([a]) => a === 'check')[1], { agent: executor.agent, ...(expected ? { harness: expected } : {}) });
+      assert.deepEqual(calls.find(([a]) => a === 'check')[1], { agent: executor.agent, ...(expected ? { harness: expected } : {}), world: executor.world });
       assert.ok(!('harness' in start) || expected, 'Codex never sends --harness');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
@@ -305,4 +305,108 @@ test('a lost finish reply resolves the same native terminal receipt without anot
     assert.equal(core.calls.filter(([e])=>e.endsWith('/begin')).length,1);
     assert.equal(core.calls.filter(([e])=>e.endsWith('/operator-finish')).length,1);
   } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+// ── shared worlds: the instance hook and the remote world refusals ──────────
+
+test('a world hook that is not ready refuses before the dispatch mark', async () => {
+  const dir = tempDir();
+  try {
+    const core = fakeCore();
+    const { runner, calls } = fakeRunner();
+    const hook = [];
+    const worldPrepare = async (action, world) => { hook.push([action, world]); throw new Error('World hook refused (check): world service down'); };
+    await assert.rejects(island.runIsland({ ...job }, core.client, deps(dir, runner, { worldPrepare })), /world service down/);
+    assert.deepEqual(hook, [['check', 'mesa-island']]);
+    assert.equal(core.calls.length, 0, 'no dispatch mark');
+    assert.ok(!calls.some(([a]) => a === 'start'));
+    assert.deepEqual(calls[0], ['check', { agent: 'Eko' }], 'the hook checks the terrain before switching; runner start validates it afterwards');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a failed world preparation lifts the mark as not started and never starts the runner', async () => {
+  const dir = tempDir();
+  try {
+    const core = fakeCore();
+    const { runner, calls } = fakeRunner();
+    const worldPrepare = async action => {
+      if (action === 'check') return { ok: true, managed: true, world: 'living-island' };
+      throw new Error('World hook refused (prepare): 409 agents on this island');
+    };
+    await assert.rejects(island.runIsland({ ...job }, core.client, deps(dir, runner, { worldPrepare })), /did not start/);
+    const recover = core.calls.find(([e]) => e.endsWith('/recover'));
+    assert.match(recover[1].receiptRef, /^island:not-started: WORLD_PREPARE: /);
+    assert.equal(recover[1].confirmation, 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED');
+    assert.ok(!calls.some(([a]) => a === 'start'));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a prepared world is recorded in the ledger, the reports and the receipt', async () => {
+  const dir = tempDir();
+  try {
+    const living = { ...executor, world: 'graphysx-living' };
+    const core = fakeCore({ ...job, executor: living });
+    const order = [];
+    const { runner } = fakeRunner();
+    const tracked = async (action, args) => { order.push(action); return runner(action, args); };
+    const prepared = { ok: true, managed: true, world: 'living-island', recordDir: '/data/recordings/20261030T040000Z-3-living-island', message: null };
+    const worldPrepare = async (action, world, request) => {
+      order.push(`hook:${action}`);
+      assert.equal(world, 'graphysx-living');
+      if (action === 'prepare') assert.equal(request, ID);
+      return prepared;
+    };
+    const d = deps(dir, tracked, { worldPrepare });
+    const done = await island.runIsland({ ...job, executor: living }, core.client, d);
+    assert.deepEqual(order.slice(0, 4), ['check', 'hook:check', 'hook:prepare', 'start']);
+    assert.equal(done.finishedWith.state, 'completed');
+    assert.deepEqual(d.reports[0][1].worldPrepared, prepared);
+    assert.ok(d.reports.every(([, body]) => body.worldPrepared?.recordDir === prepared.recordDir));
+    const receipt = JSON.parse(fs.readFileSync(path.join(dir, 'island', `${ID}-${DISPATCH}.receipt.json`)));
+    assert.deepEqual(receipt.evidence.worldPrepared, prepared);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'island', `${ID}.state.json`))).worldPrepared.world, 'living-island');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('a remote world the runner cannot reach is a not-started refusal', async () => {
+  const dir = tempDir();
+  try {
+    const core = fakeCore();
+    const { runner } = fakeRunner({ start: () => { throw Object.assign(new Error('remote world graphysx-living unavailable: /healthz answered 502'), { runnerRefused: true, code: 'WORLD_UNAVAILABLE' }); } });
+    await assert.rejects(island.runIsland({ ...job }, core.client, deps(dir, runner, { worldPrepare: null })), /did not start/);
+    const recover = core.calls.find(([e]) => e.endsWith('/recover'));
+    assert.match(recover[1].receiptRef, /^island:not-started: WORLD_UNAVAILABLE: /);
+    assert.ok(!core.calls.some(([e, body]) => e.endsWith('/record') && body?.state === 'uncertain'));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the world hook command: typed argv, one JSON line, cleaned fields, refusals', async () => {
+  const dir = tempDir();
+  try {
+    const script = path.join(dir, 'hook.cjs');
+    fs.writeFileSync(script, [
+      '#!/usr/bin/env node',
+      'const [action, world, request] = process.argv.slice(2);',
+      'if (world === "broken") { console.log("not json"); process.exit(0); }',
+      'if (world === "refused") { console.log(JSON.stringify({ ok: false, managed: true, message: "409 agents on this island" })); process.exit(1); }',
+      'console.log("noise first");',
+      'console.log(JSON.stringify({ ok: true, managed: world !== "mesa-island", world: world === "mesa-island" ? undefined : "living-island",',
+      '  recordDir: request ? "/data/recordings/x-1-living-island" : "../escape", token: "never-kept", action }));'
+    ].join('\n'), { mode: 0o700 });
+    assert.equal(island.worldPrepareConfig({}), null);
+    assert.equal(island.worldPrepareConfig({ AGENTX_ISLAND_WORLD_PREPARE: script }), script);
+    assert.throws(() => island.worldPrepareConfig({ AGENTX_ISLAND_WORLD_PREPARE: 'relative/hook' }), /absolute path/);
+    assert.throws(() => island.worldPrepareConfig({ AGENTX_ISLAND_WORLD_PREPARE: '/x; rm -rf /' }), /absolute path/);
+    const hook = island.createWorldPrepare(script);
+    const checked = await hook('check', 'graphysx-living');
+    assert.deepEqual(checked, { ok: true, managed: true, world: 'living-island', recordDir: null, message: null }, 'a path with .. is dropped, extra fields too');
+    const prepared = await hook('prepare', 'graphysx-living', ID);
+    assert.equal(prepared.recordDir, '/data/recordings/x-1-living-island');
+    assert.deepEqual(await hook('check', 'mesa-island'), { ok: true, managed: false, world: 'mesa-island', recordDir: null, message: null });
+    await assert.rejects(hook('check', 'refused'), /409 agents on this island/);
+    await assert.rejects(hook('check', 'broken'), /gave no answer/);
+    await assert.rejects(hook('prepare', 'graphysx-living'), /Invalid world preparation/);
+    await assert.rejects(hook('check', 'Bad World'), /Invalid world preparation/);
+    await assert.rejects(hook('select', 'graphysx-living'), /Invalid world preparation/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
