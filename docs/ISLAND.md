@@ -340,6 +340,48 @@ Points à vérifier pendant la migration :
   départ incertain, la course à la libération et le transfert de mémoire. Le
   netcheck n'a jamais de connexion vers un modèle.
 
+### Se joindre à un monde déjà en marche (`remote_world.py`)
+
+Ajouté le 2026-10-29 (America/Toronto). Le monde GraphysX peut tourner ailleurs que sur
+l'hôte de l'île (par exemple derrière le proxy HTTPS de l'instance). Le runner n'a pas
+besoin de changer : Clawblox sait déjà lancer un monde « délégué » décrit par un
+`world.toml` dont `[run] command` sert le protocole sur `WORLD_HOST:WORLD_PORT`.
+`integrations/island/remote_world.py` est cette commande : il ne sert rien lui-même et
+relaie seulement les routes d'agent vers le monde distant.
+
+```toml
+# <worldsRoot>/<monde>/world.toml (réglage de l'instance, pas dans ce dépôt)
+name = "Mesa island (GraphysX, distant)"
+[run]
+command = ["python3", "-I", "/chemin/vers/AgentX/integrations/island/remote_world.py", "--target", "https://monde.exemple:18794"]
+[scripts]
+main = "README.md"
+```
+
+- **Rien ne change dans l'isolation.** L'agent reste dans son bac à sable et n'atteint que
+  son relais de capacité ; ce relais atteint `remote_world.py` sur la boucle locale ; seul
+  `remote_world.py` (processus du monde, compte du runner) parle au monde distant. Ni le
+  correctif Clawblox ni `run_island.py` / `island_runner.py` ne changent.
+- **Routes relayées, liste exacte** : `GET /api.md`, `GET /healthz`, `POST /join`,
+  `POST /leave`, `GET /observe`, `GET /observe/image`, `POST /input`, `POST /chat`,
+  `GET /chat/messages` (requête permise seulement pour `join`, `observe/image` et
+  `chat/messages`). Tout le reste répond 404 sans atteindre le monde (`/snapshot`,
+  `/spectate`, autres méthodes, cibles absolues). Seuls `X-Session` et `Content-Type`
+  passent ; pas de redirection ni de cookie ; HTTPS vérifié obligatoire hors boucle
+  locale ; écoute sur la boucle locale seulement ; le journal ne contient jamais le jeton
+  de session.
+- **Vérifié sur devX le 2026-10-29** : netcheck natif du runner (`start --netcheck`) sur un
+  monde GraphysX local relayé par `remote_world.py` : **23 vérifications sur 23**, dont le
+  monde joint par le relais de capacité, et deux accès directs ajoutés à `netcheckBlocked`
+  (le monde lui-même et l'adresse HTTPS distante) refusés depuis le bac à sable. Arrêt :
+  `stopped`, nettoyage local prouvé, processus du relais terminé avec le monde.
+- **Ce que le monde distant garde pour lui** : l'enregistrement (le runner ne trouve pas de
+  `.clawrec` : `recording` vaut `null`), la reprise, le spectateur et la vue image. Le
+  runner ne donne pas encore de `liveView` pour un monde distant : l'onglet Île devra
+  ouvrir la vue GraphysX de ce monde (à faire dans Benchmark).
+- **Pare-feu de l'hôte de l'île** : le compte du runner doit pouvoir joindre l'adresse du
+  monde distant (réglage de l'instance).
+
 ## Conception (pas encore construite) : classer « a joué » contre « neuf »
 
 L'article mesure si le jeu libre rend l'agent meilleur sur quatre épreuves

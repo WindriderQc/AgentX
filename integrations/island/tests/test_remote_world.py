@@ -1,0 +1,216 @@
+"""remote_world.py: a running remote world relayed as a local Clawblox world. No network beyond loopback."""
+import http.client
+import json
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+KIT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(KIT))
+from remote_world import MAX_BODY, RemoteWorldRelay, parse_target  # noqa: E402
+
+PNG = b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 4
+
+
+class FakeWorld:
+    """A loopback world server that records what reaches it."""
+
+    def __init__(self):
+        self.calls = []
+        calls = self.calls
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+
+            def answer(self, status, body, content_type="application/json", extra=()):
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                for name, value in extra:
+                    self.send_header(name, value)
+                self.end_headers()
+                self.wfile.write(body)
+
+            def handle_any(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                body = self.rfile.read(length) if length else b""
+                calls.append({"method": self.command, "path": self.path, "headers": dict(self.headers), "body": body})
+                path = self.path.partition("?")[0]
+                if path == "/observe/image":
+                    return self.answer(200, PNG, "image/png")
+                if path == "/redirect-me" or self.headers.get("X-Session") == "redirect":
+                    return self.answer(302, b"", extra=[("Location", "https://elsewhere.invalid/")])
+                if path == "/join":
+                    return self.answer(200, json.dumps({"session": "s-1", "agent_id": "a-1"}).encode(),
+                                       extra=[("Set-Cookie", "world=private")])
+                if path == "/api.md":
+                    return self.answer(200, b"# Mesa World\n", "text/markdown; charset=utf-8")
+                return self.answer(200, json.dumps({"tick": 7, "path": self.path}).encode())
+
+            do_GET = do_POST = do_PUT = handle_any
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        # The TLS test sends a handshake to this plain server; its complaint is expected noise.
+        self.server.handle_error = lambda *_: None
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+
+    @property
+    def url(self):
+        return f"http://127.0.0.1:{self.server.server_port}"
+
+
+def request(port, method, path, body=b"", headers=None):
+    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    try:
+        conn.request(method, path, body=body or None, headers=headers or {})
+        response = conn.getresponse()
+        return response.status, dict(response.getheaders()), response.read()
+    finally:
+        conn.close()
+
+
+class RemoteWorldTests(unittest.TestCase):
+    def setUp(self):
+        self.world = FakeWorld().__enter__()
+        self.lines = []
+        self.relay = RemoteWorldRelay(self.world.url, log=self.lines.append).__enter__()
+
+    def tearDown(self):
+        self.relay.__exit__(None, None, None)
+        self.world.__exit__(None, None, None)
+
+    def test_relays_the_agent_surface_with_only_session_and_content_type(self):
+        status, headers, body = request(self.relay.port, "POST", "/join?name=Eko",
+                                        headers={"X-Session": "old-session", "Cookie": "c=1", "Authorization": "Bearer secret"})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["session"], "s-1")
+        self.assertNotIn("Set-Cookie", headers, "a cookie never reaches the agent")
+        seen = self.world.calls[-1]
+        self.assertEqual((seen["method"], seen["path"]), ("POST", "/join?name=Eko"))
+        self.assertEqual(seen["headers"].get("X-Session"), "old-session")
+        self.assertNotIn("Cookie", seen["headers"])
+        self.assertNotIn("Authorization", seen["headers"])
+        status, _, body = request(self.relay.port, "POST", "/input", json.dumps({"type": "Jump", "data": {}}).encode(),
+                                  {"X-Session": "s-1", "Content-Type": "application/json"})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(self.world.calls[-1]["body"]), {"type": "Jump", "data": {}})
+        self.assertEqual(self.world.calls[-1]["headers"]["Content-Type"], "application/json")
+        status, headers, body = request(self.relay.port, "GET", "/observe/image?width=320&height=180", headers={"X-Session": "s-1"})
+        self.assertEqual((status, headers["Content-Type"], body), (200, "image/png", PNG), "images pass through byte for byte")
+        self.assertEqual(request(self.relay.port, "GET", "/api.md")[2], b"# Mesa World\n")
+        for method, path in [("GET", "/observe"), ("GET", "/healthz"), ("POST", "/chat"), ("GET", "/chat/messages?limit=5"), ("POST", "/leave")]:
+            self.assertEqual(request(self.relay.port, method, path, headers={"X-Session": "s-1"})[0], 200, path)
+
+    def test_refuses_everything_else_without_reaching_the_world(self):
+        # http.server itself rewrites a leading "//" to "/", so "//observe" is the real route.
+        before = len(self.world.calls)
+        for method, path in [("GET", "/snapshot"), ("GET", "/spectate"), ("PUT", "/input"), ("GET", "/join"),
+                             ("GET", "/observe?x=1"), ("GET", "/api.md?x"), ("DELETE", "/observe"),
+                             ("GET", "/observe/"), ("GET", "/Observe"), ("GET", "/redirect-me")]:
+            self.assertEqual(request(self.relay.port, method, path)[0], 404, f"{method} {path}")
+        conn = http.client.HTTPConnection("127.0.0.1", self.relay.port, timeout=10)
+        conn.putrequest("GET", "http://127.0.0.1:1/observe", skip_host=True)
+        conn.putheader("Host", "x")
+        conn.endheaders()
+        self.assertEqual(conn.getresponse().status, 404, "an absolute target is not a route")
+        conn.close()
+        self.assertEqual(len(self.world.calls), before)
+
+    def test_bounds_bodies_headers_redirects_and_logs(self):
+        self.assertEqual(request(self.relay.port, "POST", "/chat", b"x" * (MAX_BODY + 1))[0], 413)
+        conn = http.client.HTTPConnection("127.0.0.1", self.relay.port, timeout=10)
+        conn.putrequest("GET", "/observe")
+        conn.putheader("X-Session", "a")
+        conn.putheader("X-Session", "b")
+        conn.endheaders()
+        self.assertEqual(conn.getresponse().status, 400, "one X-Session at most")
+        conn.close()
+        status, _, body = request(self.relay.port, "GET", "/observe", headers={"X-Session": "redirect"})
+        self.assertEqual(status, 502)
+        self.assertIn("redirect", json.loads(body)["error"])
+        self.assertTrue(any(line.startswith("remote-world 200 POST /") or line.startswith("remote-world 413 POST /chat") for line in self.lines))
+        self.assertFalse(any("redirect" in line or "s-1" in line for line in self.lines), "no session token in the log")
+
+    def test_unreachable_and_tls_failures_are_502(self):
+        down = FakeWorld()
+        port = down.server.server_port
+        down.server.server_close()
+        with RemoteWorldRelay(f"http://127.0.0.1:{port}", log=lambda _: None) as relay:
+            status, _, body = request(relay.port, "GET", "/observe")
+            self.assertEqual((status, json.loads(body)["error"]), (502, "The remote world is unreachable"))
+        # A plain HTTP server behind an https:// target fails the TLS handshake.
+        with RemoteWorldRelay(f"https://127.0.0.1:{self.world.server.server_port}", log=lambda _: None) as relay:
+            status, _, body = request(relay.port, "GET", "/observe")
+            self.assertEqual(status, 502)
+            self.assertIn("TLS", json.loads(body)["error"])
+
+
+class TargetAndListenerTests(unittest.TestCase):
+    def test_targets(self):
+        self.assertEqual(parse_target("https://agentx.example:18794").port, 18794)
+        self.assertEqual(parse_target("http://127.0.0.1:18120/").hostname, "127.0.0.1")
+        for bad in ["http://192.168.2.99:18794", "ftp://x", "https://user:pw@x", "https://x/path", "https://x?q=1", "https://"]:
+            with self.assertRaises(ValueError, msg=bad):
+                parse_target(bad)
+
+    def test_listens_on_loopback_only(self):
+        with self.assertRaises(ValueError):
+            RemoteWorldRelay("http://127.0.0.1:1", host="0.0.0.0")
+
+
+class CommandTests(unittest.TestCase):
+    def test_runs_as_a_clawblox_delegated_world(self):
+        with FakeWorld() as world:
+            probe = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
+            port = probe.server_port
+            probe.server_close()
+            env = {**os.environ, "WORLD_HOST": "127.0.0.1", "WORLD_PORT": str(port), "WORLD_BASE_PATH": "/",
+                   "WORLD_RECORD": "1", "WORLD_RECORD_DIR": "/nonexistent"}
+            proc = subprocess.Popen([sys.executable, "-I", str(KIT / "remote_world.py"), "--target", world.url],
+                                    env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                line = proc.stdout.readline()
+                self.assertIn(f"remote world relay on http://127.0.0.1:{port} -> http://127.0.0.1:", line)
+                deadline = time.monotonic() + 5
+                while True:
+                    try:
+                        status, _, body = request(port, "GET", "/api.md")
+                        break
+                    except OSError:
+                        if time.monotonic() > deadline:
+                            raise
+                        time.sleep(0.05)
+                self.assertEqual((status, body), (200, b"# Mesa World\n"))
+                proc.send_signal(signal.SIGTERM)
+                self.assertEqual(proc.wait(timeout=5), 0)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.stdout.close()
+                proc.stderr.close()
+
+    def test_refuses_a_base_path_or_a_missing_port(self):
+        for env in [{"WORLD_PORT": ""}, {"WORLD_PORT": "18080", "WORLD_BASE_PATH": "/x"}]:
+            result = subprocess.run([sys.executable, "-I", str(KIT / "remote_world.py"), "--target", "http://127.0.0.1:1"],
+                                    env={**os.environ, **env}, capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 2, env)
+
+
+if __name__ == "__main__":
+    unittest.main()
