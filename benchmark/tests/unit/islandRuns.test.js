@@ -46,6 +46,9 @@ describe('island run service', () => {
     expect((await IslandRun.findById(ID).lean()).worldView).toEqual({
       kind: 'remote', world: 'living-island', recordDir: '/data/recordings/run-1'
     });
+    expect((await islands.getRun(ID, { env, queue: async () => ({ jobs: [] }) })).worldView).toEqual({
+      kind: 'remote', world: 'living-island', recordDir: '/data/recordings/run-1'
+    });
     await islands.recordReport(ID, report({
       worldPrepared: { world: '../wrong', recordDir: '/data/../secret' },
       status: { phase: 'finished', worldKind: 'remote', remoteWorld: { world: 'living-island' } }

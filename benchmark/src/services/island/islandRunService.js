@@ -71,6 +71,7 @@ function runRow(doc, job, view) {
     memoryMode: doc?.memoryMode || executor.memory || null,
     harness: doc?.harness || executor.harness || 'codex',
     world: doc?.world || executor.world || null,
+    worldView: doc?.worldView || null,
     model: doc?.model || PRINCIPAL_ALIAS,
     runner: doc?.runner || null,
     phase: doc?.phase || null,
