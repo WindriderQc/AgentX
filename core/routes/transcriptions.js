@@ -14,6 +14,7 @@ function createRouter(api = service) {
   };
   router.get('/', handle(req => api.list({ search: req.query.q, offset: req.query.offset || 0 })));
   router.post('/', express.json({ limit: '4kb' }), handle(req => api.create(req.body)));
+  router.get('/status', handle(() => require('../src/services/transcriptionStatusService').status()));
   router.get('/:id', handle(req => api.get(req.params.id, true)));
   router.post('/:id/cancel', handle(req => api.cancel(req.params.id)));
   router.post('/:id/retry', express.json({ limit: '1kb' }), handle(req => api.retry(req.params.id, req.body)));
@@ -36,7 +37,7 @@ function mount(app, api = service) {
     pageView: '../pages/transcriptions', pageLanguage: 'fr', title: 'AgentX · Transcriptions', service: 'core',
     activePage: 'transcriptions', bodyClass: 'transcriptions-surface',
     headCss: '<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/transcriptions.css">',
-    footerJs: '<script src="/js/transcription-time.js" defer></script><script src="/js/transcriptions.js" defer></script>'
+    footerJs: '<script src="/js/transcription-time.js" defer></script><script src="/js/transcription-flow.js" defer></script><script src="/js/transcriptions.js" defer></script>'
   }));
 }
 module.exports = { mount, createRouter };

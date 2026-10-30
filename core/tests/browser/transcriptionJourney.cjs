@@ -17,6 +17,7 @@ const checks = [], receipts = new Map(), effects = [];
 const finish = (id, state = 'completed', error = null) => receipts.set(id, { ...receipts.get(id), state, stage: state, finishedAt: Date.now()/1000,
   title: 'Comprendre les systèmes locaux · exemple de test', duration: 87, error,
   result: { text: 'Bonjour. Gardons la transcription sur notre matériel.', detectedLanguage: 'fr',
+    execution: { model: 'fixture-whisper', device: 'cpu', computeType: 'int8' },
     segments: [{ start: .125, end: 4.5, text: 'Bonjour.' }, { start: 4.5, end: 9, text: 'Gardons la transcription sur notre matériel.' }] } });
 (async () => {
   process.env.NODE_ENV = 'test';
@@ -33,7 +34,9 @@ const finish = (id, state = 'completed', error = null) => receipts.set(id, { ...
   global.fetch = async (url, options = {}) => {
     if (!String(url).startsWith(process.env.VOIX_BASE_URL)) return nativeFetch(url, options);
     const pathname = new URL(url).pathname, id = pathname.split('/')[4];
-    if (pathname.endsWith('/capabilities')) return new Response(JSON.stringify({ contract: 'voix.long-transcriptions/v1', durable: true }));
+    if (pathname === '/v1/models') return new Response(JSON.stringify({ default: 'fixture-whisper', data: [{ id: 'fixture-whisper', configured_device: 'cpu', configured_compute_type: 'int8' }] }));
+    if (pathname === '/health') return new Response(JSON.stringify({ recognition: { available: true, degraded: false } }));
+    if (pathname.endsWith('/capabilities')) return new Response(JSON.stringify({ contract: 'voix.long-transcriptions/v1', durable: true, maxSeconds: 7200, maxDownloadBytes: 2147483648, maxDecodedBytes: 536870912 }));
     if (options.method === 'POST' && pathname.endsWith('/long-transcriptions')) {
       const body = JSON.parse(options.body); effects.push(body.id);
       receipts.set(body.id, { ...body, state: 'running', stage: 'downloading', startedAt: Date.now()/1000 });
@@ -62,7 +65,18 @@ const finish = (id, state = 'completed', error = null) => receipts.set(id, { ...
   await page.goto(base + '/transcriptions');
   await page.getByText('Votre prochaine vidéo commence ici').waitFor();
   await page.screenshot({ path: report + '/desktop-empty.png', fullPage: true });
-  checks.push('desktop-empty');
+  assert.equal(await page.locator('#transcriptionFlow').getAttribute('data-mode'), 'explanation');
+  await page.locator('.tr-flow-nodes button').nth(4).click();
+  await page.getByText('Modèle configuré : fixture-whisper', { exact: false }).waitFor();
+  await page.locator('#transcriptionLanguage').selectOption('fr-en');
+  await page.locator('input[name=when][value=at]').check();
+  await page.locator('#timeZone').fill('America/Toronto');
+  await page.locator('#timeZone').dispatchEvent('change');
+  await page.locator('input[name=when][value=now]').check();
+  await page.reload(); await page.getByText('Votre prochaine vidéo commence ici').waitFor();
+  assert.equal(await page.locator('#transcriptionLanguage').inputValue(), 'fr-en');
+  assert.equal(await page.locator('#timeZone').inputValue(), 'America/Toronto');
+  checks.push('desktop-empty-explanation-configured-not-running-preferences-persist');
   await page.locator('#sourceUrl').fill('https://127.0.0.1/private');
   await page.locator('#submitTranscription').click();
   await page.waitForFunction(() => document.querySelector('#formError').textContent.includes('vidéo YouTube'));
@@ -85,6 +99,11 @@ const finish = (id, state = 'completed', error = null) => receipts.set(id, { ...
   assert.equal(row.requestedAt.toISOString(), '2030-01-15T15:30:00.000Z');
   await page.reload(); await page.locator('.tr-card').waitFor();
   assert.equal(await page.locator('.tr-card').count(), 1);
+  await page.locator('.tr-card').getByRole('button', { name: 'Voir le chemin' }).click();
+  await page.locator('#transcriptionFlow[data-mode=waiting]').waitFor();
+  assert.match(await page.locator('.tr-flow-clock').innerText(), /America\/Toronto/);
+  assert.match(await page.locator('.tr-flow-clock').innerText(), /10 h 30/);
+  await page.screenshot({ path: report + '/desktop-waiting.png', fullPage: true });
   checks.push('explicit-zone-differs-from-browser-and-refresh');
   await page.locator('.tr-card').getByRole('button', { name: 'Annuler', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('.tr-badge').textContent === 'Annulée');
@@ -109,7 +128,21 @@ const finish = (id, state = 'completed', error = null) => receipts.set(id, { ...
   await page.locator('#refreshTranscriptions').click();
   await page.getByText('Reconnaissance vocale', { exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelector('[data-started]').textContent.includes('Temps écoulé'));
-  checks.push('real-stage-and-elapsed-no-percentage');
+  await page.locator('article[data-id="' + row._id + '"]').getByRole('button', { name: 'Voir le chemin' }).click();
+  await page.locator('#transcriptionFlow[data-mode=live]').waitFor();
+  assert.equal(await page.locator('.tr-flow-nodes li[data-step=whisper]').getAttribute('data-tone'), 'active');
+  assert.equal(await page.locator('.tr-flow-nodes [data-tone=active] .tr-flow-led').evaluate(n => getComputedStyle(n).animationName), 'tr-flow-pulse');
+  await page.screenshot({ path: report + '/desktop-active-flow.png', fullPage: true });
+  await page.locator('#transcriptionFlow').screenshot({ path: report + '/flow-desktop-local.png' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: report + '/mobile-active-flow.png', fullPage: true });
+  await page.locator('#transcriptionFlow').screenshot({ path: report + '/flow-mobile-local.png' });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  assert.equal(await page.locator('.tr-flow-nodes [data-tone=active] .tr-flow-led').evaluate(n => getComputedStyle(n).animationName), 'none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.setViewportSize({ width: 1440, height: 1050 });
+  checks.push('receipt-backed-active-flow-mobile-reduced-motion-no-fake-percent');
   const port = server.address().port;
   await new Promise(resolve => { server.close(resolve); server.closeAllConnections?.(); });
   await listen(port);
@@ -138,6 +171,9 @@ const finish = (id, state = 'completed', error = null) => receipts.set(id, { ...
   await launcher.dispatchDue(); finish(failed.queueId, 'failed', 'Téléchargement impossible · exemple synthétique');
   await evidence.reconcile(failed.queueId, 'browser-test');
   await page.locator('#refreshTranscriptions').click();
+  await page.locator('article[data-id="' + failed._id + '"]').getByRole('button', { name: 'Voir le chemin' }).click();
+  await page.locator('#transcriptionFlow[data-mode=failed]').waitFor();
+  await page.screenshot({ path: report + '/desktop-failed-flow.png', fullPage: true });
   const failedCard = page.locator('article[data-id="' + failed._id + '"]');
   await failedCard.getByRole('button', { name: 'Réessayer' }).click();
   await page.waitForFunction(() => document.querySelectorAll('.tr-card').length === 4);
@@ -153,12 +189,28 @@ const finish = (id, state = 'completed', error = null) => receipts.set(id, { ...
   await page.locator('#refreshTranscriptions').click();
   await retryCard.getByText('Annulée', { exact: true }).waitFor();
   checks.push('download-error-retry-active-cancel-acknowledgement');
+  const completed = (await service.list()).rows.find(item => item.state === 'completed');
+  await page.locator('article[data-id="' + completed._id + '"]').getByRole('button', { name: 'Voir le chemin' }).click();
+  await page.locator('#transcriptionFlow[data-mode=history]').waitFor();
+  assert.equal(await page.locator('.tr-flow-nodes [data-tone=active]').count(), 0);
+  await page.locator('.tr-flow-nodes button').nth(4).click();
+  await page.getByText('Reçu de cette tentative : fixture-whisper', { exact: false }).waitFor();
+  checks.push('historical-execution-attribution-no-animation');
   await page.evaluate(() => scrollTo(0, 0));
   await page.screenshot({ path: report + '/desktop-library.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: report + '/mobile-library.png', fullPage: true });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  checks.push('mobile-390-no-overflow');
+  await page.locator('#transcriptionFlow').getByRole('button', { name: 'Voir le principe' }).click();
+  await page.locator('#transcriptionFlow[data-mode=explanation]').waitFor();
+  await page.locator('.tr-flow-nodes button').nth(4).click();
+  assert.match(await page.locator('.tr-flow-detail').innerText(), /Modèle configuré/);
+  assert.doesNotMatch(await page.locator('.tr-flow-detail').innerText(), /Reçu de cette tentative/);
+  await page.locator('#transcriptionFlow').getByRole('button',{name:'Réduire',exact:true}).click();
+  assert.equal(await page.locator('.tr-flow-nodes').isVisible(),false);
+  await page.locator('#transcriptionFlow').getByRole('button',{name:'Déplier',exact:true}).click();
+  assert.equal(await page.locator('.tr-flow-nodes').isVisible(),true);
+  checks.push('mobile-390-no-overflow-history-to-general-distinct-accessible-fold');
   assert.deepEqual(errors, []);
   fs.writeFileSync(report + '/browser-result.json', JSON.stringify({ ok: true, checks, nativeStarts: effects.length, pageErrors: errors }, null, 2));
   console.log(JSON.stringify({ ok: true, checks, report }));

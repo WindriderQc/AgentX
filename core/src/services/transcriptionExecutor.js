@@ -42,6 +42,7 @@ async function start(job) {
     throw Object.assign(fail('Les ressources sont réservées. Réessayez une fois disponibles.', 409), { notStarted: true });
   }
   await Model.updateOne({ _id: row._id, state: 'queued' }, { $set: {
+    execution: { machine: new URL(cfg.base).hostname },
     admission, nativeBase: cfg.base, state: 'running', stage: 'dispatching', error: null, startedAt: new Date()
   } }, { writeConcern: WC });
   // An ambiguous response leaves the dispatch and admission held. Observe by job.id.
@@ -84,6 +85,7 @@ async function observeReceipt(job) {
     updates.runtimeReleased = true;
     updates.result = receipt.result || null;
     updates.detectedLanguage = receipt.result?.detectedLanguage;
+    if (receipt.result?.execution) updates.execution = { ...receipt.result.execution, machine: new URL(row.nativeBase).hostname };
     updates.finishedAt = new Date(receipt.finishedAt * 1000);
     // Personal result is persisted before the queue receives its terminal receipt.
     updates.state = receipt.state;

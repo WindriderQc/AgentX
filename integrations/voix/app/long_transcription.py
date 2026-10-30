@@ -1,6 +1,7 @@
 """Opt-in native long transcription using the same recognizer and admission lane."""
 import asyncio
 from functools import partial
+from datetime import datetime, timezone
 import json
 import importlib.util
 import os
@@ -31,7 +32,8 @@ def limits():
     # of compressed file size; 512 MiB permits ~2h20 before the model's own RAM.
     decoded = int(os.environ.get("VOIX_LONG_DECODED_BYTES", 512 * 1024 * 1024))
     return {"maxSeconds": decoded / (16000 * 4),
-            "maxDownloadBytes": int(os.environ.get("VOIX_LONG_DOWNLOAD_BYTES", 2 * 1024**3))}
+            "maxDownloadBytes": int(os.environ.get("VOIX_LONG_DOWNLOAD_BYTES", 2 * 1024**3)),
+            "maxDecodedBytes": decoded}
 
 
 def bounded_pcm(source, target, max_seconds, token):
@@ -159,7 +161,11 @@ class Owner:
                 if token.is_set():
                     raise RecognitionCancelled()
                 segments = getattr(text, "segments", [])
-                result = {"text": str(text), "segments": segments,
+                from app.config import settings
+                evidence = getattr(text, "evidence", {})
+                execution = {"model": Path(settings.whisper_model).name,
+                             "device": evidence.get("device"), "computeType": evidence.get("computeType")}
+                result = {"text": str(text), "segments": segments, "execution": execution,
                           "detectedLanguage": getattr(text, "language", None)}
                 if len(json.dumps(result).encode()) > 8 * 1024**2:
                     raise RuntimeError("Résultat trop volumineux pour le stockage configuré.")
@@ -216,8 +222,16 @@ def capabilities():
     deno = Path(sys.executable).parent / ("deno.exe" if os.name == "nt" else "deno")
     if not deno.is_file() and not shutil.which("deno"):
         raise HTTPException(503, "Le runtime officiel du téléchargement est indisponible.")
-    owner()  # opens/reconciles the private receipt owner; never loads a model
-    return {"contract": "voix.long-transcriptions/v1", "durable": True, **limits()}
+    native = owner()  # never loads a model or starts work
+    with native.thread_lock:
+        rows = [native.store.get(key) for key in native.tokens]
+        jobs = [{"id": row["id"], "stage": row["stage"], "startedAt": row["startedAt"]}
+                for row in rows if row and row["state"] == "running"]
+    reserve = 512 * 1024**2
+    effective = max(0, min(limits()["maxDownloadBytes"], shutil.disk_usage(native.store.root).free - reserve))
+    return {"contract": "voix.long-transcriptions/v1", "durable": True, **limits(),
+            "effectiveDownloadBytes": effective, "reserveDiskBytes": reserve,
+            "observation": {"observedAt": datetime.now(timezone.utc).isoformat(), "activeJobs": jobs}}
 
 
 @router.get("/v1/audio/long-transcriptions/{job_id}")

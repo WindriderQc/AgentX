@@ -7,11 +7,34 @@
     downloading: 'Téléchargement de l’audio', decoding: 'Préparation de l’audio', transcribing: 'Reconnaissance vocale', cleaning: 'Nettoyage des fichiers temporaires',
     cancelling: 'Annulation demandée · arrêt après l’opération en cours', reconciling: 'Vérification du reçu sur le serveur',
     completed: 'Prête à lire', failed: 'Traitement arrêté sur erreur', admission: 'Ressources indisponibles', interrupted: 'Service redémarré · tentative interrompue', cancelled: 'Traitement annulé' };
-  let offset = 0, busy = false, searchTimer, lastRows = [], fetchSequence = 0;
+  let offset = 0, busy = false, searchTimer, lastRows = [], fetchSequence = 0, serviceStatus = null, selectedId = null;
+  const flow = window.TranscriptionFlow.mount($('transcriptionFlow'));
+  function drawFlow(rows, select = false) {
+    const row = rows.find(item => item._id === selectedId) || rows.find(item => item.state === 'running') ||
+      rows.find(item => item.state === 'queued') || rows[0] || null;
+    if (row) selectedId = row._id;
+    flow.update(row, serviceStatus, { select });
+    updateElapsed();
+  }
+  async function observeService() {
+    try { serviceStatus = await api('/status'); }
+    catch { serviceStatus = null; }
+    drawFlow(lastRows);
+  }
   const storageKey = 'agentx.transcription.pending';
   let pending = null;
   try { pending = JSON.parse(localStorage.getItem(storageKey) || 'null'); } catch { /* unavailable storage */ }
   $('timeZone').value = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  try {
+    const prefs = JSON.parse(localStorage.getItem('agentx.transcription.preferences') || 'null');
+    if (['auto', 'fr', 'en', 'fr-en'].includes(prefs?.language)) $('transcriptionLanguage').value = prefs.language;
+    if (prefs?.timeZone && Intl.DateTimeFormat('fr', { timeZone: prefs.timeZone })) $('timeZone').value = prefs.timeZone;
+  } catch { /* Invalid or unavailable browser preferences keep safe defaults. */ }
+  form.addEventListener('change', () => {
+    try { localStorage.setItem('agentx.transcription.preferences', JSON.stringify({
+      language: $('transcriptionLanguage').value, timeZone: $('timeZone').value
+    })); } catch { /* Preferences never block a durable request. */ }
+  });
   const formatDate = (value, zone) => value ? new Intl.DateTimeFormat('fr-CA', { dateStyle: 'medium', timeStyle: 'short',
     ...(zone && { timeZone: zone }) }).format(new Date(value)) : '';
   const duration = seconds => {
@@ -47,6 +70,15 @@
     });
     return button;
   }
+  function actionsForFlow(card, row) {
+    const button = element('button', 'Voir le chemin', 'tr-button');
+    button.type = 'button';
+    button.addEventListener('click', () => {
+      selectedId = row._id; drawFlow(lastRows, true);
+      $('transcriptionFlow').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
+    card.append(button);
+  }
   function draw(rows) {
     const list = $('transcriptionList');
     list.replaceChildren();
@@ -71,7 +103,9 @@
       if (row.duration) meta.append(element('span', 'Audio ' + duration(row.duration)));
       meta.append(element('span', row.detectedLanguage || (row.language === 'auto' ? 'Langue automatique' : row.language)));
       card.append(meta);
-      if (row.requestedAt) card.append(element('p', 'Départ demandé : ' + formatDate(row.requestedAt, row.timeZone) + ' · ' + row.timeZone));
+      actionsForFlow(card, row);
+      card.append(element('p', row.requestedAt ? 'Départ demandé : ' + formatDate(row.requestedAt, row.timeZone) + ' · ' + row.timeZone
+        : 'Départ demandé dès que possible · ' + row.timeZone));
       if (!['completed', 'cancelled'].includes(row.state)) {
         card.append(element('p', stages[row.stage] || 'Vérification de la tentative'));
         if (row.startedAt) {
@@ -108,12 +142,14 @@
       if (sequence !== fetchSequence) return;
       if (JSON.stringify(lastRows) !== JSON.stringify(data.rows) || !$('transcriptionList').children.length) draw(data.rows);
       lastRows = data.rows;
+      drawFlow(data.rows);
       $('transcriptionCount').textContent = '(' + data.count + ')';
       $('connectionStatus').textContent = 'À jour · les tâches continuent sur le serveur.';
       $('previousPage').disabled = offset === 0;
       $('nextPage').disabled = offset + data.limit >= data.count;
       $('pagePosition').textContent = data.count ? (offset + 1) + '–' + (offset + data.rows.length) + ' / ' + data.count : '';
     } catch (error) {
+      flow.update(lastRows.find(row => row._id === selectedId) || null, null);
       $('connectionStatus').textContent = 'Connexion interrompue. Dernier état conservé. ' + error.message;
     } finally { $('transcriptionList').setAttribute('aria-busy', 'false'); }
   }
@@ -159,9 +195,10 @@
       }
       if (!pending) pending = { requestKey: crypto.randomUUID(), intent };
       try { localStorage.setItem(storageKey, JSON.stringify(pending)); } catch { /* memory identity still retained */ }
-      await api('', 'POST', { ...intent, requestKey: pending.requestKey });
+      const accepted = await api('', 'POST', { ...intent, requestKey: pending.requestKey });
+      selectedId = accepted._id;
       pending = null; localStorage.removeItem(storageKey);
-      $('sourceUrl').value = ''; offset = 0; await refresh();
+      $('sourceUrl').value = ''; offset = 0; await refresh(); drawFlow(lastRows, true);
     } catch (error) {
       if (error.status === 400) { pending = null; try { localStorage.removeItem(storageKey); } catch {} }
       $('formError').textContent = error.message;
@@ -179,12 +216,13 @@
     $('formError').textContent = 'Une demande attend confirmation. Renvoyez-la pour consulter la même tâche sans doublon.';
   }
   $('closeTranscript').addEventListener('click', () => dialog.close());
-  $('refreshTranscriptions').addEventListener('click', refresh);
+  $('refreshTranscriptions').addEventListener('click', () => { refresh(); observeService(); });
   $('transcriptionSearch').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => { offset = 0; refresh(); }, 250); });
   $('previousPage').addEventListener('click', () => { offset = Math.max(0, offset - 30); refresh(); });
   $('nextPage').addEventListener('click', () => { offset += 30; refresh(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   setInterval(() => { if (!document.hidden) refresh(); }, 5000);
   setInterval(updateElapsed, 1000);
-  schedule(); refresh();
+  setInterval(() => { if (!document.hidden) observeService(); }, 10000);
+  schedule(); refresh(); observeService();
 })();
