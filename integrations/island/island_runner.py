@@ -244,7 +244,12 @@ def leftover_processes(run: Path) -> list[int]:
 # ── actions ──────────────────────────────────────────────────────────────────
 
 def active_run(config: dict) -> str | None:
-    marker = read_json(runs_root(config) / "active.json") or {}
+    path = runs_root(config) / "active.json"
+    marker = read_json(path)
+    if not isinstance(marker, dict) or not RUN_ID.fullmatch(str(marker.get("runId", ""))):
+        if path.exists():
+            raise RunnerError("RUNNER_STATE", "active marker is unreadable; reconcile it through its owner")
+        return None
     run_id = marker.get("runId")
     if run_id and RUN_ID.match(run_id):
         state = read_json(runs_root(config) / run_id / "state.json") or {}

@@ -17,7 +17,7 @@ const { hostUrlKey } = require('../../shared/ollamaHostConfig');
 const { islandExecutor, isIslandExecutor, RECEIPT_CONTRACT, RUNNER_CONTRACT } = require('../../shared/islandRun.cjs');
 
 const UUID = /^[a-f0-9-]{36}$/;
-const NOT_STARTED = ['RUNNER_BUSY', 'INVALID', 'RUN_ID', 'RUNNER_CONFIG', 'RUNS_ROOT_TOO_LONG', 'RUNNER_START_FAILED'];
+const NOT_STARTED = ['RUNNER_BUSY', 'INVALID', 'RUN_ID', 'RUNNER_CONFIG', 'RUNNER_STATE', 'RUNS_ROOT_TOO_LONG', 'RUNNER_START_FAILED'];
 const POLL_MS = 30000;
 const RUNNER_SILENCE_MS = 15 * 60000;
 const FINISH_ATTEMPTS = 20;

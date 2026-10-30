@@ -265,6 +265,18 @@ class RelaySocketPath(Fixture):
 
 
 class SafetyRegression(Fixture):
+    def test_corrupt_active_marker_never_means_an_idle_runner(self):
+        marker = self.root / 'runs' / 'active.json'
+        for value in ['{torn', 'null', '{}', '{"runId":"not-a-run"}']:
+            with self.subTest(marker=value):
+                marker.write_text(value)
+                with mock.patch.object(runner.subprocess, 'Popen') as spawn:
+                    code, answer = self.call('start', '--run-id', RUN, '--netcheck')
+                self.assertEqual((code, answer['code']), (1, 'RUNNER_STATE'))
+                spawn.assert_not_called()
+                self.assertFalse((self.root / 'runs' / RUN).exists())
+                self.assertEqual(marker.read_text(), value, 'coordination evidence is preserved')
+
     def test_fast_supervisor_cannot_be_overwritten_by_the_starting_parent(self):
         workers, errors = [], []
         attempted, finished = threading.Event(), threading.Event()
