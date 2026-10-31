@@ -11,7 +11,7 @@ export function normalizeLabels(values = []) {
     return value.split(',').map(label => {
       // Go's strings.TrimSpace also removes U+0085, which JS trim leaves
       // intact. Canonicalize before both policy and CLI dispatch.
-      const text = label.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '').trim();
+      const text = label.replace(/^[\p{White_Space}\uFEFF]+|[\p{White_Space}\uFEFF]+$/gu, '');
       // Go uses simple lowercase: U+0130 becomes ASCII i, whereas JS's full
       // lowercase produces i + combining dot. Match native protected names.
       const key = text.replace(/\u0130/g, 'i').toLowerCase();

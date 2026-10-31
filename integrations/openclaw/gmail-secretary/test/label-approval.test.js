@@ -35,6 +35,19 @@ test('Unicode boundary whitespace cannot hide system labels from the approval po
   }
 });
 
+test('mixed and nested JavaScript/Go boundary whitespace cannot expose a protected label after policy', () => {
+  for (const outer of ['\ufeff', '\u0085', '\ufeff\u0085', '\u0085\ufeff', ' \ufeff\u0085\ufeff ']) {
+    for (const inner of ['\ufeff', '\u0085', '\ufeff\u0085', '\u0085\ufeff']) {
+      for (const [field, label, flag] of [['addLabels', 'TRASH', '--add=TRASH'],
+        ['addLabels', 'SPAM', '--add=SPAM'], ['removeLabels', 'INBOX', '--remove=INBOX']]) {
+        const params = { action: 'label_threads', ids: ['thread-1'], [field]: [`${outer}${inner}${label}${inner}${outer}`] };
+        assert.ok(approvalFor('gmail_secretary_organize', params));
+        assert.ok(buildOrganizeCommand(params, { account: 'auto' }).args.includes(flag));
+      }
+    }
+  }
+});
+
 test('native literal quoted or interior-newline labels remain usable without changing their names', () => {
   for (const label of ['"TRASH"', 'Review\nSPAM', 'Review\rTRASH']) {
     const params = { action: 'label_threads', ids: ['thread-1'], addLabels: [label] };
