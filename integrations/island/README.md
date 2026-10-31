@@ -114,6 +114,14 @@ symlinks and non-regular files using the opened descriptor.
 
 ## Release and uncertain responses
 
+The per-run inference proxy drains an existing Core response after the harness
+disconnects, discarding late text rather than closing Core's admitted request.
+This also covers memory reminders and hourly context resets. It never retries
+the inference or declares its physical release. During final proxy shutdown,
+new dispatches refuse and existing responses get a bounded sixty-second drain.
+A drain timeout fails local cleanup; native Core recovery/release remains
+required. A genuine incomplete provider stream is never treated as successful.
+
 The runner serializes local starts and returns typed process observation and
 local cleanup evidence. A failed `pgrep` never becomes an empty process list.
 The executor persists begin intent before dispatch; any existing local ledger,
@@ -130,6 +138,38 @@ refuses completion. A lost finish answer is resolved from the same terminal
 Core receipt before any further finish attempt.
 Missing or malformed native runtime records refuse terminal attestation too;
 an earlier successful release observation is insufficient on its own.
+
+## Offline comparison measurements
+
+`run_metrics.py` counts world commands from native recordings, independent of
+whether the harness used curl, a helper script, or several calls in one tool.
+Local `recordings/*.clawrec` files prove input attempts only: that schema has
+no per-input result, so success counts/rates remain unknown. An explicit remote
+GraphysX recording also provides each command's own result:
+
+```
+python integrations/island/run_metrics.py <finished-run-dir> \
+  --world-recording <native-world-recording.ndjson> --agent <exact-agent-name> \
+  --start-tick <first-run-tick> --end-tick <last-run-tick>
+```
+
+Preserve the fresh-world preparation receipt and terminal recording boundary
+with the private run evidence. File selection and bounds must correspond to
+this run; a format-valid file alone does not prove campaign attribution. Names
+are matched exactly in shared worlds. Native replay resumes supersede the old
+action branch. Missing, malformed, ambiguous or unfinished evidence never
+becomes zero successful actions. A stale `PlaceSuccess` attached to `MoveTo`
+is not counted as a placement. Native episode windows supply the rate duration,
+excluding context-reset downtime and final cleanup. Incomplete episode windows
+have no rate. Tool-derived counts remain labelled `toolProxy` diagnostics.
+
+Provider token and cancellation accounting comes from Core's exact terminal
+requests; rollout token counters are explicitly labelled and cannot supply
+tokens per successful placement. Failed runs remain visible in summaries but
+do not improve the means for completed runs. These measures do not rank
+invented games; blind replay review and controlled campaign conditions remain
+separate requirements. Real transcripts, recordings and result reports stay
+outside the public repository.
 
 ## Remote worlds
 

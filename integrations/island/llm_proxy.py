@@ -11,6 +11,7 @@ import hmac
 import http.client
 import json
 import secrets
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
@@ -23,7 +24,7 @@ INFERENCE = {"responses": PREFIX + "/responses", "chat": PREFIX + "/chat/complet
 
 
 class LLMProxy:
-    def __init__(self, upstream: str | None, token: str = "", timeout: float = 1200, wire: str = "responses"):
+    def __init__(self, upstream: str | None, token: str = "", timeout: float = 1200, wire: str = "responses", drain_timeout: float = 60):
         if wire not in INFERENCE:
             raise ValueError("inference wire must be responses or chat")
         self.wire, self.inference_path = wire, INFERENCE[wire]
@@ -37,9 +38,13 @@ class LLMProxy:
         if upstream and (not token.strip() or any(c in token for c in "\r\n")):
             raise ValueError("dedicated gateway credential required")
         self.upstream, self.token, self.timeout = upstream, token, timeout
+        if not 0 < drain_timeout <= timeout:
+            raise ValueError("drain timeout must be positive and no longer than the request timeout")
+        self.drain_timeout, self.closing = drain_timeout, False
         self.capability = secrets.token_urlsafe(32)
         self.connections = set()
         self.lock = threading.Lock()
+        self.idle = threading.Condition(self.lock)
         proxy = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -90,7 +95,12 @@ class LLMProxy:
                 if not proxy.upstream: return self.reject(503)
                 cls = http.client.HTTPSConnection if proxy.target.scheme == "https" else http.client.HTTPConnection
                 conn = cls(proxy.target.hostname, proxy.target.port, timeout=proxy.timeout)
-                with proxy.lock: proxy.connections.add(conn)
+                with proxy.lock:
+                    admitted = not proxy.closing
+                    if admitted: proxy.connections.add(conn)
+                if not admitted:
+                    conn.close()
+                    return self.reject(503)
                 sent = False
                 try:
                     conn.request("POST", proxy.inference_path, body=body, headers={
@@ -100,19 +110,32 @@ class LLMProxy:
                     response = conn.getresponse()
                     # Never forward redirects or cookies to a model-controlled client.
                     if 300 <= response.status < 400: return self.reject(502)
-                    self.send_response(response.status)
-                    self.send_header("Content-Type", response.getheader("Content-Type", "application/json"))
-                    self.send_header("Connection", "close")
-                    self.end_headers()
                     sent = True
+                    attached = True
+                    try:
+                        self.send_response(response.status)
+                        self.send_header("Content-Type", response.getheader("Content-Type", "application/json"))
+                        self.send_header("Connection", "close")
+                        self.end_headers()
+                    except OSError:
+                        attached = False
                     while chunk := response.read1(65536):
-                        self.wfile.write(chunk)
-                        self.wfile.flush()
+                        if attached:
+                            try:
+                                self.wfile.write(chunk)
+                                self.wfile.flush()
+                            except OSError:
+                                # A reminder/context reset can stop the harness mid-answer.
+                                # Keep reading this SAME admitted Core request to EOF;
+                                # discarding late output does not retry or release it.
+                                attached = False
                 except (OSError, http.client.HTTPException):
                     if not sent: self.reject(502)
                 finally:
                     conn.close()
-                    with proxy.lock: proxy.connections.discard(conn)
+                    with proxy.idle:
+                        proxy.connections.discard(conn)
+                        proxy.idle.notify_all()
                     self.close_connection = True
 
             do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = handle_request
@@ -130,8 +153,17 @@ class LLMProxy:
         return self
 
     def __exit__(self, *_args):
+        with self.lock: self.closing = True
         self.server.shutdown()
         self.server.server_close()
-        with self.lock:
-            for connection in self.connections: connection.close()
+        with self.idle:
+            drained = self.idle.wait_for(lambda: not self.connections, timeout=self.drain_timeout)
+            pending = list(self.connections)
+        for connection in pending:
+            if connection.sock:
+                try: connection.sock.shutdown(socket.SHUT_RDWR)
+                except OSError: pass
+            connection.close()
         self.thread.join(timeout=5)
+        if not drained:
+            raise RuntimeError("inference response drain timed out; native Core release remains unproven")
