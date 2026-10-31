@@ -92,6 +92,21 @@ class ProxyTests(unittest.TestCase):
         conn.close()
         self.assertEqual(self.calls, [])
 
+    def test_image_sized_history_within_core_budget_reaches_upstream_once(self):
+        body = json.dumps({'model': 'agentx-primary', 'input': 'synthetic-image-history-' + 'x' * (9 * 1024 * 1024)})
+        status, _, _ = self.call('POST', '/api/llm/v1/responses', body)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(self.calls[0][2]['input'], json.loads(body)['input'])
+
+    def test_oversized_declared_body_refuses_before_reading_or_dispatching(self):
+        conn = http.client.HTTPConnection('127.0.0.1', self.proxy.port, timeout=3)
+        conn.request('POST', '/api/llm/v1/responses', headers={
+            'Authorization': 'Bearer ' + self.proxy.capability, 'Content-Length': str(MAX_BODY + 1)})
+        self.assertEqual(conn.getresponse().status, 413)
+        conn.close()
+        self.assertEqual(self.calls, [])
+
     def test_redirect_is_not_followed_and_no_upstream_in_netcheck(self):
         status, _, _ = self.call('POST','/api/llm/v1/responses', json.dumps({'model':'agentx-primary','redirect':True}))
         self.assertEqual(status,502)
