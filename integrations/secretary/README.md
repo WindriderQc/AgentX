@@ -543,6 +543,15 @@ or change prompts to launch a replacement. A new policy must retain the prior
 attempt and its proven terminal outcome. These receipts add no model, routing,
 task/memory or mailbox authority. Synthetic tests do not qualify a live campaign.
 
+`review_recovery.py record-refusal` recovers an earlier unconfirmed attempt only
+when its complete, hashed HTTP response proves a typed Core refusal before
+dispatch and the exact correlation has no native inference logs. It retains
+the original attempt in an immutable reconciliation before restoring its
+`refused` phase. The next execution keeps the same request identity and writes
+a new numbered dispatch; unknown transport outcomes remain fenced. Supply the
+existing `--directory`, `--page-id`, `--request-id`, `--reason` and
+`--authorization-ref` arguments. This operation invokes no model.
+
 ## Outlook mailbox export
 
 ### Reviewing existing calendar and contact sources

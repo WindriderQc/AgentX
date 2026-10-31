@@ -13,6 +13,7 @@ import urllib.request
 
 from evidence_store import load, now
 from review_receipts import durable, hashed
+from review_refusals import record_refusal
 
 RECONCILIATION = "agentx.secretary-review-terminal/v1"
 RETRY = "agentx.secretary-review-linked-retry/v1"
@@ -213,7 +214,7 @@ def core_reader(base):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("record-terminal", "authorize-retry"))
+    parser.add_argument("operation", choices=("record-terminal", "authorize-retry", "record-refusal"))
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--page-id", required=True)
     parser.add_argument("--request-id", required=True)
@@ -237,11 +238,15 @@ def main(argv=None):
         row = record_terminal(directory, state, queue_id=args.queue_id, inference_log_id=args.inference_log_id,
             terminal_file=args.terminal_receipt, status_file=args.worker_status, reason=args.reason,
             authorization_ref=args.authorization_ref, call=core_reader(state["intent"]["core"]))
+    elif args.operation == "record-refusal":
+        row = record_refusal(directory, state, reason=args.reason, authorization_ref=args.authorization_ref,
+                             call=core_reader(state["intent"]["core"]))
     else:
         row = authorize_retry(directory, state, max_output_tokens=args.max_output_tokens,
                               reason=args.reason, authorization_ref=args.authorization_ref)
     print(json.dumps({"operation": args.operation, "requestId": row["requestId"], "parentRequestId": row.get("parentRequestId"),
-                      "receiptSha256": hashed(row), "inferenceStarted": False, "originalFenceChanged": False}))
+                      "receiptSha256": hashed(row), "inferenceStarted": False,
+                      "originalFenceChanged": args.operation == "record-refusal", "requestIdentityChanged": False}))
 
 
 if __name__ == "__main__":
