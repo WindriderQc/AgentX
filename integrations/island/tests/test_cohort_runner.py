@@ -156,5 +156,39 @@ class CohortTests(Fixture):
         self.assertEqual(result['outcome'], 'failed')
         self.assertEqual(signals, [signal.SIGTERM])
 
+    def test_parent_stop_signals_all_members_and_reports_stopped(self):
+        self.prepare(); processes = []; signals = []
+        class Process:
+            def __init__(self, index): self.pid, self.done = 9100 + index, False
+            def poll(self): return 0 if self.done else None
+            def send_signal(self, sig): signals.append((self.pid, sig)); self.done = True
+            def wait(self, timeout): return 0
+        def spawn(*args, **kwargs):
+            process = Process(len(processes)); processes.append(process)
+            if len(processes) == 3: signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+            return process
+        def observe(*args):
+            rows = self.observed('stopped')
+            for row, process in zip(rows, processes):
+                if not process.done: row.update(phase='running', terminal=False, alive=True, localStopped=False)
+            return {'members': rows}
+        original = signal.getsignal(signal.SIGTERM)
+        with mock.patch.object(cohort.subprocess, 'Popen', side_effect=spawn), \
+             mock.patch.object(cohort, 'describe', side_effect=observe), mock.patch.object(cohort.time, 'sleep'):
+            result = cohort.supervise(self.config, self.args)
+        self.assertEqual((result['outcome'], result['localStopped']), ('stopped', True))
+        self.assertEqual(len(signals), 3)
+        self.assertTrue(all(sig == signal.SIGTERM for _, sig in signals))
+        self.assertEqual(signal.getsignal(signal.SIGTERM), original)
+        self.assertIsNone(cohort.native.active_run(self.config))
+
+    def test_failed_final_status_read_never_attests_cleanup(self):
+        self.prepare()
+        with mock.patch.object(cohort.subprocess, 'Popen', return_value=SimpleNamespace(pid=9999, poll=lambda: 0)), \
+             mock.patch.object(cohort, 'describe', side_effect=OSError('unreadable receipt')):
+            result = cohort.supervise(self.config, self.args)
+        self.assertEqual((result['outcome'], result['localStopped']), ('failed', False))
+        self.assertEqual(cohort.native.active_run(self.config), RUN)
+
 
 if __name__ == '__main__': unittest.main()
