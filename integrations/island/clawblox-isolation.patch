@@ -170,10 +170,10 @@ index 008b0e8..95a8895 100644
  
 diff --git a/src/agentx_harness.rs b/src/agentx_harness.rs
 new file mode 100644
-index 0000000..d61079d
+index 0000000..83b5848
 --- /dev/null
 +++ b/src/agentx_harness.rs
-@@ -0,0 +1,544 @@
+@@ -0,0 +1,552 @@
 +//! AgentX one-turn harness adapters: DeepSeek Harness (`dsh headless`) and pi
 +//! (`pi -p`).
 +//!
@@ -328,7 +328,11 @@ index 0000000..d61079d
 +}
 +
 +fn model_entry(ctx: &AgentContext) -> AgentResult<serde_json::Value> {
-+    let mut model = serde_json::json!({ "id": ctx.settings.model, "name": ctx.settings.model });
++    // This describes the Core gateway contract, not a concrete upstream model.
++    // Core accepts images through native vision or its description fallback;
++    // omitting this field makes both SDKs default the alias to text-only.
++    let mut model = serde_json::json!({ "id": ctx.settings.model, "name": ctx.settings.model,
++                                      "input": ["text", "image"] });
 +    if let Some(window) = positive_env(ctx, CONTEXT_ENV, None)? {
 +        model["contextWindow"] = window.into();
 +    }
@@ -638,9 +642,13 @@ index 0000000..d61079d
 +        let pi = pi_models_json(&ctx).unwrap().to_string();
 +        assert!(pi.contains("\"$AGENTX_LLM_TOKEN\"") && !pi.contains("ephemeral"));
 +        assert!(pi.contains("\"id\":\"agentx-primary\"") && pi.contains("\"contextWindow\":65536"));
++        assert_eq!(pi_models_json(&ctx).unwrap()["providers"][PROVIDER]["models"][0]["input"],
++                   serde_json::json!(["text", "image"]));
 +        let dsh = dsh_patch(&ctx).unwrap().to_string();
 +        assert!(dsh.contains("\"apiKeyEnv\":\"AGENTX_LLM_TOKEN\"") && !dsh.contains("ephemeral"));
 +        assert!(dsh.contains("\"personaSuffix\":\"Island prompt\""));
++        assert_eq!(dsh_patch(&ctx).unwrap()[0]["config"]["providers"][PROVIDER]["models"][0]["input"],
++                   serde_json::json!(["text", "image"]));
 +        for id in DSH_DISABLED {
 +            assert!(dsh.contains(&format!("{{\"disabled\":true,\"id\":\"{id}\"}}")), "{id} must be disabled");
 +        }
