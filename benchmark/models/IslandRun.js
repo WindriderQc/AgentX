@@ -11,6 +11,7 @@ const mongoose = require('mongoose');
 const memoryFile = new mongoose.Schema({
   bytes: Number,
   truncated: Boolean,
+  missing: Boolean,
   text: String
 }, { _id: false });
 
@@ -39,15 +40,15 @@ const IslandRunSchema = new mongoose.Schema({
   // Where the agent played: a world the runner simulates (`local`) or a shared world it joins
   // (`remote`, which records itself: `recordDir` is that recording on the world's host).
   worldView: {
-    type: new mongoose.Schema({ kind: { type: String, enum: ['local', 'remote'] }, world: String, recordDir: String }, { _id: false }),
+    type: new mongoose.Schema({ kind: { type: String, enum: ['local', 'remote'] }, world: String, recordDir: String, instanceId: String, recordingId: String }, { _id: false }),
     default: null
   },
   memorySource: String,
   // The agent's latest thoughts, words and commands while it plays (untrusted text, shown escaped).
   agentMessages: { type: [{ _id: false, at: String, kind: { type: String, enum: ['thought', 'say', 'command'] }, text: String }], default: [] },
-  // SOUL.md, EPISODIC_MEMORY.jsonl and SEMANTIC_MEMORY.md after the run.
+  // The four persisted memory files; markdown summary and event journal stay distinct.
   memory: {
-    type: new mongoose.Schema({ soul: memoryFile, episodic: memoryFile, semantic: memoryFile }, { _id: false }),
+    type: new mongoose.Schema({ soul: memoryFile, episodic: memoryFile, episodicMarkdown: memoryFile, semantic: memoryFile }, { _id: false }),
     default: null
   },
   receipt: {

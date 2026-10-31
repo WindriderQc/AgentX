@@ -27,6 +27,9 @@ class FakeWorld:
         # world_id: /healthz answers {ok, tick, world} like a GraphysX world service (None: legacy
         # shape). access: the token an instance proxy would demand on the agent routes.
         self.world_id = None
+        self.instance_id = None
+        self.unique_sessions = False
+        self.members = set()
         self.access = None
         fake = self
 
@@ -50,15 +53,23 @@ class FakeWorld:
                 path = self.path.partition("?")[0]
                 if fake.access is not None and path != "/healthz" and self.headers.get(ACCESS_HEADER) != fake.access:
                     return self.answer(403, b"Island access token required", "text/plain")
+                expected = self.headers.get("X-World-Instance")
+                if expected and expected != fake.instance_id:
+                    return self.answer(409, b'{"error":"World instance changed"}')
                 if path == "/healthz" and (fake.world_id is not None or fake.access is not None):
                     extra = {"world": fake.world_id} if fake.world_id else {}
+                    if fake.instance_id: extra.update(instanceId=fake.instance_id, recordingId=fake.instance_id)
                     return self.answer(200, json.dumps({"ok": True, "tick": 7, **extra}).encode())
                 if path == "/observe/image":
                     return self.answer(200, PNG, "image/png")
                 if path == "/redirect-me" or self.headers.get("X-Session") == "redirect":
                     return self.answer(302, b"", extra=[("Location", "https://elsewhere.invalid/")])
+                if path == "/leave":
+                    fake.members.discard(self.headers.get("X-Session"))
                 if path == "/join":
-                    return self.answer(200, json.dumps({"session": "s-1", "agent_id": "a-1"}).encode(),
+                    session = f"s-{len(calls)}" if fake.unique_sessions else "s-1"
+                    fake.members.add(session)
+                    return self.answer(200, json.dumps({"session": session, "agent_id": "a-1"}).encode(),
                                        extra=[("Set-Cookie", "world=private")])
                 if path == "/api.md":
                     return self.answer(200, b"# Mesa World\n", "text/markdown; charset=utf-8")
@@ -257,6 +268,23 @@ class AccessAndWorldGuardTests(unittest.TestCase):
             status, _, body = request(relay.port, "GET", "/healthz")
             self.assertEqual(status, 503)
             self.assertIn("mesa-island, not living-island", json.loads(body)["error"])
+
+
+    def test_same_type_replacement_is_refused_and_one_relay_leaves_only_its_member(self):
+        self.world.instance_id = "00000000-0000-4000-8000-000000000001"
+        self.world.unique_sessions = True
+        with RemoteWorldRelay(self.world.url, log=lambda _: None, access_token=TOKEN) as other:
+            b = json.loads(request(other.port, "POST", "/join?name=B")[2])["session"]
+            with RemoteWorldRelay(self.world.url, log=lambda _: None, access_token=TOKEN) as departing:
+                a = json.loads(request(departing.port, "POST", "/join?name=A")[2])["session"]
+                self.assertEqual(self.world.members, {a, b})
+                self.assertEqual(request(departing.port, "GET", "/observe", headers={"X-Session": a, "X-World-Instance": "forged"})[0], 200)
+                self.assertEqual(self.world.calls[-1]["headers"]["X-World-Instance"], self.world.instance_id)
+            self.assertEqual(self.world.members, {b}, "only the departing relay's capability is released")
+            self.assertEqual(request(other.port, "GET", "/observe", headers={"X-Session": b})[0], 200)
+            self.world.instance_id = "00000000-0000-4000-8000-000000000002"
+            self.assertEqual(request(other.port, "GET", "/healthz")[0], 409, "same world type is a different instance")
+            self.assertEqual(request(other.port, "POST", "/join?name=B")[0], 409, "cannot rejoin a replacement silently")
 
     def test_legacy_healthz_counts_as_mesa(self):
         self.world.world_id = None

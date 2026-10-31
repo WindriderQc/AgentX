@@ -40,6 +40,28 @@ before finishing the queue request; local cleanup is not physical GPU release.
 World recording stays with the remote world's native owner. This CLI does not
 choose a model, change permissions, reset the world, or create another queue.
 
+## Remote instance identity and session departure
+
+The remote health probe retains `instanceId` and `recordingId` in the native
+request/status. When world preparation supplies an identity, the executor passes
+`--expected-instance`; the runner refuses a different instance before creating a
+run or spawning a supervisor. The delegated relay pins the observed instance in
+`X-World-Instance` on every upstream call. Replacing an island with the same type
+therefore fails the existing watchdog instead of reconnecting into another run.
+Cohort preflight retains the same identity for every member.
+
+The relay tracks only sessions it joined and calls the existing `POST /leave`
+for those capabilities at orderly shutdown, including signal handling. It never
+resets a cohort's world. A hard kill can prevent departure; the world marks
+unrefreshed presence `idle`, and restored avatars begin idle. Spectator traffic
+cannot establish agent activity. Native Core admission/release remains separate.
+Legacy world servers without instance IDs remain usable through their older
+protocol; Benchmark does not offer identity-bound run live links for them.
+
+The memory report exposes all four files in the persistence contract, including
+`EPISODIC_MEMORY.md`. Missing files and bounded tail truncation are explicit;
+reporting never mutates the persistent memory store.
+
 ## Single-agent execution
 
 The native `island_runner.py` and `integrations/operations/island-executor.cjs`
