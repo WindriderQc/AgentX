@@ -338,17 +338,28 @@ demande de la file). Le formulaire « Lancer » propose ceux de
 
 ```json
 [{"id":"mesa-island","label":"Île Clawblox"},
- {"id":"ile-de-frank","label":"Île de Frank","live":"https://hôte:18794"}]
+ {"id":"remote-mesa","label":"Île Mesa","live":"https://hôte:18794","liveWorld":"mesa-island"},
+ {"id":"remote-living","label":"Île vivante","live":"https://hôte:18794","liveWorld":"living-island"}]
 ```
 
 - `id` : le nom du dossier de monde ; Benchmark refuse un terrain absent de la liste.
 - `label` : le nom affiché.
 - `live` (facultatif) : l'origine du flux d'un terrain qui tourne tout seul (un
-  service de monde de GraphysX-Web). Avec `AGENTX_ISLAND_GRAPHYSX_URL`, le
-  bouton « Regarder … en direct » ouvre GraphysX-screen sur ce terrain, partie
-  en cours ou non, et « Voir » d'une partie en cours y suit l'agent. Les
-  reprises par partie de ces terrains ne sont pas encore branchées : « Voir »
-  n'apparaît pas après la partie.
+  service de monde de GraphysX-Web). Plusieurs terrains peuvent partager cette
+  origine : un seul monde y est actif à la fois. Choisir le terrain d'une prochaine
+  partie ne change jamais le monde en direct.
+- `liveWorld` (facultatif, avec `live`) : l'identifiant que ce service annonce
+  dans `/healthz` pour ce terrain ; par défaut, `id`. Il peut différer du nom du
+  dossier installé chez le runner.
+
+Avec `AGENTX_ISLAND_GRAPHYSX_URL`, la section « Monde en direct » lit
+`GET /api/island/worlds/:id/live` : un GET borné de `/healthz`, sans redirection,
+sur la seule origine configurée. Elle nomme le monde réellement actif, avertit
+si le terrain sélectionné n'est pas actif et vérifie de nouveau au clic. Une
+identité illisible désactive le bouton. Regarder ne lance ni ne réinitialise
+aucun monde. « Voir » d'une partie en cours suit son agent. Les
+reprises par partie de ces terrains ne sont pas encore branchées : « Voir »
+n'apparaît pas après la partie.
 
 Un réglage illisible est refusé en entier : l'onglet garde `mesa-island` et le
 dit sous « Parties ».

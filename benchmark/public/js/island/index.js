@@ -129,10 +129,12 @@ export function episodesHtml(text) {
   return items.length ? `<ol class="island-episodes">${items.join('')}</ol>` : '<p class="island-note">Aucun épisode.</p>';
 }
 
-function showFrame(src) {
+function showFrame(src, worldLabel = '') {
   $('island-viewer').hidden = false;
   $('island-frame').src = src;
   $('island-viewer-open').href = src;
+  $('island-viewer-world').hidden = !worldLabel;
+  $('island-viewer-world').textContent = worldLabel ? `Monde en direct : ${worldLabel}` : '';
   if (location.protocol === 'https:' && src.startsWith('http:')) {
     $('island-viewer-open').textContent = 'Ouvrir dans un nouvel onglet (le navigateur bloque une vue http dans une page https)';
   }
@@ -177,15 +179,67 @@ async function openMemory(id) {
   $('island-memory').scrollIntoView({ behavior: 'smooth' });
 }
 
-// The terrains from the last read: the choice in "Lancer" and "Regarder … en direct".
+// The next run's terrain and the currently active world are separate choices.
 let worlds = [];
+let liveRead = 0;
+let watchedTerrain = null;
+
+export function liveWorldPresentation(world, live) {
+  if (!live?.available || !live.activeWorld || !live.liveUrl) {
+    return { available: false, label: 'le monde actif', note: 'Le monde en direct est indisponible ou son identité ne peut pas être vérifiée.' };
+  }
+  const label = live.activeWorld.label;
+  return { available: true, label, note: live.selectedActive
+    ? `Monde actif : ${label}.`
+    : `Le terrain « ${world.label} » n’est pas actif sur ce service. Monde actif : ${label}. Le terrain choisi s’applique à la prochaine partie.` };
+}
+
+function showLiveCaption(presentation) {
+  $('island-viewer-world').hidden = false;
+  $('island-viewer-world').textContent = presentation.available
+    ? `Monde en direct : ${presentation.label}` : presentation.note;
+}
+
+// Keep identifying the displayed feed if the next run's terrain is changed.
+async function refreshDisplayedWorld() {
+  const id = watchedTerrain;
+  if (!id || id === $('island-world').value) return;
+  let live;
+  try { live = (await apiFetch(`${API}/worlds/${encodeURIComponent(id)}/live`)).data; } catch { /* Unavailable. */ }
+  if (id === watchedTerrain) showLiveCaption(liveWorldPresentation({ label: id }, live));
+}
+
+async function refreshLiveWorld(open = false) {
+  const read = ++liveRead;
+  const world = worlds.find(entry => entry.id === $('island-world').value);
+  const section = $('island-live');
+  const watch = $('island-watch');
+  section.hidden = !world?.liveUrl;
+  watch.disabled = true;
+  $('island-watch-label').textContent = 'le monde actif';
+  if (!world?.liveUrl) return;
+  $('island-live-status').textContent = 'Vérification du monde actif…';
+  let live;
+  try { live = (await apiFetch(`${API}/worlds/${encodeURIComponent(world.id)}/live`)).data; }
+  catch { /* An unreadable identity must never be presented as the selected terrain. */ }
+  if (read !== liveRead || world.id !== $('island-world').value) return;
+  const presentation = liveWorldPresentation(world, live);
+  watch.disabled = !presentation.available;
+  $('island-watch-label').textContent = presentation.label;
+  $('island-live-status').textContent = presentation.note;
+  if (watchedTerrain === world.id) showLiveCaption(presentation);
+  if (open && presentation.available) {
+    watchedTerrain = world.id;
+    followThoughts(null);
+    showFrame(live.liveUrl, presentation.label);
+  }
+}
+
 function showWorldChoice() {
   const select = $('island-world');
   const current = select.dataset.pendingWorld || select.value;
   if (worlds.length) select.innerHTML = worldOptionsHtml(worlds, current);
-  const world = worlds.find(entry => entry.id === select.value);
-  $('island-watch').hidden = !world?.liveUrl;
-  $('island-watch-label').textContent = world?.label || '';
+  void refreshLiveWorld();
 }
 
 const openDetails = new Set();
@@ -203,6 +257,7 @@ async function loadRuns() {
     const data = (await apiFetch(`${API}/runs`)).data;
     worlds = Array.isArray(data.worlds) ? data.worlds : [];
     showWorldChoice();
+    void refreshDisplayedWorld();
     $('island-runs').innerHTML = data.runs.map(run => runRowHtml(run, worlds)).join('') || '<tr><td colspan="4">Aucune partie.</td></tr>';
     // A refresh keeps the rows the owner opened.
     for (const id of [...openDetails]) { openDetails.delete(id); toggleDetail(id); }
@@ -270,14 +325,13 @@ function bind() {
     }
   });
   $('island-world').addEventListener('change', showWorldChoice);
-  $('island-watch').addEventListener('click', () => {
-    const world = worlds.find(entry => entry.id === $('island-world').value);
-    if (world?.liveUrl) { followThoughts(null); showFrame(world.liveUrl); }
-  });
+  // Recheck on click: another run may have changed the shared world meanwhile.
+  $('island-watch').addEventListener('click', () => { void refreshLiveWorld(true); });
   $('island-runs').addEventListener('click', async event => {
     const button = event.target.closest('button');
     if (!button) return;
     try {
+      if (button.dataset.live || button.dataset.replay) watchedTerrain = null;
       if (button.dataset.detail) toggleDetail(button.dataset.detail);
       if (button.dataset.live) { showFrame(button.dataset.live); followThoughts(button.dataset.run); }
       if (button.dataset.replay) followThoughts(null);

@@ -332,6 +332,12 @@ describe('island routes', () => {
     await request(app).get('/api/island/runs/not-an-id').expect(400);
     await request(app).post('/api/island/launch').send({ clientKey: 'bad' }).expect(400);
   });
+
+  it('does not cache active-world reads and refuses a non-configured terrain', async () => {
+    const response = await request(app).get('/api/island/worlds/no-such-terrain/live').expect(404);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.body.error).toMatch(/No configured terrain/);
+  });
 });
 
 describe('island page helpers', () => {
@@ -359,7 +365,7 @@ describe('island page helpers', () => {
       const node = () => ({ addEventListener() {}, classList: { remove() {}, add() {} } });
       fields.world.dataset = {};
       fields.world.addEventListener = () => {};
-      const nodes = { 'island-world': fields.world, 'island-watch': node(), 'island-watch-label': node(),
+      const nodes = { 'island-world': fields.world, 'island-watch': node(), 'island-watch-label': node(), 'island-live': node(),
         'island-launch-form': form, 'island-launch-result': node(), 'island-runs': node(), 'island-runs-status': node(), 'island-memory-run': node() };
       loadBrowserModule('island/index.js', 'readPendingLaunch', {
         apiFetch, window: { sessionStorage: storage }, crypto: { randomUUID: uuid },
