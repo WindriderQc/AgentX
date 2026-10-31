@@ -2,7 +2,9 @@ import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
 import { addAttachments, assertSafeAttachments, bodyFlags, buildOrganizeCommand, buildReadCommand, buildSearchCommand,
-  mutateBase, optionalFlag, readBase, recipientFlags, required, runEvidence, runGog, settings } from "./gmail.js";
+  defaults, mutateBase, optionalFlag, readBase, recipientFlags, required, runEvidence, runGog, settings } from "./gmail.js";
+import { normalizeLabels, sensitiveLabels } from './labels.js';
+import { sendGate } from './send-approval.js';
 import { TRIAGE_CATEGORIES, applyTriage, continueBacklogMessage, nextBacklogMessage } from "./backlog.js";
 import { assertFullyRead, readSelectedMessage } from "./backlog-reading.js";
 import { journalTriage } from "./triage-journal.js";
@@ -64,12 +66,13 @@ export async function buildSendCommand(params, config = defaults) {
 
 export function approvalFor(toolName, params = {}) {
   if (toolName === TOOL_NAMES.send) {
-    const target = params.to?.join(", ") || params.id || "selected conversation";
-    return { title: "Send Gmail message", description: `${params.action || "send"} to ${target}${params.subject ? ` — ${params.subject}` : ""}`.slice(0, 256), severity: "warning" };
+    // Classification only: the send gate resolves Gmail's complete message
+    // before constructing the actual native approval.
+    return { title: "Send Gmail message", description: "Review the resolved Gmail send snapshot", severity: "warning" };
   }
-  if (toolName === TOOL_NAMES.organize && (params.action === "archive" || params.action === "trash" || params.action === "delete_label" || params.query || params.removeLabels?.includes("INBOX")
-      || params.addLabels?.includes("Secretary/Processed"))) {
-    return { title: "Approve Gmail mailbox change", description: `${params.action}${params.query ? ` matching: ${params.query}` : ""}`.slice(0, 256), severity: params.action === "trash" ? "critical" : "warning" };
+  if (toolName === TOOL_NAMES.organize && (params.action === "archive" || params.action === "trash" || params.action === "delete_label" || params.query || sensitiveLabels(params))) {
+    const add = normalizeLabels(params.addLabels), remove = normalizeLabels(params.removeLabels);
+    return { title: "Approve Gmail mailbox change", description: `${params.action}${params.query ? ` matching: ${params.query}` : ""}${add.length ? ` add:${add.join(',')}` : ''}${remove.length ? ` remove:${remove.join(',')}` : ''}`.slice(0, 256), severity: params.action === "trash" || add.includes('TRASH') ? "critical" : "warning" };
   }
   if (toolName === TOOL_NAMES.draft && params.action === "delete") {
     return { title: "Delete Gmail draft", description: `Permanently delete draft ${params.id || "unknown"}.`, severity: "critical" };
@@ -97,21 +100,23 @@ function permittedAgent(api, context) {
     && String(context?.sessionKey || '').startsWith(`agent:${context.agentId}:`);
 }
 
-function registerNativeTool(api, tool) {
-  if (api.pluginConfig?.agentIds === undefined) return api.registerTool(tool, { optional: true });
-  api.registerTool(context => permittedAgent(api, context) ? tool : null, { name: tool.name, optional: true });
+function registerNativeTool(api, tool, bindContext = false) {
+  if (api.pluginConfig?.agentIds === undefined && !bindContext) return api.registerTool(tool, { optional: true });
+  api.registerTool(context => permittedAgent(api, context)
+    ? bindContext ? { ...tool, execute: (id, params) => tool.execute(id, params, context) } : tool
+    : null, { name: tool.name, optional: true });
 }
 
-function registerTool(api, name, description, parameters, builder) {
+function registerTool(api, name, description, parameters, builder, sendApproval) {
   registerNativeTool(api, {
     name,
     description,
     parameters,
-    async execute(_id, params) {
+    async execute(id, params, context) {
       const config = settings(api.pluginConfig);
       try {
         const readMessage = name === TOOL_NAMES.read && params.kind === "message" && params.format !== "metadata";
-        const value = readMessage
+        const value = sendApproval ? await sendApproval.execute(id, params, config, context) : readMessage
           ? await readSelectedMessage(config, params, async page => runGog(await builder({ ...params, ...page }, config), config))
           : await runGog(await builder(params, config), config);
         await audit(config, { tool: name, action: params.action || params.kind || params.scope || "search", status: "ok" });
@@ -121,7 +126,7 @@ function registerTool(api, name, description, parameters, builder) {
         throw error;
       }
     },
-  });
+  }, Boolean(sendApproval));
 }
 
 const messageFields = {
@@ -132,7 +137,7 @@ const messageFields = {
   attachments: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 4096 }), { maxItems: 10 })),
 };
 
-export function createPlugin(definePluginEntry) { return definePluginEntry({
+export function createPlugin(definePluginEntry, { sendApproval = sendGate() } = {}) { return definePluginEntry({
   id: "gmail-secretary",
   name: "Gmail Secretary",
   description: "Nestor-only Gmail secretary tools with bounded command execution and native approvals.",
@@ -275,20 +280,22 @@ export function createPlugin(definePluginEntry) { return definePluginEntry({
       replyAll: Type.Optional(Type.Boolean()),
     }, { additionalProperties: false }), buildDraftCommand);
 
-    registerTool(api, TOOL_NAMES.send, "Send a new Gmail message, reply, reply-all, forward, or send an existing draft. Every call requires explicit user approval before delivery.", Type.Object({
+    registerTool(api, TOOL_NAMES.send, "Send a new Gmail message, reply, reply-all, forward, or existing draft. Resolves a Gmail draft before native one-time approval, then sends exactly that snapshot. Review the full draft in Gmail when the approval shows only a body preview. Drafts are retained, including on denial. A send error may have delivered: reconcile in Sent before any retry.", Type.Object({
       action: Type.Union([Type.Literal("new"), Type.Literal("reply"), Type.Literal("reply_all"), Type.Literal("forward"), Type.Literal("draft")]),
       id: Type.Optional(Type.String({ maxLength: 256 })), ...messageFields,
       skipAttachments: Type.Optional(Type.Boolean()),
-    }, { additionalProperties: false }), buildSendCommand);
+    }, { additionalProperties: false }), buildSendCommand, sendApproval);
 
     api.on("before_tool_call", (event, context) => {
       if (!Object.values(TOOL_NAMES).includes(event.toolName)) return;
       if (!permittedAgent(api, context)) return { block: true, blockReason: 'Gmail tools belong to the configured mail agent.' };
       const provenance = nativeActionProvenance(context, api.config, api.pluginConfig);
-      const approval = approvalFor(event.toolName, event.params);
+      let approval;
+      try { approval = approvalFor(event.toolName, event.params); }
+      catch { return { block: true, blockReason: 'Invalid Gmail labels; pass separate unquoted label entries.' }; }
       const blocked = Boolean(approval && isBackgroundAction(provenance));
-      // Gate decisions never wait for filesystem I/O: a timed-out hook must
-      // not turn a refused action into an executed one.
+      // Background decisions stay synchronous. Send preparation may perform I/O,
+      // but execution still refuses without the resolution callback's grant.
       try {
         api.logger?.info?.(JSON.stringify(toolActionReceipt(event, provenance, 'requested',
           blocked ? 'blocked' : approval ? 'approval_required' : 'unchanged')));
@@ -297,6 +304,10 @@ export function createPlugin(definePluginEntry) { return definePluginEntry({
       }
       if (blocked) return { block: true, blockReason: `ADR 0003: ${provenance.origin} sessions cannot send mail or perform destructive mailbox changes; ask the owner in a conversation.` };
       if (!approval) return;
+      if (event.toolName === TOOL_NAMES.send) {
+        return sendApproval.before(event, settings(api.pluginConfig), provenance.origin, buildSendCommand, context)
+          .catch(() => ({ block: true, blockReason: 'Cannot safely prepare the Gmail approval. Review the draft in Gmail; no send was authorized.' }));
+      }
       return { requireApproval: { ...approval,
         description: `${approval.description} [origin: ${provenance.origin}]`.slice(0, 256),
         allowedDecisions: ["allow-once", "deny"], timeoutMs: 300000, timeoutBehavior: "deny" } };

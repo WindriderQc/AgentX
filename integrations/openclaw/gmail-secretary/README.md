@@ -51,6 +51,45 @@ message reading guard through that organizer. Explicit owner bulk organization
 retains its approval path. Previously applied thread labels are not retroactive
 proof that every message was read.
 
+## Sending and mailbox approvals
+
+Sending first prepares a Gmail draft through gog's native compose paths. This
+resolves reply/reply-all recipients, signatures, quoted content and forwarded
+attachments before approval. Existing drafts are read directly. The approval
+lists the actual From, To, Cc and Bcc addresses, subject, attachment count,
+explicit body preview and length, draft identity and snapshot fingerprint.
+Review the complete draft in Gmail when the preview is insufficient. Recipient
+lists and subjects are never silently truncated: a message whose mandatory
+details exceed the native 512-character approval limit must be sent in Gmail.
+
+Only the native resolution callback's `allow-once` grants a send. The grant
+expires after 30 seconds, matches the native agent, session, call ID and complete arguments,
+and is consumed before execution. Denial, timeout, cancellation, changed drafts
+or missing callbacks refuse. Immediately before sending, the plugin verifies
+the draft still matches, then sends the captured RFC822 bytes rather than a
+mutable draft ID. Subsequent file or draft edits cannot change those bytes.
+The plugin does not delete source drafts; they remain available for review or
+separately approved deletion, including when sending is denied. After an
+uncertain send result, reconcile the message in Gmail Sent before retrying.
+
+This path needs Python 3 (standard library only), gog's `gmail drafts
+create|reply|reply-all|forward`, `drafts get --format=raw` and `send --raw-file=-`,
+and an OpenClaw runtime that resolves `requireApproval.onResolution` with the
+native tool call ID and displays the complete description. Unsupported clients
+refuse; there is no fallback to sending by unresolved ID. Exact snapshots are
+bounded to 40 MB of base64/JSON input. MIME inspection and send bytes stay in
+process memory and pipes, outside model context and provenance logs. Tests
+exercise the real local MIME parser and stub Gmail; installed SDK/channel
+presentation and actual mailbox effects require separate native qualification.
+See [OpenClaw's approval contract](https://docs.openclaw.ai/plugins/plugin-permission-requests).
+
+Organizer approval also covers adding Spam/Trash or removing Inbox through
+label modification, including case/whitespace and CSV aliases. Policy and
+command builders share label normalization. Quoted or control-character label
+entries refuse; opaque user-label IDs require approval because they may resolve
+to a protected Secretary label. Ordinary review labels remain available to
+background triage.
+
 The triage digest searches and records the exact message identity in Core; an
 existing digest for another member or only the thread cannot hide the message.
 Journal retention and failed delivery remain explicit in the returned/audited
