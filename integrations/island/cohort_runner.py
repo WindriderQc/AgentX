@@ -90,13 +90,17 @@ def prepare(config, args, members, remote):
         child = root / member["runId"]
         child.mkdir(mode=0o700)
         cfg = member_config(config, group, member, index)
-        world = Path(cfg["worldsRoot"]) / args.world
+        # Native Clawblox derives its tmux session prefix from the directory's
+        # basename. Distinct parent directories alone still collide in one second.
+        local_world = "cohort-" + member["runId"]
+        world = Path(cfg["worldsRoot"]) / local_world
         world.mkdir(parents=True, mode=0o700)
         for name in ("world.toml", "README.md"):
             data, _ = native.read_regular(Path(config["worldsRoot"]) / args.world / name, 256 * 1024)
             (world / name).write_bytes(data)
         native.write_json(group / (member["harness"] + ".json"), cfg)
         native.write_json(child / "request.json", {**request, **member, "parentRunId": args.run_id,
+                          "world": local_world,
                           "remoteWorld": {"origin": remote["origin"], "world": remote["world"]}})
         native.write_json(child / "state.json", {"phase": "prepared", "localStopped": True, "events": []})
     native.write_json(root / "active.json", {"runId": args.run_id, "since": request["requestedAt"]})

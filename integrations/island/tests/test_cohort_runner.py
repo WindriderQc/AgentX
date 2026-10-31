@@ -63,9 +63,10 @@ class CohortTests(Fixture):
             self.assertEqual(c['tokenFile'], '/outside/real-token')
             self.assertEqual(c['nodeBin'], '/installed/node/bin')
             self.assertEqual(c['startupSeconds'], 300)
-            self.assertTrue((Path(c['worldsRoot']) / 'living/world.toml').is_file())
             request = cohort.native.read_json(self.root / 'runs' / m['runId'] / 'request.json')
+            self.assertTrue((Path(c['worldsRoot']) / request['world'] / 'world.toml').is_file())
             self.assertEqual((request['memory'], request['contextWindow'], request['parentRunId']), ('fresh', 196608, RUN))
+            self.assertIn(m['runId'], request['world'], 'native tmux names must not collide in a simultaneous start')
         self.assertEqual(cohort.native.active_run(self.config), RUN, 'the existing single-run start gate sees the cohort')
         self.assertEqual(cohort.native.read_json(group / 'request.json')['model'], 'agentx-primary')
 
