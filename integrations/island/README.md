@@ -1,5 +1,47 @@
 # Island runner safety
 
+## Operator cohorts on a shared remote island
+
+`cohort_runner.py` starts two or three distinct harnesses (`codex,dsh,pi`)
+against one already prepared remote island. It takes the existing runner start
+lock and active marker, so ordinary single-agent starts cannot overlap it. It
+calls the native supervisor for every member, with deterministic child run IDs,
+separate relay ports, delegated-world state, sessions and fresh memory. Provider
+credentials, sandboxing, episode monitoring and cleanup remain native. The
+principal alias and supplied pinned context are unchanged. Members receive a
+five-minute startup allowance because the shared provider can serialize replies.
+
+This is an operator CLI, not a new Benchmark launch button. Queue the cohort as
+one operator-executed heavy-work request covering its hosts; retain native Core
+admission. After the dispatch fence, prepare the remote world **once**, then:
+
+```
+python cohort_runner.py check --run-id <uuid> --context-window <pinned-context>
+python cohort_runner.py start --run-id <uuid> --dispatch-id <core-dispatch> \
+  --world <remote-world-id> --harnesses codex,dsh,pi --minutes 15 \
+  --context-window <pinned-context>
+python cohort_runner.py status --run-id <uuid>
+python cohort_runner.py stop --run-id <uuid>
+```
+
+The existing runner configuration supplies the world, templates and binaries.
+`--config` selects it explicitly. For an operator-only staged copy, use the
+installed runner's Python and put its integration directory on `PYTHONPATH`;
+this consumes the installed supervisor without changing privileged files.
+Qualify with a separate one-minute `--netcheck` cohort first. It has no upstream
+inference connection. Reset the world once between qualification and real play,
+never between members. Existing run IDs, including partial preparation, refuse
+another start. Status never launches a replacement.
+
+The cohort receipt proves **local** member termination and process observation.
+Unproven cleanup retains the existing active marker for owner reconciliation.
+The coordinator must separately observe Core's exact-dispatch operator release
+before finishing the queue request; local cleanup is not physical GPU release.
+World recording stays with the remote world's native owner. This CLI does not
+choose a model, change permissions, reset the world, or create another queue.
+
+## Single-agent execution
+
 The native `island_runner.py` and `integrations/operations/island-executor.cjs`
 are the execution path for Benchmark's island tab. `run_island.py` supplies
 its episode loop; `llm_proxy.py` and `run_state.py` own the bounded transport
