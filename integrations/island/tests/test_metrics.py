@@ -17,7 +17,7 @@ class MetricsTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         (self.root / 'recordings').mkdir()
         self.put('request.json', {'harness': 'pi', 'agent': 'Eko', 'minutes': 60})
-        self.put('state.json', {'outcome': 'completed', 'startedAt': '2026-01-01T00:00:00Z',
+        self.put('state.json', {'outcome': 'completed', 'localStopped': True, 'startedAt': '2026-01-01T00:00:00Z',
                                'endedAt': '2026-01-01T01:00:20Z'})
         self.put('receipt.json', {'episodes': [{'startedAt': '2026-01-01T00:00:00Z',
                                                'endedAt': '2026-01-01T01:00:00Z'}]})
@@ -135,6 +135,12 @@ class MetricsTests(unittest.TestCase):
         d = run_metrics(self.root, recording=self.graph(self.action(1)))
         self.assertIsNone(d['worldActions'])
         self.assertIn('not terminal', d['worldMeasurement']['error'])
+
+    def test_failed_cleanup_does_not_make_a_still_changing_recording_final(self):
+        self.put('state.json', {'outcome': 'failed', 'localStopped': False})
+        d = run_metrics(self.root, recording=self.graph(self.action(1)))
+        self.assertIsNone(d['worldActions'])
+        self.assertIn('cleanup is not proven', d['worldMeasurement']['error'])
 
     def test_duration_uses_native_episode_windows_not_rollout_or_cleanup_time(self):
         receipt = {'episodes': [

@@ -95,6 +95,8 @@ def run_metrics(run: Path, *, recording=None, agent=None, start_tick=None, end_t
     evidence_error = None
     if outcome not in ('completed', 'failed', 'stopped'):
         evidence_error = 'run is not terminal'
+    elif state.get('localStopped', receipt.get('localStopped')) is not True:
+        evidence_error = 'native local cleanup is not proven; recording may still be changing'
     else:
         if recording is None:
             found = sorted((run / 'recordings').glob('*.clawrec'))
