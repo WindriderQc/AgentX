@@ -5,6 +5,7 @@
       (<a href="https://arxiv.org/abs/2610.07130" target="_blank" rel="noopener">« Is this machine playing? »</a>).</p>
   </header>
 
+  <nav class="island-workspace-nav" aria-label="Espace Île"><a href="#island-runs-title">Parties</a><a href="#island-viewer-title">Explorer l’île</a><a href="#island-memory-title">Mémoire</a></nav>
   <section class="r-section island-launch" aria-labelledby="island-launch-title">
     <h2 id="island-launch-title" class="r-sec-title">Lancer une partie</h2>
     <form id="island-launch-form" class="island-form">
@@ -45,24 +46,27 @@
   </section>
 
   <section id="island-viewer" class="r-section island-viewer" hidden aria-labelledby="island-viewer-title">
-    <h2 id="island-viewer-title" class="r-sec-title">Vue 3D</h2>
+    <h2 id="island-viewer-title" class="r-sec-title">Explorer l’île</h2>
     <p id="island-viewer-world" class="island-note" role="status" hidden></p>
     <p class="island-note"><a id="island-viewer-open" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>
-      · En direct, les pensées de l'agent s'affichent sous la vue ; en relecture, dans le panneau <b>Messages</b>.</p>
+      · Scène, carte, chronologie, lignées et comparaison partagent la sélection. <button type="button" id="island-viewer-memory" hidden>Mémoire de cette partie</button></p>
     <iframe id="island-frame" title="Vue 3D de l'île" allow="fullscreen"></iframe>
     <div id="island-thoughts" class="island-thoughts" hidden>
-      <h3 class="island-thoughts-title">Pensées en direct <span id="island-thoughts-note" class="island-thoughts-note"></span></h3>
+      <h3 class="island-thoughts-title">Journal de l’agent <span id="island-thoughts-note" class="island-thoughts-note"></span></h3>
       <ol id="island-thoughts-list" aria-live="polite"></ol>
     </div>
   </section>
 
   <section id="island-memory" class="r-section island-memory" hidden aria-labelledby="island-memory-title">
     <h2 id="island-memory-title" class="r-sec-title">Mémoire</h2>
+    <p id="island-memory-provenance" class="island-note" role="status"></p>
+    <p class="island-note"><a href="#island-viewer-title">Revenir à l’exploration (sélection conservée)</a></p>
     <label class="island-note">Partie <select id="island-memory-run"></select></label>
     <div class="island-tabs" role="tablist">
-      <button type="button" role="tab" data-file="SOUL.md" title="SOUL.md">Personnalité</button>
-      <button type="button" role="tab" data-file="EPISODIC_MEMORY.jsonl" title="EPISODIC_MEMORY.jsonl">Journal</button>
-      <button type="button" role="tab" data-file="SEMANTIC_MEMORY.md" title="SEMANTIC_MEMORY.md">Savoir</button>
+      <button type="button" role="tab" id="memory-tab-SOULmd" data-file="SOUL.md" title="SOUL.md">Personnalité</button>
+      <button type="button" role="tab" id="memory-tab-EPISODICMEMORYmd" data-file="EPISODIC_MEMORY.md" title="EPISODIC_MEMORY.md">Récits</button>
+      <button type="button" role="tab" id="memory-tab-EPISODICMEMORYjsonl" data-file="EPISODIC_MEMORY.jsonl" title="EPISODIC_MEMORY.jsonl">Journal</button>
+      <button type="button" role="tab" id="memory-tab-SEMANTICMEMORYmd" data-file="SEMANTIC_MEMORY.md" title="SEMANTIC_MEMORY.md">Savoir</button>
     </div>
     <div id="island-memory-body" class="island-memory-body" role="tabpanel"></div>
   </section>

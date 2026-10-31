@@ -70,9 +70,10 @@ export function duration(run) {
 
 export function stateLabel(run) {
   const queue = run.queue?.state;
-  if (queue && !['completed', 'failed', 'cancelled'].includes(queue)) return { key: queue, text: STATES[queue] || queue };
+  if (queue) return { key: queue, text: STATES[queue] || queue };
+  if (run.state) return { key: run.state, text: STATES[run.state] || run.state };
+  if (['completed', 'failed', 'cancelled'].includes(run.receipt?.state)) return { key: run.receipt.state, text: STATES[run.receipt.state] };
   if (run.phase === 'running') return { key: 'running', text: PHASES.running };
-  if (queue) return { key: queue, text: STATES[queue] };
   if (run.receipt?.state) return { key: run.receipt.state, text: STATES[run.receipt.state] || run.receipt.state };
   return { key: run.phase || 'unknown', text: PHASES[run.phase] || run.phase || 'inconnu' };
 }
@@ -106,7 +107,8 @@ export function runDetailHtml(run, worlds) {
 export function runRowHtml(run, worlds) {
   const state = stateLabel(run);
   const id = escapeHtml(run.id);
-  const view = run.liveView ? `<button type="button" data-live="${escapeHtml(run.liveView)}" data-run="${id}" title="Vue en direct, avec les pensées">Voir</button>`
+  const terminal = ['completed', 'failed', 'cancelled'].includes(state.key);
+  const view = run.liveView && !terminal ? `<button type="button" data-live="${escapeHtml(run.liveView)}" data-run="${id}" title="Vue en direct, avec les pensées">Voir</button>`
     : run.replayable ? `<button type="button" data-replay="${id}" title="Relecture avec les pensées">Voir</button>` : '';
   const memory = run.hasMemory ? `<button type="button" data-memory="${id}">Mémoire</button>` : '';
   return `<tr>
@@ -138,9 +140,21 @@ export function explorerViewUrl(src, runId, dashboardOrigin) {
   return url.href;
 }
 
+/** Only the currently displayed viewer may request its own run memory. */
+export function isIslandMemoryRequest(event, frame, runId) {
+  try {
+    return Boolean(runId && event.source === frame.contentWindow && event.origin === new URL(frame.src).origin
+      && event.data?.type === 'graphysx:island:memory' && event.data.runId === runId);
+  } catch { return false; }
+}
+
 function showFrame(src, worldLabel = '', runId = null) {
   src = explorerViewUrl(src, runId, location.origin);
+  viewerRun = runId;
   $('island-viewer').hidden = false;
+  $('island-viewer-memory').hidden = !runId;
+  $('island-viewer-memory').dataset.memory = runId || '';
+  $('island-viewer-open').textContent = 'Ouvrir dans un nouvel onglet';
   $('island-frame').src = src;
   $('island-viewer-open').href = src;
   $('island-viewer-world').hidden = !worldLabel;
@@ -153,15 +167,20 @@ function showFrame(src, worldLabel = '', runId = null) {
 
 // "Pensées en direct": the run's latest entries, refreshed while it plays.
 let thoughtsTimer = null;
-function stopThoughts() { clearInterval(thoughtsTimer); thoughtsTimer = null; }
+let viewerRun = null;
+let thoughtsRead = 0;
+function stopThoughts() { clearInterval(thoughtsTimer); thoughtsTimer = null; thoughtsRead++; }
 async function loadThoughts(id) {
+  const read = ++thoughtsRead;
   try {
     const run = (await apiFetch(`${API}/runs/${encodeURIComponent(id)}`)).data;
+    if (viewerRun !== id || read !== thoughtsRead) return;
     $('island-thoughts').hidden = false;
     $('island-thoughts-list').innerHTML = thoughtsHtml(run.agentMessages, run.timeZone);
-    $('island-thoughts-note').textContent = run.phase === 'running' ? '· toutes les 15 s' : '· partie terminée';
-    if (run.phase !== 'running') stopThoughts();
+    $('island-thoughts-note').textContent = stateLabel(run).key === 'running' ? '· toutes les 15 s' : '· partie terminée';
+    if (stateLabel(run).key !== 'running') stopThoughts();
   } catch (err) {
+    if (viewerRun !== id || read !== thoughtsRead) return;
     $('island-thoughts-note').textContent = `· lecture impossible : ${err.message}`;
   }
 }
@@ -173,16 +192,22 @@ function followThoughts(id) {
 }
 
 let memory = null;
+let memoryRead = 0;
 function showMemoryFile(name) {
-  document.querySelectorAll('.island-tabs button').forEach(btn => btn.setAttribute('aria-selected', String(btn.dataset.file === name)));
+  document.querySelectorAll('.island-tabs button').forEach(btn => { btn.setAttribute('aria-selected', String(btn.dataset.file === name)); btn.tabIndex = btn.dataset.file === name ? 0 : -1; });
+  $('island-memory-body').setAttribute('aria-labelledby', `memory-tab-${name.replace(/[^a-zA-Z]/g, '')}`);
   const file = memory?.files?.[name];
   const body = $('island-memory-body');
-  if (!file) { body.innerHTML = '<p class="island-note">Fichier absent pour cette partie.</p>'; return; }
-  const note = file.truncated ? `<p class="island-note">Fin du fichier seulement (${file.bytes} octets).</p>` : '';
+  if (!file || file.missing) { body.innerHTML = '<p class="island-note">Fichier absent pour cette partie.</p>'; return; }
+  const note = file.truncated ? `<p class="island-note">Fin du fichier seulement (${escapeHtml(file.bytes)} octets).</p>` : '';
   body.innerHTML = note + (name.endsWith('.jsonl') ? episodesHtml(file.text) : `<pre>${escapeHtml(file.text)}</pre>`);
 }
 async function openMemory(id) {
-  memory = (await apiFetch(`${API}/runs/${encodeURIComponent(id)}/memory`)).data;
+  const read = ++memoryRead;
+  const received = (await apiFetch(`${API}/runs/${encodeURIComponent(id)}/memory`)).data;
+  if (read !== memoryRead) return;
+  memory = received;
+  $('island-memory-provenance').textContent = `Partie ${id} · capture mémoire de fin de partie. Ces fichiers ne sont pas synchronisés avec l’instant de la scène ou de la relecture.`;
   $('island-memory').hidden = false;
   $('island-memory-run').innerHTML = memory.runs.map(run => `<option value="${escapeHtml(run.id)}"${run.id === id ? ' selected' : ''}>${escapeHtml(when(run.startedAt || run.endedAt, run.timeZone))} · ${run.memoryMode === 'fresh' ? 'neuve' : 'continue'}</option>`).join('');
   showMemoryFile('SEMANTIC_MEMORY.md');
@@ -360,7 +385,19 @@ function bind() {
   document.querySelector('.island-tabs').addEventListener('click', event => {
     if (event.target.dataset.file) showMemoryFile(event.target.dataset.file);
   });
-  $('island-memory-run').addEventListener('change', event => openMemory(event.target.value));
+  $('island-memory-run').addEventListener('change', event => { void openMemory(event.target.value).catch(err => { $('island-memory-provenance').textContent = err.message; }); });
+  $('island-viewer-memory').addEventListener('click', () => { if (viewerRun) void openMemory(viewerRun).catch(err => { $('island-runs-status').textContent = err.message; }); });
+  window.addEventListener('message', event => {
+    const frame = $('island-frame');
+    if (!isIslandMemoryRequest(event, frame, viewerRun)) return;
+    void openMemory(viewerRun).catch(err => { $('island-runs-status').textContent = err.message; });
+  });
+  document.querySelector('.island-tabs').addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    const tabs = [...document.querySelectorAll('.island-tabs button')], at = tabs.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (at + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
+    event.preventDefault(); showMemoryFile(tabs[next].dataset.file); tabs[next].focus();
+  });
 }
 
 if (typeof document?.getElementById === 'function' && document.getElementById('island-runs')) {
