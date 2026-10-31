@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import json
-import datetime as dt
 import os
 import re
 import stat
 import subprocess
-import time
 from pathlib import Path
+
+from session_activity import latest_activity
 
 REQUIRED_CHECKS = {"world", "llm-auth-required", "llm-authorized", "core-health", "core-queue",
                    "core-config", "llm-method", "encoded-path", "llm-query", "netcheck-no-inference",
@@ -76,39 +76,6 @@ def copy_memory_files(source: Path, workspace: Path, require_all=True):
                     raise ValueError("invalid episodic memory record")
         (workspace / name).write_bytes(data)
     os.chmod(workspace / "SOUL.md", 0o444)
-
-
-def latest_activity(sessions: Path, since: float | None = None):
-    files = [p for p in sessions.rglob("*.jsonl") if p.is_file() and not p.is_symlink()] if sessions.is_dir() else []
-    if since is not None:
-        files = [path for path in files if path.stat().st_mtime >= since]
-    if not files: return None
-    newest = max(files, key=lambda p: p.stat().st_mtime)
-    try:
-        data, info = read_regular(newest, 65536, tail=True)
-    except ValueError:
-        return None
-    lines = data.splitlines()
-    records = []
-    for line in lines:
-        try: value = json.loads(line)
-        except ValueError: continue
-        if isinstance(value, dict): records.append(value)
-    last = records[-1] if records else {}
-    meaningful = [value for value in records if value.get("type") == "response_item" and
-                  isinstance(value.get("payload"), dict) and
-                  value["payload"].get("type") in ("message", "reasoning", "function_call") and
-                  value["payload"].get("role", "assistant") == "assistant"]
-    # Errors, user prompts and session metadata must not refresh model activity:
-    # a failed turn loop keeps writing these while no inference succeeds.
-    at = None
-    if meaningful:
-        try:
-            at = dt.datetime.fromisoformat(meaningful[-1]["timestamp"].replace("Z", "+00:00")).timestamp()
-        except (KeyError, TypeError, ValueError, AttributeError):
-            at = info.st_mtime  # Older/synthetic rollouts without timestamps.
-    age = max(0, time.time() - at) if at is not None else float("inf")
-    return {"age": age, "payload": last.get("payload") or {}, "modelActivity": bool(meaningful)}
 
 
 def pane_alive(started):
