@@ -226,3 +226,73 @@ test('the real voice loop applies recule/avance locally and routes out-of-contex
   heard = 'recule'; await say(new Blob(['synthetic'])); assert.equal(turns, 2, 'outside frame the alias reaches the normal turn');
   conversation.stop(); h.frame.dispose();
 });
+
+
+test('ambient and false-wake speech cannot navigate a standby frame', async () => {
+  const h = harness(); await flush(); await h.enter(); await h.next();
+  const requests = h.count();
+  for (const text of ['', 'avance', 'recule', 'la radio avance', 'hey voisin recule', 'Nestor avance le rendez-vous']) {
+    h.presence('hearing'); h.presence('transcribing');
+    assert.equal(h.frame.localControl(text, { followup: false }), null, text);
+    assert.equal(h.shown(), photo(2).src); assert.equal(h.frame.active(), true);
+    h.presence('listening');
+  }
+  assert.equal(h.count(), requests);
+  assert.equal(h.frame.localControl('Eille Nestor, recule', { followup: false }).applied, true);
+  assert.equal(h.shown(), photo(1).src); h.frame.dispose();
+});
+
+test('repeated voice next coalesces and a stale failure cannot erase a newer selection', async () => {
+  const h = harness(); await flush(); await h.enter(); await h.next();
+  const old = deferred(); h.queue.push(old.promise);
+  for (let i = 0; i < 8; i++) assert.equal(h.frame.localControl('avance', { followup: true }).applied, true);
+  assert.equal(h.count(), 3);
+  h.frame.localControl('recule', { followup: true }); assert.equal(h.shown(), photo(1).src);
+  await h.next(); await h.next(); assert.equal(h.shown(), photo(3).src);
+  old.reject(Error('Synthetic stale failure')); await flush();
+  assert.equal(h.shown(), photo(3).src); assert.equal(h.frame.active(), true);
+  assert.equal(h.region.attributes['aria-busy'], undefined);
+  h.back(); assert.equal(h.shown(), photo(2).src); h.frame.dispose();
+});
+
+test('long idle time advances once; manual history navigation still restarts the timer', async () => {
+  const h = harness(); await flush(); await h.enter();
+  h.clock += 20 * 60 * 1000; h.frame.tick(); await flush();
+  assert.equal(h.shown(), photo(2).src); assert.equal(h.count(), 2, 'missed rotations are not replayed in a burst');
+  h.frame.localControl('recule', { followup: true });
+  h.clock += 4999; h.frame.tick(); await flush(); assert.equal(h.shown(), photo(1).src);
+  h.clock++; h.frame.tick(); await flush(); assert.equal(h.shown(), photo(2).src); assert.equal(h.count(), 2);
+  h.frame.dispose();
+});
+
+test('Pause cancels a pending transcript; rearm preserves session, resets wake and starts a fresh photo history', async () => {
+  const h = harness(); await flush(); let say, onError, pendingTranscript = null, heard = '', sessions = 0, turns = 0;
+  const audio = { listen(callback) { say = callback; }, quiet() {}, close() {}, async play() {} };
+  const c = new Conversation({ wakeAckDelayMs: 0, holdingDelayMs: null,
+    openAudio: async (_signal, failed) => { onError = failed; return audio; },
+    createSession: async () => { sessions++; return { sessionId: 'synthetic-paused-photo-session' }; },
+    transcribe: async () => pendingTranscript ? pendingTranscript.promise : heard,
+    localControl: (text, options) => h.frame.localControl(text, options), message() {},
+    turn: async () => { turns++; return { text: '' }; }
+  }, state => h.presence(state));
+  try {
+    await c.start({ language: 'fr', wakeWord: true }); const session = c.session;
+    await h.enter(); await h.next();
+    pendingTranscript = deferred(); const old = pendingTranscript;
+    const exchange = say(new Blob(['synthetic delayed utterance'])); await flush();
+    assert.equal(c.state, 'transcribing'); assert.equal(h.frame.active(), true);
+    c.stop(true); old.resolve('Hey Nestor, recule'); await exchange;
+    assert.equal(h.shown(), photo(2).src); assert.equal(c.session, session); assert.equal(c.wake.active(), false);
+    pendingTranscript = null; await c.start({ language: 'fr', wakeWord: true });
+    assert.equal(h.frame.active(), false); assert.equal(c.session, session); assert.equal(sessions, 1);
+    await h.enter(); assert.equal(h.shown(), photo(3).src);
+    heard = 'recule'; await say(new Blob(['synthetic unaddressed utterance']));
+    assert.equal(h.shown(), photo(3).src); assert.equal(turns, 0);
+    heard = 'Hey Nestor, avance'; await say(new Blob(['synthetic addressed utterance'])); await flush();
+    assert.equal(h.shown(), photo(4).src); assert.equal(turns, 0);
+    h.back(); assert.equal(h.shown(), photo(3).src, 'history from before Pause/rearm cannot reappear');
+    onError(Error('Synthetic capture failure'));
+    assert.equal(c.state, 'error'); assert.equal(h.frame.active(), false); assert.equal(c.session, session);
+    assert.equal(c.wake.active(), false);
+  } finally { c.stop(); h.frame.dispose(); }
+});
