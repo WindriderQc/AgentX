@@ -32,6 +32,7 @@ from secretary_evidence import DEFAULT_ROOT, Archive  # noqa: E402
 from review_attempts import ReviewUncertain, extract_once, unsettled, blocked_phase, blocked_counts  # noqa: E402
 from review_response import ReviewInvalidOutput, parse_content  # noqa: E402
 from review_policy import STRICT_RULES, context_for  # noqa: E402
+from review_refusals import BUSY_HTTP, PRE_DISPATCH_CODES, pre_dispatch_refusal  # noqa: E402
 
 LOCK_NAME = "catchup.lock"  # secretary_evidence.native_next stops issuing pages while it is fresh
 STATUS_NAME = "catchup-status.json"
@@ -44,9 +45,6 @@ STATUSES = ["current", "waiting", "resolved", "historical", "uncertain"]
 CURRENT_DAYS = 30
 EXPORT_EVERY = 25
 PAUSE_SECONDS = 60
-BUSY_HTTP = (409, 423, 429, 502, 503, 504)
-PRE_DISPATCH_CODES = {"BENCHMARK_CLAIM_ACTIVE", "BENCHMARK_CLAIM_PROOF_INVALID", "HOST_SESSION_HOLD_BUSY",
-                      "RUNTIME_INFERENCE_ADMISSION_DENIED", "NO_UNCLAIMED_OLLAMA_HOST"}
 INVOICE_FIELDS = ("supplier", "documentNumber", "documentDate", "person", "grossAmount", "currency", "tax",
                   "patientPaid", "insurancePaid", "insurer", "documentKind", "paymentEvidence",
                   "reimbursementStatus", "notes", "originalFilename")
@@ -162,7 +160,7 @@ class CoreClient:
                         "truncated": len(raw) > 65536, "bodyLimitBytes": 65536})
                 try: detail = json.loads(raw[:65536])
                 except (ValueError, OSError): detail = {}
-                if exc.code in BUSY_HTTP and detail.get("code") in PRE_DISPATCH_CODES:
+                if len(raw) <= 65536 and pre_dispatch_refusal(exc.code, detail):
                     retry = exc.headers.get("Retry-After") if exc.headers else None
                     raise Busy(f"Core refused before dispatch ({detail['code']})", int(retry) if retry and retry.isdigit() else PAUSE_SECONDS, safe_to_retry=True)
                 raise ReviewUncertain(f"Core inference returned HTTP {exc.code}; native outcome needs reconciliation") from exc
