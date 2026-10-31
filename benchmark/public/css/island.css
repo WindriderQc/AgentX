@@ -65,3 +65,7 @@
   .island-table tbody tr.island-detail-row td { display: block; padding: .5rem; }
   .island-viewer iframe { height: 60vh; }
 }
+
+.island-workspace-nav{display:flex;gap:1rem;flex-wrap:wrap;margin:1rem 0}.island-workspace-nav a{padding:.6rem 1rem;border:1px solid var(--r-border,#375063);border-radius:.6rem;color:inherit}.island-page{scroll-behavior:smooth}.island-tabs{flex-wrap:wrap}.island-memory-body{font-size:max(14px,1rem)}.island-viewer iframe{min-height:620px;height:78dvh}.island-memory,.island-viewer{scroll-margin-top:1rem}
+@media(min-width:2400px){.island-page{font-size:1.25rem}.island-memory-body{font-size:1.1rem}}
+@media(max-width:600px){.island-viewer iframe{min-height:680px;height:85dvh}.island-table{font-size:.9rem}.island-tabs button{min-height:44px}.island-workspace-nav a{min-height:44px}}

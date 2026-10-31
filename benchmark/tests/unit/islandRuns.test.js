@@ -366,9 +366,9 @@ describe('island page helpers', () => {
       fields.world.dataset = {};
       fields.world.addEventListener = () => {};
       const nodes = { 'island-world': fields.world, 'island-watch': node(), 'island-watch-label': node(), 'island-live': node(),
-        'island-launch-form': form, 'island-launch-result': node(), 'island-runs': node(), 'island-runs-status': node(), 'island-memory-run': node() };
+        'island-launch-form': form, 'island-launch-result': node(), 'island-runs': node(), 'island-runs-status': node(), 'island-memory-run': node(), 'island-viewer-memory': node() };
       loadBrowserModule('island/index.js', 'readPendingLaunch', {
-        apiFetch, window: { sessionStorage: storage }, crypto: { randomUUID: uuid },
+        apiFetch, window: { sessionStorage: storage, addEventListener() {} }, crypto: { randomUUID: uuid },
         FormData: class { get(key) { return fields[key].disabled ? null : fields[key].value; } },
         document: { getElementById: id => nodes[id], querySelector: () => node(), hidden: false },
         setInterval: () => 0, clearInterval() {}
@@ -447,8 +447,15 @@ describe('island page helpers', () => {
     expect(detail).toContain('Relances : 3');
     expect(detail).toContain('Reçu terminée');
     // A running run's Voir opens the live view instead of the replay.
-    expect(page.runRowHtml({ ...run, liveView: 'http://runner.lan:18080/?t=1' })).toContain('data-live');
+    expect(page.runRowHtml({ ...run, phase: 'running', queue: { state: 'running' }, liveView: 'http://runner.lan:18080/?t=1' })).toContain('data-live');
     expect(page.stateLabel({ queue: { state: 'reserved' } }).text).toBe('créneau réservé');
+  });
+
+  it.each(['completed', 'failed', 'cancelled'])('keeps terminal %s above a stale running phase and blocks its live link', state => {
+    const run = { id: ID, phase: 'running', queue: { state }, liveView: 'http://world.lan', replayable: true };
+    expect(page.stateLabel(run).key).toBe(state);
+    expect(page.runRowHtml(run)).not.toContain('data-live');
+    expect(page.runRowHtml(run)).toContain('data-replay');
   });
 
   it('lists episodes and keeps unreadable lines visible', () => {

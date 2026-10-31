@@ -92,7 +92,7 @@ it('presents the actual world instead of falsely labelling it Mesa, and fails cl
 
 it('ignores a late Mesa probe after selecting another terrain and rechecks before opening', async () => {
   const nodes = {};
-  const node = id => nodes[id] ||= { hidden: false, disabled: false, textContent: '', scrollIntoView() {} };
+  const node = id => nodes[id] ||= { hidden: false, disabled: false, dataset: {}, textContent: '', scrollIntoView() {} };
   node('island-world').value = mesa.id;
   const replies = [];
   const apiFetch = jest.fn(() => new Promise(resolve => replies.push(resolve)));
