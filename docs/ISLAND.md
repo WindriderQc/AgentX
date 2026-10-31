@@ -361,6 +361,13 @@ aucun monde. « Voir » d'une partie en cours suit son agent. Les
 reprises par partie de ces terrains ne sont pas encore branchées : « Voir »
 n'apparaît pas après la partie.
 
+La vue GraphysX offre un explorateur de l'île : catégories, recherche, fiches
+et relations entre éléments. Benchmark lui transmet l'adresse du tableau de
+bord et l'identifiant de la partie ; « Parties et mémoire » revient ainsi à
+la mémoire canonique de cette partie. Le viewer ne stocke pas une seconde
+mémoire. L'explorateur complet demande le serveur et le viewer GraphysX
+correspondants ; les anciens enregistrements conservent leurs données disponibles.
+
 Un réglage illisible est refusé en entier : l'onglet garde `mesa-island` et le
 dit sous « Parties ».
 
