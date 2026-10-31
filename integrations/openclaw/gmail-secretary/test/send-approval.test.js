@@ -35,6 +35,7 @@ function mailbox(options = {}) {
     }
     if (exact.startsWith('--enable-commands-exact=gmail.drafts.')) {
       assert.ok(command.args.includes('--gmail-no-send'));
+      clock += options.preparationMs || 0;
       return { draftId: 'draft-1' };
     }
     assert.equal(exact, '--enable-commands-exact=gmail.send');
@@ -55,7 +56,7 @@ test('the native approval names resolved recipients, decoded subject, attachment
   const box = mailbox();
   const { requireApproval: approval } = await prepare(box);
   for (const value of ['To:"to@example.test"', 'Cc:"copy@example.test"', 'Bcc:"hidden@example.test"',
-    'Attachments:1', 'Bonjour ✓', 'Body preview (5 chars):"Hello"', 'draft-1', 'SHA256:']) {
+    'Attachments:1', 'synthetic.pdf', '6B', 'Bonjour ✓', 'Body preview (5 chars):"Hello"', 'draft-1', 'SHA256:']) {
     assert.ok(approval.description.includes(value), value);
   }
   assert.ok(approval.description.length <= 512);
@@ -71,6 +72,28 @@ test('the native approval names resolved recipients, decoded subject, attachment
   assert.ok(sends(box)[0].args.includes('--thread-id=thread-1'));
   assert.equal(box.calls.some(call => call.args.includes('delete')), false);
   await assert.rejects(box.gate.execute('call-1', params, config), /one-time approval/);
+});
+
+test('existing drafts with only Cc or Bcc recipients retain the native send capability', async () => {
+  for (const field of ['Cc', 'Bcc']) {
+    const box = mailbox(), value = { action: 'draft', id: 'draft-1' };
+    box.state.raw = Buffer.from(`From: owner@example.test\r\n${field}: recipient@example.test\r\nSubject: Synthetic\r\n\r\nHello`).toString('base64url');
+    const { requireApproval } = await prepare(box, value);
+    assert.ok(requireApproval.description.includes('To:-'));
+    assert.ok(requireApproval.description.includes(`${field}:"recipient@example.test"`));
+    requireApproval.onResolution('allow-once');
+    await box.gate.execute('call-1', value, config);
+    assert.deepEqual(sends(box)[0].stdin, Buffer.from(box.state.raw, 'base64url'));
+  }
+});
+
+test('the advertised five-minute approval window starts after preparation', async () => {
+  const box = mailbox({ preparationMs: 60000 }), { requireApproval } = await prepare(box);
+  assert.equal(requireApproval.timeoutMs, 300000);
+  box.advance(250000);
+  requireApproval.onResolution('allow-once');
+  await box.gate.execute('call-1', params, config);
+  assert.equal(sends(box).length, 1);
 });
 
 test('new, reply, reply-all, forward and draft use Gmail composition before the immutable send', async () => {
@@ -175,9 +198,18 @@ test('MIME inspection counts attached messages once and reads HTML alternatives 
   ].join('\r\n')).toString('base64url');
   const info = await inspectSnapshot(raw);
   assert.equal(info.attachments, 1);
+  assert.deepEqual(info.attachmentDetails, [{ name: 'original.eml', bytes: null }]);
   assert.deepEqual(info.bcc, ['hidden@example.test']);
   assert.equal(info.bodyPreview, '<p>Hello</p>');
   assert.equal(info.bodyPreview.includes('Nested'), false);
+});
+
+test('attachment identities are mandatory approval details and are never silently abbreviated', async () => {
+  const box = mailbox();
+  box.state.raw = Buffer.from(Buffer.from(mime(), 'base64url').toString().replace('synthetic.pdf', `${'long-file-name-'.repeat(30)}.pdf`)).toString('base64url');
+  await assert.rejects(prepare(box), /exceed.*approval display/);
+  await assert.rejects(box.gate.execute('call-1', params, config), /one-time approval/);
+  assert.equal(sends(box).length, 0);
 });
 
 test('registered send tool refuses when a runtime ignores the hook or its resolution callback', async t => {

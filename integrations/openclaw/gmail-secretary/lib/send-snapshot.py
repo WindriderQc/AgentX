@@ -17,7 +17,7 @@ def inspect(raw):
         if len(headers) > 1 or any(header.defects for header in headers):
             raise ValueError("Ambiguous recipient headers")
         fields[name.lower()] = [address.addr_spec for header in headers for address in header.addresses]
-    if not fields["to"] or len(fields["from"]) != 1:
+    if not any(fields[name] for name in ("to", "cc", "bcc")) or len(fields["from"]) != 1:
         raise ValueError("Missing sender or recipients")
     if len(message.get_all("Subject", [])) > 1:
         raise ValueError("Ambiguous subject")
@@ -27,17 +27,24 @@ def inspect(raw):
         if part.defects:
             raise ValueError("Malformed MIME message")
         if part.get_filename() or part.get_content_disposition() == "attachment" or part.get_content_maintype() not in ("text", "multipart"):
-            attachments.append(part.get_filename() or "unnamed")
+            payload = part.get_payload(decode=True)
+            if part.defects:
+                raise ValueError("Malformed attachment encoding")
+            attachments.append({"name": part.get_filename() or "unnamed",
+                                "bytes": len(payload) if payload is not None else None})
         elif part.is_multipart():
             for child in part.iter_parts():
                 visit(child)
         else:
             bodies.append(part.get_content())
+            if part.defects:
+                raise ValueError("Malformed body encoding")
     visit(message)
     body = "\n".join(bodies)
     return {**fields, "subject": str(message.get("Subject", "")),
             "bodyPreview": body[:80], "bodyLength": len(body),
-            "attachments": len(attachments), "sha256": hashlib.sha256(raw).hexdigest()}
+            "attachments": len(attachments), "attachmentDetails": attachments,
+            "sha256": hashlib.sha256(raw).hexdigest()}
 
 
 if __name__ == "__main__":

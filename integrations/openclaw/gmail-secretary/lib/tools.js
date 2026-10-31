@@ -3,7 +3,7 @@ import path from "node:path";
 import { Type } from "typebox";
 import { addAttachments, assertSafeAttachments, bodyFlags, buildOrganizeCommand, buildReadCommand, buildSearchCommand,
   defaults, mutateBase, optionalFlag, readBase, recipientFlags, required, runEvidence, runGog, settings } from "./gmail.js";
-import { normalizeLabels, sensitiveLabels } from './labels.js';
+import { displayLabels, normalizeLabels, protectedLabelChanges, sensitiveLabels } from './labels.js';
 import { sendGate } from './send-approval.js';
 import { TRIAGE_CATEGORIES, applyTriage, continueBacklogMessage, nextBacklogMessage } from "./backlog.js";
 import { assertFullyRead, readSelectedMessage } from "./backlog-reading.js";
@@ -72,7 +72,9 @@ export function approvalFor(toolName, params = {}) {
   }
   if (toolName === TOOL_NAMES.organize && (params.action === "archive" || params.action === "trash" || params.action === "delete_label" || params.query || sensitiveLabels(params))) {
     const add = normalizeLabels(params.addLabels), remove = normalizeLabels(params.removeLabels);
-    return { title: "Approve Gmail mailbox change", description: `${params.action}${params.query ? ` matching: ${params.query}` : ""}${add.length ? ` add:${add.join(',')}` : ''}${remove.length ? ` remove:${remove.join(',')}` : ''}`.slice(0, 256), severity: params.action === "trash" || add.includes('TRASH') ? "critical" : "warning" };
+    const guarded = protectedLabelChanges(params);
+    const risk = `${guarded.add.includes('TRASH') ? ' add TRASH;' : ''}${guarded.add.includes('SPAM') ? ' add SPAM;' : ''}${guarded.remove.length ? ' remove INBOX;' : ''}${guarded.add.includes('Secretary/Processed') ? ' mark Processed;' : ''}${guarded.add.some(label => /^label_/i.test(label)) ? ' modify protected/opaque label IDs;' : ''}`;
+    return { title: "Approve Gmail mailbox change", description: `${params.action}${risk}${params.query ? ` matching: ${params.query}` : ""}${add.length ? ` add:${displayLabels(add)}` : ''}${remove.length ? ` remove:${displayLabels(remove)}` : ''}`.slice(0, 256), severity: params.action === "trash" || add.includes('TRASH') ? "critical" : "warning" };
   }
   if (toolName === TOOL_NAMES.draft && params.action === "delete") {
     return { title: "Delete Gmail draft", description: `Permanently delete draft ${params.id || "unknown"}.`, severity: "critical" };
@@ -292,7 +294,7 @@ export function createPlugin(definePluginEntry, { sendApproval = sendGate() } = 
       const provenance = nativeActionProvenance(context, api.config, api.pluginConfig);
       let approval;
       try { approval = approvalFor(event.toolName, event.params); }
-      catch { return { block: true, blockReason: 'Invalid Gmail labels; pass separate unquoted label entries.' }; }
+      catch { return { block: true, blockReason: 'Gmail labels must be arrays of strings.' }; }
       const blocked = Boolean(approval && isBackgroundAction(provenance));
       // Background decisions stay synchronous. Send preparation may perform I/O,
       // but execution still refuses without the resolution callback's grant.

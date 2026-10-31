@@ -23,6 +23,8 @@ test('native Gmail gates block background sends and destructive changes while re
     { toolName: 'gmail_secretary_organize', params: { action: 'archive' } },
     { toolName: 'gmail_secretary_organize', params: { action: 'trash' } },
     { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], addLabels: [' trash '] } },
+    { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], addLabels: ['\u0085TRASH\u0085'] } },
+    { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], removeLabels: ['\u0130NBOX'] } },
     { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], addLabels: ['Secretary/Review, spam'] } },
     { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], addLabels: ['Secretary/Processed'] } },
     { toolName: 'gmail_secretary_organize', params: { action: 'modify', removeLabels: ['INBOX'] } },

@@ -57,13 +57,16 @@ Sending first prepares a Gmail draft through gog's native compose paths. This
 resolves reply/reply-all recipients, signatures, quoted content and forwarded
 attachments before approval. Existing drafts are read directly. The approval
 lists the actual From, To, Cc and Bcc addresses, subject, attachment count,
-explicit body preview and length, draft identity and snapshot fingerprint.
+filenames and decoded byte sizes (or an explicit unknown size for an attached
+message), body preview and length, draft identity and snapshot fingerprint.
+Existing drafts with recipients only in Cc or Bcc remain sendable.
 Review the complete draft in Gmail when the preview is insufficient. Recipient
-lists and subjects are never silently truncated: a message whose mandatory
+lists, subjects and attachment identities are never silently truncated: a message whose mandatory
 details exceed the native 512-character approval limit must be sent in Gmail.
 
-Only the native resolution callback's `allow-once` grants a send. The grant
-expires after 30 seconds, matches the native agent, session, call ID and complete arguments,
+The five-minute approval window starts after preparation completes. Only the
+native resolution callback's `allow-once` grants a send. The grant expires after
+30 seconds, matches the native agent, session, call ID and complete arguments,
 and is consumed before execution. Denial, timeout, cancellation, changed drafts
 or missing callbacks refuse. Immediately before sending, the plugin verifies
 the draft still matches, then sends the captured RFC822 bytes rather than a
@@ -84,9 +87,11 @@ presentation and actual mailbox effects require separate native qualification.
 See [OpenClaw's approval contract](https://docs.openclaw.ai/plugins/plugin-permission-requests).
 
 Organizer approval also covers adding Spam/Trash or removing Inbox through
-label modification, including case/whitespace and CSV aliases. Policy and
-command builders share label normalization. Quoted or control-character label
-entries refuse; opaque user-label IDs require approval because they may resolve
+label modification, including native Unicode case/whitespace and comma-separated
+aliases. Policy and command builders share normalization. Quotes and interior
+whitespace in custom label names remain literal, matching gog's parser. Approval
+text escapes control characters and lists protected effects before any abbreviated
+details. Opaque user-label IDs require approval because they may resolve
 to a protected Secretary label. Ordinary review labels remain available to
 background triage.
 

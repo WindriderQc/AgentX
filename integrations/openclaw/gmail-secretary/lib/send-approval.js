@@ -10,7 +10,7 @@ const canonical = value => value && typeof value === 'object'
   ? Array.isArray(value) ? value.map(canonical)
     : Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
 const fingerprint = params => digest(JSON.stringify(canonical(params)));
-const visible = text => JSON.stringify(String(text)).replace(/[\p{Cf}\p{Cc}]/gu,
+const visible = text => JSON.stringify(String(text)).replace(/[\p{Cf}\p{Cc}\p{Zl}\p{Zp}]/gu,
   char => `\\u{${char.codePointAt(0).toString(16)}}`);
 
 export function inspectSnapshot(raw) {
@@ -61,7 +61,8 @@ export function sendDescription(snapshot, origin) {
   const { info, draftId } = snapshot;
   // Never truncate recipients, the subject, counts or review identity. Only the
   // explicitly labelled preview is shortened to fit the native 512-char limit.
-  const start = `Send; From:${info.from.map(visible).join(',')}; To:${info.to.map(visible).join(',')}; Cc:${info.cc.map(visible).join(',') || '-'}; Bcc:${info.bcc.map(visible).join(',') || '-'}; Attachments:${info.attachments}; Subject:${visible(info.subject)}; `;
+  const files = info.attachmentDetails.map(file => `${visible(file.name)}(${file.bytes === null ? 'size unknown' : `${file.bytes}B`})`).join(',');
+  const start = `Send; From:${info.from.map(visible).join(',')}; To:${info.to.map(visible).join(',') || '-'}; Cc:${info.cc.map(visible).join(',') || '-'}; Bcc:${info.bcc.map(visible).join(',') || '-'}; Attachments:${info.attachments}${files ? `:${files}` : ''}; Subject:${visible(info.subject)}; `;
   const end = `; Review Gmail draft ${draftId}; SHA256:${info.sha256.slice(0, 12)} [origin:${origin}]`;
   let preview = info.bodyPreview;
   while (preview && (start + `Body preview (${info.bodyLength} chars):${visible(preview)}` + end).length > 512) {
@@ -96,6 +97,7 @@ export function sendGate({ run = runGog, inspect = inspectSnapshot, now = Date.n
         const info = await inspect(source.raw);
         entry.snapshot = { ...source, info, draftId };
         const description = sendDescription(entry.snapshot, origin);
+        entry.expires = now() + APPROVAL_MS;
         return { requireApproval: { title: 'Send Gmail message', description, severity: 'warning',
           allowedDecisions: ['allow-once', 'deny'], timeoutMs: APPROVAL_MS, timeoutBehavior: 'deny',
           onResolution(decision) {
