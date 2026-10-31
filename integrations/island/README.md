@@ -72,6 +72,14 @@ error. The generated HOME holds only the provider config (local relay URL,
 alias, capability variable name) and loop state; DSH's subagent, workflow,
 title, telemetry, web and DeepSeek-account plugins are disabled.
 
+Both generated model entries explicitly advertise `input: ["text", "image"]`
+for the Core provider. The SDKs otherwise default an unknown logical alias to
+text-only and refuse image tools before Core receives anything. This describes
+the gateway's existing image contract (native vision or Core's native image
+description fallback); it does not select another model or grant a new route.
+Build the Python package from the current patch, not just any adapter reporting
+isolation version 2. Preserve the artifact/source identity in qualification.
+
 The only LLM relay from the sandbox leads to a per-episode loopback HTTP proxy.
 It authenticates a new ephemeral capability and accepts exactly
 `GET /api/llm/v1/models` and one inference route: `POST /api/llm/v1/responses`
