@@ -9,6 +9,17 @@ const living = { id: 'remote-living', label: 'Île vivante', live: mesa.live, li
 const env = { AGENTX_ISLAND_GRAPHYSX_URL: 'https://viewer.lan/', AGENTX_ISLAND_WORLDS: JSON.stringify([mesa, living]) };
 const health = world => async () => ({ ok: true, json: async () => ({ ok: true, world, tick: 10 }) });
 
+it('links a GraphysX explorer to the exact run memory without changing non-GraphysX views or spectator fragments', () => {
+  const { explorerViewUrl } = loadBrowserModule('island/index.js', 'explorerViewUrl', { URL });
+  const run = '00000000-0000-4000-8000-000000000001';
+  const src = 'https://viewer.lan/?app=island&source=https%3A%2F%2Fworld.lan#spectator_token=keep';
+  const linked = new URL(explorerViewUrl(src, run, 'https://dashboard.lan'));
+  expect(linked.searchParams.get('dashboard')).toBe('https://dashboard.lan/benchmark/island');
+  expect(linked.searchParams.get('run')).toBe(run);
+  expect(linked.hash).toBe('#spectator_token=keep');
+  expect(explorerViewUrl('http://runner.lan/sessions/abc', run, 'https://dashboard.lan')).toBe('http://runner.lan/sessions/abc');
+});
+
 it('names the living world when Mesa was selected on the same service; reading never switches worlds', async () => {
   const fetchImpl = jest.fn(health('living-island'));
   const data = await readLiveWorld(mesa.id, { env, fetchImpl });
@@ -86,7 +97,7 @@ it('ignores a late Mesa probe after selecting another terrain and rechecks befor
   const replies = [];
   const apiFetch = jest.fn(() => new Promise(resolve => replies.push(resolve)));
   const page = loadBrowserModule('island/index.js', 'refreshLiveWorld, refreshDisplayedWorld, setWorlds: value => { worlds = value; }', {
-    apiFetch, document: { getElementById: id => id === 'island-runs' ? null : node(id) },
+    apiFetch, URL, document: { getElementById: id => id === 'island-runs' ? null : node(id) },
     clearInterval() {}, location: { protocol: 'https:' }
   });
   const worlds = [mesa, living].map(world => ({ ...world, liveUrl: 'https://viewer.lan/?source=world' }));
