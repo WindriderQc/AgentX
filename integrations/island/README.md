@@ -101,6 +101,12 @@ The start and supervisor share a lock through the parent's last state write;
 a fast startup failure cannot be overwritten by a stale starting state. Memory
 preparation errors before execution prove that no local runtime was started.
 Error traffic and metadata do not refresh the last timestamp of model output.
+Session activity is read incrementally with a bounded record buffer. Oversized
+image tool results are skipped without losing the preceding model timestamp;
+they neither prove new model activity nor trigger a false idle observation.
+Only the selected session is cached. A new session, rotation or truncation
+invalidates that observation, so an hourly reset cannot inherit activity from
+the previous session. No image bytes or transcript are written to a new store.
 
 The native per-agent store copies only `SOUL.md`, `EPISODIC_MEMORY.md`,
 `EPISODIC_MEMORY.jsonl` and `SEMANTIC_MEMORY.md`. All must be bounded regular
