@@ -124,7 +124,9 @@ class ProxyTests(unittest.TestCase):
                     data+=chunk
                 with socket.create_connection(('127.0.0.1',test.proxy.port), timeout=3) as upstream:
                     upstream.sendall(data)
-                    while chunk:=upstream.recv(65536): self.request.sendall(chunk)
+                    while chunk:=upstream.recv(65536):
+                        try: self.request.sendall(chunk)
+                        except OSError: return  # The guest intentionally closes after the response header.
         with tempfile.TemporaryDirectory(prefix='cb-relay-') as temp:
             server=socketserver.ThreadingUnixStreamServer(str(Path(temp)/'proxy.sock'),Relay)
             worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()

@@ -458,9 +458,11 @@ class Metrics(unittest.TestCase):
                     run_metrics.run_metrics(self.write_run(root, "pi", ".agentx-loop/sessions", lines))]
             for row in rows:
                 self.assertEqual((row["toolCalls"], row["worldCommandCalls"], row["modelResponses"]), (2, 1, 1))
-                self.assertEqual(row["worldActions"], {"Place": 1})
-                self.assertEqual(row["actionResults"], {"PlaceSuccess": 1})  # the later observation is not a second pose
-                self.assertEqual(row["placeSuccessRate"], 1.0)
+                self.assertEqual(row["toolProxy"]["worldActions"], {"Place": 1})
+                self.assertEqual(row["toolProxy"]["actionResults"], {"PlaceSuccess": 1})  # diagnostic only
+                self.assertIsNone(row["worldActions"], 'rollout text is not native world evidence')
+                self.assertIsNone(row["actionResults"])
+                self.assertIsNone(row["placeSuccessRate"])
                 self.assertEqual(row["tokens"]["input"], 1000)
                 self.assertEqual(row["resumes"], {"idle": 1})
             self.assertEqual([row["harness"] for row in rows], ["codex", "pi"])
