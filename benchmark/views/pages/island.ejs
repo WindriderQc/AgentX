@@ -8,7 +8,7 @@
   <section class="r-section island-launch" aria-labelledby="island-launch-title">
     <h2 id="island-launch-title" class="r-sec-title">Lancer une partie</h2>
     <form id="island-launch-form" class="island-form">
-      <label>Terrain
+      <label>Terrain de la prochaine partie
         <select name="world" id="island-world"><option value="mesa-island">Île Clawblox</option></select>
       </label>
       <label>Agent <input name="agent" value="Eko" pattern="[A-Za-z][A-Za-z0-9_\-]{0,31}" required></label>
@@ -25,8 +25,14 @@
       <button type="submit" class="r-empty-btn">Lancer</button>
     </form>
     <p class="island-note">Lancer inscrit une demande dans la file ; le départ attend ton approbation.
-      <button type="button" id="island-watch" class="island-watch" hidden>Regarder <span id="island-watch-label"></span> en direct</button></p>
+      Choisir un terrain ne change pas le monde actuellement en direct.</p>
     <p id="island-launch-result" class="island-result" role="status"></p>
+  </section>
+
+  <section id="island-live" class="r-section" hidden aria-labelledby="island-live-title">
+    <h2 id="island-live-title" class="r-sec-title">Monde en direct</h2>
+    <p id="island-live-status" class="island-note" role="status"></p>
+    <button type="button" id="island-watch" class="island-watch" disabled>Regarder <span id="island-watch-label">le monde actif</span> en direct</button>
   </section>
 
   <section class="r-section" aria-labelledby="island-runs-title">
@@ -40,6 +46,7 @@
 
   <section id="island-viewer" class="r-section island-viewer" hidden aria-labelledby="island-viewer-title">
     <h2 id="island-viewer-title" class="r-sec-title">Vue 3D</h2>
+    <p id="island-viewer-world" class="island-note" role="status" hidden></p>
     <p class="island-note"><a id="island-viewer-open" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>
       · En direct, les pensées de l'agent s'affichent sous la vue ; en relecture, dans le panneau <b>Messages</b>.</p>
     <iframe id="island-frame" title="Vue 3D de l'île" allow="fullscreen"></iframe>

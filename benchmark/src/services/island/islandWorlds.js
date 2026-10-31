@@ -46,8 +46,11 @@ function islandWorlds(env = process.env) {
     }
     const live = entry.live === undefined || entry.live === null ? null : liveOrigin(entry.live);
     if (entry.live && !live) return { worlds: DEFAULT_WORLDS, error: `AGENTX_ISLAND_WORLDS: ${id} needs an origin for live` };
+    if (entry.liveWorld !== undefined && (!live || typeof entry.liveWorld !== 'string' || !WORLD.test(entry.liveWorld))) {
+      return { worlds: DEFAULT_WORLDS, error: `AGENTX_ISLAND_WORLDS: ${id} needs a valid liveWorld and live origin` };
+    }
     const label = typeof entry.label === 'string' && entry.label.trim() ? entry.label.trim().slice(0, 60) : id;
-    worlds.push(Object.freeze({ id, label, live }));
+    worlds.push(Object.freeze({ id, label, live, ...(entry.liveWorld === undefined ? {} : { liveWorld: entry.liveWorld }) }));
   }
   return { worlds: Object.freeze(worlds), error: null };
 }
