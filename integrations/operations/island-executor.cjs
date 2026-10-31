@@ -16,7 +16,7 @@ const { spawn } = require('node:child_process');
 const { hostUrlKey } = require('../../shared/ollamaHostConfig');
 const { islandExecutor, isIslandExecutor, RECEIPT_CONTRACT, RUNNER_CONTRACT } = require('../../shared/islandRun.cjs');
 
-const UUID = /^[a-f0-9-]{36}$/;
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const NOT_STARTED = ['RUNNER_BUSY', 'INVALID', 'RUN_ID', 'RUNNER_CONFIG', 'RUNNER_STATE', 'RUNS_ROOT_TOO_LONG', 'RUNNER_START_FAILED', 'WORLD_UNAVAILABLE', 'WORLD_PREPARE'];
 const WORLD = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const RECORD_DIR = /^[\w./-]{1,300}$/;
@@ -49,7 +49,7 @@ function runnerConfig(env = process.env) {
 }
 
 const ARGUMENTS = {
-  'run-id': value => UUID.test(value), 'dispatch-id': value => UUID.test(value),
+  'run-id': value => UUID.test(value), 'dispatch-id': value => UUID.test(value), 'expected-instance': value => UUID.test(value),
   agent: value => /^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(value), world: value => /^[a-z0-9][a-z0-9-]{0,63}$/.test(value),
   memory: value => ['continue', 'fresh'].includes(value), harness: value => ['codex', 'dsh', 'pi'].includes(value),
   minutes: value => /^\d{1,4}$/.test(value), 'context-window': value => /^\d{1,8}$/.test(value)
@@ -119,6 +119,8 @@ function cleanPrepared(answer, world) {
   const managed = answer.managed === true;
   return { ok: answer.ok === true, managed, world: WORLD.test(answer.world || '') ? answer.world : (managed ? null : world),
     recordDir: typeof answer.recordDir === 'string' && RECORD_DIR.test(answer.recordDir) && !answer.recordDir.includes('..') ? answer.recordDir : null,
+    ...(UUID.test(answer.instanceId || '') ? { instanceId: answer.instanceId } : {}),
+    ...(UUID.test(answer.recordingId || '') ? { recordingId: answer.recordingId } : {}),
     message: typeof answer.message === 'string' ? answer.message.slice(0, 300) : null };
 }
 
@@ -264,7 +266,7 @@ async function runIsland(job, client, deps = {}) {
       // Codex stays the runner's default: an older runner without --harness keeps working.
       const harness = executor.harness && executor.harness !== 'codex' ? { harness: executor.harness } : {};
       started = await d.runner('start', { 'run-id': job.id, 'dispatch-id': dispatchId, agent: executor.agent,
-        minutes: executor.minutes, memory: executor.memory, world: executor.world, ...harness, 'context-window': principal.contextSize });
+        minutes: executor.minutes, memory: executor.memory, world: executor.world, ...harness, ...(worldPrepared?.instanceId ? { 'expected-instance': worldPrepared.instanceId } : {}), 'context-window': principal.contextSize });
     } catch (error) {
       if (error.runnerRefused && NOT_STARTED.includes(error.code)) throw Object.assign(error, { notStarted: true });
       // A lost answer: read the same run identity. Never start it again.

@@ -59,6 +59,10 @@ def preflight(config, args):
         raise ValueError("cohorts require an already prepared remote world")
     for member in members:
         checked = native.action_check(config, SimpleNamespace(harness=member["harness"], agent=member["agent"], world=args.world))
+        identity = checked.get("remoteWorld") or {}
+        if remote.get("instanceId") and identity.get("instanceId") != remote["instanceId"]:
+            raise ValueError("remote world instance changed during cohort preflight")
+        remote = {**remote, **identity}
         if not checked["ready"] or checked["activeRun"]:
             raise ValueError("runner not ready/idle: " + str(checked["problems"] or checked["activeRun"]))
     idle_ports(config["worldPort"], len(members))
@@ -83,7 +87,8 @@ def prepare(config, args, members, remote):
     request = {"runId": args.run_id, "dispatchId": args.dispatch_id, "agent": "Eko", "harness": "cohort",
                "world": args.world, "worldKind": "remote", "minutes": args.minutes, "memory": "fresh",
                "netcheck": args.netcheck, "contextWindow": args.context_window, "members": members,
-               "model": native.PRINCIPAL_ALIAS, "requestedAt": native.now_iso()}
+               "model": native.PRINCIPAL_ALIAS, "requestedAt": native.now_iso(),
+               "remoteWorld": {key: remote[key] for key in ("origin", "world", "instanceId", "recordingId") if remote.get(key)}}
     native.write_json(group / "request.json", request)
     native.write_json(group / "state.json", {"phase": "starting", "localStopped": False, "events": []})
     for index, member in enumerate(members):
@@ -101,7 +106,7 @@ def prepare(config, args, members, remote):
         native.write_json(group / (member["harness"] + ".json"), cfg)
         native.write_json(child / "request.json", {**request, **member, "parentRunId": args.run_id,
                           "world": local_world,
-                          "remoteWorld": {"origin": remote["origin"], "world": remote["world"]}})
+                          "remoteWorld": request["remoteWorld"]})
         native.write_json(child / "state.json", {"phase": "prepared", "localStopped": True, "events": []})
     native.write_json(root / "active.json", {"runId": args.run_id, "since": request["requestedAt"]})
     return group

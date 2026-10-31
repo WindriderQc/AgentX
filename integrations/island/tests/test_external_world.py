@@ -155,7 +155,7 @@ class RunnerFixture(unittest.TestCase):
             code = runner.main([*argv, "--config", str(self.config_path)])
         return code, json.loads(out.getvalue())
 
-    def start(self, world):
+    def start(self, world, *extra):
         # Only the detached supervisor is faked; the remote world probe really runs.
         real = runner.subprocess.Popen
         supervisor = mock.Mock(return_value=mock.Mock(pid=4242))
@@ -165,7 +165,7 @@ class RunnerFixture(unittest.TestCase):
 
         with mock.patch.object(runner.subprocess, "Popen", side_effect=popen):
             result = self.call("start", "--run-id", RUN, "--dispatch-id", DISPATCH, "--minutes", "60",
-                               "--context-window", "32768", "--world", world)
+                               "--context-window", "32768", "--world", world, *extra)
         return result, supervisor
 
 
@@ -226,6 +226,19 @@ class ExternalStart(RunnerFixture):
         self.assertEqual((data["world"], data["worldKind"]), ("graphysx-living", "remote"))
         self.assertEqual(data["remoteWorld"]["world"], "living-island")
         self.assertIsNone(data["recording"], "the remote world records itself")
+
+    def test_prepared_instance_must_match_before_a_supervisor_or_run_exists(self):
+        with FakeWorld() as world:
+            world.world_id, world.access = "living-island", TOKEN
+            world.instance_id = RUN
+            self.remote("graphysx-living", world.url)
+            (code, answer), popen = self.start("graphysx-living", "--expected-instance", DISPATCH)
+            self.assertEqual((code, answer["code"]), (1, "WORLD_UNAVAILABLE"))
+            popen.assert_not_called()
+            self.assertFalse((self.root / "runs" / RUN).exists())
+            (code, answer), popen = self.start("graphysx-living", "--expected-instance", RUN)
+            self.assertEqual(code, 0, answer)
+            self.assertEqual(json.loads((self.root / "runs" / RUN / "request.json").read_text())["remoteWorld"]["instanceId"], RUN)
 
     def test_local_world_start_is_unchanged(self):
         (code, answer), popen = self.start("mesa-island")

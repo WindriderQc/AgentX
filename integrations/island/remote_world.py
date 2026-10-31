@@ -35,6 +35,7 @@ through the access gate) and prints one JSON line; it serves nothing and joins n
 from __future__ import annotations
 
 import argparse
+import atexit
 import http.client
 import ipaddress
 import json
@@ -128,6 +129,7 @@ class Upstream:
                  access_token: str | None = None):
         self.target = parse_target(target)
         self.timeout = timeout
+        self.instance_id = None
         self.context = context or ssl.create_default_context()
         if access_token is not None and not ACCESS_TOKEN.match(access_token):
             raise ValueError("invalid access token")
@@ -137,6 +139,8 @@ class Upstream:
         target = self.target
         # The access header is the runner's own; a caller never chooses it.
         headers = {key: value for key, value in headers.items() if key.lower() != ACCESS_HEADER.lower()}
+        if self.instance_id:
+            headers["X-World-Instance"] = self.instance_id
         if self.access_token:
             headers[ACCESS_HEADER] = self.access_token
         if target.scheme == "https":
@@ -179,19 +183,27 @@ class Upstream:
             problems.append(f"/api.md answered {api_status} (access gate or world)")
         tick = health.get("tick") if isinstance(health, dict) and isinstance(health.get("tick"), int) else None
         return {"ok": not problems, "target": f"{self.target.scheme}://{self.target.netloc}", "world": world,
-                "expected": expect_world, "tick": tick, "accessHeader": bool(self.access_token), "problems": problems}
+                "expected": expect_world, "tick": tick,
+                "instanceId": health.get("instanceId") if isinstance(health, dict) else None,
+                "recordingId": health.get("recordingId") if isinstance(health, dict) else None, "accessHeader": bool(self.access_token), "problems": problems}
 
 
 class RemoteWorldRelay:
     def __init__(self, target: str, host: str = "127.0.0.1", port: int = 0, timeout: float = 90,
                  log=None, context: ssl.SSLContext | None = None, access_token: str | None = None,
-                 expect_world: str | None = None):
+                 expect_world: str | None = None, expect_instance: str | None = None):
         if not is_loopback(host):
             raise ValueError("the relay listens on loopback only")
         if expect_world is not None and not WORLD_ID.match(expect_world):
             raise ValueError("expected world needs a world id, for example living-island")
         self.upstream = Upstream(target, timeout=timeout, context=context, access_token=access_token)
         self.target = self.upstream.target
+        self.sessions = set()
+        self.sessions_lock = threading.Lock()
+        self.upstream.instance_id = expect_instance
+        if not expect_instance:
+            # Bind once at startup, even when the next island has the same world type.
+            self.upstream.instance_id = self.upstream.check(expect_world).get("instanceId")
         self.timeout = timeout
         self.expect_world = expect_world
         self.log = log or (lambda line: print(line, flush=True))
@@ -255,6 +267,15 @@ class RemoteWorldRelay:
                     headers["Content-Type"] = self.headers.get("Content-Type", "application/json")
                     headers["Content-Length"] = str(len(body))
                 status, content_type, payload = relay.forward(self.command, self.path, headers, body)
+                if status == 200 and path == "/join":
+                    try:
+                        joined = json.loads(payload).get("session")
+                        if isinstance(joined, str) and joined:
+                            with relay.sessions_lock: relay.sessions.add(joined)
+                    except (ValueError, AttributeError):
+                        pass
+                if status == 200 and path == "/leave" and sessions:
+                    with relay.sessions_lock: relay.sessions.discard(sessions[0])
                 if path == "/healthz" and relay.expect_world and status == 200:
                     try:
                         world = world_of(json.loads(payload))
@@ -273,6 +294,7 @@ class RemoteWorldRelay:
         self.server = ThreadingHTTPServer((host, port), Handler)
         self.server.daemon_threads = True
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        atexit.register(self.release_sessions)
 
     @property
     def port(self) -> int:
@@ -289,10 +311,19 @@ class RemoteWorldRelay:
         self.thread.start()
         return self
 
+    def release_sessions(self):
+        # Only this relay's joined capabilities; never reset a shared cohort world.
+        with self.sessions_lock:
+            sessions, self.sessions = self.sessions, set()
+        for session in sessions:
+            self.upstream.forward("POST", "/leave", {"X-Session": session}, b"{}")
+
     def __exit__(self, *_args):
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=5)
+        self.release_sessions()
+        atexit.unregister(self.release_sessions)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -333,7 +364,8 @@ def main(argv: list[str] | None = None) -> int:
             return 3
     try:
         relay = RemoteWorldRelay(args.target, host=host, port=int(port), timeout=args.timeout,
-                                 access_token=token, expect_world=args.expect_world)
+                                 access_token=token, expect_world=args.expect_world,
+                                 expect_instance=os.environ.get("AGENTX_ISLAND_EXPECT_INSTANCE"))
     except ValueError as error:
         parser.error(str(error))
     stop = threading.Event()

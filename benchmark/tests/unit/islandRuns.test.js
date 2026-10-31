@@ -40,6 +40,52 @@ function report(extra = {}) {
 }
 
 describe('island run service', () => {
+  it.each(['completed', 'failed', 'cancelled'])('lets terminal Core %s override stale runner phase and live links', async state => {
+    await islands.recordReport(ID, report());
+    const row = (await islands.getRun(ID, { env, queue: async () => ({ jobs: [job({ state })] }) }));
+    expect(row).toMatchObject({ state, phase: 'finished', runnerPhase: 'running', liveView: null });
+  });
+
+  it('reports all four memory files with explicit missing and truncated provenance', async () => {
+    await islands.recordReport(ID, report({ memory: {
+      'SOUL.md': { text: 'soul', bytes: 4 }, 'EPISODIC_MEMORY.md': { text: 'summary', bytes: 999, truncated: true },
+      'EPISODIC_MEMORY.jsonl': { text: '{}', bytes: 2 }, 'SEMANTIC_MEMORY.md': null
+    } }));
+    const memory = await islands.getMemory(ID);
+    expect(Object.keys(memory.files).sort()).toEqual(['SOUL.md', 'EPISODIC_MEMORY.md', 'EPISODIC_MEMORY.jsonl', 'SEMANTIC_MEMORY.md'].sort());
+    expect(memory.files['EPISODIC_MEMORY.md']).toMatchObject({ text: 'summary', bytes: 999, truncated: true });
+    expect(memory.files['SEMANTIC_MEMORY.md']).toMatchObject({ missing: true });
+    const listed = await islands.listRuns({ env, queue: async () => ({ jobs: [] }) });
+    expect(JSON.stringify(listed)).not.toContain('summary');
+  });
+
+  it('allows only one immutable remote identity when first reports race', async () => {
+    const send = instanceId => islands.recordReport(ID, report({ status: { phase: 'running', worldKind: 'remote',
+      remoteWorld: { world: 'mesa-island', instanceId, recordingId: instanceId } } }));
+    const outcomes = await Promise.allSettled([send(ID), send(DISPATCH)]);
+    expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(outcomes.find(result => result.status === 'rejected').reason.statusCode).toBe(409);
+    const saved = await IslandRun.findById(ID).lean();
+    expect([ID, DISPATCH]).toContain(saved.worldView.instanceId);
+    expect(saved.worldView.recordingId).toBe(saved.worldView.instanceId);
+  });
+
+  it('opens the stored remote recording by identity and refuses a mismatched archive', async () => {
+    const gx = { ...env, AGENTX_ISLAND_GRAPHYSX_URL: 'https://viewer.lan', AGENTX_ISLAND_WORLDS: WORLDS };
+    await islands.recordReport(ID, report({ executor: { ...executor, world: 'ile-de-frank' },
+      worldPrepared: { world: 'mesa-island', instanceId: ID, recordingId: DISPATCH },
+      status: { phase: 'running', worldKind: 'remote', remoteWorld: { world: 'mesa-island', instanceId: ID, recordingId: DISPATCH } } }));
+    const fetchImpl = jest.fn(async () => ({ ok: true, json: async () => ({ replay: true, instanceId: ID }) }));
+    const replay = await islands.openReplay(ID, { env: gx, fetchImpl });
+    expect(fetchImpl.mock.calls[0][0]).toBe(`https://frank.lan:18794/recordings/${DISPATCH}/healthz`);
+    expect(new URL(replay.src).searchParams.get('source')).toBe(`https://frank.lan:18794/recordings/${DISPATCH}`);
+    const row = await islands.getRun(ID, { env: gx, queue: async () => ({ jobs: [job({ state: 'completed' })] }) });
+    expect(row).toMatchObject({ liveView: null, replayable: true, worldView: { instanceId: ID, recordingId: DISPATCH } });
+    await expect(islands.openReplay(ID, { env: gx, fetchImpl: async () => ({ ok: true, json: async () => ({ replay: true, instanceId: DISPATCH }) }) })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(islands.recordReport(ID, report({ worldPrepared: { instanceId: ID }, status: {
+      worldKind: 'remote', remoteWorld: { instanceId: DISPATCH } } }))).rejects.toMatchObject({ statusCode: 409 });
+  });
+
   it('retains a remote world recording receipt and filters untrusted paths', async () => {
     await islands.recordReport(ID, report({
       worldPrepared: { world: 'living-island', recordDir: '/data/recordings/run-1', token: 'never-kept' },
@@ -104,9 +150,9 @@ describe('island run service', () => {
     expect(data.worlds.map(world => [world.id, world.label])).toEqual([['mesa-island', 'Île Clawblox'], ['ile-de-frank', 'Île de Frank']]);
     expect(data.worlds[0].liveUrl).toBeNull();
     expect(Object.fromEntries(new URL(data.worlds[1].liveUrl).searchParams)).toEqual({ app: 'island', embed: '1', source: 'https://frank.lan:18794' });
-    // A running run on that terrain follows its agent there; its recording is not offered as a replay yet.
+    // A legacy remote report without an instance cannot silently open the current world.
     expect(data.runs[0]).toMatchObject({ world: 'ile-de-frank', replayable: false });
-    expect(Object.fromEntries(new URL(data.runs[0].liveView).searchParams)).toMatchObject({ source: 'https://frank.lan:18794', agent: 'Eko' });
+    expect(data.runs[0].liveView).toBeNull();
     await expect(islands.openReplay(ID, { env: gx })).rejects.toMatchObject({ statusCode: 409, message: expect.stringMatching(/Île de Frank/) });
     // Without the setting the tab keeps its single terrain.
     expect((await islands.listRuns({ env, queue: async () => ({ jobs: [] }) })).worlds).toEqual([{ id: 'mesa-island', label: 'Île Clawblox', liveUrl: null }]);
@@ -254,7 +300,7 @@ describe('island run service', () => {
     expect(views.liveUrl(running)).toBe('http://runner.lan:18080/?t=1');
     expect(views.liveUrl({ ...running, phase: 'finished' })).toBeNull();
     for (const make of Object.values(RENDERERS)) {
-      expect(Object.keys(make({})).sort()).toEqual(['available', 'liveUrl', 'name', 'replayUrl', 'worldUrl']);
+      expect(Object.keys(make({})).sort()).toEqual(['available', 'canReplay', 'liveUrl', 'name', 'replayUrl', 'worldUrl']);
     }
     expect(() => islandViews({}, 'unknown')).toThrow(/Unknown island renderer/);
   });
@@ -274,23 +320,23 @@ describe('island run service', () => {
 
   it('shows a terrain that runs on its own only through GraphysX-Web', async () => {
     const { islandViews } = require('../../src/services/island/islandViews');
-    const running = { phase: 'running', agent: 'Eko', world: 'ile-de-frank', liveView: { port: 18080, path: '/?spectator_token=tok-1' }, recording: 'r/x.clawrec' };
+    const running = { worldView: { kind: 'remote', instanceId: ID }, phase: 'running', agent: 'Eko', world: 'ile-de-frank', liveView: { port: 18080, path: '/?spectator_token=tok-1' }, recording: 'r/x.clawrec' };
     const fetchImpl = async () => { throw new Error('the replay server must not be asked'); };
     const gx = islandViews({ ...env, AGENTX_ISLAND_GRAPHYSX_URL: 'http://viewer.lan:4231/', AGENTX_ISLAND_WORLDS: WORLDS });
     const live = new URL(gx.liveUrl(running));
-    expect(Object.fromEntries(live.searchParams)).toEqual({ app: 'island', embed: '1', source: 'https://frank.lan:18794', agent: 'Eko' });
+    expect(Object.fromEntries(live.searchParams)).toEqual({ app: 'island', embed: '1', source: `https://frank.lan:18794?instance=${ID}`, agent: 'Eko' });
     expect(live.hash).toBe('');
     expect(gx.liveUrl({ ...running, phase: 'finished' })).toBeNull();
     expect(gx.worldUrl({ id: 'mesa-island', live: null })).toBeNull();
     await expect(gx.replayUrl(running, { fetchImpl })).rejects.toMatchObject({ statusCode: 409 });
     // A Clawblox world in the same list keeps the Clawblox stream.
-    expect(new URL(gx.liveUrl({ ...running, world: 'mesa-island' })).searchParams.get('source')).toBe('http://runner.lan:18080');
+    expect(new URL(gx.liveUrl({ ...running, world: 'mesa-island', worldView: null })).searchParams.get('source')).toBe('http://runner.lan:18080');
     const own = islandViews({ ...env, AGENTX_ISLAND_WORLDS: WORLDS });
     expect(own.name).toBe('clawblox');
     expect(own.liveUrl(running)).toBeNull();
     expect(own.worldUrl(FRANK)).toBeNull();
     await expect(own.replayUrl(running, { fetchImpl })).rejects.toMatchObject({ statusCode: 409 });
-    expect(own.liveUrl({ ...running, world: 'mesa-island' })).toBe('http://runner.lan:18080/?spectator_token=tok-1');
+    expect(own.liveUrl({ ...running, world: 'mesa-island', worldView: null })).toBe('http://runner.lan:18080/?spectator_token=tok-1');
   });
 
   it('draws the island in GraphysX-Web when its viewer is configured', async () => {

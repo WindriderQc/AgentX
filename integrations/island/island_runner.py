@@ -50,7 +50,7 @@ RUN_ID = re.compile(r"^[a-f0-9-]{36}$")
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
 WORLD = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 HARNESSES = tuple(episode.HARNESSES)
-MEMORY_FILES = ("SOUL.md", "EPISODIC_MEMORY.jsonl", "SEMANTIC_MEMORY.md")
+MEMORY_FILES = MEMORY
 TEMPLATE_FILES = ("SOUL.md", "EPISODIC_MEMORY.md", "SEMANTIC_MEMORY.md")
 MAX_MEMORY_BYTES = 256 * 1024
 AGENT_MESSAGES = 40          # latest entries reported with each status
@@ -209,7 +209,9 @@ def probe_remote_world(info: dict) -> dict:
         return {"ok": False, "problems": ["remote world probe gave no answer"]}
     problems = [str(item)[:300] for item in answer.get("problems") or []][:5]
     return {"ok": result.returncode == 0 and answer.get("ok") is True and not problems,
-            "world": answer.get("world"), "problems": problems}
+            "world": answer.get("world"), "problems": problems,
+            **{key: answer[key] for key in ("instanceId", "recordingId")
+               if isinstance(answer.get(key), str) and RUN_ID.fullmatch(answer[key])}}
 
 
 def world_healthy(port: int, timeout: float = 10) -> bool:
@@ -345,6 +347,7 @@ def action_check(config: dict, _args) -> dict:
     problems.extend(harness_problems(config, harness, version))
     world = getattr(_args, "world", None)
     world_kind = None
+    world_identity = None
     if world:
         if not WORLD.match(world) or not (Path(config["worldsRoot"]).expanduser() / world).is_dir():
             problems.append(f"world {world} is not installed on this runner")
@@ -353,12 +356,14 @@ def action_check(config: dict, _args) -> dict:
             world_kind = "remote" if remote else "local"
             if remote:
                 found = probe_remote_world(remote)
+                world_identity = {key: found[key] for key in ("instanceId", "recordingId") if found.get(key)}
                 if not found["ok"]:
                     problems.append(f"remote world {world} unavailable: " + "; ".join(found["problems"] or ["no detail"]))
     playable = [name for name in HARNESSES if not harness_problems(config, name, version)]
     return {"ready": not problems, "problems": problems, "activeRun": active_run(config),
             "worldPort": config["worldPort"], "model": PRINCIPAL_ALIAS, "harness": harness, "harnesses": playable,
-            **({"world": world, "worldKind": world_kind} if world else {})}
+            **({"world": world, "worldKind": world_kind} if world else {}),
+            **({"remoteWorld": world_identity} if world_identity else {})}
 
 
 def action_start(config: dict, args) -> dict:
@@ -403,6 +408,9 @@ def start_locked(config: dict, args) -> dict:
         if not found["ok"]:
             raise RunnerError("WORLD_UNAVAILABLE", f"remote world {args.world} unavailable: "
                               + "; ".join(found["problems"] or ["no detail"]))
+    expected_instance = getattr(args, "expected_instance", None)
+    if expected_instance and (not RUN_ID.fullmatch(expected_instance) or not remote or found.get("instanceId") != expected_instance):
+        raise RunnerError("WORLD_UNAVAILABLE", "remote world instance differs from the prepared run; nothing started")
     runs_root(config).mkdir(parents=True, exist_ok=True)
     try:
         run.mkdir()
@@ -412,7 +420,8 @@ def start_locked(config: dict, args) -> dict:
                "minutes": args.minutes, "memory": args.memory, "world": args.world,
                "contextWindow": args.context_window, "netcheck": bool(args.netcheck), "requestedAt": now_iso(),
                "worldKind": "remote" if remote else "local",
-               "remoteWorld": {"origin": remote["origin"], "world": remote["world"]} if remote else None}
+               "remoteWorld": {"origin": remote["origin"], "world": remote["world"],
+                               **{key: found[key] for key in ("instanceId", "recordingId") if found.get(key)}} if remote else None}
     write_json(run / "request.json", request)
     state = {"runId": args.run_id, "dispatchId": args.dispatch_id, "phase": "starting", "events": [],
              "requestedAt": request["requestedAt"], "timeZone": config.get("timeZone")}
@@ -582,6 +591,10 @@ def action_supervise(config: dict, args) -> dict:
             os.environ["PATH"] = str(Path(config["clawbloxBin"]).expanduser()) + os.pathsep + os.environ.get("PATH", "")
         a = episode.parser().parse_args(["--run-dir", str(run), "--templates-dir", str(templates),
                                         "--world-dir", str(Path(config["worldsRoot"]).expanduser() / request["world"])])
+        if (request.get("remoteWorld") or {}).get("instanceId"):
+            os.environ["AGENTX_ISLAND_EXPECT_INSTANCE"] = request["remoteWorld"]["instanceId"]
+        else:
+            os.environ.pop("AGENTX_ISLAND_EXPECT_INSTANCE", None)
         a.name, a.minutes, a.netcheck = request["agent"], float(request["minutes"]), request["netcheck"]
         a.port, a.gateway_guest_port = int(config["worldPort"]), int(config["gatewayGuestPort"])
         a.gateway_base_url = config.get("gatewayBaseUrl") or "https://" + config.get("gatewayHost", "") + "/api/llm/v1"
@@ -642,6 +655,7 @@ def parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--config", type=Path)
     p.add_argument("--run-id")
     p.add_argument("--dispatch-id")
+    p.add_argument("--expected-instance", help="prepared remote world instance UUID; refuse a replacement before starting")
     p.add_argument("--agent", default="Eko")
     p.add_argument("--harness", default="codex", help="codex, dsh or pi")
     p.add_argument("--minutes", type=int, default=60)

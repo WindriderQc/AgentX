@@ -348,8 +348,8 @@ test('a prepared world is recorded in the ledger, the reports and the receipt', 
     const core = fakeCore({ ...job, executor: living });
     const order = [];
     const { runner } = fakeRunner();
-    const tracked = async (action, args) => { order.push(action); return runner(action, args); };
-    const prepared = { ok: true, managed: true, world: 'living-island', recordDir: '/data/recordings/20261030T040000Z-3-living-island', message: null };
+    const tracked = async (action, args) => { order.push(action); if (action === 'start') assert.equal(args['expected-instance'], ID); return runner(action, args); };
+    const prepared = { ok: true, managed: true, world: 'living-island', instanceId: ID, recordingId: ID, recordDir: '/data/recordings/20261030T040000Z-3-living-island', message: null };
     const worldPrepare = async (action, world, request) => {
       order.push(`hook:${action}`);
       assert.equal(world, 'graphysx-living');

@@ -5,6 +5,7 @@
  * (Clawblox's own pages or GraphysX-Web) changes without touching the tab (docs/ISLAND.md):
  *
  *   available()           -> { live, replay }  what this renderer can show
+ *   canReplay(run)      -> boolean          per-run recording and renderer availability
  *   liveUrl(run)          -> URL or null       while the run is running
  *   replayUrl(run, deps)  -> { src, agentLog } opens the run's recording
  *   worldUrl(world)       -> URL or null       watches a terrain that runs on its own
@@ -12,10 +13,11 @@
  * `run` is the stored run record (phase, world, liveView {port, path}, recording).
  * On a Clawblox world the physics and the recording stay Clawblox's; a world
  * with a `live` origin (islandWorlds.js) is a GraphysX-Web world service that
- * runs on its own: only GraphysX-Web's page can show it, and its per-run
- * replays are not wired yet.
+ * runs on its own: only GraphysX-Web's page can show it. Remote replays use the stored opaque
+ * recording id on that configured origin.
  */
 
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const { islandWorlds, findWorld } = require('./islandWorlds');
 
 class ViewError extends Error {
@@ -53,6 +55,7 @@ function clawbloxViews(env = process.env) {
   return {
     name: 'clawblox',
     available: () => ({ live: Boolean(liveOrigin), replay: Boolean(replayBase) }),
+    canReplay: run => Boolean(replayBase && run?.recording && !remoteWorld(worlds, run)),
     liveUrl: run => (liveOrigin && run?.phase === 'running' && !remoteWorld(worlds, run) && run.liveView?.port && run.liveView?.path
       ? `${liveOrigin}:${run.liveView.port}${run.liveView.path}` : null),
     worldUrl: () => null,
@@ -104,10 +107,15 @@ function graphysxViews(env = process.env) {
   };
   return {
     name: 'graphysx',
-    available: () => (viewer ? clawblox.available() : { live: false, replay: false }),
+    available: () => (viewer ? { live: clawblox.available().live || worlds.some(world => world.live), replay: clawblox.available().replay || worlds.some(world => world.live) } : { live: false, replay: false }),
+    canReplay: run => {
+      const remote = remoteWorld(worlds, run);
+      return Boolean(viewer && (remote ? remote.live && UUID.test(run?.worldView?.recordingId || '') && UUID.test(run?.worldView?.instanceId || '') : clawblox.canReplay(run)));
+    },
     liveUrl: run => {
       const remote = remoteWorld(worlds, run);
-      if (remote) return viewer && remote.live && run.phase === 'running' ? page(remote.live, null, run.agent) : null;
+      if (remote) return viewer && remote.live && run.phase === 'running' && UUID.test(run.worldView?.instanceId || '')
+        ? page(`${remote.live}?instance=${run.worldView.instanceId}`, null, run.agent) : null;
       const live = viewer ? clawblox.liveUrl(run) : null;
       if (!live) return null;
       const url = new URL(live);
@@ -116,7 +124,15 @@ function graphysxViews(env = process.env) {
     worldUrl: world => (viewer && world?.live ? page(world.live, null, null) : null),
     replayUrl: async (run, deps) => {
       const remote = remoteWorld(worlds, run);
-      if (remote) refuseRemoteReplay(remote);
+      if (remote) {
+        if (!viewer || !remote.live || !UUID.test(run?.worldView?.recordingId || '')) refuseRemoteReplay(remote);
+        const source = `${remote.live}/recordings/${run.worldView.recordingId}`;
+        const response = await (deps?.fetchImpl || fetch)(`${source}/healthz`, { redirect: 'error', signal: AbortSignal.timeout(20000) });
+        if (!response.ok) throw new ViewError('This remote recording is unavailable', 404);
+        const health = await response.json();
+        if (health.replay !== true || health.instanceId !== run.worldView.instanceId) throw new ViewError('Remote recording identity mismatch', 409);
+        return { src: page(source, null, run.agent), agentLog: false, identitySource: health.identitySource || 'native' };
+      }
       if (!viewer) throw new ViewError('No GraphysX viewer is configured (AGENTX_ISLAND_GRAPHYSX_URL)', 409);
       const opened = await clawblox.replayUrl(run, deps);
       return { ...opened, src: page(opened.src.replace(/\/+$/, ''), null, run?.agent) };

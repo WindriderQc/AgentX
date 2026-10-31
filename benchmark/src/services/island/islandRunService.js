@@ -16,8 +16,8 @@ const { islandViews } = require('./islandViews');
 const { islandWorlds, findWorld } = require('./islandWorlds');
 
 const SOURCE_REF = 'benchmark-island-tab';
-const UUID = /^[a-f0-9-]{36}$/;
-const MEMORY_KEYS = Object.freeze({ 'SOUL.md': 'soul', 'EPISODIC_MEMORY.jsonl': 'episodic', 'SEMANTIC_MEMORY.md': 'semantic' });
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+const MEMORY_KEYS = Object.freeze({ 'SOUL.md': 'soul', 'EPISODIC_MEMORY.jsonl': 'episodic', 'EPISODIC_MEMORY.md': 'episodicMarkdown', 'SEMANTIC_MEMORY.md': 'semantic' });
 const MAX_MEMORY_TEXT = 256 * 1024;
 const START_WINDOW_HOURS = 48;
 const AGENT_MESSAGES = 40;
@@ -61,12 +61,13 @@ function queueView(job) {
   };
 }
 
-function runRow(doc, job, view, worlds) {
+function runRow(doc, job, view) {
   const executor = job?.executor || {};
-  const liveView = doc ? view.liveUrl(doc) : null;
+  const terminal = ['completed', 'failed', 'cancelled'].includes(job?.state);
+  const phase = terminal ? 'finished' : doc?.phase || null;
+  const outcome = terminal ? ({ completed: 'completed', failed: 'failed', cancelled: 'stopped' }[job.state]) : doc?.outcome || null;
+  const liveView = doc && !terminal ? view.liveUrl(doc) : null;
   const world = doc?.world || executor.world || null;
-  // Per-run replays of a world that runs on its own are not wired yet (islandViews.js).
-  const remote = doc?.worldView?.kind === 'remote' || Boolean(world && findWorld(worlds, world)?.live);
   return {
     id: doc?._id || job.id,
     title: doc?.title || job?.title || null,
@@ -78,15 +79,15 @@ function runRow(doc, job, view, worlds) {
     worldView: doc?.worldView || null,
     model: doc?.model || PRINCIPAL_ALIAS,
     runner: doc?.runner || null,
-    phase: doc?.phase || null,
-    outcome: doc?.outcome || null,
+    phase, outcome, runnerPhase: doc?.phase || null,
+    state: terminal ? job.state : (doc?.phase === 'finished' ? (doc.outcome === 'completed' ? 'completed' : doc.outcome === 'stopped' ? 'cancelled' : 'failed') : job?.state || phase),
     requestedAt: doc?.requestedAt || job?.createdAt || null,
     startedAt: doc?.startedAt || null,
-    endedAt: doc?.endedAt || null,
+    endedAt: (terminal && job.finishedAt) || doc?.endedAt || null,
     timeZone: doc?.timeZone || null,
     resumeCount: doc?.resumeCount || 0,
     liveView,
-    replayable: Boolean(doc?.recording && view.available().replay && !remote),
+    replayable: view.canReplay(doc),
     hasMemory: Boolean(doc?.memory),
     receipt: doc?.receipt || null,
     queue: queueView(job),
@@ -110,13 +111,13 @@ async function listRuns(deps = {}) {
   const { worlds, error: worldsError } = islandWorlds(d.env);
   const [docs, queue] = await Promise.all([
     // Memory sizes stay so the row knows a memory exists; the texts do not.
-    IslandRun.find({}).select('-events -agentMessages -memory.soul.text -memory.episodic.text -memory.semantic.text')
+    IslandRun.find({}).select('-events -agentMessages -memory.soul.text -memory.episodic.text -memory.episodicMarkdown.text -memory.semantic.text')
       .sort({ createdAt: -1 }).limit(200).lean(),
     readQueue(d)
   ]);
   const jobs = new Map(queue.jobs.map(job => [job.id, job]));
-  const rows = docs.map(doc => runRow(doc, jobs.get(doc._id), view, worlds));
-  for (const job of queue.jobs) if (!docs.some(doc => doc._id === job.id)) rows.push(runRow(null, job, view, worlds));
+  const rows = docs.map(doc => runRow(doc, jobs.get(doc._id), view));
+  for (const job of queue.jobs) if (!docs.some(doc => doc._id === job.id)) rows.push(runRow(null, job, view));
   rows.sort((a, b) => String(b.startedAt || b.requestedAt || '').localeCompare(String(a.startedAt || a.requestedAt || '')));
   return {
     queueRead: queue.read, view: view.available(), runs: rows, worldsError,
@@ -129,10 +130,10 @@ async function getRun(id, deps = {}) {
   if (!UUID.test(id || '')) throw new IslandError('Run id needs a queue request id');
   const d = defaults(deps);
   const [doc, queue] = await Promise.all([
-    IslandRun.findById(id).select('-memory.soul.text -memory.episodic.text -memory.semantic.text').lean(), readQueue(d)]);
+    IslandRun.findById(id).select('-memory.soul.text -memory.episodic.text -memory.episodicMarkdown.text -memory.semantic.text').lean(), readQueue(d)]);
   const job = queue.jobs.find(item => item.id === id);
   if (!doc && !job) throw new IslandError('No island run with this id', 404);
-  return { ...runRow(doc, job, islandViews(d.env), islandWorlds(d.env).worlds), events: doc?.events || [], agentMessages: doc?.agentMessages || [],
+  return { ...runRow(doc, job, islandViews(d.env)), events: doc?.events || [], agentMessages: doc?.agentMessages || [],
     queueRead: queue.read };
 }
 
@@ -153,7 +154,8 @@ function cleanMemory(files) {
   const memory = {};
   for (const [name, key] of Object.entries(MEMORY_KEYS)) {
     const file = files[name];
-    if (!file || typeof file.text !== 'string') continue;
+    if (!file || file.missing === true) { memory[key] = { missing: true, bytes: 0, truncated: false }; continue; }
+    if (typeof file.text !== 'string') continue;
     memory[key] = { bytes: Number(file.bytes) || file.text.length, truncated: file.truncated === true || file.text.length > MAX_MEMORY_TEXT,
       text: file.text.slice(-MAX_MEMORY_TEXT) };
   }
@@ -169,7 +171,7 @@ async function recordReport(id, body = {}) {
   if (!UUID.test(body.dispatchId || '')) throw new IslandError('Report needs its dispatch id');
   let executor;
   try { executor = islandExecutor(body.executor); } catch (error) { throw new IslandError(error.message); }
-  const existing = await IslandRun.findById(id).select('dispatchId').lean();
+  const existing = await IslandRun.findById(id).select('dispatchId worldView').lean();
   if (existing?.dispatchId && existing.dispatchId !== body.dispatchId) throw new IslandError('This run already belongs to another dispatch', 409);
   const status = body.status && typeof body.status === 'object' ? body.status : {};
   const set = {
@@ -199,7 +201,18 @@ async function recordReport(id, body = {}) {
     const world = [prepared.world, status.remoteWorld?.world].find(value => typeof value === 'string' && WORLD_ID.test(value));
     const recordDir = typeof prepared.recordDir === 'string' && RECORD_DIR.test(prepared.recordDir) && !prepared.recordDir.includes('..')
       ? prepared.recordDir : null;
-    set.worldView = { kind: status.worldKind, world: remote ? world || null : executor.world, recordDir: remote ? recordDir : null };
+    const observed = status.remoteWorld || {};
+    const opaque = value => typeof value === 'string' && UUID.test(value) ? value : undefined;
+    for (const key of ['instanceId', 'recordingId']) {
+      const wanted = opaque(prepared[key]) || opaque(existing?.worldView?.[key]);
+      const reported = opaque(observed[key]) || opaque(prepared[key]);
+      if (wanted && reported && wanted !== reported) throw new IslandError('Runner reported another world instance or recording for this run', 409);
+      if (opaque(existing?.worldView?.[key]) && reported && existing.worldView[key] !== reported) throw new IslandError('This run already belongs to another world instance or recording', 409);
+    }
+    const instanceId = opaque(observed.instanceId) || opaque(prepared.instanceId) || opaque(existing?.worldView?.instanceId);
+    const recordingId = opaque(observed.recordingId) || opaque(prepared.recordingId) || opaque(existing?.worldView?.recordingId);
+    set.worldView = { kind: status.worldKind, world: remote ? world || null : executor.world, recordDir: remote ? recordDir : null,
+      ...(remote && instanceId ? { instanceId } : {}), ...(remote && recordingId ? { recordingId } : {}) };
   }
   const live = status.liveView;
   set.liveView = live && Number.isInteger(live.port) && live.port > 0 && live.port < 65536 && typeof live.path === 'string' && live.path.startsWith('/')
@@ -210,13 +223,15 @@ async function recordReport(id, body = {}) {
   if (receipt && /^[a-f0-9]{64}$/.test(receipt.sha256 || '')) {
     set.receipt = { file: text(receipt.file), sha256: receipt.sha256, state: text(receipt.state, 20), runtimeReleased: receipt.runtimeReleased === true };
   }
+  const identityFilter = {};
+  for (const key of ['instanceId', 'recordingId']) if (set.worldView?.[key]) identityFilter[`worldView.${key}`] = { $in: [null, set.worldView[key]] };
   try {
-    await IslandRun.updateOne({ _id: id, $or: [{ dispatchId: body.dispatchId }, { dispatchId: null }] },
+    await IslandRun.updateOne({ _id: id, ...identityFilter, $or: [{ dispatchId: body.dispatchId }, { dispatchId: null }] },
       { $set: set, $setOnInsert: { title: `Île — ${executor.agent}, ${executor.minutes} min` } }, { upsert: true });
   } catch (error) {
     if (error.code === 11000) {
-      const retry = await IslandRun.updateOne({ _id: id, dispatchId: body.dispatchId }, { $set: set });
-      if (!retry.matchedCount) throw new IslandError('This run already belongs to another dispatch', 409);
+      const retry = await IslandRun.updateOne({ _id: id, dispatchId: body.dispatchId, ...identityFilter }, { $set: set });
+      if (!retry.matchedCount) throw new IslandError('This run already belongs to another dispatch or world identity', 409);
     } else throw error;
   }
   return { id, saved: true };

@@ -357,9 +357,33 @@ Avec `AGENTX_ISLAND_GRAPHYSX_URL`, la section « Monde en direct » lit
 sur la seule origine configurée. Elle nomme le monde réellement actif, avertit
 si le terrain sélectionné n'est pas actif et vérifie de nouveau au clic. Une
 identité illisible désactive le bouton. Regarder ne lance ni ne réinitialise
-aucun monde. « Voir » d'une partie en cours suit son agent. Les
-reprises par partie de ces terrains ne sont pas encore branchées : « Voir »
-n'apparaît pas après la partie.
+aucun monde. « Voir » d'une partie en cours suit son `worldView.instanceId`, jamais
+le seul type d'île. Le lien porte ce filtre ; le serveur refuse une autre instance
+et ferme le flux lié si l'île est remplacée. Une ancienne fiche sans identité
+ne propose pas le direct d'une autre partie.
+
+Les relectures distantes passent par le `worldView.recordingId` du rapport de
+cette partie, sous la seule origine `live` configurée :
+`/recordings/<UUID>/{healthz,spectate,replay/*}`. Benchmark vérifie l'identité
+annoncée avant de fournir le viewer. Aucun chemin reçu du navigateur n'est
+utilisé. Les relectures Clawblox existantes gardent leur contrat.
+
+Une archive GraphysX historique reste lisible avec son outil natif. Pour la
+relier à une ancienne partie, l'opérateur l'enregistre localement avec
+`world-service/register-recording.mjs` (racine configurée, dossier existant,
+UUID stable). L'outil renvoie `instanceId`/`recordingId` et une empreinte ; il
+ne déplace ni ne supprime les octets. L'opérateur rapporte ces identifiants
+avec l'exécuteur, l'identifiant et le dispatch existants à
+`POST /api/island/runs/:id/report`, `status.worldKind: remote` et
+`status.remoteWorld`. Une référence de dossier seule n'est jamais ouverte
+comme si elle prouvait l'identité du monde courant.
+
+Les lignes de partie exposent `state` et une phase effective : les états Core
+`completed`, `failed`, `cancelled` imposent `phase: finished`, leur résultat,
+et aucun lien live, même si `runnerPhase` conserve `running`. `runnerPhase`
+est un diagnostic brut. La lecture mémoire rapporte les quatre fichiers,
+avec `bytes`, `truncated` et `missing` (ou `null` pour les anciens rapports) ;
+`EPISODIC_MEMORY.md` reste distinct du journal JSONL et la persistance ne change pas.
 
 La vue GraphysX offre un explorateur de l'île : catégories, recherche, fiches
 et relations entre éléments. Benchmark lui transmet l'adresse du tableau de

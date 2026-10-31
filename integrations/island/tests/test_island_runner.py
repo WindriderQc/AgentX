@@ -107,7 +107,10 @@ class Memory(Fixture):
         workspace = self.root / "ws"
         workspace.mkdir()
         (workspace / "SEMANTIC_MEMORY.md").write_text("x" * (runner.MAX_MEMORY_BYTES + 10))
+        (workspace / "EPISODIC_MEMORY.md").write_text("episodic summary")
         files = runner.memory_snapshot(workspace)
+        self.assertEqual(set(files), set(runner.MEMORY))
+        self.assertEqual(files["EPISODIC_MEMORY.md"]["text"], "episodic summary")
         self.assertTrue(files["SEMANTIC_MEMORY.md"]["truncated"])
         self.assertEqual(len(files["SEMANTIC_MEMORY.md"]["text"]), runner.MAX_MEMORY_BYTES)
         self.assertIsNone(files["SOUL.md"])
