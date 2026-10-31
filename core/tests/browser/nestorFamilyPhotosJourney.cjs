@@ -13,7 +13,7 @@ const core = path.resolve(__dirname, '../..'), publicDir = path.join(core, 'surf
 const { generatedPersonas, snapshot } = require('../../surfaces/household/persona-catalog');
 const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture', version: 1 }));
 const sessions = new Map(), submissions = [], errors = [];
-let browser, server, heard = '';
+let browser, server, heard = '', delayTranscription = false, finishTranscription;
 const output = process.env.SCREEN_COMMANDS_BROWSER_OUTPUT_DIR || '/tmp/agentx-nestor-screen-commands-browser';
 fs.mkdirSync(output, { recursive: true });
 
@@ -29,7 +29,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
 (async () => {
   const app = express();
   // The simulated recognizer answers before JSON parsing: the page posts the audio as a form.
-  app.post('/api/voix/transcribe', (_req, res) => res.json({ data: { text: heard } }));
+  app.post('/api/voix/transcribe', (_req, res) => { const text = heard; if (delayTranscription) finishTranscription = () => res.json({data:{text}}); else res.json({data:{text}}); });
   app.use(express.json());
   app.use('/assets/household', express.static(publicDir));
   app.use('/js', express.static(path.join(core, 'public/js')));
@@ -64,8 +64,10 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
       tools: { status: 'not_supported', authority: 'agentx/ollama', receipts: [] } } }) + '\n');
   });
   const photoId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const secondPhotoId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  let photoRequests = 0;
   app.get('/api/photos/frame/status', (_req, res) => res.json({ data: { enabled: true, idleSeconds: 120, intervalSeconds: 30 } }));
-  app.get('/api/photos/frame/next', (_req, res) => res.json({ data: { id: photoId, src: '/api/photos/frame/' + photoId + '/image' } }));
+  app.get('/api/photos/frame/next', (req, res) => { photoRequests++; const id = req.query.exclude === photoId ? secondPhotoId : photoId; res.json({data:{id,src:'/api/photos/frame/'+id+'/image'}}); });
   app.get('/api/photos/frame/:id/image', (_req, res) => res.type('image/svg+xml').send('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="450"><rect width="800" height="450" fill="#145e76"/></svg>'));
   app.use('/api', (req, res) => {
     if (req.path.endsWith('/recap/latest')) return res.json({ data: null });
@@ -76,7 +78,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   browser = await chromium.launch({ headless: true, ...(process.env.AGENTX_BROWSER_EXECUTABLE && { executablePath: process.env.AGENTX_BROWSER_EXECUTABLE }) });
   const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
   await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-  const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
+  const page = await context.newPage(); page.setDefaultTimeout(10000); page.on('pageerror', error => errors.push(error.message));
   await page.goto(origin + '/fixture');
   await page.waitForFunction(() => window.fixtureReady || window.fixtureError);
   assert.equal(await page.evaluate(() => window.fixtureError), undefined);
@@ -104,17 +106,45 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   assert.equal(await frame.isVisible(),true,'personal events cannot dismiss a family frame');
   heard='Conversation ambiante'; await page.evaluate(() => say()); await listening();
   assert.equal(await frame.isVisible(),true,'wake gate ignores ambient speech');
+  const firstPhoto = '/api/photos/frame/' + photoId + '/image', secondPhoto = '/api/photos/frame/' + secondPhotoId + '/image';
+  const image = frame.locator('img');
+  await page.keyboard.press('ArrowLeft'); assert.equal(await image.getAttribute('src'),firstPhoto);
+  await page.keyboard.press('ArrowRight'); await page.waitForFunction(src=>document.querySelector('.nestor-idle-photos img').getAttribute('src')===src,secondPhoto);
+  const loadedPhotos = photoRequests;
+  await page.keyboard.press('ArrowLeft'); assert.equal(await image.getAttribute('src'),firstPhoto);
+  await page.keyboard.press('ArrowRight'); assert.equal(await image.getAttribute('src'),secondPhoto);
+  heard='recule'; await page.evaluate(() => say()); await listening();
+  assert.equal(await image.getAttribute('src'),secondPhoto,'standby still requires the existing wake address');
+  heard='Hey Nestor, recule'; delayTranscription=true;
+  const recognitionRequest = page.waitForRequest(request=>request.url().endsWith('/api/voix/transcribe'));
+  await page.evaluate(() => { window.pendingSay = say(); }); await recognitionRequest;
+  await page.waitForFunction(() => document.getElementById('conversationPresence').dataset.state === 'transcribing');
+  await page.clock.fastForward(2000);
+  assert.equal(await frame.isVisible(),true,'a slow transcription does not dismiss the photos');
+  assert.equal(await image.getAttribute('src'),secondPhoto,'automatic rotation is suspended during recognition');
+  assert.equal(typeof finishTranscription,'function'); finishTranscription(); delayTranscription=false;
+  await page.evaluate(() => pendingSay); await listening();
+  assert.equal(await image.getAttribute('src'),firstPhoto,'real family voice path goes back without exiting');
+  heard='avance'; await page.evaluate(() => say()); await listening();
+  assert.equal(await image.getAttribute('src'),secondPhoto,'bare follow-up shares keyboard history');
+  assert.equal(photoRequests,loadedPhotos,'voice and keyboard reuse cached history');
+  assert.equal(submissions.length,0,'photo navigation never submits a model turn');
   heard='Hey Nestor'; await page.evaluate(() => say()); await frame.waitFor({state:'hidden'}); await listening();
   assert.equal(submissions.length,0,'wake return creates no model request');
   for(const label of ['Settings','Flow','Diagnostic micro']) {
     await enter();
-    if(label!=='Settings') await page.evaluate(() => { AgentXVoiceWorkshop.open = async opts => { window.workshopScope=opts.scope; return {}; }; });
+    if(label!=='Settings') await page.evaluate(() => { AgentXVoiceWorkshop.open = async opts => { window.workshopScope=opts.scope; return {refresh(){}}; }; });
     await frame.getByRole('button',{name:label,exact:true}).click(); await frame.waitFor({state:'hidden'});
     if(label==='Settings') assert.equal(await page.locator('#conversationSettings').isVisible(),true);
     else assert.equal(await page.evaluate(() => workshopScope),'family');
   }
   await enter(); await page.keyboard.press('Escape'); await frame.waitFor({state:'hidden'});
   await enter(); await frame.locator('img').click({position:{x:20,y:20}}); await frame.waitFor({state:'hidden'});
+  heard='avance le rendez-vous'; await enter(); await page.evaluate(() => say()); await listening();
+  assert.equal(await frame.isVisible(),false,'a real request leaves photos for Nestor');
+  assert.deepEqual(submissions,['avance le rendez-vous']);
+  heard='recule'; await page.evaluate(() => say()); await listening();
+  assert.deepEqual(submissions,['avance le rendez-vous','recule'],'out-of-context alias remains a normal request');
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({ok:true,scope:'family',backend:'openclaw',liveModelCalls:0,submissions:submissions.length,errors}));
 })().catch(error => { console.error(error.stack); process.exitCode=1; })

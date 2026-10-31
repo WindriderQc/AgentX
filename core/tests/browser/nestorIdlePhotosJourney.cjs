@@ -55,9 +55,9 @@ let browser, server;
   browser = await chromium.launch({headless:true,...(process.env.AGENTX_BROWSER_EXECUTABLE && {executablePath:process.env.AGENTX_BROWSER_EXECUTABLE})});
   const results = [], errors = [];
   for (const viewport of [{width:1440,height:1000},{width:390,height:844}]) {
-    const context = await browser.newContext({viewport,hasTouch:true});
+    const context = await browser.newContext({viewport,hasTouch:true,reducedMotion:'reduce'});
     await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
-    const page = await context.newPage(); page.on('pageerror', err => errors.push(err.message));
+    const page = await context.newPage(); page.setDefaultTimeout(10000); page.on('pageerror', err => errors.push(err.message));
     await page.goto(origin + '/fixture');
     await page.getByRole('button', {name:'Photos en veille'}).waitFor();
     const shown = () => page.waitForFunction(() => frame.active());
@@ -69,7 +69,7 @@ let browser, server;
     await page.evaluate(() => { clockNow = 29000; frame.tick(); });
     assert.equal(await page.evaluate(() => requests.filter(url => !url.endsWith('/status')).length), 0, 'no image before inactivity');
     await enter();
-    for (const label of ['Retour à Nestor','Settings','Flow','Diagnostic micro','Micro · activer / pause']) {
+    for (const label of ['Retour à Nestor','Photo précédente','Photo suivante','Settings','Flow','Diagnostic micro','Micro · activer / pause']) {
       const rect = await page.locator('.nestor-idle-photos').getByRole('button',{name:label,exact:true}).boundingBox();
       assert.ok(rect && rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= viewport.width && rect.y + rect.height <= viewport.height, label + ' reachable');
     }
@@ -77,6 +77,21 @@ let browser, server;
     await page.evaluate(() => { clockNow += 6000; frame.tick(); });
     await page.waitForFunction(id => document.querySelector('.nestor-idle-photos img').src.includes(id), ID2);
     assert.equal(await page.evaluate(() => requests.at(-1).includes('exclude=')), true, 'rotation uses native exclusion');
+    const photo = () => page.locator('.nestor-idle-photos img').getAttribute('src');
+    const firstPhoto = '/api/photos/frame/' + ID + '/image', secondPhoto = '/api/photos/frame/' + ID2 + '/image';
+    const requestCount = await page.evaluate(() => requests.length);
+    await page.keyboard.press('ArrowLeft'); assert.equal(await photo(), firstPhoto);
+    await page.keyboard.press('ArrowRight'); assert.equal(await photo(), secondPhoto);
+    await page.getByRole('button',{name:'Photo précédente',exact:true}).click(); assert.equal(await photo(), firstPhoto);
+    await page.getByRole('button',{name:'Photo suivante',exact:true}).click(); assert.equal(await photo(), secondPhoto);
+    assert.equal(await page.evaluate(() => frame.localControl('recule',{followup:true}).applied),true);
+    assert.equal(await photo(),firstPhoto);
+    assert.equal(await page.evaluate(() => frame.localControl('avance',{followup:true}).applied),true);
+    assert.equal(await photo(),secondPhoto);
+    assert.equal(await page.evaluate(() => requests.length),requestCount,'cached forward history needs no new random photo');
+    assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches),true);
+    assert.equal(await page.locator('.nestor-idle-photos').evaluate(node=>getComputedStyle(node).animationName),'none');
+
     await page.getByRole('button',{name:'Retour à Nestor',exact:true}).click(); await hide();
     assert.equal(await page.locator('#conversationTranscript').textContent(), 'Existing conversation stays here.');
     assert.equal(await page.evaluate(() => session.sessionId), 'fixture-conversation');
@@ -124,7 +139,9 @@ let browser, server;
     const outcome = await page.evaluate(() => {
       dispatchEvent(new CustomEvent('persona-presence',{detail:{space:'personal',state:'hearing'}}));
       dispatchEvent(new CustomEvent('persona-presence',{detail:{space:'personal',state:'transcribing'}}));
-      return frame.localControl('Eille Nestor, ferme l’écran',{followup:false});
+      const result = frame.localControl('Eille Nestor, ferme l’écran',{followup:false});
+      dispatchEvent(new CustomEvent('persona-presence',{detail:{space:'personal',state:'listening'}}));
+      return result;
     });
     assert.equal(outcome.applied, true, 'existing addressed voice command returns locally after speech activity');
     await hide();

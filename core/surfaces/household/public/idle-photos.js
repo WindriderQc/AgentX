@@ -2,78 +2,113 @@
 (function (root) {
   'use strict';
   function mount({ host, api, space = 'personal', busy = () => false, standby = () => false, controls = {}, now = () => Date.now() }) {
-    let enabled = false, active = false, disposed = false, loading = false, epoch = 0, voiceReturn = false;
-    let voiceState = 'idle';
-    let idleMs = 120000, intervalMs = 30000, lastActivity = now(), nextImage = 0, previous = null, focused;
+    let enabled = false, active = false, disposed = false, pending = null, epoch = 0;
+    let voiceState = 'idle', history = [], position = -1;
+    let idleMs = 120000, intervalMs = 30000, lastActivity = now(), nextImage = 0, focused;
     const region = document.createElement('section');
     region.className = 'nestor-idle-photos'; region.hidden = true;
     region.setAttribute('aria-label', 'Cadre photo');
     const image = document.createElement('img'); image.alt = ''; image.draggable = false;
     const actions = document.createElement('nav'); actions.setAttribute('aria-label', 'Commandes du cadre photo');
-    const hint = document.createElement('p'); hint.textContent = 'Micro actif : dites « Hey Nestor ». Sinon, touchez l’écran.';
+    const hint = document.createElement('p'); hint.textContent = '← / → : photos. Micro actif : « recule » / « avance » ; en veille, dites « Hey Nestor » avant la commande.';
     actions.append(hint);
+    const status = document.createElement('p'); status.setAttribute('role', 'status');
     const button = (label, run) => {
       const element = document.createElement('button'); element.type = 'button'; element.className = 'button';
       element.textContent = label; element.onclick = run; actions.append(element); return element;
     };
+    const recognizing = () => ['hearing', 'transcribing'].includes(voiceState);
+    const editing = target => target?.matches?.('input, textarea, select, iframe') || target?.isContentEditable;
+    const available = () => !disposed && enabled && !document.hidden && !editing(document.activeElement)
+      && !busy({ recognizing: active && recognizing() });
+    function cancelPending() {
+      epoch++; pending = null; region.removeAttribute('aria-busy');
+    }
     function leave({ focus = false } = {}) {
       const wasActive = active;
-      active = false; epoch++; region.hidden = true; image.removeAttribute('src');
-      lastActivity = now(); previous = null;
+      active = false; cancelPending(); region.hidden = true; image.removeAttribute('src');
+      lastActivity = now(); nextImage = 0; history = []; position = -1; status.textContent = '';
       if (focus && wasActive) focused?.focus?.({ preventScroll: true });
       return wasActive;
     }
     button('Retour à Nestor', () => leave({ focus: true }));
+    const back = button('Photo précédente', () => navigate(-1));
+    back.setAttribute('aria-keyshortcuts', 'ArrowLeft'); back.disabled = true;
+    const forward = button('Photo suivante', () => navigate(1));
+    forward.setAttribute('aria-keyshortcuts', 'ArrowRight');
     for (const [label, run] of Object.entries(controls)) button(label, () => { leave(); run(); });
+    actions.append(status);
     const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'button';
     toggle.textContent = 'Photos en veille'; toggle.hidden = true; toggle.setAttribute('aria-pressed', 'false');
     toggle.onclick = () => { enabled = !enabled; toggle.setAttribute('aria-pressed', String(enabled)); leave(); };
     host.append(toggle); region.append(image, actions); document.body.append(region);
     function activity(event) {
       if (event?.detail?.space && event.detail.space !== space) return;
+      if (active && event?.type === 'keydown' && ['ArrowLeft', 'ArrowRight'].includes(event.key)
+        && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+        && !editing(event.target) && !editing(document.activeElement)) {
+        event.preventDefault(); navigate(event.key === 'ArrowLeft' ? -1 : 1); return;
+      }
       // Keep controls focusable/clickable until their own handler performs the action.
       if (active && actions.contains(event?.target) && !(event.type === 'keydown' && event.key === 'Escape')) return;
-      voiceReturn = false;
       leave({ focus: event?.type === 'keydown' && event.key === 'Escape' });
     }
     function presence(event) {
       if (event.detail?.space && event.detail.space !== space) return;
       voiceState = event.detail?.state;
-      // Energy/ambient recognition is not an activation while the existing wake gate is armed.
-      if (active && standby() && ['hearing', 'transcribing'].includes(voiceState)) return;
-      if (!['idle', 'paused', 'listening'].includes(event.detail?.state)) {
-        if (active && ['hearing', 'transcribing'].includes(voiceState)) voiceReturn = true;
-        leave();
-      }
+      // Wait for the existing recognizer's local-control/wake decision before dismissing photos.
+      if (active && recognizing()) return;
+      if (!['idle', 'paused', 'listening'].includes(voiceState)) leave();
+    }
+    function show(value) {
+      if (!active) focused = document.activeElement;
+      image.src = value.src; active = true; region.hidden = false;
+      back.disabled = position <= 0; status.textContent = 'Photo ' + (position + 1);
+      if (!actions.contains(document.activeElement)) actions.querySelector('button').focus({ preventScroll: true });
+      nextImage = now() + intervalMs;
     }
     async function advance() {
-      if (loading || disposed) return;
-      loading = true; const token = epoch;
+      if (pending || !available()) return;
+      if (position + 1 < history.length) { show(history[++position]); return; }
+      const request = { epoch: ++epoch }; pending = request; region.setAttribute('aria-busy', 'true');
+      const current = () => pending === request && epoch === request.epoch && available();
+      const previous = history[position]?.id;
       try {
         const value = await api('/api/photos/frame/next' + (previous ? '?exclude=' + encodeURIComponent(previous) : ''));
-        if (disposed || token !== epoch || !enabled || document.hidden || busy()) return;
-        if (!value) { nextImage = now() + intervalMs; return; }
+        if (!current()) return;
+        if (!value || value.id === previous) { nextImage = now() + intervalMs; return; }
         if (!/^[0-9a-f-]{36}$/i.test(value.id) || value.src !== '/api/photos/frame/' + value.id + '/image') throw Error('Invalid image');
-        const pending = new Image();
-        await new Promise((resolve, reject) => { pending.onload = resolve; pending.onerror = reject; pending.src = value.src; });
-        if (disposed || token !== epoch || !enabled || document.hidden || busy()) return;
-        if (!active) focused = document.activeElement;
-        image.src = value.src; previous = value.id; active = true; region.hidden = false;
-        if (!actions.contains(document.activeElement)) actions.querySelector('button').focus({ preventScroll: true });
-        nextImage = now() + intervalMs;
+        const loadingImage = new Image();
+        await new Promise((resolve, reject) => { loadingImage.onload = resolve; loadingImage.onerror = reject; loadingImage.src = value.src; });
+        if (!current()) return;
+        history.push({ id: value.id, src: value.src }); position = history.length - 1; show(value);
       } catch {
-        if (!disposed && token === epoch) { leave(); toggle.title = 'Photos indisponibles. Nestor reste accessible.'; }
-      } finally { loading = false; }
+        if (pending === request && epoch === request.epoch) {
+          if (active) { status.textContent = 'Photo indisponible. Réessayez avec « Photo suivante ».'; nextImage = now() + intervalMs; }
+          else { leave(); toggle.title = 'Photos indisponibles. Nestor reste accessible.'; }
+        }
+      } finally {
+        if (pending === request) { pending = null; region.removeAttribute('aria-busy'); }
+      }
+    }
+    function navigate(direction) {
+      if (!active || !available()) return false;
+      nextImage = now() + intervalMs;
+      if (direction < 0) {
+        cancelPending();
+        if (position > 0) show(history[--position]);
+        return true;
+      }
+      // Coalesce repeats at the end of history; one next-image request at a time.
+      void advance(); return true;
     }
     function tick() {
       if (disposed || !enabled) return;
-      const editing = !region.contains(document.activeElement)
-        && (document.activeElement?.matches('input, textarea, select, iframe') || document.activeElement?.isContentEditable);
-      if (document.hidden || busy() || editing) {
-        const awaitingWake = standby() && ['hearing', 'transcribing'].includes(voiceState);
-        if (active && (document.hidden || editing || !awaitingWake)) leave();
+      if (!available()) {
+        if (active) leave();
         return;
       }
+      if (recognizing()) return;
       if ((!active && now() - lastActivity >= idleMs && now() >= nextImage) || (active && now() >= nextImage)) void advance();
     }
     const events = ['pointerdown', 'keydown', 'input', 'focusin'];
@@ -102,20 +137,25 @@
       active: () => active, activity, tick,
       // Existing voice recognition calls this hook with its own wake/address decision.
       localControl(text, options = {}) {
-        if (!active && !voiceReturn) return null;
-        const hadFrame = active || voiceReturn; voiceReturn = false;
-        // Reuse the existing recognizer's grammar, including Hey/Eille variants.
-        // This hook receives already-transcribed text; it opens no audio input.
+        if (!active) return null;
         const Wake = root.NestorConversation?.WakeWindow;
         const wake = Wake ? new Wake().accept(text, false) : null;
         if (wake?.activated && !wake.text) {
           leave();
           return { action: 'wake', applied: true, addressed: true, message: 'Retour à Nestor.' };
         }
-        const command = root.NestorScreenCommands?.parse(text);
+        // These exact aliases belong only to the photo context, not to other content.
+        const parser = root.NestorScreenCommands;
+        const command = parser?.parse(wake?.activated ? 'Nestor ' + wake.text : text, [
+          { phrase: 'recule', action: 'previous' }, { phrase: 'avance', action: 'next' }
+        ]);
         if (options.followup === false && !command?.addressed) return null;
+        if (command?.custom && ['previous', 'next'].includes(command.action)) {
+          return { action: command.action, applied: navigate(command.action === 'previous' ? -1 : 1),
+            addressed: command.addressed, message: command.action === 'previous' ? 'Photo précédente.' : 'Photo suivante.' };
+        }
         leave();
-        return hadFrame && ['close', 'previous', 'shrink'].includes(command?.action)
+        return ['close', 'previous', 'shrink'].includes(command?.action)
           ? { action: command.action, applied: true, addressed: command.addressed, message: 'Retour à Nestor.' } : null;
       },
       dispose,

@@ -1025,7 +1025,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   idlePhotos = window.NestorIdlePhotos?.mount({ host: app.querySelector('.conversation-toolbar'), api, space,
     standby: () => !!conversation.selection?.wakeWord && !conversation.wake.active(),
-    busy: () => textBusy || !['idle', 'paused', 'listening'].includes(conversation.state)
+    busy: ({ recognizing = false } = {}) => textBusy
+      || !(recognizing ? ['idle', 'paused', 'listening', 'hearing', 'transcribing'] : ['idle', 'paused', 'listening']).includes(conversation.state)
       || !el('conversationSettings').hidden || !!document.querySelector('dialog[open]')
       || !!el('conversationMessage').value.trim(),
     controls: {
