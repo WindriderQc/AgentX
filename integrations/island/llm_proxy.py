@@ -18,7 +18,9 @@ from urllib.parse import urlsplit
 
 PREFIX = "/api/llm/v1"
 MODEL = "agentx-primary"
-MAX_BODY = 8 * 1024 * 1024
+# Match Core's /api/llm JSON transport limit. Inline image history can exceed
+# 8 MiB before the principal's context window is full; Core still owns context.
+MAX_BODY = 32 * 1024 * 1024
 # The single inference route a run may open, by wire API.
 INFERENCE = {"responses": PREFIX + "/responses", "chat": PREFIX + "/chat/completions"}
 

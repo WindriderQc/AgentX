@@ -87,6 +87,10 @@ for Codex or `POST /api/llm/v1/chat/completions` for DSH and pi. The other
 inference route refuses like any unknown path. Discovery returns only
 `agentx-primary`, and inference bodies must select that alias. Other paths,
 methods, queries and encoded alternatives refuse. Core still owns admission.
+The proxy's JSON body ceiling matches Core's existing 32 MiB `/api/llm`
+transport budget, so inline image history is not cut off at a smaller
+intermediate limit. Core's model context, image validation and admission remain
+authoritative; this does not enlarge the pinned context window.
 
 The real gateway token and upstream URL stay outside the sandbox. Configure a
 dedicated client in the instance's `AGENTX_LLM_GATEWAY_CLIENTS` secret; do not
