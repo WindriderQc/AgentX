@@ -3,6 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { createProfilerAuthorityReceipt } = require('../../../src/services/profiler/profilerAuthorityReceipt');
+const { projectReadinessEntry } = require('../../../src/services/profiler/profilerReadinessProjectionService');
 
 function loadClassifier() {
   const file = path.resolve(__dirname, '..', '..', '..', 'public', 'js', 'model-profiler', 'models-helpers.js');
@@ -43,7 +45,7 @@ function modelWithReadiness(overrides = {}) {
         },
         authorityReceipt: {
           source: 'profiler_pipeline',
-          version: 2,
+          version: 3,
           digest,
           evidenceId: 'evidence-1'
         },
@@ -54,6 +56,30 @@ function modelWithReadiness(overrides = {}) {
 }
 
 describe('profiler UI reload authority reconstruction', () => {
+  test.each(['standard', 'full'])('shows a server-verified v3 %s profile as Qualified after reload', async profileDepth => {
+    const artifact = {
+      model: 'fixture-model', hostId: 'host-a', hostUrl: 'http://host-a:11434',
+      digest: 'sha256:model', runtimeFingerprint: 'runtime-1', registryQualified: true
+    };
+    const row = {
+      ...evidence, artifact,
+      profile: { ...evidence.profile, profileDepth, benchmarkQualified: true }
+    };
+    const readiness = {
+      ...modelWithReadiness().readiness['host-a'], artifact, profileDepth,
+      authorityReceipt: createProfilerAuthorityReceipt({
+        modelName: artifact.model, hostId: artifact.hostId, artifact,
+        profile: row.profile, evidenceId: row._id
+      })
+    };
+    expect(readiness.authorityReceipt.version).toBe(3);
+    const projected = await projectReadinessEntry(artifact.model, artifact.hostId, readiness,
+      new Map([[row._id, row]]), { resolveIdentity: async () => artifact });
+    expect(projected.authorityVerified).toBe(true);
+    expect(classifyProfileEvidence({ readiness: { 'host-a': projected } }, row, 'host-a'))
+      .toEqual(expect.objectContaining({ status: 'qualified', recommendationsAuthoritative: true }));
+  });
+
   test('restores Qualified only from an exact Standard/Full authority receipt', () => {
     expect(classifyProfileEvidence(modelWithReadiness(), evidence, 'host-a')).toEqual(expect.objectContaining({
       status: 'qualified',
@@ -90,6 +116,19 @@ describe('profiler UI reload authority reconstruction', () => {
 
   test('rejects a mismatched evidence receipt after reload', () => {
     expect(classifyProfileEvidence(modelWithReadiness(), { ...evidence, _id: 'foreign-evidence' }, 'host-a'))
+      .toEqual(expect.objectContaining({ status: 'not_qualified', recommendationsAuthoritative: false }));
+  });
+
+  test.each([
+    ['unverified projection', { authorityVerified: false }],
+    ['unverified authority', { authority: { contract: 'agentx.profiler-readiness/v2', verified: false, liveIdentityVerified: true } }],
+    ['unverified live identity', { authority: { contract: 'agentx.profiler-readiness/v2', verified: true, liveIdentityVerified: false } }],
+    ['missing receipt', { authorityReceipt: null }],
+    ['foreign receipt', { authorityReceipt: { source: 'profiler_pipeline', version: 3, digest, evidenceId: 'other' } }],
+    ['changed artifact', { artifact: { digest: 'sha256:other', runtimeFingerprint: 'runtime-1' } }],
+    ['changed runtime', { artifact: { digest: 'sha256:model', runtimeFingerprint: 'runtime-2' } }]
+  ])('keeps %s non-authoritative', (_name, overrides) => {
+    expect(classifyProfileEvidence(modelWithReadiness(overrides), evidence, 'host-a'))
       .toEqual(expect.objectContaining({ status: 'not_qualified', recommendationsAuthoritative: false }));
   });
 });

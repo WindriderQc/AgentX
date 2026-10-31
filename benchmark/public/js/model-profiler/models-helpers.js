@@ -100,7 +100,6 @@ export function classifyProfileEvidence(model, evidence, hostId) {
     && readiness?.authority?.verified === true
     && readiness?.authority?.liveIdentityVerified === true
     && receipt?.source === 'profiler_pipeline'
-    && Number(receipt?.version) === 2
     && /^[a-f0-9]{64}$/i.test(String(receipt?.digest || ''))
     && evidenceId !== ''
     && evidenceId === readinessEvidenceId
