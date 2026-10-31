@@ -129,7 +129,17 @@ export function episodesHtml(text) {
   return items.length ? `<ol class="island-episodes">${items.join('')}</ol>` : '<p class="island-note">Aucun épisode.</p>';
 }
 
-function showFrame(src, worldLabel = '') {
+/** Keep the explorer connected to the canonical run/memory page, including in its own tab. */
+export function explorerViewUrl(src, runId, dashboardOrigin) {
+  const url = new URL(src);
+  if (url.searchParams.get('app') !== 'island') return src;
+  url.searchParams.set('dashboard', new URL('/benchmark/island', dashboardOrigin).href);
+  if (typeof runId === 'string' && /^[a-f0-9-]{36}$/.test(runId)) url.searchParams.set('run', runId);
+  return url.href;
+}
+
+function showFrame(src, worldLabel = '', runId = null) {
+  src = explorerViewUrl(src, runId, location.origin);
   $('island-viewer').hidden = false;
   $('island-frame').src = src;
   $('island-viewer-open').href = src;
@@ -243,6 +253,7 @@ function showWorldChoice() {
 }
 
 const openDetails = new Set();
+let memoryLinkOpened = false;
 function toggleDetail(id) {
   const row = $(`island-detail-${id}`);
   if (!row) return;
@@ -266,6 +277,11 @@ async function loadRuns() {
     if (!data.view.live && !data.view.replay) notes.push('Vue 3D non configurée.');
     if (data.worldsError) notes.push(`Terrains : réglage refusé (${data.worldsError}).`);
     status.textContent = notes.join(' ');
+    if (!memoryLinkOpened) {
+      memoryLinkOpened = true;
+      const memoryId = typeof location === 'undefined' ? null : new URLSearchParams(location.hash?.slice(1) || '').get('memory');
+      if (memoryId && data.runs.some(run => run.id === memoryId && run.hasMemory)) await openMemory(memoryId);
+    }
   } catch (err) {
     status.textContent = `Lecture impossible : ${err.message}`;
   }
@@ -333,9 +349,9 @@ function bind() {
     try {
       if (button.dataset.live || button.dataset.replay) watchedTerrain = null;
       if (button.dataset.detail) toggleDetail(button.dataset.detail);
-      if (button.dataset.live) { showFrame(button.dataset.live); followThoughts(button.dataset.run); }
+      if (button.dataset.live) { showFrame(button.dataset.live, '', button.dataset.run); followThoughts(button.dataset.run); }
       if (button.dataset.replay) followThoughts(null);
-      if (button.dataset.replay) showFrame((await apiFetch(`${API}/runs/${encodeURIComponent(button.dataset.replay)}/replay`, { method: 'POST', body: {} })).data.src);
+      if (button.dataset.replay) showFrame((await apiFetch(`${API}/runs/${encodeURIComponent(button.dataset.replay)}/replay`, { method: 'POST', body: {} })).data.src, '', button.dataset.replay);
       if (button.dataset.memory) await openMemory(button.dataset.memory);
     } catch (err) {
       $('island-runs-status').textContent = err.message;
