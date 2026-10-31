@@ -191,6 +191,7 @@ jobs:
           python3 -m unittest discover -s integrations/hermes/test -p 'test_*.py'
           python3 -m unittest discover -s integrations/google -p 'test_*.py'
           python3 -m unittest discover -s integrations/topology-actuator -p 'test_*.py'
+          python3 -m unittest discover -s integrations/island/tests -p 'test_*.py'
       # integrations/coding/tests is not a package, so its modules run by
       # dotted name from the repository root instead of through discover.
       - if: steps.scope.outputs.run == 'true'
