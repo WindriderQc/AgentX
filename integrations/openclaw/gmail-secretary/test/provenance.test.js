@@ -12,7 +12,8 @@ test('native Gmail gates block background sends and destructive changes while re
   const hooks = new Map(), requested = [];
   const config = { channels: { telegram: { allowFrom: ['12345'] } },
     plugins: { entries: { 'super-dad-memory': { config: { secretarySessionKeys: ['agent:mail:cron:review'] } } } } };
-  createPlugin(x => x).register({ config, pluginConfig: { auditLog }, registerTool() {}, on: (name, fn) => hooks.set(name, fn),
+  const sendApproval = { before: async () => ({ requireApproval: { allowedDecisions: ['allow-once', 'deny'] } }) };
+  createPlugin(x => x, { sendApproval }).register({ config, pluginConfig: { auditLog }, registerTool() {}, on: (name, fn) => hooks.set(name, fn),
     logger: { info: text => requested.push(JSON.parse(text)) } });
   const review = { agentId: 'mail', sessionKey: 'agent:mail:cron:review:run', runId: 'private-run', toolCallId: 'private-call' };
   const owner = { agentId: 'main', sessionKey: 'agent:main:telegram:direct:12345' };
@@ -21,6 +22,10 @@ test('native Gmail gates block background sends and destructive changes while re
     { toolName: 'gmail_secretary_send', params: { action: 'new', body: 'private body', provenance: { origin: 'owner_turn' } } },
     { toolName: 'gmail_secretary_organize', params: { action: 'archive' } },
     { toolName: 'gmail_secretary_organize', params: { action: 'trash' } },
+    { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], addLabels: [' trash '] } },
+    { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], addLabels: ['\u0085TRASH\u0085'] } },
+    { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], removeLabels: ['\u0130NBOX'] } },
+    { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], addLabels: ['Secretary/Review, spam'] } },
     { toolName: 'gmail_secretary_organize', params: { action: 'label_threads', ids: ['thread-1'], addLabels: ['Secretary/Processed'] } },
     { toolName: 'gmail_secretary_organize', params: { action: 'modify', removeLabels: ['INBOX'] } },
     { toolName: 'gmail_secretary_draft', params: { action: 'delete' } },
