@@ -150,3 +150,39 @@ test('repair topic is carried as quoted reference and its directive remains outs
  assert.ok(last.indexOf('The current utterance corrects')>last.indexOf('</selected_context>'),'trusted repair directive is not buried in reference data');
  assert.equal(h.turns.length,5);
 });
+
+
+test('a compound sound and explanation keeps both parts and separates the short introduction from the answer',async()=>{
+ const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary(),response:'Une réponse synthétique sur les dinosaures.'});
+ const reply=await h.turn('Fais le bruit du T-Rex puis explique pourquoi les dinosaures ont disparu.','voice');
+ assert.equal(h.sent.length,1);assert.equal(reply.sound.id,'trex');assert.equal(reply.sound.play,'after-introduction');
+ assert.equal(reply.reply.soundIntroduction,'Écoute ce bruitage !');assert.equal(reply.reply.afterSoundText,'Une réponse synthétique sur les dinosaures.');
+ assert.match(reply.reply.text,/Écoute ce bruitage ! Une réponse/);assert.match(h.sent[0].request,/Answer all remaining parts/);
+});
+
+test('a pending or carried repair refuses background speech until its own turn is settled',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const h=loop();t.after(()=>h.c.stop());await h.c.start({language:'fr'});
+ const first=h.say('Non, non, je voulais');await tick();assert.equal(await h.c.interject({text:'Remarque de fond synthétique.'}),false);
+ h.speech();t.mock.timers.tick(MAX_WAIT_MS);await first;assert.ok(h.c.repairs.carry);assert.equal(await h.c.interject({text:'Autre remarque.'}),false);
+ await h.say('une explication');assert.deepEqual(h.texts,['Non, non, je voulais une explication']);
+});
+
+test('a late sound response after Pause cannot plan a new clip on a terminal timeline',async()=>{
+ const waiting=deferred(),h=loop({turn:async()=>waiting.promise});await h.c.start({language:'fr'});const exchange=h.say('Un son synthétique');await tick();h.c.pause();
+ waiting.resolve({text:'Écoute !',sound:{id:'late-clip',url:'https://fixture.invalid/late.ogg'}});await exchange;await tick();const v=h.timelines.at(-1);
+ assert.equal(v.playbackOutcome,'user_paused');assert.equal(v.clipId,undefined);assert.equal(v.clipRequested,undefined);
+});
+
+test('a stream transport failure after successful speech is request_error, not a broken output device',async()=>{
+ const played=deferred();const h=loop({turn:async(_s,_t,_signal,delta)=>{delta('Une phrase synthétique. ');await played.promise;throw TypeError('Synthetic network connection lost');}});
+ h.audio.play=async()=>{played.resolve();};await h.c.start({language:'fr'});await h.say('Une question synthétique');await tick();
+ assert.equal(h.timelines.at(-1).playbackOutcome,'playback_error');assert.equal(h.timelines.at(-1).stopReason,'request_error');h.c.stop();
+});
+
+
+for(const request of ['Fais le bruit du T-Rex. Raconte une histoire de dinosaure.','Fais le bruit du T-Rex et donne un exemple de dinosaure.','Fais le bruit du T-Rex et chante une chanson.'])test('a second request is never discarded: '+request,async()=>{
+ const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary(),response:'La seconde demande est conservée.'});const reply=await h.turn(request,'voice');assert.equal(h.sent.length,1);assert.equal(reply.reply.afterSoundText,'La seconde demande est conservée.');assert.equal(reply.sound.id,'trex');
+});
+for(const request of ['Comment fait le chat ?','How does a cow sound?','Non, non, je voulais le bruit du T-Rex.'])test('a complete sound-only request uses no inference: '+request,async()=>{
+ const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary()});const reply=await h.turn(request,'voice');assert.ok(reply.sound);assert.equal(h.sent.length,0);
+});

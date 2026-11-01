@@ -1156,10 +1156,12 @@ describe('built-in Household surface on Core', () => {
       const math = await turn({ text: 'Nestor, combien font 8 + 5 ?', channel: 'voice', stream: true }).buffer(true).parse(ndjson).expect(200);
       expect(JSON.parse(math.body.split('\n')[0])).toEqual({ type: 'scene', scene: { schema: 'agentx.math-scene.v1', kind: 'add', a: 8, b: 5 } });
       expect(executeForTest.mock.calls.length).toBe(inferences);
+      const beforeSound = executeForTest.mock.calls.length;
       const cow = (await turn({ text: 'Quel bruit fait la vache?', channel: 'voice' }).expect(200)).body.data;
       expect(cow.sound).toMatchObject({ id: 'cow', play: 'after-reply' });
-      expect(lastInference().messages.at(-1).content).toContain('[Household instruction for this turn: follow it]\nLangue choisie : français québécois. Réponds en français québécois pour ce tour.\n\nSon : un vrai enregistrement (une vache) joue');
-      expect(lastInference().taskType).toBe('voice_persona_chat');
+      expect(cow.reply.text).toBe('Écoute !');
+      expect(cow.routing.tier).toBe('deterministic');
+      expect(executeForTest.mock.calls.length).toBe(beforeSound);
       expect(agentForTest.mock.calls.length).toBe(nativeRuns + 1);
     } finally {
       fetchMock.mockRestore();

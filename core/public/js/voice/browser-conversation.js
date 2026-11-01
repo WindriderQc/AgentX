@@ -362,7 +362,7 @@
     // Background results use the same speech confirmation as an ordinary reply.
     async interject(reply, { onScheduled, readAloud = false, preserveLanguage = false } = {}) {
       const epoch = this.epoch;
-      const idle = () => this.current(epoch) && this.state === 'listening' && !this.activeTurn && !this.turnPending
+      const idle = () => !this.repairs?.pending && !this.repairs?.carry && this.current(epoch) && this.state === 'listening' && !this.activeTurn && !this.turnPending
         && (!this.selection?.wakeWord || this.wake.active());
       if (!reply?.text || !this.audio || !idle()) return false;
       const lifetimeSignal = this.abort.signal;
@@ -600,7 +600,7 @@
         if (this.repairs) { text = await this.repairs.collect(text, turn, epoch, previous?.spoken); if (!text || !this.current(epoch)) return; }
         await this.respond(turn, text, epoch, result?.detectedLanguage, { preferredLanguage: recognitionLanguage });
       } catch (error) {
-        if (!turn.interrupted && turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('playback_error', 'playback_error');
+        if (!turn.interrupted && turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('playback_error', 'request_error');
         if (!turn.interrupted && this.current(epoch)) {
           if (!transcribed) this.audio.recordTranscription?.(excerptId, 'failed');
           if (!transcribed && previous?.candidate && this.owns(previous)) {
@@ -777,21 +777,26 @@
       // Playback still stops immediately when the user speaks over Nestor.
       this.monitor(turn);
       const reply = await response;
-      if (reply.sound) turn.timeline?.planClip(reply.sound.id);
       turn.timeline?.mark('firstDelta'); // an unstreamed reply: its text arrives with the completed turn
       await this.awaitCandidate(turn);
       if (!this.owns(turn)) return;
       this.turnPending = false;
+      if (reply.sound) turn.timeline?.planClip(reply.sound.id);
       this.io.message('assistant', reply.text, false, reply.sound);
       // An unstreamed reply names its own language; a chosen preference still wins.
       if (!streamed && reply.language && !speechLanguage.explicitSpeechLanguage(this.selection.language)) spokenLanguage = reply.language;
       dropHolding();
-      speak(streamed ? pending : spokenPresentation.ordinarySpeech(reply.text, { language: spokenLanguage,
+      const soundFirst = reply.sound && reply.soundIntroduction && typeof reply.afterSoundText === 'string';
+      speak(soundFirst ? reply.soundIntroduction : streamed ? pending : spokenPresentation.ordinarySpeech(reply.text, { language: spokenLanguage,
         readAloud, preserveSafety: reply.preserveSafety === true }));
       await playback;
       if (speechError) { turn.timeline?.finish('playback_error', speechFailure); throw speechError; }
       if (!this.owns(turn)) return;
       if (reply.sound) await this.playClip(turn, reply.sound);
+      if (soundFirst && this.owns(turn)) {
+        speak(reply.afterSoundText); await playback;
+        if (speechError) { turn.timeline?.finish('playback_error', speechFailure); throw speechError; }
+      }
       await this.audio.settle?.(turn.speech.signal);
       if (!this.owns(turn)) return;
       if (turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('completed');

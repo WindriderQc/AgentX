@@ -81,7 +81,7 @@
     transcription(result, capture) {
       this.recognition = normalizeRecognition({ ...result?.recognition, recognitionId: result?.recognitionId, ...capture });
     }
-    planClip(id) { if (clipId(id) && !this.clipId) { this.clipId = id; this.mark('clipRequested'); } }
+    planClip(id) { if (this.playbackOutcome) return; if (clipId(id) && !this.clipId) { this.clipId = id; this.mark('clipRequested'); } }
     completeClip() { if (this.clipId && !this.clipOutcome) { this.mark('clipEnded'); this.clipOutcome = 'completed'; } }
     finish(outcome, reason) {
       if (!OUTCOMES.includes(outcome) || this.playbackOutcome) return;

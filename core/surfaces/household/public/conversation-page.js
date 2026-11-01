@@ -677,7 +677,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   { onConsent: () => { if (conversation.state === 'reviewing') void conversation.start(selection()); } });
   let workshop = null;
   function renderAudioReview() {
-    if (conversation.state === 'listening' && conversation.selection?.wakeWord) el('conversationStatus').textContent = listeningStatus();
+    if (conversation.state === 'listening' && conversation.selection?.wakeWord && !conversation.repairs?.pending && !conversation.repairs?.carry) el('conversationStatus').textContent = listeningStatus();
     workshop?.refresh();
   }
   function syncVoicePreferences() {

@@ -203,7 +203,7 @@ function imitationPattern(terms) {
   const escaped = [...new Set(terms.map(normalize).filter(Boolean))].map(escapeRegExp);
   if (!escaped.length) return null;
   const cry = `(?:${escaped.join('|')})`;
-  return new RegExp(`^(?:(?:fais(?:[- ]moi)?|imite|do(?: the| a)?|make(?: the| a)?)\\s+)?${cry}(?:\\s+${cry}){0,3}$`);
+  return new RegExp(`^(?:(?:fais(?:[- ]moi)?|imite|do(?: the| a)?|make(?: the| a)?)\s+)?${cry}(?:\s+${cry}){0,3}$`);
 }
 
 const COMPILED = CATALOG.map((entry) => Object.freeze({
@@ -361,6 +361,19 @@ function createSoundLibrary({ soundsDir = DEFAULT_SOUND_DIR, logger = null } = {
   };
 }
 
+// Positive, conservative grammar: an unknown word or a second clause keeps inference.
+function soundOnlyRequest(text, sound) {
+  const entry = CATALOG.find(row => row.id === sound?.id);
+  if (!entry || String(text).split(/[.!?;]+/).filter(part => part.trim()).length > 1) return false;
+  const words = value => normalize(value).replace(/['-]/g, ' ').replace(/\s+/g, ' ').trim();
+  let remaining = ' ' + words(text) + ' ';
+  for (const alias of [...entry.names, ...(entry.cries || [])].map(words).sort((a,b) => b.length-a.length)) {
+    const phrase = ' ' + alias + ' '; while (remaining.includes(phrase)) remaining = remaining.replace(phrase, ' ');
+  }
+  const allowed = new Set(('fais faites faire fait font imite imites imiter reproduis reproduire ecoute ecouter entendre entends joue jouer peux peut pourrais pourrait est ce que tu vous me moi nous le la les un une du de des d l au a son sons bruit bruits cri cris chant rugissement quel quelle quels quelles comment s il te plait svp stp ca non no je voulais veux dire plutot i wanted meant rather how does do a an the of sound sounds make makes hear play imitate can could you please it is let would us noise cry say').split(' '));
+  return words(remaining).split(' ').filter(Boolean).every(word => allowed.has(word));
+}
+
 function familyIntroduction(sound, language = 'fr') {
   if (language === 'en') return sound.kind === 'effect' ? 'Here is a sound effect!' : sound.kind === 'imitation' ? 'Here is an imitation!' : 'Listen!';
   return sound.kind === 'effect' ? 'Écoute ce bruitage !' : sound.kind === 'imitation' ? 'Écoute cette imitation !' : 'Écoute !';
@@ -368,6 +381,7 @@ function familyIntroduction(sound, language = 'fr') {
 
 module.exports = {
   familyIntroduction,
+  soundOnlyRequest,
   CATALOG,
   DEFAULT_SOUND_DIR,
   PUBLIC_SOUND_PATH,
