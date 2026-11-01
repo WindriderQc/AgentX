@@ -361,7 +361,13 @@ function createSoundLibrary({ soundsDir = DEFAULT_SOUND_DIR, logger = null } = {
   };
 }
 
+function familyIntroduction(sound, language = 'fr') {
+  if (language === 'en') return sound.kind === 'effect' ? 'Here is a sound effect!' : sound.kind === 'imitation' ? 'Here is an imitation!' : 'Listen!';
+  return sound.kind === 'effect' ? 'Écoute ce bruitage !' : sound.kind === 'imitation' ? 'Écoute cette imitation !' : 'Écoute !';
+}
+
 module.exports = {
+  familyIntroduction,
   CATALOG,
   DEFAULT_SOUND_DIR,
   PUBLIC_SOUND_PATH,

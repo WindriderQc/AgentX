@@ -3,7 +3,18 @@
 (function (root) {
   'use strict';
   const MARKS = Object.freeze(['sttDone', 'requestSent', 'firstDelta', 'holdingPhrase', 'firstAudio',
-    'firstFrameScheduled', 'firstSignalScheduled', 'firstClause', 'ttsRequested', 'ttsReady', 'firstAudioBytes', 'firstSignalOutput']);
+    'firstFrameScheduled', 'firstSignalScheduled', 'firstClause', 'ttsRequested', 'ttsReady', 'firstAudioBytes', 'firstSignalOutput', 'clipRequested', 'clipStarted', 'clipEnded']);
+  const OUTCOMES = Object.freeze(['completed', 'user_paused', 'interrupted', 'playback_error']);
+  const STOP_REASONS = Object.freeze(['user_pause', 'barge_in', 'spoken_stop', 'suspended', 'session_ended', 'request_error', 'synthesis_error', 'playback_error', 'clip_error', 'device_disconnected']);
+  const clipId = value => typeof value === 'string' && /^[a-z0-9-]{1,64}$/.test(value);
+  function playbackEvidence(input = {}) {
+    return { ...([...OUTCOMES, 'failed'].includes(input.playbackOutcome) && { playbackOutcome: input.playbackOutcome }),
+      ...(STOP_REASONS.includes(input.stopReason) && { stopReason: input.stopReason }),
+      ...(Number.isInteger(input.repairFragments) && input.repairFragments >= 1 && input.repairFragments <= 4 && { repairFragments: input.repairFragments }),
+      ...(Array.isArray(input.repairRecognitionIds) && input.repairRecognitionIds.length <= 4 && { repairRecognitionIds: input.repairRecognitionIds.filter(id => typeof id === 'string' && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id)) }),
+      ...(clipId(input.clipId) && { clipId: input.clipId }),
+      ...(OUTCOMES.includes(input.clipOutcome) && { clipOutcome: input.clipOutcome }) };
+  }
   // Durations in ms that explain the marks: the silence waited before the end of
   // speech was decided, the length of the captured clip, and the recognition time
   // the speech service reports (the rest of `sttDone` is upload and transport).
@@ -59,6 +70,7 @@
     constructor(now = () => root.performance?.now?.() ?? Date.now()) { this.now = now; this.origin = now(); this.marks = {}; this.measures = {}; this.sent = false; this.lastSent = null; this.queued = null; this.reporting = Promise.resolve(); this.playbackOutcome = null; }
     // Only the first occurrence of a mark counts.
     mark(name, aheadMs = 0) {
+      if (this.playbackOutcome && name !== 'clipEnded') return;
       if (MARKS.includes(name) && this.marks[name] === undefined && Number.isFinite(aheadMs) && aheadMs >= 0 && aheadMs <= 600000)
         this.marks[name] = Math.max(0, Math.round(this.now() - this.origin + aheadMs));
     }
@@ -69,10 +81,16 @@
     transcription(result, capture) {
       this.recognition = normalizeRecognition({ ...result?.recognition, recognitionId: result?.recognitionId, ...capture });
     }
-    finish(outcome) { if (['completed', 'failed'].includes(outcome)) this.playbackOutcome = outcome; }
+    planClip(id) { if (clipId(id) && !this.clipId) { this.clipId = id; this.mark('clipRequested'); } }
+    completeClip() { if (this.clipId && !this.clipOutcome) { this.mark('clipEnded'); this.clipOutcome = 'completed'; } }
+    finish(outcome, reason) {
+      if (!OUTCOMES.includes(outcome) || this.playbackOutcome) return;
+      this.playbackOutcome = outcome; if (STOP_REASONS.includes(reason)) this.stopReason = reason;
+      if (this.clipId && !this.clipOutcome) { this.clipOutcome = outcome; if (this.marks.clipStarted !== undefined) this.mark('clipEnded'); }
+    }
     values(interrupted = false) { return { ...this.marks, ...this.measures, interrupted: interrupted === true,
       ...(this.recognition && { recognition: { ...this.recognition } }),
-      ...(this.playbackOutcome && { playbackOutcome: this.playbackOutcome }) }; }
+      ...playbackEvidence(this) }; }
     // Serialize changed snapshots: late completion/interruption must not be
     // lost after first scheduling, and an earlier response cannot overwrite it.
     async report(send, interrupted = () => false, ended = Promise.resolve()) {
@@ -96,7 +114,7 @@
     }
   }
 
-  const api = { VoiceTimeline, MARKS, MEASURES, normalizeRecognition, summarizeTimings };
+  const api = { VoiceTimeline, OUTCOMES, STOP_REASONS, playbackEvidence, MARKS, MEASURES, normalizeRecognition, summarizeTimings };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.AgentXVoiceTimeline = api;
 })(typeof window === 'undefined' ? globalThis : window);

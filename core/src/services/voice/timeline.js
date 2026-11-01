@@ -1,6 +1,6 @@
 'use strict';
 
-const { normalizeRecognition, MARKS, MEASURES } = require('../../../public/js/voice/voice-timeline');
+const { normalizeRecognition, playbackEvidence, MARKS, MEASURES } = require('../../../public/js/voice/voice-timeline');
 
 // A voice turn's browser timeline: offsets in ms from the moment the end of the
 // person's speech was decided. A surface stores only these known marks, as
@@ -24,7 +24,7 @@ function normalizeVoiceTimings(input) {
   }
   const recognition = normalizeRecognition(input.recognition);
   return { ...timings, interrupted: input.interrupted === true, ...(recognition && { recognition }),
-    ...(['completed', 'failed'].includes(input.playbackOutcome) && { playbackOutcome: input.playbackOutcome }) };
+    ...playbackEvidence(input) };
 }
 
 module.exports = { normalizeVoiceTimings, MARKS, MEASURES, MAX_OFFSET_MS };

@@ -14,6 +14,8 @@ const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
 const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
 const { familyToolset } = require('./family-tools');
+const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('./family-repair-context');
+const { familyIntroduction } = require('./sound-library');
 const { mathTurnFor, mathPictureContext } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels;
@@ -202,7 +204,9 @@ function createPersonaTurnHandler({
       // escalation or boundary reply. Native VoiX owns its own playback and does
       // not consume this browser sound payload, so it must not invite a child to
       // listen and then produce silence.
-      let sound = null;
+      const localSound = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !safety.deterministicEscalation && !childBoundary && !mathTurn
+        && (!requiredSession || requiredSession.browser === true) ? sounds.select(userText) : null;
+      let sound = localSound;
       // Set when the turn addresses another team member (#41): who answers, and with which voice.
       let member = null, memberPersona = null, speaker = null, consultRequest = null;
       const serverPhases = {}; // where this turn's server time goes (turn-phases.js)
@@ -228,6 +232,9 @@ function createPersonaTurnHandler({
         replyText = escalationReply(pack, safety);
       } else if (childBoundary || mathTurn) { // #131: the picture first, then Nestor's exact answer without waiting for inference.
         replyText = childBoundary || mathTurn.reply; if (mathTurn) event('scene', { scene: mathTurn.scene });
+      } else if (localSound) {
+        replyText = familyIntroduction(localSound, preferredSpeechLanguage);
+        knowledge.status = 'not-required-local-sound';
       } else {
         // Scope chooses context and permissions. The same executor handles every
         // pack; its selected backend stays fixed for this conversation.
@@ -258,16 +265,17 @@ function createPersonaTurnHandler({
           event('status', { phase: 'activity', activity: { kind: 'member_addressed', agentId: member.agentId } });
         }
         if (backend === 'openclaw') await requireNativeAgent(agentIdFor(turnSession));
-        let history = [], interruptedContext = '', mathContext = '';
+        let history = [], interruptedContext = '', mathContext = '', repairContext = '';
         const recoverInterrupted = backend === 'openclaw' && !member && personalVoice(session, 'voice');
         const recoverMath = pack.childSafe && !isLlmX;
         if (features.historyContext !== false && (recoverMath || backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore || recoverInterrupted)) {
           // Core inference reads a block window, so its history start (and the cached prefix) moves rarely.
           try {
-            const rows = (await loadSessionAuditRows(conversations, session, pack)).filter(row => !entry.workId || row.traceId !== clientTurnId);
+            const rows = (await loadSessionAuditRows(conversations, session, pack, pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? { limit: LOOKBACK_TURNS } : {})).filter(row => !entry.workId || row.traceId !== clientTurnId);
             history = sessionHistoryMessages(rows, pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {});
             if (recoverInterrupted) interruptedContext = interruptedRequestContext(rows);
             if (recoverMath) mathContext = mathPictureContext(rows);
+            if (pack.id === VOIX_FAMILY_PACK_ID && !isLlmX) repairContext = familyRepairContext(rows, userText);
           }
           catch { return fail(res, 503, 'Conversation history is unavailable; no out-of-context answer was generated.', 'VOICE_PERSONA_HISTORY_UNAVAILABLE'); }
         }
@@ -336,7 +344,7 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext, mathContext,
+        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
         const screen = !isLlmX && !consult ? require('./screen-context') : null;
         entry.presentationContext = screen?.presentationEvidence(req.body?.screen, pagesFor(pack));
@@ -357,7 +365,7 @@ function createPersonaTurnHandler({
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const acceptedTaskWork = entry.workId ? await conversationWorks.taskAcceptance?.(entry.workId) : null;
         const acceptedNativeWork = entry.workId ? await conversationWorks.nativeAcceptance?.(entry.workId) : null;
-        const currentDirective = [turnDirective(context), acceptedTaskWork
+        const currentDirective = [turnDirective(context), repairContext ? familyRepairDirective : '', acceptedTaskWork
           ? 'Core has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
             + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch, task-list call or agent discovery is needed. Acceptance is not task data or task completion.'
           : '', acceptedNativeWork?.mode === 'native'
@@ -536,7 +544,7 @@ function createPersonaTurnHandler({
         if (routeTier === 'deterministic') await conversationWorks.handled(entry.workId);
         await conversationWorks.guardianSettled(entry.workId, 'completed', metadata.guardianDisposition);
       }
-      if (!entry.ephemeral && !entry.workId && !isLlmX && session.backend !== 'hermes' && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
+      if (!localSound && !entry.ephemeral && !entry.workId && !isLlmX && session.backend !== 'hermes' && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
       entry.replyText = replyText;
       // The conversation's agent hears about a member's answer once, on its next turn.
       if (member) await conversations.updateSession({ sessionId: session.sessionId },
