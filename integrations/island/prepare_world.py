@@ -39,7 +39,7 @@ def profile_for(world):
     profile = profiles.get(world)
     if profile is None:
         return None
-    if not isinstance(profile, dict):
+    if not isinstance(profile, dict) or not all(isinstance(profile.get(k), str) for k in ("url", "world", "tokenFile", "dataHost", "mode")):
         raise RuntimeError("invalid world profile")
     url = urlsplit(profile.get("url", ""))
     if (url.scheme not in ("http", "https") or not url.hostname or url.username or url.password
