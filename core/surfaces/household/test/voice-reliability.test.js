@@ -235,3 +235,37 @@ test('a failed recovery availability check becomes a visible stopped state, not 
   t.after(()=>h.c.stop());await h.c.start({language:'fr'});h.fail(unavailable());await h.say();
   t.mock.timers.tick(2000);await tick();assert.equal(h.c.state,'error');assert.equal(h.counts.opens,1);
 });
+
+
+test('Pause rejects both a late successful recognition and a late network failure without resuming or submitting', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  for (const success of [false,true]) {
+    let finish;const intent=[];
+    const h=harness({microphoneIntent:wanted=>intent.push(wanted),transcribe:()=>{
+      h.counts.recognitions++;return new Promise((resolve,reject)=>{finish=success?resolve:reject;});
+    }});
+    try {
+      await h.c.start({language:'fr',wakeWord:true});const exchange=h.say();await tick();
+      assert.equal(typeof finish,'function');h.c.pause();const listens=h.counts.listens;
+      finish(success?'Hey Nestor, question synthétique':unavailable());await exchange;
+      for(let i=0;i<10;i++)h.c.retryRecognition();t.mock.timers.tick(60000);await tick();
+      assert.equal(h.c.state,'paused');assert.equal(h.counts.listens,listens);assert.equal(h.counts.opens,1);
+      assert.equal(h.counts.turns,0);assert.equal(h.counts.recognitions,1);assert.deepEqual(intent,[true,false]);
+    }finally{h.c.stop();}
+  }
+});
+
+test('repeated reconnect events cannot duplicate a resume or bypass the two-recovery budget', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});const h=harness();t.after(()=>h.c.stop());
+  await h.c.start({language:'fr'});h.fail(unavailable());
+  for(let failure=0;failure<2;failure++){
+    h.online(false);await h.say();const listens=h.counts.listens;
+    for(let i=0;i<10;i++)h.c.retryRecognition();t.mock.timers.tick(60000);await tick();
+    assert.equal(h.counts.listens,listens);h.online(true);
+    for(let i=0;i<10;i++)h.c.retryRecognition();
+    assert.equal(h.counts.listens,listens+1);assert.equal(h.c.state,'listening');
+  }
+  await h.say();assert.equal(h.c.state,'reviewing');const listens=h.counts.listens;
+  for(let i=0;i<10;i++)h.c.retryRecognition();t.mock.timers.tick(60000);await tick();
+  assert.equal(h.counts.listens,listens);assert.equal(h.counts.recognitions,3);assert.equal(h.counts.opens,1);assert.equal(h.counts.turns,0);
+});

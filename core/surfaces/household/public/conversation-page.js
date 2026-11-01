@@ -1038,12 +1038,15 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   if (!family) void offerResume();
   if (autoStart && !document.hidden && microphoneWanted) {
+    const epoch = conversation.epoch;
+    const mayAutoStart = () => microphoneWanted && voiceHost.isConnected && !document.hidden && epoch === conversation.epoch;
     try {
       const permission = await navigator.permissions?.query({ name: 'microphone' });
-      if (permission?.state === 'granted') {
-        await conversation.start(selection(), { automatic: true });
-      } else el('conversationStatus').textContent = language.value === 'fr' ? 'Appuyez sur Activer Nestor pour autoriser le micro et le son.' : 'Turn on Nestor once to allow the mic and sound.';
-    } catch { el('conversationStatus').textContent = language.value === 'fr' ? 'Appuyez sur Activer Nestor pour reprendre le micro et le son.' : 'Press Turn on Nestor to set up this device.'; }
+      if (mayAutoStart()) {
+        if (permission?.state === 'granted') await conversation.start(selection(), { automatic: true });
+        else el('conversationStatus').textContent = language.value === 'fr' ? 'Appuyez sur Activer Nestor pour autoriser le micro et le son.' : 'Turn on Nestor once to allow the mic and sound.';
+      }
+    } catch { if (mayAutoStart()) el('conversationStatus').textContent = language.value === 'fr' ? 'Appuyez sur Activer Nestor pour reprendre le micro et le son.' : 'Press Turn on Nestor to set up this device.'; }
   } else if (autoStart && !microphoneWanted) conversation.show('paused');
   idlePhotos = window.NestorIdlePhotos?.mount({ host: app.querySelector('.conversation-toolbar'), api, space,
     standby: () => !!conversation.selection?.wakeWord && !conversation.wake.active(),

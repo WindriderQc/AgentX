@@ -18,10 +18,11 @@ let browser, server, heard = '', delayTranscription = false, finishTranscription
 const output = process.env.VOICE_RELIABILITY_BROWSER_OUTPUT;
 if (!output || path.resolve(output).startsWith(path.resolve(core, '..') + path.sep)) throw Error('Set VOICE_RELIABILITY_BROWSER_OUTPUT outside checkout');
 let audioOpens = 0, failRecognition = false, recognitionRequests = 0, permissionState = 'granted';
+let holdPermission = false, pendingPermissions = [];
 fs.mkdirSync(output, { recursive: true });
 
 // A fake microphone: `say()` delivers one finished utterance to the conversation loop.
-const fakeAudio = `Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:async()=>{const response=await fetch('/fixture/permission');return response.json();}}});
+const fakeAudio = `Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:async()=>{window.permissionQueries=(window.permissionQueries||0)+1;const response=await fetch('/fixture/permission');return response.json();}}});
 window.NestorConversation.openAudio = async (_signal,_onError,options={}) => {
   await fetch('/fixture/audio-opened',{method:'POST'});
   window.emitCaptureRecovery=state=>options.onCaptureRecovery?.({state});
@@ -35,7 +36,7 @@ window.NestorConversation.openAudio = async (_signal,_onError,options={}) => {
 (async () => {
   const app = express();
   app.post('/fixture/audio-opened',(_req,res)=>{audioOpens++;res.sendStatus(204);});
-  app.get('/fixture/permission',(_req,res)=>res.json({state:permissionState}));
+  app.get('/fixture/permission',(_req,res)=>{if(holdPermission)pendingPermissions.push(res);else res.json({state:permissionState});});
   // The simulated recognizer answers before JSON parsing: the page posts the audio as a form.
   app.post('/api/voix/transcribe', (_req, res) => { recognitionRequests++; if(failRecognition)return res.status(503).json({message:'Synthetic recognition outage'}); const text = heard; if (delayTranscription) finishTranscription = () => res.json({data:{text}}); else res.json({data:{text}}); });
   app.use(express.json());
@@ -140,8 +141,16 @@ window.NestorConversation.openAudio = async (_signal,_onError,options={}) => {
   await page.evaluate(()=>{emitCaptureRecovery('waiting-silence');document.getElementById('app').replaceChildren();});
   await page.waitForFunction(()=>window.fakeClosed>0);
   await page.evaluate(()=>emitCaptureRecovery('ready'));assert.equal(audioOpens,5,'unmount cannot reopen the old microphone');
+  // A slow permission lookup must respect a newer mute from another tab.
+  holdPermission=true;await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.permissionQueries===1&&document.getElementById('conversationStart'));
+  await page.evaluate(()=>{const key='household.space.family.microphoneWanted';localStorage.setItem(key,'off');dispatchEvent(new StorageEvent('storage',{key,newValue:'off'}));});
+  assert.equal(await state(),'paused');
+  holdPermission=false;for(const response of pendingPermissions.splice(0))response.json({state:'granted'});
+  await ready();assert.equal(await state(),'paused','a late permission result respects a mute from another tab');
+  assert.equal(audioOpens,5);
   assert.deepEqual(errors,[]);
   const result={ok:true,scope:'family',audioOpens,recognitionRequests,liveModelCalls:0,realDevicePermissions:0,submissions:submissions.length,errors};
   fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 })().catch(error => { console.error(error.stack); process.exitCode=1; })
-.finally(async () => { await browser?.close(); await new Promise(resolve => server ? server.close(resolve) : resolve()); });
+.finally(async () => { for(const response of pendingPermissions.splice(0))response.end();await browser?.close();server?.closeAllConnections();await new Promise(resolve => server ? server.close(resolve) : resolve()); });
