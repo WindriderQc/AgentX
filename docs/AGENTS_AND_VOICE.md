@@ -539,3 +539,26 @@ browser voice through its existing final fallback. Voice discovery waits briefly
 for Chrome and cancellation also cancels that wait. Fluency and speaker delivery
 still require device acceptance. Deploy the speech service and worker together
 before relying on these capabilities in a new Core build.
+
+
+### Family sound playback and spoken repairs
+
+In the Family surface, a request solely for an available catalog sound uses a
+short deterministic introduction without inference. A compound request retains
+its model answer and plays introduction, clip, then answer; streamed model text
+is buffered so it cannot compete with the introduction. Unknown or additional
+words keep the normal inference path. Safety and arithmetic retain precedence.
+
+Explicit spoken corrections can group up to four fragments (800 characters)
+after 700 ms of quiet. Ordinary yes/no replies keep their immediate path. Speech
+suspends the quiet timer; after five seconds the text-only correction is carried
+for at most 30 seconds rather than dispatched over speech. Pause, Stop, session
+changes and capture/STT recovery clear pending repairs. Contextual repairs can
+reference one bounded subject (800 characters) from the same Family session's
+last eight turns within two minutes; the normal dialogue window stays bounded.
+
+Browser timing receipts distinguish `completed`, `user_paused`, `interrupted`
+and `playback_error`, retain a bounded stop reason, and record clip request,
+scheduling and end observations. Legacy `failed` receipts remain readable.
+A browser scheduling observation does not establish acoustic arrival. Pause
+remains immediate and the persisted microphone-off choice survives reload.

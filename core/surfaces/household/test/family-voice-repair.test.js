@@ -186,3 +186,13 @@ for(const request of ['Fais le bruit du T-Rex. Raconte une histoire de dinosaure
 for(const request of ['Comment fait le chat ?','How does a cow sound?','Non, non, je voulais le bruit du T-Rex.'])test('a complete sound-only request uses no inference: '+request,async()=>{
  const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary()});const reply=await h.turn(request,'voice');assert.ok(reply.sound);assert.equal(h.sent.length,0);
 });
+
+
+test('FR and EN direct imitations retain catalog matching and bypass inference', async () => {
+ for (const [request, id] of [['fais miaou','cat'], ['ouaf ouaf','dog'], ['make moo','cow']]) {
+  const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary()});
+  const reply=await h.turn(request,'voice');
+  assert.equal(reply.sound.id,id,request); assert.equal(h.sent.length,0,request);
+  assert.equal(reply.routing.tier,'deterministic');
+ }
+});

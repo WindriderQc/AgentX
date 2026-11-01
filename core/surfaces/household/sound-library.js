@@ -203,7 +203,7 @@ function imitationPattern(terms) {
   const escaped = [...new Set(terms.map(normalize).filter(Boolean))].map(escapeRegExp);
   if (!escaped.length) return null;
   const cry = `(?:${escaped.join('|')})`;
-  return new RegExp(`^(?:(?:fais(?:[- ]moi)?|imite|do(?: the| a)?|make(?: the| a)?)\s+)?${cry}(?:\s+${cry}){0,3}$`);
+  return new RegExp(`^(?:(?:fais(?:[- ]moi)?|imite|do(?: the| a)?|make(?: the| a)?)\\s+)?${cry}(?:\\s+${cry}){0,3}$`);
 }
 
 const COMPILED = CATALOG.map((entry) => Object.freeze({
