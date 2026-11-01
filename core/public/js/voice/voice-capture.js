@@ -54,7 +54,7 @@
         return null;
       }
       if (this.total + samples.length > this.maxSamples) {
-        throw new Error('This utterance is longer than the accepted size. Pause between ideas, then turn the microphone back on. No partial message was sent.');
+        throw Object.assign(new Error('This utterance is longer than the accepted size. Pause between ideas, then turn the microphone back on. No partial message was sent.'), { code: 'VOICE_CAPTURE_LIMIT' });
       }
       this.frames.push(samples); this.total += samples.length; this.heard += samples.length;
       this.silenceSamples = voiced ? 0 : this.silenceSamples + samples.length;
@@ -95,6 +95,16 @@
   }
 
 
+  // No audio is retained while waiting for a real, contiguous quiet interval.
+  class SilenceGate {
+    constructor(rate, silenceMs, threshold) { this.required = rate * silenceMs / 1000; this.threshold = threshold; this.quietSamples = 0; }
+    push(samples) {
+      const level = Math.sqrt(samples.reduce((sum, n) => sum + n * n, 0) / samples.length);
+      this.quietSamples = Number.isFinite(level) && level < this.threshold ? Math.min(this.required, this.quietSamples + samples.length) : 0;
+      return this.quietSamples >= this.required;
+    }
+  }
+
   // One HTTP recognizer at a time, plus the latest waiting snapshot. Invalidating
   // coverage never starts a replacement beside an unfinished native decode.
   class SpeculativeRecognition {
@@ -130,7 +140,7 @@
       this.active?.cancel();
     }
   }
-  const api = { Endpoint, SpeculativeRecognition, TURN_END_SILENCE_MS, INTERRUPTION_END_SILENCE_MS,
+  const api = { Endpoint, SilenceGate, SpeculativeRecognition, TURN_END_SILENCE_MS, INTERRUPTION_END_SILENCE_MS,
     MINIMUM_VOICE_MS, EARLY_RECOGNITION_SILENCE_MS, RECOGNITION_WARM_INTERVAL_MS, MAX_CAPTURE_BYTES };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.AgentXVoiceCapture = api;

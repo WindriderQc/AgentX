@@ -1,11 +1,12 @@
 /* Browser audio transport. Persona and conversation state remain server-owned. */
 (function (root) {
   'use strict';
+  const Recovery = (typeof module !== 'undefined' && module.exports ? require('./voice-recovery') : root.AgentXVoiceRecovery)?.VoiceRecovery;
   const speechLanguage = typeof module !== 'undefined' && module.exports ? require('./speech-language') : root.NestorSpeech;
   const spokenPresentation = typeof module !== 'undefined' && module.exports ? require('./spoken-presentation') : root.AgentXSpokenPresentation;
   const PlaybackHold = (typeof module !== 'undefined' && module.exports ? require('./playback-hold') : root.NestorPlaybackHold)?.PlaybackHold;
   const VoiceTimeline = (typeof module !== 'undefined' && module.exports ? require('./voice-timeline') : root.AgentXVoiceTimeline)?.VoiceTimeline;
-  const { Endpoint, SpeculativeRecognition, TURN_END_SILENCE_MS, INTERRUPTION_END_SILENCE_MS, MINIMUM_VOICE_MS,
+  const { Endpoint, SilenceGate, SpeculativeRecognition, TURN_END_SILENCE_MS, INTERRUPTION_END_SILENCE_MS, MINIMUM_VOICE_MS,
     EARLY_RECOGNITION_SILENCE_MS, RECOGNITION_WARM_INTERVAL_MS, MAX_CAPTURE_BYTES } =
     typeof module !== 'undefined' && module.exports ? require('./voice-capture') : root.AgentXVoiceCapture;
   // Capture while this script is evaluating; currentScript is null once the user opens the microphone.
@@ -228,7 +229,7 @@
       this.turnPending = false; this.state = 'idle'; this.session = null; this.audio = null;
       this.activeTurn = null;
       this.wake = new WakeWindow(io.now);
-      this.wakeAck = null;
+      this.wakeAck = null; this.recovery = Recovery ? new Recovery(this) : null;
       this.speculative = new SpeculativeRecognition((...args) => this.io.transcribeEarly(...args));
     }
     show(state, detail = '') { this.state = state; this.changed(state, detail); }
@@ -236,6 +237,8 @@
     owns(turn) { return this.current(turn.epoch) && this.activeTurn === turn && !turn.interrupted; }
     async start(selection, { automatic = false } = {}) {
       if (this.state === 'reviewing') {
+        if (!automatic) this.io.microphoneIntent?.(true);
+        if (this.recovery) { this.recovery.cancelRecognition(); this.recovery.failures = 0; }
         const epoch = this.epoch;
         this.show('resuming'); this.reviewSpeech?.abort();
         await this.reviewPlayback?.catch(() => {});
@@ -243,12 +246,15 @@
         return;
       }
       if (!['idle', 'paused', 'error'].includes(this.state)) return;
+      if (!automatic) this.io.microphoneIntent?.(true);
+      this.recovery?.reset(); this.startSelection = selection;
       const epoch = ++this.epoch;
       this.abort = new AbortController();
       this.show('starting');
-      const timeout = setTimeout(() => this.fail(new Error('Microphone start timed out. Check browser permission and try again.'), epoch), 30000);
+      const timeout = setTimeout(() => this.fail(Object.assign(new Error('Microphone start timed out. Check browser permission and try again.'), { code: 'VOICE_START_TIMEOUT' }), epoch), 30000);
       try {
-        const audio = await this.io.openAudio(this.abort.signal, error => this.fail(error, epoch), { automatic });
+        const audio = await this.io.openAudio(this.abort.signal, error => this.fail(error, epoch), { automatic,
+          ...(this.io.recoverCapture && this.recovery ? { onCaptureRecovery: event => this.recovery.capture(event, epoch) } : {}) });
         if (!this.current(epoch)) { audio.close(); return; }
         this.audio = audio;
         const fresh = !this.session;
@@ -306,9 +312,9 @@
       this.recognitionWarmAt = now;
       Promise.resolve().then(() => this.io.warm()).catch(() => {}); // best effort: never delays or fails a turn
     }
-    listen(epoch) {
+    listen(epoch, detail = '') {
       if (!this.current(epoch)) return;
-      this.show('listening');
+      this.show(this.recovery?.captureWaiting ? 'recovering' : 'listening', this.recovery?.captureWaiting ? this.recovery.captureMessage() : detail);
       this.captureFollowup = this.wake.active();
       this.audio.listen((blob, capture) => this.exchange(blob, epoch, capture), () => {
         this.warmRecognition();
@@ -407,6 +413,7 @@
       }
     }
     monitor(turn) {
+      if (this.recovery?.captureWaiting) return;
       if (turn.monitoring || !this.audio.canInterrupt || this.selection.interruption === false || !turn.local && !this.io.interrupt) return;
       turn.monitoring = true;
       this.audio.listen((blob, capture) => this.exchange(blob, turn.epoch, capture), () => {
@@ -538,6 +545,7 @@
         let text = typeof result === 'string' ? result : String(result?.text || '');
         const stopControl = result?.control === 'stop' || isStopControl(text);
         if (!this.current(epoch)) return;
+        if (this.recovery) this.recovery.failures = 0;
         transcribed = true; captureOutcome = stopControl ? 'stop' : text.trim() ? 'recognized' : 'empty'; turn.timeline?.mark('sttDone'); turn.timeline?.measure('sttServer', result?.sttMs);
         turn.timeline?.transcription(result, { mode: offered ? early.progressive ? 'progressive' : 'early' : 'complete',
           submittedBytes: offered ? early.bytes : blob.size, captureBytes: blob.size });
@@ -592,11 +600,12 @@
           if (!transcribed && previous?.candidate && this.owns(previous)) {
             this.resumeCandidate(previous); return;
           }
+          if (!transcribed && !previous && this.recovery?.recognition(error, epoch)) return;
           // Before a model turn exists, an STT failure is safe to inspect with
           // capture disabled. A device failure still closes and clears audio.
           if (!transcribed && !previous && this.audio.reviewStatus?.().id) {
             this.audio.quiet();
-            this.show('reviewing', 'Transcription failed. Replay the captured audio, then resume when ready.');
+            this.show('reviewing', this.io.recoverCapture && this.recovery ? this.recovery.reviewMessage(error) : 'Transcription failed. Replay the captured audio, then resume when ready.');
           } else this.fail(error, epoch);
         }
       } finally {
@@ -792,12 +801,12 @@
     }
     // A message typed while the voice conversation waits is the same turn as a
     // spoken one: Nestor answers on screen and aloud, then listens again.
-    canType() { return this.state === 'listening' && !this.activeTurn && !this.turnPending && Boolean(this.session && this.audio); }
+    canType() { return ['listening', 'recovering'].includes(this.state) && !this.activeTurn && !this.turnPending && Boolean(this.session && this.audio); }
     async typed(text, { attachments = [], requestPolicy = this.io.requestPolicy?.() } = {}) {
       const epoch = this.epoch;
       text = String(text || '').trim();
       if (!text || !this.canType() || !this.current(epoch)) return false;
-      this.cancelWakeAck();
+      this.cancelWakeAck(); this.recovery?.userInput();
       this.audio.quiet();
       const turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(), interrupted: false };
       const lifetimeSignal = this.abort.signal;
@@ -817,7 +826,7 @@
     review(source = 'microphone') {
       if (!['listening', 'hearing', 'reviewing'].includes(this.state) || this.activeTurn || this.turnPending) return false;
       if (!this.audio?.freezeReview(source)) return false;
-      this.dropEarly(); this.speculative.reset();
+      this.dropEarly(); this.speculative.reset(); this.recovery?.userInput();
       this.reviewSpeech?.abort(); this.audio.quiet();
       this.show('reviewing');
       return true;
@@ -833,7 +842,10 @@
     // Pausing, a hidden page or a failure keeps the session, so resuming continues the
     // conversation the page still shows. Only an explicit end (or a new/other conversation)
     // forgets it; a forgotten session made the next start silently open an empty one.
+    pause() { try { this.io.microphoneIntent?.(false); } finally { this.stop(true); } }
+    retryRecognition() { this.recovery?.retry(); }
     stop(paused = false, detail = '', { forget = !paused } = {}) {
+      this.recovery?.reset();
       if (forget) this.session = null;
       this.turnPending = false;
       this.cancelWakeAck();
@@ -847,7 +859,7 @@
     fail(error, epoch) {
       if (!this.current(epoch)) return;
       this.stop(false, '', { forget: false });
-      this.show('error', error.message || 'Voice connection failed. Start again when ready.');
+      this.show('error', this.io.recoverCapture && this.recovery ? this.recovery.failureMessage(error) : error.message || 'Voice connection failed. Start again when ready.');
     }
   }
 
@@ -905,7 +917,7 @@
     // Replay retains twenty seconds; the submitted utterance is independent
     // and continues until the person pauses, including longer speech.
     const history = new AudioHistory(context.sampleRate, () => Date.now());
-    let replayAbort;
+    let replayAbort, silenceGate = null;
     let stream, node, source, activePlay, activeSpeech, analyser, wave, spectrum, closed = false, captureEpoch = 0;
     const readSpeechSample = () => {
       const silent = { playing: false, amplitude: 0, brightness: 0 };
@@ -945,14 +957,14 @@
         let resumeTimer;
         try {
           await Promise.race([context.resume(), new Promise((resolve, reject) => {
-            resumeTimer = setTimeout(() => reject(new Error('Press the start button to allow sound on this device.')), 1500);
+            resumeTimer = setTimeout(() => reject(Object.assign(new Error('Press the start button to allow sound on this device.'), { code: 'VOICE_AUTOPLAY_BLOCKED' })), 1500);
           })]);
         } finally { clearTimeout(resumeTimer); }
         if (closed || signal.aborted) throw new Error('Microphone start cancelled.');
       }
       stream.getAudioTracks().forEach((track) => {
         track.enabled = false;
-        track.onended = () => { if (!closed) onError(new Error('Microphone disconnected. Reconnect it and press Start.')); };
+        track.onended = () => { if (!closed) onError(Object.assign(new Error('Microphone disconnected. Reconnect it and press Start.'), { code: 'VOICE_DEVICE_DISCONNECTED' })); };
       });
       await context.audioWorklet.addModule(captureWorkletUrl);
       if (closed) throw new Error('Microphone start cancelled.');
@@ -966,7 +978,7 @@
         analyser.connect(context.destination);
       }
       context.onstatechange = () => {
-        if (!closed && context.state !== 'running') onError(new Error('Audio paused by the browser. Press Start to resume.'));
+        if (!closed && context.state !== 'running') onError(Object.assign(new Error('Audio paused by the browser. Press Start to resume.'), { code: 'VOICE_CONTEXT_PAUSED' }));
       };
       const capture = settingsApi?.normalize(options.capture || settingsApi.capture(options.captureScope))
         || { threshold: .015, minimumVoiceMs: MINIMUM_VOICE_MS, endSilenceMs: TURN_END_SILENCE_MS, interruptionSilenceMs: INTERRUPTION_END_SILENCE_MS };
@@ -1051,12 +1063,23 @@
           const expected = ++captureEpoch;
           node.port.onmessage = ({ data }) => {
             if (closed || data.epoch !== expected || expected !== captureEpoch) return;
+            if (silenceGate) {
+              if (silenceGate.push(data.samples)) { silenceGate = null; endpoint.reset(); options.onCaptureRecovery({ state: 'ready' }); }
+              return;
+            }
             const prior = endpoint.speaking;
             const rejectedEcho = echo.isEcho(data.samples, data.reference);
             history.push(data.samples, data.time === undefined ? Date.now() : data.time * 1000, rejectedEcho);
             let utterance;
             try { utterance = endpoint.push(rejectedEcho ? new Float32Array(data.samples.length) : data.samples); }
-            catch (error) { quiet(); onError(error); return; }
+            catch (error) {
+              if (error.code === 'VOICE_CAPTURE_LIMIT' && typeof options.onCaptureRecovery === 'function') {
+                endpoint.reset(); history.breakCapture(); echo.reset();
+                silenceGate = new SilenceGate(context.sampleRate, capture.endSilenceMs, capture.threshold);
+                options.onCaptureRecovery({ state: 'waiting-silence', code: error.code });
+              } else { quiet(); onError(error); }
+              return;
+            }
             if (!prior && endpoint.speaking) onSpeech();
             for (const event of endpoint.drain()) {
               if (event.type === 'early') onEarly?.(wav(event.samples, context.sampleRate), { id: event.id, progressive: event.progressive });

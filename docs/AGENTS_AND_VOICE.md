@@ -385,6 +385,36 @@ the timeline's marks do not.
   stateless transcription and synthesis there; without a qualified backup,
   losing the speech host leaves server voice unavailable.
 
+## Recovery on an unattended conversation page
+
+The personal and family conversation pages remember an explicit microphone Pause
+per space in this browser. Existing permission alone does not override that
+choice after reload or when opening saved history. A deliberate Start/Resume
+changes the choice back to on. Automatic opening still requires an already
+granted permission; recovery never requests a new microphone stream.
+
+These pages opt into bounded capture recovery. An over-budget continuous sound
+is discarded without sending a partial conversation turn. Its sample buffers
+are released, and the existing authorized stream waits for a contiguous quiet
+interval using the configured threshold and ordinary end-silence duration.
+No audio history, speculative recognition or repeated capture allocation grows
+while this gate is waiting. Typing and playback transitions do not bypass it.
+The interface reports this state, and Pause always closes the stream.
+
+A transient recognition transport failure can rearm fresh listening on that same
+stream after a bounded delay, at most twice until a successful recognition or
+explicit Resume. It never replays the failed audio, creates another session or
+resends a conversation request. An offline page waits for its online event;
+there is no polling or transcription loop. Further failures retain the existing
+explicit replay/resume path. Permission/device failures and response failures
+still stop visibly and require a person to Resume; an uncertain request is never
+retried automatically. Pause, teardown and a new session cancel pending recovery.
+
+These states have French instructions on French conversation pages. Capture
+limits, VAD settings, wake/open mode, fallback consent and camera behavior are
+unchanged. Synthetic contracts do not establish acoustic accuracy or real-device
+recovery; those remain part of device acceptance.
+
 ## Recognition while the person speaks
 
 Surfaces offering local early recognition use whole-prefix snapshots while the

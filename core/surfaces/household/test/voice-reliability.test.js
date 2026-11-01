@@ -48,6 +48,9 @@ test('an opted-in capture discards an over-budget sound, waits for real silence,
   for (let i = 0; i < 1000; i++) h.send(.03);
   assert.deepEqual(notices, ['waiting-silence'], 'continuous sound cannot repeatedly grow fresh captures');
   assert.equal(phrases.length, 0);
+  audio.quiet(); audio.listen(blob => phrases.push(blob), () => {});
+  for (let i = 0; i < 101; i++) h.send(.03);
+  assert.deepEqual(notices, ['waiting-silence'], 'changing capture owners cannot bypass the real-silence gate');
   for (let i = 0; i < 49; i++) h.send(); assert.deepEqual(notices, ['waiting-silence']);
   h.send(); assert.deepEqual(notices, ['waiting-silence', 'ready']);
   for (let i = 0; i < 10; i++) h.send(.03);
@@ -68,11 +71,11 @@ test('explicit Stop while waiting for silence prevents any automatic capture res
 });
 
 function harness(extra = {}) {
-  let say, options, captureRecovery, heard = 'Hey Nestor, bonjour', failure = null, online = true;
-  const counts = { opens: 0, sessions: 0, recognitions: 0, turns: 0, listens: 0, closes: 0 }, phases = [];
-  const audio = { listen(callback) { say = callback; counts.listens++; }, quiet() {}, close() { counts.closes++; },
+  let say, speech, options, captureRecovery, heard = 'Hey Nestor, bonjour', failure = null, online = true;
+  const counts = { opens: 0, sessions: 0, recognitions: 0, turns: 0, listens: 0, closes: 0, availabilityChecks: 0 }, phases = [];
+  const audio = { listen(callback, onSpeech) { say = callback; speech = onSpeech; counts.listens++; }, quiet() {}, close() { counts.closes++; },
     reviewStatus: () => ({ id: 'synthetic-clip' }), recordTranscription() {}, clearReview() {}, async play() {} };
-  const c = new Conversation({ recoverCapture: true, canResumeRecognition: () => online,
+  const c = new Conversation({ recoverCapture: true, canResumeRecognition: () => { counts.availabilityChecks++; return online; },
     wakeAckDelayMs: 0, holdingDelayMs: null,
     openAudio: async (_signal, _onError, value) => { counts.opens++; options = value; captureRecovery = value.onCaptureRecovery; return audio; },
     createSession: async () => { counts.sessions++; return { sessionId: 'synthetic-reliability-session' }; },
@@ -80,7 +83,7 @@ function harness(extra = {}) {
     turn: async () => { counts.turns++; return { text: '' }; }, message() {}, ...extra
   }, (state, detail) => phases.push([state, detail]));
   return { c, counts, phases, audio, say: () => say(new Blob(['synthetic utterance'])),
-    recovery: value => captureRecovery(value), options: () => options,
+    recovery: value => captureRecovery(value), options: () => options, beginSpeech: () => speech?.(),
     fail(value) { failure = value; }, heard(value) { heard = value; }, online(value) { online = value; } };
 }
 const unavailable = () => Object.assign(Error('Synthetic speech service unavailable'), { status: 503 });
@@ -112,6 +115,8 @@ test('offline recovery waits without collecting new audio and resumes after reco
   h.online(false); h.fail(unavailable()); await h.say(); const listens = h.counts.listens;
   t.mock.timers.tick(30000); await tick();
   assert.equal(h.c.state, 'recovering'); assert.equal(h.counts.listens, listens); assert.equal(h.counts.recognitions, 1);
+  const checks = h.counts.availabilityChecks; t.mock.timers.tick(24*60*60*1000); await tick();
+  assert.equal(h.counts.availabilityChecks, checks, 'offline waiting has no polling or retry loop');
   h.online(true); h.c.retryRecognition();
   assert.equal(h.c.state, 'listening'); assert.equal(h.counts.opens, 1); assert.equal(h.counts.recognitions, 1);
 });
@@ -151,4 +156,82 @@ test('typing during recovery cancels its timer rather than reopening the microph
   h.fail(unavailable()); await h.say(); assert.equal(h.c.canType(), true);
   assert.equal(await h.c.typed('Synthetic typed request'), true); const listens = h.counts.listens;
   t.mock.timers.tick(60000); await tick(); assert.equal(h.counts.turns, 1); assert.equal(h.counts.listens, listens);
+});
+
+
+test('twenty minutes of continuous synthetic input retains only bounded silence-gate counters', () => {
+  const rate=48000, gate=new capture.SilenceGate(rate,1000,.015), noise=new Float32Array(1024).fill(.03);
+  for(let i=0;i<Math.ceil(rate*1200/noise.length);i++) assert.equal(gate.push(noise),false);
+  assert.ok(Object.values(gate).every(value=>typeof value==='number'),'the gate retains no audio array');
+  const quiet=new Float32Array(4800);
+  for(let i=0;i<5;i++) assert.equal(gate.push(quiet),false);
+  gate.push(noise);
+  for(let i=0;i<9;i++) assert.equal(gate.push(quiet),false,'quiet intervals cannot accumulate across another sound');
+  assert.equal(gate.push(quiet),true);
+  assert.equal(gate.push(new Float32Array([NaN])),false,'invalid samples do not count as real silence');
+});
+
+test('explicit Pause and explicit Start have an intent hook; automatic resume and suspension do not rewrite consent', async () => {
+  const intent=[], h=harness({microphoneIntent:wanted=>intent.push(wanted)});
+  await h.c.start({language:'fr'},{automatic:true}); assert.deepEqual(intent,[]);
+  const session=h.c.session; h.c.pause(); assert.deepEqual(intent,[false]);
+  assert.equal(h.c.state,'paused'); assert.equal(h.c.session,session);
+  await h.c.start({language:'fr'}); assert.deepEqual(intent,[false,true]);
+  h.c.stop(true); assert.deepEqual(intent,[false,true],'programmatic suspension is not a user preference change');
+  h.c.stop();
+});
+
+test('late callbacks from an abandoned recovery cannot affect a newly resumed session', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const h=harness(); t.after(()=>h.c.stop()); await h.c.start({language:'fr',wakeWord:true});
+  const oldCapture=h.options().onCaptureRecovery; h.fail(unavailable()); await h.say();
+  const oldResume=h.c.recovery.pending.resume, session=h.c.session;
+  h.c.pause(); await h.c.start({language:'fr',wakeWord:true});
+  const listens=h.counts.listens; oldCapture({state:'ready'}); oldResume(); t.mock.timers.tick(60000);await tick();
+  assert.equal(h.c.state,'listening'); assert.equal(h.c.session,session); assert.equal(h.counts.listens,listens);
+  assert.equal(h.counts.recognitions,1); assert.equal(h.counts.turns,0); assert.equal(h.counts.opens,2);
+});
+
+test('an unmounted surface cancels recovery instead of reopening its microphone', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});
+  const h=harness({canResumeRecognition:()=>null});t.after(()=>h.c.stop());
+  await h.c.start({language:'fr'});h.fail(unavailable());await h.say();
+  t.mock.timers.tick(2000);await tick();assert.equal(h.c.state,'paused');assert.equal(h.counts.opens,1);
+});
+
+test('capture overflow over a reply preserves that reply and waits for silence before starting the next capture', async () => {
+  let finish, interrupted=0;
+  const h=harness({turn:async()=>({text:'Une réponse synthétique.'}),synthesize:async()=>new ArrayBuffer(1),interrupt:async()=>{interrupted++;}});
+  h.audio.canInterrupt=true;h.audio.holdPlayback=()=>{};h.audio.resumePlayback=()=>{};
+  h.audio.play=()=>new Promise(resolve=>{finish=resolve;});
+  try {
+    await h.c.start({language:'fr',interruption:true}); const exchange=h.say();await tick();
+    assert.equal(h.c.state,'speaking');const turn=h.c.activeTurn;h.beginSpeech();h.recovery({state:'waiting-silence'});
+    assert.equal(turn.request.signal.aborted,false);assert.equal(turn.speech.signal.aborted,false);assert.equal(interrupted,0);
+    finish();await exchange;assert.equal(h.c.state,'recovering');const listens=h.counts.listens;
+    h.recovery({state:'ready'});assert.equal(h.c.state,'listening');assert.equal(h.counts.listens,listens+1);
+  } finally { finish?.();h.c.stop(); }
+});
+
+
+test('typing does not bypass the silence requirement after capture overflow', async () => {
+  const h=harness();try{
+    await h.c.start({language:'fr'});h.recovery({state:'waiting-silence'});
+    assert.equal(await h.c.typed('Synthetic typed request'),true);
+    assert.equal(h.c.state,'recovering');assert.equal(h.c.recovery.captureWaiting,true);
+    h.recovery({state:'ready'});assert.equal(h.c.state,'listening');assert.equal(h.counts.turns,1);
+  }finally{h.c.stop();}
+});
+
+test('Pause still closes the microphone if saving the preference throws', async () => {
+  const h=harness({microphoneIntent:wanted=>{if(!wanted)throw Error('Synthetic storage refusal');}});
+  await h.c.start({language:'fr'});
+  assert.throws(()=>h.c.pause(),/storage refusal/);assert.equal(h.c.state,'paused');assert.equal(h.counts.closes,1);
+  h.c.stop();
+});
+
+test('a failed recovery availability check becomes a visible stopped state, not a timer exception', async t => {
+  t.mock.timers.enable({apis:['setTimeout']});const h=harness({canResumeRecognition:()=>{throw Error('Synthetic unavailable view');}});
+  t.after(()=>h.c.stop());await h.c.start({language:'fr'});h.fail(unavailable());await h.say();
+  t.mock.timers.tick(2000);await tick();assert.equal(h.c.state,'error');assert.equal(h.counts.opens,1);
 });

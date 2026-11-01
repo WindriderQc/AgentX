@@ -50,13 +50,13 @@ test('the Household page resumes a loaded conversation the way a press on Repren
   const page = fs.readFileSync(path.join(__dirname, '../public/conversation-page.js'), 'utf8');
   // One definition of starting voice, shared by the button and by a loaded conversation.
   assert.match(page, /const startVoice = options => \{[^}]*if \(open\.checked\) void openHold\.start\(\);\s*return conversation\.start\(selection\(\), options\);\s*\};/);
-  assert.match(page, /\{ conversation\.stop\(true\); return; \}\s*return startVoice\(\);/);
+  assert.match(page, /\{ conversation\.pause\(\); return; \}\s*return startVoice\(\);/);
   const load = page.slice(page.indexOf('async function resumeSession('), page.indexOf('async function loadRecent('));
   const shown = load.indexOf("conversation.show('paused')"), started = load.indexOf('startVoice({ automatic: true })');
   assert.ok(shown > 0 && shown < started, 'voice starts once the saved conversation is on screen');
   // Only where the microphone is already granted, and never for a load that was superseded.
   assert.match(load, /const permission = await navigator\.permissions\?\.query\(\{ name: 'microphone' \}\)\.catch\(\(\) => null\);/);
-  assert.match(load, /if \(permission\?\.state === 'granted' && epoch === conversation\.epoch\) void startVoice\(\{ automatic: true \}\);/);
+  assert.match(load, /if \(microphoneWanted && permission\?\.state === 'granted' && epoch === conversation\.epoch\) void startVoice\(\{ automatic: true \}\);/);
   // Starting voice moves the loop's epoch: the pictures still being restored follow the session shown.
   assert.match(load, /\{ current: \(\) => conversation\.session\?\.sessionId === data\.session\.sessionId \}/);
 });
