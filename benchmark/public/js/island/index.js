@@ -268,7 +268,12 @@ async function refreshWorldCards() {
     try { live = (await apiFetch(`${API}/worlds/${encodeURIComponent(world.id)}/live`)).data; } catch { /* Unavailable card stays visible. */ }
     return worldCardHtml(world, live, latestRuns, queueReadable);
   }));
-  if (read === worldCardRead) container.innerHTML = cards.join('');
+  if (read === worldCardRead) {
+    const focus = container.contains(document.activeElement) ? document.activeElement.dataset : null;
+    container.innerHTML = cards.join('');
+    if (focus?.worldWatch) container.querySelector(`[data-world-watch="${CSS.escape(focus.worldWatch)}"]`)?.focus({ preventScroll: true });
+    if (focus?.worldArchive) container.querySelector(`[data-world-archive="${CSS.escape(focus.worldArchive)}"]`)?.focus({ preventScroll: true });
+  }
 }
 
 async function watchWorld(id, button) {
