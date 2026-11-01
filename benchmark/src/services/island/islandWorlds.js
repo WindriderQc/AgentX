@@ -19,13 +19,15 @@ const WORLD = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_WORLDS = 8;
 const DEFAULT_WORLDS = Object.freeze([Object.freeze({ id: 'mesa-island', label: 'Île Clawblox', live: null })]);
 
-/** A world-service origin: http(s), no credentials, path, query or fragment. */
+/** A configured service base: http(s), optional literal path prefix, no credentials/query. */
 function liveOrigin(value) {
   if (typeof value !== 'string' || !value) return null;
   try {
     const url = new URL(value);
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) return null;
-    return url.origin;
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash
+      || !/^\/(?:[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\/?)?$/.test(url.pathname)
+      || /\\|\/\.{1,2}(?:\/|$)/.test(value)) return null;
+    return url.origin + url.pathname.replace(/\/$/, '');
   } catch { return null; }
 }
 
@@ -49,8 +51,13 @@ function islandWorlds(env = process.env) {
     if (entry.liveWorld !== undefined && (!live || typeof entry.liveWorld !== 'string' || !WORLD.test(entry.liveWorld))) {
       return { worlds: DEFAULT_WORLDS, error: `AGENTX_ISLAND_WORLDS: ${id} needs a valid liveWorld and live origin` };
     }
+    const replayOrigins = entry.replayOrigins;
+    if (replayOrigins !== undefined && (!live || !Array.isArray(replayOrigins) || replayOrigins.length > 4 || replayOrigins.some(value => !liveOrigin(value)))) {
+      return { worlds: DEFAULT_WORLDS, error: `AGENTX_ISLAND_WORLDS: ${id} needs at most four replay origins` };
+    }
     const label = typeof entry.label === 'string' && entry.label.trim() ? entry.label.trim().slice(0, 60) : id;
-    worlds.push(Object.freeze({ id, label, live, ...(entry.liveWorld === undefined ? {} : { liveWorld: entry.liveWorld }) }));
+    worlds.push(Object.freeze({ id, label, live, ...(entry.liveWorld === undefined ? {} : { liveWorld: entry.liveWorld }),
+      ...(replayOrigins === undefined ? {} : { replayOrigins: Object.freeze([...new Set(replayOrigins.map(liveOrigin))]) }) }));
   }
   return { worlds: Object.freeze(worlds), error: null };
 }

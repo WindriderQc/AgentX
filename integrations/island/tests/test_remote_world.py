@@ -186,9 +186,21 @@ class TargetAndListenerTests(unittest.TestCase):
     def test_targets(self):
         self.assertEqual(parse_target("https://agentx.example:18794").port, 18794)
         self.assertEqual(parse_target("http://127.0.0.1:18120/").hostname, "127.0.0.1")
-        for bad in ["http://192.168.2.99:18794", "ftp://x", "https://user:pw@x", "https://x/path", "https://x?q=1", "https://"]:
+        for bad in ["http://192.168.2.99:18794", "ftp://x", "https://user:pw@x", "https://x/../private", "https://x/%2fprivate", "https://x/double//path", "https://x?q=1", "https://"]:
             with self.assertRaises(ValueError, msg=bad):
                 parse_target(bad)
+
+    def test_configured_prefix_is_applied_to_exact_upstream_routes(self):
+        with FakeWorld() as world:
+            upstream = Upstream(world.url + "/worlds/living/")
+            status, _, _ = upstream.forward("POST", "/join?name=Eko", {})
+            self.assertEqual(world.calls[-1]["path"], "/worlds/living/join?name=Eko")
+            self.assertEqual(status, 200)
+            with RemoteWorldRelay(world.url + "/worlds/living") as relay:
+                before = len(world.calls)
+                status, _, _ = request(relay.port, "POST", "/worlds/living/world")
+                self.assertEqual(status, 404)
+                self.assertEqual(len(world.calls), before, "a prefix never widens the agent route allowlist")
 
     def test_listens_on_loopback_only(self):
         with self.assertRaises(ValueError):

@@ -232,6 +232,64 @@ async function openMemory(id) {
 let worlds = [];
 let liveRead = 0;
 let watchedTerrain = null;
+let worldCardRead = 0;
+let latestRuns = [];
+let queueReadable = false;
+
+export function worldCardHtml(world, live, runs, queueRead) {
+  const verified = live?.available && live.selectedActive === true;
+  const playing = verified ? runs.filter(run => run.world === world.id && stateLabel(run).key === 'running'
+    && run.worldView?.instanceId === live.instanceId) : [];
+  const archives = runs.filter(run => run.world === world.id && run.replayable);
+  const pending = runs.filter(run => run.world === world.id && ['requested', 'reserved'].includes(stateLabel(run).key)).length;
+  const presence = !queueRead ? 'État des parties indisponible' : playing.length
+    ? `${playing.map(run => run.agent || 'Agent').join(', ')} joue${playing.length > 1 ? 'nt' : ''} ici` : 'Aucune partie en cours';
+  const note = verified ? 'Le monde continue, même sans joueur.' : live?.available
+    ? `Ce service héberge ${live.activeWorld?.label || 'un autre terrain'}.` : 'Connexion indisponible. Nouvelle vérification automatique.';
+  const living = /living|vivante/i.test(world.id + world.label);
+  return `<article class="island-world-card" data-world-card="${escapeHtml(world.id)}" data-online="${Boolean(verified)}">
+    <div class="island-world-art ${living ? 'is-living' : 'is-mesa'}" aria-hidden="true"></div>
+    <div class="island-world-card-body"><p class="island-world-badge">${verified ? 'En direct' : 'Indisponible'}</p>
+    <h3>${escapeHtml(world.label)}</h3><p class="island-world-presence">${escapeHtml(presence)}</p>
+    <p class="island-note">${escapeHtml(note)}</p>
+    <p class="island-world-meta">${archives.length} archive${archives.length > 1 ? 's' : ''}${pending ? ` · ${pending} demande${pending > 1 ? 's' : ''} en attente` : ''}${live?.recordingState === 'paused' ? ' · Enregistrement suspendu' : ''}</p>
+    <button type="button" class="island-watch" data-world-watch="${escapeHtml(world.id)}"${verified ? '' : ' disabled'}>Explorer ${living ? 'l’île vivante' : 'Mesa'}</button>
+    ${archives[0] ? `<button type="button" class="island-watch" data-world-archive="${escapeHtml(archives[0].id)}">Dernière archive</button>` : ''}
+    </div></article>`;
+}
+
+async function refreshWorldCards() {
+  const container = $('island-world-cards');
+  if (!container) return;
+  const read = ++worldCardRead;
+  const remote = worlds.filter(world => world.liveUrl);
+  const cards = await Promise.all(remote.map(async world => {
+    let live;
+    try { live = (await apiFetch(`${API}/worlds/${encodeURIComponent(world.id)}/live`)).data; } catch { /* Unavailable card stays visible. */ }
+    return worldCardHtml(world, live, latestRuns, queueReadable);
+  }));
+  if (read === worldCardRead) {
+    const focus = container.contains(document.activeElement) ? document.activeElement.dataset : null;
+    container.innerHTML = cards.join('');
+    if (focus?.worldWatch) container.querySelector(`[data-world-watch="${CSS.escape(focus.worldWatch)}"]`)?.focus({ preventScroll: true });
+    if (focus?.worldArchive) container.querySelector(`[data-world-archive="${CSS.escape(focus.worldArchive)}"]`)?.focus({ preventScroll: true });
+  }
+}
+
+async function watchWorld(id, button) {
+  const world = worlds.find(entry => entry.id === id);
+  if (!world) return;
+  button.disabled = true;
+  try {
+    const live = (await apiFetch(`${API}/worlds/${encodeURIComponent(id)}/live`)).data;
+    if (!live.available || !live.selectedActive || !live.liveUrl) throw new Error('Ce terrain n’est plus disponible.');
+    watchedTerrain = id;
+    const run = latestRuns.find(entry => entry.world === id && stateLabel(entry).key === 'running' && entry.worldView?.instanceId === live.instanceId);
+    showFrame(live.liveUrl, live.activeWorld.label, run?.id);
+    followThoughts(run?.id || null);
+  } catch (err) { $('island-worlds-note').textContent = err.message; }
+  finally { button.disabled = false; void refreshWorldCards(); }
+}
 
 export function liveWorldPresentation(world, live) {
   if (!live?.available || !live.activeWorld || !live.liveUrl) {
@@ -309,6 +367,9 @@ async function loadRuns() {
   try {
     const data = (await apiFetch(`${API}/runs`)).data;
     worlds = Array.isArray(data.worlds) ? data.worlds : [];
+    latestRuns = data.runs;
+    queueReadable = data.queueRead;
+    void refreshWorldCards();
     showWorldChoice();
     void refreshDisplayedWorld();
     $('island-runs').innerHTML = data.runs.map(run => runRowHtml(run, worlds)).join('') || '<tr><td colspan="4">Aucune partie.</td></tr>';
@@ -330,6 +391,11 @@ async function loadRuns() {
 }
 
 function bind() {
+  $('island-world-cards')?.addEventListener('click', event => {
+    const button = event.target.closest('button');
+    if (button?.dataset.worldWatch) void watchWorld(button.dataset.worldWatch, button);
+    if (button?.dataset.worldArchive) document.querySelector(`[data-replay="${CSS.escape(button.dataset.worldArchive)}"]`)?.click();
+  });
   const launchForm = $('island-launch-form');
   let storage;
   try { storage = window.sessionStorage; } catch { /* Private browsing may refuse storage. */ }

@@ -88,8 +88,9 @@ def is_loopback(host: str | None) -> bool:
 def parse_target(value: str):
     target = urlsplit(value)
     if (target.scheme not in ("http", "https") or not target.hostname or target.username
-            or target.password or target.query or target.fragment or target.path not in ("", "/")):
-        raise ValueError("target must be an http(s) origin, for example https://world.example:18794")
+            or target.password or target.query or target.fragment
+            or not re.fullmatch(r"(?:/[A-Za-z0-9_-]+)*/?", target.path)):
+        raise ValueError("target must be an http(s) service base with an optional literal path prefix")
     if target.scheme == "http" and not is_loopback(target.hostname):
         raise ValueError("a non-loopback target requires https")
     return target
@@ -148,7 +149,7 @@ class Upstream:
         else:
             conn = http.client.HTTPConnection(target.hostname, target.port or 80, timeout=self.timeout)
         try:
-            conn.request(method, target_path, body=body or None, headers=headers)
+            conn.request(method, target.path.rstrip("/") + target_path, body=body or None, headers=headers)
             response = conn.getresponse()
             # Never pass a redirect or a cookie on to a model-controlled client.
             if 300 <= response.status < 400:
