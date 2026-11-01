@@ -172,26 +172,37 @@ let thoughtsTimer = null;
 let viewerRun = null;
 let replayRead = 0;
 let thoughtsRead = 0;
+let thoughtsRecorded = false;
 function stopThoughts() { clearInterval(thoughtsTimer); thoughtsTimer = null; thoughtsRead++; }
-async function loadThoughts(id) {
+async function loadThoughts(id, recorded = false) {
   const read = ++thoughtsRead;
   try {
     const run = (await apiFetch(`${API}/runs/${encodeURIComponent(id)}`)).data;
     if (viewerRun !== id || read !== thoughtsRead) return;
     $('island-thoughts').hidden = false;
-    $('island-thoughts-list').innerHTML = thoughtsHtml(run.agentMessages, run.timeZone);
-    $('island-thoughts-note').textContent = stateLabel(run).key === 'running' ? '· toutes les 15 s' : '· partie terminée';
-    if (stateLabel(run).key !== 'running') stopThoughts();
+    $('island-thoughts-list').innerHTML = recorded && !run.agentMessages?.length
+      ? '<li class="island-note">Aucune entrée enregistrée pour cette partie.</li>' : thoughtsHtml(run.agentMessages, run.timeZone);
+    $('island-thoughts-note').textContent = recorded ? '' : stateLabel(run).key === 'running' ? '· toutes les 15 s' : '· partie terminée';
+    $('island-thoughts-retry').hidden = true;
+    if (recorded || stateLabel(run).key !== 'running') stopThoughts();
   } catch (err) {
     if (viewerRun !== id || read !== thoughtsRead) return;
     $('island-thoughts-note').textContent = `· lecture impossible : ${err.message}`;
+    $('island-thoughts-retry').hidden = false;
   }
 }
-function followThoughts(id) {
+function followThoughts(id, recorded = false) {
   stopThoughts();
-  if (!id) { $('island-thoughts').hidden = true; return; }
-  loadThoughts(id);
-  thoughtsTimer = setInterval(() => { if (!document.hidden) loadThoughts(id); }, 15000);
+  thoughtsRecorded = recorded;
+  $('island-thoughts-list').innerHTML = '';
+  $('island-thoughts-retry').hidden = true;
+  $('island-thoughts').hidden = !id;
+  if (!id) return;
+  $('island-thoughts-title').textContent = recorded
+    ? 'Journal enregistré — non synchronisé avec la lecture' : 'Journal de l’agent';
+  $('island-thoughts-note').textContent = '· chargement…';
+  void loadThoughts(id, recorded);
+  if (!recorded) thoughtsTimer = setInterval(() => { if (!document.hidden) loadThoughts(id); }, 15000);
 }
 
 let memory = null;
@@ -439,8 +450,11 @@ function bind() {
     if (!$('island-viewer').hidden) return;
     event.preventDefault(); void refreshLiveWorld(true);
   });
+  $('island-thoughts-retry').addEventListener('click', () => {
+    if (viewerRun) followThoughts(viewerRun, thoughtsRecorded);
+  });
   $('island-viewer-close')?.addEventListener('click', () => {
-    replayRead++; viewerRun = null; watchedTerrain = null; stopThoughts();
+    replayRead++; viewerRun = null; watchedTerrain = null; followThoughts(null);
     $('island-frame').src = 'about:blank'; $('island-viewer').hidden = true;
     $('island-thoughts').hidden = true;
   });
@@ -467,6 +481,7 @@ function bind() {
           const opened = (await apiFetch(`${API}/runs/${encodeURIComponent(button.dataset.replay)}/replay`, { method: 'POST', body: {} })).data;
           if (read !== replayRead) return;
           showFrame(opened.src, '', button.dataset.replay);
+          followThoughts(button.dataset.replay, true);
           $('island-replay-status').textContent = 'Relecture de la partie sélectionnée · lecture partagée. Fermer la vue libère son flux ; rouvrir recharge l’archive si nécessaire.';
         } catch (err) {
           if (read === replayRead) $('island-replay-status').textContent = `Relecture indisponible : ${err.message}. Vous pouvez réessayer avec Voir.`;
