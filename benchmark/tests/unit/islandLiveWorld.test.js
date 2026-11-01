@@ -127,3 +127,12 @@ it('ignores a late Mesa probe after selecting another terrain and rechecks befor
   await updating;
   expect(node('island-viewer-world').textContent).toBe('Monde en direct : Île vivante');
 });
+
+it('keeps the actual live world available while recording is paused without changing runner health', async () => {
+  const fetchImpl = async () => ({ ok: true, json: async () => ({ ok: false, tick: 10, world: 'mesa-island',
+    live: { available: true }, recording: { enabled: true, error: 'quota' } }) });
+  const live = await readLiveWorld(mesa.id, { env, fetchImpl });
+  expect(live).toMatchObject({ available: true, recordingState: 'paused', activeWorld: { label: mesa.label } });
+  const page = loadBrowserModule('island/index.js', 'liveWorldPresentation');
+  expect(page.liveWorldPresentation(mesa, live).note).toContain('Enregistrement suspendu');
+});

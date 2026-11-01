@@ -20,10 +20,11 @@ async function readLiveWorld(id, { env = process.env, fetchImpl = fetch } = {}) 
     });
     if (!response.ok) return unavailable;
     const health = await response.json();
-    if (health?.ok !== true || typeof health.world !== 'string' || !WORLD_ID.test(health.world)) return unavailable;
+    if (!(health?.ok === true || health?.live?.available === true) || typeof health.world !== 'string' || !WORLD_ID.test(health.world)) return unavailable;
     const active = worlds.find(world => world.live === selected.live && (world.liveWorld || world.id) === health.world);
     return { selectedId: id, available: true, selectedActive: (selected.liveWorld || selected.id) === health.world,
       activeWorld: { id: health.world, label: active?.label || health.world },
+      recordingState: health.recording?.error ? 'paused' : health.recording?.enabled ? 'recording' : 'unknown',
       instanceId: health.instanceId || null, recordingId: health.recordingId || null, liveUrl };
   } catch {
     return unavailable;

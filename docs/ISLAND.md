@@ -574,3 +574,18 @@ file comme une partie.
   second rendu ; elle attend la décision sur le placement de GraphysX.
 - DSH et Pi sont branchés (adaptateur Clawblox v2) et qualifiés sans modèle ;
   aucun n'a encore joué une vraie partie. OpenCode n'est pas branché.
+
+### Following the island without starting a run
+
+The configured live world appears above the launch form, even when the next
+run is set to a local terrain. Opening Explorer or Watch reads the active
+identity; it never switches terrain or launches an agent. Spectators can keep
+watching while recording is paused at a quota; a visible warning distinguishes
+that condition from an unavailable world. Agent admission retains strict health.
+
+A run's replay button opens only its stored recording identity and shows opening,
+error and retry states beside the viewer. Close view disconnects the frame and
+its journal polling. GraphysX serves bounded archive segments on demand from
+its existing world service, without starting the legacy replay container.
+The segment selector identifies partial archive playback; final memory files
+remain a separate end-of-run capture, not a synchronized playback transcript.
