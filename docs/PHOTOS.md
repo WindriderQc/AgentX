@@ -153,7 +153,25 @@ unfiltered fallback. One-photo sources can therefore keep their current
 photo when the exclusion has no other match.
 
 When configured, **Photos en veille** toggles the feature for this visit.
-Touch/click or Escape returns to the same conversation. The photo controls
+**Left/Right** and the **Photo précédente / Photo suivante** buttons navigate
+one shared history for the current display session. Previous returns to the
+exact photo shown before; next replays forward history before requesting a new
+random photo. Automatic rotation uses that same forward path. Manual navigation
+restarts the rotation delay; repeated next commands while a request is pending
+are coalesced. Previous cancels pending navigation, and late responses cannot
+replace the selected photo. A failed next image keeps the current photo and
+history available for retry. Leaving the frame clears its in-memory history.
+
+The existing microphone/recognition loop also accepts the exact French commands
+**recule** and **avance** while photos are displayed, without leaving the frame
+or sending a model turn. Existing close/back commands still return to Nestor.
+Wake-word standby still requires addressing Nestor (for example,
+**Hey Nestor, avance**); bare commands work during an open conversation or when
+wake-word mode is off. Outside the frame, these two new aliases are not captured.
+Recognition briefly keeps photos visible while deciding between a local command,
+ambient speech and an actual Nestor request. Text editors keep their arrow keys.
+
+Touch/click outside photo controls or Escape returns to the same conversation. The photo controls
 also reach Settings, Flow, microphone diagnostics and the existing mic button.
 Active conversation work, a focused editor or embedded page, open settings or a dialog prevent
 the frame from taking focus. Background tabs stop showing photos; leaving the
