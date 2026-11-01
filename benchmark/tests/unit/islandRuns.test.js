@@ -411,7 +411,7 @@ describe('island page helpers', () => {
       const node = () => ({ addEventListener() {}, classList: { remove() {}, add() {} } });
       fields.world.dataset = {};
       fields.world.addEventListener = () => {};
-      const nodes = { 'island-world': fields.world, 'island-watch': node(), 'island-watch-label': node(), 'island-live': node(),
+      const nodes = { 'island-world': fields.world, 'island-watch': node(), 'island-watch-label': node(), 'island-live': node(), 'island-thoughts-retry': node(),
         'island-launch-form': form, 'island-launch-result': node(), 'island-runs': node(), 'island-runs-status': node(), 'island-memory-run': node(), 'island-viewer-memory': node() };
       loadBrowserModule('island/index.js', 'readPendingLaunch', {
         apiFetch, window: { sessionStorage: storage, addEventListener() {} }, crypto: { randomUUID: uuid },
