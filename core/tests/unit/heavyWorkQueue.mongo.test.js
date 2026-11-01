@@ -121,13 +121,17 @@ describe('durable heavy-work planning and dispatch fences', () => {
   });
 
   it('uses explicit DST offsets and clips one-off reservations to the selected local day', async () => {
-    const first = await queue.submit(request('dst-first'), 'test');
-    const second = await queue.submit(request('dst-second', ALIAS), 'test');
-    await queue.reserve(first.id, { expectedRevision: first.revision, start: '2026-11-01T01:15:00-04:00' }, 'test');
-    await queue.reserve(second.id, { expectedRevision: second.revision, start: '2026-11-01T01:15:00-05:00' }, 'test');
-    const slots = await reservations(new Date('2026-11-01T04:00:00Z'), new Date('2026-11-02T05:00:00Z'));
-    expect(slots.map(item => item.slots[0].start).sort()).toEqual(['2026-11-01T05:15:00.000Z', '2026-11-01T06:15:00.000Z']);
-    await expect(queue.reserve(first.id, { expectedRevision: 2, start: '2026-11-01T01:15:00' }, 'test')).rejects.toMatchObject({ statusCode: 400 });
+    // Keep this DST fixture valid after the real calendar passes its reserved day.
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-31T12:00:00Z'));
+    try {
+      const first = await queue.submit(request('dst-first'), 'test');
+      const second = await queue.submit(request('dst-second', ALIAS), 'test');
+      await queue.reserve(first.id, { expectedRevision: first.revision, start: '2026-11-01T01:15:00-04:00' }, 'test');
+      await queue.reserve(second.id, { expectedRevision: second.revision, start: '2026-11-01T01:15:00-05:00' }, 'test');
+      const slots = await reservations(new Date('2026-11-01T04:00:00Z'), new Date('2026-11-02T05:00:00Z'));
+      expect(slots.map(item => item.slots[0].start).sort()).toEqual(['2026-11-01T05:15:00.000Z', '2026-11-01T06:15:00.000Z']);
+      await expect(queue.reserve(first.id, { expectedRevision: 2, start: '2026-11-01T01:15:00' }, 'test')).rejects.toMatchObject({ statusCode: 400 });
+    } finally { clock.mockRestore(); }
   });
 
   it('requires a confirmed legacy snapshot, preserves the whole original, and never writes it', async () => {
