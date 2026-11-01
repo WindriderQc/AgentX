@@ -126,12 +126,19 @@ function graphysxViews(env = process.env) {
       const remote = remoteWorld(worlds, run);
       if (remote) {
         if (!viewer || !remote.live || !UUID.test(run?.worldView?.recordingId || '')) refuseRemoteReplay(remote);
-        const source = `${remote.live}/recordings/${run.worldView.recordingId}`;
-        const response = await (deps?.fetchImpl || fetch)(`${source}/healthz`, { redirect: 'error', signal: AbortSignal.timeout(20000) });
-        if (!response.ok) throw new ViewError('This remote recording is unavailable', 404);
-        const health = await response.json();
-        if (health.replay !== true || health.instanceId !== run.worldView.instanceId) throw new ViewError('Remote recording identity mismatch', 409);
-        return { src: page(source, null, run.agent), agentLog: false, identitySource: health.identitySource || 'native' };
+        // A terrain can move to another service without moving its archives. Only
+        // explicitly configured origins may be read; never accept an address from a run.
+        for (const base of new Set([remote.live, ...(remote.replayOrigins || [])])) {
+          const source = `${base}/recordings/${run.worldView.recordingId}`;
+          let response;
+          try { response = await (deps?.fetchImpl || fetch)(`${source}/healthz`, { redirect: 'error', signal: AbortSignal.timeout(4000) }); }
+          catch { continue; }
+          if (!response.ok) continue;
+          const health = await response.json();
+          if (health.replay !== true || health.instanceId !== run.worldView.instanceId) throw new ViewError('Remote recording identity mismatch', 409);
+          return { src: page(source, null, run.agent), agentLog: false, identitySource: health.identitySource || 'native' };
+        }
+        throw new ViewError('This remote recording is unavailable', 404);
       }
       if (!viewer) throw new ViewError('No GraphysX viewer is configured (AGENTX_ISLAND_GRAPHYSX_URL)', 409);
       const opened = await clawblox.replayUrl(run, deps);

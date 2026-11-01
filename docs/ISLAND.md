@@ -589,3 +589,27 @@ its journal polling. GraphysX serves bounded archive segments on demand from
 its existing world service, without starting the legacy replay container.
 The segment selector identifies partial archive playback; final memory files
 remain a separate end-of-run capture, not a synchronized playback transcript.
+
+## Independent persistent worlds
+
+A terrain can point to its own GraphysX service. `live` accepts HTTPS (or a
+local HTTP service) with an optional literal path prefix, without credentials,
+queries or fragments. `liveWorld` declares the expected world id. The live
+cards read each service independently and distinguish the world being online,
+a verified running session, pending requests and archived sessions. An unreadable
+queue never means no player. Planning a request and starting it remain separate.
+
+When a terrain moves, optional `replayOrigins` lists up to four previous service
+bases. Opening an archive probes these configured locations by its opaque
+recording id, verifies its instance identity and never substitutes the current
+live world. Run-supplied addresses are never used.
+
+The native queue hook can invoke `integrations/island/prepare_world.py` with
+`AGENTX_ISLAND_WORLD_PROFILES` pointing to an external JSON map. Each runner
+terrain entry declares `url`, `world`, `tokenFile` (an env file containing
+`WORLD_OPERATOR_TOKEN`), `dataHost` and `mode`. `reuse` verifies the existing
+world/instance/recording and returns its identity without any world write.
+`fresh` explicitly creates a new experiment through the operator selector.
+Independent worlds need separate services, volumes and checkpoints; selecting
+a card never prepares or resets a world. The remote-world adapter keeps its
+exact agent-route allowlist when its configured service uses a path prefix.

@@ -311,7 +311,7 @@ describe('island run service', () => {
     expect(islandWorlds({ AGENTX_ISLAND_WORLDS: WORLDS }).worlds[1]).toEqual(FRANK);
     expect(islandWorlds({ AGENTX_ISLAND_WORLDS: '[{"id":"x-1"}]' }).worlds).toEqual([{ id: 'x-1', label: 'x-1', live: null }]);
     for (const bad of ['{', '[]', '{"id":"a"}', '[{"id":"A b"}]', '[{"id":"a"},{"id":"a"}]',
-      '[{"id":"a","live":"https://h:1/path"}]', '[{"id":"a","live":"https://u:p@h:1"}]', '[{"id":"a","live":"ftp://h"}]']) {
+      '[{"id":"a","live":"https://h:1/encoded%2Fpath"}]', '[{"id":"a","live":"https://u:p@h:1"}]', '[{"id":"a","live":"ftp://h"}]']) {
       const read = islandWorlds({ AGENTX_ISLAND_WORLDS: bad });
       expect(read.worlds.map(world => world.id)).toEqual(['mesa-island']);
       expect(read.error).toMatch(/AGENTX_ISLAND_WORLDS/);
