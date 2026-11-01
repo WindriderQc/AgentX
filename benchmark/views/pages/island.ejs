@@ -6,6 +6,11 @@
   </header>
 
   <nav class="island-workspace-nav" aria-label="Espace Île"><a href="#island-runs-title">Parties</a><a href="#island-viewer-title">Explorer l’île</a><a href="#island-memory-title">Mémoire</a></nav>
+  <section id="island-live" class="r-section" hidden aria-labelledby="island-live-title">
+    <h2 id="island-live-title" class="r-sec-title">Monde en direct</h2>
+    <p id="island-live-status" class="island-note" role="status"></p>
+    <button type="button" id="island-watch" class="island-watch" disabled>Regarder <span id="island-watch-label">le monde actif</span> en direct</button>
+  </section>
   <section class="r-section island-launch" aria-labelledby="island-launch-title">
     <h2 id="island-launch-title" class="r-sec-title">Lancer une partie</h2>
     <form id="island-launch-form" class="island-form">
@@ -30,11 +35,7 @@
     <p id="island-launch-result" class="island-result" role="status"></p>
   </section>
 
-  <section id="island-live" class="r-section" hidden aria-labelledby="island-live-title">
-    <h2 id="island-live-title" class="r-sec-title">Monde en direct</h2>
-    <p id="island-live-status" class="island-note" role="status"></p>
-    <button type="button" id="island-watch" class="island-watch" disabled>Regarder <span id="island-watch-label">le monde actif</span> en direct</button>
-  </section>
+
 
   <section class="r-section" aria-labelledby="island-runs-title">
     <h2 id="island-runs-title" class="r-sec-title">Parties</h2>
@@ -47,6 +48,8 @@
 
   <section id="island-viewer" class="r-section island-viewer" hidden aria-labelledby="island-viewer-title">
     <h2 id="island-viewer-title" class="r-sec-title">Explorer l’île</h2>
+    <button type="button" id="island-viewer-close" class="island-watch">Fermer la vue</button>
+    <p id="island-replay-status" class="island-note" role="status"></p>
     <p id="island-viewer-world" class="island-note" role="status" hidden></p>
     <p class="island-note"><a id="island-viewer-open" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>
       · Scène, carte, chronologie, lignées et comparaison partagent la sélection. <button type="button" id="island-viewer-memory" hidden>Mémoire de cette partie</button></p>

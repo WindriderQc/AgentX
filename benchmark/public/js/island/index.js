@@ -109,7 +109,7 @@ export function runRowHtml(run, worlds) {
   const id = escapeHtml(run.id);
   const terminal = ['completed', 'failed', 'cancelled'].includes(state.key);
   const view = run.liveView && !terminal ? `<button type="button" data-live="${escapeHtml(run.liveView)}" data-run="${id}" title="Vue en direct, avec les pensées">Voir</button>`
-    : run.replayable ? `<button type="button" data-replay="${id}" title="Relecture avec les pensées">Voir</button>` : '';
+    : run.replayable ? `<button type="button" data-replay="${id}" title="Relecture de cette partie">Voir</button>` : '';
   const memory = run.hasMemory ? `<button type="button" data-memory="${id}">Mémoire</button>` : '';
   return `<tr>
     <td><button type="button" class="island-open" data-detail="${id}" aria-expanded="false" aria-controls="island-detail-${id}">${escapeHtml(when(run.startedAt || run.queue?.reservation?.start || run.requestedAt, run.timeZone))}</button></td>
@@ -149,6 +149,8 @@ export function isIslandMemoryRequest(event, frame, runId) {
 }
 
 function showFrame(src, worldLabel = '', runId = null) {
+  replayRead++;
+  $('island-replay-status').textContent = '';
   src = explorerViewUrl(src, runId, location.origin);
   viewerRun = runId;
   $('island-viewer').hidden = false;
@@ -168,6 +170,7 @@ function showFrame(src, worldLabel = '', runId = null) {
 // "Pensées en direct": the run's latest entries, refreshed while it plays.
 let thoughtsTimer = null;
 let viewerRun = null;
+let replayRead = 0;
 let thoughtsRead = 0;
 function stopThoughts() { clearInterval(thoughtsTimer); thoughtsTimer = null; thoughtsRead++; }
 async function loadThoughts(id) {
@@ -224,9 +227,10 @@ export function liveWorldPresentation(world, live) {
     return { available: false, label: 'le monde actif', note: 'Le monde en direct est indisponible ou son identité ne peut pas être vérifiée.' };
   }
   const label = live.activeWorld.label;
-  return { available: true, label, note: live.selectedActive
-    ? `Monde actif : ${label}.`
-    : `Le terrain « ${world.label} » n’est pas actif sur ce service. Monde actif : ${label}. Le terrain choisi s’applique à la prochaine partie.` };
+  const note = live.selectedActive ? `Monde actif : ${label}.`
+    : `Le terrain « ${world.label} » n’est pas actif sur ce service. Monde actif : ${label}. Le terrain choisi s’applique à la prochaine partie.`;
+  return { available: true, label, note: note + (live.recordingState === 'paused'
+    ? ' Enregistrement suspendu : archives conservées, direct disponible.' : '') };
 }
 
 function showLiveCaption(presentation) {
@@ -246,7 +250,9 @@ async function refreshDisplayedWorld() {
 
 async function refreshLiveWorld(open = false) {
   const read = ++liveRead;
-  const world = worlds.find(entry => entry.id === $('island-world').value);
+  const selection = $('island-world').value;
+  const selected = worlds.find(entry => entry.id === selection);
+  const world = selected?.liveUrl ? selected : worlds.find(entry => entry.liveUrl);
   const section = $('island-live');
   const watch = $('island-watch');
   section.hidden = !world?.liveUrl;
@@ -257,7 +263,7 @@ async function refreshLiveWorld(open = false) {
   let live;
   try { live = (await apiFetch(`${API}/worlds/${encodeURIComponent(world.id)}/live`)).data; }
   catch { /* An unreadable identity must never be presented as the selected terrain. */ }
-  if (read !== liveRead || world.id !== $('island-world').value) return;
+  if (read !== liveRead || selection !== $('island-world').value) return;
   const presentation = liveWorldPresentation(world, live);
   watch.disabled = !presentation.available;
   $('island-watch-label').textContent = presentation.label;
@@ -368,6 +374,15 @@ function bind() {
   $('island-world').addEventListener('change', showWorldChoice);
   // Recheck on click: another run may have changed the shared world meanwhile.
   $('island-watch').addEventListener('click', () => { void refreshLiveWorld(true); });
+  document.querySelector('.island-workspace-nav a[href="#island-viewer-title"]')?.addEventListener('click', event => {
+    if (!$('island-viewer').hidden) return;
+    event.preventDefault(); void refreshLiveWorld(true);
+  });
+  $('island-viewer-close')?.addEventListener('click', () => {
+    replayRead++; viewerRun = null; watchedTerrain = null; stopThoughts();
+    $('island-frame').src = 'about:blank'; $('island-viewer').hidden = true;
+    $('island-thoughts').hidden = true;
+  });
   $('island-runs').addEventListener('click', async event => {
     const button = event.target.closest('button');
     if (!button) return;
@@ -375,8 +390,27 @@ function bind() {
       if (button.dataset.live || button.dataset.replay) watchedTerrain = null;
       if (button.dataset.detail) toggleDetail(button.dataset.detail);
       if (button.dataset.live) { showFrame(button.dataset.live, '', button.dataset.run); followThoughts(button.dataset.run); }
-      if (button.dataset.replay) followThoughts(null);
-      if (button.dataset.replay) showFrame((await apiFetch(`${API}/runs/${encodeURIComponent(button.dataset.replay)}/replay`, { method: 'POST', body: {} })).data.src, '', button.dataset.replay);
+      if (button.dataset.replay) {
+        followThoughts(null);
+        const read = ++replayRead;
+        viewerRun = null;
+        $('island-viewer').hidden = false;
+        $('island-viewer-memory').hidden = true;
+        $('island-frame').src = 'about:blank';
+        $('island-viewer-open').removeAttribute('href');
+        $('island-viewer-world').hidden = true;
+        $('island-replay-status').textContent = 'Ouverture de l’archive de cette partie…';
+        $('island-viewer').scrollIntoView({ behavior: 'smooth' });
+        button.disabled = true;
+        try {
+          const opened = (await apiFetch(`${API}/runs/${encodeURIComponent(button.dataset.replay)}/replay`, { method: 'POST', body: {} })).data;
+          if (read !== replayRead) return;
+          showFrame(opened.src, '', button.dataset.replay);
+          $('island-replay-status').textContent = 'Relecture de la partie sélectionnée · lecture partagée. Fermer la vue libère son flux ; rouvrir recharge l’archive si nécessaire.';
+        } catch (err) {
+          if (read === replayRead) $('island-replay-status').textContent = `Relecture indisponible : ${err.message}. Vous pouvez réessayer avec Voir.`;
+        } finally { button.disabled = false; }
+      }
       if (button.dataset.memory) await openMemory(button.dataset.memory);
     } catch (err) {
       $('island-runs-status').textContent = err.message;
