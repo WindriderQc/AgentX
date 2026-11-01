@@ -198,7 +198,7 @@
       switch (button.dataset.action) {
         case 'close': return onClose();
         case 'start': state.speech = 'idle'; role('replayState').textContent = ''; return exclusive(() => embedded ? conversation.start(selection()) : standalone.start());
-        case 'pause': stopReplay(); role('replayState').textContent = ''; state.speechRun++; if (['preparing','scheduled'].includes(state.speech)) state.speech = 'stopped'; current().stop(true); standalone.pause(); state.lastResult = null; return refresh();
+        case 'pause': stopReplay(); role('replayState').textContent = ''; state.speechRun++; if (['preparing','scheduled'].includes(state.speech)) state.speech = 'stopped'; { const voice = current(); if (voice.pause) voice.pause(); else voice.stop(true); } standalone.pause(); state.lastResult = null; return refresh();
         case 'review': current().review('last'); return refresh();
         case 'recent': current().review('microphone'); return refresh();
         case 'replay': return exclusive(async () => {
