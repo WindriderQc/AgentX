@@ -552,3 +552,20 @@ test('completed and failed playback receipts take precedence over earlier schedu
   row.voiceTimings.playbackOutcome = 'failed'; assert.equal(stageState('tts', row)[0], 'Failed');
   row.voiceTimings.interrupted = true; assert.equal(stageState('tts', row)[0], 'Interrupted');
 });
+
+
+test('explicit playback receipts distinguish user Pause, interruption and transport errors', () => {
+  const row = { channel: 'voice', interrupted: true, works: [], reviews: [],
+    voiceTimings: { interrupted: true, playbackOutcome: 'user_paused', stopReason: 'user_pause', clipStarted: 10 } };
+  assert.equal(stageState('tts', row)[0], 'Paused');
+  assert.match(stageState('tts', row)[1], /clip scheduled in browser/);
+  row.voiceTimings.playbackOutcome = 'playback_error'; row.voiceTimings.stopReason = 'request_error';
+  assert.equal(stageState('tts', row)[0], 'Failed');
+  assert.match(stageState('tts', row)[1], /Reply transport/);
+  assert.doesNotMatch(stageState('tts', row)[1], /Browser playback did not complete/);
+  row.voiceTimings.stopReason = 'playback_error';
+  assert.match(stageState('tts', row)[1], /Browser playback did not complete/);
+  row.voiceTimings.playbackOutcome = 'interrupted'; row.voiceTimings.clipEnded = 20;
+  assert.equal(stageState('tts', row)[0], 'Interrupted');
+  assert.match(stageState('tts', row)[1], /clip playback ended in browser/);
+});

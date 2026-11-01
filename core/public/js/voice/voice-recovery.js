@@ -25,7 +25,7 @@
       const c = this.c;
       if (!c.current(epoch)) return;
       if (event.state === 'waiting-silence') {
-        this.cancelRecognition(); this.captureWaiting = true;
+        this.c.repairs?.reset(); this.cancelRecognition(); this.captureWaiting = true;
         c.dropEarly(); c.speculative.reset(); c.cancelWakeAck(); c.wake.arm(); c.captureFollowup = false;
         const turn = c.activeTurn;
         if (turn && c.owns(turn)) {
@@ -44,7 +44,7 @@
       const c = this.c;
       if (typeof c.io.canResumeRecognition !== 'function' || !transient(error)
         || this.failures >= MAX_RECOGNITION_RECOVERIES) return false;
-      this.failures++; this.cancelRecognition();
+      this.c.repairs?.reset(); this.failures++; this.cancelRecognition();
       c.audio.quiet(); c.dropEarly(); c.speculative.reset(); c.cancelWakeAck(); c.wake.arm(); c.captureFollowup = false;
       const pending = { epoch, audio: c.audio, timer: null };
       this.pending = pending;

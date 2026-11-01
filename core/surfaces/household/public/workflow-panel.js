@@ -271,14 +271,23 @@
         `${agents.join(', ')}${work?.attempt?.runId ? ` · run ${work.attempt.runId}` : ''}`]
         : row.speaker ? ['Observed', row.speaker] : ['Unknown', 'No delegation attested'];
     }
-    if (stage === 'tts') return voice.interrupted || row.interrupted ? ['Interrupted', 'Playback interrupted; Main work has its own receipt']
-      : voice.playbackOutcome === 'failed' ? ['Failed', 'Browser playback did not complete; full text remains available']
-        : voice.playbackOutcome === 'completed' ? ['Done', 'Browser playback finished; acoustic arrival is not measured']
-      : validMs(voice.firstSignalScheduled) ? ['Signal scheduled', `Nonzero audio frame scheduled: ${duration(voice.firstSignalScheduled)} · browser observation, not acoustic arrival`]
-        : validMs(voice.firstFrameScheduled) ? ['Frame scheduled', `Audio frame scheduled: ${duration(voice.firstFrameScheduled)} · silence may be included`]
-          : row.channel === 'text' && !validMs(voice.firstAudio) ? ['No voice', 'Written answer']
-      : validMs(voice.firstAudio) ? [voice.interrupted || row.interrupted ? 'Interrupted' : 'Playback requested', `Playback attempt: ${duration(voice.firstAudio)} after end of speech · sound not attested`]
-        : ['Unknown', 'No playback attempt kept'];
+    if (stage === 'tts') {
+      const clip = voice.clipEnded !== undefined ? ' · clip playback ended in browser'
+        : voice.clipStarted !== undefined ? ' · clip scheduled in browser' : '';
+      if (voice.playbackOutcome === 'user_paused') return ['Paused', 'Playback paused by the user' + clip];
+      if (voice.playbackOutcome === 'interrupted') return ['Interrupted', 'Playback interrupted; Main work has its own receipt' + clip];
+      if (voice.playbackOutcome === 'playback_error') return ['Failed',
+        (voice.stopReason === 'request_error' ? 'Reply transport did not complete; playback may have started'
+          : 'Browser playback did not complete; full text remains available') + clip];
+      if (voice.interrupted || row.interrupted) return ['Interrupted', 'Playback interrupted; Main work has its own receipt' + clip];
+      if (voice.playbackOutcome === 'failed') return ['Failed', 'Browser playback did not complete; full text remains available' + clip];
+      if (voice.playbackOutcome === 'completed') return ['Done', 'Browser playback finished; acoustic arrival is not measured' + clip];
+      if (validMs(voice.firstSignalScheduled)) return ['Signal scheduled', `Nonzero audio frame scheduled: ${duration(voice.firstSignalScheduled)} · browser observation, not acoustic arrival`];
+      if (validMs(voice.firstFrameScheduled)) return ['Frame scheduled', `Audio frame scheduled: ${duration(voice.firstFrameScheduled)} · silence may be included`];
+      if (row.channel === 'text' && !validMs(voice.firstAudio)) return ['No voice', 'Written answer'];
+      if (validMs(voice.firstAudio)) return ['Playback requested', `Playback attempt: ${duration(voice.firstAudio)} after end of speech · sound not attested`];
+      return ['Unknown', 'No playback attempt kept'];
+    }
     return ['Unknown', 'No data'];
   }
 

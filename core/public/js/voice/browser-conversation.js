@@ -1,6 +1,7 @@
 /* Browser audio transport. Persona and conversation state remain server-owned. */
 (function (root) {
   'use strict';
+  const Repair = (typeof module !== 'undefined' && module.exports ? require('./voice-repair') : root.AgentXVoiceRepair)?.VoiceRepair;
   const Recovery = (typeof module !== 'undefined' && module.exports ? require('./voice-recovery') : root.AgentXVoiceRecovery)?.VoiceRecovery;
   const speechLanguage = typeof module !== 'undefined' && module.exports ? require('./speech-language') : root.NestorSpeech;
   const spokenPresentation = typeof module !== 'undefined' && module.exports ? require('./spoken-presentation') : root.AgentXSpokenPresentation;
@@ -229,7 +230,7 @@
       this.turnPending = false; this.state = 'idle'; this.session = null; this.audio = null;
       this.activeTurn = null;
       this.wake = new WakeWindow(io.now);
-      this.wakeAck = null; this.recovery = Recovery ? new Recovery(this) : null;
+      this.wakeAck = null; this.repairs = this.io.repairConversation && Repair ? new Repair(this, isSpokenEcho) : null; this.recovery = Recovery ? new Recovery(this) : null;
       this.speculative = new SpeculativeRecognition((...args) => this.io.transcribeEarly(...args));
     }
     show(state, detail = '') { this.state = state; this.changed(state, detail); }
@@ -247,7 +248,7 @@
       }
       if (!['idle', 'paused', 'error'].includes(this.state)) return;
       if (!automatic) this.io.microphoneIntent?.(true);
-      this.recovery?.reset(); this.startSelection = selection;
+      this.repairs?.reset(); this.recovery?.reset(); this.startSelection = selection;
       const epoch = ++this.epoch;
       this.abort = new AbortController();
       this.show('starting');
@@ -317,6 +318,7 @@
       this.show(this.recovery?.captureWaiting ? 'recovering' : 'listening', this.recovery?.captureWaiting ? this.recovery.captureMessage() : detail);
       this.captureFollowup = this.wake.active();
       this.audio.listen((blob, capture) => this.exchange(blob, epoch, capture), () => {
+        this.repairs?.speech(epoch);
         this.warmRecognition();
         this.cancelWakeAck();
         this.captureFollowup = this.wake.active();
@@ -360,7 +362,7 @@
     // Background results use the same speech confirmation as an ordinary reply.
     async interject(reply, { onScheduled, readAloud = false, preserveLanguage = false } = {}) {
       const epoch = this.epoch;
-      const idle = () => this.current(epoch) && this.state === 'listening' && !this.activeTurn && !this.turnPending
+      const idle = () => !this.repairs?.pending && !this.repairs?.carry && this.current(epoch) && this.state === 'listening' && !this.activeTurn && !this.turnPending
         && (!this.selection?.wakeWord || this.wake.active());
       if (!reply?.text || !this.audio || !idle()) return false;
       const lifetimeSignal = this.abort.signal;
@@ -417,6 +419,7 @@
       if (turn.monitoring || !this.audio.canInterrupt || this.selection.interruption === false || !turn.local && !this.io.interrupt) return;
       turn.monitoring = true;
       this.audio.listen((blob, capture) => this.exchange(blob, turn.epoch, capture), () => {
+        this.repairs?.speech(turn.epoch);
         // A Stop or speaker echo must not launch GPU work before the bounded
         // control detector has heard the complete utterance.
         this.captureFollowup = true;
@@ -476,6 +479,7 @@
     // surface lets continue in the background (a team member's turn).
     interrupt(turn = this.activeTurn, { stop = false } = {}) {
       if (!turn || !this.owns(turn)) return;
+      turn.timeline?.finish('interrupted', stop ? 'spoken_stop' : 'barge_in');
       turn.interrupted = true;
       turn.speech.abort(); // Stop sound now; keep the microphone and session.
       this.audio.resumePlayback?.(); // Release the held clock after cancelling its sources.
@@ -574,6 +578,7 @@
         }
         if (!this.current(epoch)) return;
         if (stopControl || isStopControl(text) || local) {
+          this.repairs?.reset();
           // A confirmed stop is a local control in every listening phase,
           // before wake acknowledgement. Never start a model turn to say
           // speech has stopped. A correction/question still runs below.
@@ -592,9 +597,10 @@
           }
         }
         if (!text.trim()) { this.activeTurn = null; this.turnPending = false; this.listen(epoch); return; }
+        if (this.repairs) { text = await this.repairs.collect(text, turn, epoch, previous?.spoken); if (!text || !this.current(epoch)) return; }
         await this.respond(turn, text, epoch, result?.detectedLanguage, { preferredLanguage: recognitionLanguage });
       } catch (error) {
-        if (!turn.interrupted && turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('failed');
+        if (!turn.interrupted && turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('playback_error', 'request_error');
         if (!turn.interrupted && this.current(epoch)) {
           if (!transcribed) this.audio.recordTranscription?.(excerptId, 'failed');
           if (!transcribed && previous?.candidate && this.owns(previous)) {
@@ -627,7 +633,7 @@
       this.activeTurn = turn;
       this.io.message('user', text, false, null, attachments);
       this.show('thinking'); this.turnPending = true;
-      let pending = '', streamed = false, firstChunk = true, speechError = null, playback = Promise.resolve();
+      let pending = '', streamed = false, firstChunk = true, speechError = null, speechFailure = 'synthesis_error', playback = Promise.resolve();
       let synthesis = Promise.resolve(), prefetchSlot = Promise.resolve();
       let spokenLanguage = speechLanguage.turnSpeechLanguage(text, detectedLanguage, preferredLanguage);
       const readAloud = spokenPresentation.readingRequested(text);
@@ -707,7 +713,7 @@
             this.show('speaking');
             await this.audio.play(bytes, turn.speech.signal, false, null, callbacks);
           }
-        }).catch(error => { if (!turn.interrupted) speechError = error; });
+        }).catch(error => { if (!turn.interrupted) { speechError = error; speechFailure = 'playback_error'; } });
         prefetchSlot = previousPlayback;
         return true;
       };
@@ -775,22 +781,21 @@
       await this.awaitCandidate(turn);
       if (!this.owns(turn)) return;
       this.turnPending = false;
+      if (reply.sound) turn.timeline?.planClip(reply.sound.id);
       this.io.message('assistant', reply.text, false, reply.sound);
       // An unstreamed reply names its own language; a chosen preference still wins.
       if (!streamed && reply.language && !speechLanguage.explicitSpeechLanguage(this.selection.language)) spokenLanguage = reply.language;
       dropHolding();
-      speak(streamed ? pending : spokenPresentation.ordinarySpeech(reply.text, { language: spokenLanguage,
+      const soundFirst = reply.sound && reply.soundIntroduction && typeof reply.afterSoundText === 'string';
+      speak(soundFirst ? reply.soundIntroduction : streamed ? pending : spokenPresentation.ordinarySpeech(reply.text, { language: spokenLanguage,
         readAloud, preserveSafety: reply.preserveSafety === true }));
       await playback;
-      if (speechError) { turn.timeline?.finish('failed'); throw speechError; }
+      if (speechError) { turn.timeline?.finish('playback_error', speechFailure); throw speechError; }
       if (!this.owns(turn)) return;
-      if (reply.sound) {
-        this.show('preparing');
-        const bytes = await recording(reply.sound, turn.speech.signal);
-        await this.awaitCandidate(turn);
-        if (!this.owns(turn)) return;
-        this.monitor(turn); this.show('speaking');
-        await this.audio.play(bytes, turn.speech.signal, false, reply.sound.gain);
+      if (reply.sound) await this.playClip(turn, reply.sound);
+      if (soundFirst && this.owns(turn)) {
+        speak(reply.afterSoundText); await playback;
+        if (speechError) { turn.timeline?.finish('playback_error', speechFailure); throw speechError; }
       }
       await this.audio.settle?.(turn.speech.signal);
       if (!this.owns(turn)) return;
@@ -799,6 +804,16 @@
       this.activeTurn = null;
       this.listen(epoch);
     }
+    async playClip(turn, sound) {
+      try {
+        this.show('preparing');
+        const bytes = await recording(sound, turn.speech.signal);
+        await this.awaitCandidate(turn); if (!this.owns(turn)) return;
+        this.monitor(turn); this.show('speaking');
+        await this.audio.play(bytes, turn.speech.signal, false, sound.gain, { onScheduled: () => { if (this.owns(turn)) turn.timeline?.mark('clipStarted'); } });
+        if (this.owns(turn)) turn.timeline?.completeClip();
+      } catch (error) { turn.timeline?.finish('playback_error', 'clip_error'); throw error; }
+    }
     // A message typed while the voice conversation waits is the same turn as a
     // spoken one: Nestor answers on screen and aloud, then listens again.
     canType() { return ['listening', 'recovering'].includes(this.state) && !this.activeTurn && !this.turnPending && Boolean(this.session && this.audio); }
@@ -806,7 +821,7 @@
       const epoch = this.epoch;
       text = String(text || '').trim();
       if (!text || !this.canType() || !this.current(epoch)) return false;
-      this.cancelWakeAck(); this.recovery?.userInput();
+      this.cancelWakeAck(); this.repairs?.reset(); this.recovery?.userInput();
       this.audio.quiet();
       const turn = { epoch, id: root.crypto.randomUUID(), request: new AbortController(), speech: new AbortController(), interrupted: false };
       const lifetimeSignal = this.abort.signal;
@@ -826,7 +841,7 @@
     review(source = 'microphone') {
       if (!['listening', 'hearing', 'reviewing'].includes(this.state) || this.activeTurn || this.turnPending) return false;
       if (!this.audio?.freezeReview(source)) return false;
-      this.dropEarly(); this.speculative.reset(); this.recovery?.userInput();
+      this.dropEarly(); this.speculative.reset(); this.repairs?.reset(); this.recovery?.userInput();
       this.reviewSpeech?.abort(); this.audio.quiet();
       this.show('reviewing');
       return true;
@@ -842,10 +857,11 @@
     // Pausing, a hidden page or a failure keeps the session, so resuming continues the
     // conversation the page still shows. Only an explicit end (or a new/other conversation)
     // forgets it; a forgotten session made the next start silently open an empty one.
-    pause() { try { this.io.microphoneIntent?.(false); } finally { this.stop(true); } }
+    pause() { try { this.io.microphoneIntent?.(false); } finally { this.stop(true, '', { reason: 'user_pause' }); } }
     retryRecognition() { this.recovery?.retry(); }
-    stop(paused = false, detail = '', { forget = !paused } = {}) {
-      this.recovery?.reset();
+    stop(paused = false, detail = '', { forget = !paused, reason = paused ? 'suspended' : 'session_ended' } = {}) {
+      this.activeTurn?.timeline?.finish(reason === 'user_pause' ? 'user_paused' : 'interrupted', reason);
+      this.repairs?.reset(); this.recovery?.reset();
       if (forget) this.session = null;
       this.turnPending = false;
       this.cancelWakeAck();
@@ -858,6 +874,7 @@
     }
     fail(error, epoch) {
       if (!this.current(epoch)) return;
+      this.activeTurn?.timeline?.finish('playback_error', error.code === 'VOICE_DEVICE_DISCONNECTED' ? 'device_disconnected' : 'request_error');
       this.stop(false, '', { forget: false });
       this.show('error', this.io.recoverCapture && this.recovery ? this.recovery.failureMessage(error) : error.message || 'Voice connection failed. Start again when ready.');
     }

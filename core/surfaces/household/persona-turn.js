@@ -14,6 +14,8 @@ const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
 const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
 const { familyToolset } = require('./family-tools');
+const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('./family-repair-context');
+const { familyIntroduction, soundOnlyRequest } = require('./sound-library');
 const { mathTurnFor, mathPictureContext } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels;
@@ -197,12 +199,16 @@ function createPersonaTurnHandler({
       const workshop = workshopContext(req.body?.workshop, session);
       const safety = assessSafety(userText, { adult: !pack.childSafe });
       const childBoundary = childBoundaryReply(pack, safety, userText), mathTurn = pack.childSafe && !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathTurnFor(userText, preferredSpeechLanguage) : null;
-      let replyText, sceneProposal = null, display = [];
+      let replyText, afterSoundText = '', sceneProposal = null, display = [];
       // Only browser child-safe turns offer clips, and never over a safety
       // escalation or boundary reply. Native VoiX owns its own playback and does
       // not consume this browser sound payload, so it must not invite a child to
       // listen and then produce silence.
-      let sound = null;
+      const selectedFamilySound = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !safety.deterministicEscalation && !childBoundary && !mathTurn
+        && (!requiredSession || requiredSession.browser === true) ? sounds.select(userText) : null;
+      const localSound = selectedFamilySound && soundOnlyRequest(userText, selectedFamilySound) ? selectedFamilySound : null;
+      const separateSoundReply = Boolean(selectedFamilySound && !localSound);
+      let sound = selectedFamilySound;
       // Set when the turn addresses another team member (#41): who answers, and with which voice.
       let member = null, memberPersona = null, speaker = null, consultRequest = null;
       const serverPhases = {}; // where this turn's server time goes (turn-phases.js)
@@ -228,6 +234,9 @@ function createPersonaTurnHandler({
         replyText = escalationReply(pack, safety);
       } else if (childBoundary || mathTurn) { // #131: the picture first, then Nestor's exact answer without waiting for inference.
         replyText = childBoundary || mathTurn.reply; if (mathTurn) event('scene', { scene: mathTurn.scene });
+      } else if (localSound) {
+        replyText = familyIntroduction(localSound, preferredSpeechLanguage);
+        knowledge.status = 'not-required-local-sound';
       } else {
         // Scope chooses context and permissions. The same executor handles every
         // pack; its selected backend stays fixed for this conversation.
@@ -258,16 +267,17 @@ function createPersonaTurnHandler({
           event('status', { phase: 'activity', activity: { kind: 'member_addressed', agentId: member.agentId } });
         }
         if (backend === 'openclaw') await requireNativeAgent(agentIdFor(turnSession));
-        let history = [], interruptedContext = '', mathContext = '';
+        let history = [], interruptedContext = '', mathContext = '', repairContext = '';
         const recoverInterrupted = backend === 'openclaw' && !member && personalVoice(session, 'voice');
         const recoverMath = pack.childSafe && !isLlmX;
         if (features.historyContext !== false && (recoverMath || backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore || recoverInterrupted)) {
           // Core inference reads a block window, so its history start (and the cached prefix) moves rarely.
           try {
-            const rows = (await loadSessionAuditRows(conversations, session, pack)).filter(row => !entry.workId || row.traceId !== clientTurnId);
+            const rows = (await loadSessionAuditRows(conversations, session, pack, pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? { limit: LOOKBACK_TURNS } : {})).filter(row => !entry.workId || row.traceId !== clientTurnId);
             history = sessionHistoryMessages(rows, pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {});
             if (recoverInterrupted) interruptedContext = interruptedRequestContext(rows);
             if (recoverMath) mathContext = mathPictureContext(rows);
+            if (pack.id === VOIX_FAMILY_PACK_ID && !isLlmX) repairContext = familyRepairContext(rows, userText);
           }
           catch { return fail(res, 503, 'Conversation history is unavailable; no out-of-context answer was generated.', 'VOICE_PERSONA_HISTORY_UNAVAILABLE'); }
         }
@@ -303,7 +313,7 @@ function createPersonaTurnHandler({
         sound = (pack.childSafe ? !requiredSession || requiredSession.browser === true : browserSoundPlayback) ? sounds.select(userText) : null;
         const preselected = Boolean(sound);
         const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores, family.plants].filter(Boolean).join('\n\n'),
-          modeId: session.modeId, sound, latestUserText: userText,
+          modeId: session.modeId, sound: separateSoundReply ? null : sound, latestUserText: userText,
           speechLanguage: preferredSpeechLanguage };
         let lastProposal = null, previousBrowserOutput = null;
         const nativeBrowserReply = sceneEnabled && backend === 'openclaw';
@@ -336,7 +346,7 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext, mathContext,
+        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
         const screen = !isLlmX && !consult ? require('./screen-context') : null;
         entry.presentationContext = screen?.presentationEvidence(req.body?.screen, pagesFor(pack));
@@ -357,7 +367,7 @@ function createPersonaTurnHandler({
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const acceptedTaskWork = entry.workId ? await conversationWorks.taskAcceptance?.(entry.workId) : null;
         const acceptedNativeWork = entry.workId ? await conversationWorks.nativeAcceptance?.(entry.workId) : null;
-        const currentDirective = [turnDirective(context), acceptedTaskWork
+        const currentDirective = [turnDirective(context), separateSoundReply ? 'A catalog sound is selected separately. The surface introduces and plays it before the rest of the answer. Answer all remaining parts of the current request; omit sound introductions, claims about making sounds and written sound effects. Do not recite these delivery instructions.' : '', repairContext ? familyRepairDirective : '', acceptedTaskWork
           ? 'Core has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
             + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch, task-list call or agent discovery is needed. Acceptance is not task data or task completion.'
           : '', acceptedNativeWork?.mode === 'native'
@@ -392,7 +402,7 @@ function createPersonaTurnHandler({
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: true, pageCatalog: pagesFor(pack),
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
-          onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded) event('delta', { delta }); },
+          onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {
             entry.companion?.explicit();
@@ -491,6 +501,7 @@ function createPersonaTurnHandler({
         try { holdState = await openHold.touch({ warm: false }); } catch { /* keep the pre-turn status */ }
       }
       if (!replyText) replyText = 'Je n’ai pas réussi à préparer une réponse utile.';
+      if (separateSoundReply) { afterSoundText = replyText; replyText = familyIntroduction(sound, preferredSpeechLanguage) + ' ' + replyText; }
       const traceId = entry.workId ? clientTurnId : crypto.randomUUID();
       const audit = await conversations[entry.workId ? 'settleTurn' : 'recordTurn']({
         traceId,
@@ -536,7 +547,7 @@ function createPersonaTurnHandler({
         if (routeTier === 'deterministic') await conversationWorks.handled(entry.workId);
         await conversationWorks.guardianSettled(entry.workId, 'completed', metadata.guardianDisposition);
       }
-      if (!entry.ephemeral && !entry.workId && !isLlmX && session.backend !== 'hermes' && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
+      if (!localSound && !entry.ephemeral && !entry.workId && !isLlmX && session.backend !== 'hermes' && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
       entry.replyText = replyText;
       // The conversation's agent hears about a member's answer once, on its next turn.
       if (member) await conversations.updateSession({ sessionId: session.sessionId },
@@ -574,10 +585,10 @@ function createPersonaTurnHandler({
         // The surface reads this aloud, so it is told which voice to use rather
         // than re-deriving it from the question and disagreeing with the text.
         reply: { text: req.body?.channel === 'voice' ? speechText(replyText) : replyText, language: spokenReplyLanguage(replyText, userText), speaker: audit.speaker,
-          speech: audit.replySpeech },
+          speech: audit.replySpeech, ...(separateSoundReply ? { soundIntroduction: familyIntroduction(sound, preferredSpeechLanguage), afterSoundText } : {}) },
         // Present only when a clip was selected; the browser may offer playback
         // once speech finishes, but this response is not a playback receipt.
-        sound: sound ? { ...sound, play: 'after-reply' } : null,
+        sound: sound ? { ...sound, play: separateSoundReply ? 'after-introduction' : 'after-reply' } : null,
         safety,
         model: { model: metadata.model || '', hostKey: metadata.hostKey || '' },
         routing: {
