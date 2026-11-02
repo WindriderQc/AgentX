@@ -306,9 +306,22 @@ Terminal and uncertain outcomes enter the existing Core alert inbox with stable
 IDs. Archive writes the alert before removing the request. Acknowledgment survives
 restart/re-observation; stale-incident cleanup does not expire these results.
 An eventual terminal receipt resolves its earlier uncertain notice. The alert
-and Nestor notification reads prove persistence, not external delivery. Existing
-instance delivery adapters keep their own rules; this feature creates no new
-Telegram/email routine.
+and Nestor notification reads prove persistence, not external delivery.
+Failures and missed windows before dispatch request the `telegram` channel;
+the installed Telegram adapter owns actual delivery, its budget and quiet hours.
+Completed work and ordinary cancellations stay local. Existing alerts are not
+retrospectively enabled for Telegram.
+
+The observer reports an unstarted requested/reserved job when its `startBefore`
+or reservation end passes, including planning proposals without an executor.
+This observation changes no queue state, admission or execution authority. It
+uses one durable alert ID per request and missed deadline; repeated sweeps,
+archive and acknowledgment do not create duplicates. A cancellation after the
+deadline retains `window_expired_before_start` and that exact deadline, so a
+consumer's expiry cleanup cannot hide the event. A timely cancellation stays
+silent even when observed after the former deadline; legacy cancellations with
+no recorded expiry are not guessed to be failures. Dispatching, running and
+uncertain requests never become unstarted-expiry alerts.
 
 ## Custom coding work
 
