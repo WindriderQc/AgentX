@@ -114,7 +114,8 @@
     // The mask's receipt for the current picture and the recorded turn it belongs to (#131);
     // sent once both are known, in whichever order they arrive.
     let pendingReceipt = null, recordedTurn = null, heldScene = null, sceneTimer = null;
-    let face = null, mode = readMode(space), disposed = false, view = 'plein', shown = false, pagePresented = false;
+    let face = null, lastFacePresence = null, lastOrbLevel = null;
+    let mode = readMode(space), disposed = false, view = 'plein', shown = false, pagePresented = false;
     let state = 'idle', wasAsleep = false, hostBusy = false, toolPulses = 0, tint = '#52cfc5', sample = null;
     const meter = createTokenMeter();
     let resolveReady, readySettled = false;
@@ -210,9 +211,13 @@
       const asleep = ['listening', 'hearing'].includes(state) && !!sample?.asleep?.();
       if (asleep && !wasAsleep) sceneEvent('sleep');
       wasAsleep = asleep;
-      if (face) face.presence = value;
-      orb.dataset.phase = value.phase;
-      orb.style.setProperty('--avatar-level', Math.min(1, value.level * (value.phase === 'speaking' ? 8 : 10)).toFixed(3));
+      // The face keeps animating on its own; an identical host sample adds no signal.
+      if (face && (!lastFacePresence || Object.keys(value).some(key => value[key] !== lastFacePresence[key]))) {
+        face.presence = value; lastFacePresence = value;
+      }
+      if (orb.dataset.phase !== value.phase) orb.dataset.phase = value.phase;
+      const level = Math.min(1, value.level * (value.phase === 'speaking' ? 8 : 10)).toFixed(3);
+      if (lastOrbLevel !== level) { orb.style.setProperty('--avatar-level', level); lastOrbLevel = level; }
     }, 50);
 
     const onPresence = event => {
