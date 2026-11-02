@@ -24,7 +24,7 @@ const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
 const teamAddress = require('./team-address');
 const { serverTimingsOf } = require('./turn-phases');
-const { turnDirective } = require('./persona-prompt');
+const { turnDirective, localTimeContext } = require('./persona-prompt');
 const { interruptedRequestContext } = require('./persona-records');
 const dedicatedGuardian = require('./dedicated-guardian');
 const { profileUnavailable } = require('../../src/services/conversationWorks/performance');
@@ -346,7 +346,7 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), interruptedContext, mathContext, repairContext,
+        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), localTimeContext(), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
         const screen = !isLlmX && !consult ? require('./screen-context') : null;
         entry.presentationContext = screen?.presentationEvidence(req.body?.screen, pagesFor(pack));

@@ -70,15 +70,29 @@ body.avatar-docked .conversation-presence { display: none; }
 .avatar-dock[data-view=plein] .avatar-dock-bar, .avatar-dock[data-view=montre] .avatar-dock-bar { display: none; }
 .avatar-dock[data-view=menu] .avatar-dock-bar { opacity: 1; }
 .avatar-scene-bar { position: fixed; z-index: 115; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
-  display: grid; justify-items: center; gap: 10px; width: max-content; max-width: calc(100vw - 32px); pointer-events: none; }
-.avatar-scene-bar[hidden], .avatar-scene-bar [hidden] { display: none; }
+  display: grid; justify-items: center; gap: 10px; width: min(680px, calc(100vw - 32px)); pointer-events: none; }
+.avatar-scene-bar[hidden], .avatar-scene-bar [hidden], .avatar-scene-clock[hidden] { display: none; }
 .avatar-scene-status { margin: 0; color: var(--soft); text-align: center; text-wrap: balance; text-shadow: 0 1px 8px #060d14; }
-body[data-avatar-view=montre] .avatar-scene-status { display: none; }
-.avatar-scene-actions { display: flex; gap: 6px; padding: 6px; border: 1px solid var(--line); border-radius: 999px; background: #0b1620d9; backdrop-filter: blur(8px); pointer-events: auto; opacity: .6; transition: opacity .2s; }
+body[data-avatar-view=montre] :is(.avatar-scene-status, .avatar-scene-reply) { display: none; }
+/* His last reply, under him: scrolls inside itself, never over the line to type. */
+.avatar-scene-reply { box-sizing: border-box; width: 100%; max-height: 28dvh; margin: 0; padding: 10px 16px; overflow-y: auto; overscroll-behavior: contain;
+  border-radius: 16px; background: #0b1620b3; color: var(--text); line-height: 1.45; white-space: pre-wrap; text-align: center; pointer-events: auto; }
+.avatar-scene-actions { box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px; border: 1px solid var(--line); border-radius: 999px;
+  background: #0b1620d9; backdrop-filter: blur(8px); pointer-events: auto; opacity: .75; transition: opacity .2s; }
 .avatar-scene-actions:hover, .avatar-scene-actions:focus-within { opacity: 1; }
-.avatar-scene-actions button { min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: none; color: var(--text); font: inherit; cursor: pointer; }
+.avatar-scene-input { display: flex; flex: 1; min-width: 0; gap: 6px; margin: 0; }
+.avatar-scene-input input { flex: 1; min-width: 0; min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: none; color: var(--text); font: inherit; font-size: 16px; }
+.avatar-scene-input input::placeholder { color: var(--soft); }
+.avatar-scene-input input:focus-visible { outline: 2px solid var(--avatar-tint, #52cfc5); outline-offset: -2px; }
+.avatar-scene-actions button { flex: none; min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: none; color: var(--text); font: inherit; cursor: pointer; }
 .avatar-scene-actions button:hover, .avatar-scene-actions button:focus-visible { background: #1b2f3d; }
-body[data-avatar-view=plein] { overflow: hidden; }
+.avatar-scene-input button { background: #1b2f3d; }
+/* The household clock above Nestor (the camera notice keeps the top left corner). */
+.avatar-scene-clock { position: fixed; z-index: 115; top: max(18px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  display: grid; justify-items: center; color: var(--text); text-shadow: 0 1px 10px #060d14; pointer-events: none; }
+.avatar-scene-time { font-size: clamp(40px, 8vw, 88px); font-weight: 200; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+.avatar-scene-date { margin-top: 4px; color: var(--soft); font-size: clamp(14px, 1.8vw, 20px); }
+.avatar-scene-date::first-letter { text-transform: uppercase; }body[data-avatar-view=plein] { overflow: hidden; }
 body[data-avatar-view=montre] :is(#nav-container, .conversation-heading, .conversation-toolbar, .conversation-team, .conversation-history, .conversation-recap, .conversation-settings),
 body[data-avatar-view=montre] .conversation-cockpit > :not(.conversation-dialogue),
 body[data-avatar-view=montre] .conversation-dialogue > :not(.conversation-board) { display: none; }

@@ -6,6 +6,7 @@
 
 const { capturedPrompt } = require('./family-context');
 const { scoreSpeechLanguage } = require('./public/speech-language');
+const { familyTimeZone } = require('../../src/domains/household/family');
 
 function cleanText(value, max = 4000) {
   return String(value || '').trim().slice(0, max);
@@ -126,6 +127,15 @@ function turnDirective(context = {}) {
     soundBlock(context.sound, language).trim()].filter(Boolean).join('\n\n');
 }
 
+// The household's clock for this turn. Without it Nestor told a parent he could not
+// know what time it was. It travels with the turn's context, never in the stable
+// instructions, so the prompt cache keeps them.
+function localTimeContext(now = new Date(), timeZone = familyTimeZone()) {
+  const when = new Intl.DateTimeFormat('en-CA', { timeZone, weekday: 'long', year: 'numeric', month: 'long',
+    day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
+  return `\n\nCurrent local time in the household: ${when} (${timeZone}).`;
+}
+
 // savedNow is set only after the write actually succeeded, so a failed save
 // leaves the persona unable to claim one -- the failure mode stays honest.
 // The pack, memory and mode contracts are the same on every turn of a
@@ -227,6 +237,7 @@ module.exports = {
   soundBlock,
   systemPromptFor,
   turnDirective,
+  localTimeContext,
   SAFETY_RULES,
   assessSafety,
   escalationReply,

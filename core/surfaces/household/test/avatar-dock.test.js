@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { phaseFor, createTokenMeter, nextView, sceneCaption, MODULE_URL, MODES, DEFAULT_MODE } = require('../public/avatar-dock');
+const { phaseFor, createTokenMeter, nextView, sceneCaption, clockText, MODULE_URL, MODES, DEFAULT_MODE } = require('../public/avatar-dock');
 
 test('conversation states map to the face phases the embed understands', () => {
   assert.equal(phaseFor('paused'), 'idle');
@@ -66,6 +66,17 @@ test('the conversation page feeds the dock and the face module is same-origin', 
   assert.match(page, /readInputLevel/);
   assert.equal(MODULE_URL.startsWith('/api/'), true);
   assert.ok(html.indexOf('avatar-dock.js') < html.indexOf('conversation-page.js'), 'the dock loads before the page that mounts it');
+});
+
+test('the full-screen scene shows a 24-hour clock and sends typed lines through the page composer', () => {
+  const at = new Date(2026, 10, 1, 14, 5);
+  assert.deepEqual(clockText(at, 'en-CA'), { time: '14:05', date: 'Sunday, November 1' });
+  assert.equal(clockText(new Date(2026, 10, 1, 0, 7), 'en-CA').time, '00:07');
+  const page = fs.readFileSync(path.join(__dirname, '../public/conversation-page.js'), 'utf8');
+  const dock = fs.readFileSync(path.join(__dirname, '../public/avatar-dock.js'), 'utf8');
+  assert.match(page, /onSend: text => \{ el\('conversationMessage'\)\.value = text; composer\.sync\(\); el\('conversationText'\)\.requestSubmit\(\);/);
+  assert.match(page, /AvatarDock\?\.current\?\.reply\?\./, 'his last reply is written under him');
+  assert.doesNotMatch(dock, /data-scene="menu"/, 'a tap anywhere on Nestor already opens the conversation');
 });
 
 test('without the 3D face the picture is said in words', () => {
