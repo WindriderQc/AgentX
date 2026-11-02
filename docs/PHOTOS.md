@@ -177,6 +177,14 @@ Active conversation work, a focused editor or embedded page, open settings or a 
 the frame from taking focus. Background tabs stop showing photos; leaving the
 conversation removes the component. A failed API/image leaves Nestor accessible.
 
+While a photo is visible, the covered avatar and scene controls leave layout so
+the existing GraphysX visibility observer suspends its 3D rendering. The dock
+also stops sampling audio levels and updating the concealed face/orb. Returning
+to Nestor resumes the same face and layout; photo rotation does not reload it.
+The dock skips these visual updates in hidden tabs and when its face is hidden
+with the existing layout control as well. Speech and wake-word capture keep
+their existing lifecycle.
+
 Existing speech capture and its `WakeWindow` grammar supply voice return:
 **Hey Nestor** (including existing Eille variants) returns locally without a
 model turn. Addressed close/back/shrink commands also work; ordinary requests
@@ -210,6 +218,9 @@ outside the checkout and, if needed, `AGENTX_PLAYWRIGHT_MODULE` and
 `AGENTX_BROWSER_EXECUTABLE`. It uses no real photos, microphone or model.
 `nestorFamilyPhotosJourney.cjs` checks the real family controller, scoped local
 session, wake return and family diagnostics with synthetic audio and photos.
+`nestorIdlePhotosRenderingJourney.cjs` checks actual browser intersections and
+dock sampling while photos cover all four avatar layouts, then verifies the same
+face resumes. Its renderer is a counter; no WebGL or live media is started.
 
 ## Not covered
 

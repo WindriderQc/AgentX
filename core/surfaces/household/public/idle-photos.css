@@ -1,5 +1,8 @@
 .nestor-idle-photos { position: fixed; inset: 0; z-index: 1000; background: #05080c; }
 .nestor-idle-photos[hidden] { display: none; }
+/* An opaque overlay does not make the face non-intersecting. Removing its layout
+   lets GraphysX's existing visibility observer suspend the hidden 3D rendering. */
+body:has(.nestor-idle-photos:not([hidden])) :is(.avatar-dock, .avatar-scene-bar) { display: none; }
 .nestor-idle-photos > img { width: 100%; height: 100%; object-fit: contain; }
 .nestor-idle-photos > nav { position: absolute; inset: auto 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px; background: rgb(0 0 0 / .8); }
 .nestor-idle-photos > nav > p { flex-basis: 100%; margin: 0; text-align: center; font-size: .85rem; color: #d3e0e8; }
