@@ -292,31 +292,44 @@ l'instance, à approuver avant toute partie.
 
 ## L'onglet Île (Benchmark)
 
-Quatre sections, dans une seule entrée du menu de Benchmark :
+Une seule entrée du menu de Benchmark, dans cet ordre :
 
-- **Lancer une partie** : agent, harnais (Codex, DSH, Pi), durée, mémoire (continuer ou neuve) et
-  créneau (cette nuit, dès que possible ou sans créneau). Rien ne part : la
-  demande attend ton approbation, puis l'admission de Core (voir
-  « Déroulement » plus haut pour les commandes).
-- **Parties** : début avec son fuseau, durée, état (celui de la file de Core
-  d'abord) et deux boutons. Un clic sur la date ouvre le détail : agent et
-  mémoire, relances, reçu (empreinte et autorité de Core) et la fiche JSON.
-  L'agent pense toujours avec `agentx-primary` au travers de Core.
-  - **Voir** : la vue 3D de Clawblox en direct pendant la partie, ou sa
-    relecture ensuite, avec le panneau **Messages** qui déroule les pensées
-    et les commandes de l'agent. Benchmark demande au serveur `clawblox app`
-    de l'hôte d'exécution d'ouvrir l'enregistrement.
-  - **Mémoire** : « Personnalité » (`SOUL.md`), « Journal »
-    (`EPISODIC_MEMORY.jsonl`, en liste d'épisodes) et « Savoir »
-    (`SEMANTIC_MEMORY.md`), avec un choix parmi les parties du même agent.
-- **Vue 3D** et **Mémoire** restent cachées tant qu'aucune partie n'est
-  choisie.
+- **Mondes en direct** (en haut) : une carte par terrain qui a un service en
+  direct. Le visuel de la carte est le bouton « Regarder » ; la carte dit qui
+  joue, les demandes en attente et les parties à revoir, et offre « Revoir la
+  dernière partie ». Un monde dont l'identité ne se vérifie pas reste visible,
+  sans bouton actif. Si l'enregistrement d'un monde vérifié est suspendu
+  (quota atteint, par exemple), une alerte le dit au-dessus des cartes : le
+  direct marche, mais les nouvelles parties ne pourront pas être revues.
+- **Scène** : la vue 3D s'ouvre juste sous les cartes, en direct ou en
+  relecture. Le journal de l'agent et la mémoire s'affichent à côté de la
+  scène sur un écran large (1180 px et plus), dessous sur un téléphone.
+- **Nouvelle partie** : bouton en haut à droite, qui ouvre le formulaire
+  (terrain, agent, harnais Codex/DSH/Pi, durée, mémoire continuer ou neuve,
+  créneau cette nuit, dès que possible ou sans créneau). Une phrase relit le
+  choix avant l'inscription. Rien ne part : la demande attend ton approbation,
+  puis l'admission de Core (voir « Déroulement » plus haut pour les commandes).
+- **Parties** : filtre par terrain quand il y en a plusieurs, puis deux listes.
+  - **En cours et à venir** : les demandes identiques inscrites ensemble (une
+    campagne) tiennent sur une ligne, avec « Détails » pour chacune.
+  - **Parties jouées** : date avec son fuseau et terrain, agent, harnais et
+    durée, état (celui de la file de Core d'abord) et boutons, dix à la fois.
+    Un clic sur la date ouvre le détail : mémoire, relances, reçu (empreinte et
+    autorité de Core) et la fiche JSON. L'agent pense toujours avec
+    `agentx-primary` au travers de Core.
+  - **Direct** / **Revoir** : la vue 3D pendant la partie, ou sa relecture
+    ensuite, avec le journal des pensées et commandes de l'agent. Benchmark
+    demande au serveur de l'hôte d'exécution d'ouvrir l'enregistrement.
+  - **Mémoire** : « Savoir » (`SEMANTIC_MEMORY.md`), « Récits »
+    (`EPISODIC_MEMORY.md`), « Journal » (`EPISODIC_MEMORY.jsonl`, en liste
+    d'épisodes) et « Personnalité » (`SOUL.md`), avec un choix parmi les
+    parties du même agent.
 
 **Pensées en direct.** Pendant une partie, `island_runner.py status` renvoie
 les 40 dernières pensées, paroles et commandes de l'agent (`agentMessages`),
 lues dans la fin de sa session Codex, 600 caractères au plus chacune, les longues
 suites opaques remplacées par « … ». L'outil de file les transmet à Benchmark dans
-son rapport habituel (toutes les 30 s) ; l'onglet les affiche sous la vue en direct,
+son rapport habituel (toutes les 30 s) ; l'onglet les affiche à côté de la vue en direct,
 les plus récentes en haut, rafraîchies toutes les 15 s. C'est du texte produit par
 l'agent : toujours échappé, jamais exécuté, absent des reçus. Aucun port nouveau.
 

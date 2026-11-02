@@ -387,7 +387,7 @@ describe('island routes', () => {
 });
 
 describe('island page helpers', () => {
-  const page = loadBrowserModule('island/index.js', 'escapeHtml, when, clock, duration, stateLabel, runRowHtml, runDetailHtml, episodesHtml, thoughtsHtml, terrainLabel, worldOptionsHtml', { apiFetch: async () => ({}) });
+  const page = loadBrowserModule('island/index.js', 'escapeHtml, when, clock, duration, stateLabel, runRowHtml, runDetailHtml, episodesHtml, thoughtsHtml, terrainLabel, worldOptionsHtml, groupUpcoming, upcomingHtml, filterChipsHtml, launchSummary, recordingAlertText', { apiFetch: async () => ({}) });
 
   it('reuses the same pending launch after a lost response, double click and page reload', async () => {
     const stored = new Map();
@@ -486,7 +486,7 @@ describe('island page helpers', () => {
     expect(main).toContain('60 min');
     expect(main).toContain('data-replay');
     expect(main).not.toContain('data-live');
-    expect(main).toContain('>Voir<');
+    expect(main).toContain('>Revoir<');
     expect(main).toContain('>Mémoire<');
     expect(main).not.toContain('agentx-primary');
     expect(detail).toContain('hidden');
@@ -502,6 +502,48 @@ describe('island page helpers', () => {
     expect(page.stateLabel(run).key).toBe(state);
     expect(page.runRowHtml(run)).not.toContain('data-live');
     expect(page.runRowHtml(run)).toContain('data-replay');
+  });
+
+  it('groups a campaign of identical requests into one line and keeps others apart', () => {
+    const base = { agent: 'Eko', harness: 'codex', minutes: 180, memoryMode: 'continue', world: 'mesa', requestedAt: '2026-10-31T15:05:10Z', queue: { state: 'requested' } };
+    const runs = [1, 2, 3].map(n => ({ ...base, id: `r${n}`, requestedAt: `2026-10-31T15:05:1${n}Z` }))
+      .concat([{ ...base, id: 'other', world: 'living' }, { ...base, id: 'slot', queue: { state: 'reserved', reservation: { start: '2026-11-02T04:00:00Z' } } },
+        { ...base, id: 'done', queue: { state: 'completed' } }]);
+    const groups = page.groupUpcoming(runs);
+    expect(groups.map(group => group.runs.length)).toEqual([3, 1, 1]);
+    expect(groups[0].id).toBe('r1');
+    const worlds = [{ id: 'mesa', label: 'Me<sa' }, { id: 'living', label: 'Île vivante' }];
+    const html = page.upcomingHtml(groups, worlds, new Set(['r1']));
+    expect(html).toContain('3 demandes inscrites le');
+    expect(html).toContain('Me&lt;sa · Eko · Codex · 180 min chacune');
+    expect(html).toContain('Créneau le');
+    expect(html).not.toContain('Me<sa');
+    expect(html).toMatch(/id="island-group-r1" class="island-upcoming-detail">/);
+    expect(html).toMatch(/id="island-group-other" class="island-upcoming-detail" hidden>/);
+  });
+
+  it('offers a terrain filter only when runs span several terrains', () => {
+    const worlds = [{ id: 'mesa', label: 'Mesa' }, { id: 'living', label: '<Vivante>' }];
+    expect(page.filterChipsHtml([{ world: 'mesa' }, { world: 'mesa' }], worlds, 'all')).toBe('');
+    const chips = page.filterChipsHtml([{ world: 'mesa' }, { world: 'living' }], worlds, 'living');
+    expect(chips).toContain('data-filter="all" aria-pressed="false">Tous');
+    expect(chips).toContain('data-filter="living" aria-pressed="true">&lt;Vivante&gt;');
+  });
+
+  it('reads the launch form back as one sentence', () => {
+    const worlds = [{ id: 'living', label: 'Île vivante' }];
+    expect(page.launchSummary({ agent: 'Eko', minutes: '60', world: 'living', harness: 'pi', memory: 'fresh', when: 'tonight' }, worlds))
+      .toBe('Eko jouera 60 min sur Île vivante avec Pi, mémoire neuve, dans un créneau cette nuit.');
+    expect(page.launchSummary({ agent: '', minutes: 'x', world: 'gone', harness: 'codex', memory: 'continue', when: 'none' }, worlds))
+      .toBe('L’agent jouera — min sur gone avec Codex, mémoire continue, sans créneau réservé.');
+  });
+
+  it('warns once about suspended recording on verified live worlds only', () => {
+    const live = { available: true, selectedActive: true, recordingState: 'paused' };
+    expect(page.recordingAlertText([{ world: { label: 'Mesa' }, live }, { world: { label: 'Île vivante' }, live },
+      { world: { label: 'Autre' }, live: { ...live, selectedActive: false } }, { world: { label: 'Rec' }, live: { ...live, recordingState: 'recording' } }]))
+      .toBe('Enregistrement suspendu sur Mesa et Île vivante : le direct fonctionne, mais les nouvelles parties ne pourront pas être revues.');
+    expect(page.recordingAlertText([{ world: { label: 'Mesa' }, live: null }])).toBe('');
   });
 
   it('lists episodes and keeps unreadable lines visible', () => {

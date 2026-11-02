@@ -104,20 +104,100 @@ export function runDetailHtml(run, worlds) {
   return `<ul class="island-detail">${items.map(item => `<li>${item}</li>`).join('')}</ul>`;
 }
 
+function stateBadge(state) {
+  return `<span class="island-state island-state-${escapeHtml(state.key)}">${escapeHtml(state.text)}</span>`;
+}
+
+function runButtons(run, state) {
+  const id = escapeHtml(run.id);
+  const terminal = ['completed', 'failed', 'cancelled'].includes(state.key);
+  const view = run.liveView && !terminal ? `<button type="button" data-live="${escapeHtml(run.liveView)}" data-run="${id}" title="Vue en direct, avec le journal">Direct</button>`
+    : run.replayable ? `<button type="button" data-replay="${id}" title="Relecture de cette partie">Revoir</button>` : '';
+  const memory = run.hasMemory ? `<button type="button" data-memory="${id}">Mémoire</button>` : '';
+  return view + memory;
+}
+
+/** One played run: when and where, who and how long, its state, its buttons. */
 export function runRowHtml(run, worlds) {
   const state = stateLabel(run);
   const id = escapeHtml(run.id);
-  const terminal = ['completed', 'failed', 'cancelled'].includes(state.key);
-  const view = run.liveView && !terminal ? `<button type="button" data-live="${escapeHtml(run.liveView)}" data-run="${id}" title="Vue en direct, avec les pensées">Voir</button>`
-    : run.replayable ? `<button type="button" data-replay="${id}" title="Relecture de cette partie">Voir</button>` : '';
-  const memory = run.hasMemory ? `<button type="button" data-memory="${id}">Mémoire</button>` : '';
+  const who = [run.agent, HARNESS_LABELS[run.harness] || 'Codex', duration(run)].filter(Boolean).join(' · ');
   return `<tr>
-    <td><button type="button" class="island-open" data-detail="${id}" aria-expanded="false" aria-controls="island-detail-${id}">${escapeHtml(when(run.startedAt || run.queue?.reservation?.start || run.requestedAt, run.timeZone))}</button></td>
-    <td>${escapeHtml(duration(run))}${Array.isArray(worlds) && worlds.length > 1 ? `<span class="island-terrain">${escapeHtml(terrainLabel(run, worlds))}</span>` : ''}</td>
-    <td class="island-state-${escapeHtml(state.key)}">${escapeHtml(state.text)}</td>
-    <td class="island-actions">${view}${memory}</td>
+    <td><button type="button" class="island-open" data-detail="${id}" aria-expanded="false" aria-controls="island-detail-${id}">${escapeHtml(when(run.startedAt || run.queue?.reservation?.start || run.requestedAt, run.timeZone))}</button>${Array.isArray(worlds) && worlds.length > 1 ? `<span class="island-terrain">${escapeHtml(terrainLabel(run, worlds))}</span>` : ''}</td>
+    <td class="island-who">${escapeHtml(who)}</td>
+    <td>${stateBadge(state)}</td>
+    <td class="island-actions">${runButtons(run, state)}</td>
   </tr>
   <tr id="island-detail-${id}" class="island-detail-row" hidden><td colspan="4">${runDetailHtml(run, worlds)}</td></tr>`;
+}
+
+const UPCOMING = ['requested', 'reserved', 'dispatching', 'running', 'uncertain'];
+export const isUpcoming = run => UPCOMING.includes(stateLabel(run).key);
+
+/** Identical requests placed together (a campaign) become one line; everything else stays alone. */
+export function groupUpcoming(runs) {
+  const groups = [];
+  const byKey = new Map();
+  for (const run of (Array.isArray(runs) ? runs : []).filter(isUpcoming)) {
+    if (stateLabel(run).key !== 'requested') { groups.push({ id: run.id, runs: [run] }); continue; }
+    const key = [run.world || '', run.agent || '', run.harness || 'codex', run.minutes || '', run.memoryMode || '', String(run.requestedAt || '').slice(0, 16)].join('|');
+    const group = byKey.get(key);
+    if (group) group.runs.push(run);
+    else { const created = { id: run.id, runs: [run] }; byKey.set(key, created); groups.push(created); }
+  }
+  return groups;
+}
+
+function upcomingTitle(run, state, count) {
+  const tz = run.timeZone;
+  if (count > 1) return `${count} demandes inscrites le ${when(run.requestedAt, tz)}`;
+  if (state.key === 'running') return `Commencée le ${when(run.startedAt, tz)}`;
+  if (state.key === 'reserved' && run.queue?.reservation?.start) return `Créneau le ${when(run.queue.reservation.start, tz)}`;
+  return `Inscrite le ${when(run.requestedAt || run.startedAt, tz)}`;
+}
+
+export function upcomingHtml(groups, worlds, open = new Set()) {
+  return (Array.isArray(groups) ? groups : []).map(group => {
+    const run = group.runs[0];
+    const state = stateLabel(run);
+    const count = group.runs.length;
+    const id = escapeHtml(group.id);
+    const expanded = open.has(group.id);
+    const who = [terrainLabel(run, worlds), run.agent, HARNESS_LABELS[run.harness] || 'Codex',
+      run.minutes ? `${run.minutes} min${count > 1 ? ' chacune' : ''}` : ''].filter(Boolean).join(' · ');
+    const details = group.runs.map(entry => `<li>${runDetailHtml(entry, worlds)}</li>`).join('');
+    return `<li>
+      <div class="island-upcoming-main">${stateBadge(state)} <span class="island-upcoming-title">${escapeHtml(upcomingTitle(run, state, count))}</span>
+        <span class="island-upcoming-sub">${escapeHtml(who)}</span></div>
+      <div class="island-upcoming-actions">${count === 1 ? runButtons(run, state) : ''}<button type="button" data-group="${id}" aria-expanded="${expanded}" aria-controls="island-group-${id}">Détails</button></div>
+      <ul id="island-group-${id}" class="island-upcoming-detail"${expanded ? '' : ' hidden'}>${details}</ul>
+    </li>`;
+  }).join('');
+}
+
+/** One chip per terrain that has runs, plus "Tous"; none when there is nothing to choose. */
+export function filterChipsHtml(runs, worlds, selected) {
+  const ids = [...new Set((Array.isArray(runs) ? runs : []).map(run => run.world || 'mesa-island'))];
+  if (ids.length < 2) return '';
+  const chip = (id, label) => `<button type="button" data-filter="${escapeHtml(id)}" aria-pressed="${id === selected}">${escapeHtml(label)}</button>`;
+  return chip('all', 'Tous') + ids.map(id => chip(id, terrainLabel({ world: id }, worlds))).join('');
+}
+
+const WHEN_TEXT = { tonight: 'dans un créneau cette nuit', asap: 'dès que possible', none: 'sans créneau réservé' };
+/** The launch form read back as one sentence. Plain text: the caller sets textContent. */
+export function launchSummary(values, worlds) {
+  const terrain = (Array.isArray(worlds) ? worlds : []).find(world => world.id === values.world)?.label || values.world || 'le terrain choisi';
+  const minutes = Number(values.minutes);
+  return `${values.agent || 'L’agent'} jouera ${Number.isFinite(minutes) && minutes > 0 ? `${minutes} min` : '— min'} sur ${terrain} avec ${HARNESS_LABELS[values.harness] || values.harness || 'Codex'}, mémoire ${values.memory === 'fresh' ? 'neuve' : 'continue'}, ${WHEN_TEXT[values.when] || 'sans créneau réservé'}.`;
+}
+
+/** Recording stopped (the world's quota, for example): live still works, new runs cannot be replayed. */
+export function recordingAlertText(entries) {
+  const names = (Array.isArray(entries) ? entries : [])
+    .filter(({ live }) => live?.available && live.selectedActive === true && live.recordingState === 'paused').map(({ world }) => world.label);
+  if (!names.length) return '';
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} et ${names[names.length - 1]}` : names[0];
+  return `Enregistrement suspendu sur ${list} : le direct fonctionne, mais les nouvelles parties ne pourront pas être revues.`;
 }
 
 export function episodesHtml(text) {
@@ -148,23 +228,25 @@ export function isIslandMemoryRequest(event, frame, runId) {
   } catch { return false; }
 }
 
-function showFrame(src, worldLabel = '', runId = null) {
+function showFrame(src, worldLabel = '', runId = null, title = 'Scène en direct') {
   replayRead++;
   $('island-replay-status').textContent = '';
   src = explorerViewUrl(src, runId, location.origin);
   viewerRun = runId;
+  const heading = $('island-viewer-title');
+  if (heading) heading.textContent = title;
   $('island-viewer').hidden = false;
   $('island-viewer-memory').hidden = !runId;
   $('island-viewer-memory').dataset.memory = runId || '';
-  $('island-viewer-open').textContent = 'Ouvrir dans un nouvel onglet';
+  $('island-viewer-open').textContent = 'Ouvrir dans un onglet';
   $('island-frame').src = src;
   $('island-viewer-open').href = src;
   $('island-viewer-world').hidden = !worldLabel;
   $('island-viewer-world').textContent = worldLabel ? `Monde en direct : ${worldLabel}` : '';
   if (location.protocol === 'https:' && src.startsWith('http:')) {
-    $('island-viewer-open').textContent = 'Ouvrir dans un nouvel onglet (le navigateur bloque une vue http dans une page https)';
+    $('island-viewer-open').textContent = 'Ouvrir dans un onglet (le navigateur bloque une vue http dans une page https)';
   }
-  $('island-viewer').scrollIntoView({ behavior: 'smooth' });
+  $('island-viewer').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // "Pensées en direct": the run's latest entries, refreshed while it plays.
@@ -225,7 +307,7 @@ async function openMemory(id) {
   $('island-memory').hidden = false;
   $('island-memory-run').innerHTML = memory.runs.map(run => `<option value="${escapeHtml(run.id)}"${run.id === id ? ' selected' : ''}>${escapeHtml(when(run.startedAt || run.endedAt, run.timeZone))} · ${run.memoryMode === 'fresh' ? 'neuve' : 'continue'}</option>`).join('');
   showMemoryFile('SEMANTIC_MEMORY.md');
-  $('island-memory').scrollIntoView({ behavior: 'smooth' });
+  $('island-memory').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // The next run's terrain and the currently active world are separate choices.
@@ -236,7 +318,7 @@ let worldCardRead = 0;
 let latestRuns = [];
 let queueReadable = false;
 
-export function worldCardHtml(world, live, runs, queueRead) {
+export function worldCardHtml(world, live, runs, queueRead, watching = watchedTerrain) {
   const verified = live?.available && live.selectedActive === true;
   const playing = verified ? runs.filter(run => run.world === world.id && stateLabel(run).key === 'running'
     && run.worldView?.instanceId === live.instanceId) : [];
@@ -244,17 +326,21 @@ export function worldCardHtml(world, live, runs, queueRead) {
   const pending = runs.filter(run => run.world === world.id && ['requested', 'reserved'].includes(stateLabel(run).key)).length;
   const presence = !queueRead ? 'État des parties indisponible' : playing.length
     ? `${playing.map(run => run.agent || 'Agent').join(', ')} joue${playing.length > 1 ? 'nt' : ''} ici` : 'Aucune partie en cours';
-  const note = verified ? 'Le monde continue, même sans joueur.' : live?.available
+  const note = verified ? '' : live?.available
     ? `Ce service héberge ${live.activeWorld?.label || 'un autre terrain'}.` : 'Connexion indisponible. Nouvelle vérification automatique.';
+  const meta = [pending ? `${pending} demande${pending > 1 ? 's' : ''} en attente` : '',
+    archives.length ? `${archives.length} partie${archives.length > 1 ? 's' : ''} à revoir` : 'Aucune partie à revoir'].filter(Boolean).join(' · ');
   const living = /living|vivante/i.test(world.id + world.label);
-  return `<article class="island-world-card" data-world-card="${escapeHtml(world.id)}" data-online="${Boolean(verified)}">
-    <div class="island-world-art ${living ? 'is-living' : 'is-mesa'}" aria-hidden="true"></div>
-    <div class="island-world-card-body"><p class="island-world-badge">${verified ? 'En direct' : 'Indisponible'}</p>
-    <h3>${escapeHtml(world.label)}</h3><p class="island-world-presence">${escapeHtml(presence)}</p>
-    <p class="island-note">${escapeHtml(note)}</p>
-    <p class="island-world-meta">${archives.length} archive${archives.length > 1 ? 's' : ''}${pending ? ` · ${pending} demande${pending > 1 ? 's' : ''} en attente` : ''}${live?.recordingState === 'paused' ? ' · Enregistrement suspendu' : ''}</p>
-    <button type="button" class="island-watch" data-world-watch="${escapeHtml(world.id)}"${verified ? '' : ' disabled'}>Explorer ${living ? 'l’île vivante' : 'Mesa'}</button>
-    ${archives[0] ? `<button type="button" class="island-watch" data-world-archive="${escapeHtml(archives[0].id)}">Dernière archive</button>` : ''}
+  const onScreen = Boolean(verified) && watching === world.id;
+  const label = escapeHtml(world.label);
+  return `<article class="island-world-card" data-world-card="${escapeHtml(world.id)}" data-online="${Boolean(verified)}" data-watching="${onScreen}">
+    <button type="button" class="island-world-poster ${living ? 'is-living' : 'is-mesa'}" data-world-watch="${escapeHtml(world.id)}" aria-label="Regarder ${label} en direct"${verified ? '' : ' disabled'}><span class="island-play" aria-hidden="true">${onScreen ? '● À l’écran' : verified ? '▶ Regarder' : 'Hors ligne'}</span></button>
+    <div class="island-world-card-body">
+      <div class="island-world-top"><h3>${label}</h3><p class="island-world-badge">${verified ? 'En direct' : 'Indisponible'}</p></div>
+      <p class="island-world-presence${playing.length ? ' is-playing' : ''}">${escapeHtml(presence)}</p>
+      ${note ? `<p class="island-note">${escapeHtml(note)}</p>` : ''}
+      <p class="island-world-meta">${escapeHtml(meta)}</p>
+      ${archives[0] ? `<button type="button" class="island-btn" data-world-archive="${escapeHtml(archives[0].id)}">Revoir la dernière partie</button>` : ''}
     </div></article>`;
 }
 
@@ -263,12 +349,15 @@ async function refreshWorldCards() {
   if (!container) return;
   const read = ++worldCardRead;
   const remote = worlds.filter(world => world.liveUrl);
-  const cards = await Promise.all(remote.map(async world => {
+  const entries = await Promise.all(remote.map(async world => {
     let live;
     try { live = (await apiFetch(`${API}/worlds/${encodeURIComponent(world.id)}/live`)).data; } catch { /* Unavailable card stays visible. */ }
-    return worldCardHtml(world, live, latestRuns, queueReadable);
+    return { world, live };
   }));
+  const cards = entries.map(({ world, live }) => worldCardHtml(world, live, latestRuns, queueReadable));
   if (read === worldCardRead) {
+    const alert = $('island-alert');
+    if (alert) { alert.textContent = recordingAlertText(entries); alert.hidden = !alert.textContent; }
     const focus = container.contains(document.activeElement) ? document.activeElement.dataset : null;
     container.innerHTML = cards.join('');
     if (focus?.worldWatch) container.querySelector(`[data-world-watch="${CSS.escape(focus.worldWatch)}"]`)?.focus({ preventScroll: true });
@@ -285,7 +374,7 @@ async function watchWorld(id, button) {
     if (!live.available || !live.selectedActive || !live.liveUrl) throw new Error('Ce terrain n’est plus disponible.');
     watchedTerrain = id;
     const run = latestRuns.find(entry => entry.world === id && stateLabel(entry).key === 'running' && entry.worldView?.instanceId === live.instanceId);
-    showFrame(live.liveUrl, live.activeWorld.label, run?.id);
+    showFrame(live.liveUrl, live.activeWorld.label, run?.id, run ? 'Partie en direct' : 'Scène en direct');
     followThoughts(run?.id || null);
   } catch (err) { $('island-worlds-note').textContent = err.message; }
   finally { button.disabled = false; void refreshWorldCards(); }
@@ -345,10 +434,12 @@ async function refreshLiveWorld(open = false) {
   }
 }
 
+let refreshSummary = () => {};
 function showWorldChoice() {
   const select = $('island-world');
   const current = select.dataset.pendingWorld || select.value;
   if (worlds.length) select.innerHTML = worldOptionsHtml(worlds, current);
+  refreshSummary();
   void refreshLiveWorld();
 }
 
@@ -362,6 +453,92 @@ function toggleDetail(id) {
   if (row.hidden) openDetails.delete(id); else openDetails.add(id);
 }
 
+// Runs: what is playing or waiting, then what was played, filtered by terrain.
+const HISTORY_PAGE = 10;
+const openGroups = new Set();
+let runFilter = 'all';
+let historyLimit = HISTORY_PAGE;
+function setHtml(id, html) { const node = $(id); if (node) node.innerHTML = html; return node; }
+
+function renderRuns() {
+  const runs = Array.isArray(latestRuns) ? latestRuns : [];
+  const known = new Set(runs.map(run => run.world || 'mesa-island'));
+  if (runFilter !== 'all' && !known.has(runFilter)) runFilter = 'all';
+  const shown = runFilter === 'all' ? runs : runs.filter(run => (run.world || 'mesa-island') === runFilter);
+  setHtml('island-run-filter', filterChipsHtml(runs, worlds, runFilter));
+  const groups = groupUpcoming(shown);
+  const wrap = $('island-upcoming-wrap');
+  if (wrap) wrap.hidden = !groups.length;
+  setHtml('island-upcoming', upcomingHtml(groups, worlds, openGroups));
+  const played = shown.filter(run => !isUpcoming(run));
+  $('island-runs').innerHTML = played.slice(0, historyLimit).map(run => runRowHtml(run, worlds)).join('')
+    || `<tr><td colspan="4" class="island-note">Aucune partie jouée${runFilter === 'all' ? '' : ' sur ce terrain'}.</td></tr>`;
+  const more = $('island-runs-more');
+  if (more) {
+    const left = played.length - historyLimit;
+    more.hidden = left <= 0;
+    more.textContent = `Afficher plus (${Math.max(0, left)} de plus)`;
+  }
+  // A refresh keeps the rows the owner opened.
+  for (const id of [...openDetails]) { openDetails.delete(id); toggleDetail(id); }
+}
+
+function toggleGroup(id) {
+  const list = $(`island-group-${id}`);
+  if (!list) return;
+  list.hidden = !list.hidden;
+  document.querySelector(`[data-group="${CSS.escape(id)}"]`)?.setAttribute('aria-expanded', String(!list.hidden));
+  if (list.hidden) openGroups.delete(id); else openGroups.add(id);
+}
+
+async function openReplay(id, button) {
+  followThoughts(null);
+  watchedTerrain = null;
+  void refreshWorldCards();
+  const read = ++replayRead;
+  viewerRun = null;
+  const run = latestRuns.find(entry => entry.id === id);
+  const title = run ? `Relecture · ${when(run.startedAt || run.requestedAt, run.timeZone)}` : 'Relecture';
+  const heading = $('island-viewer-title');
+  if (heading) heading.textContent = title;
+  $('island-viewer').hidden = false;
+  $('island-viewer-memory').hidden = true;
+  $('island-frame').src = 'about:blank';
+  $('island-viewer-open').removeAttribute('href');
+  $('island-viewer-world').hidden = true;
+  $('island-replay-status').textContent = 'Ouverture de l’archive de cette partie…';
+  $('island-viewer').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (button) button.disabled = true;
+  try {
+    const opened = (await apiFetch(`${API}/runs/${encodeURIComponent(id)}/replay`, { method: 'POST', body: {} })).data;
+    if (read !== replayRead) return;
+    showFrame(opened.src, '', id, title);
+    followThoughts(id, true);
+    $('island-replay-status').textContent = 'Lecture partagée de l’archive. Fermer la vue libère son flux.';
+  } catch (err) {
+    if (read === replayRead) $('island-replay-status').textContent = `Relecture indisponible : ${err.message}. Tu peux réessayer avec Revoir.`;
+  } finally { if (button) button.disabled = false; }
+}
+
+async function onRunAction(event) {
+  const button = event.target.closest('button');
+  if (!button) return;
+  try {
+    if (button.dataset.detail) toggleDetail(button.dataset.detail);
+    if (button.dataset.group) toggleGroup(button.dataset.group);
+    if (button.dataset.live) {
+      watchedTerrain = null;
+      showFrame(button.dataset.live, '', button.dataset.run, 'Partie en direct');
+      followThoughts(button.dataset.run);
+      void refreshWorldCards();
+    }
+    if (button.dataset.replay) await openReplay(button.dataset.replay, button);
+    if (button.dataset.memory) await openMemory(button.dataset.memory);
+  } catch (err) {
+    $('island-runs-status').textContent = err.message;
+  }
+}
+
 async function loadRuns() {
   const status = $('island-runs-status');
   try {
@@ -372,9 +549,7 @@ async function loadRuns() {
     void refreshWorldCards();
     showWorldChoice();
     void refreshDisplayedWorld();
-    $('island-runs').innerHTML = data.runs.map(run => runRowHtml(run, worlds)).join('') || '<tr><td colspan="4">Aucune partie.</td></tr>';
-    // A refresh keeps the rows the owner opened.
-    for (const id of [...openDetails]) { openDetails.delete(id); toggleDetail(id); }
+    renderRuns();
     const notes = [];
     if (!data.queueRead) notes.push('File de Core illisible : états tirés des derniers rapports.');
     if (!data.view.live && !data.view.replay) notes.push('Vue 3D non configurée.');
@@ -394,9 +569,29 @@ function bind() {
   $('island-world-cards')?.addEventListener('click', event => {
     const button = event.target.closest('button');
     if (button?.dataset.worldWatch) void watchWorld(button.dataset.worldWatch, button);
-    if (button?.dataset.worldArchive) document.querySelector(`[data-replay="${CSS.escape(button.dataset.worldArchive)}"]`)?.click();
+    if (button?.dataset.worldArchive) void openReplay(button.dataset.worldArchive, button);
   });
   const launchForm = $('island-launch-form');
+  const launchPanel = $('island-launch');
+  const launchToggle = $('island-launch-toggle');
+  const updateSummary = refreshSummary = () => {
+    const summary = $('island-launch-summary');
+    if (!summary) return;
+    const value = name => launchForm.elements.namedItem(name)?.value;
+    summary.textContent = launchSummary({ agent: value('agent'), minutes: value('minutes'), world: value('world'),
+      harness: value('harness'), memory: value('memory'), when: value('when') }, worlds);
+  };
+  const setLaunchOpen = open => {
+    if (!launchPanel) return;
+    launchPanel.hidden = !open;
+    launchToggle?.setAttribute('aria-expanded', String(open));
+    if (open) { updateSummary(); launchPanel.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }); }
+    else launchToggle?.focus?.();
+  };
+  launchToggle?.addEventListener('click', () => setLaunchOpen(launchPanel.hidden));
+  $('island-launch-close')?.addEventListener('click', () => setLaunchOpen(false));
+  launchForm.addEventListener('input', updateSummary);
+  launchForm.addEventListener('change', updateSummary);
   let storage;
   try { storage = window.sessionStorage; } catch { /* Private browsing may refuse storage. */ }
   let pending = readPendingLaunch(storage);
@@ -412,7 +607,10 @@ function bind() {
     launchForm.querySelector('[type="submit"]').disabled = submitting;
   };
   syncForm();
-  if (pending) $('island-launch-result').textContent = 'Une inscription attend confirmation. Réessayez pour retrouver la même demande.';
+  if (pending) {
+    $('island-launch-result').textContent = 'Une inscription attend confirmation. Réessaie pour retrouver la même demande.';
+    setLaunchOpen(true);
+  }
   launchForm.addEventListener('submit', async event => {
     event.preventDefault();
     if (submitting) return;
@@ -442,7 +640,7 @@ function bind() {
         pending = null; // Validation refused before any native submission.
         savePendingLaunch(storage, null);
         result.textContent = `Demande invalide : ${err.message}`;
-      } else result.textContent = `Inscription non confirmée : ${err.message}. Réessayez pour retrouver la même demande.`;
+      } else result.textContent = `Inscription non confirmée : ${err.message}. Réessaie pour retrouver la même demande.`;
     } finally {
       submitting = false;
       syncForm();
@@ -451,10 +649,6 @@ function bind() {
   $('island-world').addEventListener('change', showWorldChoice);
   // Recheck on click: another run may have changed the shared world meanwhile.
   $('island-watch').addEventListener('click', () => { void refreshLiveWorld(true); });
-  document.querySelector('.island-workspace-nav a[href="#island-viewer-title"]')?.addEventListener('click', event => {
-    if (!$('island-viewer').hidden) return;
-    event.preventDefault(); void refreshLiveWorld(true);
-  });
   $('island-thoughts-retry').addEventListener('click', () => {
     if (viewerRun) followThoughts(viewerRun, thoughtsRecorded);
   });
@@ -462,41 +656,19 @@ function bind() {
     replayRead++; viewerRun = null; watchedTerrain = null; followThoughts(null);
     $('island-frame').src = 'about:blank'; $('island-viewer').hidden = true;
     $('island-thoughts').hidden = true;
+    void refreshWorldCards();
   });
-  $('island-runs').addEventListener('click', async event => {
-    const button = event.target.closest('button');
-    if (!button) return;
-    try {
-      if (button.dataset.live || button.dataset.replay) watchedTerrain = null;
-      if (button.dataset.detail) toggleDetail(button.dataset.detail);
-      if (button.dataset.live) { showFrame(button.dataset.live, '', button.dataset.run); followThoughts(button.dataset.run); }
-      if (button.dataset.replay) {
-        followThoughts(null);
-        const read = ++replayRead;
-        viewerRun = null;
-        $('island-viewer').hidden = false;
-        $('island-viewer-memory').hidden = true;
-        $('island-frame').src = 'about:blank';
-        $('island-viewer-open').removeAttribute('href');
-        $('island-viewer-world').hidden = true;
-        $('island-replay-status').textContent = 'Ouverture de l’archive de cette partie…';
-        $('island-viewer').scrollIntoView({ behavior: 'smooth' });
-        button.disabled = true;
-        try {
-          const opened = (await apiFetch(`${API}/runs/${encodeURIComponent(button.dataset.replay)}/replay`, { method: 'POST', body: {} })).data;
-          if (read !== replayRead) return;
-          showFrame(opened.src, '', button.dataset.replay);
-          followThoughts(button.dataset.replay, true);
-          $('island-replay-status').textContent = 'Relecture de la partie sélectionnée · lecture partagée. Fermer la vue libère son flux ; rouvrir recharge l’archive si nécessaire.';
-        } catch (err) {
-          if (read === replayRead) $('island-replay-status').textContent = `Relecture indisponible : ${err.message}. Vous pouvez réessayer avec Voir.`;
-        } finally { button.disabled = false; }
-      }
-      if (button.dataset.memory) await openMemory(button.dataset.memory);
-    } catch (err) {
-      $('island-runs-status').textContent = err.message;
-    }
+  $('island-memory-close')?.addEventListener('click', () => { memoryRead++; $('island-memory').hidden = true; });
+  $('island-runs').addEventListener('click', onRunAction);
+  $('island-upcoming')?.addEventListener('click', onRunAction);
+  $('island-run-filter')?.addEventListener('click', event => {
+    const chip = event.target.closest('button');
+    if (!chip?.dataset.filter) return;
+    runFilter = chip.dataset.filter;
+    historyLimit = HISTORY_PAGE;
+    renderRuns();
   });
+  $('island-runs-more')?.addEventListener('click', () => { historyLimit += HISTORY_PAGE; renderRuns(); });
   document.querySelector('.island-tabs').addEventListener('click', event => {
     if (event.target.dataset.file) showMemoryFile(event.target.dataset.file);
   });
