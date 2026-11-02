@@ -1,22 +1,22 @@
 <main id="main-content" class="island-page" lang="fr">
   <header class="island-head">
-    <h1 class="r-page-title">Île</h1>
-    <p class="island-lede">Des mondes qui continuent de vivre. Eko explore, agit et garde ses souvenirs.
-      Observe le présent, puis retrouve le fil d’une partie.</p>
+    <div>
+      <h1 class="r-page-title island-title">Île</h1>
+      <p class="island-lede">Eko vit dans des mondes qui continuent sans lui. Regarde-les en direct, puis revois ses parties et ses souvenirs.</p>
+    </div>
+    <button type="button" id="island-launch-toggle" class="island-btn island-btn-primary" aria-expanded="false" aria-controls="island-launch">
+      <span aria-hidden="true">+</span> Nouvelle partie</button>
   </header>
 
-  <nav class="island-workspace-nav" aria-label="Espace Île"><a href="#island-runs-title">Parties</a><a href="#island-viewer-title">Explorer l’île</a><a href="#island-memory-title">Mémoire</a></nav>
-  <section id="island-live" class="r-section" hidden aria-labelledby="island-live-title">
-    <h2 id="island-live-title" class="r-sec-title">Les mondes</h2>
-    <p id="island-worlds-note" class="island-note" role="status">Explorer observe le monde sans le modifier. Les archives ouvrent une relecture séparée.</p>
-    <div id="island-world-cards" class="island-world-cards" aria-label="Mondes accessibles"><p class="island-note">Connexion aux mondes…</p></div>
-    <p id="island-live-status" hidden></p>
-    <button type="button" id="island-watch" hidden disabled>Regarder <span id="island-watch-label">le monde actif</span> en direct</button>
-  </section>
-  <section class="r-section island-launch" aria-labelledby="island-launch-title">
-    <h2 id="island-launch-title" class="r-sec-title">Lancer une partie</h2>
+  <p id="island-alert" class="island-alert" role="status" hidden></p>
+
+  <section id="island-launch" class="island-panel island-launch" hidden aria-labelledby="island-launch-title">
+    <div class="island-panel-head">
+      <h2 id="island-launch-title" class="island-h2">Nouvelle partie</h2>
+      <button type="button" id="island-launch-close" class="island-btn island-btn-quiet">Fermer</button>
+    </div>
     <form id="island-launch-form" class="island-form">
-      <label>Terrain de la prochaine partie
+      <label>Terrain
         <select name="world" id="island-world"><option value="mesa-island">Île Clawblox</option></select>
       </label>
       <label>Agent <input name="agent" value="Eko" pattern="[A-Za-z][A-Za-z0-9_\-]{0,31}" required></label>
@@ -30,50 +30,82 @@
       <label>Créneau
         <select name="when"><option value="tonight">cette nuit</option><option value="asap">dès que possible</option><option value="none">sans créneau</option></select>
       </label>
-      <button type="submit" class="r-empty-btn">Planifier la partie</button>
+      <div class="island-form-foot">
+        <p id="island-launch-summary" class="island-summary" aria-live="polite"></p>
+        <button type="submit" class="island-btn island-btn-primary">Inscrire dans la file</button>
+      </div>
     </form>
-    <p class="island-note">Planifier inscrit une demande dans la file de Core ; le départ est une action distincte.
-      Choisir un terrain ne change pas le monde actuellement en direct.</p>
+    <p class="island-note">La demande entre dans la file de Core. Le départ attend ton approbation et l’admission de Core.
+      Le terrain choisi ne change pas le monde en direct.</p>
     <p id="island-launch-result" class="island-result" role="status"></p>
   </section>
 
+  <section id="island-live" class="island-worlds" hidden aria-labelledby="island-live-title">
+    <h2 id="island-live-title" class="r-sr-only">Mondes en direct</h2>
+    <div id="island-world-cards" class="island-world-cards" aria-label="Mondes accessibles"><p class="island-note">Connexion aux mondes…</p></div>
+    <p id="island-worlds-note" class="island-note" role="status"></p>
+    <p id="island-live-status" hidden></p>
+    <button type="button" id="island-watch" hidden disabled>Regarder <span id="island-watch-label">le monde actif</span> en direct</button>
+  </section>
 
+  <div class="island-stage">
+    <section id="island-viewer" class="island-panel island-viewer" hidden aria-labelledby="island-viewer-title">
+      <div class="island-panel-head">
+        <div class="island-viewer-heading">
+          <h2 id="island-viewer-title" class="island-h2">Explorer l’île</h2>
+          <p id="island-viewer-world" class="island-note" role="status" hidden></p>
+          <p id="island-replay-status" class="island-note" role="status"></p>
+        </div>
+        <div class="island-tools">
+          <button type="button" id="island-viewer-memory" class="island-btn" hidden>Mémoire de cette partie</button>
+          <a id="island-viewer-open" class="island-btn island-btn-quiet" target="_blank" rel="noopener">Ouvrir dans un onglet</a>
+          <button type="button" id="island-viewer-close" class="island-btn island-btn-quiet">Fermer</button>
+        </div>
+      </div>
+      <iframe id="island-frame" title="Vue 3D de l'île" allow="fullscreen"></iframe>
+    </section>
 
-  <section class="r-section" aria-labelledby="island-runs-title">
-    <h2 id="island-runs-title" class="r-sec-title">Parties</h2>
+    <aside class="island-side" aria-label="Journal et mémoire">
+      <section id="island-thoughts" class="island-panel island-thoughts" hidden aria-labelledby="island-thoughts-title">
+        <h2 class="island-h2 island-thoughts-title"><span id="island-thoughts-title">Journal de l’agent</span> <span id="island-thoughts-note" class="island-thoughts-note"></span></h2>
+        <button type="button" id="island-thoughts-retry" class="island-btn" hidden>Réessayer le journal</button>
+        <ol id="island-thoughts-list" aria-live="polite"></ol>
+      </section>
+
+      <section id="island-memory" class="island-panel island-memory" hidden aria-labelledby="island-memory-title">
+        <div class="island-panel-head">
+          <h2 id="island-memory-title" class="island-h2">Mémoire</h2>
+          <button type="button" id="island-memory-close" class="island-btn island-btn-quiet">Fermer</button>
+        </div>
+        <label class="island-memory-pick">Partie <select id="island-memory-run"></select></label>
+        <div class="island-tabs" role="tablist">
+          <button type="button" role="tab" id="memory-tab-SEMANTICMEMORYmd" data-file="SEMANTIC_MEMORY.md" title="SEMANTIC_MEMORY.md">Savoir</button>
+          <button type="button" role="tab" id="memory-tab-EPISODICMEMORYmd" data-file="EPISODIC_MEMORY.md" title="EPISODIC_MEMORY.md">Récits</button>
+          <button type="button" role="tab" id="memory-tab-EPISODICMEMORYjsonl" data-file="EPISODIC_MEMORY.jsonl" title="EPISODIC_MEMORY.jsonl">Journal</button>
+          <button type="button" role="tab" id="memory-tab-SOULmd" data-file="SOUL.md" title="SOUL.md">Personnalité</button>
+        </div>
+        <div id="island-memory-body" class="island-memory-body" role="tabpanel"></div>
+        <p id="island-memory-provenance" class="island-note island-fine" role="status"></p>
+        <p class="island-note island-back"><a href="#island-viewer-title">Revenir à l’exploration (sélection conservée)</a></p>
+      </section>
+    </aside>
+  </div>
+
+  <section class="island-panel island-runs" aria-labelledby="island-runs-title">
+    <div class="island-panel-head">
+      <h2 id="island-runs-title" class="island-h2">Parties</h2>
+      <div id="island-run-filter" class="island-chips" role="group" aria-label="Filtrer par terrain"></div>
+    </div>
     <p id="island-runs-status" class="island-note" role="status">Chargement…</p>
+    <div id="island-upcoming-wrap" class="island-upcoming-wrap" hidden>
+      <h3 class="island-h3">En cours et à venir</h3>
+      <ul id="island-upcoming" class="island-upcoming"></ul>
+    </div>
+    <h3 class="island-h3">Parties jouées</h3>
     <table class="island-table">
-      <thead><tr><th>Début</th><th>Durée</th><th>État</th><th><span class="r-sr-only">Actions</span></th></tr></thead>
+      <thead class="r-sr-only"><tr><th>Partie</th><th>Joueur et durée</th><th>État</th><th>Actions</th></tr></thead>
       <tbody id="island-runs"></tbody>
     </table>
-  </section>
-
-  <section id="island-viewer" class="r-section island-viewer" hidden aria-labelledby="island-viewer-title">
-    <h2 id="island-viewer-title" class="r-sec-title">Explorer l’île</h2>
-    <button type="button" id="island-viewer-close" class="island-watch">Fermer la vue</button>
-    <p id="island-replay-status" class="island-note" role="status"></p>
-    <p id="island-viewer-world" class="island-note" role="status" hidden></p>
-    <p class="island-note"><a id="island-viewer-open" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>
-      · Scène, carte, chronologie, lignées et comparaison partagent la sélection. <button type="button" id="island-viewer-memory" hidden>Mémoire de cette partie</button></p>
-    <iframe id="island-frame" title="Vue 3D de l'île" allow="fullscreen"></iframe>
-    <div id="island-thoughts" class="island-thoughts" hidden>
-      <h3 class="island-thoughts-title"><span id="island-thoughts-title">Journal de l’agent</span> <span id="island-thoughts-note" class="island-thoughts-note"></span></h3>
-      <button type="button" id="island-thoughts-retry" hidden>Réessayer le journal</button>
-      <ol id="island-thoughts-list" aria-live="polite"></ol>
-    </div>
-  </section>
-
-  <section id="island-memory" class="r-section island-memory" hidden aria-labelledby="island-memory-title">
-    <h2 id="island-memory-title" class="r-sec-title">Mémoire</h2>
-    <p id="island-memory-provenance" class="island-note" role="status"></p>
-    <p class="island-note"><a href="#island-viewer-title">Revenir à l’exploration (sélection conservée)</a></p>
-    <label class="island-note">Partie <select id="island-memory-run"></select></label>
-    <div class="island-tabs" role="tablist">
-      <button type="button" role="tab" id="memory-tab-SOULmd" data-file="SOUL.md" title="SOUL.md">Personnalité</button>
-      <button type="button" role="tab" id="memory-tab-EPISODICMEMORYmd" data-file="EPISODIC_MEMORY.md" title="EPISODIC_MEMORY.md">Récits</button>
-      <button type="button" role="tab" id="memory-tab-EPISODICMEMORYjsonl" data-file="EPISODIC_MEMORY.jsonl" title="EPISODIC_MEMORY.jsonl">Journal</button>
-      <button type="button" role="tab" id="memory-tab-SEMANTICMEMORYmd" data-file="SEMANTIC_MEMORY.md" title="SEMANTIC_MEMORY.md">Savoir</button>
-    </div>
-    <div id="island-memory-body" class="island-memory-body" role="tabpanel"></div>
+    <button type="button" id="island-runs-more" class="island-btn island-more" hidden>Afficher plus</button>
   </section>
 </main>
