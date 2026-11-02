@@ -238,7 +238,8 @@ probe interval and 120-second failure threshold.
 `AGENTX_ISLAND_WORLD_PREPARE` optionally names an absolute instance hook executable.
 The queue calls `check <runner-world>` before dispatch and
 `prepare <runner-world> <queue-request-id>` after the durable fence, before runner
-start. Each prints one JSON object: `{ok, managed, world, recordDir, message}`.
+start. Each prints one JSON object: `{ok, managed, world, recordDir, message}`;
+`prepare_world.py` adds `instanceId`/`recordingId`, and `forkedFrom` in fork mode.
 The hook owns deployment choices, credentials and world selection; it must refuse
 if another session owns the world. With a hook, preflight checks runner/harness
 readiness separately because the selected terrain may not be running yet. Runner

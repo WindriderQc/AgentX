@@ -2,9 +2,13 @@
 """Prepare a configured GraphysX world for the native Island queue executor.
 
 AGENTX_ISLAND_WORLD_PROFILES names an operator-only JSON map keyed by runner
-terrain id. Each profile has url, world, tokenFile, dataHost and mode (reuse or
-fresh). Reuse is read-only: an existing world and its identity are preserved.
-Fresh explicitly creates an experiment. Unknown terrains remain unmanaged.
+terrain id. Each profile has url, world, tokenFile, dataHost and mode (reuse,
+fresh or fork). Reuse is read-only: an existing world and its identity are
+preserved. Fresh explicitly creates an experiment. Fork also creates one, from
+a saved island: the profile adds `from` (a checkpoint file name in the world
+service's WORLD_FORK_DIR) and `sha256` (that checkpoint's digest), so every run
+starts from the same terrain and constructions under a new identity and an
+empty recording. Unknown terrains remain unmanaged.
 Connection choices, tokens and result receipts stay outside the repository.
 """
 from __future__ import annotations
@@ -20,6 +24,9 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 REQUEST = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
+# Same rules as GraphysX-Web's POST /world: a plain file name and a lowercase digest.
+FORK_FILE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$")
+SHA256 = re.compile(r"^[a-f0-9]{64}$")
 WORLD_URL = ""
 ENV_FILE = ""
 DATA_HOST = ""
@@ -45,9 +52,12 @@ def profile_for(world):
     if (url.scheme not in ("http", "https") or not url.hostname or url.username or url.password
             or url.path not in ("", "/") or url.query or url.fragment
             or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", profile.get("world", ""))
-            or profile.get("mode") not in ("reuse", "fresh")
+            or profile.get("mode") not in ("reuse", "fresh", "fork")
             or not all(isinstance(profile.get(k), str) and profile[k].startswith("/") for k in ("tokenFile", "dataHost"))):
         raise RuntimeError("invalid world profile")
+    if profile["mode"] == "fork" and not (isinstance(profile.get("from"), str) and FORK_FILE.fullmatch(profile["from"])
+                                          and isinstance(profile.get("sha256"), str) and SHA256.fullmatch(profile["sha256"])):
+        raise RuntimeError("invalid world profile: fork needs from (a .json file name) and sha256")
     return profile
 
 
@@ -129,12 +139,19 @@ def main(argv: list[str]) -> int:
             record_dir = host_path(f"/data/recordings/instances/{identity['recordingId']}")
             return answer(True, world=wanted, record_dir=record_dir, identity=identity,
                           message=f"reuse {wanted}; world and checkpoint preserved")
+        fork = profile["mode"] == "fork"
+        # An older service ignores "from" and would start a fresh island instead: refuse before
+        # any write unless /healthz shows the fork field (null when the island is not a fork).
+        if fork and "forkedFrom" not in current_health():
+            return answer(False, world=wanted, message="this world service cannot fork a saved island; update GraphysX-Web first")
         if action == "check":
             return answer(True, world=wanted, message=f"running {running or 'mesa-island (no selector)'}")
         if running is None:
             # Before the selector the service only ran Mesa and cannot start it fresh.
             return answer(True, world=wanted, message="world service without selector: Mesa kept as it is, no fresh island")
-        status, switched = call("POST", "/world", {"world": wanted, "force": True, "runId": argv[2]}, token)
+        request = {"world": wanted, "force": True, "runId": argv[2],
+                   **({"from": profile["from"], "sha256": profile["sha256"]} if fork else {})}
+        status, switched = call("POST", "/world", request, token)
         if status != 200 or not isinstance(switched, dict) or switched.get("world") != wanted:
             detail = switched.get("error") if isinstance(switched, dict) else None
             return answer(False, world=wanted, message=f"the world selector refused ({status}): {str(detail or '')[:160]}")
@@ -143,10 +160,20 @@ def main(argv: list[str]) -> int:
             return answer(False, world=wanted, message="the island did not switch")
         if switched.get("instanceId") and verified.get("instanceId") != switched["instanceId"]:
             return answer(False, world=wanted, message="the island instance changed during preparation")
+        identity = {key: switched[key] for key in ("instanceId", "recordingId")
+                    if isinstance(switched.get(key), str) and REQUEST.fullmatch(switched[key])}
+        if fork:
+            origin = switched.get("forkedFrom")
+            if (not isinstance(origin, dict) or origin.get("sha256") != profile["sha256"]
+                    or not isinstance(verified.get("forkedFrom"), dict) or verified["forkedFrom"].get("sha256") != profile["sha256"]):
+                return answer(False, world=wanted, message="the island did not start from the pinned checkpoint")
+            source = origin.get("instanceId") if isinstance(origin.get("instanceId"), str) and REQUEST.fullmatch(origin["instanceId"]) else None
+            tick = origin.get("tick") if isinstance(origin.get("tick"), int) else None
+            identity["forkedFrom"] = {"instanceId": source, "tick": tick, "sha256": profile["sha256"]}
+            return answer(True, world=wanted, record_dir=host_path(switched.get("recordDir")), identity=identity,
+                          message=f"fork {wanted} from {profile['from']} (island {source or 'unnamed'}, tick {tick})")
         return answer(True, world=wanted, record_dir=host_path(switched.get("recordDir")),
-                      message=f"fresh {wanted} (was {switched.get('previous')})",
-                      identity={key: switched[key] for key in ("instanceId", "recordingId")
-                                if isinstance(switched.get(key), str) and REQUEST.fullmatch(switched[key])})
+                      message=f"fresh {wanted} (was {switched.get('previous')})", identity=identity)
     except RuntimeError as error:
         return answer(False, message=str(error))
 
