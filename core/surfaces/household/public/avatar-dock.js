@@ -203,6 +203,9 @@
       return { phase, level, brightness: speech?.brightness || 0, tokenRate: meter.rate(), toolPulses };
     }
     const tick = setInterval(() => {
+      // Photos cover the scene without hiding the document. Do not sample audio or
+      // mutate the concealed face/orb; the renderer's visibility observer pauses it.
+      if (doc.hidden || mode === 'cache' || doc.querySelector?.('.nestor-idle-photos:not([hidden])')) return;
       const value = presence();
       const asleep = ['listening', 'hearing'].includes(state) && !!sample?.asleep?.();
       if (asleep && !wasAsleep) sceneEvent('sleep');
