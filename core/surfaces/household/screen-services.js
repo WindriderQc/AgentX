@@ -33,11 +33,11 @@ function createScreenServices({ app, env = process.env, logger, services = loadS
     const options = { publicUrls: app?.locals?.publicUrls || getPublicUrls(env),
       agentxProfile: app?.locals?.agentxProfile || 'full', trustedRuntimeNavItems: app?.locals?.trustedRuntimeNavItems || [] };
     const next = JSON.stringify(options);
-    if (next !== signature) { catalog = pages.createCatalog([...screenDestinations(options), ...services]); signature = next; }
+    if (next !== signature) { const menu = screenDestinations(options); catalog = pages.createCatalog([...menu, ...(menu.some(row => row.id === 'kids') ? [{id:'kids-tasks',label:'Tâches des enfants · lecture seule',href:'/kids',mode:'frame'}] : []), ...services]); signature = next; }
     return catalog;
   }
   return Object.freeze({
-    get family() { return pages.createCatalog([...current().entries.filter(row => row.id === 'ecosystem'),
+    get family() { return pages.createCatalog([...current().entries.filter(row => ['ecosystem', 'kids-tasks'].includes(row.id)),
       ...services.filter(row => row.family === true && ['earth', 'iss'].includes(row.id))]); },
     get entries() { return current().entries; }, get PAGES() { return current().PAGES; },
     parse: value => current().parse(value), canonical: pages.canonical,

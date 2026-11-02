@@ -562,7 +562,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   const voiceHost = el('conversationPresence');
   const conversation = new NestorConversation.Conversation({
-    recoverCapture: true, repairConversation: family, microphoneIntent: rememberVoiceIntent,
+    recoverCapture: true, repairConversation: family, naturalFamilySpeech: family, microphoneIntent: rememberVoiceIntent,
     canResumeRecognition: () => !voiceHost.isConnected || !microphoneWanted ? null : !document.hidden && navigator.onLine !== false,
     requestPolicy: requestPrivacy, prepareTurnSession: preparePrivacy,
     readyToSpeak: () => avatar?.ready,

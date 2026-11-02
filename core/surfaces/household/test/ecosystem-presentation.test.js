@@ -133,7 +133,10 @@ test('the shared native response contract opens the tour and requires clarificat
   assert.match(instructions, /ecosystem play=frank,memory,garage/);
   assert.match(instructions, /Opening is an intention/);
   assert.match(instructions, /ambiguous or absent, ask which component/);
-  assert.match(contract({ pages: true, family: true, pageCatalog: catalog }), /ecosystem play=/);
+  const family = contract({ pages: true, family: true, pageCatalog: catalog });
+  assert.match(family, /Open only the explicitly requested available destination/);
+  assert.match(family, /none matches, say unavailable and open nothing/);
+  assert.doesNotMatch(family, /ecosystem play=frank,memory,garage/);
   const shown = [], channels = createReplyChannels({ allowPages: true, pageCatalog: catalog, onShow: block => shown.push(block) });
   channels.push('Je t’ouvre la visite des données.<show kind="page" title="Visite">ecosystem play=memory,garage</show>');
   channels.end();

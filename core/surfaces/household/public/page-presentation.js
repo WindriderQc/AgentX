@@ -29,6 +29,19 @@
     const feedback = region.querySelector('.page-presentation-feedback');
     let cards = [], latest = null, selected = null;
 
+    // The read-only task frame discards profile data when hidden or closed.
+    // Only visibility crosses this same-origin boundary, never profile content.
+    function notifyTaskFrames() {
+      for (const card of cards) {
+        if (card._screenTarget?.page !== 'kids-tasks') continue;
+        const frame = card.querySelector('iframe'); if (!frame) continue;
+        if (!frame._taskVisibilityBound) { frame._taskVisibilityBound = true; frame.addEventListener('load', notifyTaskFrames); }
+        frame.contentWindow?.postMessage({ type: 'agentx.page-visibility', visible: !document.hidden && !document.querySelector('.nestor-idle-photos:not([hidden])') && region.classList.contains('is-active') && selected === card }, root.location.origin);
+      }
+    }
+
+    document.addEventListener('visibilitychange', notifyTaskFrames);
+    root.addEventListener('nestor-idle-photos-visibility', notifyTaskFrames);
     function present(active) {
       region.classList.toggle('is-active', active);
       toggle.textContent = active ? 'Fermer le contenu' : 'Afficher le contenu';
@@ -37,6 +50,7 @@
       expand.hidden = !active;
       root.dispatchEvent(new CustomEvent('nestor-page-presentation'));
       if (!active) setExpanded(false);
+      notifyTaskFrames();
     }
     function setExpanded(expanded) {
       region.classList.toggle('is-expanded', expanded);
@@ -46,6 +60,7 @@
       selected = card;
       cards.forEach(item => { item.hidden = item !== card; });
       picker.value = String(cards.indexOf(card));
+      notifyTaskFrames();
     }
     toggle.addEventListener('click', () => { manual(); present(!region.classList.contains('is-active')); });
     picker.addEventListener('change', () => { manual(); select(cards[Number(picker.value)]); present(true); });
@@ -64,6 +79,8 @@
     const observer = new MutationObserver(() => {
       if (region.isConnected) return;
       observer.disconnect();
+      document.removeEventListener('visibilitychange', notifyTaskFrames);
+      root.removeEventListener('nestor-idle-photos-visibility', notifyTaskFrames);
       root.dispatchEvent(new CustomEvent('nestor-page-presentation'));
     });
     observer.observe(layout.closest('#app'), { childList: true });

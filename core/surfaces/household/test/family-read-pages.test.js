@@ -13,7 +13,9 @@ const services = [
 ];
 test('family catalogue exposes curated scenes, never owner pages or arbitrary services', () => {
   const catalog = createScreenServices({ app, env: {}, services }).family;
-  assert.deepEqual(catalog.entries.map(x => x.id), ['ecosystem', 'earth', 'iss']);
+  assert.deepEqual(catalog.entries.map(x => x.id), ['ecosystem', 'kids-tasks', 'earth', 'iss']);
+  assert.equal(catalog.parse('kids'), null, 'interactive Kids Room is not framed');
+  assert.equal(catalog.url(catalog.parse('kids-tasks day=tomorrow')), '/kids?view=screen&from=nestor&day=tomorrow');
   assert.equal(catalog.parse('pipeline'), null); assert.equal(catalog.parse('private-system'), null);
   assert.equal(catalog.url(catalog.parse('ecosystem play=network,memory')), '/diskx?app=ecosystem&view=screen&from=nestor&play=network%2Cmemory');
   const parser = createReplyChannels({ allowPages: true, pageCatalog: catalog });

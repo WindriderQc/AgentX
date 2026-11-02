@@ -196,3 +196,12 @@ test('FR and EN direct imitations retain catalog matching and bypass inference',
   assert.equal(reply.routing.tier,'deterministic');
  }
 });
+
+
+test('French audio projection is also the echo comparison text, without changing the canonical reply',async()=>{
+ const started=deferred(),released=deferred(),h=loop({naturalFamilySpeech:true,turn:async()=>({text:'Il est 04 h 24.'})});
+ h.audio.play=async()=>{started.resolve();await released.promise;};await h.c.start({language:'fr'});
+ const exchange=h.say('Quelle heure est-il?');await started.promise;
+ assert.equal(h.synthesis[0],'Il est quatre heures vingt-quatre.');assert.match(h.c.activeTurn.spoken,/quatre heures vingt-quatre/);assert.doesNotMatch(h.c.activeTurn.spoken,/04 h/);assert.equal(require('../public/browser-conversation').isSpokenEcho('Il est quatre heures vingt-quatre.',h.c.activeTurn.spoken),true);
+ released.resolve();await exchange;h.c.stop();
+});

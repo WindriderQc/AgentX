@@ -562,3 +562,35 @@ and `playback_error`, retain a bounded stop reason, and record clip request,
 scheduling and end observations. Legacy `failed` receipts remain readable.
 A browser scheduling observation does not establish acoustic arrival. Pause
 remains immediate and the persisted microphone-off choice survives reload.
+
+
+### Family pages, clock and speech projection
+
+Family page requests use the configured family catalogue and the person's
+explicit request. A short unfulfilled request can be continued by an affirmative
+reply in the same session within two minutes. Negated requests, narrative
+mentions and unrelated topics cannot select a page. Unknown destinations never
+fall back to the ecosystem tour. Page identities and labels come from the
+catalogue; compound requests retain inference for the additional content.
+Screen opening is distinguished from physical home control while preserving
+all other child safety flags and the existing authorization boundaries.
+
+`kids-tasks` opens `/kids?view=screen` as a dedicated read-only document. Normal
+`/kids` remains the existing interactive surface. The task document reads only
+existing profile and chore GET endpoints, asks the person to choose a profile,
+and creates no conversation or microphone stream. Closing, hiding or changing
+profile invalidates pending responses and clears the previous selection. Tomorrow
+uses the server's household calendar day, never the browser timezone. Partial
+lists remain labelled; future recurring occurrences are not invented. This UI
+adds no new grant and is not a new server authorization boundary for existing
+Family APIs.
+
+Each Family turn receives a dated clock observation in the existing planning
+timezone, with the canonical household fallback and explicit UTC offset. French
+speech projects supported date/time notation into words without changing the
+stored reply or calendar values; filenames, paths, codes and URLs stay exact.
+The echo comparison uses the projected spoken text. Family name and voice stay
+selected while the adult temperament is omitted from its instructions. The
+catalogue can play available clips; no missing-sound acquisition queue is added.
+These text and browser checks do not establish acoustic acceptance or repair an
+unproven truncation of the final phonemes.

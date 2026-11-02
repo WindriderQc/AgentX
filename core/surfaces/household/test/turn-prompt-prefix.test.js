@@ -90,18 +90,16 @@ test('Famille on the AgentX engine is offered the Core tools the instance turned
 });
 
 for (const backend of ['agentx', 'openclaw']) {
-  test(`the final ${backend} family prompt places child temperament after the adult persona`, async () => {
+  test(`the final ${backend} family prompt keeps identity without the competing adult temperament`, async () => {
     const { state, sent, turn } = harness({ packId: 'kidx_nestor', backend });
     state.session.persona.identity = 'You are an adult majordomo: formal, dry-witted and sarcastic.';
     await turn('Pourquoi la lune change de forme?', 'voice');
     const prefix = sent[0].prefix;
-    const adult = prefix.indexOf(state.session.persona.identity);
-    const child = prefix.indexOf('Tone with children: playful, curious and encouraging');
-    assert.ok(adult >= 0, 'the selected persona is still present');
-    assert.ok(child > adult, 'the surface override follows the competing adult temperament');
-    assert.match(prefix, /replaces the selected personality's adult temperament/);
+    assert.ok(!prefix.includes(state.session.persona.identity), 'adult temperament is not injected in Family');
+    assert.match(prefix, /Nestor/);
+    assert.match(prefix, /français québécois naturel/);
     assert.match(prefix, /Fun never overrides accuracy or the safety rules/);
-    assert.match(prefix, /do not force a question after every reply/);
+    assert.match(prefix, /sans nouvelle question ni offre de rappel systématique/);
     if (backend === 'agentx') assert.match(prefix, /No native agent tools, skills or Dreaming run here/);
   });
 }

@@ -76,17 +76,19 @@ test('a parent-set birth date gives Super Dad the current age and birthday, neve
   }
 });
 
-test('Famille sounds playful with children on both conversation backends (#121)', () => {
+test('Famille uses natural Quebec French and honest capabilities on both backends', () => {
   const { FAMILY_TONE } = require('../family-context');
   const { packById } = require('../packs');
   const { FAMILY_SURFACE_CONTRACT } = require('../persona-turn');
-  assert.match(FAMILY_TONE, /playful, curious and encouraging/);
+  assert.match(FAMILY_TONE, /français québécois naturel, chaleureux et clair/);
+  assert.match(FAMILY_TONE, /sans promesse de mise en file/);
+  assert.doesNotMatch(FAMILY_TONE, /like a fun guide at a science museum/);
   assert.match(FAMILY_TONE, /replaces the selected personality's adult temperament/);
   assert.match(FAMILY_TONE, /Fun never overrides accuracy or the safety rules/);
   // AgentX backend: the family pack prompt; OpenClaw backend: the family surface contract sent each turn.
   assert.ok(packById('kidx_nestor').systemPrompt.endsWith(FAMILY_TONE));
   assert.ok(FAMILY_SURFACE_CONTRACT.endsWith(FAMILY_TONE));
-  assert.doesNotMatch(packById('personal_operator').systemPrompt || '', /Tone with children/);
+  assert.ok(!(packById('personal_operator').systemPrompt || '').includes(FAMILY_TONE));
 });
 
 test('a note from mail review or another non-owner source shows its origin in the prompt (#207)', () => {

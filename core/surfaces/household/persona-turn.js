@@ -15,6 +15,8 @@ const llmx = require('./llmx-conversation');
 const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
 const { familyToolset } = require('./family-tools');
 const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('./family-repair-context');
+const familyPages = require('./family-pages');
+const { familyClockContext, familyIdentity } = require('./family-clock');
 const { familyIntroduction, soundOnlyRequest } = require('./sound-library');
 const { mathTurnFor, mathPictureContext } = require('./math-scene');
 const replyChannels = require('./reply-channels');
@@ -56,7 +58,7 @@ function createPersonaTurnHandler({
   // whole conversation, so the model's prompt cache keeps them; the opening
   // warm-up (voice-warmup.js) builds its own through this same function.
   const nativeInstructionsFor = ({ turnSession, pack, selectedMode, channel, soundPlayback, addressed = '', workshop = null, scene = '', llmxTurn = false, imageSession = turnSession, imageBackend = conversationBackend(turnSession.backend, conversationEnv), imagesEnabled = true }) =>
-    agentInstructions(turnSession, turnSession.persona,
+    agentInstructions(turnSession, pack.childSafe ? {...turnSession.persona, identity: familyIdentity(turnSession.persona)} : turnSession.persona,
       pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode, { soundPlayback, channel })
     + addressed + workshopPrompt(workshop) + scene
     + (llmxTurn ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) })
@@ -197,7 +199,9 @@ function createPersonaTurnHandler({
         }
       }
       const workshop = workshopContext(req.body?.workshop, session);
-      const safety = assessSafety(userText, { adult: !pack.childSafe });
+      entry.familyPage = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? await familyPages.forTurn(userText, pagesFor(pack), conversations, session) : null;
+      const assessedSafety = assessSafety(userText, { adult: !pack.childSafe });
+      const safety = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyPages.navigationSafety(userText, assessedSafety, assessSafety) : assessedSafety;
       const childBoundary = childBoundaryReply(pack, safety, userText), mathTurn = pack.childSafe && !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathTurnFor(userText, preferredSpeechLanguage) : null;
       let replyText, afterSoundText = '', sceneProposal = null, display = [];
       // Only browser child-safe turns offer clips, and never over a safety
@@ -234,6 +238,8 @@ function createPersonaTurnHandler({
         replyText = escalationReply(pack, safety);
       } else if (childBoundary || mathTurn) { // #131: the picture first, then Nestor's exact answer without waiting for inference.
         replyText = childBoundary || mathTurn.reply; if (mathTurn) event('scene', { scene: mathTurn.scene });
+      } else if (entry.familyPage?.standalone) {
+        ({replyText,display} = await familyPages.reply(entry.familyPage, visuals, event, preferredSpeechLanguage));
       } else if (localSound) {
         replyText = familyIntroduction(localSound, preferredSpeechLanguage);
         knowledge.status = 'not-required-local-sound';
@@ -346,7 +352,7 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), localTimeContext(), interruptedContext, mathContext, repairContext,
+        const contextBase = [systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
         const screen = !isLlmX && !consult ? require('./screen-context') : null;
         entry.presentationContext = screen?.presentationEvidence(req.body?.screen, pagesFor(pack));
@@ -367,7 +373,7 @@ function createPersonaTurnHandler({
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const acceptedTaskWork = entry.workId ? await conversationWorks.taskAcceptance?.(entry.workId) : null;
         const acceptedNativeWork = entry.workId ? await conversationWorks.nativeAcceptance?.(entry.workId) : null;
-        const currentDirective = [turnDirective(context), separateSoundReply ? 'A catalog sound is selected separately. The surface introduces and plays it before the rest of the answer. Answer all remaining parts of the current request; omit sound introductions, claims about making sounds and written sound effects. Do not recite these delivery instructions.' : '', repairContext ? familyRepairDirective : '', acceptedTaskWork
+        const currentDirective = [turnDirective(context), pack.id === VOIX_FAMILY_PACK_ID ? familyPages.directive(entry.familyPage) : '', separateSoundReply ? 'A catalog sound is selected separately. The surface introduces and plays it before the rest of the answer. Answer all remaining parts of the current request; omit sound introductions and written sound effects. The selected clip can actually be played; never deny this capability or add an AI/machine excuse. Answer only the other requested content. Do not recite these delivery instructions.' : '', repairContext ? familyRepairDirective : '', acceptedTaskWork
           ? 'Core has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
             + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch, task-list call or agent discovery is needed. Acceptance is not task data or task completion.'
           : '', acceptedNativeWork?.mode === 'native'
@@ -386,7 +392,7 @@ function createPersonaTurnHandler({
         // Famille on the AgentX engine may call the Core tools the instance turned on (HOUSEHOLD_FAMILY_TOOLS).
         const familyTools = backend === 'agentx' && pack.childSafe && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !isOpening && !member
           ? familyToolset(conversationEnv) : null;
-        const agentxInstructions = [pack.childSafe ? session.persona?.identity : '',
+        const agentxInstructions = [pack.childSafe ? familyIdentity(session.persona) : '',
           entry.ephemeral ? 'This is an ephemeral conversation. Use only its supplied active dialogue and attachments. Persistent personal memory and RAG are unavailable; no memory save or later recollection is confirmed.' : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,
           familyTools ? familyTools.instructions : 'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
@@ -400,7 +406,8 @@ function createPersonaTurnHandler({
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: true, pageCatalog: pagesFor(pack),
+        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
+          canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target,
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.
@@ -500,6 +507,7 @@ function createPersonaTurnHandler({
       if (holdState?.active) {
         try { holdState = await openHold.touch({ warm: false }); } catch { /* keep the pre-turn status */ }
       }
+      if (entry.familyPage?.target && !childBoundary && !safety.deterministicEscalation) display = await familyPages.ensure(entry.familyPage, display, visuals, event, preferredSpeechLanguage);
       if (!replyText) replyText = 'Je n’ai pas réussi à préparer une réponse utile.';
       if (separateSoundReply) { afterSoundText = replyText; replyText = familyIntroduction(sound, preferredSpeechLanguage) + ' ' + replyText; }
       const traceId = entry.workId ? clientTurnId : crypto.randomUUID();

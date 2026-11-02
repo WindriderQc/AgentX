@@ -27,6 +27,7 @@
     function leave({ focus = false } = {}) {
       const wasActive = active;
       active = false; cancelPending(); region.hidden = true; image.removeAttribute('src');
+      if (wasActive) root.dispatchEvent(new CustomEvent('nestor-idle-photos-visibility'));
       lastActivity = now(); nextImage = 0; history = []; position = -1; status.textContent = '';
       if (focus && wasActive) focused?.focus?.({ preventScroll: true });
       return wasActive;
@@ -61,8 +62,10 @@
       if (!['idle', 'paused', 'listening'].includes(voiceState)) leave();
     }
     function show(value) {
+      const wasActive = active;
       if (!active) focused = document.activeElement;
       image.src = value.src; active = true; region.hidden = false;
+      if (!wasActive) root.dispatchEvent(new CustomEvent('nestor-idle-photos-visibility'));
       back.disabled = position <= 0; status.textContent = 'Photo ' + (position + 1);
       if (!actions.contains(document.activeElement)) actions.querySelector('button').focus({ preventScroll: true });
       nextImage = now() + intervalMs;

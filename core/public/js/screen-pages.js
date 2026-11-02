@@ -65,6 +65,9 @@
         if (!word.startsWith('play=') || !ecosystemPlay(word.slice(5))) return null;
         focus.play = ecosystemPlay(word.slice(5));
       }
+      if (page === 'kids-tasks') for (const word of words.slice(1)) {
+        const [key, value] = word.split('='); if (key === 'day' && ['today', 'tomorrow'].includes(value)) focus.day = value;
+      }
       if (page === 'personal-calendar') for (const word of words.slice(1)) {
         const [key, value = ''] = word.split('=');
         if (['start', 'end'].includes(key) && /^\d{4}-\d\d-\d\d$/.test(value)
