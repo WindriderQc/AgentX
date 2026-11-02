@@ -339,6 +339,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }; row.append(document.createElement('br'), button);
     }
     if (interrupted) { row.dataset.interrupted = 'true'; row.setAttribute('aria-label', 'Interrupted reply'); }
+    if (role === 'assistant') window.AvatarDock?.current?.reply?.(row.firstChild?.nodeValue || '');
     transcript.scrollTop = transcript.scrollHeight;
   };
   async function createSession(prefs, signal) {
@@ -514,7 +515,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   let lastGreeting = '', lastWakeReply = '';
   const avatar = window.AvatarDock?.mount({ space: family ? 'family' : 'personal', status: el('conversationStatus'),
     // The same button pauses an active conversation: a tap only ever starts or resumes one.
-    onTap: () => { const start = el('conversationStart'); if (start.hidden || start.disabled || !['idle', 'paused', 'error'].includes(conversation.state)) return false; start.click(); return true; } });
+    onTap: () => { const start = el('conversationStart'); if (start.hidden || start.disabled || !['idle', 'paused', 'error'].includes(conversation.state)) return false; start.click(); return true; },
+    // A line typed under the full-screen face goes through the page's own composer.
+    onSend: text => { el('conversationMessage').value = text; composer.sync(); el('conversationText').requestSubmit(); return true; } });
   // Browser speech recognition only with the instance gate and this browser's consent (per space).
   let renderSpeechFallback = () => {};
   async function transcribeLocal(blob, lang, signal) {

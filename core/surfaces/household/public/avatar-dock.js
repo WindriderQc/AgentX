@@ -6,7 +6,8 @@
    the page's Images zone: the dock publishes it as persona-scene and records the
    zone's persona-scene-receipt for the family turn (#131, #168).
    In the interactive scene Nestor fills the screen, steps into the top right corner
-   when he shows something, and a tap on him brings the page and its menus. */
+   when he shows something, and a tap on him brings the page and its menus. Full screen
+   also shows the household clock, his last reply and a line to type to him. */
 (function (root) {
   'use strict';
   const MODES = ['scene', 'bulle', 'quart', 'moitie'];
@@ -84,7 +85,15 @@
     return facePromise;
   }
 
-  function mount({ space = 'personal', documentRef = root.document, status = null, onTap = null } = {}) {
+  // The scene clock in the device's language, 24-hour: { time: '14:05', date: 'Sunday, November 1' }.
+  function clockText(date = new Date(), locale = undefined) {
+    return {
+      time: new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date),
+      date: new Intl.DateTimeFormat(locale, { weekday: 'long', month: 'long', day: 'numeric' }).format(date)
+    };
+  }
+
+  function mount({ space = 'personal', documentRef = root.document, status = null, onTap = null, onSend = null } = {}) {
     const doc = documentRef;
     root.AvatarDock.current?.dispose();
     const family = space === 'family';
@@ -105,10 +114,28 @@
     sceneBar.className = 'avatar-scene-bar';
     sceneBar.setAttribute('role', 'toolbar');
     sceneBar.setAttribute('aria-label', family ? 'Nestor' : 'Your agent');
+    // A tap anywhere on Nestor opens the page, so the bar holds what a tap cannot do:
+    // typing to him, and closing what he shows.
     sceneBar.innerHTML = `<p class="avatar-scene-status" aria-hidden="true"></p>
-      <div class="avatar-scene-actions"><button type="button" data-scene="close" hidden>Close display</button><button type="button" data-scene="menu" aria-label="Show the conversation, keyboard and settings">Conversation</button></div>`;
-    doc.body.append(dock, sceneBar);
+      <p class="avatar-scene-reply" aria-hidden="true" hidden></p>
+      <div class="avatar-scene-actions"><form class="avatar-scene-input"${onSend ? '' : ' hidden'}><label class="sr-only" for="avatarSceneMessage">Message to ${family ? 'Nestor' : 'your agent'}</label><input id="avatarSceneMessage" type="text" maxlength="4000" autocomplete="off" enterkeyhint="send" placeholder="Write to ${family ? 'Nestor' : 'your agent'}…"><button type="submit">Send</button></form><button type="button" data-scene="close" aria-label="Close display" hidden>Close</button></div>`;
+    // The household's clock while Nestor fills the screen.
+    const clock = doc.createElement('div');
+    clock.className = 'avatar-scene-clock';
+    clock.innerHTML = '<time class="avatar-scene-time"></time><span class="avatar-scene-date"></span>';
+    doc.body.append(dock, sceneBar, clock);
     const sceneStatus = sceneBar.querySelector('.avatar-scene-status');
+    const sceneReply = sceneBar.querySelector('.avatar-scene-reply');
+    const sceneInput = sceneBar.querySelector('#avatarSceneMessage');
+    const sceneClose = sceneBar.querySelector('[data-scene=close]');
+    const renderClock = () => {
+      const now = new Date(), text = clockText(now);
+      clock.querySelector('.avatar-scene-time').textContent = text.time;
+      clock.querySelector('.avatar-scene-time').setAttribute('datetime', now.toISOString());
+      clock.querySelector('.avatar-scene-date').textContent = text.date;
+    };
+    renderClock();
+    const clockTimer = setInterval(renderClock, 15000);
     const stage = dock.querySelector('.avatar-dock-stage');
     const orb = dock.querySelector('.avatar-dock-orb');
     // The mask's receipt for the current picture and the recorded turn it belongs to (#131);
@@ -157,7 +184,9 @@
       if (scene) { dock.dataset.view = view; doc.body.dataset.avatarView = view; }
       else { delete dock.dataset.view; delete doc.body.dataset.avatarView; }
       sceneBar.hidden = !scene || view === 'menu';
-      sceneBar.querySelector('[data-scene=close]').hidden = view !== 'montre';
+      sceneClose.hidden = view !== 'montre';
+      sceneBar.querySelector('.avatar-scene-actions').hidden = !onSend && sceneClose.hidden;
+      clock.hidden = !scene || view !== 'plein';
       // On a phone, the open page keeps the face beside its heading. A fixed
       // bottom corner would cover the composer and its Send button.
       const heading = pageActive && root.matchMedia?.('(max-width: 1000px)').matches
@@ -173,10 +202,18 @@
       view = nextView(view, event, shown);
       applyView();
     }
-    sceneBar.addEventListener('click', event => {
-      const button = event.target.closest('[data-scene]');
-      if (button) sceneEvent(button.dataset.scene === 'close' ? 'close' : 'tap');
+    sceneClose.addEventListener('click', () => sceneEvent('close'));
+    // The page's own composer sends it, so a typed line follows the same path as one typed
+    // in the conversation (privacy choice, voice in progress, a failed send kept there).
+    sceneBar.querySelector('.avatar-scene-input').addEventListener('submit', event => {
+      event.preventDefault();
+      const text = sceneInput.value.trim();
+      if (text && onSend?.(text) !== false) sceneInput.value = '';
     });
+    function showReply(text) {
+      sceneReply.textContent = String(text || '').trim();
+      sceneReply.hidden = !sceneReply.textContent;
+    }
     dock.querySelector('.avatar-dock-bar').addEventListener('click', event => {
       const button = event.target.closest('[data-mode]');
       if (!button) return;
@@ -233,7 +270,8 @@
       if (detail.kind === 'tools') toolPulses += Math.max(1, Math.min(3, detail.count || 1));
       if (detail.kind === 'host-busy') hostBusy = true;
       // A counting or addition picture (#131) stays until the next turn starts.
-      if (detail.kind === 'turn') { pendingReceipt = null; recordedTurn = null; holdScene(null); }
+      if (detail.kind === 'turn') { pendingReceipt = null; recordedTurn = null; holdScene(null); showReply(''); }
+      if (detail.kind === 'clear') showReply('');
       if (detail.kind === 'scene') holdScene(detail.scene || null);
       if (detail.kind === 'done') { recordedTurn = detail; sendReceipt(); }
       if (detail.kind === 'show' || detail.kind === 'clear') sceneEvent(detail.kind);
@@ -298,12 +336,15 @@
       get view() { return mode === 'scene' ? view : null; },
       ready,
       setMode,
+      // Nestor's last reply, written under him while he fills the screen.
+      reply: showReply,
       dispose() {
         if (disposed) return;
         disposed = true;
         motion?.dispose();
         finishReady('orb');
         clearInterval(tick);
+        clearInterval(clockTimer);
         clearTimeout(sceneTimer);
         root.removeEventListener('persona-presence', onPresence);
         root.removeEventListener('persona-activity', onActivity);
@@ -316,6 +357,7 @@
         delete doc.body.dataset.avatarView;
         dock.remove();
         sceneBar.remove();
+        clock.remove();
         if (root.AvatarDock.current === handle) root.AvatarDock.current = null;
       }
     };
@@ -325,7 +367,7 @@
     return handle;
   }
 
-  const api = { phaseFor, createTokenMeter, nextView, sceneCaption, DEFAULT_MODE, mount, MODES, MODULE_URL, current: null };
+  const api = { phaseFor, createTokenMeter, nextView, sceneCaption, clockText, DEFAULT_MODE, mount, MODES, MODULE_URL, current: null };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.AvatarDock = api;
 })(typeof window === 'undefined' ? globalThis : window);
