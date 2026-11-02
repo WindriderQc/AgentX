@@ -127,6 +127,41 @@ test('send posts to the topic and records delivery in Core', async () => {
   assert.deepEqual({ channel: record.body.channel, status: record.body.status }, { channel: 'telegram', status: 'sent' });
 });
 
+test('queue failures beyond the first alert page are still delivered', async () => {
+  const first = Array.from({ length: 100 }, (_, i) => alert({ _id: `local-${i}`, channels: [] }));
+  const queueAlert = alert({ ruleId: 'heavy_work_queue', severity: 'warning' });
+  const fetch = fakeFetch([
+    [/\/api\/alerts\?status=active.*skip=100/, 200, { data: { alerts: [queueAlert], total: 101 } }],
+    [/\/api\/alerts\?status=active/, 200, { data: { alerts: first, total: 101 } }],
+    [/api\.telegram\.org/, 200, { ok: true, result: { message_id: 1 } }],
+    [/delivery-status/, 200, { status: 'success' }],
+  ]);
+  const summary = await run(parseArgs(['--send']), { fetch, config: CONFIG, token: TOKEN, now: () => NOW, ...memoryState() });
+  assert.equal(summary.active, 101);
+  assert.equal(summary.sent, 1);
+  assert.equal(fetch.calls.filter(call => /sendMessage/.test(call.url)).length, 1);
+});
+
+test('a confirmed queue message is not resent when Core delivery recording fails', async () => {
+  const queueAlert = alert({ ruleId: 'heavy_work_queue', severity: 'warning' });
+  const mem = memoryState();
+  const first = fakeFetch([
+    [/\/api\/alerts\?status=active/, 200, { data: { alerts: [queueAlert] } }],
+    [/api\.telegram\.org/, 200, { ok: true, result: { message_id: 1 } }],
+    [/delivery-status/, 503, { status: 'error' }],
+  ]);
+  await assert.rejects(run(parseArgs(['--send']), { fetch: first, config: CONFIG, token: TOKEN, now: () => NOW, ...mem }), /HTTP 503/);
+  assert.ok(mem.box.state.relayed.a1, 'confirmed send is saved before writing Core delivery');
+  const second = fakeFetch([
+    [/\/api\/alerts\?status=active/, 200, { data: { alerts: [queueAlert] } }],
+    [/delivery-status/, 200, { status: 'success' }],
+  ]);
+  const summary = await run(parseArgs(['--send']), { fetch: second, config: CONFIG, token: TOKEN, now: () => NOW, ...mem });
+  assert.equal(summary.sent, 0);
+  assert.equal(second.calls.filter(call => /api\.telegram\.org/.test(call.url)).length, 0);
+  assert.equal(second.calls.filter(call => /delivery-status/.test(call.url)).length, 1);
+});
+
 test('a Telegram failure is recorded without leaking the token', async () => {
   const fetch = fakeFetch([
     [/\/api\/alerts\?status=active/, 200, { data: { alerts: [alert()] } }],

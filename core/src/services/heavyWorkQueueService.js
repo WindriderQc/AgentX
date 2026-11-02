@@ -14,6 +14,7 @@ const placement = require('../../../shared/heavyWorkPlacement');
 const { defaultPlanningTimeZone } = require('./planningDateService');
 const { AUTO_START_KINDS, autoStartable } = require('./heavyWorkQueueCapabilities');
 const readModel = require('./heavyWorkQueueReadModel');
+const { unstartedExpiry } = require('./heavyWorkQueueExpiry');
 
 const FILE = '/instance/config/QUEUE.md';
 const ACTIVE = ['dispatching', 'running', 'uncertain'];
@@ -264,6 +265,8 @@ async function cancel(id, body, actor) {
     if (job.kind === 'topology' && state.jobs.some(other => other.withinWindow === job.id && BRACKET_HELD.includes(other.state))) {
       throw fail('Cancel or move the requests reserved inside this window first', 409, 'HEAVY_QUEUE_WINDOW_INVALID');
     }
+    const expiry = unstartedExpiry(job);
+    if (expiry) job.cancellationReason = expiry;
     job.state = 'cancelled'; job.finishedAt = new Date().toISOString();
     return event(job, actor, 'cancelled');
   });

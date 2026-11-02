@@ -3,27 +3,44 @@
 const crypto = require('node:crypto');
 const Alert = require('../../models/Alert');
 const { fail } = require('./heavyWorkQueueContract');
+const { unstartedExpiry } = require('./heavyWorkQueueExpiry');
+const { defaultPlanningTimeZone } = require('./planningDateService');
 const RULE = 'heavy_work_queue';
 const WC = { w: 1, j: true };
-const labels = { completed: 'completed', failed: 'failed', cancelled: 'cancelled', uncertain: 'uncertain result' };
+const labels = { completed: 'completed', failed: 'échec', cancelled: 'cancelled', uncertain: 'uncertain result' };
+
+function expiryMessage(job, expiry) {
+  const zone = defaultPlanningTimeZone();
+  const at = new Intl.DateTimeFormat('fr-CA', { timeZone: zone, dateStyle: 'short', timeStyle: 'short' }).format(new Date(expiry.at));
+  return `La tâche n’a pas démarré avant la fermeture de sa fenêtre (${at}, ${zone}). Vérifier la demande ${job.id} et choisir une nouvelle fenêtre si le travail reste nécessaire. Cette alerte ne relance aucun travail.`;
+}
 
 // The existing Core alert feed is the inbox. Stable Mongo IDs retain delivery
 // and acknowledgment across restarts, archive moves and repeated observations.
 async function publishJobs(jobs) {
   for (const job of jobs) {
-    if ((!job.dispatchedAt && job.executor?.mode !== 'image-operation') || !labels[job.state]) continue;
-    const fingerprint = `heavy-work:${job.id}:${job.state}`;
+    const expiry = unstartedExpiry(job);
+    const outcome = expiry ? 'expired' : job.state;
+    const attention = outcome === 'failed' || outcome === 'expired';
+    if (!attention && ((!job.dispatchedAt && job.executor?.mode !== 'image-operation') || !labels[job.state])) continue;
+    const fingerprint = `heavy-work:${job.id}:${outcome}${expiry ? `:${expiry.at}` : ''}`;
     const id = crypto.createHash('sha256').update(fingerprint).digest('hex').slice(0, 24);
     const changes = { ruleId: RULE, ruleName: 'Heavy work queue', fingerprint,
-      severity: job.state === 'completed' || job.state === 'cancelled' ? 'info' : 'warning',
-      status: 'active', title: `${job.title} — ${labels[job.state]}`,
-      message: job.state === 'uncertain'
+      severity: outcome === 'completed' || outcome === 'cancelled' ? 'info' : 'warning',
+      status: 'active', title: `${job.title} — ${expiry ? 'fenêtre expirée sans démarrage' : labels[outcome]}`,
+      message: expiry
+        ? expiryMessage(job, expiry)
+        : job.state === 'uncertain'
         ? `${job.reason ? `${job.reason}. ` : ''}Check the same receipt before any relaunch. The reservation stays held.`
+        : job.state === 'failed'
+        ? `La tâche a échoué. Demande ${job.id}. Reçu disponible ; autorité : ${job.releaseReceipt?.authority || 'queue'}. Vérifier ce résultat avant toute relance.`
         : `Completion receipt available. Authority: ${job.releaseReceipt?.authority || 'queue'}.`,
       context: { component: 'heavy-work-queue', relatedEvents: [job.id], additionalData: {
-        queueRequestId: job.id, state: job.state, source: job.source,
+        queueRequestId: job.id, state: outcome, queueState: job.state, source: job.source,
+        ...(expiry && { expiry }),
         path: '/cluster-schedule', operation: job.operation, receipt: job.releaseReceipt || null
-      } }, channels: [], firstOccurrence: new Date(job.updatedAt), lastOccurrence: new Date(job.updatedAt) };
+      } }, channels: attention ? ['telegram'] : [],
+      firstOccurrence: new Date(expiry?.at || job.updatedAt), lastOccurrence: new Date(expiry?.at || job.updatedAt) };
     try { await Alert.updateOne({ _id: id }, { $setOnInsert: changes }, { upsert: true, writeConcern: WC }); }
     catch (error) { if (error.code !== 11000) throw error; }
     if (job.state !== 'uncertain') {

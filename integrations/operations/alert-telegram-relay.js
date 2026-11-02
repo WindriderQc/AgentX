@@ -258,10 +258,15 @@ async function telegramCall(fetchImpl, token, method, params) {
 }
 
 async function listActiveAlerts(fetchImpl, coreUrl) {
-  const payload = await requestJson(fetchImpl, 'GET', `${coreUrl}/api/alerts?status=active&limit=100`);
-  const alerts = payload?.data?.alerts;
-  if (!Array.isArray(alerts)) throw new Error('Core alert list is missing data.alerts');
-  return alerts;
+  const rows = new Map();
+  for (let skip = 0; skip < 10000; skip += 100) {
+    const payload = await requestJson(fetchImpl, 'GET', `${coreUrl}/api/alerts?status=active&limit=100${skip ? `&skip=${skip}` : ''}`);
+    const alerts = payload?.data?.alerts;
+    if (!Array.isArray(alerts)) throw new Error('Core alert list is missing data.alerts');
+    for (const alert of alerts) rows.set(String(alert._id), alert);
+    if (alerts.length < 100 || skip + alerts.length >= payload.data.total) return [...rows.values()];
+  }
+  throw new Error('Core active alert list exceeds the relay scan budget');
 }
 
 async function recordDelivery(fetchImpl, coreUrl, alertId, outcome) {
@@ -320,10 +325,17 @@ async function run(options, deps = {}) {
     }
     let outcome;
     try {
-      await post(text);
+      // Queue outcomes have stable IDs and no reminders. Preserve a confirmed
+      // send before recording Core delivery, so a failed receipt write cannot
+      // cause another Telegram message on the next timer tick.
+      const sentBefore = alert.ruleId === 'heavy_work_queue' && state.relayed[String(alert._id)];
+      if (!sentBefore) {
+        await post(text);
+        state.relayed[String(alert._id)] = { ruleId: alert.ruleId, sentAt: new Date(now).toISOString() };
+        saveState(config.stateFile, state);
+        summary.sent += 1;
+      }
       outcome = { sent: true };
-      summary.sent += 1;
-      state.relayed[String(alert._id)] = { ruleId: alert.ruleId, sentAt: new Date(now).toISOString() };
       stateChanged = true;
     } catch (err) {
       outcome = { sent: false, error: redact(err.message, token) };
