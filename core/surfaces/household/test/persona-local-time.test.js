@@ -4,8 +4,7 @@
 // stable instructions the prompt cache keeps.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
+const { harness } = require('./fixtures/persona-journey.cjs');
 const { localTimeContext, systemPromptFor } = require('../persona-prompt');
 
 test('the turn context carries the household local time with its zone', () => {
@@ -21,6 +20,15 @@ test('the turn context carries the household local time with its zone', () => {
 
 test('the stable instructions never carry the clock', () => {
   assert.doesNotMatch(systemPromptFor(null, { latestUserText: 'Quelle heure est-il?' }), /Current local time/);
-  const turn = fs.readFileSync(path.join(__dirname, '../persona-turn.js'), 'utf8');
-  assert.match(turn, /systemPromptFor\(pack, \{ \.\.\.context, contextOnly: true \}\), localTimeContext\(\),/);
+
 });
+
+for (const backend of ['agentx','openclaw']) for (const packId of ['kidx_nestor','personal_operator','kidx_reader']) {
+ test('one clock beside the request, never stable prefix: '+backend+'/'+packId,async()=>{
+  const h=harness({packId,backend});await h.turn('Quelle heure est-il?','voice');
+  const request=h.sent[0].request,prefix=h.sent[0].prefix;
+  const structured=(request.match(/Household clock observed/g)||[]).length,legacy=(request.match(/Current local time in the household/g)||[]).length;
+  assert.equal(structured,packId==='kidx_nestor'?1:0);assert.equal(legacy,packId==='kidx_nestor'?0:1);
+  assert.doesNotMatch(prefix,/Household clock observed|Current local time in the household/);
+ });
+}

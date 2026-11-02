@@ -370,7 +370,7 @@ function soundOnlyRequest(text, sound) {
   for (const alias of [...entry.names, ...(entry.cries || [])].map(words).sort((a,b) => b.length-a.length)) {
     const phrase = ' ' + alias + ' '; while (remaining.includes(phrase)) remaining = remaining.replace(phrase, ' ');
   }
-  const allowed = new Set(('fais faites faire fait font imite imites imiter reproduis reproduire ecoute ecouter entendre entends joue jouer peux peut pourrais pourrait est ce que tu vous me moi nous le la les un une du de des d l au a son sons bruit bruits cri cris chant rugissement quel quelle quels quelles comment s il te plait svp stp ca non no je voulais veux dire plutot i wanted meant rather how does do a an the of sound sounds make makes hear play imitate can could you please it is let would us noise cry say').split(' '));
+  const allowed = new Set(('fais faites faire fait font ferais ferait feriez ferions ferai feras fera ferez imite imites imitez imiter reproduis reproduire ecoute ecouter entendre entends joue joues jouez jouer jouerais joueriez peux peut pouvez pourrais pourrait pourriez pourras pourra voudrais voudriez aimerais aimeriez saurais sais est ce que tu vous me moi nous le la les un une du de des d l au a son sons bruit bruits cri cris chant rugissement quel quelle quels quelles comment s il te plait svp stp ca non no je voulais veux dire plutot i wanted meant rather how does do a an the of sound sounds make makes hear play imitate can could you please it is let would us noise cry say').split(' '));
   return words(remaining).split(' ').filter(Boolean).every(word => allowed.has(word));
 }
 

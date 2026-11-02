@@ -38,9 +38,11 @@ function harness() {
   };
   document.activeElement = document.body;
   const host = new Element('main'); document.body.append(host);
-  const h = { clock: 0, requests: [], queue: [], decodes: [], delayImages: false, failImage: false, blocked: false, voiceBusy: false, allocated: 0 };
+  const h = { clock: 0, visibilityChanges: [], requests: [], queue: [], decodes: [], delayImages: false, failImage: false, blocked: false, voiceBusy: false, allocated: 0 };
   const root = {
-    document, NestorConversation: { WakeWindow }, setInterval: () => 1, clearInterval() {},
+    document, CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
+    dispatchEvent(event) { if (event.type === 'nestor-idle-photos-visibility') h.visibilityChanges.push(!h.region.hidden); emit(listeners, event); return true; },
+    NestorConversation: { WakeWindow }, setInterval: () => 1, clearInterval() {},
     addEventListener: (name, run) => add(listeners, name, run), removeEventListener: (name, run) => listeners.get(name)?.delete(run),
     MutationObserver: class { observe() {} disconnect() {} },
     Image: class {
@@ -295,4 +297,13 @@ test('Pause cancels a pending transcript; rearm preserves session, resets wake a
     assert.equal(c.state, 'error'); assert.equal(h.frame.active(), false); assert.equal(c.session, session);
     assert.equal(c.wake.active(), false);
   } finally { c.stop(); h.frame.dispose(); }
+});
+
+// Visibility is a lifecycle signal, not a per-photo rendering update.
+test('photo visibility notifies after entry and exit only', async () => {
+  const h = harness(); await flush(); await h.enter();
+  assert.deepEqual(h.visibilityChanges, [true]);
+  await h.next(); h.back(); assert.deepEqual(h.visibilityChanges, [true]);
+  h.activity(); assert.deepEqual(h.visibilityChanges, [true, false]);
+  h.frame.dispose(); assert.deepEqual(h.visibilityChanges, [true, false]);
 });

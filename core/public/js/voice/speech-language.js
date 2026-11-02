@@ -5,6 +5,8 @@
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (root) { root.AgentXSpeech = api; root.NestorSpeech = api; }
 }(typeof globalThis !== 'undefined' ? globalThis : this, () => {
+  const spokenTime = typeof module === 'object' && module.exports ? require('./spoken-time') : globalThis.AgentXSpokenTime;
+  const frenchDateTimeText = text => spokenTime?.frenchDateTimeText(text) ?? String(text || '');
   const PROFILES = Object.freeze({
     en: Object.freeze({
       language: 'en',
@@ -179,6 +181,7 @@
   }
 
   return Object.freeze({
+    frenchDateTimeText,
     PROFILES,
     detectSpeechLanguage,
     normalizeSpeechLanguage,

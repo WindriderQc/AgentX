@@ -9,6 +9,7 @@ const {generatedPersonas,snapshot}=require('../../surfaces/household/persona-cat
 const {publicSession}=require('../../surfaces/household/persona-records');
 const {createSoundLibrary}=require('../../surfaces/household/sound-library');
 const {normalizeVoiceTimings}=require('../../src/services/voice/timeline');
+const pageCatalog=require('../../public/js/screen-pages').createCatalog([{id:'iss',label:'ISS 3D et passages',href:'/fixture/iss',mode:'frame'},{id:'ecosystem',label:'Écosystème',href:'/fixture/ecosystem',mode:'frame'},{id:'kids-tasks',label:'Tâches des enfants · lecture seule',href:'/kids',mode:'frame'}]);
 const mode=process.env.FAMILY_REPAIR_BROWSER||'chromium',output=process.env.FAMILY_REPAIR_BROWSER_OUTPUT;
 if(!output||path.resolve(output).startsWith(path.resolve(core,'..')+path.sep))throw Error('Output must be outside checkout');
 fs.mkdirSync(output,{recursive:true});
@@ -64,11 +65,19 @@ async function journey(){
  await say('Hey Nestor, explique la pluie.');await listening();value=await settled(v=>v.sessions.length===2&&last(v)?.voiceTimings?.playbackOutcome==='completed');
  check(latest(value).id!==old,'new session identity');check(latest(value).turns.length===1,'old fragments do not cross sessions');
  check(!latest(value).lastModelRequest.includes('T-Rex')&&!latest(value).lastModelRequest.includes('avec un arbre'),'old subject does not cross sessions');
+ const beforeUxModels=latest(value).modelCalls;
+ await say('Est-ce que tu me ferais le bruit du T-Rex?');await listening();value=await settled(v=>last(v)?.voiceTimings?.clipOutcome==='completed');check(latest(value).modelCalls===beforeUxModels,'polite sound bypasses model');check(last(value).replyText==='Écoute ce bruitage !','no machine excuse');
+ await say('Ouvre la page ISS.');await listening();value=await settled(v=>last(v)?.display?.[0]?.body==='iss');check(latest(value).modelCalls===beforeUxModels,'explicit ISS opens without model');check(last(value).display[0].title==='ISS 3D et passages','canonical ISS title');
+ await say('Ouvre la page ISS et explique aussi son altitude.');await listening();value=await settled(v=>last(v)?.voiceTimings?.playbackOutcome==='completed');check(last(value).display[0].body==='iss'&&last(value).display[0].title==='ISS 3D et passages','compound wrong model page is bound to requested ISS');check(last(value).replyText.includes('altitude'),'additional question retained');
+ await say('Montre les tâches des enfants pour demain.');await listening();value=await settled(v=>last(v)?.display?.[0]?.body==='kids-tasks day=tomorrow');check(!last(value).display[0].body.includes('profile'),'no assumed child');
+ await say('AnnonceHoraireSynthétique');await listening();value=await settled(v=>last(v)?.replyText.includes('22h33')&&last(v)?.voiceTimings?.playbackOutcome==='completed');check(value.synthesis.at(-1).includes('vingt-deux heures trente-trois')&&value.synthesis.at(-1).includes('deux novembre deux mille vingt-six'),'French audio projection uses words while canonical reply keeps numeric text');
+ await say('Ne montre pas la page ISS.');await listening();value=await settled(v=>last(v)?.inputText==='Ne montre pas la page ISS.'&&last(v)?.voiceTimings?.playbackOutcome==='completed');check(!(last(value).display||[]).some(b=>b.kind==='page'),'negated page opens nothing');
+ await say('Ouvre mon garage.');await listening();value=await settled(v=>last(v)?.inputText==='Ouvre mon garage.'&&last(v)?.voiceTimings?.playbackOutcome==='completed');check(last(value).replyText.includes('adulte de confiance')&&!(last(value).display||[]).length,'home control remains refused');
  window.failNextPlayback=true;await say('Une autre question.');await wait(()=>state()==='error');value=await settled(v=>last(v)?.voiceTimings?.playbackOutcome==='playback_error');
  check(last(value).voiceTimings.stopReason==='playback_error','real output failure remains explicit');document.getElementById('conversationStart').click();await listening();
  window.holdNext='clip';const paused=say('Hey Nestor, fais le bruit du T-Rex.');await wait(()=>window.held?.kind==='clip');document.getElementById('conversationStart').click();await paused;
  check(state()==='paused','Pause closes the fake audio');value=await settled(v=>last(v)?.voiceTimings?.playbackOutcome==='user_paused');check(last(value).voiceTimings.stopReason==='user_pause','Pause is not a playback fault');
- const summary={repairLatencyMs,audioOpens:value.audioOpens,sessionCount:value.sessions.length,canonicalTurns:value.sessions.reduce((n,s)=>n+s.turns.length,0),modelBoundaryCalls:value.sessions.reduce((n,s)=>n+s.modelCalls,0),cases:['sound-only','compound','fragments','yes-no','Stop-next','echo','interrupt-before-clip','interrupt-during-clip','new-session','playback-error','Pause-clip']};
+ const summary={repairLatencyMs,audioOpens:value.audioOpens,sessionCount:value.sessions.length,canonicalTurns:value.sessions.reduce((n,s)=>n+s.turns.length,0),modelBoundaryCalls:value.sessions.reduce((n,s)=>n+s.modelCalls,0),cases:['sound-only','compound','fragments','yes-no','Stop-next','echo','interrupt-before-clip','interrupt-during-clip','new-session','playback-error','Pause-clip','polite-sound','iss-direct','compound-page-canonical','tasks-readonly','French-time-projection','negated-page','home-control']};
  await fetch('/fixture/checkpoint',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(summary)});sessionStorage.setItem('familyFixtureStage','muted-reload');location.reload();return null;
 }
 
@@ -94,7 +103,7 @@ window.NestorConversation.openAudio=async()=>{
  app.post('/fixture/audio-opened',(_req,res)=>{audioOpens++;res.sendStatus(204);});
  app.post('/fixture/checkpoint',(req,res)=>{checkpoint=req.body;res.sendStatus(204);});
  app.post('/fixture/result',(req,res)=>{res.sendStatus(204);deliver(req.body);});
- app.get('/fixture/state',(_req,res)=>res.json({audioOpens,checkpoint,sessions:[...sessions.values()].map(h=>({id:h.session.sessionId,turns:h.turns.slice().reverse().map(row=>({inputText:row.inputText,replyText:row.replyText,soundId:row.soundId,voiceTimings:row.voiceTimings})),modelCalls:h.sent.length,lastModelRequest:h.sent.at(-1)?.request||''}))}));
+ app.get('/fixture/state',(_req,res)=>res.json({audioOpens,checkpoint,synthesis,sessions:[...sessions.values()].map(h=>({id:h.session.sessionId,turns:h.turns.slice().reverse().map(row=>({inputText:row.inputText,replyText:row.replyText,soundId:row.soundId,voiceTimings:row.voiceTimings,display:row.display})),modelCalls:h.sent.length,lastModelRequest:h.sent.at(-1)?.request||''}))}));
  app.use('/assets/household',express.static(publicDir));app.use('/js',express.static(path.join(core,'public/js')));app.use('/css',express.static(path.join(core,'public/css')));app.use('/psyx/assets',express.static(path.join(core,'surfaces/psyx/public')));
  app.get('/api/voix/player.js',(_req,res)=>res.type('js').send(''));
  app.post('/api/voix/synthesize/stream',(req,res)=>{synthesis.push(req.body.text);res.type('audio/wav').set({'X-Voix-Voice':'synthetic','X-Voix-Upstream':'primary'}).send(Buffer.from([0,1,2]));});
@@ -102,7 +111,7 @@ window.NestorConversation.openAudio=async()=>{
  app.get('/api/voice-personas/catalog',(_req,res)=>res.json({data:{personas,runtime:{defaultBackend:'agentx'}}}));
  app.use('/api/voice-personas/private',(_req,res)=>{errors.push('Family requested private route');res.sendStatus(403);});
  app.post('/api/voice-personas/family/sessions',(req,res)=>{
-   const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary(),validClientTurnId:id=>/^[a-f0-9-]{36}$/i.test(id),response:'La réponse synthétique répond à la question sans autre action.'});
+   const h=harness({packId:'kidx_nestor',backend:'agentx',screenPages:{...pageCatalog,family:pageCatalog},sounds:createSoundLibrary(),validClientTurnId:id=>/^[a-f0-9-]{36}$/i.test(id),response:body=>String(body.messages.at(-1).content).includes('AnnonceHoraireSynthétique')?'Il est 22h33, le 2 novembre 2026.':String(body.messages.at(-1).content).includes('altitude')?'Son altitude varie. <show kind="page" title="Garage">ecosystem</show>':'La réponse synthétique répond à la question sans autre action.'});
    h.session.sessionId=randomUUID();h.session.voice={language:'fr'};h.session.persona=personas.find(p=>p.id===req.body.personaId)||personas[0];sessions.set(h.session.sessionId,h);res.status(201).json({data:{session:publicSession(h.session)}});
  });
  app.post('/api/voice-personas/family/sessions/:sessionId/turns/text',async(req,res)=>{
@@ -123,6 +132,9 @@ window.NestorConversation.openAudio=async()=>{
     try{await mountConversation({app:document.getElementById('app'),api,esc:value=>String(value??''),space:'family',autoStart:true});const result=await (${journey.toString()})();if(result)await fetch('/fixture/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(result)});}catch(error){await fetch('/fixture/result',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ok:false,error:error.stack,clientState:window.fixtureConversation?.state,repairs:!!window.fixtureConversation?.repairs,pendingRepair:!!window.fixtureConversation?.repairs?.pending,lastInput:window.lastSyntheticText})});}
    });</script></body>`);fs.writeFileSync(path.join(output,'fixture.html'),html);res.type('html').send(html);
  });
+ require('../../surfaces/household/kids-tasks-page').registerKidsTasksPage(app);
+ app.get('/api/voice-personas/family/screen-pages',(_req,res)=>res.json({data:{destinations:pageCatalog.entries}}));
+ app.get(['/fixture/iss','/fixture/ecosystem'],(_req,res)=>res.type('html').send('<h1>Synthetic destination</h1>'));
  app.get('/api/photos/frame/status',(_req,res)=>res.json({data:{enabled:false}}));
  app.use('/api',(_req,res)=>res.json({data:{destinations:[],sessions:[],works:[],notes:[],active:'primary',review:null}}));
  server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));const origin='http://127.0.0.1:'+server.address().port;

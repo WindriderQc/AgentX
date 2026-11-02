@@ -649,8 +649,9 @@
           spokenLanguage = speechLanguage.replySpeechLanguage(text, spokenLanguage);
           replyLanguageChosen = speechLanguage.scoreSpeechLanguage(text).decided;
         }
-        turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
         const language = spokenLanguage;
+        if (this.io.naturalFamilySpeech && language === 'fr') text = speechLanguage.frenchDateTimeText(text);
+        turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
         if (!notice) turn.timeline?.mark('firstClause');
         const previousPlayback = playback, availableSlot = prefetchSlot;
         // A voice whose accepted stream failed while it played is left for the
