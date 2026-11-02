@@ -58,21 +58,27 @@
     function render() {
       if (disposed) return;
       if (!parent.isConnected) { dispose(); return; }
+      if (document.hidden || document.querySelector('.nestor-idle-photos:not([hidden])')) return;
       const items = project(view), copy = names[getLanguage() === 'en' ? 'en' : 'fr'];
-      host.hidden = !items.length;
+      if (host.hidden !== !items.length) host.hidden = !items.length;
       if (!items.length) return;
       const active = items.filter(item => !terminal.has(item.state));
       const current = active.at(-1) || items.at(-1);
       const state = item => copy[item.stale ? 'stale' : item.state] || copy.uncertain;
       const text = `Nestor · ${state(current)}${active.length > 1 ? ` · ${active.length}` : ''}`;
       if (label.textContent !== text) label.textContent = text;
-      clock.textContent = ` · ${seconds(current.elapsedMs)} ${copy.elapsed}`
+      const time = ` · ${seconds(current.elapsedMs)} ${copy.elapsed}`
         + (valid(current.remainingMs) ? ` · ~${seconds(current.remainingMs)} ${copy.remaining}` : '');
-      list.replaceChildren(...items.slice(-12).map(item => {
-        const li = document.createElement('li'); li.dataset.state = item.state;
-        li.textContent = `${state(item)} · ${seconds(item.elapsedMs)}${item.tool ? ` · ${item.tool}` : ''}`;
-        return li;
-      }));
+      if (clock.textContent !== time) clock.textContent = time;
+      const rows = items.slice(-12);
+      rows.forEach((item, index) => {
+        const li = list.children[index] || document.createElement('li');
+        const text = `${state(item)} · ${seconds(item.elapsedMs)}${item.tool ? ` · ${item.tool}` : ''}`;
+        if (li.dataset.state !== item.state) li.dataset.state = item.state;
+        if (li.textContent !== text) li.textContent = text;
+        if (!li.parentNode) list.append(li);
+      });
+      while (list.children.length > rows.length) list.lastElementChild.remove();
     }
     const timer = setInterval(render, 1000); timer.unref?.();
     render();

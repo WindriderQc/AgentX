@@ -52,7 +52,7 @@ const faceModule = `customElements.define('llmx-face', class extends HTMLElement
             photoRequests++; return {id:'${id}',src:'/api/photos/frame/${id}/image'};
           }});
         dispatchEvent(new CustomEvent('persona-presence', {detail:{state:'listening',
-          sample:{input:() => { audioReads++; return .1; }}}}));
+          sample:{input:() => { audioReads++; return .1 + .01 * (audioReads % 5); }}}}));
       </script>`);
   });
   server.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
