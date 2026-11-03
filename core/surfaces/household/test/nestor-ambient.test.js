@@ -167,3 +167,18 @@ test('Famille loads the living screen after the dock and its rules', () => {
   assert.match(page, /NestorAmbient\?\.mount/);
   assert.match(page, /ambient\?\.busy\(\)/, 'photos wait while Nestor shows a moment');
 });
+
+test('GET /api/family/ambient answers through the family routes', async () => {
+  const express = require('express');
+  const { registerFamilyRoutes } = require('../family-routes');
+  const app = express();
+  registerFamilyRoutes({ app, express, familyTasks: {}, standardJsonParser: express.json(),
+    ambient: { snapshot: async () => ({ at: 'now', weather: null, sun: null, iss: null, alerts: null }) } });
+  const server = app.listen(0);
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/family/ambient`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.deepEqual((await response.json()).data, { at: 'now', weather: null, sun: null, iss: null, alerts: null });
+  } finally { server.close(); }
+});
