@@ -51,6 +51,8 @@ function project(row) {
 }
 
 async function record(input = {}, { now = new Date(), days = retentionDays() } = {}) {
+  if (input.preserveExisting !== undefined && typeof input.preserveExisting !== 'boolean') throw error('preserveExisting must be boolean');
+  const preserve = input.preserveExisting === true;
   const threadId = identifier(input.threadId, 'threadId', { required: true });
   const messageId = identifier(input.messageId, 'messageId');
   const occurredAt = dateOf(input.occurredAt, 'occurredAt');
@@ -77,18 +79,20 @@ async function record(input = {}, { now = new Date(), days = retentionDays() } =
   values.summary = (await sealText(values.summary, { seenIn: 'mail-journal' })).text;
   values.subject = (await sealText(values.subject, { seenIn: 'mail-journal' })).text;
   const key = `${threadId}\n${messageId}`;
-  const write = upsert => MailJournalEntry.findOneAndUpdate({ key }, { $set: values, $setOnInsert: { key } },
+  const update = preserve ? { $setOnInsert: { key, ...values } } : { $set: values, $setOnInsert: { key } };
+  const write = upsert => MailJournalEntry.findOneAndUpdate({ key }, update,
     { new: true, upsert, runValidators: true, includeResultMetadata: true });
   let result;
   try {
     result = await write(true);
   } catch (failure) {
     if (failure.code !== 11000) throw failure;
-    // A concurrent first record of the same key won; replace its entry.
+    // A concurrent first record won; retain the caller's insert/update policy.
     result = await write(false);
   }
-  return { ok: true, authority: 'agentx.core', recorded: true,
-    created: Boolean(result.lastErrorObject?.upserted), entry: project(result.value) };
+  const created = Boolean(result.lastErrorObject?.upserted);
+  return { ok: true, authority: 'agentx.core', recorded: !preserve || created, created,
+    ...(preserve && !created ? { reason: 'already journaled' } : {}), entry: project(result.value) };
 }
 
 const escapeRegex = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

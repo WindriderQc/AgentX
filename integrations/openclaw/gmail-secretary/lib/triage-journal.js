@@ -28,7 +28,7 @@ export async function journalTriage(config, entry, fetchImpl = globalThis.fetch)
     if (Array.isArray(existing.entries) && existing.entries.some(row => row.threadId === entry.threadId && row.messageId === entry.messageId)) {
       return { recorded: false, reason: "already journaled" };
     }
-    const saved = await post({ action: "record", threadId: entry.threadId, messageId: entry.messageId, occurredAt: entry.occurredAt, summary: entry.summary,
+    const saved = await post({ action: "record", preserveExisting: true, threadId: entry.threadId, messageId: entry.messageId, occurredAt: entry.occurredAt, summary: entry.summary,
       ...(entry.subject && { subject: entry.subject }), ...(entry.counterpart && { counterpart: entry.counterpart }),
       tags: ["triage", triageTag(entry.category)].filter(Boolean) });
     return saved.recorded === true ? { recorded: true } : { recorded: false, reason: String(saved.reason || "not recorded").slice(0, 200) };

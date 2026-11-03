@@ -128,6 +128,9 @@ catch-up cadence while deliveries wait. An interrupted prepared intent first
 rechecks its exact message labels. Core's journal identity reconciles a lost
 acknowledgement without creating duplicate digests. The desk reports pending
 deliveries separately from classified mail. No extra scheduler is installed.
+Delivery uses Core's atomic `preserveExisting` insertion, so a fuller digest
+recorded after the lookup also survives a delayed triage delivery. Install this
+Core contract before loading the updated adapter.
 
 Gmail hooks record the trusted native session origin and hashed session/run/call
 references in the existing private audit log, without input or output content.
