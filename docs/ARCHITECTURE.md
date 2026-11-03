@@ -905,6 +905,18 @@ pages and APIs retain the parental gateway guard.
   inference; the dock starts the picture on Nestor's first word and GraphysX's
   `<llmx-stage>` draws it. Its applied/rejected receipt is kept once on the
   family turn (`sceneReceipt`), re-derived from the recorded question.
+  In Famille's full-screen view, Nestor's standby screen reacts to household data
+  without speaking (`nestor-ambient.js`, rules in `nestor-ambient-choice.js`). One read,
+  `GET /api/family/ambient` (`family-ambient.js`), returns the Environment Canada current
+  conditions, a computed sun elevation, the next naked-eye ISS pass and the operations
+  watch's finding counts with the ecosystem machines they name; never coordinates or
+  alert text. Each part is cached briefly and becomes null when its owner fails. The sky
+  behind the face follows the weather and the light; short notes under the clock rank a
+  critical alert, the ISS, other alerts and the weather. Three minutes before a pass the
+  sky becomes a horizon panorama with the predicted path and the station's real position
+  while it passes. An alert naming a known machine opens a silent ecosystem tour to it,
+  by day only and once per alert set and machine in six hours. A conversation, typed
+  text or Escape removes the notes and moments; idle photos wait while a moment shows.
   A conversation reply has a spoken and a shown channel (`reply-channels.js`):
   the model puts screen content in `<show kind="…">` blocks, and Core also
   diverts code, tables, long lists, links, paths and key-like tokens. Only the
