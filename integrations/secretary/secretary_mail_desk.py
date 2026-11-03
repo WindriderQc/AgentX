@@ -256,9 +256,9 @@ def review_senders(args: argparse.Namespace) -> dict[str, Any]:
             "more": bool(isinstance(payload, dict) and payload.get("nextPageToken")), "senders": ranked[:SENDER_TOP]}
 
 
-def catchup(_args: argparse.Namespace, root: Path | None = None) -> dict[str, Any]:
+def catchup(args: argparse.Namespace, root: Path | None = None) -> dict[str, Any]:
     """Counts of the archive catch-up job (mail_catchup.py): no Gmail call, no content."""
-    root = root or EVIDENCE_ROOT
+    root = Path(root or getattr(args, "evidence_root", None) or EVIDENCE_ROOT)
 
     def read(name: str, default: Any) -> Any:
         try:

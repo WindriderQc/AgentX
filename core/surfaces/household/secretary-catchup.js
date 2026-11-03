@@ -73,6 +73,12 @@ function reviewProgress(body) {
       allTargetTextReviewed: v.allTargetTextReviewed === true, semanticAcceptance: 'not-established', userConfirmed: false,
       allTargetTextCovered: v.allTargetTextCovered === true,
       newlyReviewedPages: count(v.newlyReviewedPages), elapsedSeconds: count(v.elapsedSeconds),
+      ...(v.controller ? { controller: {
+        phase: clean(v.controller.phase, 60), at: clean(v.controller.at, 50), fresh: v.controller.fresh === true,
+        watchPhase: clean(v.controller.watchPhase, 60), reconciled: v.controller.reconciled === true,
+        released: v.controller.released === true, queueState: clean(v.controller.queueState, 20),
+        reconciledAt: clean(v.controller.reconciledAt, 50)
+      } } : {}),
       ...(annualCoverage ? { annualCoverage } : {})
       };
     })
