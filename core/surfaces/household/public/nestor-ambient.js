@@ -42,7 +42,7 @@
 
     let snapshot = null, state = 'idle', sample = null, scene = null, disposed = false;
     let frame = 0, lastFrame = 0, particles = [], particleKind = '', flash = 0;
-    let visitKey = null, visitTimer = null, dismissed = new Set(), visits = readVisits();
+    let visitKey = null, visitMoment = null, visitTimer = null, dismissed = new Set(), visits = readVisits();
     const ctx = canvas.getContext?.('2d') || null;
 
     const dock = () => doc.querySelector('.avatar-dock');
@@ -71,6 +71,8 @@
       const at = now();
       const next = Choice.chooseScreen(snapshot, { at, standby: standby(), visits });
       if (next.moment && dismissed.has(momentId(next.moment))) next.moment = null;
+      // An open visit is already recorded (cooldown) but keeps the screen until its tour ends.
+      if (!next.moment && visitMoment && standby()) next.moment = visitMoment;
       scene = next;
       const host = dock();
       if (host && canvas.parentElement !== host) host.prepend(canvas);
@@ -102,7 +104,7 @@
       const src = target && pages.url(target);
       if (!src) return;
       closeVisit();
-      visitKey = moment.key;
+      visitKey = moment.key; visitMoment = moment;
       visits = { ...Object.fromEntries(Object.entries(visits).filter(([, time]) => at - time < Choice.VISIT_COOLDOWN_MS)), [moment.key]: at };
       saveVisits(visits);
       const iframe = doc.createElement('iframe');
@@ -122,7 +124,7 @@
     function closeVisit() {
       if (visitKey === null) return;
       root.clearTimeout(visitTimer);
-      visitKey = null;
+      visitKey = null; visitMoment = null;
       visit.hidden = true;
       visit.querySelector('iframe')?.remove();
     }
