@@ -8,6 +8,7 @@ const FinanceStatement = require('../../../models/FinanceStatement');
 const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { situation } = require('./financePlan');
 const { ledgerFilter } = require('./ledgers');
+const { coverageContext, assessCoverage, monthsBetween } = require('./financeCompleteness');
 
 const TRANSFERS = 'Virements internes';
 
@@ -73,7 +74,7 @@ async function debtTrajectory(query = {}) {
   return {
     start, months, scenario, debts: amortizing,
     excluded: s.debts.filter((d) => !amortizing.some((a) => a.name === d.name)).map((d) => d.name),
-    baseline: base, withScenario: plan, interestSavedCents: base.interestCents - plan.interestCents
+    baseline: base, withScenario: plan, interestSavedCents: base.interestCents - plan.interestCents, coverage: s.coverage
   };
 }
 
@@ -93,6 +94,10 @@ async function forecast(query = {}) {
     label: String(event?.label || '').slice(0, 80), amountCents: int(event?.amountCents, { min: -100000000, max: 100000000 })
   })).filter((event) => event.month);
   const cushionCents = int(query.cushionCents, { fallback: 0 });
+  if (!s.cash) return { start, status: 'unavailable', reason: 'no_cash_balance', startCashCents: null, startCashAsOf: null,
+    assumptions: { incomeCents, spendCents, provisionsCents, cushionCents, budgetIncome, budgetSpend,
+      actualIncomeCents: s.monthly.inCents, actualSpendCents: s.monthly.outCents === null ? null : -s.monthly.outCents },
+    rows: [], endCashCents: null, lowestCents: null, coverage: s.coverage };
   let cash = s.cash?.balanceCents || 0;
   const rows = [];
   for (let i = 1; i <= months; i += 1) {
@@ -107,8 +112,8 @@ async function forecast(query = {}) {
   return {
     start, startCashCents: s.cash?.balanceCents || 0, startCashAsOf: s.cash?.asOf || null,
     assumptions: { incomeCents, spendCents, provisionsCents, cushionCents, budgetIncome, budgetSpend,
-      actualIncomeCents: s.monthly.inCents, actualSpendCents: -s.monthly.outCents },
-    rows, endCashCents: cash, lowestCents: Math.min(...rows.map((row) => row.closingCents))
+      actualIncomeCents: s.monthly.inCents, actualSpendCents: s.monthly.outCents === null ? null : -s.monthly.outCents },
+    rows, endCashCents: cash, lowestCents: Math.min(...rows.map((row) => row.closingCents)), coverage: s.coverage
   };
 }
 
@@ -124,19 +129,27 @@ async function balanceHistory({ ledger } = {}) {
       series.set(account.accountKey, entry);
     }
   }
-  return { series: [...series.values()].filter((s) => s.points.some((p) => p.balanceCents !== 0)) };
+  const context = await coverageContext({ ledger });
+  const period = context.bounds();
+  const months = period ? monthsBetween(period.from, period.to) : [];
+  return { series: [...series.values()].filter((s) => s.points.some((p) => p.balanceCents !== 0)), months,
+    monthCoverage: months.map(month => ({ month, ...context.month(month) })),
+    coverage: period ? context.at(period.from, period.to) : await assessCoverage({ ledger }) };
 }
 
 // Spending per month per category (internal transfers excluded).
 async function categoryMonths(query = {}) {
   const months = int(query.months, { min: 3, max: 60, fallback: 12 });
   const scope = ledgerFilter(query.ledger);
-  const latest = await FinanceTransaction.findOne(scope).sort({ date: -1 }).select('date').lean();
-  if (!latest) return { months: [], categories: [] };
-  const end = latest.date.slice(0, 7);
+  const [latest, context] = await Promise.all([
+    FinanceTransaction.findOne(scope).sort({ date: -1 }).select('date').lean(), coverageContext(query)
+  ]);
+  const endDate = [latest?.date, context.lastDate].filter(Boolean).sort().at(-1);
+  if (!endDate) return { months: [], categories: [], coverage: await assessCoverage(query) };
+  const end = endDate.slice(0, 7);
   const first = addMonths(end, -(months - 1));
   const rows = await FinanceTransaction.aggregate([
-    { $match: { ...scope, date: { $gte: `${first}-01`, $lte: latest.date }, flowCents: { $lt: 0 }, category: { $ne: TRANSFERS } } },
+    { $match: { ...scope, date: { $gte: `${first}-01`, $lte: endDate }, flowCents: { $lt: 0 }, category: { $ne: TRANSFERS } } },
     { $group: { _id: { month: { $substrBytes: ['$date', 0, 7] }, category: { $ifNull: ['$category', 'Non classé'] } },
       outCents: { $sum: '$flowCents' } } }
   ]);
@@ -146,9 +159,10 @@ async function categoryMonths(query = {}) {
   const categories = [...totals.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
   const cell = new Map(rows.map((row) => [`${row._id.month}|${row._id.category}`, -row.outCents]));
   return {
-    months: list,
+    months: list, monthCoverage: list.map(month => ({ month, ...context.month(month) })),
+    coverage: context.at(`${first}-01`, endDate),
     categories: categories.map((name) => ({ category: name, totalCents: totals.get(name),
-      perMonthCents: list.map((month) => cell.get(`${month}|${name}`) || 0) }))
+      perMonthCents: list.map(month => cell.get(`${month}|${name}`) ?? (context.isComplete(month) ? 0 : null)) }))
   };
 }
 

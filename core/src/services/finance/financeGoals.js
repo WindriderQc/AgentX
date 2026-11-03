@@ -2,13 +2,14 @@
 
 // Savings goals and the monthly review. Progress comes from a ledger account, a plan asset
 // or the sum of a tag. The pace is the average of the last three complete months (a month
-// without a payroll statement is left out). Core computes every figure in integer cents;
+// without complete account/date coverage is left out). Core computes every figure in integer cents;
 // the model only phrases them.
 
 const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { balances } = require('./financeQueryService');
 const { getPlan, situation } = require('./financePlan');
-const { payrollCoverage } = require('./financeCompleteness');
+const { coverageContext, assessCoverage } = require('./financeCompleteness');
+const { monthlyAverage, money } = require('./financeMeasures');
 const { ledgerFilter } = require('./ledgers');
 
 const WINDOW = 3;
@@ -46,8 +47,9 @@ function completeWindow(payroll, now) {
 async function windowTotal(months, match, field) {
   if (!months.length) return null;
   const rows = await FinanceTransaction.find({ ...ledgerFilter('perso'), ...match,
-    date: { $gte: `${months[0]}-01`, $lte: lastDay(months.at(-1)) } }).select(field).lean();
-  return rows.reduce((sum, row) => sum + (row[field] || 0), 0);
+    date: { $gte: `${months[0]}-01`, $lte: lastDay(months.at(-1)) } }).select(`${field} date`).lean();
+  const selected = new Set(months);
+  return rows.filter(row => selected.has(row.date.slice(0, 7))).reduce((sum, row) => sum + (row[field] || 0), 0);
 }
 
 async function progressOf(goal, { accounts, plan, months, now }) {
@@ -72,7 +74,11 @@ async function progressOf(goal, { accounts, plan, months, now }) {
   const remainingCents = Math.max(goal.targetCents - progressCents, 0);
   const percent = goal.targetCents > 0 ? Math.min(100, Math.round((progressCents / goal.targetCents) * 100)) : 0;
   return { name: goal.name, priority: goal.priority, source, targetCents: goal.targetCents, targetDate: goal.targetDate,
-    progressCents, remainingCents, percent, paceMonthlyCents, ...projection(remainingCents, paceMonthlyCents, goal.targetDate, now) };
+    progressCents, remainingCents, percent, paceMonthlyCents,
+    paceMeasure: { kind: 'monthly_average', unit: 'cents/month', amountCents: paceMonthlyCents, months, monthCount: months.length,
+      display: paceMonthlyCents === null ? null : `${money(paceMonthlyCents)}/mois`,
+      scopeText: monthlyAverage(0, months).scopeText },
+    ...projection(remainingCents, paceMonthlyCents, goal.targetDate, now) };
 }
 
 // When the target is reached at the current pace, and the monthly amount needed for the target date.
@@ -86,11 +92,13 @@ function projection(remainingCents, pace, targetDate, now = new Date()) {
 }
 
 async function goals({ now = new Date() } = {}) {
-  const [plan, { accounts }, payroll] = await Promise.all([getPlan(), balances({ ledger: 'perso' }), payrollCoverage({ ledger: 'perso' })]);
-  const months = completeWindow(payroll, now);
+  const [plan, { accounts }, coverage] = await Promise.all([getPlan(), balances({ ledger: 'perso' }), coverageContext({ ledger: 'perso', now })]);
+  const months = completeWindow(coverage, now);
   const list = [];
   for (const goal of plan.goals) list.push(await progressOf(goal, { accounts, plan, months, now }));
-  return { asOf: payroll.asOf, windowMonths: months, goals: list };
+  const period = coverage.bounds();
+  return { asOf: coverage.asOf, windowMonths: months, goals: list,
+    coverage: period ? coverage.at(period.from, period.to) : await assessCoverage({ ledger: 'perso' }) };
 }
 
 // The month just closed, planned against actual by category, and the three largest overspends.
@@ -98,12 +106,13 @@ async function monthlyReview({ now = new Date() } = {}) {
   const s = await situation({ months: 1 });
   const month = s.window.averageMonths.at(-1) || null;
   const budget = s.budget.map((line) => ({ label: line.label, category: line.category, tag: line.tag,
-    plannedCents: line.monthlyCents, actualCents: line.actualMonthlyCents, gapCents: line.gapCents }));
+    plannedCents: line.monthlyCents, actualCents: line.actualMonthlyCents, gapCents: line.gapCents,
+    unit: 'cents/month', actualMeasure: line.actualMeasure }));
   const topGaps = budget.filter((line) => line.category !== 'Revenus' && line.gapCents > 0)
     .sort((a, b) => b.gapCents - a.gapCents).slice(0, 3);
   return { month, incompleteMonths: s.window.incompleteMonths, dataAsOf: s.window.dataAsOf, budget,
     budgetTotals: s.budgetTotals, topGaps, goals: (await goals({ now })).goals,
-    note: month ? null : 'No complete month yet: the last month has no payroll statement covering it.' };
+    coverage: s.coverage, note: month ? `Actuals are monthly amounts for ${month}.` : 'Aucun mois entier admissible pour les comptes attendus.' };
 }
 
 module.exports = { goals, monthlyReview, projection, completeWindow, monthsUntil };

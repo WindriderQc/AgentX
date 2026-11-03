@@ -105,8 +105,8 @@ purchases as income.
 - `GET /api/finance/goals`: savings goals from the plan section `goals`. Progress
   comes from a ledger account (`source.kind: account`, its balance), an asset of
   the plan (`asset`), or the sum of a tag (`tag`, money set aside counts as
-  progress). The pace is the average of the last three complete months (a month
-  without a payroll statement is left out); the projected month, the monthly
+  progress). The pace is the average of the last three months with qualified
+  account/date coverage; only those exact months enter its numerator. The projected month, the monthly
   amount the target date needs, and a status (`reached`, `on_track`, `behind`,
   `no_pace`) are computed by Core. Goals are shown as bars at the top of
   "My situation".
@@ -116,12 +116,95 @@ purchases as income.
 - Scheduled agent jobs (instance configuration): daily alert check (silent
   with `NO_REPLY` when nothing is new) and a weekly review.
 
-## Completeness and deadlines
+## Account and period coverage
 
-- A month is complete only when the payroll account (`EOP`) statements cover
-  every day of it (`financeCompleteness.js`). Incomplete months keep their
-  totals, are flagged `complete: false` and are excluded from averages and
-  savings rates. A ledger with no payroll statement at all flags nothing.
+Core's `financeCompleteness.js` checks statement date intervals for every
+expected account in the selected book. The plan section `coverageAccounts`
+declares the owner's inventory, independently for `perso` and `corp`:
+
+```json
+{
+  "coverageAccounts": [
+    { "ledger": "perso", "accountKey": "synthetic-bank|1234|EOP", "from": "2026-01-01", "to": null },
+    { "ledger": "perso", "accountKey": "synthetic-card|5678|CARD", "from": "2026-01-01", "to": "2026-06-30" },
+    { "ledger": "corp", "accountKey": "corp:synthetic-bank|9012|EOP", "from": "2026-01-01", "to": null }
+  ]
+}
+```
+
+Use exact keys from `balances`. Optional `from`/`to` are inclusive activity
+boundaries, explicitly stated by the owner; first/last received statements do
+not infer them. The page's plan editor offers **Comptes attendus**, including
+both books and known-account suggestions. Existing per-section/operation APIs
+can save this section. This is owner intent, not a data migration. Closing an
+alert series in `seriesStatus` does not invent an account closing date.
+
+Read responses carry `coverage` with `kind: statement_date_coverage`, selected
+book/account, exact `period`, expected accounts, gaps by day, structured reasons
+and `status: covered|partial|unknown|unavailable`. The coverage endpoint puts
+this projection at its root and accepts `account`, `from`, `to`. Its legacy
+`series` list still describes received issuer-series intervals for the existing
+document-deposit reader; it does not certify completeness. Valid ordered calendar
+dates are required; a read interval is bounded to 100 years.
+
+An undeclared inventory or an unlisted observed account is `unknown`, even if
+the known intervals are contiguous. An exact account-key filter defines a
+bounded account universe; code filters check the declared matching accounts.
+Neither filter bypasses date coverage. A missing card, day or pending review
+prevents a complete claim. Activity dates keep a closed account from requiring
+new statements forever. Stored row date bounds outside their owning source,
+or rows without an account source, remain visible and qualify the affected
+interval. A bounded historical anomaly does not invalidate an independently
+covered later period. This is not a full stored-row integrity audit.
+`dataAsOf` retains the oldest latest source date among
+the accounts active at the end of the interval (or the selected closed accounts
+when none remain active); per-account dates remain visible. Freshness uses the
+existing `FINANCE_ALERT_STALE_DAYS` threshold without turning a historical
+balance into a current one.
+
+Expected calendar months are enumerated independently of matching transactions.
+A covered month with no matching operations is zero; an empty month without
+source evidence has null amounts. An incomplete month can still show its stored
+totals, separately from an eligible monthly average. A partial requested month
+has a period total but cannot enter a monthly denominator. Annual reads check
+every calendar month, including empty ones; `fullYear: false` names a selected
+fraction of a year. A current or partially received year is never presented as
+a complete year. Missing months remain visible in the page and charts.
+
+Date coverage does **not** verify book attribution, stored-row integrity,
+currency identity or the correctness of the source itself. Those checks and
+historical repairs remain separate. No existing real inventory is auto-confirmed.
+
+## Amounts and denominators
+
+Core returns measures with `kind`, `unit`, `amountCents`, exact `months`,
+`monthCount`, `display` and `scopeText`. A monthly measure uses `cents/month`
+and displays dollars per month; a period total uses `cents` and its exact dates.
+This contract does not infer a currency code or perform currency conversion.
+`monthly.averageNet`, situation actual measures and each trend's
+`recentMeasure`/`previousMeasure` carry the actual eligible denominator, which
+may be two months rather than three. `changeMeasure` is a difference between
+monthly averages. A missing baseline stays null, never zero. Recurring charges
+carry a monthly median and a separate `annualized_estimate` in `cents/year`;
+the latter is not an observed yearly cost.
+
+Native consumers quote measure `display` **and** `scopeText`. Legacy cents
+aliases remain for compatibility. Plugin 1.6 requires qualified Core responses
+and refuses missing coverage or trend units: install the supporting Core before
+the adapter. Neither discovery nor synthetic source tests prove a delivered
+model conversation. A live conversation qualification uses the native heavy-work
+queue and its existing execution authority.
+
+The page preserves null as an empty chart point and an unavailable text value,
+uses muted marks for partial months, keeps exact account selection, and leaves
+the initial view on all accounts. With no admissible months, situation and
+budget actuals/gaps are null; a forecast without a cash balance is unavailable.
+The minimal Nestor brief projects coverage limits without amounts, account keys
+or source paths. Bank-channel descriptions do not identify a beneficiary or
+supplier without supporting detail.
+
+## Deadlines
+
 - Staleness is judged per statement series (issuer and account or card last
   four), not on the newest statement of all accounts: a card that is still fed
   does not hide a payroll account that stopped. One alert per series. A series

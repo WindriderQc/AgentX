@@ -20,6 +20,7 @@ const financePlanSchema = new mongoose.Schema({
   watch: { type: [mongoose.Schema.Types.Mixed], default: [] },
   taxRoom: { type: [mongoose.Schema.Types.Mixed], default: [] },
   seriesStatus: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  coverageAccounts: { type: [mongoose.Schema.Types.Mixed], default: [] },
   goals: { type: [mongoose.Schema.Types.Mixed], default: [] }
 }, { timestamps: true, minimize: false });
 

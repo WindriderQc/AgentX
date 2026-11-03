@@ -122,6 +122,12 @@ outcome separately, even when the crash happened before the actual send. Other a
 documents must match their protected signatures, and the latest balances must
 remain unchanged for this historical contract.
 
+The v1/v2 balance proof retains its original `{accounts}` projection in each
+book. New read-response coverage metadata does not enter that comparison:
+moving historical sources can change coverage while the latest account
+identities, amounts and dates remain exactly unchanged. Existing manifest
+digests and saved balance proof bytes retain their original interpretation.
+
 The terminal receipt is saved durably before admission is released. A lost
 terminal reply replays that receipt with its original completion date; it is
 historical evidence, not a fresh claim that current figures still match it.

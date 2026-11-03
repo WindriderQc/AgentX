@@ -880,10 +880,14 @@ A dated item keeps alerting every day until its `dueDate` is moved forward. A
 pending alert is reported once; standing conditions (stale data, deadlines, low
 balance) stay listed on `GET` while they hold. `POST /api/finance/alerts/report`
 returns the pending alerts and marks them reported for a delivery job.
-Months without a payroll (EOP) statement covering every day are incomplete: they
-are flagged in `monthly`, `insights` and `yearly` (`complete: false`,
-`dataAsOf`), and left out of averages, the savings rate and the situation's
-monthly averages.
+Finance date coverage checks the plan's expected accounts in each book across
+the requested interval, including months without operations. An unconfirmed
+inventory remains unknown; an account filter does not bypass coverage. Missing
+evidence and unavailable averages stay null. `complete`, `fullYear`, per-account
+dates and structured `coverage` qualify the result. Core measures carry their
+exact months, denominator and unit; native clients quote `display` and
+`scopeText`. See [Finance](FINANCE.md#account-and-period-coverage) for the owner
+inventory, historical limits and Core/plugin rollout order.
 The OpenClaw finance agent (`comptable`) reads it through the `finance_ledger` tool of the
 `integrations/openclaw/finance-ledger` plugin (loopback Core URL, visible only
 to the configured finance agent); amounts arrive as cents plus a formatted

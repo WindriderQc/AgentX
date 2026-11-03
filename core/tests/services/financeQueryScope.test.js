@@ -46,7 +46,7 @@ test('HTTP responses keep the selected book and effective filters visible', asyn
 
 test('HTTP refuses unsupported selectors and invalid books instead of widening a read', async () => {
   for (const [route, query] of [
-    ['balances', { account: 'EOP' }], ['coverage', { from: '2026-01-01' }],
+    ['balances', { account: 'EOP' }], ['coverage', { q: 'unsupported' }],
     ['transactions', { ledger: 'company' }], ['transactions', { q: ['one', 'two'] }],
     ['insights', { from: '2026-04-01', to: '2026-03-01' }], ['goals', { ledger: 'corp' }]
   ]) {
@@ -59,10 +59,11 @@ test('HTTP refuses unsupported selectors and invalid books instead of widening a
 
 test('insights intersect their lookback with the requested period, merchant and book', async () => {
   const result = await insights({ ledger: 'corp', from: '2026-03-05', to: '2026-03-31', q: 'Synthetic supplier' });
-  expect(result.period).toEqual({ from: '2026-03-05', to: '2026-03-10', months: 1 });
+  expect(result.period).toEqual({ from: '2026-03-05', to: '2026-03-31', months: 1 });
   expect(result.savings).toEqual([expect.objectContaining({ month: '2026-03', outCents: -3000 })]);
   expect(result.categoryTrends).toHaveLength(1);
-  expect(result.categoryTrends[0].recentMonthlyCents).toBe(-3000);
+  expect(result.categoryTrends[0].recentMonthlyCents).toBeNull();
+  expect(result.coverage.complete).toBe(false);
   const resultHttp = await request(app()).get('/api/finance/insights').query({ ledger: 'corp', from: '2026-03-05', to: '2026-03-31', q: 'Synthetic supplier' }).expect(200);
   expect(resultHttp.body.data.scope.ledger).toBe('corp');
   expect(resultHttp.body.data.scope.filters.q).toBe('Synthetic supplier');

@@ -20,12 +20,23 @@ validates the category and re-applies every rule to past and future rows.
 (`report: true` marks them reported) for a scheduled delivery.
 
 Ledger questions accept `ledger: "perso"` (default) or `ledger: "corp"`.
-`coverage` reads the existing statement-series coverage and gaps. Supported
+`coverage` reads expected accounts and date gaps, with `account`, `from`, `to`.
+Supported
 date, merchant and exclusion filters reach Core; a selector unsupported by
 the chosen action is refused rather than discarded. The result records
 `requested` selectors and Core's `scope`. Rules are shared between books;
 goals and the monthly review use the personal plan only. Those actions do not
 take a ledger selector in the native client.
+
+Version 1.6 requires Core's qualified Finance reads. It refuses missing coverage,
+an inconsistent coverage book or trends without explicit measure units. Update
+Core before installing the adapter. Expected accounts are owner declarations in
+the existing plan's `coverageAccounts` section; `unknown` is not complete.
+Quote each measure's `display` together with `scopeText`: a monthly average over
+two received months is not a three-month total. Preserve null amounts and
+baselines; a recurring yearly estimate is not an observed yearly cost. Bank
+channel words do not identify a supplier. [Core's contract](../../../docs/FINANCE.md#account-and-period-coverage)
+defines coverage, active dates, denominators and the remaining verification limits.
 
 The tool is visible only to the agents listed in `agentIds` (default
 `comptable`), unsandboxed, in their own sessions. Configure the plugin with the

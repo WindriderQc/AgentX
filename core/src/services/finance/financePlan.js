@@ -9,7 +9,8 @@ const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { balances } = require('./financeQueryService');
 const { CATEGORIES } = require('./financeCategories');
 const { ledgerFilter } = require('./ledgers');
-const { payrollCoverage } = require('./financeCompleteness');
+const { coverageContext, assessCoverage, validDate, lastDayOf } = require('./financeCompleteness');
+const { monthlyAverage } = require('./financeMeasures');
 
 const PERSO = ledgerFilter('perso');
 
@@ -88,10 +89,30 @@ function accountCode(value) {
   return code || null;
 }
 
+function coverageAccounts(value) {
+  const rows = list(value, 'coverageAccounts', 100, (item, field) => {
+    const ledger = ledgerField(item.ledger, `${field}.ledger`);
+    const accountKey = text(item.accountKey, 80);
+    if (!ledger || accountKey.split('|').length !== 3 || accountKey.startsWith('corp:') !== (ledger === 'corp')
+      || accountKey.split('|').some(part => !part)) throw new FinancePlanError(`${field} requires a ledger and its exact accountKey`);
+    const from = item.from || null;
+    const to = item.to || null;
+    if (from && !validDate(from) || to && !validDate(to) || from && to && from > to) {
+      throw new FinancePlanError(`${field} requires valid ordered active dates`);
+    }
+    return { ledger, accountKey, from, to };
+  });
+  if (new Set(rows.map(item => `${item.ledger}|${item.accountKey}`)).size !== rows.length) {
+    throw new FinancePlanError('Declare each coverage account once, with its active dates');
+  }
+  return rows;
+}
+
 // Validates a whole plan; unknown fields are dropped.
 function cleanPlan(input = {}) {
   return {
     phase: text(input.phase, 600),
+    coverageAccounts: coverageAccounts(input.coverageAccounts),
     // Tags of exceptional rows (e.g. a refinancing) kept out of averages and budget actuals.
     excludeTags: Array.isArray(input.excludeTags)
       ? [...new Set(input.excludeTags.map((tag) => text(tag, 40).toLowerCase()).filter(Boolean))].slice(0, 10) : ['refi'],
@@ -157,7 +178,7 @@ async function savePlan(input) {
 }
 
 const SECTIONS = ['phase', 'excludeTags', 'budget', 'debts', 'credit', 'provisions', 'assets', 'milestones',
-  'openItems', 'allocations', 'watch', 'taxRoom', 'seriesStatus', 'goals'];
+  'openItems', 'allocations', 'watch', 'taxRoom', 'seriesStatus', 'goals', 'coverageAccounts'];
 
 // Replaces one section (the page editor saves a whole table at once).
 async function saveSection(section, value) {
@@ -247,7 +268,7 @@ function lastMonths(latestDate, count) {
 // Plan + ledger. `months` = window for actual monthly averages (default 3).
 async function situation({ months } = {}) {
   const window = Math.min(Math.max(Number.parseInt(months, 10) || 3, 1), 24);
-  const [plan, { accounts }] = await Promise.all([getPlan(), balances({ ledger: 'perso' })]);
+  const [plan, { accounts }, coverage] = await Promise.all([getPlan(), balances({ ledger: 'perso' }), coverageContext({ ledger: 'perso' })]);
   // Several cards share the code CARD: an optional issuer word picks the right one.
   const findAccount = (code, issuer) => (code ? accounts.filter((account) => account.code === code
     && (!issuer || account.issuer.toLowerCase().includes(issuer.toLowerCase())))
@@ -270,21 +291,20 @@ async function situation({ months } = {}) {
   // A statement ending on a month's last day completes that month even when its last
   // transaction is earlier; otherwise the newest transaction's month is partial.
   const statementEnd = accounts.map((account) => account.asOf).filter(Boolean).sort().at(-1) || '';
-  const monthsWindow = latest ? lastMonths(lastFullMonth(statementEnd > latest.date ? statementEnd : latest.date), window) : [];
+  const latestDate = statementEnd > (latest?.date || '') ? statementEnd : latest?.date;
+  const monthsWindow = latestDate ? lastMonths(lastFullMonth(latestDate), window) : [];
   const fetched = monthsWindow.length ? await FinanceTransaction.find({
     ...PERSO, date: { $gte: `${monthsWindow[0]}-01`, $lte: `${monthsWindow.at(-1)}-31` }, category: { $ne: TRANSFERS },
     ...(plan.excludeTags.length && { tags: { $nin: plan.excludeTags } })
   }).select('date flowCents category tags').lean() : [];
-  // Averages count only months the payroll statements fully cover; the others are listed apart.
-  const payroll = await payrollCoverage({ ledger: 'perso' });
-  const averageMonths = monthsWindow.filter((month) => payroll.isComplete(month));
+  const averageMonths = monthsWindow.filter(month => coverage.isComplete(month));
   const counted = new Set(averageMonths);
   const rows = fetched.filter((row) => counted.has(row.date.slice(0, 7)));
 
   let inCents = 0;
   let outCents = 0;
   for (const row of rows) { if (row.flowCents > 0) inCents += row.flowCents; else outCents += row.flowCents; }
-  const perMonth = (total) => (averageMonths.length ? Math.round(total / averageMonths.length) : 0);
+  const perMonth = total => monthlyAverage(total, averageMonths).amountCents;
 
   // Budget lines grouped by (category, tag): a tagged group takes its tagged
   // rows; the untagged group of a category takes the rest, so nothing counts twice.
@@ -305,20 +325,25 @@ async function situation({ months } = {}) {
       ? Math.max(row.flowCents, 0) : Math.max(-row.flowCents, 0)), 0);
     const actual = perMonth(total);
     return { label: group.labels.join(' + '), category: group.category, tag: group.tag,
-      monthlyCents: group.monthlyCents, actualMonthlyCents: actual, gapCents: actual - group.monthlyCents };
+      monthlyCents: group.monthlyCents, actualMonthlyCents: actual, gapCents: actual === null ? null : actual - group.monthlyCents,
+      actualMeasure: monthlyAverage(total, averageMonths) };
   });
 
   const cash = findAccount('EOP');
   const totalDebtCents = debts.reduce((sum, debt) => sum + (debt.currentCents || 0), 0);
   const totalAssetsCents = plan.assets.reduce((sum, asset) => sum + asset.valueCents, 0) + (cash ? Math.max(cash.balanceCents, 0) : 0);
+  const quality = monthsWindow.length ? coverage.at(`${monthsWindow[0]}-01`, lastDayOf(monthsWindow.at(-1))) : await assessCoverage({ ledger: 'perso' });
   return {
     phase: plan.phase,
     excludeTags: plan.excludeTags,
     planUpdatedAt: plan.updatedAt,
     window: { months: monthsWindow, averageMonths, incompleteMonths: monthsWindow.filter((m) => !counted.has(m)),
-      from: monthsWindow[0] || null, to: latest?.date || null, dataAsOf: payroll.asOf },
+      from: monthsWindow[0] || null, to: latestDate || null, dataAsOf: quality.dataAsOf, averagingPeriod: quality.period },
+    coverage: quality,
     cash: cash ? { balanceCents: cash.balanceCents, asOf: cash.asOf } : null,
-    monthly: { inCents: perMonth(inCents), outCents: perMonth(outCents), netCents: perMonth(inCents + outCents) },
+    monthly: { inCents: perMonth(inCents), outCents: perMonth(outCents), netCents: perMonth(inCents + outCents),
+      inMeasure: monthlyAverage(inCents, averageMonths), outMeasure: monthlyAverage(outCents, averageMonths),
+      netMeasure: monthlyAverage(inCents + outCents, averageMonths) },
     totalDebtCents,
     creditAvailableCents: credit.reduce((sum, line) => sum + (line.availableCents || 0), 0),
     totalAssetsCents,
@@ -328,7 +353,7 @@ async function situation({ months } = {}) {
     budget,
     budgetTotals: {
       monthlyCents: budget.filter((l) => l.category !== 'Revenus').reduce((s, l) => s + l.monthlyCents, 0),
-      actualMonthlyCents: budget.filter((l) => l.category !== 'Revenus').reduce((s, l) => s + l.actualMonthlyCents, 0)
+      actualMonthlyCents: averageMonths.length ? budget.filter((l) => l.category !== 'Revenus').reduce((s, l) => s + l.actualMonthlyCents, 0) : null
     },
     provisions: plan.provisions,
     provisionsMonthlyCents: Math.round(plan.provisions.reduce((sum, item) => sum + item.annualCents, 0) / 12),

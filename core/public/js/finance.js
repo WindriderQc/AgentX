@@ -11,13 +11,7 @@
   const CONFIDENCE = { haute: 'high', moyenne: 'medium', basse: 'low' };
   let monthlyChart = null;
 
-  function money(cents) {
-    if (!Number.isFinite(cents)) return '—';
-    const sign = cents < 0 ? '-' : '';
-    const abs = Math.abs(Math.round(cents));
-    const dollars = String(Math.trunc(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    return `${sign}$${dollars}.${String(abs % 100).padStart(2, '0')}`;
-  }
+  const { money, dollars, coverageText, monthLabel: qualification } = window.AgentXFinanceDisplay;
 
   function monthLabel(month) {
     const [year, m] = String(month).split('-');
@@ -71,8 +65,9 @@
     if (!accounts.length) tiles.append(el('p', { class: 'finance-note' }, 'No reconciled statement yet.'));
     const select = $('financeAccount');
     const known = new Set([...select.options].map((option) => option.value));
-    for (const code of [...new Set(accounts.map((account) => account.code))].sort()) {
-      if (!known.has(code)) select.append(el('option', { value: code }, code));
+    for (const account of accounts) {
+      if (!known.has(account.accountKey)) select.append(el('option', { value: account.accountKey },
+        `${account.code} · ${account.issuer} ···${account.accountKey.split('|')[1]}`));
     }
   }
 
@@ -81,16 +76,16 @@
     const css = getComputedStyle(document.querySelector('.finance-page'));
     const colors = { in: css.getPropertyValue('--series-in').trim(), out: css.getPropertyValue('--series-out').trim(),
       grid: css.getPropertyValue('--finance-grid').trim(), text: css.getPropertyValue('--finance-muted').trim() };
-    const labels = months.map((m) => monthLabel(m.month));
+    const labels = months.map(m => `${monthLabel(m.month)}${m.complete ? '' : ' · partiel'}`);
     // An incomplete month (no payroll statement) is drawn in the muted colour, not as a real month.
     const fill = (color) => months.map((m) => (m.complete === false ? colors.text : color));
     const datasets = [
-      { label: 'In', data: months.map((m) => m.inCents / 100), backgroundColor: fill(colors.in) },
-      { label: 'Out', data: months.map((m) => -m.outCents / 100), backgroundColor: fill(colors.out) }
+      { label: 'Entrées', data: months.map(m => dollars(m.inCents)), backgroundColor: fill(colors.in) },
+      { label: 'Sorties', data: months.map(m => m.outCents === null ? null : dollars(-m.outCents)), backgroundColor: fill(colors.out) }
     ].map((set) => ({ ...set, borderRadius: 4, borderSkipped: 'start', maxBarThickness: 28, borderWidth: 0 }));
     const asOf = $('financeDataAsOf');
-    asOf.hidden = !data.dataAsOf;
-    asOf.textContent = data.dataAsOf ? `Données au ${data.dataAsOf}` : '';
+    asOf.hidden = false;
+    asOf.textContent = coverageText(data.coverage);
     if (monthlyChart) monthlyChart.destroy();
     if (window.Chart) {
       monthlyChart = new window.Chart($('monthlyChart'), {
@@ -102,8 +97,8 @@
           plugins: {
             legend: { display: false },
             tooltip: { callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${money(Math.round(ctx.parsed.y * 100))}`,
-              footer: (items) => `Net: ${money(months[items[0].dataIndex].netCents)}`
+              label: ctx => `${ctx.dataset.label}: ${money(Number.isFinite(ctx.parsed.y) ? Math.round(ctx.parsed.y * 100) : null)}`,
+              footer: items => { const row = months[items[0].dataIndex]; return `Net : ${money(row.netCents)} ${qualification(row)}`; }
             } }
           },
           scales: {
@@ -115,16 +110,15 @@
       });
     }
     $('monthlyTable').tBodies[0].replaceChildren(...months.map((m) => el('tr', { class: m.complete === false ? 'finance-row-incomplete' : '' },
-      el('td', {}, monthLabel(m.month) + (m.complete === false ? ' · mois incomplet, sans relevé EOP' : '')),
+      el('td', {}, monthLabel(m.month) + (m.complete === false ? ` · ${qualification(m)}` : '')),
       el('td', {}, money(m.inCents)), el('td', {}, money(m.outCents)),
       el('td', {}, money(m.netCents)), el('td', {}, m.count))));
-    const complete = months.filter((m) => m.complete !== false).length;
     const average = data.averageNetCents == null ? '—' : money(data.averageNetCents);
     $('monthlyNote').textContent = months.length
-      ? `Average net: ${average} per month over ${complete} complete months`
-        + (data.incompleteMonths?.length ? ` · ${data.incompleteMonths.length} incomplete month(s) left out` : '')
+      ? `Net moyen : ${average}${data.averageNetCents === null ? '' : '/mois'} · ${data.averageNet?.scopeText || ''}`
+        + (data.incompleteMonths?.length ? ` · ${data.incompleteMonths.length} mois écarté(s) de la moyenne` : '')
         + (filters().account || filters().excludeCategory ? '' : ' · all accounts combined, internal transfers included')
-      : 'No transactions for these filters.';
+      : 'Aucune période reçue pour ces filtres.';
   }
 
   function renderMerchants(merchants) {
@@ -158,18 +152,21 @@
     $('financeAlertsCard').hidden = !alerts.length;
     $('financeAlerts').replaceChildren(...alerts.map((alert) => {
       const amount = alert.facts?.amountCents ?? alert.facts?.balanceCents ?? alert.facts?.yearlyCents;
+      const measure = alert.facts?.monthlyMeasure || alert.facts?.recentMeasure;
       return el('li', { class: `finance-alert finance-alert-${alert.severity}` },
         el('span', { 'aria-hidden': 'true' }, ALERT_ICONS[alert.severity] || '•'),
-        el('span', {}, alert.title + (Number.isFinite(amount) ? ` — ${money(amount)}` : '')));
+        el('span', {}, alert.title + (measure ? ` — ${measure.display || '—'} · ${measure.scopeText}` : Number.isFinite(amount) ? ` — ${money(amount)}` : '')));
     }));
   }
 
-  function renderCoverage(series) {
-    $('financeCoverageList').replaceChildren(...series.map((s) => el('li', {},
-      el('strong', {}, s.series), `: ${s.first} → ${s.last} · ${s.months} months`,
-      s.missing.length
-        ? el('span', { class: 'finance-missing' }, ` · missing: ${(s.gaps || []).map((g) => `${g.from} → ${g.to}`).join(', ') || s.missing.join(', ')}`)
-        : el('span', { class: 'finance-complete' }, ' · complete'))));
+  function renderCoverage(data) {
+    $('financeCoverageNote').textContent = coverageText(data);
+    $('financeCoverageList').replaceChildren(...(data?.accounts || []).map(account => el('li', {},
+      el('strong', {}, `${account.code} · ${account.issuer || account.accountKey.split('|')[0]}`),
+      ` · source : ${account.asOf || 'absente'}`,
+      !account.active ? ' · hors période d’activité déclarée' : account.gaps.length
+        ? el('span', { class: 'finance-missing' }, ` · jours manquants : ${account.gaps.map(gap => `${gap.from} → ${gap.to}`).join(', ')}`)
+        : el('span', {}, ' · dates couvertes pour ce compte'))));
   }
 
   function renderStatements(statements) {
@@ -197,9 +194,9 @@
   async function renderYearly() {
     const data = await api('summary/yearly', searchParams());
     $('yearlyTable').tBodies[0].replaceChildren(...data.years.map((y) => el('tr', { class: y.complete === false ? 'finance-row-incomplete' : '' },
-      el('td', {}, y.year + (y.complete === false ? ` · ${y.incompleteMonths.length} mois incomplet(s)` : '')),
+      el('td', {}, y.year + (!y.fullYear ? ' · période sélectionnée, année partielle' : y.complete === false ? ` · ${y.incompleteMonths.length} mois non couvert(s)` : ' · année couverte')),
       el('td', {}, money(y.inCents)), el('td', {}, money(y.outCents)), el('td', {}, money(y.netCents)),
-      el('td', {}, y.count), el('td', {}, `${y.firstDate} → ${y.lastDate}`))));
+      el('td', {}, y.count), el('td', {}, `${y.period.from} → ${y.period.to}`))));
   }
 
   // Inline decision for one transaction: category + tags, kept even if a rule changes.
@@ -392,6 +389,7 @@
         api('summary/merchants', { ...f, limit: 12 }), api('summary/categories', f), api('uncategorized', { limit: 1 })]);
       if (run !== refreshRun) return;
       renderMonthly(monthly);
+      renderCoverage(monthly.coverage);
       renderMerchants(merchants.merchants || []);
       renderCategories(byCategory.categories || [], pending);
       await search();
@@ -411,9 +409,8 @@
       $('financeTag').append(...(tagList.tags || []).map((t) => el('option', { value: t.tag }, `${t.tag} (${t.count})`)));
       renderBalances(balances.accounts || []);
       renderStatements(statements.statements || []);
-      renderCoverage(coverage.series || []);
+      renderCoverage(coverage);
       renderAlerts(alerts.alerts || []);
-      if ([...$('financeAccount').options].some((o) => o.value === 'EOP')) $('financeAccount').value = 'EOP';
       await refresh();
     } catch (error) {
       showError(error);

@@ -12,11 +12,12 @@ const ACTIONS = {
   insights: { path: '/api/finance/insights', params: ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory', 'excludeTag', 'months'], book: true },
   rules: { path: '/api/finance/rules', params: [] },
   statements: { path: '/api/finance/statements', params: ['status'], book: true },
-  coverage: { path: '/api/finance/coverage', params: [], book: true },
+  coverage: { path: '/api/finance/coverage', params: ['account', 'from', 'to'], book: true },
   documents: { path: '/api/finance/documents', params: ['minCents'], book: true },
   goals: { path: '/api/finance/goals', params: [] },
   review: { path: '/api/finance/review/monthly', params: [] }
 };
+const QUALIFIED = new Set(['balances', 'transactions', 'monthly', 'yearly', 'insights', 'categories', 'coverage', 'goals', 'review']);
 
 // Formats integer cents the Quebec way: 1 234,56 $ (narrow no-break space
 // avoided so Telegram renders a plain space).
@@ -73,6 +74,20 @@ export function createCoreFinanceClient({ baseUrl, fetchImpl = fetch } = {}) {
     }
     const requested = { ...(action.book && { ledger: input.ledger || 'perso' }), ...Object.fromEntries(url.searchParams) };
     if (action.book && body.data.scope?.ledger && body.data.scope.ledger !== requested.ledger) throw new Error('Core returned a different finance ledger');
+    if (QUALIFIED.has(input.action)) {
+      const coverage = input.action === 'coverage' ? body.data : body.data.coverage;
+      if (coverage?.kind !== 'statement_date_coverage' || typeof coverage.complete !== 'boolean'
+        || !['covered', 'partial', 'unknown', 'unavailable'].includes(coverage.status)) {
+        throw new Error('Core Finance coverage is unavailable; use a Core version with qualified Finance reads');
+      }
+      if (coverage.ledger !== (requested.ledger || 'perso')) throw new Error('Core returned coverage for a different finance ledger');
+    }
+    for (const trend of body.data.categoryTrends || []) {
+      if (trend.recentMeasure?.kind !== 'monthly_average' || trend.recentMeasure?.unit !== 'cents/month'
+        || trend.previousMeasure?.kind !== 'monthly_average' || trend.changeMeasure?.unit !== 'cents/month') {
+        throw new Error('Core Finance trend units are unavailable');
+      }
+    }
     return { action: input.action, authority: 'agentx.core', requested, ...withDisplay(body.data) };
   };
 }

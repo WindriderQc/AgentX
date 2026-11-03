@@ -86,7 +86,13 @@ async function replace(db, update, expected, next) {
 async function nativeViews() {
   const query = require('./financeQueryService');
   const result = {};
-  for (const ledger of ['perso','corp']) result[ledger] = await query.balances({ ledger });
+  // Receipt v1/v2 pins the accounting balance projection. Historical source
+  // coverage may change while these latest balances remain exactly unchanged.
+  // Keep the original proof bytes; new reader metadata is not a balance.
+  for (const ledger of ['perso','corp']) {
+    const { accounts } = await query.balances({ ledger });
+    result[ledger] = { accounts };
+  }
   return plain(result);
 }
 function assertBalances(manifest, before, after) {

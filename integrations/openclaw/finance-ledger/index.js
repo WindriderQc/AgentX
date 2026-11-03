@@ -30,15 +30,22 @@ export default definePluginEntry({
           + "transactions = matching rows plus totals (filter by account code like EOP or CARD, from/to YYYY-MM-DD, "
           + "q = words of the merchant description); monthly = in/out/net per month plus the average; "
           + "yearly = in/out/net per calendar year (use with tag, category or q for multi-year questions); "
-          + "a month or year with complete=false has no payroll (EOP) statement covering it: say so, quote it apart, "
-          + "and never count it in an average or a savings rate (monthly and insights already leave it out of averages); "
-          + "dataAsOf = last payroll statement date, say it when the figures are asked; "
+          + "coverage states date coverage for the selected expected accounts and interval. unknown means the account inventory is unconfirmed; "
+          + "partial lists missing account days or statements to review; unavailable and null amounts mean unknown, never zero. "
+          + "An account filter still requires coverage. complete does not prove account attribution, stored-row integrity or today's balance. "
+          + "Never call a year complete unless fullYear=true and complete=true; otherwise name its exact period and missing months. "
+          + "dataAsOf is the oldest latest source date of the required accounts; individual balance dates and freshness remain authoritative. "
+          + "For every average, quote the Core measure.display AND scopeText: recentMeasure/previousMeasure in categoryTrends, averageNet in monthly. "
+          + "They name the exact included months and denominator. recentMonthlyCents and changeCents are monthly averages/differences, never period totals. "
+          + "yearlyMeasure of a recurring charge is an annualized estimate, not an observed yearly cost. "
+          + "Use amountConvention to distinguish account balance changes from owner flow, refunds and debt repayments. "
+          + "Banking-channel words alone do not identify the beneficiary or supplier; ask for the supporting transaction detail. "
           + "insights = advice material over the last `months` (default 12): savings rate per month, stable "
           + "recurring charges with yearly cost, category trends (last 3 months vs before), large recent expenses; "
           + "categories = totals per category (null = not categorized yet); uncategorized = descriptions still "
           + "to classify, biggest first, with a suggestedPattern; rules = the category list and learned rules; "
           + "excludeCategory 'Virements internes' removes transfers between the owner's accounts; "
-          + "statements = ingested statements and any that need review; coverage = statement series and uncovered intervals; "
+          + "statements = ingested statements and any that need review; coverage = expected accounts and uncovered dates (account/from/to supported); "
           + "documents = the Secretary's invoices matched to ledger rows: proposals (to confirm), confirmed pairs, documents without "
           + "a transaction, big outflows without a document (thresholdCents), ambiguous matches (grouped: one document, several candidate rows, "
           + "the owner picks one), health and insurance claims still to file (toClaim, quote its totals as given), figures that look wrong "
@@ -174,7 +181,8 @@ export default definePluginEntry({
         description: "Deterministic finance alerts computed by Core (statement to review, stale data, balance under the "
           + "cushion, large expense, new recurring charge, category spike). Core decides when to alert; you phrase it. "
           + "report=false lists pending alerts; report=true returns them and marks them reported (use it only when you "
-          + "deliver them to the owner, e.g. in the scheduled check). Quote the *Display amounts as given.",
+          + "deliver them to the owner, e.g. in the scheduled check). Quote the *Display amounts as given. "
+          + "For monthlyMeasure, yearlyMeasure or recentMeasure, quote display and scopeText, keeping monthly units and annualized estimates distinct from period totals.",
         parameters: {
           type: "object",
           properties: { report: { type: "boolean" } },
@@ -210,6 +218,8 @@ export default definePluginEntry({
           + "A goal is set with finance_plan section goals: {name, targetCents, targetDate, priority, source: {kind: account|asset|tag, ref}}. "
           + "seriesStatus names a statement series (issuer, with last4 and ledger when known) with label, and closed=true for a closed "
           + "account or card (no stale alert then); last4 and ledger let the Secretary's statements find their series. "
+          + "coverageAccounts declares every expected exact account key per book: {ledger: perso|corp, accountKey, from?, to?}; "
+          + "from/to bound its activity. Use keys returned by balances, retain other required accounts, and change this inventory only on the owner's explicit statement. "
           + "Confirm what changed in one line.",
         parameters: {
           type: "object",
@@ -222,7 +232,7 @@ export default definePluginEntry({
                 properties: {
                   op: { type: "string", enum: ["add", "update", "remove", "set", "done"] },
                   section: { type: "string", enum: ["phase", "excludeTags", "budget", "debts", "credit", "provisions", "assets",
-                    "milestones", "openItems", "allocations", "watch", "taxRoom", "seriesStatus", "goals"] },
+                    "milestones", "openItems", "allocations", "watch", "taxRoom", "seriesStatus", "goals", "coverageAccounts"] },
                   match: { type: "string", maxLength: 80 },
                   index: { type: "integer", minimum: 0 },
                   item: { type: "object" },

@@ -30,12 +30,17 @@
     { key: 'seriesStatus', label: 'Statement series', fields: [['series', 'Series (issuer)', 'long'], ['last4', 'Last 4 digits'],
       ['ledger', 'Ledger', [['', '—'], ['perso', 'Personal'], ['corp', 'Corporation']]], ['label', 'Name'],
       ['closed', 'Closed', 'bool'], ['note', 'Note', 'long']] },
+    { key: 'coverageAccounts', label: 'Comptes attendus', fields: [
+      ['ledger', 'Livre', [['perso', 'Personnel'], ['corp', 'Corporation']]], ['accountKey', 'Compte attendu', 'coverageAccount'],
+      ['from', 'Actif depuis (facultatif)'], ['to', 'Actif jusqu’au (facultatif)']] },
     { key: 'phase', label: 'Phase', scalar: true },
     { key: 'excludeTags', label: 'Exceptional tags', list: true }
   ];
 
   let plan = null;
   let categories = [];
+  let accounts = [];
+  let accountInputSequence = 0;
   let current = SECTIONS[0];
   let rendered = '';
 
@@ -68,6 +73,13 @@
   // Each generated control is named by its column, since the table has no visible label per cell.
   function input(field, value) {
     const [key, label, kind] = field;
+    if (kind === 'coverageAccount') {
+      const listId = `financeExpectedAccounts-${++accountInputSequence}`;
+      const control = el('input', { type: 'text', 'data-key': key, 'aria-label': label,
+        list: listId, value: value || '', class: 'finance-edit-long' });
+      return el('span', {}, control, el('datalist', { id: listId },
+        ...accounts.map(account => el('option', { value: account.accountKey }, `${account.code} · ${account.issuer}`))));
+    }
     if (kind === 'bool') return el('input', { type: 'checkbox', 'data-key': key, 'aria-label': label, checked: value ? '' : false });
     if (Array.isArray(kind) || kind === 'category') {
       const options = kind === 'category' ? categories.map((c) => [c, c]) : kind;
@@ -145,11 +157,14 @@
     panel.hidden = !panel.hidden;
     if (panel.hidden || plan) return;
     try {
-      const [p, r] = await Promise.all([fetch('/api/finance/plan', { credentials: 'same-origin' }).then((x) => x.json()),
-        fetch('/api/finance/rules', { credentials: 'same-origin' }).then((x) => x.json())]);
+      const [p, r, personal, corporate] = await Promise.all([fetch('/api/finance/plan', { credentials: 'same-origin' }).then((x) => x.json()),
+        fetch('/api/finance/rules', { credentials: 'same-origin' }).then((x) => x.json()),
+        fetch('/api/finance/balances', { credentials: 'same-origin' }).then(x => x.json()),
+        fetch('/api/finance/balances?ledger=corp', { credentials: 'same-origin' }).then(x => x.json())]);
       if (p.status !== 'success' || !p.data) throw new Error(p.message || 'the plan could not be read');
       plan = p.data;
       categories = r.data?.categories || [];
+      accounts = [...(personal.data?.accounts || []), ...(corporate.data?.accounts || [])];
       render();
     } catch (error) {
       $('planEditorBody').replaceChildren(el('p', { class: 'finance-error' }, `Plan unavailable: ${error.message}. Close and reopen to retry.`));
@@ -161,7 +176,8 @@
     el('section', { class: 'finance-card', id: 'planEditor', hidden: '' },
       el('h2', {}, 'Edit the plan'),
       el('p', { class: 'finance-note' }, 'Choose a section, edit it, then Save. Amounts in dollars (1234.56), rates in %. '
-        + 'An account code (EOP, CARD, MC2, PR3…) links the row to the real ledger balance.'),
+        + 'An account code (EOP, CARD, MC2, PR3…) links the row to the real ledger balance. '
+        + 'Comptes attendus : déclarez tous les comptes à couvrir dans chaque livre. Les dates facultatives bornent leur activité.'),
       el('div', { id: 'planEditorBody' })));
   $('planEditToggle').addEventListener('click', open);
   $('planEditor').addEventListener('click', (event) => {

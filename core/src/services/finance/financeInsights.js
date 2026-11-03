@@ -1,59 +1,51 @@
 'use strict';
 
-// Deterministic insights for the finance persona's advice: yearly totals,
-// recurring charges, category trends, savings rate and large recent expenses.
-// Every number is computed here in integer cents; the persona only explains.
-
-const FinanceTransaction = require('../../../models/FinanceTransaction');
+// Core computes recorded totals, qualified averages and their exact units.
+const Transaction = require('../../../models/FinanceTransaction');
 const { transactionFilter } = require('./financeQueryService');
 const { descriptionKey } = require('./financeCategories');
-const { payrollCoverage } = require('./financeCompleteness');
-
+const { coverageContext, assessCoverage, monthsBetween, lastDayOf } = require('./financeCompleteness');
+const { monthlyAverage, periodTotal, monthlyChange, money } = require('./financeMeasures');
 const TRANSFERS = 'Virements internes';
 
 function monthsBack(lastMonth, count) {
   const [year, month] = lastMonth.split('-').map(Number);
-  const out = [];
-  for (let i = count - 1; i >= 0; i -= 1) {
-    const date = new Date(Date.UTC(year, month - 1 - i, 1));
-    out.push(date.toISOString().slice(0, 7));
-  }
-  return out;
+  return Array.from({ length: count }, (_, index) => new Date(Date.UTC(year, month - count + index, 1)).toISOString().slice(0, 7));
 }
 
-// In/out/net per calendar year, optionally for one tag, category or search.
-// A year lists the months without a payroll statement so the owner sees which
-// totals are partial. Totals still count every row Core has.
+// Unqualified totals still describe stored rows. A year is checked across all
+// its calendar months, including those with no matching transaction.
 async function yearly(query = {}) {
-  const filter = transactionFilter(query);
-  const [rows, payroll] = await Promise.all([
-    FinanceTransaction.aggregate([
-      { $match: filter },
-      { $group: {
-        _id: { $substrBytes: ['$date', 0, 4] },
-        count: { $sum: 1 },
-        inCents: { $sum: { $cond: [{ $gt: ['$flowCents', 0] }, '$flowCents', 0] } },
-        outCents: { $sum: { $cond: [{ $lt: ['$flowCents', 0] }, '$flowCents', 0] } },
-        netCents: { $sum: '$flowCents' },
-        firstDate: { $min: '$date' },
-        lastDate: { $max: '$date' },
-        months: { $addToSet: { $substrBytes: ['$date', 0, 7] } }
-      } },
-      { $sort: { _id: 1 } }
-    ]),
-    query.account ? null : payrollCoverage({ ledger: query.ledger })
+  const [rows, context] = await Promise.all([
+    Transaction.aggregate([{ $match: transactionFilter(query) }, { $group: {
+      _id: { $substrBytes: ['$date', 0, 4] }, count: { $sum: 1 },
+      inCents: { $sum: { $cond: [{ $gt: ['$flowCents', 0] }, '$flowCents', 0] } },
+      outCents: { $sum: { $cond: [{ $lt: ['$flowCents', 0] }, '$flowCents', 0] } },
+      netCents: { $sum: '$flowCents' }, firstDate: { $min: '$date' }, lastDate: { $max: '$date' }
+    } }, { $sort: { _id: 1 } }]), coverageContext(query)
   ]);
-  return {
-    years: rows.map(({ _id, months, ...rest }) => {
-      const incompleteMonths = payroll ? months.filter((m) => !payroll.isComplete(m)).sort() : [];
-      return { year: _id, ...rest, complete: incompleteMonths.length === 0, incompleteMonths };
-    }),
-    dataAsOf: payroll?.asOf || null
-  };
+  const received = context.bounds(query) || (rows.length ? { from: `${rows[0]._id}-01-01`, to: `${rows.at(-1)._id}-12-31` } : null);
+  if (!received) return { years: [], dataAsOf: null, coverage: await assessCoverage(query) };
+  const period = { from: query.from || `${received.from.slice(0, 4)}-01-01`, to: query.to || `${received.to.slice(0, 4)}-12-31` };
+  const byYear = new Map(rows.map(({ _id, ...row }) => [_id, row]));
+  const years = [...new Set(monthsBetween(period.from, period.to).map(month => month.slice(0, 4)))].map(year => {
+    const from = period.from > `${year}-01-01` ? period.from : `${year}-01-01`;
+    const to = period.to < `${year}-12-31` ? period.to : `${year}-12-31`;
+    const coverage = context.at(from, to);
+    const expectedMonths = monthsBetween(from, to);
+    const incompleteMonths = expectedMonths.filter(month => !context.month(month, { from, to }).eligibleForMonthlyAverage);
+    const stored = byYear.get(year);
+    const totals = stored || { count: 0, inCents: coverage.complete ? 0 : null, outCents: coverage.complete ? 0 : null,
+      netCents: coverage.complete ? 0 : null, firstDate: null, lastDate: null };
+    return { year, ...totals, period: { from, to }, fullYear: from === `${year}-01-01` && to === `${year}-12-31`,
+      complete: coverage.complete, expectedMonths, incompleteMonths, coverage, netMeasure: periodTotal(totals.netCents, { from, to }) };
+  });
+  const quality = context.at(period.from, period.to);
+  return { years, period, dataAsOf: quality.dataAsOf, coverage: quality };
 }
 
-// Same description in at least `minMonths` distinct months with a stable
-// amount: likely a subscription or fixed charge.
+// A recurring amount is a median of observed monthly outflows. Its annualized
+// value is an estimate, never an observed yearly total or an identified supplier.
 function recurringCharges(rows, { minMonths = 3, tolerance = 0.15 } = {}) {
   const groups = new Map();
   for (const row of rows) {
@@ -68,95 +60,87 @@ function recurringCharges(rows, { minMonths = 3, tolerance = 0.15 } = {}) {
   for (const group of groups.values()) {
     const amounts = [...group.months.values()];
     if (amounts.length < minMonths) continue;
-    const sorted = [...amounts].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)];
-    if (!amounts.every((amount) => Math.abs(amount - median) <= Math.abs(median) * tolerance)) continue;
-    const months = [...group.months.keys()].sort();
-    recurring.push({
-      description: group.description, months: amounts.length, firstMonth: months[0], lastMonth: months.at(-1),
-      monthlyCents: median, yearlyCents: median * 12
-    });
+    const median = [...amounts].sort((a, b) => a - b)[Math.floor(amounts.length / 2)];
+    if (!amounts.every(amount => Math.abs(amount - median) <= Math.abs(median) * tolerance)) continue;
+    const included = [...group.months.keys()].sort();
+    recurring.push({ description: group.description, months: included.length, firstMonth: included[0], lastMonth: included.at(-1),
+      monthlyCents: median, yearlyCents: median * 12,
+      monthlyMeasure: { kind: 'monthly_median', unit: 'cents/month', amountCents: median, months: included,
+        monthCount: included.length, display: `${money(median)}/mois`, scopeText: `Médiane des sorties sur ${included.join(', ')}.` },
+      yearlyMeasure: { kind: 'annualized_estimate', unit: 'cents/year', amountCents: median * 12,
+        display: `${money(median * 12)}/an`, scopeText: 'Estimation annualisée : 12 fois la médiane mensuelle; ce montant n’est pas un total annuel observé.' } });
   }
   return recurring.sort((a, b) => a.monthlyCents - b.monthlyCents);
 }
 
-/**
- * Insights over the last `months` months of data (default 12), ending at the
- * most recent transaction. Internal transfers are excluded throughout.
- */
 async function insights(query = {}) {
-  const months = Math.min(Math.max(Number.parseInt(query.months, 10) || 12, 3), 60);
-  const latest = await FinanceTransaction.findOne(transactionFilter(query)).sort({ date: -1 }).select('date').lean();
-  if (!latest) return { period: null, recurring: [], categoryTrends: [], savings: [], largeExpenses: [] };
-  const window = monthsBack(latest.date.slice(0, 7), months)
-    .filter((month) => !query.from || month >= query.from.slice(0, 7));
-  const { excludeTags } = await require('./financePlan').getPlan();
-  const excludedTags = [...new Set([...(query.tag ? [] : excludeTags),
-    ...String(query.excludeTag || '').split(',').map(tag => tag.trim()).filter(Boolean)])];
-  const exclusions = excludedTags.join(',') || undefined;
-  const filter = transactionFilter({ ...query, excludeCategory: query.category ? undefined : (query.excludeCategory || TRANSFERS),
-    excludeTag: exclusions });
-  const from = query.from && query.from > `${window[0]}-01` ? query.from : `${window[0]}-01`;
-  filter.date = { $gte: from, $lte: latest.date };
-  const [rows, payroll] = await Promise.all([
-    FinanceTransaction.find(filter).select('date description flowCents category tags').lean(),
-    query.account ? null : payrollCoverage({ ledger: query.ledger })
+  const count = Math.min(Math.max(Number.parseInt(query.months, 10) || 12, 3), 60);
+  const [context, latest, plan] = await Promise.all([
+    coverageContext(query),
+    Transaction.findOne(transactionFilter({ ledger: query.ledger, account: query.account })).sort({ date: -1 }).select('date').lean(),
+    require('./financePlan').getPlan()
   ]);
-  const complete = (month) => !payroll || payroll.isComplete(month);
-
-  const perMonth = new Map(window.map((month) => [month, { inCents: 0, outCents: 0 }]));
+  const excludedTags = [...new Set([...(query.tag ? [] : plan.excludeTags),
+    ...String(query.excludeTag || '').split(',').map(tag => tag.trim()).filter(Boolean)])];
+  let to = query.to || [context.lastDate, latest?.date].filter(Boolean).sort().at(-1);
+  if (!to && query.from) to = lastDayOf(query.from.slice(0, 7));
+  if (query.from && to < query.from && !query.to) to = lastDayOf(query.from.slice(0, 7));
+  if (!to) return { period: null, recurring: [], categoryTrends: [], savings: [], largeExpenses: [], excludedTags,
+    coverage: await assessCoverage(query), dataAsOf: null };
+  const window = monthsBack(to.slice(0, 7), count).filter(month => !query.from || month >= query.from.slice(0, 7));
+  const from = query.from && query.from > `${window[0]}-01` ? query.from : `${window[0]}-01`;
+  const period = { from, to };
+  const filter = transactionFilter({ ...query, from, to,
+    excludeCategory: query.category ? undefined : query.excludeCategory || TRANSFERS,
+    excludeTag: excludedTags.join(',') || undefined });
+  const rows = await Transaction.find(filter).select('date description flowCents category tags').lean();
+  const perMonth = new Map(window.map(month => [month, { inCents: 0, outCents: 0, count: 0 }]));
   const perCategory = new Map();
   for (const row of rows) {
     const month = row.date.slice(0, 7);
     const bucket = perMonth.get(month);
-    if (bucket) bucket[row.flowCents > 0 ? 'inCents' : 'outCents'] += row.flowCents;
+    if (bucket) { bucket[row.flowCents > 0 ? 'inCents' : 'outCents'] += row.flowCents; bucket.count += 1; }
     if (row.flowCents < 0) {
-      const name = row.category || 'Non classé';
-      const series = perCategory.get(name) || new Map();
-      series.set(month, (series.get(month) || 0) + row.flowCents);
-      perCategory.set(name, series);
+      const category = row.category || 'Non classé';
+      const values = perCategory.get(category) || new Map();
+      values.set(month, (values.get(month) || 0) + row.flowCents);
+      perCategory.set(category, values);
     }
   }
-
-  // An incomplete month keeps its totals but has no savings rate.
-  const savings = window.map((month) => {
-    const { inCents, outCents } = perMonth.get(month);
-    const counted = complete(month);
-    return { month, inCents, outCents, netCents: inCents + outCents, complete: counted,
-      savingsRatePercent: counted && inCents > 0 ? Math.round(((inCents + outCents) / inCents) * 1000) / 10 : null };
+  const savings = window.map(month => {
+    const evidence = context.month(month, period);
+    const bucket = perMonth.get(month);
+    const available = bucket.count > 0 || evidence.complete;
+    const inCents = available ? bucket.inCents : null;
+    const outCents = available ? bucket.outCents : null;
+    const complete = evidence.eligibleForMonthlyAverage;
+    return { month, inCents, outCents, netCents: available ? inCents + outCents : null, complete, coverage: evidence,
+      savingsRatePercent: complete && inCents > 0 ? Math.round(((inCents + outCents) / inCents) * 1000) / 10 : null };
   });
-
-  // Last 3 months vs the months before, per category (monthly averages over complete months).
-  const recent = window.slice(-3).filter(complete);
-  const before = window.slice(0, -3).filter(complete);
-  const categoryTrends = [];
-  for (const [category, series] of perCategory) {
-    if (!recent.length) break;
-    const recentAvg = Math.round(recent.reduce((sum, m) => sum + (series.get(m) || 0), 0) / recent.length);
-    const beforeAvg = before.length ? Math.round(before.reduce((sum, m) => sum + (series.get(m) || 0), 0) / before.length) : 0;
-    const change = recentAvg - beforeAvg;
-    categoryTrends.push({ category, recentMonthlyCents: recentAvg, previousMonthlyCents: beforeAvg, changeCents: change,
-      changePercent: beforeAvg ? Math.round((change / beforeAvg) * 1000) / 10 : null });
-  }
-  categoryTrends.sort((a, b) => a.changeCents - b.changeCents);
-
-  const since = `${recent[0]}-01`;
-  const largeExpenses = rows.filter((row) => row.flowCents < 0 && row.date >= since)
+  const eligible = new Set(savings.filter(item => item.complete).map(item => item.month));
+  const recent = window.slice(-3).filter(month => eligible.has(month));
+  const before = window.slice(0, -3).filter(month => eligible.has(month));
+  const categoryTrends = [...perCategory].map(([category, values]) => {
+    const recentMeasure = monthlyAverage(recent.reduce((sum, month) => sum + (values.get(month) || 0), 0), recent);
+    const previousMeasure = monthlyAverage(before.reduce((sum, month) => sum + (values.get(month) || 0), 0), before);
+    const changeMeasure = monthlyChange(recentMeasure, previousMeasure);
+    return { category, recentMonthlyCents: recentMeasure.amountCents, previousMonthlyCents: previousMeasure.amountCents,
+      changeCents: changeMeasure.amountCents, changeMonthlyCents: changeMeasure.amountCents,
+      changePercent: previousMeasure.amountCents && changeMeasure.amountCents !== null
+        ? Math.round((changeMeasure.amountCents / previousMeasure.amountCents) * 1000) / 10 : null,
+      recentMeasure, previousMeasure, changeMeasure };
+  }).sort((a, b) => (a.changeCents || 0) - (b.changeCents || 0)).slice(0, 12);
+  const since = `${window.slice(-3)[0]}-01`;
+  const largeExpenses = rows.filter(row => row.flowCents < 0 && row.date >= since)
     .sort((a, b) => a.flowCents - b.flowCents).slice(0, 10)
     .map(({ date, description, flowCents, category }) => ({ date, description, amountCents: flowCents, category: category || null }));
-
-  return {
-    period: { from, to: latest.date, months: window.length },
-    dataAsOf: payroll?.asOf || null,
-    excludedTags,
-    incompleteMonths: savings.filter((s) => !s.complete).map((s) => s.month),
-    savings,
-    recurring: recurringCharges(rows),
-    categoryTrends: categoryTrends.slice(0, 12),
-    largeExpenses
-  };
+  const quality = context.at(from, to);
+  return { period: { ...period, months: window.length }, dataAsOf: quality.dataAsOf, excludedTags,
+    coverage: quality, incompleteMonths: savings.filter(item => !item.complete).map(item => item.month), savings,
+    recurring: recurringCharges(rows.filter(row => eligible.has(row.date.slice(0, 7)))), categoryTrends, largeExpenses,
+    trendWindow: { recentCalendarMonths: window.slice(-3), recentIncludedMonths: recent, previousIncludedMonths: before },
+    interpretation: 'Les libellés de canal bancaire ne prouvent pas l’identité du bénéficiaire ni la nature de la dépense.' };
 }
 
 module.exports = { insights, yearly, recurringCharges, monthsBack };
-
 require('./financeAccess').guard(module.exports, ['insights', 'yearly']);
