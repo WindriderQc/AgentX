@@ -52,7 +52,7 @@ export function createCoreFinanceClient({ baseUrl, fetchImpl = fetch } = {}) {
   const base = new URL(baseUrl);
   if (!['http:', 'https:'].includes(base.protocol)) throw new Error('AgentX requires an HTTP URL');
   return async (input = {}) => {
-    const action = ACTIONS[input.action];
+    const action = Object.hasOwn(ACTIONS, input.action) ? ACTIONS[input.action] : null;
     if (!action) throw new Error('Unsupported finance ledger question');
     const allowed = new Set(['action', ...action.params, ...(action.book ? ['ledger'] : [])]);
     for (const [key, value] of Object.entries(input)) {

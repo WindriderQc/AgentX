@@ -15,7 +15,7 @@ const LENGTHS = { account: 80, q: 80, category: 60, tag: 60, excludeCategory: 60
 const invalid = message => Object.assign(new Error(message), { code: 'FINANCE_QUERY_INVALID', status: 400 });
 
 function readScope(action, input = {}) {
-  const supported = SPECS[action];
+  const supported = Object.hasOwn(SPECS, action) ? SPECS[action] : null;
   if (!supported) throw invalid('Unsupported finance question');
   const query = {};
   const ledger = input.ledger == null || input.ledger === '' ? 'perso' : input.ledger;

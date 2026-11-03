@@ -91,7 +91,9 @@ async function insights(query = {}) {
   const window = monthsBack(latest.date.slice(0, 7), months)
     .filter((month) => !query.from || month >= query.from.slice(0, 7));
   const { excludeTags } = await require('./financePlan').getPlan();
-  const exclusions = query.excludeTag ?? (query.tag ? undefined : excludeTags.join(','));
+  const excludedTags = [...new Set([...(query.tag ? [] : excludeTags),
+    ...String(query.excludeTag || '').split(',').map(tag => tag.trim()).filter(Boolean)])];
+  const exclusions = excludedTags.join(',') || undefined;
   const filter = transactionFilter({ ...query, excludeCategory: query.category ? undefined : (query.excludeCategory || TRANSFERS),
     excludeTag: exclusions });
   const from = query.from && query.from > `${window[0]}-01` ? query.from : `${window[0]}-01`;
@@ -146,6 +148,7 @@ async function insights(query = {}) {
   return {
     period: { from, to: latest.date, months: window.length },
     dataAsOf: payroll?.asOf || null,
+    excludedTags,
     incompleteMonths: savings.filter((s) => !s.complete).map((s) => s.month),
     savings,
     recurring: recurringCharges(rows),
