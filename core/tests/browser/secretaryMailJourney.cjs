@@ -40,6 +40,7 @@ const row = (threadId, mid) => ({ threadId, messageIds: [mid], messageCount: 1, 
     current = unseen; // A new urgent reply arrives at acknowledgement time.
     res.json({ data: { verified: true, scope: 'messages', messageIds: [displayed] } });
   });
+  app.get('/api/secretary/tasks', (_q, res) => res.json({ data: { tasks: [], totalCount: 0, hasMore: false, nextOffset: null } }));
   app.use('/api', (_q, res) => res.json({ data: { items: [], ideas: [], profiles: [], chores: [], rules: [], counts: {} } }));
   app.use('/assets/household', express.static(tree + '/core/surfaces/household/public'));
   app.use('/css', express.static(tree + '/core/public/css'));
@@ -56,6 +57,7 @@ const row = (threadId, mid) => ({ threadId, messageIds: [mid], messageCount: 1, 
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => document.querySelector('[data-actions-count]')?.textContent === '0');
     assert.equal(await page.locator('#dadSecretaryNotice').isVisible(), true);
     assert.match(await page.locator('#dadSecretaryNotice').textContent(), /Relecture historique arrêtée/);
     await page.locator('#dad-mail-actions').evaluate(el => { el.open = true; el.hidden = false; });
