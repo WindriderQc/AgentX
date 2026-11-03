@@ -9,6 +9,8 @@ vectors before releasing its writer. A lost RAG response retains
 Recovery requires evidence that the exact remote operation settled, never
 deleting its writer merely because it is old. Repeating a settled forget is
 safe. Source deactivation remains distinct from the owner's permanent forget.
+Forgetting removes search access; preserved originals and backups have their
+own retention and are not deleted by this operation.
 
 Recall delivery identities cover dates, people and preserved source metadata.
 Core updates metadata-only corrections without re-embedding unchanged indexed
@@ -444,18 +446,6 @@ never indexed again. Nestor's private owner tool `mail_recall` searches it by
 meaning; `/mcp`, the Family surface and children never reach it. The job pauses
 for runtime coordination and resumes from its private state; the first full
 indexing uses the heavy-work queue.
-
-Core journals each in-flight index writer before dispatch. Forgetting first
-hides the document permanently; if a writer is still unsettled, it returns
-`OWNER_RECALL_FORGET_PENDING` instead of confirming vector removal. A late
-writer deletes its vectors before settling, after which the same forget request
-can confirm completion. A lost remote write response retains
-`OWNER_RECALL_WRITE_PENDING`; elapsed time never permits a replacement writer.
-Reconcile the original remote operation through its owner before recovery.
-This removes search access, not the preserved original or its backups.
-Source deactivation remains reversible; an explicit recall forget does not.
-People corrections reindex the searchable text. Date and provenance corrections
-update Core metadata without another embedding call when that text is unchanged.
 
 ```bash
 python3 integrations/secretary/recall_index.py --root "$GMAIL_SECRETARY_ROOT" --state "$PRIVATE_RECALL_STATE" --plan
