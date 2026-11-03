@@ -385,11 +385,13 @@ def main() -> int:
         evidence_pending = check_evidence_health(records, args.evidence_status, stale_seconds=args.audit_stale_seconds)
         # The bounded catch-up job owns the deep review while it runs; the triage turn stays steady.
         evidence_pending = evidence_pending and not catchup_running(Path(args.evidence_status).parent)
+        latest = next((row for row in reversed(records) if row.get("tool") == "gmail_secretary_backlog_next"), {})
+        journal_pending = type(latest.get("journalPending")) is int and latest["journalPending"] > 0
         cadence = reconcile_cadence(
             openclaw=args.openclaw,
             job_id=args.triage_job_id,
             desired=desired_cadence(
-                {"outcome": "ready" if count or evidence_pending else "empty"},
+                {"outcome": "ready" if count or evidence_pending or journal_pending else "empty"},
                 catchup_every=args.catchup_every,
                 steady_every=args.steady_every,
             ),
@@ -408,7 +410,7 @@ def main() -> int:
         return code
     print(
         f"GMAIL_SECRETARY_HEALTH_OK pending_mail_sampled={count} "
-        f"audit={audit} deep_review_pending={int(evidence_pending)} cadence={cadence}"
+        f"audit={audit} deep_review_pending={int(evidence_pending)} journal_pending={int(journal_pending)} cadence={cadence}"
     )
     return 0
 

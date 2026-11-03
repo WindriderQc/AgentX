@@ -179,7 +179,16 @@ function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(
       : mailReady
         ? `Gmail triage and its watchdog are running${triage.cadenceMinutes ? ` · catch-up every ${triage.cadenceMinutes} min` : ''}.`
         : 'Gmail triage or its watchdog needs checking.';
+  const mailReading = catchupProjection(mailCatchupBody);
+  const historyReview = (mailReading?.objectiveReviews || []).filter(review => review.objectiveId === 'life-timeline'
+    && !['superseded', 'cancelled'].includes(review.phase)).sort((a, b) => String(b.version).localeCompare(String(a.version), 'en', { numeric: true }))[0];
+  const historyStopped = ['uncertain', 'failed', 'source-error', 'stopped'].includes(historyReview?.phase);
   const decisions = [
+    ...(historyStopped ? [{ id: 'mail-history-review', audience: 'dad', severity: 'warning', title: 'Relecture historique arrêtée',
+      detail: 'Les preuves de la dernière tranche doivent être examinées avant une reprise.', href: '/atlas/' }] : []),
+    ...(mailReading?.journalPending ? [{ id: 'mail-journal-delivery', audience: 'dad', severity: 'warning',
+      title: `${mailReading.journalPending} résumé(s) de courriel en attente`,
+      detail: 'Le classement est conservé. Secrétaire réessaiera la livraison au journal sans reclasser les messages.', href: '#dad-mail' }] : []),
     ...(review.length ? [{ id: 'personal-review', audience: 'dad', severity: 'info', title: `${review.length} requests and follow-ups by category`, detail: 'Email requests, technical follow-ups and Secretary reading remain available with their sources.', href: '#dad-proposals' }] : []),
     ...(stale.length ? [{ id: 'schedule-stale', audience: 'dad', severity: 'warning', title: `${stale.length} ${stale.length === 1 ? 'task has' : 'tasks have'} been waiting for a date for a long time`, detail: 'Give it a date, finish it, or leave it undated on purpose.', href: '#dad-inbox' }] : []),
     ...(tasks.some((task) => task.expired) ? [{ id: 'expired', audience: 'dad', severity: 'info', title: `${tasks.filter((task) => task.expired).length} ${tasks.filter((task) => task.expired).length === 1 ? 'task whose activity has passed' : 'tasks whose activity has passed'}`, detail: 'Review the latest sources and remaining work. A passed date does not establish completion or cancellation.', href: '#dad-triage' }] : []),
@@ -220,7 +229,7 @@ function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(
       watchdog,
       morning,
       backlog,
-      catchup: catchupProjection(mailCatchupBody),
+      catchup: mailReading,
       authority: 'The OpenClaw secretary agent owns Gmail; every send and destructive mutation remains approval-gated.'
     },
     reminder: {

@@ -5,8 +5,8 @@ import { addAttachments, assertSafeAttachments, bodyFlags, buildOrganizeCommand,
   mutateBase, optionalFlag, readBase, recipientFlags, required, runEvidence, runGog, settings } from "./gmail.js";
 import { TRIAGE_CATEGORIES, applyTriage, continueBacklogMessage, nextBacklogMessage } from "./backlog.js";
 import { assertFullyRead, readSelectedMessage } from "./backlog-reading.js";
-import { journalTriage } from "./triage-journal.js";
 import { sendOnce } from './send-receipts.js';
+import { stageJournal, commitJournal, flushJournal } from './journal-outbox.js';
 import { nativeActionProvenance, toolActionReceipt } from '../../action-provenance.mjs';
 import { isBackgroundAction } from '../../../../shared/agentActionProvenance.cjs';
 
@@ -218,6 +218,7 @@ export function createPlugin(definePluginEntry) { return definePluginEntry({
       }, { additionalProperties: false }),
       async execute(_id, params = {}) {
         const config = settings(api.pluginConfig);
+        const journalDelivery = await flushJournal(config);
         const action = params.continue ? "continue_reading" : "oldest_unprocessed";
         // Rule triages are written after the lookup so the watchdog sees them complete it.
         const ruled = [];
@@ -237,9 +238,10 @@ export function createPlugin(definePluginEntry) { return definePluginEntry({
             mode: value.mode,
             cursorMonth: value.cursorMonth,
             ruleTriaged: ruled.length,
+            journalPending: journalDelivery.pending,
           });
           await flush();
-          return result(value);
+          return result({ ...value, journalDelivery });
         } catch (error) {
           await audit(config, { tool: TOOL_NAMES.backlogNext, action, status: "error", error: String(error.message).slice(0, 300) });
           await flush();
@@ -264,9 +266,10 @@ export function createPlugin(definePluginEntry) { return definePluginEntry({
         const config = settings(api.pluginConfig);
         try {
           const reading = await assertFullyRead(config, params.threadId, params.messageId);
+          const staged = await stageJournal(config, params);
           const value = await applyTriage({ threadId: params.threadId, messageId: params.messageId, category: params.category }, config);
           // The digest joins the owner's mail journal with the triage itself; a journal failure is reported, never hidden.
-          value.journal = await journalTriage(config, params);
+          value.journal = await commitJournal(config, staged);
           await audit(config, { tool: TOOL_NAMES.applyTriage, action: "apply_triage", status: "ok", threadId: params.threadId, messageId: params.messageId, sourceHash: reading.sourceHash, category: params.category, archiveCandidate: value.archiveCandidate, archived: value.archived, journal: value.journal });
           return result(value);
         } catch (error) {

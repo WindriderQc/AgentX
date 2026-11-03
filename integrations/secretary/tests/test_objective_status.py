@@ -42,6 +42,11 @@ class ObjectiveStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             root = Path(home)
             (root / "catchup-status.json").write_text(json.dumps({"phase": "done", "reviewed": 7}))
+            deliveries = root / "transport-state/gmail-journal-outbox"
+            deliveries.mkdir(parents=True)
+            (deliveries / ("a" * 64 + ".json")).write_text("{}")
+            (deliveries / "cursor.json").write_text("{}")
             result = catchup(Namespace(evidence_root=root))
             self.assertTrue(result["known"])
             self.assertEqual(result["reviewed"], 7)
+            self.assertEqual(result["journalPending"], 1)

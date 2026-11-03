@@ -275,8 +275,11 @@ def catchup(args: argparse.Namespace, root: Path | None = None) -> dict[str, Any
         running = False
     paused = status.get("paused") if isinstance(status.get("paused"), dict) else None
     from objective_status import projection
+    pending_journal = sum(1 for file in (root / "transport-state/gmail-journal-outbox").glob("*.json")
+                          if re.fullmatch(r"[a-f0-9]{64}\.json", file.name))
     return {"known": bool(status), "running": running, **{key: status.get(key) for key in CATCHUP_FIELDS},
             **projection(root),
+            **({"journalPending": pending_journal} if pending_journal else {}),
             "paused": {"reason": str(paused.get("reason"))[:120], "since": paused.get("since")} if paused else None,
             "proposalsPending": sum(1 for p in proposals if isinstance(p, dict) and p.get("state") == "pending"),
             "proposalsQueued": sum(1 for p in proposals if isinstance(p, dict) and p.get("state") == "queued")}

@@ -97,6 +97,7 @@ function catchupProjection(body) {
     pending: count(body.pending), reviewed: count(body.reviewed), failed: count(body.failed),
     remaining: count(body.remaining), pagesPerHour: count(body.pagesPerHour), etaHours: count(body.etaHours),
     proposalsQueued: count(body.proposalsQueued), proposalsPending: count(body.proposalsPending),
+    ...(body.journalPending ? { journalPending: count(body.journalPending) } : {}),
     updatedAt: body.updatedAt || null, finishedAt: body.finishedAt || null,
     ...(body.archiveProgress || body.objectiveReviews ? reviewProgress(body) : {})
   };

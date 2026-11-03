@@ -10,7 +10,7 @@ async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'gmail-send-receipt-'));
   t.after(() => rm(root, { recursive: true }));
   return { root, callId: 'synthetic-call', context: { agentId: 'mail', sessionKey: 'agent:mail:direct:synthetic' },
-    config: { account: 'synthetic', triageStateFile: path.join(root, 'triage.json') },
+    config: { account: 'synthetic', evidenceRoot: root, triageStateFile: path.join(root, 'triage.json') },
     params: { action: 'new', to: ['synthetic@example.invalid'], body: 'Synthetic body' } };
 }
 
