@@ -10,7 +10,9 @@
   const DECIDE_MS = 5000;
   const FRAME_MS = 1000 / 30;
   const VISITS_KEY = 'household.nestor.ambient.visits';
-  const ACTIVE_STATES = ['hearing', 'transcribing', 'waiting', 'thinking', 'preparing', 'speaking', 'error'];
+  // Awake listening is part of a conversation; listening or hearing while asleep (waiting
+  // for "Hey Nestor") is standby.
+  const ACTIVE_STATES = ['listening', 'hearing', 'transcribing', 'waiting', 'thinking', 'preparing', 'speaking', 'error'];
 
   function readVisits() {
     try { return JSON.parse(root.localStorage?.getItem(VISITS_KEY) || '{}') || {}; } catch { return {}; }
@@ -50,7 +52,8 @@
       const active = doc.activeElement;
       return !!(active?.matches?.('input, textarea') && active.value?.trim());
     };
-    const standby = () => !(ACTIVE_STATES.includes(state) && !(state === 'hearing' && sample?.asleep?.())) && !typing();
+    const asleep = () => ['listening', 'hearing'].includes(state) && !!sample?.asleep?.();
+    const standby = () => !(ACTIVE_STATES.includes(state) && !asleep()) && !typing();
     const momentId = moment => (moment?.kind === 'iss' ? 'iss:' + moment.pass.start : moment?.kind === 'visit' ? 'visit:' + moment.key : null);
 
     async function poll() {
