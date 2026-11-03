@@ -3,6 +3,7 @@ import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
+import { normalizeLabels } from './labels.js';
 
 // Bounded gog command builders and the runner shared by every Secretary tool.
 
@@ -178,11 +179,12 @@ export function buildOrganizeCommand(params, config = defaults) {
   let command;
   if (params.action === "label_threads") {
     if (!ids.length) throw new Error("ids is required for label_threads");
+    const add = normalizeLabels(params.addLabels), remove = normalizeLabels(params.removeLabels);
     exact = "gmail.labels.modify";
     command = ["gmail", "labels", "modify", ...ids];
-    optionalFlag(command, "--add", Array.isArray(params.addLabels) ? params.addLabels.join(",") : "");
-    optionalFlag(command, "--remove", Array.isArray(params.removeLabels) ? params.removeLabels.join(",") : "");
-    if (!params.addLabels?.length && !params.removeLabels?.length) throw new Error("addLabels or removeLabels is required");
+    optionalFlag(command, "--add", add.join(","));
+    optionalFlag(command, "--remove", remove.join(","));
+    if (!add.length && !remove.length) throw new Error("addLabels or removeLabels is required");
   } else if (params.action === "create_label") {
     exact = "gmail.labels.create";
     command = ["gmail", "labels", "create", required(params.label, "label")];
