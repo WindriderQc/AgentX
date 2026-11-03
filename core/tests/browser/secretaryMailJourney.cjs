@@ -22,7 +22,9 @@ const row = (threadId, mid) => ({ threadId, messageIds: [mid], messageCount: 1, 
 (async () => {
   const app = express();
   app.use(express.json());
-  app.get('/api/secretary/desk', (_q, res) => res.json({ data: dadDesk({ data: { alerts: {}, memoryReview: {} } }, [], { data: [] }) }));
+  app.get('/api/secretary/desk', (_q, res) => res.json({ data: dadDesk({ data: { alerts: {}, memoryReview: {} } }, [], { data: [] },
+    new Date('2030-01-01T00:00:00Z'), {}, {}, {}, {}, { known: true, journalPending: 1,
+      objectiveReviews: [{ objectiveId: 'life-timeline', version: 'v1', phase: 'failed' }] }) }));
   app.get('/api/secretary/mail', (q, res) => {
     if (q.query.label !== 'urgent') return res.json({ data: { count: 0, threads: [], more: false } });
     if (q.query.pageToken) {
@@ -54,6 +56,8 @@ const row = (threadId, mid) => ({ threadId, messageIds: [mid], messageCount: 1, 
     const page = await browser.newPage({ viewport: { width, height: 1000 } });
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: 'networkidle' });
+    assert.equal(await page.locator('#dadSecretaryNotice').isVisible(), true);
+    assert.match(await page.locator('#dadSecretaryNotice').textContent(), /Relecture historique arrêtée/);
     await page.locator('#dad-mail-actions').evaluate(el => { el.open = true; el.hidden = false; });
     await page.getByRole('button', { name: 'Voir les messages suivants' }).click();
     await page.locator(`[data-mail-messages="${paged}"]`).waitFor();
@@ -66,7 +70,7 @@ const row = (threadId, mid) => ({ threadId, messageIds: [mid], messageCount: 1, 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
     assert.equal(overflow, false);
     await page.screenshot({ path: path.join(reportDir, `${device}-mail.png`), fullPage: true });
-    checks.push({ device, opaquePagination: true, exactDisplayedSelection: true, newReplyRetained: true, escapedMetadata: true, keyboardActivation: true, noOverflow: true });
+    checks.push({ device, visibleStoppedReview: true, opaquePagination: true, exactDisplayedSelection: true, newReplyRetained: true, escapedMetadata: true, keyboardActivation: true, noOverflow: true });
     await page.close();
   }
   assert.deepEqual(errors, []);

@@ -98,16 +98,17 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
           <button type="button" data-day-view="background" data-finding-category="background" aria-pressed="false">Autres suivis <span id="dadBackgroundCount">…</span></button>
         </nav>
         <p class="dad-day-insight" id="dad-focus"><span class="dad-today-symbol" aria-hidden="true">${icon(ICONS.day)}</span><span id="dadDayInsight">Lecture de vos actions…</span><span class="dad-day-totals"><span><b id="dadToday">…</b> aujourd’hui</span><span><b id="dadOverdue">…</b> en retard</span></span></p><a class="dad-atlas-proposals" id="dadAtlasProposals" href="/atlas/#proposals" hidden></a>
+      <aside id="dadSecretaryNotice" class="stack" aria-live="polite" hidden></aside>
       <section class="dad-grid">
         <div class="dad-side">
           <article class="card dad-capture" id="dad-capture"><p class="card-kicker">POUR LIBÉRER L’ESPRIT</p><h2>Une chose à faire ?</h2><form id="dadCaptureForm" class="stack"><label class="sr-only" for="dadCaptureTitle">Mon action</label><input id="dadCaptureTitle" maxlength="200" required placeholder="Ex. Prendre rendez-vous au garage"><details class="dad-capture-options"><summary>Ajouter une date ou une priorité</summary><div class="stack"><label>Date <small>facultative</small><input id="dadCaptureDue" type="date"></label><label>Priorité<select id="dadCapturePriority"><option value="3">Normale</option><option value="2">Haute</option><option value="4">Basse</option></select></label></div></details><button class="primary">Ajouter mon action <span aria-hidden="true">＋</span></button></form></article>
         </div>
-        <details class="card full dad-mail-actions dad-secondary" id="dad-mail-actions"><summary>Courriels à traiter <span id="dadMailActionCount" class="pill">lecture…</span></summary><div class="dad-mail-columns"><section><h3>Urgents</h3><div id="dadMailUrgent" class="stack dad-mail-list"><div class="empty">Reading Gmail…</div></div></section><section><h3>Réponses attendues</h3><div id="dadMailReply" class="stack dad-mail-list"><div class="empty">Reading Gmail…</div></div></section></div><p class="muted dad-quiet">Sorted by the Secretary. “Handled” only removes this label in Gmail: nothing is sent, archived or deleted.</p></details>
+        <details class="card full dad-mail-actions dad-secondary" id="dad-mail-actions"><summary>Courriels à traiter <span id="dadMailActionCount" class="pill">lecture…</span></summary><div class="dad-mail-columns"><section><h3>Urgents</h3><div id="dadMailUrgent" class="stack dad-mail-list"><div class="empty">Lecture des courriels…</div></div></section><section><h3>Réponses attendues</h3><div id="dadMailReply" class="stack dad-mail-list"><div class="empty">Lecture des courriels…</div></div></section></div><p class="muted dad-quiet">Classés par Secrétaire. « Marquer comme traités » retire cette étiquette des messages affichés. Un nouveau message du même échange reste à traiter.</p></details>
         <article class="card full dad-inbox" id="dad-inbox"></article>
         <details class="card full dad-secondary" id="dad-ideas-panel"><summary>Idées et rappels <span data-day-ideas-count class="pill">…</span></summary><article id="dad-ideas" data-dad-ideas hidden></article></details>
         <details class="card full dad-secondary" id="dad-triage-panel"><summary>Anciennes dates à revoir <span data-day-triage-count class="pill">…</span></summary><article id="dad-triage" data-dad-triage></article></details>
-        <details class="card full dad-secondary" id="dad-mail"><summary>Tri automatique des courriels <span id="dadMailPill" class="pill">…</span></summary><p id="dadMailSummary" class="muted">Checking triage…</p><div id="dadMailJobs" class="stack"></div><div class="row wrap dad-reminder-actions"><a class="button compact" href="/api/openclaw/control-launch/cron">Open automations</a></div><details class="dad-secondary dad-rules" data-secretary-rules></details></details>
-        <details class="card full dad-secondary" id="dad-decisions"><summary>Réglages et services à vérifier</summary><section class="dad-decide" aria-labelledby="dadDecideTitle"><h2 id="dadDecideTitle" class="card-kicker">To review</h2><div id="dadDecisions" class="dad-decide-list" aria-live="polite"><span class="dad-decide-empty">Loading…</span></div></section></details>
+        <details class="card full dad-secondary" id="dad-mail"><summary>Tri automatique des courriels <span id="dadMailPill" class="pill">…</span></summary><p id="dadMailSummary" class="muted">Vérification du tri…</p><div id="dadMailJobs" class="stack"></div><div class="row wrap dad-reminder-actions"><a class="button compact" href="/api/openclaw/control-launch/cron">Ouvrir les automatisations</a></div><details class="dad-secondary dad-rules" data-secretary-rules></details></details>
+        <details class="card full dad-secondary" id="dad-decisions"><summary>Réglages et services à vérifier</summary><section class="dad-decide" aria-labelledby="dadDecideTitle"><h2 id="dadDecideTitle" class="card-kicker">À vérifier</h2><div id="dadDecisions" class="dad-decide-list" aria-live="polite"><span class="dad-decide-empty">Chargement…</span></div></section></details>
         <details class="card full dad-secondary" id="dad-health"><summary>État du système <span id="dadHealthPill" class="pill">…</span></summary><div class="dad-evidence-grid"><section><strong>Memory review</strong><div id="dadMemoryStates" class="stack"></div><p id="dadMemory" class="muted">Checking…</p><a href="/memory-review">Open the review</a></section><section><strong>LLM usage</strong><div id="dadUtilization" class="stack"></div><a href="/analytics">Open Analytics</a></section><section><strong>System exceptions</strong><p id="dadOps" class="muted">Checking…</p><a href="/agent-ops">Open Agent Ops</a></section></div></details>
         <details class="card full dad-secondary"><summary>Rappels et organisation familiale</summary><div class="grid"><article class="card dad-reminder"><div class="row"><div class="grow"><p class="card-kicker">Personal reminder · consent first</p><h2>Morning reminder</h2></div><span id="dadReminderState" class="pill">…</span></div><p id="dadReminderSummary" class="muted">Checking…</p><p id="dadReminderConsent" class="muted dad-quiet">No message is sent until Dad turns it on.</p><div class="row wrap dad-reminder-actions"><button id="dadReminderPreviewToggle" class="compact" type="button" aria-expanded="false" aria-controls="dadReminderPreview" disabled>Preview reminder</button><a class="button compact" href="/api/openclaw/control-launch/cron">Review the daily reminder</a></div><div id="dadReminderPreview" class="reminder-preview" hidden><div class="reminder-preview-heading"><span class="pill ok">preview only</span><strong>Nothing ran. Nothing was sent.</strong></div><pre id="dadReminderMessage" lang="fr"></pre><div id="dadReminderContract" class="reminder-contract"></div><p id="dadReminderPreviewNote" class="muted dad-quiet"></p></div></article>
           <article class="card dad-family"><div class="row"><div class="grow"><p class="card-kicker">Household rhythm · parent</p><h2>Kids space setup</h2></div><span id="dadFamilyState" class="pill">…</span></div><p id="dadFamilySummary" class="muted">Checking profiles and routines…</p><div id="dadFamilyCounts" class="service"></div><a class="button compact" href="/dad/family">Open family tracking</a></article>
@@ -150,32 +151,32 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
     }
     app.addEventListener('click', event => { const button = event.target.closest('[data-day-view]'); if (button) showView(button.dataset.dayView); });
 
-    const jobStatus = (job) => !job.enabled ? 'stopped' : job.late ? 'late' : ({ ok: 'ok', success: 'ok', error: 'error', unknown: 'unknown' }[job.lastStatus] || job.lastStatus);
-    const jobRow = (job, label) => job ? `<div class="service"><div><strong>${esc(label)}</strong><small>${job.lastRunAt ? `last run ${esc(new Date(job.lastRunAt).toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' }))}${job.ageHours !== null && job.ageHours !== undefined ? ` · ${esc(job.ageHours)} h ago` : ''}` : 'no run receipt'}</small></div><span class="pill ${job.healthy ? 'ok' : 'down'}">${esc(jobStatus(job))}</span></div>` : `<div class="service"><div><strong>${esc(label)}</strong><small>evidence missing</small></div><span class="pill down">unknown</span></div>`;
+    const jobStatus = (job) => !job.enabled ? 'arrêté' : job.late ? 'en retard' : ({ ok: 'à jour', success: 'à jour', error: 'erreur', unknown: 'inconnu' }[job.lastStatus] || job.lastStatus);
+    const jobRow = (job, label) => job ? `<div class="service"><div><strong>${esc(label)}</strong><small>${job.lastRunAt ? `dernière exécution : ${esc(new Date(job.lastRunAt).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short' }))}${job.ageHours !== null && job.ageHours !== undefined ? ` · il y a ${esc(job.ageHours)} h` : ''}` : 'aucune exécution confirmée'}</small></div><span class="pill ${job.healthy ? 'ok' : 'down'}">${esc(jobStatus(job))}</span></div>` : `<div class="service"><div><strong>${esc(label)}</strong><small>preuve indisponible</small></div><span class="pill down">inconnu</span></div>`;
     const backlogRow = (mail) => {
       const backlog = mail.backlog || {};
-      if (!Number.isInteger(backlog.unlabelled)) return `<div class="service"><div><strong>Unlabelled emails</strong><small>${esc(backlog.error || 'count unavailable')}</small></div><span class="pill">unknown</span></div>`;
+      if (!Number.isInteger(backlog.unlabelled)) return `<div class="service"><div><strong>Courriels sans étiquette</strong><small>${esc(backlog.error || 'compte indisponible')}</small></div><span class="pill">inconnu</span></div>`;
       const waiting = backlog.unlabelled > 0;
-      return `<div class="service"><div><strong>Unlabelled emails</strong><small>last ${esc(backlog.days)} days${backlog.checkedAt ? ` · counted at ${esc(new Date(backlog.checkedAt).toLocaleTimeString('en-CA', { timeStyle: 'short' }))}` : ''}</small></div><span class="pill ${waiting && mail.status === 'stopped' ? 'down' : waiting ? '' : 'ok'}">${esc(backlog.unlabelled)}${backlog.capped ? '+' : ''}</span></div>`;
+      return `<div class="service"><div><strong>Courriels sans étiquette</strong><small>${esc(backlog.days)} derniers jours${backlog.checkedAt ? ` · comptés à ${esc(new Date(backlog.checkedAt).toLocaleTimeString('fr-CA', { timeStyle: 'short' }))}` : ''}</small></div><span class="pill ${waiting && mail.status === 'stopped' ? 'down' : waiting ? '' : 'ok'}">${esc(backlog.unlabelled)}${backlog.capped ? '+' : ''}</span></div>`;
     };
     // The archive catch-up job (#130): counts only, shown while it runs and once it ends.
-    const catchupState = { running: ['running', 'ok'], paused: ['paused', ''], done: ['done', 'ok'], partial: ['partial', ''], stopped: ['stopped', 'down'], idle: ['waiting', ''], unavailable: ['unknown', ''] };
+    const catchupState = { running: ['en cours', 'ok'], paused: ['en pause', ''], done: ['terminé', 'ok'], partial: ['partiel', ''], stopped: ['arrêté', 'down'], idle: ['en attente', ''], unavailable: ['inconnu', ''] };
     const catchupRow = (mail) => {
       const job = mail.catchup;
       if (!job) return '';
       const [label, tone] = catchupState[job.status] || catchupState.idle;
       const total = (job.reviewed ?? 0) + (job.remaining ?? 0) + (job.failed ?? 0);
-      const detail = job.status === 'unavailable' ? (job.error || 'status unavailable')
-        : [`${job.reviewed ?? 0} / ${total} pages reviewed`,
-          job.failed ? `${job.failed} with errors` : '',
-          job.status === 'running' && job.etaHours !== null ? `estimated finish in ${job.etaHours} h (${job.pagesPerHour} pages/h)` : '',
-          job.paused ? `paused: ${job.paused}` : '',
-          job.proposalsQueued ? `${job.proposalsQueued} to confirm in the idea inbox` : ''].filter(Boolean).join(' · ');
-      return `<div class="service"><div><strong>Archive review</strong><small>${esc(detail)}</small></div><span class="pill ${tone}">${esc(label)}</span></div>`;
+      const detail = job.status === 'unavailable' ? (job.error || 'état indisponible')
+        : [`${job.reviewed ?? 0} / ${total} pages relues`,
+          job.failed ? `${job.failed} avec erreurs` : '',
+          job.status === 'running' && job.etaHours !== null ? `fin estimée dans ${job.etaHours} h (${job.pagesPerHour} pages/h)` : '',
+          job.paused ? `en pause : ${job.paused}` : '',
+          job.proposalsQueued ? `${job.proposalsQueued} à confirmer dans les idées` : ''].filter(Boolean).join(' · ');
+      return `<div class="service"><div><strong>Relecture des archives</strong><small>${esc(detail)}</small></div><span class="pill ${tone}">${esc(label)}</span></div>`;
     };
     // Each decision says what and links to where it is settled; nothing hides behind a bare "needs decisions".
     const decisionChip = (decision) => `<a class="dad-decide-chip ${decision.severity === 'warning' ? 'warning' : ''}" href="${esc(decision.href || '/dad')}"><strong>${esc(decision.title)}</strong><small>${esc(decision.detail)}</small></a>`;
-    const mailLabel = { ready: ['running', 'ok'], stopped: ['stopped', 'down'], attention: ['to check', 'waiting'], unavailable: ['unavailable', 'down'] };
+    const mailLabel = { ready: ['en cours', 'ok'], stopped: ['arrêté', 'down'], attention: ['à vérifier', 'waiting'], unavailable: ['indisponible', 'down'] };
     const renderReminderPreview = (reminder) => {
       const preview = reminder?.preview;
       const toggle = byId('dadReminderPreviewToggle');
@@ -192,13 +193,16 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
         latestDesk = data;
         setRuntime(true, 'day ready');
         const decisions = Array.isArray(data.decisions) ? data.decisions : [];
+        const secretaryAttention = decisions.filter(item => ['mail-history-review', 'mail-journal-delivery', 'mail-triage'].includes(item.id));
+        byId('dadSecretaryNotice').innerHTML = secretaryAttention.map(decisionChip).join('');
+        byId('dadSecretaryNotice').hidden = secretaryAttention.length === 0;
         const mailState = mailLabel[data.mail.status] || mailLabel.attention;
         // A stopped triage already arrives as a decision; a softer mail doubt still earns a chip.
         const mailChip = ['attention', 'unavailable'].includes(data.mail.status)
-          ? `<a class="dad-decide-chip" href="#dad-mail"><strong>Email triage ${esc(mailState[0])}</strong><small>${esc(data.mail.summary)}</small></a>` : '';
+          ? `<a class="dad-decide-chip" href="#dad-mail"><strong>Tri Gmail : ${esc(mailState[0])}</strong><small>${esc(data.mail.summary)}</small></a>` : '';
         byId('dadDecisions').innerHTML = decisions.length || mailChip
           ? decisions.map(decisionChip).join('') + mailChip
-          : '<span class="dad-decide-empty ok">✓ Nothing to decide right now.</span>';
+          : '<span class="dad-decide-empty ok">✓ Aucune décision en attente.</span>';
         byId('dadToday').textContent = data.metrics.today;
         byId('dadActionCount').textContent = data.metrics.actionable;
 

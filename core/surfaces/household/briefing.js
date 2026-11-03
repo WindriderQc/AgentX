@@ -166,19 +166,19 @@ function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(
         days: Number(mailBacklogBody.days) || 7,
         checkedAt: boundedText(mailBacklogBody.checkedAt, 40) || null
       }
-    : { unlabelled: null, capped: false, days: 7, checkedAt: null, error: boundedText(mailBacklogBody.error, 200) || 'The unlabelled count is unavailable.' };
+    : { unlabelled: null, capped: false, days: 7, checkedAt: null, error: boundedText(mailBacklogBody.error, 200) || 'Le nombre de courriels sans étiquette est indisponible.' };
   const triageAge = !triage
-    ? 'The Gmail triage job is missing from OpenClaw.'
+    ? 'Le tri Gmail est absent des automatisations.'
     : !triage.enabled
-      ? `Gmail triage is disabled${triage.ageHours === null ? '' : ` · last run ${triage.ageHours} h ago`}.`
-      : `Last Gmail triage: ${triage.ageHours === null ? 'never' : `${triage.ageHours} h ago`}${triage.cadenceMinutes ? ` · expected every ${triage.cadenceMinutes} min` : ''}.`;
+      ? `Le tri Gmail est désactivé${triage.ageHours === null ? '' : ` · dernière exécution il y a ${triage.ageHours} h`}.`
+      : `Dernier tri Gmail : ${triage.ageHours === null ? 'aucune exécution' : `il y a ${triage.ageHours} h`}${triage.cadenceMinutes ? ` · attendu toutes les ${triage.cadenceMinutes} min` : ''}.`;
   const mailSummary = cronUnavailable
-    ? 'The Secretary Gmail status is unavailable.'
+    ? 'L’état du tri Gmail est indisponible.'
     : triageStopped
       ? triageAge
       : mailReady
-        ? `Gmail triage and its watchdog are running${triage.cadenceMinutes ? ` · catch-up every ${triage.cadenceMinutes} min` : ''}.`
-        : 'Gmail triage or its watchdog needs checking.';
+        ? `Le tri Gmail et sa surveillance sont actifs${triage.cadenceMinutes ? ` · rattrapage toutes les ${triage.cadenceMinutes} min` : ''}.`
+        : 'Le tri Gmail ou sa surveillance doit être vérifié.';
   const mailReading = catchupProjection(mailCatchupBody);
   const historyReview = (mailReading?.objectiveReviews || []).filter(review => review.objectiveId === 'life-timeline'
     && !['superseded', 'cancelled'].includes(review.phase)).sort((a, b) => String(b.version).localeCompare(String(a.version), 'en', { numeric: true }))[0];
@@ -194,7 +194,7 @@ function dadDesk(reportBody = {}, taskItems = [], cronBody = {}, now = new Date(
     ...(tasks.some((task) => task.expired) ? [{ id: 'expired', audience: 'dad', severity: 'info', title: `${tasks.filter((task) => task.expired).length} ${tasks.filter((task) => task.expired).length === 1 ? 'task whose activity has passed' : 'tasks whose activity has passed'}`, detail: 'Review the latest sources and remaining work. A passed date does not establish completion or cancellation.', href: '#dad-triage' }] : []),
     ...(tasks.some((task) => task.recheck) ? [{ id: 'recheck', audience: 'dad', severity: 'info', title: `${tasks.filter((task) => task.recheck).length} ${tasks.filter((task) => task.recheck).length === 1 ? 'old due date' : 'old due dates'} to confirm`, detail: 'Reconcile recent exchanges, calendar and documents before proposing an update. Age and silence do not establish the current obligation.', href: '#dad-triage' }] : []),
     ...(tasks.some((task) => task.overdue) ? [{ id: 'overdue', audience: 'dad', severity: 'warning', title: `${tasks.filter((task) => task.overdue).length} ${tasks.filter((task) => task.overdue).length === 1 ? 'overdue task' : 'overdue tasks'}`, detail: 'Finish it or reschedule it; the desk never moves a due date silently.', href: '#dad-focus' }] : []),
-    ...(triageStopped ? [{ id: 'mail-triage', audience: 'dad', severity: 'warning', title: 'Gmail triage is stopped', detail: `${triageAge}${backlog.unlabelled ? ` ${backlog.unlabelled}${backlog.capped ? '+' : ''} recent inbox emails have no label.` : ''}`, href: '#dad-mail' }] : []),
+    ...(triageStopped ? [{ id: 'mail-triage', audience: 'dad', severity: 'warning', title: 'Le tri Gmail est arrêté', detail: `${triageAge}${backlog.unlabelled ? ` ${backlog.unlabelled}${backlog.capped ? '+' : ''} courriels récents de la boîte de réception sont sans étiquette.` : ''}`, href: '#dad-mail' }] : []),
     ...(family.status === 'review' ? [{ id: 'family-review', audience: 'dad', severity: 'warning', title: 'Review the kids’ follow-ups', detail: family.summary, href: family.href }] : []),
     ...(memoryReview.queueStatus === 'pending' ? [{ id: 'memory-review', audience: 'dad', severity: 'info', title: `${memoryReview.pending} ${memoryReview.pending === 1 ? 'memory proposal waiting' : 'memory proposals waiting'}`, detail: 'Review each proposal one by one; nothing is promoted silently.', href: '/memory-review' }] : []),
     ...(activationOpen.length ? [{ id: 'household-activation', audience: 'dad', severity: activationOpen.some((item) => item.status === 'attention') ? 'warning' : 'info', title: `${activationOpen.length} ${activationOpen.length === 1 ? 'setup step awaits' : 'setup steps await'} your decision`, detail: activationOpen.slice(0, 3).map((item) => boundedText(item.label, 80)).filter(Boolean).join(' · '), href: activationOpen[0]?.href || '/dad' }] : []),
