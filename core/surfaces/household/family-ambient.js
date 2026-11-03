@@ -7,11 +7,13 @@
 // on failure: an unknown value is never shown as a real one.
 //
 // The page never receives coordinates, alert text or host inventories: only the
-// weather words, pass times and directions, and the ecosystem node a finding names.
+// weather words, pass times and directions, the ecosystem node a finding names, and the
+// opaque identifiers of the pictures Nestor may paint (family-paintings.js).
 
 const { fetchData: defaultFetchData } = require('../../src/services/dataServiceClient');
 const { issPasses: defaultIssPasses, readHomeObserver } = require('../../src/services/mcpIssTools');
 const { getOpsWatch: defaultGetOpsWatch } = require('../../src/services/opsWatchService');
+const { createFamilyPaintings } = require('./family-paintings');
 
 const WEATHER_TTL_MS = 10 * 60 * 1000;
 const ISS_TTL_MS = 20 * 60 * 1000;
@@ -128,7 +130,7 @@ function passView(result) {
 }
 
 function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = defaultIssPasses,
-  getOpsWatch = defaultGetOpsWatch, observer = readHomeObserver, now = () => new Date(), logger = null } = {}) {
+  getOpsWatch = defaultGetOpsWatch, observer = readHomeObserver, now = () => new Date(), logger = null, paintings = null } = {}) {
   const cache = new Map();
 
   async function cached(name, ttl, read) {
@@ -174,28 +176,40 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
   }
 
   async function snapshot() {
-    const [weather, sun, iss] = await Promise.all([
+    const [weather, sun, iss, pictures] = await Promise.all([
       cached('weather', WEATHER_TTL_MS, readWeather),
       // The sun moves; its position is recomputed from a cached observer.
       cached('observer', ISS_TTL_MS, () => observer(fetchData, null)).then(position => (position
         ? { elevationDeg: solarElevationDeg(position.lat, position.lon, now()) } : null)),
-      cached('iss', ISS_TTL_MS, readIss)
+      cached('iss', ISS_TTL_MS, readIss),
+      paintings ? paintings.list().catch(() => null) : null
     ]);
     let alerts = null;
     try { alerts = alertView(getOpsWatch().latest()); } catch { alerts = null; }
-    return { at: now().toISOString(), weather, sun, iss, alerts };
+    return { at: now().toISOString(), weather, sun, iss, alerts, paintings: pictures || null };
   }
 
-  return { snapshot };
+  return { snapshot, painting: id => (paintings ? paintings.image(id) : null) };
 }
 
-function registerFamilyAmbient(router, ambient = createFamilyAmbient()) {
+function registerFamilyAmbient(router, ambient = createFamilyAmbient({ paintings: createFamilyPaintings() })) {
   router.get('/ambient', async (_req, res) => {
     try {
       res.set('Cache-Control', 'no-store');
       return res.json({ ok: true, status: 'success', data: await ambient.snapshot() });
     } catch (error) {
       return res.status(500).json({ ok: false, status: 'error', code: 'FAMILY_AMBIENT_FAILED', message: error.message });
+    }
+  });
+  // A reduced copy of a picture the snapshot listed; identifiers are opaque and immutable.
+  router.get('/ambient/paintings/:id', async (req, res) => {
+    try {
+      const picture = /^[a-f0-9-]{36}$/.test(req.params.id) ? await ambient.painting?.(req.params.id) : null;
+      if (!picture) return res.status(404).json({ ok: false, status: 'error', code: 'PAINTING_UNKNOWN' });
+      return res.set({ 'Content-Type': picture.mimeType, 'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff' })
+        .send(picture.bytes);
+    } catch {
+      return res.status(503).json({ ok: false, status: 'error', code: 'PAINTING_UNAVAILABLE' });
     }
   });
   return ambient;

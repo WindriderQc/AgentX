@@ -270,6 +270,19 @@ async function list() {
   await initialize();
   return (await ImageOperation.find({ conversation: { $exists: false } }).sort({ createdAt: -1 }).limit(30).lean()).map(publicOperation);
 }
+// Finished pictures made from words alone (no reference, parent or retouch), newest first,
+// for surfaces that show creations: each with its conversation scope, size and a short head of
+// its words so a surface can skip repeats, and whether exact text was requested in the picture.
+// The stored request itself never leaves Core.
+async function listFinished({ limit = 200 } = {}) {
+  const rows = await ImageOperation.find({ state: 'completed', runtimeRestored: true, 'artifact.sha256': { $exists: true },
+    referenceStorage: { $exists: false }, lineage: { $exists: false }, references: { $exists: false } })
+    .select('conversation artifact createdAt request.prompt request.visualPrompt request.constraints request.textPolicy.enabled').sort({ createdAt: -1 }).limit(limit).lean();
+  return rows.map(op => ({ id: op._id, createdAt: op.createdAt, conversation: op.conversation || null,
+    width: op.artifact?.width, height: op.artifact?.height,
+    text: !!(op.request?.constraints || op.request?.textPolicy?.enabled),
+    words: String(op.request?.visualPrompt || op.request?.prompt || '').replace(/\s+/g, ' ').trim().slice(0, 240) }));
+}
 async function cancel(id) {
   await initialize();
   const op = await ImageOperation.findById(id).lean();
@@ -317,4 +330,4 @@ function status() {
     conversationProfile: p ? { id: quick, width: Math.min(1024, Math.floor(Math.sqrt(p.maxPixels) / 32) * 32), height: Math.min(1024, Math.floor(Math.sqrt(p.maxPixels) / 32) * 32) } : null,
     profiles: Object.entries(config?.profiles || {}).map(([id, p]) => ({ id, label: p.label || id, maxPixels: p.maxPixels, license: p.license || null })) };
 }
-module.exports = { accept, dispatchQueued, get, getForAction, getForConversation, listForConversation, draft, list, cancel, image, retryArchive, recover, status, validate, publicOperation };
+module.exports = { accept, dispatchQueued, get, getForAction, getForConversation, listForConversation, draft, list, listFinished, cancel, image, retryArchive, recover, status, validate, publicOperation };
