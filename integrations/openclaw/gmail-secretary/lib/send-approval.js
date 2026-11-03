@@ -112,7 +112,7 @@ export function sendGate({ run = runGog, inspect = inspectSnapshot, now = Date.n
         throw error;
       }
     },
-    async execute(callId, params, config, context) {
+    async execute(callId, params, config, context, aroundDispatch = operation => operation()) {
       prune();
       const id = key(callId, context);
       const entry = pending.get(id);
@@ -128,9 +128,10 @@ export function sendGate({ run = runGog, inspect = inspectSnapshot, now = Date.n
       // file path, reply-all recipient list or forwarded attachment after approval.
       const args = [...mutateBase(config, 'gmail.send', { maySend: true }), 'gmail', 'send', '--raw-file=-'];
       if (snapshot.threadId) args.push(`--thread-id=${snapshot.threadId}`);
-      const value = await run({ args, stdin: Buffer.from(snapshot.raw, 'base64url') }, config);
-      return { ...value, approvedSnapshot: snapshot.info.sha256,
-        retainedDraftId: snapshot.draftId, draftRetained: true };
+      return aroundDispatch(async () => ({
+        ...await run({ args, stdin: Buffer.from(snapshot.raw, 'base64url') }, config),
+        approvedSnapshot: snapshot.info.sha256, retainedDraftId: snapshot.draftId, draftRetained: true,
+      }));
     },
   };
 }

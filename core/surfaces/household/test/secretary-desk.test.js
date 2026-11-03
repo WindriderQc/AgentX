@@ -16,16 +16,16 @@ test("Dad's Desk calls a stopped Gmail triage by its name and counts the mail it
   assert.equal(silent.mail.status, 'stopped');
   assert.equal(silent.mail.triage.late, true);
   assert.equal(silent.mail.triage.ageHours, 74.9);
-  assert.match(silent.mail.summary, /Last Gmail triage: 74\.9 h ago · expected every 5 min/);
+  assert.match(silent.mail.summary, /Dernier tri Gmail : il y a 74\.9 h · attendu toutes les 5 min/);
   assert.deepEqual(silent.mail.backlog, { unlabelled: 61, capped: false, days: 7, checkedAt: '2026-09-19T19:58:00.000Z' });
   const decision = silent.decisions.find((entry) => entry.id === 'mail-triage');
   assert.equal(decision.severity, 'warning');
-  assert.match(decision.detail, /61 recent inbox emails have no label/);
+  assert.match(decision.detail, /61 courriels récents de la boîte de réception sont sans étiquette/);
   assert.equal(silent.status, 'attention');
 
   const paused = desk({ enabled: false, lastRunStatus: 'error', lastRunAtMs: lastRun }, { error: 'Gmail authorization is missing or revoked; the owner must run gog auth add' });
   assert.equal(paused.mail.status, 'stopped');
-  assert.match(paused.mail.summary, /disabled · last run 74\.9 h ago/);
+  assert.match(paused.mail.summary, /désactivé · dernière exécution il y a 74\.9 h/);
   assert.equal(paused.mail.backlog.unlabelled, null);
   assert.match(paused.mail.backlog.error, /gog auth add/);
 
@@ -51,4 +51,17 @@ test('personal tasks say whether they came from chat, email or the desk', () => 
   assert.equal(origin({ source: 'household-dad-desk', origin: 'email' }), 'email', 'a stored origin wins over the legacy derivation');
   assert.equal(origin({ source: 'nestor-secretary', origin: 'telepathy' }), 'chat', 'an unknown stored value falls back');
   assert.equal(household.publicTask({ pipelineId: '0700', title: 'x', source: 'idea-drop' }).source, 'idea-drop');
+});
+
+test('the desk separates pending journal delivery from the latest historical review that needs attention', () => {
+  const desk = reviews => household.dadDesk({ data: { alerts: {}, memoryReview: {} } }, [], {},
+    new Date('2030-01-01T00:00:00Z'), {}, {}, {}, {}, { known: true, journalPending: 2, objectiveReviews: reviews });
+  const old = { objectiveId: 'life-timeline', version: 'v9', phase: 'failed' };
+  const current = { ...old, version: 'v10', phase: 'reviewing' };
+  const active = desk([old, current]);
+  assert.equal(active.decisions.some(item => item.id === 'mail-history-review'), false);
+  assert.match(active.decisions.find(item => item.id === 'mail-journal-delivery').detail, /sans reclasser/);
+  const stopped = desk([old, { ...current, phase: 'source-error' }, { ...current, version: 'v11', phase: 'superseded' }]);
+  assert.equal(stopped.decisions.find(item => item.id === 'mail-history-review').severity, 'warning');
+  assert.equal(stopped.mail.catchup.objectiveReviews[0].userConfirmed, false);
 });

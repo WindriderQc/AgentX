@@ -45,7 +45,7 @@ function mailbox(options = {}) {
   const nativeGate = sendGate({ run, now: () => clock, ...options });
   return { calls, state, advance: ms => { clock += ms; }, gate: {
     before: (event, config, origin, build, context = owner) => nativeGate.before(event, config, origin, build, context),
-    execute: (id, params, config, context = owner) => nativeGate.execute(id, params, config, context),
+    execute: (id, params, config, context = owner, aroundDispatch) => nativeGate.execute(id, params, config, context, aroundDispatch),
   } };
 }
 const event = (value = params, id = 'call-1') => ({ toolCallId: id, params: value });
@@ -216,7 +216,7 @@ test('registered send tool refuses when a runtime ignores the hook or its resolu
   const root = await mkdtemp(path.join(os.tmpdir(), 'agentx-send-gate-'));
   t.after(() => rm(root, { recursive: true }));
   const box = mailbox(), hooks = new Map(), tools = new Map();
-  createPlugin(x => x, { sendApproval: box.gate }).register({ config: {}, pluginConfig: { auditLog: path.join(root, 'audit.jsonl') },
+  createPlugin(x => x, { sendApproval: box.gate }).register({ config: {}, pluginConfig: { evidenceRoot: root, auditLog: path.join(root, 'audit.jsonl') },
     registerTool: (tool, options) => tools.set(tool.name || options.name, typeof tool === 'function' ? tool(owner) : tool), on: (name, fn) => hooks.set(name, fn) });
   const send = tools.get('gmail_secretary_send');
   await assert.rejects(send.execute('call-1', params), /one-time approval/);
@@ -228,6 +228,8 @@ test('registered send tool refuses when a runtime ignores the hook or its resolu
   next.requireApproval.onResolution('allow-once');
   const result = await send.execute('call-2', params);
   assert.equal(result.content[0].text.includes('sent-1'), true);
+  const replay = await send.execute('call-2', params);
+  assert.equal(JSON.parse(replay.content[0].text).sendReceipt.replayed, true);
   assert.equal(sends(box).length, 1);
 });
 

@@ -5,6 +5,7 @@ import hashlib
 from pathlib import Path
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evidence_store import load, save
@@ -20,6 +21,38 @@ class RejectedCopyTests(unittest.TestCase):
     prepare = fixtures.ObjectiveTests.prepare
     run_worker = fixtures.ObjectiveTests.run_worker
     client = rejected_fixtures.DispositionTests.client
+
+    def test_repeated_identical_attachment_scopes_do_not_duplicate_page_identities_or_stop_registration(self):
+        from objective_sources import _unit
+        self.mail("message01", "Synthetic source with the same attachment twice.")
+        original = worker.materialize
+        attachment = _unit("attachment-existing-text", "Un fichier.pdf est envoyé.",
+                           attachment={"sha256": "a" * 64, "filename": "synthetic.txt", "status": "text_extracted"})
+
+        def repeated(root, source):
+            current, units, gaps = original(root, source)
+            return current, [*units, attachment, copy.deepcopy(attachment)], gaps
+
+        client, calls = self.client()
+        with mock.patch.object(worker, "materialize", side_effect=repeated):
+            result = self.run_worker(client, retain_rejected_pages=True)
+        objective, _ = self.prepare()
+        source_plan = next((objective / "sources").glob("*.json"))
+        plan = load(source_plan)
+        self.assertEqual(len(plan["pageIds"]), len(set(plan["pageIds"])))
+        self.assertEqual(plan["representations"].count(worker.equivalent.unit_ref(attachment)), 2)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(result["coverage"]["counts"]["targetSources"], 1)
+        self.assertFalse(result["coverage"]["allTargetTextCovered"])
+
+    def test_same_text_in_distinct_mime_parts_keeps_distinct_page_identities(self):
+        self.mail("message01", "Synthetic body")
+        _, manifest = self.prepare()
+        source, units, _ = worker.materialize(self.root, manifest["sources"][0])
+        unit = units[0]
+        plan = list(worker.pages(source, [unit, {**unit, "partIndex": unit["partIndex"] + 1}], manifest["objectiveSha256"]))
+        self.assertEqual(len(plan), 2)
+        self.assertEqual(len({page["pageId"] for page in plan}), 2)
 
     def duplicate_sources(self, count=2, body="Un fichier.pdf est envoyé."):
         original = self.mail("message01", body)

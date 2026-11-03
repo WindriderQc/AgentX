@@ -48,6 +48,8 @@ describe('owner private recall corpus', () => {
   test('without its token configured, recall refuses before calling RAG', async () => {
     const { calls } = fakeRag();
     await expect(recall.search('lake', {}, { send: async () => { calls.push(1); }, env: {} })).rejects.toMatchObject({ statusCode: 503 });
+    await expect(recall.index([mail(1, 'Synthetic lake')], { send: async () => { calls.push(1); }, env: {} })).rejects.toMatchObject({ statusCode: 503 });
+    expect(await Recall.countDocuments({})).toBe(0);
     expect(calls).toEqual([]);
   });
 
@@ -107,7 +109,25 @@ describe('owner private recall corpus', () => {
     expect(rag.calls[0].body.documents[0].text).toHaveLength(200000);
     const refused = { send: async () => { throw Object.assign(new Error('Each document needs 1-200000 characters'), { status: 400 }); }, env };
     await expect(recall.index([mail(5, 'Synthetic text')], refused)).rejects.toMatchObject({ statusCode: 400, code: 'OWNER_RECALL_RAG_REFUSED' });
-    expect(await Recall.countDocuments({ documentId: 'mail:message0005' })).toBe(0);
+    expect(await Recall.findOne({ documentId: 'mail:message0005' }).lean()).toMatchObject({ state: 'indexing', writerToken: expect.any(String) });
+  });
+
+  test('a source restored after deactivation is indexed again, while explicit recall forgetting remains permanent', async () => {
+    const rag = fakeRag();
+    const kept = await personal().keepSouvenir({ text: 'Synthetic restored canoe account',
+      sourceRefs: [{ system: 'gmail', id: sha(1) }] });
+    const documentId = `souvenir:${kept.id}`;
+    await recall.sync({}, rag.deps);
+    await MemoryNote.updateOne({ _id: kept.id }, { $set: { invalidatedAt: new Date('2025-01-01T00:00:00Z') } });
+    expect(await recall.sync({}, rag.deps)).toMatchObject({ removed: 1 });
+    expect(rag.docs.has(documentId)).toBe(false);
+    await MemoryNote.updateOne({ _id: kept.id }, { $unset: { invalidatedAt: 1 } });
+    expect(await recall.sync({}, rag.deps)).toMatchObject({ indexed: 1 });
+    expect(rag.docs.has(documentId)).toBe(true);
+    await recall.forget(documentId, rag.deps);
+    expect(await recall.sync({}, rag.deps)).toMatchObject({ indexed: 0, remaining: 0 });
+    expect(rag.docs.has(documentId)).toBe(false);
+    expect(rag.calls.filter(call => call.route.endsWith('/documents'))).toHaveLength(2);
   });
 
   test('a passage quoted across several messages is returned once', async () => {
@@ -126,6 +146,69 @@ describe('owner private recall corpus', () => {
     expect(rag.docs.has('mail:message0002')).toBe(false);
     expect(await recall.index([mail(2, 'Synthetic note about a private matter')], rag.deps)).toMatchObject({ indexed: 0, refusedForgotten: 1 });
     expect((await recall.search('private matter', {}, rag.deps)).results).toEqual([]);
+  });
+
+  test('person corrections reach the vectors, while date and source corrections update metadata without re-embedding', async () => {
+    const rag = fakeRag(), doc = mail(1, 'Synthetic unchanged canoe account');
+    await recall.index([doc], rag.deps);
+    const corrected = { ...doc, people: ['Corrected Friend'] };
+    expect(await recall.index([corrected], rag.deps)).toMatchObject({ indexed: 1, metadataUpdated: 0 });
+    expect(rag.docs.get(doc.documentId)).toContain('Corrected Friend');
+    expect(await recall.index([{ ...corrected, occurredAt: '2020-01-02T00:00:00Z',
+      source: { ...doc.source, sourceSha256: sha(2) } }], rag.deps)).toMatchObject({ indexed: 1, metadataUpdated: 1 });
+    expect(rag.calls.filter(c => c.route.endsWith('/documents'))).toHaveLength(2);
+    const row = await Recall.findOne({ documentId: doc.documentId }).lean();
+    expect(row.people).toEqual(['Corrected Friend']);
+    expect(row.occurredAt.toISOString()).toBe('2020-01-02T00:00:00.000Z');
+    expect(row.source.sourceSha256).toBe(sha(2));
+  });
+
+  test('forget hides an in-flight index, reports pending and removes late vectors before confirmation', async () => {
+    const rag = fakeRag(), doc = mail(1, 'Synthetic confidential canoe account');
+    let started, resume;
+    const entered = new Promise(resolve => { started = resolve; });
+    const released = new Promise(resolve => { resume = resolve; });
+    const deps = { ...rag.deps, send: async request => {
+      if (request.method === 'POST' && request.path.endsWith('/documents')) { started(); await released; }
+      return rag.deps.send(request);
+    } };
+    const indexing = recall.index([doc], deps);
+    await entered;
+    await expect(recall.forget(doc.documentId, rag.deps)).rejects.toMatchObject({ code: 'OWNER_RECALL_FORGET_PENDING' });
+    expect((await recall.search('confidential canoe', {}, rag.deps)).results).toEqual([]);
+    resume();
+    expect(await indexing).toMatchObject({ indexed: 0, refusedForgotten: 1 });
+    expect(rag.docs.has(doc.documentId)).toBe(false);
+    expect(await recall.forget(doc.documentId, rag.deps)).toMatchObject({ forgotten: true });
+    expect(await recall.index([doc], rag.deps)).toMatchObject({ indexed: 0, refusedForgotten: 1 });
+    expect(await Recall.findOne({ documentId: doc.documentId }).lean()).toMatchObject({ state: 'forgotten', writerToken: null });
+  });
+
+  test('an uncertain remote write retains its durable writer across retries and age never permits takeover', async () => {
+    const rag = fakeRag(), doc = mail(1, 'Synthetic unsettled lake account');
+    let writes = 0;
+    const deps = { ...rag.deps, send: async request => {
+      if (request.path.endsWith('/documents')) { writes++; await rag.deps.send(request); throw new Error('Synthetic lost response'); }
+      return rag.deps.send(request);
+    } };
+    await expect(recall.index([doc], deps)).rejects.toThrow('Synthetic lost response');
+    const row = await Recall.findOne({ documentId: doc.documentId }).lean();
+    await Recall.updateOne({ documentId: doc.documentId }, { $set: { writerStartedAt: new Date(0) } });
+    await expect(recall.index([doc], { ...deps })).rejects.toMatchObject({ code: 'OWNER_RECALL_WRITE_PENDING' });
+    await expect(recall.forget(doc.documentId, rag.deps)).rejects.toMatchObject({ code: 'OWNER_RECALL_FORGET_PENDING' });
+    expect((await recall.search('lake account', {}, rag.deps)).results).toEqual([]);
+    expect((await Recall.findOne({ documentId: doc.documentId }).lean()).writerToken).toBe(row.writerToken);
+    expect(writes).toBe(1);
+  });
+
+  test('failed vector deletion retains the forgotten marker and an identical retry finishes deletion', async () => {
+    const rag = fakeRag(), doc = mail(1, 'Synthetic sensitive lake account');
+    await recall.index([doc], rag.deps);
+    await expect(recall.forget(doc.documentId, { ...rag.deps, send: async () => { throw new Error('Synthetic unavailable delete'); } })).rejects.toThrow();
+    expect((await recall.search('sensitive lake', {}, rag.deps)).results).toEqual([]);
+    expect(await recall.index([doc], rag.deps)).toMatchObject({ refusedForgotten: 1 });
+    expect(await recall.forget(doc.documentId, rag.deps)).toMatchObject({ forgotten: true });
+    expect(rag.docs.has(doc.documentId)).toBe(false);
   });
 
   test('only mail or file documents with a preserved source are accepted from the importer', async () => {

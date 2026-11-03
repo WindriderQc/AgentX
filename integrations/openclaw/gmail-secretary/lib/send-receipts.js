@@ -1,0 +1,59 @@
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { privateDirectory, privateJson as durable } from './private-state.js';
+
+const digest = value => createHash('sha256').update(value).digest('hex');
+const canonical = value => value && typeof value === 'object'
+  ? Array.isArray(value) ? value.map(canonical)
+    : Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+const pending = id => Object.assign(new Error(`Gmail send result is uncertain (receipt ${id}). Reconcile this original call in Sent before any new delivery; do not retry with a new identity.`),
+  { code: 'GMAIL_SEND_RECONCILIATION_REQUIRED', receiptId: id });
+
+// Transport receipts remain private with the archive's native evidence. This is
+// not a second mailbox/task store. An uncertain delivery has no timed takeover.
+function identity({ callId, context, params, config }) {
+  if (!callId || !context?.agentId || !context?.sessionKey) throw new Error('A native session and tool call identity are required for Gmail send');
+  const id = digest(JSON.stringify([config.account, context.agentId, context.sessionKey, callId]));
+  const requestHash = digest(JSON.stringify(canonical(params)));
+  const root = path.join(config.evidenceRoot || path.dirname(config.triageStateFile), 'transport-state', 'gmail-send-receipts');
+  const file = path.join(root, `${id}.json`);
+  return { id, requestHash, root, file };
+}
+
+export async function replaySend(request) {
+  const { id, requestHash, file } = identity(request);
+  let receipt;
+  try { receipt = JSON.parse(await readFile(file, 'utf8')); }
+  catch (error) { if (error.code === 'ENOENT') return null; throw pending(id); }
+  if (receipt.schema !== 'secretary.gmail-send/v1' || receipt.id !== id || receipt.requestHash !== requestHash) {
+    throw Object.assign(new Error('The original Gmail send identity has different arguments or an invalid receipt.'), { code: 'GMAIL_SEND_IDENTITY_CONFLICT' });
+  }
+  if (receipt.phase !== 'sent' || !receipt.result || receipt.resultHash !== digest(JSON.stringify(canonical(receipt.result)))) throw pending(id);
+  return { ...receipt.result, sendReceipt: { id, phase: 'sent', replayed: true } };
+}
+
+export async function sendOnce({ dispatch, ...request }) {
+  const { id, requestHash, root, file } = identity(request);
+  await privateDirectory(root);
+  const intent = { schema: 'secretary.gmail-send/v1', id, requestHash, phase: 'dispatching', at: new Date().toISOString() };
+  try { await durable(file, intent, { exclusive: true }); }
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error; // no dispatch when the intent cannot be retained
+    const replay = await replaySend(request);
+    if (!replay) throw pending(id);
+    return replay;
+  }
+  let value;
+  try { value = await dispatch(); }
+  catch { throw pending(id); }
+  if (!String(value?.messageId || value?.id || value?.message?.id || '').trim()) throw pending(id);
+  try { await durable(file, { ...intent, phase: 'sent', completedAt: new Date().toISOString(), result: value,
+    resultHash: digest(JSON.stringify(canonical(value))) }); }
+  catch {
+    // The provider response is certain even if its durable result could not be
+    // saved. Keep the initial fence and tell the caller exactly what succeeded.
+    return { ...value, sendReceipt: { id, phase: 'sent', durable: false, reconciliationRequired: true } };
+  }
+  return { ...value, sendReceipt: { id, phase: 'sent', durable: true } };
+}

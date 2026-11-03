@@ -34,7 +34,8 @@ class RetentionPlanTests(unittest.TestCase):
         self.assertFalse(corpus['qualified'])
         self.assertFalse(qualification_valid(corpus))
         covered = {kind for case in corpus['cases'] for kind in case['covers']}
-        self.assertTrue({'signature_information', 'owner_aliases', 'mime_alternatives', 'external_references'}.issubset(covered))
+        self.assertTrue(QUALIFICATION_CASES.issubset(covered))
+        self.assertEqual(len(corpus['cases']), len({case['id'] for case in corpus['cases']}))
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

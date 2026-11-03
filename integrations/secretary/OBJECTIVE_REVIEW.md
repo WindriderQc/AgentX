@@ -132,6 +132,12 @@ render, decompression or linked-resource fetch occurs. Missing, clipped,
 visual, nested and OCR-quality scopes remain explicit gaps. Metadata describing
 an image or attachment is not evidence that its content was seen.
 
+If a source plan repeats the exact same representation scope, its generated
+page IDs occur once in the unit plan. The physical representation entries stay
+preserved, and separate MIME parts, hashes and offsets retain their distinct
+identities. This prevents duplicate generated IDs from invalidating full-unit
+rejection checks without changing original sources or historical receipts.
+
 The inert reader resolves the declared `windows-874` charset through Python's
 `cp874` codec using strict decoding and records that derivation in the text
 representation. Unknown charset names and invalid bytes remain unreadable;

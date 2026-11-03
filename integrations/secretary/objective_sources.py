@@ -136,6 +136,7 @@ def retain_header_scope(source, units):
 
 
 def pages(source, units, objective_sha, page_chars=6000, overlap=300):
+    seen = set()
     for unit in units:
         text = unit["content"]
         spans = body_segments(text, source["headers"])
@@ -147,7 +148,16 @@ def pages(source, units, objective_sha, page_chars=6000, overlap=300):
             identity = {"objectiveSha256": objective_sha, "system": source["system"], "sourceSha256": source["sha256"],
                         "sourceId": source["id"], "unit": ref, "offset": offset, "end": end,
                         "contentSha256": hashlib.sha256(content.encode()).hexdigest()}
-            yield {"pageId": hashed(identity), "threadId": source["threadId"], "messageId": source["id"],
+            page_id = hashed(identity)
+            # Exact repeated attachments can have the same complete scope and
+            # identity. Preserve both representations in the source plan, but
+            # never repeat their page IDs or turn copies into extra readings.
+            if page_id in seen:
+                if end == len(text):
+                    break
+                continue
+            seen.add(page_id)
+            yield {"pageId": page_id, "threadId": source["threadId"], "messageId": source["id"],
                    "identity": identity, "source": source, "representation": ref, "offset": offset,
                    "end": end, "totalChars": len(text), "moreOfThisRepresentation": end < len(text),
                    "sourceContext": page_context(spans, offset, len(content), kind="body" if unit["representation"] == "mime-text" else "attachment", newer_messages=0),

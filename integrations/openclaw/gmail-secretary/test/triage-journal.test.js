@@ -14,7 +14,7 @@ test("a triaged thread without a digest gets one, tagged with its category", asy
   assert.deepEqual(await journalTriage(config, entry, fetchImpl), { recorded: true });
   assert.equal(sent[0][0], "http://core.invalid/api/consumers/nestor/v1/mail-journal");
   assert.deepEqual(sent[0][1], { action: "search", threadId: "t1", messageId: "m1", limit: 1 });
-  assert.deepEqual(sent[1][1], { action: "record", threadId: "t1", messageId: "m1", occurredAt: "2026-03-10T14:00:00Z", summary: entry.summary,
+  assert.deepEqual(sent[1][1], { action: "record", preserveExisting: true, threadId: "t1", messageId: "m1", occurredAt: "2026-03-10T14:00:00Z", summary: entry.summary,
     subject: "Synthetic subject", counterpart: "Synthetic sender", tags: ["triage", "needs-reply"] });
   assert.equal(triageTag("Newsletters"), "newsletters");
 });

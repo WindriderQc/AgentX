@@ -17,6 +17,7 @@ const { registerSecretarySouvenirRoutes } = require('./secretary-souvenirs');
 const { registerSecretaryFileRoutes } = require('./secretary-files');
 const { registerSecretaryProposalRoutes } = require('./secretary-proposals');
 const { registerSecretaryDossierRoutes } = require('./secretary-dossier');
+const progress = require('../../src/services/secretaryProgressService');
 
 // A slow or unreachable host never delays the desk; its late answer shows on the next refresh.
 const hostRead = (read, pending) => Promise.race([
@@ -90,7 +91,7 @@ function registerSecretaryRoutes(app, {
           { unavailable: true },
           8000
         ),
-        hostRead(() => secretaryMail().catchup(), 'The archive catch-up status is still being read.')
+        hostRead(async () => progress.reconcile(await secretaryMail().catchup()), 'The archive catch-up status is still being read.')
       ]);
       const activation = householdActivation({
         family,

@@ -4,6 +4,7 @@ const { createHash } = require('node:crypto');
 const Recall = require('../../models/OwnerRecallDocument');
 const { requestJson } = require('../helpers/crossServiceClient');
 const { currentFactFilter } = require('./memoryNoteValidity');
+const writes = require('./ownerRecallWrites');
 
 // The owner's private recall corpus: mail bodies and read attachments from the
 // archive importer, plus souvenirs and people that Core indexes itself. Text
@@ -50,33 +51,26 @@ function normalize(input = {}) {
   if (!value.text) throw failure('A recall document needs text');
   if (value.occurredAt && !Number.isFinite(value.occurredAt.getTime())) throw failure('occurredAt is invalid');
   if (!HASH.test(value.source.sourceSha256) || !value.source.messageId) throw failure('A recall document needs its message and preserved source');
-  value.contentHash = digest(JSON.stringify([value.text, value.title]));
-  return value;
+  return representation(value);
 }
 
-async function store(values, deps) {
-  const known = new Map((await Recall.find({ documentId: { $in: values.map(v => v.documentId) } }).lean()).map(r => [r.documentId, r]));
-  const fresh = values.filter(v => known.get(v.documentId)?.state !== 'forgotten'
-    && known.get(v.documentId)?.contentHash !== v.contentHash);
-  const result = { indexed: 0, unchanged: values.length - fresh.length, refusedForgotten: values.filter(v => known.get(v.documentId)?.state === 'forgotten').length };
-  result.unchanged -= result.refusedForgotten;
-  for (let start = 0; start < fresh.length; start += BATCH) {
-    const batch = fresh.slice(start, start + BATCH);
-    const reply = await rag('POST', '/documents', { documents: batch.map(v => ({ documentId: v.documentId,
-      // Subject and people lead the text; the whole stays within the corpus limit.
-      text: [v.title, v.people.length ? `Personnes : ${v.people.join(', ')}` : '', v.text].filter(Boolean).join('\n').slice(0, RAG_TEXT_LIMIT),
-      forceReindex: known.has(v.documentId) })) }, deps);
-    const counts = new Map((reply?.results || []).map(r => [r.documentId, r.chunkCount]));
-    for (const value of batch) {
-      if (!counts.has(value.documentId)) throw failure('RAG returned an incomplete recall receipt', 502, 'OWNER_RECALL_RAG_FAILED');
-      const { text: _omitted, ...record } = value;
-      await Recall.updateOne({ documentId: value.documentId }, { $set: { ...record, scope: 'owner', state: 'indexed',
-        chunkCount: counts.get(value.documentId) || 0, indexedAt: new Date() } }, { upsert: true });
-    }
-    result.indexed += batch.length;
-  }
-  return result;
+function representation(value) {
+  const indexText = [value.title, value.people.length ? `Personnes : ${value.people.join(', ')}` : '', value.text]
+    .filter(Boolean).join('\n').slice(0, RAG_TEXT_LIMIT);
+  return { ...value, indexText, indexTextHash: digest(indexText), contentHash: digest(JSON.stringify([
+    value.text, value.title, value.occurredAt, value.people, value.source, value.noteId || null, value.personId || null
+  ])) };
 }
+
+const writeDependencies = deps => ({
+  write: body => rag('POST', '/documents', body, deps),
+  erase: id => rag('DELETE', `/documents/${encodeURIComponent(id)}`, undefined, deps)
+});
+
+const store = (values, deps) => {
+  if (!configured(deps?.env)) throw failure('Owner recall is not configured', 503, 'OWNER_RECALL_UNCONFIGURED');
+  return writes.store(values, writeDependencies(deps));
+};
 
 async function index(inputs, deps) {
   if (!Array.isArray(inputs) || !inputs.length || inputs.length > BATCH) throw failure(`Index 1-${BATCH} documents`);
@@ -100,15 +94,17 @@ async function sync({ limit = 200 } = {}, deps) {
         person.organizations.length ? `Organisations : ${person.organizations.join(', ')}` : '',
         person.exchanges ? `${person.exchanges} échange(s) de ${person.firstSeen?.toISOString().slice(0, 10)} à ${person.lastSeen?.toISOString().slice(0, 10)}` : '']
         .filter(Boolean).join('\n') }))
-  ].map(value => ({ ...value, source: {}, contentHash: digest(JSON.stringify([value.text, value.title, value.people])) }));
+  ].map(value => representation({ ...value, source: {} }));
   const ids = new Set(wanted.map(v => v.documentId));
-  const stale = await Recall.find({ scope: 'owner', kind: { $in: ['souvenir', 'person'] }, documentId: { $nin: [...ids] } }).lean();
+  const stale = await Recall.find({ scope: 'owner', state: { $in: ['indexed', 'indexing'] }, kind: { $in: ['souvenir', 'person'] }, documentId: { $nin: [...ids] } }).lean();
   for (const row of stale) {
-    await rag('DELETE', `/documents/${encodeURIComponent(row.documentId)}`, undefined, deps);
-    await Recall.deleteOne({ documentId: row.documentId });
+    await writes.forget(row.documentId, writeDependencies(deps), { inactive: true });
   }
-  const known = new Map((await Recall.find({ documentId: { $in: [...ids] } }, { documentId: 1, contentHash: 1 }).lean()).map(r => [r.documentId, r.contentHash]));
-  const changed = wanted.filter(v => known.get(v.documentId) !== v.contentHash);
+  const known = new Map((await Recall.find({ documentId: { $in: [...ids] } }, { documentId: 1, contentHash: 1, state: 1 }).lean()).map(r => [r.documentId, r]));
+  const changed = wanted.filter(v => {
+    const prior = known.get(v.documentId);
+    return prior?.state !== 'forgotten' && (prior?.state !== 'indexed' || prior.contentHash !== v.contentHash);
+  });
   const bounded = Math.max(1, Math.min(2000, Math.trunc(Number(limit)) || 200));
   const result = await store(changed.slice(0, bounded), deps);
   return { authority: 'agentx.core', ...result, removed: stale.length, remaining: Math.max(0, changed.length - bounded) };
@@ -151,11 +147,7 @@ async function search(query, { limit = 8, minScore } = {}, deps) {
 // The owner forgets one document: it leaves the index and is never indexed again.
 async function forget(documentId, deps) {
   if (!DOCUMENT_ID.test(documentId || '')) throw failure('Choose a recall document');
-  await rag('DELETE', `/documents/${encodeURIComponent(documentId)}`, undefined, deps);
-  const kind = documentId.split(':')[0];
-  await Recall.updateOne({ documentId }, { $set: { scope: 'owner', kind, state: 'forgotten', title: '', people: [], occurredAt: null,
-    source: {}, chunkCount: 0 } }, { upsert: true });
-  return { authority: 'agentx.core', documentId, forgotten: true };
+  return writes.forget(documentId, writeDependencies(deps));
 }
 
 const configured = (env = process.env) => (env.OWNER_MAIL_RAG_TOKEN || '').length >= 32;

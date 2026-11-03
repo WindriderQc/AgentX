@@ -170,12 +170,12 @@ class GmailSecretaryWatchdogTest(unittest.TestCase):
         )
 
     def test_watchdog_uses_live_pending_mail_not_the_last_lookup_mode(self):
-        for pending, previous_outcome, expected in [(1, "empty", "5m"), (0, "ready", "1h")]:
+        for pending, previous_outcome, journal_pending, expected in [(1, "empty", 0, "5m"), (0, "ready", 0, "1h"), (0, "empty", 2, "5m")]:
             args = self.args(Path("unused"))
             with mock.patch.object(MODULE, "parse_args", return_value=args), \
                  mock.patch.object(MODULE, "revive_auto_disabled", return_value=None), \
                  mock.patch.object(MODULE, "run_probe", return_value=pending), \
-                 mock.patch.object(MODULE, "read_audit_records", return_value=[{"outcome": previous_outcome}]), \
+                 mock.patch.object(MODULE, "read_audit_records", return_value=[{"tool": "gmail_secretary_backlog_next", "outcome": previous_outcome, "journalPending": journal_pending}]), \
                  mock.patch.object(MODULE, "check_audit_records_health", return_value="complete"), \
                  mock.patch.object(MODULE, "check_evidence_health", return_value=False), \
                  mock.patch.object(MODULE, "reconcile_cadence", return_value=expected) as reconcile:

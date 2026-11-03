@@ -110,6 +110,28 @@ host registration, credentials and real mailbox acceptance remain separate.
 
 ## Action provenance
 
+Send execution retains private transport receipts under `evidenceRoot`, in
+`transport-state/gmail-send-receipts/`, alongside the archived evidence and its
+configured backup. The receipt binds the native agent/session/call and
+argument hash; it contains no original request body. A certain provider result
+replays without another send. Logging failure cannot turn it into a failed
+delivery. A timeout, missing provider message ID or interrupted write keeps the
+original dispatch fence: reconcile that exact attempt in Sent before a new
+delivery. Changing the call identity is not recovery. Receipt files must be
+preserved across reinstalls; they have no automatic age-based takeover.
+
+Classification stages an exact-message delivery before touching Gmail. Once
+native classification is confirmed, a missing Core digest stays in
+`transport-state/gmail-journal-outbox/`. Existing backlog turns retry at most
+three deliveries, even when no unclassified mail remains; the watchdog keeps
+catch-up cadence while deliveries wait. An interrupted prepared intent first
+rechecks its exact message labels. Core's journal identity reconciles a lost
+acknowledgement without creating duplicate digests. The desk reports pending
+deliveries separately from classified mail. No extra scheduler is installed.
+Delivery uses Core's atomic `preserveExisting` insertion, so a fuller digest
+recorded after the lookup also survives a delayed triage delivery. Install this
+Core contract before loading the updated adapter.
+
 Gmail hooks record the trusted native session origin and hashed session/run/call
 references in the existing private audit log, without input or output content.
 Background review and scheduled sessions cannot send mail or perform mailbox

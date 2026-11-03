@@ -45,6 +45,14 @@ class Core:
 
 
 class RecallIndexTests(unittest.TestCase):
+    def test_delivery_identity_includes_source_people_and_date_corrections(self):
+        doc = {"documentId": "mail:synthetic1", "text": "Same text", "title": "Same title", "people": ["Person A"],
+               "occurredAt": "2020-01-01T00:00:00Z", "source": {"sourceSha256": "a" * 64}}
+        expected = recall_index.digest(doc)
+        for change in ({"people": ["Person B"]}, {"occurredAt": "2021-01-01T00:00:00Z"},
+                       {"source": {"sourceSha256": "b" * 64}}):
+            self.assertNotEqual(recall_index.digest({**doc, **change}), expected)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

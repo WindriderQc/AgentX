@@ -118,7 +118,8 @@ def batches(docs):
 
 
 def digest(doc):
-    return hashlib.sha256(json.dumps([doc["documentId"], doc["text"], doc["title"], doc["people"]], ensure_ascii=False).encode()).hexdigest()
+    return hashlib.sha256(json.dumps([doc["documentId"], doc["text"], doc["title"], doc["people"],
+                                     doc.get("occurredAt"), doc.get("source")], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
 def post(core, path, body, opener=urllib.request.urlopen, timeout=1800):
