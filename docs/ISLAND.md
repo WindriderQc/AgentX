@@ -623,12 +623,6 @@ terrain entry declares `url`, `world`, `tokenFile` (an env file containing
 `WORLD_OPERATOR_TOKEN`), `dataHost` and `mode`. `reuse` verifies the existing
 world/instance/recording and returns its identity without any world write.
 `fresh` explicitly creates a new experiment through the operator selector.
-`fork` creates one from a saved island: the profile adds `from` (a checkpoint
-file name in the world service's `WORLD_FORK_DIR`) and `sha256` (its digest).
-Each run then starts on the same terrain and constructions with a new instance
-identity, an empty recording and `forkedFrom: {instanceId, tick, sha256}`. The
-hook refuses, without writing, a service whose `/healthz` lacks `forkedFrom`
-(older services would ignore the source and start fresh).
 Independent worlds need separate services, volumes and checkpoints; selecting
 a card never prepares or resets a world. The remote-world adapter keeps its
 exact agent-route allowlist when its configured service uses a path prefix.
