@@ -52,3 +52,16 @@ test('personal tasks say whether they came from chat, email or the desk', () => 
   assert.equal(origin({ source: 'nestor-secretary', origin: 'telepathy' }), 'chat', 'an unknown stored value falls back');
   assert.equal(household.publicTask({ pipelineId: '0700', title: 'x', source: 'idea-drop' }).source, 'idea-drop');
 });
+
+test('the desk separates pending journal delivery from the latest historical review that needs attention', () => {
+  const desk = reviews => household.dadDesk({ data: { alerts: {}, memoryReview: {} } }, [], {},
+    new Date('2030-01-01T00:00:00Z'), {}, {}, {}, {}, { known: true, journalPending: 2, objectiveReviews: reviews });
+  const old = { objectiveId: 'life-timeline', version: 'v9', phase: 'failed' };
+  const current = { ...old, version: 'v10', phase: 'reviewing' };
+  const active = desk([old, current]);
+  assert.equal(active.decisions.some(item => item.id === 'mail-history-review'), false);
+  assert.match(active.decisions.find(item => item.id === 'mail-journal-delivery').detail, /sans reclasser/);
+  const stopped = desk([old, { ...current, phase: 'source-error' }, { ...current, version: 'v11', phase: 'superseded' }]);
+  assert.equal(stopped.decisions.find(item => item.id === 'mail-history-review').severity, 'warning');
+  assert.equal(stopped.mail.catchup.objectiveReviews[0].userConfirmed, false);
+});

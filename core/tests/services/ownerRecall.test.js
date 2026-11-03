@@ -112,6 +112,24 @@ describe('owner private recall corpus', () => {
     expect(await Recall.findOne({ documentId: 'mail:message0005' }).lean()).toMatchObject({ state: 'indexing', writerToken: expect.any(String) });
   });
 
+  test('a source restored after deactivation is indexed again, while explicit recall forgetting remains permanent', async () => {
+    const rag = fakeRag();
+    const kept = await personal().keepSouvenir({ text: 'Synthetic restored canoe account',
+      sourceRefs: [{ system: 'gmail', id: sha(1) }] });
+    const documentId = `souvenir:${kept.id}`;
+    await recall.sync({}, rag.deps);
+    await MemoryNote.updateOne({ _id: kept.id }, { $set: { invalidatedAt: new Date('2025-01-01T00:00:00Z') } });
+    expect(await recall.sync({}, rag.deps)).toMatchObject({ removed: 1 });
+    expect(rag.docs.has(documentId)).toBe(false);
+    await MemoryNote.updateOne({ _id: kept.id }, { $unset: { invalidatedAt: 1 } });
+    expect(await recall.sync({}, rag.deps)).toMatchObject({ indexed: 1 });
+    expect(rag.docs.has(documentId)).toBe(true);
+    await recall.forget(documentId, rag.deps);
+    expect(await recall.sync({}, rag.deps)).toMatchObject({ indexed: 0, remaining: 0 });
+    expect(rag.docs.has(documentId)).toBe(false);
+    expect(rag.calls.filter(call => call.route.endsWith('/documents'))).toHaveLength(2);
+  });
+
   test('a passage quoted across several messages is returned once', async () => {
     const rag = fakeRag();
     const quoted = 'Synthetic hotel booking near the drop zone';

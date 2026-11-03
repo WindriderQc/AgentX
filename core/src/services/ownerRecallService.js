@@ -100,8 +100,11 @@ async function sync({ limit = 200 } = {}, deps) {
   for (const row of stale) {
     await writes.forget(row.documentId, writeDependencies(deps), { inactive: true });
   }
-  const known = new Map((await Recall.find({ documentId: { $in: [...ids] } }, { documentId: 1, contentHash: 1 }).lean()).map(r => [r.documentId, r.contentHash]));
-  const changed = wanted.filter(v => known.get(v.documentId) !== v.contentHash);
+  const known = new Map((await Recall.find({ documentId: { $in: [...ids] } }, { documentId: 1, contentHash: 1, state: 1 }).lean()).map(r => [r.documentId, r]));
+  const changed = wanted.filter(v => {
+    const prior = known.get(v.documentId);
+    return prior?.state !== 'forgotten' && (prior?.state !== 'indexed' || prior.contentHash !== v.contentHash);
+  });
   const bounded = Math.max(1, Math.min(2000, Math.trunc(Number(limit)) || 200));
   const result = await store(changed.slice(0, bounded), deps);
   return { authority: 'agentx.core', ...result, removed: stale.length, remaining: Math.max(0, changed.length - bounded) };
