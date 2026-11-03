@@ -91,16 +91,24 @@ class SecretaryMailControl {
     return payload.data;
   }
 
-  async threads(label) {
-    return this.call(`threads --label ${exactLabel(label)}`);
+  async threads(label, { pageToken } = {}) {
+    if (pageToken !== undefined && (typeof pageToken !== 'string' || Buffer.byteLength(pageToken) > 4096)) {
+      throw new SecretaryMailError('Invalid mail continuation', { code: 'SECRETARY_MAIL_BAD_PAGE', statusCode: 400 });
+    }
+    return this.call(`threads --label ${exactLabel(label)}${pageToken ? ` --page-token-b64 ${Buffer.from(pageToken).toString('base64url')}` : ''}`);
   }
 
   async dossier({ threadId } = {}) {
     return this.call(`dossier --thread ${exactThreadId(threadId)}`);
   }
 
-  async handled({ threadId, label } = {}) {
-    return this.call(`handled --label ${exactLabel(label)} --thread ${exactThreadId(threadId)}`);
+  async handled({ threadId, label, messageIds } = {}) {
+    const tid = exactThreadId(threadId);
+    if (!Array.isArray(messageIds) || !messageIds.length || messageIds.length > 50 ||
+        messageIds.some(id => typeof id !== 'string' || !THREAD_ID.test(id)) || new Set(messageIds).size !== messageIds.length) {
+      throw new SecretaryMailError('Refresh and select exact messages before handling them', { code: 'SECRETARY_MAIL_BAD_MESSAGES', statusCode: 400 });
+    }
+    return this.call(`handled --label ${exactLabel(label)} --thread ${tid} --messages ${messageIds.join(',')}`);
   }
 
   // Senders the triage most often leaves in Review, as rule candidates.

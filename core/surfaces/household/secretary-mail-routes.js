@@ -94,7 +94,7 @@ function registerSecretaryMailRoutes({ app, router, mongoose, envelope, fail, Ru
   };
 
   router.get('/mail', async (req, res) => {
-    try { return envelope(res, await mail().threads(req.query.label)); }
+    try { return envelope(res, await mail().threads(req.query.label, { pageToken: req.query.pageToken })); }
     catch (error) { return failWith(res, error, 'SECRETARY_MAIL_FAILED'); }
   });
   router.get('/archive/:messageId', async (req, res) => {
@@ -102,7 +102,7 @@ function registerSecretaryMailRoutes({ app, router, mongoose, envelope, fail, Ru
     catch (error) { return failWith(res, error, 'SECRETARY_ARCHIVE_UNAVAILABLE'); }
   });
   router.post('/mail/handled', async (req, res) => {
-    try { return envelope(res, await mail().handled({ threadId: req.body?.threadId, label: req.body?.label })); }
+    try { return envelope(res, await mail().handled({ threadId: req.body?.threadId, label: req.body?.label, messageIds: req.body?.messageIds })); }
     catch (error) { return failWith(res, error, 'SECRETARY_MAIL_FAILED'); }
   });
 

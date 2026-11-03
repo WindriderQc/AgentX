@@ -243,29 +243,47 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
 
     // Gmail is read through the OpenClaw host and takes seconds; it never delays the desk itself.
     const mailLists = { urgent: 'dadMailUrgent', 'needs-reply': 'dadMailReply' };
-    const mailCounts = {};
+    const mailCounts = {}, mailRows = {}, mailVersions = {};
     const senderName = (from) => String(from || '').replace(/\s*<[^>]*>\s*$/, '').replace(/^"|"$/g, '') || String(from || '');
-    const mailRow = (thread, label) => `<div class="dad-task ${thread.unread ? 'due-today' : ''}"><div class="dad-task-main dad-mail-main"><div><strong>${esc(thread.subject || '(no subject)')}</strong><small>${esc(senderName(thread.from))} · ${esc(thread.date)}${thread.messageCount > 1 ? ` · ${esc(thread.messageCount)} messages` : ''}${thread.unread ? ' · unread' : ''}</small></div></div><div class="row wrap dad-task-actions">${String(thread.gmailUrl || '').startsWith('https://mail.google.com/') ? `<a class="button compact" href="${esc(thread.gmailUrl)}" target="_blank" rel="noopener noreferrer">Open</a>` : ''}<button class="compact dad-done" data-mail-thread="${esc(thread.threadId)}" data-mail-label="${esc(label)}">Handled</button></div></div>`;
+    const mailRow = (thread, label) => {
+      const selected = (thread.messageIds || []).slice(0, 50);
+      return `<div class="dad-task ${thread.unread ? 'due-today' : ''}"><div class="dad-task-main dad-mail-main"><div><strong>${esc(thread.subject || '(sans objet)')}</strong><small>${esc(senderName(thread.from))} · ${esc(thread.date)} · ${selected.length} message(s) ciblé(s)${thread.unread ? ' · non lu' : ''}</small></div></div><div class="row wrap dad-task-actions">${String(thread.gmailUrl || '').startsWith('https://mail.google.com/') ? `<a class="button compact" href="${esc(thread.gmailUrl)}" target="_blank" rel="noopener noreferrer">Ouvrir</a>` : ''}<button class="compact dad-done" data-mail-thread="${esc(thread.threadId)}" data-mail-label="${esc(label)}" data-mail-messages="${esc(selected.join(','))}" ${selected.length ? '' : 'disabled'}>Marquer comme traités</button></div></div>`;
+    };
     const showMailCount = () => {
       const known = Object.values(mailCounts).filter(Boolean);
-      if (known.length < Object.keys(mailLists).length) { setPill('dadMailActionCount', 'unavailable', 'down'); return; }
+      if (known.length < Object.keys(mailLists).length) { setPill('dadMailActionCount', 'indisponible', 'down'); return; }
       const total = known.reduce((sum, entry) => sum + entry.count, 0);
-      setPill('dadMailActionCount', `${total}${known.some((entry) => entry.more) ? '+' : ''} to handle`, total ? '' : 'ok');
+      setPill('dadMailActionCount', `${total}${known.some((entry) => entry.more) ? '+' : ''} messages à traiter`, total ? '' : 'ok');
     };
-    async function refreshMail() {
-      await Promise.all(Object.entries(mailLists).map(async ([label, hostId]) => {
-        const host = byId(hostId);
-        try {
-          const data = await api(`/api/secretary/mail?label=${encodeURIComponent(label)}`);
-          mailCounts[label] = { count: data.count, more: data.more === true };
-          host.innerHTML = data.threads.length ? data.threads.map((thread) => mailRow(thread, label)).join('') : '<div class="dad-clear"><span>✓</span><strong>Nothing to handle.</strong></div>';
-        } catch (error) {
-          mailCounts[label] = null;
-          host.innerHTML = `<div class="empty">${esc(error.message)}</div>`;
+    async function loadMail(label, pageToken) {
+      const host = byId(mailLists[label]);
+      if (!pageToken) { mailRows[label] = new Map(); mailVersions[label] = (mailVersions[label] || 0) + 1; }
+      const version = mailVersions[label];
+      try {
+        const data = await api(`/api/secretary/mail?label=${encodeURIComponent(label)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`, { cache: 'no-store' });
+        if (version !== mailVersions[label]) return;
+        for (const row of data.threads) {
+          const prior = mailRows[label].get(row.threadId);
+          mailRows[label].set(row.threadId, { ...row, messageIds: [...new Set([...(prior?.messageIds || []), ...(row.messageIds || [])])] });
         }
-      }));
+        const rows = [...mailRows[label].values()];
+        mailCounts[label] = { count: rows.reduce((n, row) => n + row.messageIds.length, 0), more: data.more === true };
+        host.innerHTML = rows.length ? rows.map((thread) => mailRow(thread, label)).join('') : '<div class="dad-clear"><span>✓</span><strong>Aucun message à traiter.</strong></div>';
+        if (data.nextPageToken) host.innerHTML += `<button class="compact" data-mail-more="${esc(label)}" data-mail-page="${esc(data.nextPageToken)}">Voir les messages suivants</button>`;
+      } catch (error) {
+        if (version !== mailVersions[label]) return;
+        if (!pageToken) { mailCounts[label] = null; host.innerHTML = `<div class="empty">${esc(error.message)}</div>`; }
+        else { const more = host.querySelector('[data-mail-more]'); if (more) more.disabled = false; toast(error.message); }
+      }
       showMailCount();
     }
+    async function refreshMail() { await Promise.all(Object.keys(mailLists).map(label => loadMail(label))); }
+    app.addEventListener('click', async event => {
+      const more = event.target.closest('button[data-mail-more]');
+      if (!more) return;
+      more.disabled = true;
+      await loadMail(more.dataset.mailMore, more.dataset.mailPage);
+    });
 
     // In-page links (counts, decision chips) open the folded section they point into.
     const reveal = (hash) => {
@@ -295,11 +313,8 @@ It excludes live tasks, schedules, secrets, exact locations, medical information
       if (!handled) return;
       handled.disabled = true;
       try {
-        await api('/api/secretary/mail/handled', { method: 'POST', body: JSON.stringify({ threadId: handled.dataset.mailThread, label: handled.dataset.mailLabel }) });
-        const entry = mailCounts[handled.dataset.mailLabel];
-        if (entry) entry.count = Math.max(0, entry.count - 1);
-        handled.closest('.dad-task').remove();
-        showMailCount();
+        await api('/api/secretary/mail/handled', { method: 'POST', body: JSON.stringify({ threadId: handled.dataset.mailThread, label: handled.dataset.mailLabel, messageIds: handled.dataset.mailMessages.split(',') }) });
+        await refreshMail();
       } catch (error) { handled.disabled = false; toast(error.message); }
     });
     app.addEventListener('click', async (event) => {
