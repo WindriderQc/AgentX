@@ -6,6 +6,7 @@ import { addAttachments, assertSafeAttachments, bodyFlags, buildOrganizeCommand,
 import { TRIAGE_CATEGORIES, applyTriage, continueBacklogMessage, nextBacklogMessage } from "./backlog.js";
 import { assertFullyRead, readSelectedMessage } from "./backlog-reading.js";
 import { journalTriage } from "./triage-journal.js";
+import { sendOnce } from './send-receipts.js';
 import { nativeActionProvenance, toolActionReceipt } from '../../action-provenance.mjs';
 import { isBackgroundAction } from '../../../../shared/agentActionProvenance.cjs';
 
@@ -97,9 +98,11 @@ function permittedAgent(api, context) {
     && String(context?.sessionKey || '').startsWith(`agent:${context.agentId}:`);
 }
 
-function registerNativeTool(api, tool) {
-  if (api.pluginConfig?.agentIds === undefined) return api.registerTool(tool, { optional: true });
-  api.registerTool(context => permittedAgent(api, context) ? tool : null, { name: tool.name, optional: true });
+function registerNativeTool(api, tool, bindContext = false) {
+  if (api.pluginConfig?.agentIds === undefined && !bindContext) return api.registerTool(tool, { optional: true });
+  api.registerTool(context => permittedAgent(api, context)
+    ? bindContext ? { ...tool, execute: (id, params) => tool.execute(id, params, context) } : tool
+    : null, { name: tool.name, optional: true });
 }
 
 function registerTool(api, name, description, parameters, builder) {
@@ -107,8 +110,15 @@ function registerTool(api, name, description, parameters, builder) {
     name,
     description,
     parameters,
-    async execute(_id, params) {
+    async execute(id, params, context) {
       const config = settings(api.pluginConfig);
+      if (name === TOOL_NAMES.send) {
+        const value = await sendOnce({ callId: id, context, params, config,
+          dispatch: async () => runGog(await builder(params, config), config) });
+        try { await audit(config, { tool: name, action: params.action, status: 'ok', receiptId: value.sendReceipt.id }); }
+        catch { return result({ ...value, audit: { recorded: false } }); }
+        return result(value);
+      }
       try {
         const readMessage = name === TOOL_NAMES.read && params.kind === "message" && params.format !== "metadata";
         const value = readMessage
@@ -121,7 +131,7 @@ function registerTool(api, name, description, parameters, builder) {
         throw error;
       }
     },
-  });
+  }, name === TOOL_NAMES.send);
 }
 
 const messageFields = {

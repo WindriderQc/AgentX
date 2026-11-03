@@ -66,6 +66,15 @@ host registration, credentials and real mailbox acceptance remain separate.
 
 ## Action provenance
 
+Send execution retains a private transport receipt beside `triageStateFile`,
+in `gmail-send-receipts/`. The receipt binds the native agent/session/call and
+argument hash; it contains no original request body. A certain provider result
+replays without another send. Logging failure cannot turn it into a failed
+delivery. A timeout, missing provider message ID or interrupted write keeps the
+original dispatch fence: reconcile that exact attempt in Sent before a new
+delivery. Changing the call identity is not recovery. Receipt files must be
+preserved across reinstalls; they have no automatic age-based takeover.
+
 Gmail hooks record the trusted native session origin and hashed session/run/call
 references in the existing private audit log, without input or output content.
 Background review and scheduled sessions cannot send mail or perform mailbox

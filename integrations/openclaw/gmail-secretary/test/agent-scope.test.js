@@ -31,12 +31,14 @@ test('scoped Gmail tools belong to the same native mail agent in direct and dele
     { agentId: 'mail', sessionKey: 'agent:mail:subagent:synthetic' }), undefined);
 });
 
-test('omitting the scope preserves existing object registration and configured approvals', () => {
+test('unscoped reads keep object registration and sending captures native session identity', () => {
   const { tools } = registration({});
   assert.equal(tools.length, 8);
   for (const { tool, options } of tools) {
-    assert.equal(typeof tool, 'object');
-    assert.equal(typeof tool.execute, 'function');
+    const resolved = options.name === 'gmail_secretary_send'
+      ? tool({ agentId: 'mail', sessionKey: 'agent:mail:direct:synthetic' }) : tool;
+    assert.equal(typeof resolved, 'object');
+    assert.equal(typeof resolved.execute, 'function');
     assert.equal(options.optional, true);
   }
 });
