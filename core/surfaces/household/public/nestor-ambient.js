@@ -227,16 +227,22 @@
       if (!arc.length) return;
       const horizon = height * 0.84, top = height * 0.14;
       const mid = arc[Math.floor(arc.length / 2)].azDeg;
-      const project = point => {
-        const delta = ((point.azDeg - mid) % 360 + 540) % 360 - 180;
-        return { x: width / 2 + delta / 130 * (width / 2), y: horizon - Math.max(0, point.elDeg) / 90 * (horizon - top) };
-      };
+      const offset = az => ((az - mid) % 360 + 540) % 360 - 180;
+      // Frame the pass itself: a short, low pass fills the sky instead of a dot on the horizon.
+      const halfSpan = Math.max(20, Math.min(130, Math.max(...arc.map(point => Math.abs(offset(point.azDeg)))) + 25));
+      // A low pass stays low, under Nestor's face, as in the real sky; a high one arcs over him.
+      const peakEl = Math.max(...arc.map(point => point.elDeg));
+      const ceiling = peakEl < 25 ? 90 : Math.max(30, Math.min(90, peakEl * 1.35));
+      const project = point => ({ x: width / 2 + offset(point.azDeg) / halfSpan * (width / 2),
+        y: horizon - Math.max(0, point.elDeg) / ceiling * (horizon - top) });
       // Horizon and compass.
       c.strokeStyle = 'rgba(120,170,200,0.45)'; c.lineWidth = ratio;
       c.beginPath(); c.moveTo(0, horizon); c.lineTo(width, horizon); c.stroke();
       c.fillStyle = 'rgba(160,200,225,0.8)';
       c.font = `${Math.round(15 * ratio)}px system-ui, sans-serif`; c.textAlign = 'center';
-      for (const [label, az] of [['N', 0], ['NE', 45], ['E', 90], ['SE', 135], ['S', 180], ['SO', 225], ['O', 270], ['NO', 315]]) {
+      const marks = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSO', 'SO', 'OSO', 'O', 'ONO', 'NO', 'NNO']
+        .map((label, i) => [label, i * 22.5]).filter((_, i) => halfSpan < 60 || i % 2 === 0);
+      for (const [label, az] of marks) {
         const p = project({ azDeg: az, elDeg: 0 });
         if (p.x > 20 * ratio && p.x < width - 20 * ratio) c.fillText(label, p.x, horizon + 22 * ratio);
       }
