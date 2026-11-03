@@ -91,9 +91,12 @@ function nodeFor(key) {
 }
 
 // The report's shape for a wall screen: counts and the machines to visit, no text.
+// Only what concerns the house counts: a critical finding, or one naming a machine.
+// Routine operator findings (a failed queued job, a stale read) stay in Nerve Center.
 function alertView(report) {
   if (!report) return null;
-  const findings = Array.isArray(report.findings) ? report.findings : [];
+  const findings = (Array.isArray(report.findings) ? report.findings : [])
+    .filter(finding => finding?.severity === 'critical' || nodeFor(finding?.key));
   const nodes = [...new Set(findings.map(finding => nodeFor(finding?.key)).filter(Boolean))].slice(0, 3);
   return {
     at: report.at || null,

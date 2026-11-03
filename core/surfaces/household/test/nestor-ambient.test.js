@@ -37,8 +37,14 @@ test('the alert view keeps counts and machines to visit, never alert text', () =
     { key: 'issue:gpu-hot:ugalien', severity: 'critical', text: 'secret detail' },
     { key: 'alert:disk:192.168.2.99', severity: 'attention', text: 'other detail' },
     { key: 'alert:unknown:nowhere', severity: 'attention', text: 'x' }] });
-  assert.deepEqual(view, { at: 'x', fingerprint: 'f1', count: 3, critical: 1, nodes: ['ugalien', 'ugfrank'] });
+  assert.deepEqual(view, { at: 'x', fingerprint: 'f1', count: 2, critical: 1, nodes: ['ugalien', 'ugfrank'] });
   assert.ok(!JSON.stringify(view).includes('detail'));
+  // Failed queued jobs name no machine: they stay in Nerve Center, not on the kitchen screen.
+  const routine = ambient.alertView({ findings: [
+    { key: 'alert:heavy_work_queue:heavy-work:070de7a5-75b6-448e-8fd7-7ade635a371c:failed', severity: 'attention' },
+    { key: 'alert:heavy_work_queue:heavy-work:1af79c3d-5aba-4084-8cb1-3885432fe0c2:failed', severity: 'attention' }] });
+  assert.equal(routine.count, 0);
+  assert.equal(ambient.alertView({ findings: [{ key: 'issue:backup-missed:', severity: 'critical' }] }).count, 1);
   assert.equal(ambient.alertView(null), null);
   assert.equal(ambient.nodeFor('issue:x:ugbrutal'), 'ugbrutal');
 });
