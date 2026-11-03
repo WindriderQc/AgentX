@@ -1,4 +1,5 @@
-/* Nestor's living full screen on Famille: a sky that follows the real weather behind him,
+/* Nestor's living full screen on Famille: a sky that follows the real weather behind him
+   (after sunset, the real Moon, planets and stars above the house),
    a few short notes under the clock, the ISS drawn across the sky when it passes, now and
    then a silent guided visit of the connected house to the machine an alert names, and,
    when the kitchen is quiet, Nestor painting one of the family's pictures with particles.
@@ -285,6 +286,86 @@
       if (imageAlpha > 0.05) c.strokeRect(dx - 0.5, dy - 0.5, dw + 1, dh + 1);
     }
 
+    // ---- the real night sky ----------------------------------------------------------------
+    const PLANET_COLORS = { venus: '#fffbe8', mars: '#ffb08a', jupiter: '#fff0d0', saturn: '#f3dca0' };
+    const COMPASS_MARKS = [['N', 0], ['NE', 45], ['E', 90], ['SE', 135], ['S', 180], ['SO', 225], ['O', 270], ['NO', 315]];
+    function drawRealSky(c, b, bg, sky, at) {
+      const { width, height, ratio } = b, full = bg.sky === 'full', dusk = bg.light === 'twilight';
+      const frame = Choice.skyFrame(sky);
+      const place = point => { const q = frame.project(point); return { x: q.x * width, y: q.y * height }; };
+      const horizon = 0.84 * height, seconds = at / 1000;
+      // The horizon and the compass, faint.
+      c.globalAlpha = 1; c.strokeStyle = 'rgba(120,170,200,0.22)'; c.lineWidth = ratio;
+      c.beginPath(); c.moveTo(0, horizon); c.lineTo(width, horizon); c.stroke();
+      c.fillStyle = 'rgba(160,200,225,0.45)'; c.font = `${Math.round(13 * ratio)}px system-ui, sans-serif`; c.textAlign = 'center';
+      for (const [label, azDeg] of COMPASS_MARKS) {
+        if (!frame.visible({ azDeg, altDeg: 0 })) continue;
+        const p = place({ azDeg, altDeg: 0 });
+        if (p.x > 24 * ratio && p.x < width - 24 * ratio) c.fillText(label, p.x, horizon + 20 * ratio);
+      }
+      const stars = (sky.stars || []).filter(star => frame.visible(star) && (full || star.mag <= 0.6));
+      // A few well-known figures, barely drawn, with their names.
+      if (full) {
+        const byName = new Map(stars.map(star => [star.name, place(star)]));
+        c.strokeStyle = 'rgba(150,190,230,0.13)'; c.lineWidth = ratio;
+        c.fillStyle = 'rgba(170,200,230,0.3)'; c.font = `${Math.round(12 * ratio)}px system-ui, sans-serif`;
+        for (const figure of sky.figures || []) {
+          const points = figure.lines.map(([a, z]) => [byName.get(a), byName.get(z)]);
+          if (points.some(([a, z]) => !a || !z)) continue;
+          c.beginPath();
+          for (const [a, z] of points) { c.moveTo(a.x, a.y); c.lineTo(z.x, z.y); }
+          c.stroke();
+          const all = points.flat();
+          c.fillText(figure.name, all.reduce((sum, p) => sum + p.x, 0) / all.length, Math.max(...all.map(p => p.y)) + 18 * ratio);
+        }
+      }
+      // Stars: size and light by magnitude, a gentle twinkle, dimmer near the horizon.
+      c.fillStyle = '#e9f0ff';
+      stars.forEach((star, index) => {
+        const p = place(star);
+        const twinkle = reducedMotion ? 1 : 0.82 + 0.18 * Math.sin(seconds * (1.1 + (index % 7) * 0.23) + index * 1.7);
+        const low = star.altDeg < 12 ? 0.45 + star.altDeg * 0.045 : 1;
+        c.globalAlpha = Math.max(0.3, Math.min(1, 1.05 - 0.22 * star.mag)) * twinkle * low * (dusk ? 0.6 : 1);
+        c.beginPath(); c.arc(p.x, p.y, Math.max(0.7, 2.6 - 0.75 * star.mag) * ratio, 0, Math.PI * 2); c.fill();
+      });
+      // Planets: steady, a touch of colour, named.
+      c.font = `${Math.round(12 * ratio)}px system-ui, sans-serif`;
+      for (const planet of sky.planets || []) {
+        if (!frame.visible(planet) || planet.sunSeparationDeg < 10) continue;
+        const p = place(planet), r = Math.max(1.8, 3.4 - 0.5 * planet.mag) * ratio, color = PLANET_COLORS[planet.id] || '#fff';
+        const glow = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 4);
+        glow.addColorStop(0, color); glow.addColorStop(1, 'rgba(255,255,255,0)');
+        c.globalAlpha = 0.35; c.fillStyle = glow; c.beginPath(); c.arc(p.x, p.y, r * 4, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = 1; c.fillStyle = color; c.beginPath(); c.arc(p.x, p.y, r, 0, Math.PI * 2); c.fill();
+        c.globalAlpha = 0.55; c.fillStyle = '#d9eef5'; c.fillText(planet.name, p.x, p.y + r + 15 * ratio);
+      }
+      c.globalAlpha = 1;
+      if (sky.moon && frame.visible(sky.moon) && sky.moon.altDeg > -1) drawMoon(c, b, sky, place);
+    }
+
+    // The Moon, larger than life so its phase reads from across the kitchen. Its lit side faces
+    // the Sun, wherever the Sun is below the horizon.
+    function drawMoon(c, b, sky, place) {
+      const moon = sky.moon, p = place(moon), sun = place(sky.sun || { azDeg: 180, altDeg: -30 });
+      const R = Math.min(b.width, b.height) * 0.035, k = Math.max(0, Math.min(1, moon.illumination));
+      const halo = c.createRadialGradient(p.x, p.y, R, p.x, p.y, R * 4);
+      halo.addColorStop(0, `rgba(235,240,255,${0.08 + 0.18 * k})`); halo.addColorStop(1, 'rgba(235,240,255,0)');
+      c.globalAlpha = 1; c.fillStyle = halo; c.beginPath(); c.arc(p.x, p.y, R * 4, 0, Math.PI * 2); c.fill();
+      c.save();
+      c.translate(p.x, p.y); c.rotate(Math.atan2(sun.y - p.y, sun.x - p.x));
+      c.fillStyle = 'rgba(70,82,100,0.55)'; // earthshine on the dark side
+      c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2); c.fill();
+      // Lit limb on the Sun's side (+x), closed by the terminator: a half ellipse bulging toward
+      // the light for a crescent, away from it for a gibbous moon.
+      const a = R * Math.abs(1 - 2 * k);
+      c.fillStyle = '#f3efe2';
+      c.beginPath(); c.arc(0, 0, R, -Math.PI / 2, Math.PI / 2);
+      if (k < 0.5) c.ellipse(0, 0, a, R, 0, Math.PI / 2, -Math.PI / 2, true);
+      else c.ellipse(0, 0, a, R, 0, Math.PI / 2, Math.PI * 1.5, false);
+      c.fill();
+      c.restore();
+    }
+
     // ---- drawing -------------------------------------------------------------------------
     function size() {
       const ratio = Math.min(1.5, root.devicePixelRatio || 1);
@@ -449,7 +530,12 @@
         ctx.clearRect(0, 0, boxCache.width, boxCache.height);
         ctx.globalAlpha = 0.9; ctx.fillStyle = sky; ctx.fillRect(0, 0, boxCache.width, boxCache.height); ctx.globalAlpha = 1;
         if (iss) drawIss(ctx, boxCache, iss, now());
-        else { if (particleKind === 'iss-stars') { particleKind = bg.kind; particles = []; } drawWeather(ctx, boxCache, bg, dt); }
+        else {
+          if (particleKind === 'iss-stars') { particleKind = bg.kind; particles = []; }
+          if (bg.sky && snapshot?.sky) drawRealSky(ctx, boxCache, bg, snapshot.sky, now());
+          // On a clear evening the real stars replace the decorative ones; clouds still drift over.
+          if (!(bg.sky && snapshot?.sky && bg.kind !== 'cloud')) drawWeather(ctx, boxCache, bg, dt);
+        }
         if (scene.moment?.kind === 'paint') drawPaint(ctx, boxCache, now());
       }
       // Reduced motion: one still picture per decision.

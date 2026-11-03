@@ -924,6 +924,13 @@ pages and APIs retain the parental gateway guard.
   renders, all made from words alone (`imageService.listFinished` excludes retouches,
   parents and uploads), never asking for exact text and passing the family word filter.
   `GET /api/family/ambient/paintings/:id` serves a 720-pixel JPEG of a listed picture.
+  After sunset the sky is the real one: `core/src/services/sky/nightSky.js` computes,
+  without a dependency, where the Moon (with its phase), Venus, Mars, Jupiter, Saturn and
+  about sixty bright stars stand above the home observer; the snapshot's `sky` holds
+  altitudes and azimuths only. A clear night shows every listed star and five figures;
+  dusk or clouds keep the Moon, the planets and the brightest stars; rain, snow and fog
+  keep the weather's picture. The south-facing panorama turns when the Moon would sit
+  behind Nestor's face, and a note names what is up tonight.
   A conversation reply has a spoken and a shown channel (`reply-channels.js`):
   the model puts screen content in `<show kind="…">` blocks, and Core also
   diverts code, tables, long lists, links, paths and key-like tokens. Only the
