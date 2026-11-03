@@ -8,12 +8,14 @@
 //
 // The page never receives coordinates, alert text or host inventories: only the
 // weather words, pass times and directions, the ecosystem node a finding names, and the
-// opaque identifiers of the pictures Nestor may paint (family-paintings.js).
+// opaque identifiers of the pictures Nestor may paint (family-paintings.js), and where the
+// Moon, the bright planets and stars stand (altitude and azimuth only, nightSky.js).
 
 const { fetchData: defaultFetchData } = require('../../src/services/dataServiceClient');
 const { issPasses: defaultIssPasses, readHomeObserver } = require('../../src/services/mcpIssTools');
 const { getOpsWatch: defaultGetOpsWatch } = require('../../src/services/opsWatchService');
 const { createFamilyPaintings } = require('./family-paintings');
+const { skyView } = require('../../src/services/sky/nightSky');
 
 const WEATHER_TTL_MS = 10 * 60 * 1000;
 const ISS_TTL_MS = 20 * 60 * 1000;
@@ -176,17 +178,20 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
   }
 
   async function snapshot() {
-    const [weather, sun, iss, pictures] = await Promise.all([
+    const [weather, position, iss, pictures] = await Promise.all([
       cached('weather', WEATHER_TTL_MS, readWeather),
-      // The sun moves; its position is recomputed from a cached observer.
-      cached('observer', ISS_TTL_MS, () => observer(fetchData, null)).then(position => (position
-        ? { elevationDeg: solarElevationDeg(position.lat, position.lon, now()) } : null)),
+      // The sky moves; its positions are recomputed from a cached observer.
+      cached('observer', ISS_TTL_MS, () => observer(fetchData, null)),
       cached('iss', ISS_TTL_MS, readIss),
       paintings ? paintings.list().catch(() => null) : null
     ]);
+    const at = now();
+    const sun = position ? { elevationDeg: solarElevationDeg(position.lat, position.lon, at) } : null;
+    let sky = null;
+    try { sky = position ? skyView(position.lat, position.lon, at) : null; } catch { sky = null; }
     let alerts = null;
     try { alerts = alertView(getOpsWatch().latest()); } catch { alerts = null; }
-    return { at: now().toISOString(), weather, sun, iss, alerts, paintings: pictures || null };
+    return { at: at.toISOString(), weather, sun, iss, alerts, paintings: pictures || null, sky };
   }
 
   return { snapshot, painting: id => (paintings ? paintings.image(id) : null) };

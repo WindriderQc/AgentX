@@ -89,7 +89,7 @@ test('the snapshot reads each owner once per cache period and drops failures to 
 
 test('the background follows the weather, the light and the night calm', () => {
   const bg = choice.background({ weather: { kind: 'snow', strength: 'heavy', windKmh: 30 }, sun: { elevationDeg: -20 } }, { hour: 23 });
-  assert.deepEqual(bg, { kind: 'snow', light: 'night', intensity: 0.84, wind: 0.5, calm: true });
+  assert.deepEqual(bg, { kind: 'snow', light: 'night', intensity: 0.84, wind: 0.5, calm: true, sky: null });
   assert.equal(choice.background({ weather: null }, { hour: 12 }).kind, 'unknown');
   assert.equal(choice.background({ weather: null }, { hour: 12 }).intensity, 0);
   assert.equal(choice.background({ sun: { elevationDeg: 0 } }).light, 'twilight');
@@ -298,4 +298,71 @@ test('GET /api/family/ambient/paintings/:id serves listed pictures only', async 
     assert.equal((await fetch(base + uuid(2))).status, 404);
     assert.equal((await fetch(base + '..%2Fsecret')).status, 404);
   } finally { server.close(); }
+});
+
+// ---- the real night sky -----------------------------------------------------------------
+const nightSky = require('../../../src/services/sky/nightSky');
+const QUEBEC = [46.81, -71.21];
+const separation = (a, b) => {
+  const r = Math.PI / 180;
+  return Math.acos(Math.sin(a.decDeg * r) * Math.sin(b.decDeg * r) + Math.cos(a.decDeg * r) * Math.cos(b.decDeg * r) * Math.cos((a.raDeg - b.raDeg) * r)) / r;
+};
+const day = iso => nightSky.daysSinceJ2000(new Date(iso));
+
+test('the Moon\'s phase matches the January 2026 full moon, new moon and first quarter', () => {
+  const phase = iso => nightSky.moonPhase(nightSky.sunPosition(day(iso)), nightSky.moonPosition(day(iso)));
+  assert.equal(phase('2026-01-03T10:03:00Z').name, 'pleine lune');
+  assert.ok(phase('2026-01-03T10:03:00Z').illumination > 0.98);
+  assert.equal(phase('2026-01-18T19:52:00Z').name, 'nouvelle lune');
+  const quarter = phase('2026-01-26T04:47:00Z');
+  assert.equal(quarter.name, 'premier quartier');
+  assert.equal(quarter.waxing, true);
+});
+
+test('planets stand where 2026 oppositions and conjunctions put them', () => {
+  const elongation = (id, iso) => separation(nightSky.planetPosition(id, day(iso)), nightSky.sunPosition(day(iso)));
+  assert.ok(elongation('jupiter', '2026-01-10T12:00:00Z') > 175, 'Jupiter at opposition');
+  assert.ok(elongation('saturn', '2026-10-04T12:00:00Z') > 174, 'Saturn at opposition');
+  assert.ok(elongation('mars', '2026-01-09T12:00:00Z') < 3, 'Mars behind the Sun');
+  assert.ok(elongation('venus', '2026-01-06T12:00:00Z') < 3, 'Venus behind the Sun');
+});
+
+test('the sky above Quebec City: Polaris at the latitude, the June noon Sun, angles only', () => {
+  const evening = nightSky.skyView(...QUEBEC, new Date('2026-11-20T01:00:00Z'));
+  const polaris = evening.stars.find(star => star.name === 'Polaris');
+  assert.ok(Math.abs(polaris.altDeg - 46.8) < 1.2 && (polaris.azDeg < 2 || polaris.azDeg > 358));
+  assert.equal(evening.moon.name, 'gibbeuse croissante');
+  assert.ok(evening.moon.altDeg > 30 && evening.planets.some(planet => planet.id === 'saturn'));
+  assert.ok(evening.figures.some(figure => figure.name === 'Pégase'));
+  assert.ok(evening.stars.every(star => star.altDeg >= -1), 'only what is above the horizon');
+  assert.ok(!JSON.stringify(evening).includes('46.81') && !JSON.stringify(evening).includes('71.21'), 'no coordinates');
+  const noon = nightSky.skyView(...QUEBEC, new Date('2026-06-21T16:45:00Z'));
+  assert.ok(Math.abs(noon.sun.altDeg - 66.6) < 0.5);
+  assert.equal(nightSky.skyView(NaN, 0), null);
+});
+
+test('after sunset the background shows the real sky, and a note says what is up', () => {
+  const sky = nightSky.skyView(...QUEBEC, new Date('2026-11-20T01:00:00Z'));
+  const night = { weather: { kind: 'clear', temperatureC: -3, condition: 'Dégagé' }, sun: { elevationDeg: -30 }, sky };
+  const scene = choice.chooseScreen(night, { at: Date.parse('2026-11-20T01:00:00Z'), hour: 20 });
+  assert.equal(scene.background.sky, 'full');
+  assert.equal(scene.chips[0].text, 'Dans le ciel : la lune (gibbeuse croissante) et Saturne');
+  const cloudy = choice.chooseScreen({ ...night, weather: { kind: 'cloud', condition: 'Nuageux' } }, { hour: 20 });
+  assert.equal(cloudy.background.sky, 'bright');
+  assert.match(cloudy.chips[0].text, /derrière les nuages$/);
+  assert.equal(choice.chooseScreen({ ...night, weather: { kind: 'snow' } }, { hour: 20 }).background.sky, null, 'snow hides it');
+  assert.equal(choice.chooseScreen({ ...night, sun: { elevationDeg: 20 } }, { hour: 13 }).background.sky, null, 'not by day');
+  assert.equal(choice.chooseScreen({ ...night, sun: { elevationDeg: -3 } }, { hour: 17 }).background.sky, 'bright', 'dusk');
+  assert.equal(choice.chooseScreen(night, { hour: 20, standby: false }).chips.length, 0, 'a conversation keeps only the sky');
+});
+
+test('the panorama turns so the Moon is never hidden behind Nestor', () => {
+  const ahead = { moon: { altDeg: 40, azDeg: 185 } };
+  const frame = choice.skyFrame(ahead);
+  assert.notEqual(frame.center, 180);
+  assert.ok(Math.abs(frame.project(ahead.moon).x - 0.5) > 0.15);
+  const aside = { moon: { altDeg: 40, azDeg: 120 } };
+  assert.equal(choice.skyFrame(aside).center, 180);
+  assert.equal(choice.skyFrame(aside).project({ azDeg: 180, altDeg: 0 }).x, 0.5);
+  assert.equal(choice.skyFrame(aside).visible({ azDeg: 0, altDeg: 40 }), false, 'the north is behind us');
 });
