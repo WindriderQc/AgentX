@@ -15,6 +15,19 @@ const rules = [
   { id: "r5", from: "@quiet.test", category: "Newsletters", enabled: false },
 ];
 
+test('an expired cached rule cannot keep classifying when Core becomes unavailable', async () => {
+  const original = Date.now;
+  let clock = 100000;
+  Date.now = () => clock;
+  resetRulesCache();
+  try {
+    const config = { coreUrl: 'http://expired-core.test' };
+    assert.equal((await loadRules(config, async () => ({ ok: true, json: async () => ({ data: { rules } }) }))).length, rules.length);
+    clock += 60001;
+    assert.deepEqual(await loadRules(config, async () => { throw new Error('Synthetic outage'); }), []);
+  } finally { Date.now = original; resetRulesCache(); }
+});
+
 test("sender address is taken from the display form", () => {
   assert.equal(senderAddress('"CI Bot" <Bot@Example-CI.test>'), "bot@example-ci.test");
   assert.equal(senderAddress("plain@site.test"), "plain@site.test");
