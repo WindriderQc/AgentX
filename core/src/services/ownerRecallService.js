@@ -67,7 +67,10 @@ const writeDependencies = deps => ({
   erase: id => rag('DELETE', `/documents/${encodeURIComponent(id)}`, undefined, deps)
 });
 
-const store = (values, deps) => writes.store(values, writeDependencies(deps));
+const store = (values, deps) => {
+  if (!configured(deps?.env)) throw failure('Owner recall is not configured', 503, 'OWNER_RECALL_UNCONFIGURED');
+  return writes.store(values, writeDependencies(deps));
+};
 
 async function index(inputs, deps) {
   if (!Array.isArray(inputs) || !inputs.length || inputs.length > BATCH) throw failure(`Index 1-${BATCH} documents`);

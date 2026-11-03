@@ -48,6 +48,8 @@ describe('owner private recall corpus', () => {
   test('without its token configured, recall refuses before calling RAG', async () => {
     const { calls } = fakeRag();
     await expect(recall.search('lake', {}, { send: async () => { calls.push(1); }, env: {} })).rejects.toMatchObject({ statusCode: 503 });
+    await expect(recall.index([mail(1, 'Synthetic lake')], { send: async () => { calls.push(1); }, env: {} })).rejects.toMatchObject({ statusCode: 503 });
+    expect(await Recall.countDocuments({})).toBe(0);
     expect(calls).toEqual([]);
   });
 

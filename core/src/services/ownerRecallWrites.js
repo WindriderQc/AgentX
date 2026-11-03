@@ -2,6 +2,7 @@
 
 const { randomUUID } = require('node:crypto');
 const Recall = require('../../models/OwnerRecallDocument');
+const WC = { w: 1, j: true };
 const failure = (message, code) => Object.assign(new Error(message), { statusCode: 409, code });
 
 // A durable writer has no clock-based takeover: a lost RAG response can still
@@ -12,7 +13,7 @@ async function claim(value) {
     const row = await Recall.findOneAndUpdate({ documentId: value.documentId,
       state: { $ne: 'forgotten' }, writerToken: null }, { $set: {
       scope: 'owner', kind: value.kind, state: 'indexing', writerToken, writerStartedAt: new Date()
-    } }, { upsert: true, new: false, runValidators: true }).lean();
+    } }, { upsert: true, new: false, runValidators: true, writeConcern: WC }).lean();
     return { row, writerToken };
   } catch (error) {
     if (error.code !== 11000) throw error;
@@ -24,7 +25,7 @@ async function claim(value) {
 
 async function clearWriter(documentId, writerToken) {
   const reply = await Recall.updateOne({ documentId, writerToken, state: { $in: ['forgotten', 'inactive'] } },
-    { $set: { writerToken: null, writerStartedAt: null } });
+    { $set: { writerToken: null, writerStartedAt: null } }, { writeConcern: WC });
   if (reply.matchedCount !== 1) throw failure('Recall writer settlement requires reconciliation.', 'OWNER_RECALL_WRITE_PENDING');
 }
 
@@ -55,7 +56,7 @@ async function store(values, { write, erase }) {
     }
     const saved = await Recall.updateOne({ documentId: value.documentId, writerToken, state: 'indexing' },
       { $set: { ...record, scope: 'owner', state: 'indexed', chunkCount, indexedAt: new Date(),
-        writerToken: null, writerStartedAt: null } });
+        writerToken: null, writerStartedAt: null } }, { writeConcern: WC });
     if (saved.matchedCount === 1) {
       result.indexed++;
       if (metadataOnly) result.metadataUpdated++;
@@ -76,10 +77,10 @@ async function forget(documentId, { erase }, { inactive = false } = {}) {
   const update = { $set: { scope: 'owner', kind: documentId.split(':')[0], state: inactive ? 'inactive' : 'forgotten',
     title: '', people: [], occurredAt: null, source: {}, chunkCount: 0 } };
   try {
-    row = await Recall.findOneAndUpdate(filter, update, { new: true, upsert: true }).lean();
+    row = await Recall.findOneAndUpdate(filter, update, { new: true, upsert: true, writeConcern: WC }).lean();
   } catch (error) {
     if (error.code !== 11000) throw error;
-    row = await Recall.findOneAndUpdate(filter, update, { new: true }).lean();
+    row = await Recall.findOneAndUpdate(filter, update, { new: true, writeConcern: WC }).lean();
     if (!row && inactive) return { authority: 'agentx.core', documentId, forgotten: true };
   }
   if (row.writerToken) {
