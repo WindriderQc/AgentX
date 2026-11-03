@@ -518,6 +518,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     onTap: () => { const start = el('conversationStart'); if (start.hidden || start.disabled || !['idle', 'paused', 'error'].includes(conversation.state)) return false; start.click(); return true; },
     // A line typed under the full-screen face goes through the page's own composer.
     onSend: text => { el('conversationMessage').value = text; composer.sync(); el('conversationText').requestSubmit(); return true; } });
+  // Famille: the sky, notes and silent moments behind the full-screen face (nestor-ambient.js).
+  const ambient = family ? window.NestorAmbient?.mount({ space }) : null;
   // Browser speech recognition only with the instance gate and this browser's consent (per space).
   let renderSpeechFallback = () => {};
   async function transcribeLocal(blob, lang, signal) {
@@ -1053,7 +1055,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   } else if (autoStart && !microphoneWanted) conversation.show('paused');
   idlePhotos = window.NestorIdlePhotos?.mount({ host: app.querySelector('.conversation-toolbar'), api, space,
     standby: () => !!conversation.selection?.wakeWord && !conversation.wake.active(),
-    busy: ({ recognizing = false } = {}) => textBusy
+    busy: ({ recognizing = false } = {}) => textBusy || !!ambient?.busy()
       || !(recognizing ? ['idle', 'paused', 'listening', 'hearing', 'transcribing'] : ['idle', 'paused', 'listening']).includes(conversation.state)
       || !el('conversationSettings').hidden || !!document.querySelector('dialog[open]')
       || !!el('conversationMessage').value.trim(),
@@ -1064,7 +1066,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       'Micro · activer / pause': () => el('conversationStart').click()
     }
   });
-  window.addEventListener('pagehide', event => { if (event.persisted) idlePhotos?.activity(); else idlePhotos?.dispose(); });
+  window.addEventListener('pagehide', event => { if (event.persisted) idlePhotos?.activity(); else { idlePhotos?.dispose(); ambient?.dispose(); } });
   enteringSpace = false;
   conversation.show(conversation.state, el('conversationStatus').textContent);
 
