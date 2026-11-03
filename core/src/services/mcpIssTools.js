@@ -218,4 +218,4 @@ async function issPasses(args, deps = {}) {
 
 const ISS_TOOL_HANDLERS = { iss_passes: issPasses };
 
-module.exports = { ISS_TOOLS, ISS_TOOL_HANDLERS, issPasses, parseArgs };
+module.exports = { ISS_TOOLS, ISS_TOOL_HANDLERS, issPasses, parseArgs, readHomeObserver };
