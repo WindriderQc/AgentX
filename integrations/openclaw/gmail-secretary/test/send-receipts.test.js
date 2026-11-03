@@ -53,18 +53,32 @@ test('audit failure preserves a certain native send and the same call replays it
   const setup = await fixture(t);
   const executable = path.join(setup.root, 'fake-gog');
   const marker = path.join(setup.root, 'dispatches');
-  await writeFile(executable, `#!/usr/bin/env node\nrequire('node:fs').appendFileSync(${JSON.stringify(marker)},'sent\\n');process.stdout.write(JSON.stringify({id:'synthetic-sent'}));`, { mode: 0o700 });
+  const raw = Buffer.from('From: owner@example.invalid\r\nTo: synthetic@example.invalid\r\nSubject: Synthetic\r\n\r\nSynthetic body').toString('base64url');
+  await writeFile(executable, `#!/usr/bin/env node
+const args=process.argv.slice(2), exact=args.find(arg=>arg.startsWith('--enable-commands-exact='));
+let value;
+if(exact==='--enable-commands-exact=gmail.drafts.create') value={draftId:'synthetic-draft'};
+else if(exact==='--enable-commands-exact=gmail.drafts.get') value={draft:{id:'synthetic-draft',message:{raw:${JSON.stringify(raw)},threadId:'synthetic-thread'}}};
+else if(exact==='--enable-commands-exact=gmail.send') {
+  require('node:assert/strict').ok(args.includes('--raw-file=-'));
+  require('node:fs').appendFileSync(${JSON.stringify(marker)},'sent\\n');value={id:'synthetic-sent'};
+} else throw Error('Unexpected command');
+process.stdout.write(JSON.stringify(value));`, { mode: 0o700 });
   await writeFile(path.join(setup.root, 'keyring'), 'synthetic-placeholder');
   await writeFile(path.join(setup.root, 'bad-parent'), 'not a directory');
-  const tools = new Map();
+  const tools = new Map(), hooks = new Map();
   createPlugin(value => value).register({ pluginConfig: { ...setup.config, gogPath: executable,
     keyringPasswordFile: path.join(setup.root, 'keyring'), auditLog: path.join(setup.root, 'bad-parent/audit.jsonl') },
-    registerTool: (tool, options) => tools.set(options.name || tool.name, typeof tool === 'function' ? tool(setup.context) : tool), on() {} });
+    registerTool: (tool, options) => tools.set(options.name || tool.name, typeof tool === 'function' ? tool(setup.context) : tool),
+    on: (name, hook) => hooks.set(name, hook) });
   const send = tools.get('gmail_secretary_send');
+  const approval = await hooks.get('before_tool_call')({ toolName: send.name, toolCallId: setup.callId, params: setup.params }, setup.context);
+  approval.requireApproval.onResolution('allow-once');
   for (let n = 0; n < 2; n++) {
     const reply = JSON.parse((await send.execute(setup.callId, setup.params)).content[0].text);
     assert.equal(reply.id, 'synthetic-sent');
     assert.equal(reply.audit.recorded, false);
+    assert.equal(reply.draftRetained, true);
   }
   assert.equal((await readFile(marker, 'utf8')).trim(), 'sent');
 });
