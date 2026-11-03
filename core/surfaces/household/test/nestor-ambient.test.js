@@ -182,3 +182,120 @@ test('GET /api/family/ambient answers through the family routes', async () => {
     assert.deepEqual((await response.json()).data, { at: 'now', weather: null, sun: null, iss: null, alerts: null });
   } finally { server.close(); }
 });
+
+// ---- Nestor the painter -----------------------------------------------------------------
+const paintings = require('../family-paintings');
+const FAMILY = { surface: 'household', sessionId: 's1', packId: 'kidx_nestor', scopeId: 'family' };
+const uuid = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+test('only word-made family drawings and finished, distinct Atelier renders may be painted', () => {
+  const pool = paintings.paintingPool([
+    { id: uuid(1), conversation: null, width: 2048, height: 2048, words: 'Un raton laveur avec une tête de T-Rex, dessin animé, lumière du matin.' },
+    { id: uuid(2), conversation: FAMILY, width: 1024, height: 1024, words: 'Age-appropriate illustration for children. Un renard.' },
+    { id: uuid(3), conversation: null, width: 2048, height: 2048, words: 'Un raton laveur avec une tête de T-Rex, dessin animé, lumière du soir.' },
+    { id: uuid(4), conversation: null, width: 1024, height: 1024, words: 'Pictogramme de voix' },
+    { id: uuid(5), conversation: null, width: 2016, height: 2016, words: 'Keep the same people, poses and canoe as in image 1.' },
+    { id: uuid(6), conversation: { ...FAMILY, packId: 'personal_operator', scopeId: 'personal' }, width: 2048, height: 2048, words: 'Private' },
+    { id: uuid(7), conversation: null, width: 2752, height: 1536, words: 'Une scène nue sur la plage' },
+    { id: uuid(8), conversation: null, width: 0, height: 0, words: 'broken' },
+    { id: uuid(9), conversation: null, width: 2752, height: 1536, words: 'Une affiche AgentX', text: true }
+  ]);
+  assert.deepEqual(pool, [{ id: uuid(2), source: 'family' }, { id: uuid(1), source: 'atelier' }]);
+});
+
+test('the painter lists once per half hour and serves a reduced copy of listed pictures only', async () => {
+  let clock = 0, lists = 0, reads = 0, fits = 0;
+  const service = paintings.createFamilyPaintings({
+    now: () => clock,
+    listFinished: async () => { lists += 1; return [{ id: uuid(1), conversation: null, width: 2048, height: 2048, words: 'Un hibou' }]; },
+    readImage: async () => { reads += 1; return { bytes: Buffer.from('png'), mimeType: 'image/png' }; },
+    fit: async () => { fits += 1; return { bytes: Buffer.from('jpeg'), width: 720, height: 720 }; }
+  });
+  assert.deepEqual(await service.list(), [{ id: uuid(1), source: 'atelier' }]);
+  await service.list();
+  assert.equal(lists, 1);
+  assert.equal(await service.image(uuid(9)), null, 'an unlisted picture is unknown');
+  const first = await service.image(uuid(1));
+  assert.equal(first.mimeType, 'image/jpeg');
+  assert.equal(String(first.bytes), 'jpeg');
+  await service.image(uuid(1));
+  assert.equal(reads, 1); assert.equal(fits, 1);
+  clock += 31 * MIN;
+  await service.list();
+  assert.equal(lists, 2);
+  const failing = paintings.createFamilyPaintings({ listFinished: async () => { throw new Error('Mongo down'); } });
+  assert.equal(await failing.list(), null, 'an unreadable list is unknown, not empty');
+});
+
+test('the snapshot carries the painter pool without words', async () => {
+  const service = ambient.createFamilyAmbient({
+    fetchData: async () => { throw new Error('offline'); }, observer: async () => null,
+    issPasses: async () => { throw new Error('offline'); }, getOpsWatch: () => ({ latest: () => null }),
+    paintings: { list: async () => [{ id: uuid(2), source: 'family' }], image: async () => null }
+  });
+  const snapshot = await service.snapshot();
+  assert.deepEqual(snapshot.paintings, [{ id: uuid(2), source: 'family' }]);
+  const plain = ambient.createFamilyAmbient({ fetchData: async () => { throw new Error('offline'); }, observer: async () => null,
+    issPasses: async () => { throw new Error('offline'); }, getOpsWatch: () => ({ latest: () => null }) });
+  assert.equal((await plain.snapshot()).paintings, null);
+});
+
+test('Nestor paints by day after a quiet moment, the picture painted longest ago, once per quarter hour', () => {
+  const at = Date.parse('2026-11-03T15:00:00Z');
+  const snapshot = { weather: { kind: 'cloud', temperatureC: 4, condition: 'Nuageux' },
+    paintings: [{ id: 'a', source: 'family' }, { id: 'b', source: 'atelier' }, { id: 'c', source: 'atelier' }] };
+  const quiet = { at, hour: 10, idleMs: 3 * MIN };
+  assert.equal(choice.chooseScreen(snapshot, { ...quiet, idleMs: MIN }).moment, null, 'not right after a conversation');
+  assert.equal(choice.chooseScreen(snapshot, { ...quiet, hour: 23 }).moment, null, 'not at night');
+  assert.equal(choice.chooseScreen(snapshot, { ...quiet, standby: false }).moment, null);
+  assert.equal(choice.chooseScreen(snapshot, { ...quiet, lastPaint: at - 5 * MIN }).moment, null);
+  const first = choice.chooseScreen(snapshot, quiet);
+  assert.deepEqual(first.moment, { kind: 'paint', id: 'a', source: 'family', label: 'Nestor peint un de vos dessins' });
+  assert.deepEqual(first.chips.map(chip => chip.id), ['paint', 'weather']);
+  const later = choice.chooseScreen(snapshot, { ...quiet, painted: { a: at - 20 * MIN }, lastPaint: at - 20 * MIN });
+  assert.equal(later.moment.id, 'b');
+  assert.equal(later.moment.label, 'Nestor peint une création de l’atelier');
+  assert.equal(choice.chooseScreen(snapshot, { ...quiet, painted: { a: 3, b: 1, c: 2 } }).moment.id, 'b');
+  assert.equal(choice.chooseScreen({ ...snapshot, paintings: null }, quiet).moment, null);
+});
+
+test('a painting continues until it ends, but the ISS and alert visits come first', () => {
+  const start = '2026-11-03T15:02:00.000Z', at = Date.parse(start) - 2 * MIN;
+  const running = { kind: 'paint', id: 'b', source: 'atelier', label: 'Nestor peint une création de l’atelier' };
+  const snapshot = { paintings: [{ id: 'a', source: 'family' }] };
+  assert.equal(choice.chooseScreen(snapshot, { at, hour: 10, idleMs: 0, lastPaint: at, painting: running }).moment, running);
+  const withIss = { ...snapshot, iss: { next: pass(start) } };
+  assert.equal(choice.chooseScreen(withIss, { at, hour: 10, painting: running }).moment.kind, 'iss');
+  const withAlert = { ...snapshot, alerts: { count: 1, critical: 0, nodes: ['ugalien'], fingerprint: 'f' } };
+  assert.equal(choice.chooseScreen(withAlert, { at, hour: 10, painting: running }).moment.kind, 'visit');
+  assert.equal(choice.chooseScreen(snapshot, { at, hour: 10, standby: false, painting: running }).moment, null);
+});
+
+test('the painting timeline: strokes, the finished picture, then a fade', () => {
+  assert.deepEqual(choice.paintPhase(0), { phase: 'painting', progress: 0 });
+  assert.equal(choice.paintPhase(choice.PAINT_MS * 0.25).progress, 0.5);
+  assert.equal(choice.paintPhase(choice.PAINT_MS * 0.54).phase, 'revealing');
+  assert.equal(choice.paintPhase(choice.PAINT_MS * 0.7).phase, 'showing');
+  assert.equal(choice.paintPhase(choice.PAINT_MS * 0.95).phase, 'fading');
+  assert.equal(choice.paintPhase(choice.PAINT_MS), null);
+  assert.equal(choice.paintPhase(-1), null);
+});
+
+test('GET /api/family/ambient/paintings/:id serves listed pictures only', async () => {
+  const express = require('express');
+  const { registerFamilyRoutes } = require('../family-routes');
+  const app = express();
+  registerFamilyRoutes({ app, express, familyTasks: {}, standardJsonParser: express.json(),
+    ambient: { snapshot: async () => ({}), painting: async id => (id === uuid(1) ? { bytes: Buffer.from('jpeg'), mimeType: 'image/jpeg' } : null) } });
+  const server = app.listen(0);
+  try {
+    const base = `http://127.0.0.1:${server.address().port}/api/family/ambient/paintings/`;
+    const found = await fetch(base + uuid(1));
+    assert.equal(found.status, 200);
+    assert.equal(found.headers.get('content-type'), 'image/jpeg');
+    assert.equal(found.headers.get('cache-control'), 'private, max-age=86400');
+    assert.equal(await found.text(), 'jpeg');
+    assert.equal((await fetch(base + uuid(2))).status, 404);
+    assert.equal((await fetch(base + '..%2Fsecret')).status, 404);
+  } finally { server.close(); }
+});

@@ -1,8 +1,8 @@
 /* What Nestor's full screen shows on its own, from /api/family/ambient (family-ambient.js).
    Pure: no DOM, no clock of its own, so the same rules are tested under Node.
    Importance, highest first: the conversation, a critical alert, the ISS passing
-   or about to pass, other alerts, then the weather. A conversation in progress
-   keeps only the background; nothing here ever speaks. */
+   or about to pass, other alerts, Nestor painting a picture, then the weather.
+   A conversation in progress keeps only the background; nothing here ever speaks. */
 (function (root) {
   'use strict';
   const MINUTE = 60000;
@@ -12,6 +12,9 @@
   const VISIT_COOLDOWN_MS = 6 * 60 * MINUTE; // one guided visit per alert set and machine
   const QUIET_FROM = 22, QUIET_TO = 7; // no guided visit at night in the kitchen
   const MAX_CHIPS = 3;
+  const PAINT_IDLE_MS = 2 * MINUTE;     // Nestor paints only after a quiet moment
+  const PAINT_EVERY_MS = 15 * MINUTE;   // and at most one picture per quarter hour
+  const PAINT_MS = 80 * 1000;           // painting, a look at the result, then it fades
 
   // Weather → the background's particles. Unknown weather keeps a calm, empty sky.
   function background(snapshot, { hour = 12 } = {}) {
@@ -82,16 +85,32 @@
       label: alerts.nodes.length === 1 ? 'Nestor montre la machine concernée' : 'Nestor montre les machines concernées' };
   }
 
+  // Nestor the painter: by day, after a quiet moment, the picture painted longest ago (never
+  // painted first; the family's drawings before the Atelier's on a tie, as listed by Core).
+  const PAINT_LABEL = { family: 'Nestor peint un de vos dessins', atelier: 'Nestor peint une création de l’atelier' };
+  function paintMoment(paintings, { at, hour, idleMs = 0, painted = {}, lastPaint = 0 }) {
+    const pool = Array.isArray(paintings) ? paintings.filter(item => item?.id && PAINT_LABEL[item.source]) : [];
+    if (!pool.length || hour >= QUIET_FROM || hour < QUIET_TO) return null;
+    if (idleMs < PAINT_IDLE_MS || at - lastPaint < PAINT_EVERY_MS) return null;
+    const pick = pool.map((item, index) => ({ item, index }))
+      .sort((a, b) => (painted[a.item.id] || 0) - (painted[b.item.id] || 0) || a.index - b.index)[0].item;
+    return { kind: 'paint', id: pick.id, source: pick.source, label: PAINT_LABEL[pick.source] };
+  }
+
   // The whole decision. `standby` is false while someone talks with Nestor.
-  function chooseScreen(snapshot, { at = Date.now(), hour = new Date(at).getHours(), standby = true, visits = {} } = {}) {
+  function chooseScreen(snapshot, { at = Date.now(), hour = new Date(at).getHours(), standby = true, visits = {},
+    idleMs = 0, painted = {}, lastPaint = 0, painting = null } = {}) {
     const scene = { background: background(snapshot, { hour }), chips: [], moment: null };
     if (!standby || !snapshot) return scene;
     const iss = issState(snapshot, at);
     const alerts = snapshot.alerts;
     const critical = alerts?.critical > 0;
-    const ranked = [critical && alertChip(alerts), iss?.chip, !critical && alertChip(alerts), weatherChip(snapshot.weather)];
+    scene.moment = iss?.moment || alertVisit(alerts, { at, hour, visits })
+      // A picture already being painted continues until it ends; only the moments above stop it.
+      || (painting?.kind === 'paint' ? painting : paintMoment(snapshot.paintings, { at, hour, idleMs, painted, lastPaint }));
+    const paintChip = scene.moment?.kind === 'paint' ? { id: 'paint', tone: 'calm', text: scene.moment.label } : null;
+    const ranked = [critical && alertChip(alerts), iss?.chip, !critical && alertChip(alerts), paintChip, weatherChip(snapshot.weather)];
     scene.chips = ranked.filter(Boolean).slice(0, MAX_CHIPS);
-    scene.moment = iss?.moment || alertVisit(alerts, { at, hour, visits });
     return scene;
   }
 
@@ -126,8 +145,18 @@
     return (at - start) / (end - start);
   }
 
-  const api = { background, chooseScreen, passArc, passProgress, visitKey, minutesText,
-    ISS_NOTICE_MS, ISS_MOMENT_MS, VISIT_COOLDOWN_MS, MAX_CHIPS };
+  // The painting's timeline, from its start: brush strokes, the finished picture, then a fade.
+  function paintPhase(elapsedMs) {
+    const t = elapsedMs / PAINT_MS;
+    if (!(t >= 0) || t >= 1) return null;
+    if (t < 0.5) return { phase: 'painting', progress: t / 0.5 };
+    if (t < 0.58) return { phase: 'revealing', progress: (t - 0.5) / 0.08 };
+    if (t < 0.9) return { phase: 'showing', progress: (t - 0.58) / 0.32 };
+    return { phase: 'fading', progress: (t - 0.9) / 0.1 };
+  }
+
+  const api = { background, chooseScreen, paintMoment, paintPhase, passArc, passProgress, visitKey, minutesText,
+    ISS_NOTICE_MS, ISS_MOMENT_MS, VISIT_COOLDOWN_MS, MAX_CHIPS, PAINT_IDLE_MS, PAINT_EVERY_MS, PAINT_MS };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.NestorAmbientChoice = api;
 })(typeof window !== 'undefined' ? window : globalThis);
