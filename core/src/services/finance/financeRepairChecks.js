@@ -34,6 +34,7 @@ function derive(state, manifest, documents) {
 }
 function validateScope(state, manifest, destination) {
   const group = parts(manifest), s = group.statement.before;
+  if (Array.isArray(s.rowKeys)) throw conflict('Explicit statement membership requires a membership-aware reviewed repair');
   const rowIds = group.transactions.map(u => u.id).sort();
   const exactRows = state.finance_transactions.filter(x => String(x.statementId) === s._id);
   if (canonical(exactRows.map(x => String(x._id)).sort()) !== canonical(rowIds)) throw conflict('Statement transaction scope changed');

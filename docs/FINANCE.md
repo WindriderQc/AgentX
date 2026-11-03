@@ -59,6 +59,7 @@ owner decisions. These guards do not repair historical account assignments.
 | `finance_plan` | Budget lines, debts, credit, provisions, assets, tax room, open items, cash allocation, deadlines, milestones, phase, exceptional tags |
 | `finance_alerts` | Deterministic alerts with stable keys (raised once) |
 | `finance_document_links` | Proposed, confirmed or rejected links between a Secretary document and a ledger row, keyed by the document id and the row's stable key (account, date, fingerprint, occurrence); survives re-ingestion |
+| `finance_ingestions` | Durable source identity, sealed candidate and before/after row plan, per-command dispatch observations and terminal receipt; an uncertain command is not replayed |
 
 **Every total uses `flowCents`.** Using `amountCents` for spending counts card
 purchases as income.
@@ -210,6 +211,57 @@ personal ledger. Core never writes to it.
 
 ## Operating it
 
+### Ordinary ingestion and recovery
+
+The ordinary inbox path stores a bounded ingestion intent under a stable key
+derived from the PDF hash and book. Before accounting writes it drains already
+admitted readers and holds Finance through the same persisted coordination
+document used by repairs. New readers, mutations, scans and repairs refuse while
+that ingestion is unresolved. Statement publication follows every verified row
+write; a known PDF is a duplicate only if its stored membership, row counts and
+account equations still agree.
+
+New statements record `rowKeys`: exact membership independent of the first
+owning `statementId`, so overlapping exports can share rows without losing their
+provenance. Replacing a statement retains unchanged row IDs and owner decisions.
+An omitted row is retained and reassigned when another exact membership still
+requires it. A possibly required legacy row is not deleted automatically; the
+replacement goes to review. Existing documents are not bulk-normalized.
+
+A refused extraction retains its statement ID, accumulated attempts and review
+history when a later reading of the same PDF is accepted. The source hash is
+checked again before preparing an accounting write. Native recovery checks the
+same original bytes and the saved candidate/plan digests, invokes no model and
+does not deposit or move a file.
+
+Run the native operator script with Core's existing database configuration:
+
+```sh
+node scripts/finance-ingestion-recovery.js status
+node scripts/finance-ingestion-recovery.js resume \
+  --request '<saved-request-key>' --confirmed-digest '<saved-digest>' \
+  --source '<original-or-archived-PDF>' --actor '<operator>' \
+  --core-origin '<native-loopback-Core-origin>'
+```
+
+Recovery resumes the same intent. For a dispatched command, its exact after-image
+must be observed before continuing; an absent image does not authorize another
+write. `FINANCE_INGESTION_WRITE_UNCERTAIN` retains exclusion for independent
+native-outcome reconciliation. Never reset or delete the coordination/journal
+records to regain availability. A reader left by a killed process also remains
+subject to native ownership reconciliation, without age-based takeover.
+Before accounting writes the native recovery verifies Core's loopback protocol
+and coordination identity, and observes its ordinary inbox API refusing access.
+
+Finance maintenance protocol v2 requires the served Core and native repair
+executor to recognize ingestion exclusion. Upgrade and qualify those consumers
+together. Legacy repair manifests remain unchanged; statements carrying explicit
+membership require a separately reviewed membership-aware repair contract and
+are refused by the legacy book-repair executor. Source checks do not apply any
+historical repair or start a live extraction.
+
+### Reviewed historical repairs
+
 Reviewed historical book repairs use the bounded native
 [Finance repair executor](FINANCE_REPAIR.md): persisted read/write exclusion,
 immutable intent and receipts, same-identity recovery and exact scoped rollback.
@@ -228,3 +280,6 @@ or account-number normalization. Testing or installing it does not apply a repai
 - Data changes (statements, rules, decisions, plan) need no deploy.
 - Tests from the repository root: `npm test --prefix core -- --runTestsByPath tests/services/financeLedger.test.js` (synthetic fixtures
   only) and `npm test --prefix integrations/openclaw/finance-ledger`.
+  Recovery and scope suites are `tests/services/financeIngestionRecovery.test.js`
+  and `tests/services/financeQueryScope.test.js`; the existing repair suites
+  verify their admission contract with the maintenance protocol.

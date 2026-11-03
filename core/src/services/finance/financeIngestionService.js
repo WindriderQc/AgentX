@@ -3,6 +3,8 @@
 // Ingests one statement document into the finance ledger. Only a statement
 // whose every account reconciles to the cent writes transactions; anything else
 // is recorded as needs_review with the exact problems, and writes nothing.
+// Accounting-write interruptions retain a journal and Finance exclusion for
+// same-identity native recovery, rather than publishing a partial statement.
 
 const crypto = require('crypto');
 const fs = require('fs/promises');
@@ -11,9 +13,9 @@ const { execFile } = require('child_process');
 const FinanceStatement = require('../../../models/FinanceStatement');
 const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { extractStatement } = require('./statementExtraction');
-const { applyRules } = require('./financeCategories');
 const { extractScannedStatement } = require('./scannedStatement');
 const { ledgerOf, ledgerPrefix, flowOf, LIABILITY_CODE } = require('./ledgers');
+const journal = require('./financeIngestionJournal');
 
 // Below this many non-space characters the PDF is treated as a scan.
 const MIN_TEXT_CHARS = 400;
@@ -74,18 +76,13 @@ function ledgerRows(statement, statementId, ledger) {
   return rows;
 }
 
-async function insertLedgerRows(rows) {
-  if (!rows.length) return { inserted: 0, overlapping: 0 };
-  const now = new Date();
-  const docs = rows.map((row) => ({ ...row, createdAt: now, updatedAt: now }));
-  try {
-    const result = await FinanceTransaction.collection.insertMany(docs, { ordered: false });
-    return { inserted: result.insertedCount, overlapping: 0 };
-  } catch (error) {
-    const writeErrors = [].concat(error.writeErrors || []);
-    if (!writeErrors.length || writeErrors.some((item) => (item.code ?? item.err?.code) !== 11000)) throw error;
-    return { inserted: rows.length - writeErrors.length, overlapping: writeErrors.length };
-  }
+async function recordReview(base, accounts, problems) {
+  const doc = await FinanceStatement.findOneAndUpdate(
+    { fileSha256: base.fileSha256, status: 'needs_review' },
+    { $set: { ...base, accounts, problems, status: 'needs_review', statementKey: null } },
+    { upsert: true, new: true }
+  ).lean();
+  return { outcome: 'needs_review', statementId: String(doc._id), fileName: base.fileName, problems, attempts: base.attempts };
 }
 
 /**
@@ -98,7 +95,8 @@ async function ingestDocument(filePath, {
   extract = extractStatement,
   extractScanned = extractScannedStatement,
   archivePath = null,
-  ledger = 'perso'
+  ledger = 'perso',
+  checkpoint
 } = {}) {
   const fileName = path.basename(filePath);
   const stat = await fs.stat(filePath);
@@ -111,7 +109,18 @@ async function ingestDocument(filePath, {
     throw Object.assign(new Error('This file is reconciled in another ledger. Review its ledger before depositing it again.'),
       { code: 'FINANCE_STATEMENT_LEDGER_CONFLICT', status: 422 });
   }
-  if (known) return { outcome: 'duplicate', statementId: String(known._id), statementKey: known.statementKey, fileName };
+  if (known) {
+    await journal.verifyStored(known);
+    return { outcome: 'duplicate', statementId: String(known._id), statementKey: known.statementKey, fileName };
+  }
+  const pending = await journal.pending(fileSha256, ledger);
+  if (pending) {
+    try { return await journal.continueRecord(pending, checkpoint); }
+    catch (error) {
+      if (error.code !== 'FINANCE_INGESTION_REVIEW_REQUIRED') throw error;
+      return recordReview(pending.candidate.base, pending.candidate.accounts, [error.message]);
+    }
+  }
 
   const text = await readText(filePath);
   const scanned = String(text || '').replace(/\s+/g, '').length < MIN_TEXT_CHARS;
@@ -136,28 +145,22 @@ async function ingestDocument(filePath, {
     problems.push('Statement identity is ambiguous: another file covers this issuer and period without an account number. Confirm account identity before replacement.');
   }
 
+  const currentStat = await fs.stat(filePath);
+  if (!currentStat.isFile() || currentStat.size > MAX_DOCUMENT_BYTES) throw Object.assign(new Error('The source PDF changed during extraction'),
+    { code: 'FINANCE_INGESTION_SOURCE_CHANGED', status: 409 });
+  const currentSha256 = crypto.createHash('sha256').update(await fs.readFile(filePath)).digest('hex');
+  if (currentSha256 !== fileSha256) throw Object.assign(new Error('The source PDF changed during extraction; keep it stable before retrying'),
+    { code: 'FINANCE_INGESTION_SOURCE_CHANGED', status: 409 });
+
   if (problems.length) {
-    const doc = await FinanceStatement.findOneAndUpdate(
-      { fileSha256, status: 'needs_review' },
-      { $set: { ...base, accounts, status: 'needs_review', statementKey: null } },
-      { upsert: true, new: true }
-    ).lean();
-    return { outcome: 'needs_review', statementId: String(doc._id), fileName, problems, attempts };
+    return recordReview(base, accounts, problems);
   }
 
-  if (previous) await FinanceTransaction.deleteMany({ statementId: previous._id });
-  const doc = await FinanceStatement.findOneAndUpdate(
-    { statementKey },
-    { $set: { ...base, accounts, status: 'reconciled', statementKey } },
-    { upsert: true, new: true }
-  ).lean();
-  await FinanceStatement.deleteMany({ fileSha256, status: 'needs_review' });
-  const { inserted, overlapping } = await insertLedgerRows(ledgerRows(statement, doc._id, ledger));
-  await applyRules({ statementId: doc._id });
-  return {
-    outcome: 'reconciled', statementId: String(doc._id), statementKey, fileName, attempts,
-    replaced: Boolean(previous), accounts: accounts.length, inserted, overlapping
-  };
+  try { return await journal.write({ base, accounts, statementKey, statement }, { checkpoint }); }
+  catch (error) {
+    if (error.code !== 'FINANCE_INGESTION_REVIEW_REQUIRED') throw error;
+    return recordReview(base, accounts, [...problems, error.message]);
+  }
 }
 
 // Fills flowCents on rows written before it existed (idempotent).
@@ -173,6 +176,6 @@ async function setArchivePath(statementId, archivePath) {
   await FinanceStatement.updateOne({ _id: statementId }, { $set: { archivePath } });
 }
 
-module.exports = { ingestDocument, readPdfText, setArchivePath, backfillFlow, statementKeyOf, accountKeyOf, fingerprintOf };
+module.exports = { ingestDocument, readPdfText, setArchivePath, backfillFlow, statementKeyOf, accountKeyOf, fingerprintOf, ledgerRows, MAX_DOCUMENT_BYTES };
 
 require('./financeAccess').guard(module.exports, ['ingestDocument', 'backfillFlow', 'setArchivePath']);

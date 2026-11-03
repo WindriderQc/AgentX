@@ -1,8 +1,8 @@
 'use strict';
 
 // Model calls also participate, including helpers outside the HTTP router.
-// Raw collection access is reserved for the native repair executor and the
-// ingestion insert already enclosed by its guarded service.
+// Raw accounting collection access is reserved for the native repair and
+// ingestion executors while they own persisted Finance exclusion.
 const access = require('./financeAccess');
 module.exports = function guardModel(model) {
   if (Object.hasOwn(model, '$financeGuarded')) return model;

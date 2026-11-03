@@ -4,7 +4,8 @@ const mongoose = require('mongoose');
 
 // One ingested statement document. Identity is (issuer, account, period): a
 // re-downloaded or re-issued statement replaces the previous one. The file hash
-// only records provenance. Transactions exist only for reconciled statements.
+// only records provenance. Published rows belong to reconciled statements;
+// a journaled ingestion fences readers until its rows and statement are received.
 const accountSchema = new mongoose.Schema({
   code: { type: String, required: true },
   accountKey: { type: String, required: true },
@@ -22,6 +23,10 @@ const financeStatementSchema = new mongoose.Schema({
   periodStart: { type: String, default: null },
   periodEnd: { type: String, default: null },
   accounts: { type: [accountSchema], default: [] },
+  // Membership is independent of the row's first owning statementId. This
+  // preserves genuine overlapping exports without treating lost rows as duplicates.
+  rowKeys: { type: [String], default: undefined },
+  reviewHistory: { type: [mongoose.Schema.Types.Mixed], default: undefined },
   problems: { type: [String], default: [] },
   fileName: { type: String, required: true },
   fileSha256: { type: String, required: true },
