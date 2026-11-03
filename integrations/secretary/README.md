@@ -1,5 +1,20 @@
 # Native Secretary evidence and watchdog
 
+Private recall keeps a durable per-document writer in Core while RAG indexing
+is in flight. Forgetting first hides the document and records the permanent
+forgotten marker. `OWNER_RECALL_FORGET_PENDING` means the old writer still needs
+settlement; it is not a completed erasure. A terminal late index removes its
+vectors before releasing its writer. A lost RAG response retains
+`OWNER_RECALL_WRITE_PENDING` across restarts; no timeout permits takeover.
+Recovery requires evidence that the exact remote operation settled, never
+deleting its writer merely because it is old. Repeating a settled forget is
+safe. Source deactivation remains distinct from the owner's permanent forget.
+
+Recall delivery identities cover dates, people and preserved source metadata.
+Core updates metadata-only corrections without re-embedding unchanged indexed
+text. Existing records migrate when next supplied; installation starts no bulk
+re-indexing. Indexing live sources remains subject to native admission.
+
 For a separately versioned reading objective without resetting general page
 receipts, see [objective review](OBJECTIVE_REVIEW.md). The existing catch-up
 status also projects content-free archive and objective progress.
