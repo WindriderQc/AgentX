@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, unlink } from 'node:fs/promises';
+import { readFile, readdir, unlink } from 'node:fs/promises';
 import path from 'node:path';
-import { privateJson } from './private-state.js';
+import { privateDirectory, privateJson } from './private-state.js';
 import { journalTriage } from './triage-journal.js';
 import { buildReadCommand, runGog, unwrapExternalText } from './gmail.js';
 
@@ -13,7 +13,7 @@ export async function stageJournal(config, params) {
     .filter(key => params[key] !== undefined).map(key => [key, params[key]]));
   const id = createHash('sha256').update(JSON.stringify([config.account, config.coreUrl, entry])).digest('hex');
   const root = directory(config), file = path.join(root, `${id}.json`);
-  await mkdir(root, { recursive: true, mode: 0o700 });
+  await privateDirectory(root);
   const receipt = { schema: 'secretary.journal-delivery/v1', id, phase: 'prepared', at: new Date().toISOString(), entry };
   try { await privateJson(file, receipt, { exclusive: true }); }
   catch (error) {

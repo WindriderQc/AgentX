@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { privateJson as durable } from './private-state.js';
+import { privateDirectory, privateJson as durable } from './private-state.js';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const canonical = value => value && typeof value === 'object'
@@ -35,7 +35,7 @@ export async function replaySend(request) {
 
 export async function sendOnce({ dispatch, ...request }) {
   const { id, requestHash, root, file } = identity(request);
-  await mkdir(root, { recursive: true, mode: 0o700 });
+  await privateDirectory(root);
   const intent = { schema: 'secretary.gmail-send/v1', id, requestHash, phase: 'dispatching', at: new Date().toISOString() };
   try { await durable(file, intent, { exclusive: true }); }
   catch (error) {
