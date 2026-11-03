@@ -137,7 +137,15 @@ async function continueRecord(record, checkpoint = async () => {}, actor = 'core
   const save = async fields => {
     const result = await store().updateOne({ _id: requestKey, digest }, { $set: fields }, WRITE);
     if (result.matchedCount !== 1) throw conflict('Ingestion journal identity changed');
-    record = await store().findOne({ _id: requestKey });
+    // An acknowledged update advances this owner's local image. Rereading the
+    // entire row plan after each command would transfer a quadratic payload.
+    // A lost reply still throws before advancing; recovery reloads the journal.
+    for (const [field, value] of Object.entries(fields)) {
+      const parts = field.split('.');
+      let target = record;
+      for (const part of parts.slice(0, -1)) target = target[part] ||= {};
+      target[parts.at(-1)] = value;
+    }
   };
   return access.withIngestion(requestKey, digest, async () => {
     try {

@@ -70,6 +70,14 @@ test('publishes the statement after rows, with stable membership and a terminal 
   expect((await records().findOne({ _id: receipt.requestKey })).receipt).toEqual(receipt);
 });
 
+test('journal reads stay bounded when a larger statement records per-row progress', async () => {
+  const find = jest.spyOn(mongoose.mongo.Collection.prototype, 'findOne');
+  const result = await ingestion.ingestDocument(await file('larger'), options(raw(Array(20).fill(-1))));
+  const journalReads = find.mock.contexts.filter(collection => collection.collectionName === 'finance_ingestions').length;
+  expect(result.inserted).toBe(20);
+  expect(journalReads).toBeLessThanOrEqual(4);
+});
+
 test.each([['intent_prepared', null], ['accounting_written', 0], ['accounting_written', 1], ['accounting_written', 2], ['terminal_saved', null]])(
   'recovers the same identity after %s/%s without inference or a duplicate effect', async (phase, index) => {
     const source = await file('interrupted');
