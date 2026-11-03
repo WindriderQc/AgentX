@@ -88,11 +88,14 @@ async function insights(query = {}) {
   const months = Math.min(Math.max(Number.parseInt(query.months, 10) || 12, 3), 60);
   const latest = await FinanceTransaction.findOne(transactionFilter(query)).sort({ date: -1 }).select('date').lean();
   if (!latest) return { period: null, recurring: [], categoryTrends: [], savings: [], largeExpenses: [] };
-  const window = monthsBack(latest.date.slice(0, 7), months);
+  const window = monthsBack(latest.date.slice(0, 7), months)
+    .filter((month) => !query.from || month >= query.from.slice(0, 7));
   const { excludeTags } = await require('./financePlan').getPlan();
-  const filter = { ...transactionFilter({ ...query, excludeCategory: query.category ? undefined : TRANSFERS,
-    excludeTag: query.tag ? undefined : excludeTags.join(',') }),
-    date: { $gte: `${window[0]}-01`, $lte: latest.date } };
+  const exclusions = query.excludeTag ?? (query.tag ? undefined : excludeTags.join(','));
+  const filter = transactionFilter({ ...query, excludeCategory: query.category ? undefined : (query.excludeCategory || TRANSFERS),
+    excludeTag: exclusions });
+  const from = query.from && query.from > `${window[0]}-01` ? query.from : `${window[0]}-01`;
+  filter.date = { $gte: from, $lte: latest.date };
   const [rows, payroll] = await Promise.all([
     FinanceTransaction.find(filter).select('date description flowCents category tags').lean(),
     query.account ? null : payrollCoverage({ ledger: query.ledger })
@@ -141,7 +144,7 @@ async function insights(query = {}) {
     .map(({ date, description, flowCents, category }) => ({ date, description, amountCents: flowCents, category: category || null }));
 
   return {
-    period: { from: `${window[0]}-01`, to: latest.date, months },
+    period: { from, to: latest.date, months: window.length },
     dataAsOf: payroll?.asOf || null,
     incompleteMonths: savings.filter((s) => !s.complete).map((s) => s.month),
     savings,

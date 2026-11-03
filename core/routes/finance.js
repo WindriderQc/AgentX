@@ -21,6 +21,7 @@ const brief = require('../src/services/finance/financeBrief');
 const statementDeposit = require('../src/services/finance/financeStatementDeposit');
 const access = require('../src/services/finance/financeAccess');
 const goals = require('../src/services/finance/financeGoals');
+const { readScope } = require('../src/services/finance/financeReadScope');
 
 function sendError(res, error) {
   const status = Number.isInteger(error.status) && error.status >= 400 && error.status < 600 ? error.status : 500;
@@ -50,15 +51,19 @@ function createFinanceRoutes({ inbox = financeInbox } = {}) {
       return sendError(res, error);
     }
   };
+  const read = (action, fn) => handle(async (req) => {
+    const { query: filters, scope } = readScope(action, req.query);
+    return { ...await fn(filters), scope };
+  });
 
-  router.get('/statements', handle((req) => query.statements(req.query)));
-  router.get('/balances', handle((req) => query.balances(req.query)));
-  router.get('/transactions', handle((req) => query.transactions(req.query)));
-  router.get('/summary/monthly', handle((req) => query.monthly(req.query)));
-  router.get('/summary/merchants', handle((req) => query.merchants(req.query)));
-  router.get('/summary/categories', handle((req) => query.byCategory(req.query)));
-  router.get('/coverage', handle((req) => query.coverage(req.query)));
-  router.get('/tags', handle((req) => query.tags(req.query)));
+  router.get('/statements', read('statements', query.statements));
+  router.get('/balances', read('balances', query.balances));
+  router.get('/transactions', read('transactions', query.transactions));
+  router.get('/summary/monthly', read('monthly', query.monthly));
+  router.get('/summary/merchants', read('merchants', query.merchants));
+  router.get('/summary/categories', read('categories', query.byCategory));
+  router.get('/coverage', read('coverage', query.coverage));
+  router.get('/tags', read('tags', query.tags));
   router.get('/plan', handle(() => plan.getPlan()));
   router.put('/plan', handle((req) => plan.savePlan(req.body || {})));
   router.put('/plan/:section', handle((req) => plan.saveSection(req.params.section, req.body?.value)));
@@ -68,16 +73,16 @@ function createFinanceRoutes({ inbox = financeInbox } = {}) {
   router.post('/simulate/forecast', handle((req) => simulation.forecast(req.body || {})));
   router.get('/history/balances', handle((req) => simulation.balanceHistory(req.query)));
   router.get('/summary/category-months', handle((req) => simulation.categoryMonths(req.query)));
-  router.get('/summary/yearly', handle((req) => analysis.yearly(req.query)));
-  router.get('/insights', handle((req) => analysis.insights(req.query)));
+  router.get('/summary/yearly', read('yearly', analysis.yearly));
+  router.get('/insights', read('insights', analysis.insights));
   router.get('/alerts', handle((req) => (req.query.all === 'true' ? alerts.list({ includeAcknowledged: true }) : alerts.refresh())));
   router.post('/alerts/report', handle(() => alerts.report()));
   router.post('/alerts/ack', handle((req) => alerts.acknowledge(req.body?.ids)));
-  router.get('/documents', handle((req) => documentLinks.documents(req.query)));
+  router.get('/documents', read('documents', documentLinks.documents));
   router.get('/brief', handle(() => brief.summary()));
   router.post('/documents/statements/deposit', handle((req) => statementDeposit.deposit(req.body?.ids)));
-  router.get('/goals', handle(() => goals.goals()));
-  router.get('/review/monthly', handle(() => goals.monthlyReview()));
+  router.get('/goals', read('goals', () => goals.goals()));
+  router.get('/review/monthly', read('review', () => goals.monthlyReview()));
   router.post('/documents/links/decide', handle((req) => documentLinks.decide(req.body?.ids, req.body?.status, req.body?.createdBy || 'owner')));
   router.get('/export.csv', async (req, res) => {
     let exported;
@@ -92,9 +97,9 @@ function createFinanceRoutes({ inbox = financeInbox } = {}) {
     return pipeline(Readable.from(exported.chunks), res)
       .catch((error) => console.error('[finance] CSV export interrupted', error));
   });
-  router.get('/uncategorized', handle((req) => categories.uncategorized(req.query)));
+  router.get('/uncategorized', read('uncategorized', categories.uncategorized));
   router.post('/suggestions', handle((req) => suggest(req.body || {})));
-  router.get('/rules', handle(() => categories.listRules()));
+  router.get('/rules', read('rules', categories.listRules));
   router.post('/rules', handle((req) => categories.saveRules(req.body?.rules ?? req.body,
     { createdBy: String(req.body?.createdBy || 'owner').slice(0, 40) })));
   router.delete('/rules/:id', handle((req) => categories.deleteRule(req.params.id)));

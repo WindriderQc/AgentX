@@ -71,6 +71,11 @@ purchases as income.
   uncategorized, suggestions, transaction decisions, plan (whole, per section,
   operations), situation, debt and cash-flow simulations, balance history,
   CSV export, inbox status and scan. Every query takes `ledger=corp`.
+  Ledger readers return `scope` with the selected book and applied filters.
+  Unsupported selectors and unknown books return `FINANCE_QUERY_INVALID`
+  instead of widening the question. Rules explicitly report a shared scope;
+  goals and monthly reviews belong to the personal plan and refuse `ledger=corp`.
+  Insights intersect their lookback with an explicit `from`/`to` interval.
 - `/finance`: the Wallet Beefer dashboard (situation and plan first, then the
   history analysis), a Personnel | Corporation switch and a plan editor.
 - `/api/finance/documents` (read-only view of the Secretary register) and
@@ -81,6 +86,9 @@ purchases as income.
   proposed document match, only after the owner's yes), `finance_alerts` (list
   or report once), `finance_plan` (read, owner-stated operations, `done` to settle
   a deadline). Visible only to the configured finance agent.
+  Ledger actions accept `ledger: perso|corp`, including `coverage`, and preserve
+  supported date, merchant and exclusion filters. The result includes the
+  requested selectors alongside Core's scope; incompatible selectors are refused.
 - A watch or open item may set `kind`: `payment` (the brief says "à payer dans N
   jours") or `task` (neutral, the default: "dans N jours", "demain",
   "aujourd'hui", "en retard"). Alert texts do not change.
