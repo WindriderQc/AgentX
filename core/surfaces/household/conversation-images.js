@@ -148,4 +148,4 @@ function createConversationImages({ conversations, service = images, visuals = n
   }
   return { contract, contextFor, complete, register };
 }
-module.exports = { createConversationImages, spaceFor, scopeFor };
+module.exports = { createConversationImages, spaceFor, scopeFor, FAMILY_UNSUITABLE };

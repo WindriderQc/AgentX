@@ -12,6 +12,7 @@ into rules. It never reads a body, sends, archives or trashes.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 from pathlib import Path
@@ -66,9 +67,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     threads = commands.add_parser("threads")
     threads.add_argument("--label", choices=sorted(LABELS), required=True)
     threads.add_argument("--max", type=int, default=50)
+    threads.add_argument("--page-token-b64", default="")
     handled = commands.add_parser("handled")
     handled.add_argument("--label", choices=sorted(LABELS), required=True)
     handled.add_argument("--thread", required=True)
+    handled.add_argument("--messages", default="")
     backlog = commands.add_parser("backlog")
     backlog.add_argument("--days", type=int, default=7)
     senders = commands.add_parser("senders")
@@ -156,32 +159,58 @@ def public_thread(row: dict[str, Any]) -> dict[str, Any]:
 def list_threads(args: argparse.Namespace) -> dict[str, Any]:
     label = LABELS[args.label]
     limit = min(50, max(1, args.max))
-    payload = run_gog(args, "gmail.search", [
-        "gmail", "search", f'label:"{label}"', f"--max={limit}", f"--timezone={args.timezone}",
+    page = ""
+    token = getattr(args, "page_token_b64", "")
+    if token:
+        try:
+            if len(token) > 5500 or not re.fullmatch(r"[A-Za-z0-9_-]+", token):
+                raise ValueError()
+            page = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode("utf-8")
+            if len(page.encode()) > 4096:
+                raise ValueError()
+        except (ValueError, UnicodeError):
+            raise MailDeskError("Invalid Gmail continuation", "SECRETARY_MAIL_BAD_PAGE", 400) from None
+    payload = run_gog(args, "gmail.messages.search", [
+        "gmail", "messages", "search", f'label:"{label}"', f"--max={limit}", f"--timezone={args.timezone}",
+        *([f"--page={page}"] if page else []),
     ])
-    rows = payload.get("threads") if isinstance(payload, dict) else payload
+    rows = payload.get("messages") if isinstance(payload, dict) else payload
     if not isinstance(rows, list):
         raise MailDeskError("Gmail returned an unexpected thread list")
-    threads = [public_thread(row) for row in rows if isinstance(row, dict) and THREAD_ID.match(str(row.get("id") or ""))]
+    groups = {}
+    for row in rows:
+        if not isinstance(row, dict) or not all(THREAD_ID.fullmatch(str(row.get(key) or "")) for key in ("id", "threadId")):
+            continue
+        tid = row["threadId"]
+        if tid not in groups:
+            groups[tid] = {**public_thread({**row, "id": tid}), "messageIds": []}
+        entry = groups[tid]
+        if row["id"] not in entry["messageIds"]:
+            entry["messageIds"].append(row["id"])
+        entry["unread"] = entry["unread"] or "UNREAD" in (row.get("labels") or [])
+        entry["messageCount"] = len(entry["messageIds"])
+    threads = list(groups.values())
+    next_page = payload.get("nextPageToken") if isinstance(payload, dict) else None
+    if next_page is not None and (not isinstance(next_page, str) or len(next_page.encode()) > 4096):
+        raise MailDeskError("Gmail returned an invalid continuation")
     return {
         "label": args.label,
         "gmailLabel": label,
         "count": len(threads),
-        "more": bool(isinstance(payload, dict) and payload.get("nextPageToken")),
+        "more": bool(next_page),
+        "nextPageToken": next_page or None,
+        "scope": "messages",
         "threads": threads,
     }
 
 
-def thread_label_ids(args: argparse.Namespace, thread_id: str) -> set[str]:
+def thread_messages(args: argparse.Namespace, thread_id: str) -> list[dict[str, Any]]:
     payload = run_gog(args, "gmail.thread.get", ["gmail", "thread", "get", thread_id])
     thread = payload.get("thread") if isinstance(payload, dict) and isinstance(payload.get("thread"), dict) else payload
     messages = thread.get("messages") if isinstance(thread, dict) else None
     if not isinstance(messages, list) or not messages:
         raise MailDeskError("the Gmail thread was not found", "SECRETARY_MAIL_THREAD_NOT_FOUND", 404)
-    found: set[str] = set()
-    for message in messages:
-        found.update(str(label) for label in (message.get("labelIds") or []))
-    return found
+    return messages
 
 
 def label_id(args: argparse.Namespace, name: str) -> str:
@@ -197,15 +226,22 @@ def mark_handled(args: argparse.Namespace) -> dict[str, Any]:
     thread_id = str(args.thread or "").strip().lower()
     if not THREAD_ID.match(thread_id):
         raise MailDeskError("thread must be a Gmail thread id", "SECRETARY_MAIL_BAD_THREAD", 400)
+    selected = str(getattr(args, "messages", "")).lower().split(",")
+    if not 1 <= len(selected) <= 50 or len(set(selected)) != len(selected) or not all(THREAD_ID.fullmatch(mid) for mid in selected):
+        raise MailDeskError("Refresh the mailbox and select exact messages before marking them handled", "SECRETARY_MAIL_BAD_MESSAGES", 400)
     label = LABELS[args.label]
     wanted = label_id(args, label)
-    if wanted not in thread_label_ids(args, thread_id):
-        return {"threadId": thread_id, "label": args.label, "removed": False, "verified": True}
-    run_gog(args, "gmail.labels.modify", ["gmail", "labels", "modify", thread_id, f"--remove={label}"], readonly=False)
-    # The acknowledgement is not the evidence: read the thread back.
-    if wanted in thread_label_ids(args, thread_id):
-        raise MailDeskError("Gmail still shows the label on this thread", "SECRETARY_MAIL_NOT_APPLIED", 502)
-    return {"threadId": thread_id, "label": args.label, "removed": True, "verified": True}
+    before = {row.get("id"): row for row in thread_messages(args, thread_id)}
+    if not all(mid in before for mid in selected):
+        raise MailDeskError("The selected messages changed; refresh before handling them", "SECRETARY_MAIL_SELECTION_CHANGED", 409)
+    active = [mid for mid in selected if wanted in (before[mid].get("labelIds") or [])]
+    if active:
+        run_gog(args, "gmail.batch.modify", ["gmail", "batch", "modify", *active, f"--remove={label}"], readonly=False)
+        after = {row.get("id"): row for row in thread_messages(args, thread_id)}
+        if any(mid not in after or wanted in (after[mid].get("labelIds") or []) for mid in selected):
+            raise MailDeskError("Gmail did not confirm the selected message changes", "SECRETARY_MAIL_NOT_APPLIED", 502)
+    return {"threadId": thread_id, "messageIds": selected, "scope": "messages", "label": args.label,
+            "removed": bool(active), "verified": True}
 
 
 def backlog(args: argparse.Namespace) -> dict[str, Any]:
@@ -256,9 +292,9 @@ def review_senders(args: argparse.Namespace) -> dict[str, Any]:
             "more": bool(isinstance(payload, dict) and payload.get("nextPageToken")), "senders": ranked[:SENDER_TOP]}
 
 
-def catchup(_args: argparse.Namespace, root: Path | None = None) -> dict[str, Any]:
+def catchup(args: argparse.Namespace, root: Path | None = None) -> dict[str, Any]:
     """Counts of the archive catch-up job (mail_catchup.py): no Gmail call, no content."""
-    root = root or EVIDENCE_ROOT
+    root = Path(root or getattr(args, "evidence_root", None) or EVIDENCE_ROOT)
 
     def read(name: str, default: Any) -> Any:
         try:
@@ -275,8 +311,11 @@ def catchup(_args: argparse.Namespace, root: Path | None = None) -> dict[str, An
         running = False
     paused = status.get("paused") if isinstance(status.get("paused"), dict) else None
     from objective_status import projection
+    pending_journal = sum(1 for file in (root / "transport-state/gmail-journal-outbox").glob("*.json")
+                          if re.fullmatch(r"[a-f0-9]{64}\.json", file.name))
     return {"known": bool(status), "running": running, **{key: status.get(key) for key in CATCHUP_FIELDS},
             **projection(root),
+            **({"journalPending": pending_journal} if pending_journal else {}),
             "paused": {"reason": str(paused.get("reason"))[:120], "since": paused.get("since")} if paused else None,
             "proposalsPending": sum(1 for p in proposals if isinstance(p, dict) and p.get("state") == "pending"),
             "proposalsQueued": sum(1 for p in proposals if isinstance(p, dict) and p.get("state") == "queued")}

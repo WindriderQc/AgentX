@@ -1,5 +1,22 @@
 # Native Secretary evidence and watchdog
 
+Private recall keeps a durable per-document writer in Core while RAG indexing
+is in flight. Forgetting first hides the document and records the permanent
+forgotten marker. `OWNER_RECALL_FORGET_PENDING` means the old writer still needs
+settlement; it is not a completed erasure. A terminal late index removes its
+vectors before releasing its writer. A lost RAG response retains
+`OWNER_RECALL_WRITE_PENDING` across restarts; no timeout permits takeover.
+Recovery requires evidence that the exact remote operation settled, never
+deleting its writer merely because it is old. Repeating a settled forget is
+safe. Source deactivation remains distinct from the owner's permanent forget.
+Forgetting removes search access; preserved originals and backups have their
+own retention and are not deleted by this operation.
+
+Recall delivery identities cover dates, people and preserved source metadata.
+Core updates metadata-only corrections without re-embedding unchanged indexed
+text. Existing records migrate when next supplied; installation starts no bulk
+re-indexing. Indexing live sources remains subject to native admission.
+
 For a separately versioned reading objective without resetting general page
 receipts, see [objective review](OBJECTIVE_REVIEW.md). The existing catch-up
 status also projects content-free archive and objective progress.
@@ -664,11 +681,20 @@ safe for children, or suitable for the family corpus.
 ## Dad desk mail actions
 
 `secretary_mail_desk.py` lists the existing Secretary/Urgent and Secretary/Needs
-Reply labels, removes only the selected label when a thread is handled, reads
+Reply labels, removes only the selected label from the displayed message IDs, reads
 the recent unprocessed Inbox count, and ranks the senders of recent
 Secretary/Review mail (metadata only). The desk offers that ranking to create
-triage rules. Label removal is verified by reading the
-thread again. It never sends mail, reads message bodies, archives or trashes.
+triage rules. The metadata list groups messages by thread and returns an opaque
+continuation for each page of up to 50 messages; the desk offers the following
+page. Handling requires the exact selected `messageIds`. The native helper
+checks their thread membership, uses `gog gmail batch modify` on those messages,
+then verifies their labels. A later reply keeps its own label. It never sends
+mail, reads message bodies, archives or trashes.
+
+Install the Core bridge, desk UI and native helper together. An older desk
+without a message selection is refused and must refresh. The native `gog`
+installation must support `gmail messages search` with `nextPageToken` and
+`gmail batch modify`; there is no whole-thread mutation fallback.
 
 Use the same external `GMAIL_SECRETARY_ACCOUNT`, `GMAIL_SECRETARY_GOG` and
 `GMAIL_SECRETARY_KEYRING_FILE` settings as the evidence collector, or explicit

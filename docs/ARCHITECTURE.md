@@ -917,6 +917,20 @@ pages and APIs retain the parental gateway guard.
   while it passes. An alert naming a known machine opens a silent ecosystem tour to it,
   by day only and once per alert set and machine in six hours. A conversation, typed
   text or Escape removes the notes and moments; idle photos wait while a moment shows.
+  When the kitchen has been quiet for two minutes, by day and at most every quarter
+  hour, Nestor paints a picture: colour dabs fly from him onto an easel at his right,
+  then the finished picture shows and fades. The snapshot lists only opaque identifiers
+  (`family-paintings.js`): the family's own drawings first, then finished Atelier
+  renders, all made from words alone (`imageService.listFinished` excludes retouches,
+  parents and uploads), never asking for exact text and passing the family word filter.
+  `GET /api/family/ambient/paintings/:id` serves a 720-pixel JPEG of a listed picture.
+  After sunset the sky is the real one: `core/src/services/sky/nightSky.js` computes,
+  without a dependency, where the Moon (with its phase), Venus, Mars, Jupiter, Saturn and
+  about sixty bright stars stand above the home observer; the snapshot's `sky` holds
+  altitudes and azimuths only. A clear night shows every listed star and five figures;
+  dusk or clouds keep the Moon, the planets and the brightest stars; rain, snow and fog
+  keep the weather's picture. The south-facing panorama turns when the Moon would sit
+  behind Nestor's face, and a note names what is up tonight.
   A conversation reply has a spoken and a shown channel (`reply-channels.js`):
   the model puts screen content in `<show kind="…">` blocks, and Core also
   diverts code, tables, long lists, links, paths and key-like tokens. Only the

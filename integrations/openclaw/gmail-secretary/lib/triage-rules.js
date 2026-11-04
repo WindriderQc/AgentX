@@ -51,7 +51,8 @@ export async function loadRules(config, fetchImpl = globalThis.fetch) {
     cache = { url, at: Date.now(), rules };
     return rules;
   } catch {
-    return cache.url === url ? cache.rules : [];
+    // A revoked or edited rule must not keep classifying during an outage.
+    return [];
   }
 }
 

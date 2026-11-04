@@ -16,13 +16,13 @@ test('threads and handled reach the host with a closed vocabulary only', async (
   });
   await control.threads('urgent');
   await control.threads('Needs-Reply');
-  await control.handled({ threadId: '1A0A72C7F639BCCF', label: 'urgent' });
+  await control.handled({ threadId: '1A0A72C7F639BCCF', label: 'urgent', messageIds: ['1111111111111111'] });
   await control.senders();
   await control.dossier({ threadId: '1A0A72C7F639BCCF' });
   assert.deepEqual(commands, [
     `${script} threads --label urgent`,
     `${script} threads --label needs-reply`,
-    `${script} handled --label urgent --thread 1a0a72c7f639bccf`,
+    `${script} handled --label urgent --thread 1a0a72c7f639bccf --messages 1111111111111111`,
     `${script} senders`,
     `${script} dossier --thread 1a0a72c7f639bccf`
   ]);
@@ -38,6 +38,18 @@ test('anything outside the vocabulary is refused before the host is contacted', 
     await assert.rejects(() => control.dossier({ threadId }), error => error.statusCode === 400 && error.code === 'SECRETARY_MAIL_BAD_THREAD');
   }
   assert.throws(() => new SecretaryMailControl({ remoteRoot: '/srv/../etc' }), error => error.code === 'SECRETARY_MAIL_CONFIGURATION_INVALID');
+});
+
+test('mail continuation is encoded and absent or invalid message selections never reach the host', async () => {
+  const commands = [];
+  const control = configured(async (_target, command) => { commands.push(command); return envelope({ ok: true }); });
+  const token = "opaque; $(never-execute) ' token";
+  await control.threads('urgent', { pageToken: token });
+  assert.equal(commands[0], `${script} threads --label urgent --page-token-b64 ${Buffer.from(token).toString('base64url')}`);
+  for (const messageIds of [undefined, [], ['1111111111111111; reboot'], ['1111111111111111', '1111111111111111']]) {
+    await assert.rejects(control.handled({ threadId: '1a0a72c7f639bccf', label: 'urgent', messageIds }), error => error.code === 'SECRETARY_MAIL_BAD_MESSAGES');
+  }
+  assert.equal(commands.length, 1);
 });
 
 test('a host error envelope keeps its code; transport loss never reflects private stderr', async () => {

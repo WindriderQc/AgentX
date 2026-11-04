@@ -32,6 +32,20 @@ describe('mail journal with real Mongo', () => {
     expect((await journal.record(old, { now, days: 0 })).entry.expiresAt).toBeNull();
   });
 
+  test('conditional deliveries admit one concurrent digest and never replace a richer correction', async () => {
+    const input = { threadId: 'concurrent-thread', messageId: 'same-message', occurredAt: '2026-09-30T08:00:00Z',
+      summary: 'Synthetic delayed classification', preserveExisting: true };
+    const deliveries = await Promise.all([journal.record(input, { now }), journal.record(input, { now })]);
+    expect(deliveries.filter(result => result.created)).toHaveLength(1);
+    expect(deliveries.find(result => !result.created)).toMatchObject({ recorded: false, reason: 'already journaled' });
+    await journal.record({ ...input, preserveExisting: false, summary: 'Synthetic richer owner correction', tags: ['corrected'] }, { now });
+    const late = await journal.record(input, { now });
+    expect(late).toMatchObject({ recorded: false, reason: 'already journaled',
+      entry: { summary: 'Synthetic richer owner correction', tags: ['corrected'] } });
+    expect(await MailJournalEntry.countDocuments()).toBe(1);
+    await expect(journal.record({ ...input, preserveExisting: 'true' }, { now })).rejects.toMatchObject({ statusCode: 400 });
+  });
+
   test('search by words, thread and date range, newest first', async () => {
     await journal.record({ threadId: 't1', occurredAt: '2026-09-01T00:00:00Z', summary: 'Synthetic invoice from the plumber' }, { now, days: 0 });
     await journal.record({ threadId: 't2', occurredAt: '2026-09-20T00:00:00Z', summary: 'Synthetic invoice paid', counterpart: 'Plumber' }, { now, days: 0 });
