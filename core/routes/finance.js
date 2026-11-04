@@ -133,7 +133,7 @@ function renderFinancePage(_req, res) {
     service: 'core',
     activePage: 'finance',
     headCss: '<link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/css/finance.css?v=11">',
-    footerJs: '<script src="/vendor/chart.js/4.5.1/chart.umd.js"></script><script src="/js/finance-situation.js?v=9" defer></script><script src="/js/finance-simulations.js?v=9" defer></script><script src="/js/finance-plan-editor.js?v=2" defer></script><script src="/js/finance.js?v=10" defer></script>'
+    footerJs: '<script src="/vendor/chart.js/4.5.1/chart.umd.js"></script><script src="/js/finance-display.js?v=1" defer></script><script src="/js/finance-situation.js?v=10" defer></script><script src="/js/finance-simulations.js?v=10" defer></script><script src="/js/finance-plan-editor.js?v=3" defer></script><script src="/js/finance.js?v=11" defer></script>'
   });
 }
 

@@ -127,7 +127,8 @@ async function evaluate({ now = new Date(), env = process.env } = {}) {
       if (lastMonths.includes(charge.firstMonth)) {
         found.push({ key: `recurring:${charge.description}:${charge.firstMonth}`, kind: 'new_recurring_charge', severity: 'warning',
           title: `New recurring charge: ${charge.description}`,
-          facts: { description: charge.description, since: charge.firstMonth, monthlyCents: charge.monthlyCents, yearlyCents: charge.yearlyCents } });
+          facts: { description: charge.description, since: charge.firstMonth, monthlyCents: charge.monthlyCents, yearlyCents: charge.yearlyCents,
+            monthlyMeasure: charge.monthlyMeasure, yearlyMeasure: charge.yearlyMeasure } });
       }
     }
     const period = analysis.period?.to?.slice(0, 7);

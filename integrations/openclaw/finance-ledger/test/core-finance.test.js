@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCoreFinanceClient, formatCents, withDisplay } from '../core-finance.js';
+const coverage = (ledger = 'perso') => ({ kind: 'statement_date_coverage', ledger, status: 'partial', complete: false });
 
 test('formats integer cents the Quebec way', () => {
   assert.equal(formatCents(123456), '1 234,56 $');
@@ -21,14 +22,14 @@ test('forwards the selected filters and reports the requested scope', async () =
   let captured;
   const ask = createCoreFinanceClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async (url, options) => {
     captured = { url: String(url), options };
-    return { ok: true, json: async () => ({ status: 'success', data: { totals: { netCents: -900 } } }) };
+    return { ok: true, json: async () => ({ status: 'success', data: { totals: { netCents: -900 }, coverage: coverage() } }) };
   } });
   const result = await ask({ action: 'transactions', q: ' dojo ', from: '2026-05-01', limit: 20 });
   assert.equal(captured.url, 'http://127.0.0.1:3180/api/finance/transactions?from=2026-05-01&q=dojo&limit=20');
   assert.equal(captured.options.method, 'GET');
   assert.equal(captured.options.redirect, 'error');
   assert.deepEqual(result, { action: 'transactions', authority: 'agentx.core', requested: { ledger: 'perso', from: '2026-05-01', q: 'dojo', limit: '20' },
-    totals: { netCents: -900, netDisplay: '-9,00 $' } });
+    totals: { netCents: -900, netDisplay: '-9,00 $' }, coverage: coverage() });
 
   await assert.rejects(ask({ action: 'balances', account: 'EOP' }), /account is not supported for balances/);
   await ask({ action: 'balances' });
@@ -68,7 +69,7 @@ test('asks Core for yearly totals and insights with their filters', async () => 
   const urls = [];
   const ask = createCoreFinanceClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async (url) => {
     urls.push(String(url));
-    return { ok: true, json: async () => ({ status: 'success', data: { years: [{ year: '2025', outCents: -29800 }] } }) };
+    return { ok: true, json: async () => ({ status: 'success', data: { years: [{ year: '2025', outCents: -29800 }], coverage: coverage() } }) };
   } });
   const yearly = await ask({ action: 'yearly', tag: 'karate' });
   assert.deepEqual(yearly.years, [{ year: '2025', outCents: -29800, outDisplay: '-298,00 $' }]);
@@ -81,7 +82,8 @@ test('keeps the corporate book, merchant and period through the native reader', 
   const urls = [];
   const ask = createCoreFinanceClient({ baseUrl: 'http://core.invalid', fetchImpl: async url => {
     urls.push(new URL(url));
-    return { ok: true, json: async () => ({ status: 'success', data: { scope: { ledger: 'corp' }, accounts: [] } }) };
+    return { ok: true, json: async () => ({ status: 'success', data: {
+      ...coverage('corp'), scope: { ledger: 'corp' }, accounts: [], coverage: coverage('corp') } }) };
   } });
   const result = await ask({ action: 'balances', ledger: 'corp' });
   assert.equal(urls[0].searchParams.get('ledger'), 'corp');
@@ -89,9 +91,11 @@ test('keeps the corporate book, merchant and period through the native reader', 
   assert.equal(result.scope.ledger, 'corp');
   await ask({ action: 'insights', ledger: 'corp', from: '2026-01-01', to: '2026-03-31', q: 'Supplier', excludeTag: 'one-off' });
   assert.deepEqual(Object.fromEntries(urls[1].searchParams), { from: '2026-01-01', to: '2026-03-31', q: 'Supplier', excludeTag: 'one-off', ledger: 'corp' });
-  await ask({ action: 'coverage', ledger: 'corp' });
+  await ask({ action: 'coverage', ledger: 'corp', account: 'corp:synthetic|1234|CARD', from: '2026-01-01', to: '2026-03-31' });
   assert.equal(urls[2].pathname, '/api/finance/coverage');
   assert.equal(urls[2].searchParams.get('ledger'), 'corp');
+  assert.equal(urls[2].searchParams.get('account'), 'corp:synthetic|1234|CARD');
+  assert.equal(urls[2].searchParams.get('from'), '2026-01-01');
   const calls = urls.length;
   await assert.rejects(ask({ action: 'balances', ledger: 'company' }), /ledger must/);
   await assert.rejects(ask({ action: 'goals', ledger: 'corp' }), /ledger is not supported/);
@@ -103,6 +107,38 @@ test('refuses an upstream response for another book', async () => {
   const ask = createCoreFinanceClient({ baseUrl: 'http://core.invalid', fetchImpl: async () => ({ ok: true,
     json: async () => ({ status: 'success', data: { scope: { ledger: 'perso' } } }) }) });
   await assert.rejects(ask({ action: 'balances', ledger: 'corp' }), /different finance ledger/);
+});
+
+test('refuses unqualified legacy figures and coverage for another book', async () => {
+  for (const data of [{ averageNetCents: 0 }, { coverage: coverage('corp') }]) {
+    const ask = createCoreFinanceClient({ baseUrl: 'http://core.invalid', fetchImpl: async () => ({ ok: true,
+      json: async () => ({ status: 'success', data }) }) });
+    await assert.rejects(ask({ action: 'monthly' }), /coverage/);
+  }
+});
+
+test('keeps a two-month monthly average, its total and its unknown baseline distinct', async () => {
+  const recentMeasure = { kind: 'monthly_average', unit: 'cents/month', amountCents: -1500, totalCents: -3000,
+    months: ['2026-06', '2026-07'], monthCount: 2, display: '-15,00 $/mois',
+    scopeText: 'Moyenne mensuelle sur 2 mois couverts (2026-06, 2026-07).' };
+  const trend = { category: 'Synthetic', recentMonthlyCents: -1500, previousMonthlyCents: null, changeCents: null,
+    recentMeasure, previousMeasure: { kind: 'monthly_average', unit: 'cents/month', amountCents: null, months: [], monthCount: 0 },
+    changeMeasure: { kind: 'monthly_average_change', unit: 'cents/month', amountCents: null } };
+  const ask = createCoreFinanceClient({ baseUrl: 'http://core.invalid', fetchImpl: async () => ({ ok: true,
+    json: async () => ({ status: 'success', data: { coverage: coverage(), categoryTrends: [trend] } }) }) });
+  const result = await ask({ action: 'insights' });
+  assert.equal(result.categoryTrends[0].recentMeasure.display, '-15,00 $/mois');
+  assert.equal(result.categoryTrends[0].recentMeasure.scopeText, recentMeasure.scopeText);
+  assert.deepEqual(result.categoryTrends[0].recentMeasure.months, ['2026-06', '2026-07']);
+  assert.equal(result.categoryTrends[0].recentMeasure.totalDisplay, '-30,00 $');
+  assert.equal(result.categoryTrends[0].previousMonthlyCents, null);
+  assert.equal(result.categoryTrends[0].changeCents, null);
+});
+
+test('refuses a trend without explicit Core measure units', async () => {
+  const ask = createCoreFinanceClient({ baseUrl: 'http://core.invalid', fetchImpl: async () => ({ ok: true,
+    json: async () => ({ status: 'success', data: { coverage: coverage(), categoryTrends: [{ recentMonthlyCents: -1500 }] } }) }) });
+  await assert.rejects(ask({ action: 'insights' }), /trend units/);
 });
 
 test('lists alerts with GET and reports them once with POST', async () => {
@@ -190,7 +226,7 @@ test('reads savings goals and the monthly review from Core', async () => {
   const urls = [];
   const read = readClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async (url) => {
     urls.push(String(url));
-    return { ok: true, json: async () => ({ status: 'success', data: { goals: [{ name: 'Vacances', progressCents: 150000 }], topGaps: [] } }) };
+    return { ok: true, json: async () => ({ status: 'success', data: { goals: [{ name: 'Vacances', progressCents: 150000 }], topGaps: [], coverage: coverage() } }) };
   } });
   const goals = await read({ action: 'goals' });
   await read({ action: 'review' });

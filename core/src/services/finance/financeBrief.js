@@ -57,7 +57,8 @@ async function summary({ now = new Date() } = {}) {
     .map((alert) => ({ text: shortLabel(alert.facts), days: alert.facts.daysUntil, kind: alert.facts.itemKind })).filter((item) => item.text);
   const late = [...new Set(found.filter((alert) => alert.kind === 'stale_data').map((alert) => seriesLabel(alert.facts.label))
     .filter(Boolean))];
-  const { series } = await require('./financeQueryService').coverage({ ledger: 'perso' });
+  const coverage = await require('./financeQueryService').coverage({ ledger: 'perso', now });
+  const { series } = coverage;
   const missing = series.reduce((sum, item) => sum + item.missing.length, 0);
   const proposals = await FinanceDocumentLink.countDocuments({ status: 'proposed', 'document.ledger': { $ne: 'corp' } });
 
@@ -66,9 +67,13 @@ async function summary({ now = new Date() } = {}) {
   for (const item of soon.slice(0, MAX_LABELS)) parts.push(`${item.text} ${phrase(item.days, item.kind)}`);
   if (late.length) parts.push(`relevés à déposer : ${late.slice(0, MAX_LABELS).join(', ')}`);
   if (proposals) parts.push(`${proposals} lien${proposals > 1 ? 's' : ''} à confirmer`);
+  if (coverage.period && !coverage.complete) parts.push(coverage.status === 'unknown' ? 'couverture des comptes à confirmer' : 'période financière partielle');
   return {
     summary: parts.length ? `Finances : ${parts.join(' · ')}` : null,
-    counts: { overdue: overdue.length, dueSoon: soon.length, lateSeries: late.length, missingStatements: missing, proposals }
+    counts: { overdue: overdue.length, dueSoon: soon.length, lateSeries: late.length, missingStatements: missing, proposals },
+    // Minimal cross-surface projection: no amounts, account keys or statement paths.
+    coverage: { kind: coverage.kind, status: coverage.status, complete: coverage.complete,
+      inventoryConfirmed: coverage.inventoryConfirmed, period: coverage.period, dataAsOf: coverage.dataAsOf }
   };
 }
 

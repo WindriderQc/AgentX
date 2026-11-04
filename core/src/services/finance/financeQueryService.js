@@ -6,7 +6,8 @@
 const FinanceStatement = require('../../../models/FinanceStatement');
 const FinanceTransaction = require('../../../models/FinanceTransaction');
 const { ledgerFilter, isLiability } = require('./ledgers');
-const { payrollCoverage } = require('./financeCompleteness');
+const { coverageContext, assessCoverage, monthsBetween: expectedMonths, lastDayOf, validDate } = require('./financeCompleteness');
+const { monthlyAverage, periodTotal } = require('./financeMeasures');
 const { confirmedFor, transactionKey } = require('./financeDocumentLinks');
 
 const MAX_ROWS = 500;
@@ -28,7 +29,7 @@ function escapeRegex(value) {
 function optionalDate(value, field) {
   if (value == null || value === '') return null;
   const text = String(value).trim();
-  if (!ISO_DATE.test(text)) throw new FinanceQueryError(`${field} must be a YYYY-MM-DD date`);
+  if (!ISO_DATE.test(text) || !validDate(text)) throw new FinanceQueryError(`${field} must be a valid YYYY-MM-DD date`);
   return text;
 }
 
@@ -80,28 +81,41 @@ async function transactions(query = {}) {
   return { rows: rows.map(({ _id, fingerprint, occurrence, ...row }) => {
     const key = transactionKey({ ...row, fingerprint, occurrence });
     return { id: String(_id), ...row, document: documents.get(key) || null };
-  }), totals: summary, truncated: summary.count > rows.length };
+  }), totals: summary, truncated: summary.count > rows.length, coverage: await assessCoverage(query),
+  amountConvention: { amountCents: 'Change in account balance; a positive card or loan amount increases the amount owed.',
+    flowCents: 'Owner cash flow; negative is outgoing, positive is incoming. A bank-channel label does not identify its beneficiary.' } };
 }
 
-// A month without a payroll statement is incomplete: it is listed with its totals
-// but left out of the average. An account filter selects a series, so no check applies.
+// Expected calendar months come from the requested period, never from the
+// existence of matching transactions. A covered empty month is a true zero.
 async function monthly(query = {}) {
   const filter = transactionFilter(query);
-  const [months, payroll] = await Promise.all([
+  const [months, coverage] = await Promise.all([
     FinanceTransaction.aggregate([
       { $match: filter },
       { $group: { ...totalsStage(), _id: { $substrBytes: ['$date', 0, 7] } } },
       { $sort: { _id: 1 } }
     ]),
-    query.account ? null : payrollCoverage({ ledger: query.ledger })
+    coverageContext(query)
   ]);
-  const rows = months.map(({ _id, ...rest }) => ({ month: _id, ...rest, complete: payroll ? payroll.isComplete(_id) : true }));
+  const period = coverage.bounds(query) || (months.length ? { from: `${months[0]._id}-01`, to: lastDayOf(months.at(-1)._id) } : null);
+  const byMonth = new Map(months.map(({ _id, ...rest }) => [_id, rest]));
+  const rows = (period ? expectedMonths(period.from, period.to) : []).map(month => {
+    const evidence = coverage.month(month, period);
+    const stored = byMonth.get(month);
+    const totals = stored || { count: 0, inCents: evidence.complete ? 0 : null,
+      outCents: evidence.complete ? 0 : null, netCents: evidence.complete ? 0 : null };
+    return { month, ...totals, complete: evidence.eligibleForMonthlyAverage, coverage: evidence,
+      netMeasure: periodTotal(totals.netCents, evidence.period) };
+  });
   const complete = rows.filter((m) => m.complete);
+  const average = monthlyAverage(complete.reduce((sum, row) => sum + row.netCents, 0), complete.map(row => row.month));
+  const quality = period ? coverage.at(period.from, period.to) : await assessCoverage(query);
   return {
     months: rows,
-    averageNetCents: complete.length ? Math.round(complete.reduce((sum, m) => sum + m.netCents, 0) / complete.length) : null,
+    averageNetCents: average.amountCents, averageNet: average,
     incompleteMonths: rows.filter((m) => !m.complete).map((m) => m.month),
-    dataAsOf: payroll?.asOf || null
+    dataAsOf: quality.dataAsOf, period, coverage: quality
   };
 }
 
@@ -116,7 +130,7 @@ async function merchants(query = {}) {
     { $sort: { outCents: 1, _id: 1 } },
     { $limit: limit }
   ]);
-  return { merchants: rows.map(({ _id, ...rest }) => rest) };
+  return { merchants: rows.map(({ _id, ...rest }) => rest), coverage: await assessCoverage(query) };
 }
 
 // Totals per category (null = not categorized yet), largest outflow first.
@@ -127,7 +141,7 @@ async function byCategory(query = {}) {
     { $group: { ...totalsStage(), _id: '$category' } },
     { $sort: { outCents: 1, _id: 1 } }
   ]);
-  return { categories: rows.map(({ _id, ...rest }) => ({ category: _id || null, ...rest })) };
+  return { categories: rows.map(({ _id, ...rest }) => ({ category: _id || null, ...rest })), coverage: await assessCoverage(query) };
 }
 
 // Latest known closing balance per account, from reconciled statements only.
@@ -147,7 +161,7 @@ async function balances({ ledger } = {}) {
       }
     }
   }
-  return { accounts: [...latest.values()].sort((a, b) => a.accountKey.localeCompare(b.accountKey)) };
+  return { accounts: [...latest.values()].sort((a, b) => a.accountKey.localeCompare(b.accountKey)), coverage: await assessCoverage({ ledger }) };
 }
 
 async function statements({ status, ledger } = {}) {
@@ -171,13 +185,14 @@ function monthsBetween(from, to) {
 // no statement covers between its first and last one, so the owner knows what
 // to fetch. A statement ending mid-month leaves a gap even when the months on
 // either side are present.
-async function coverage({ ledger } = {}) {
+async function coverage(query = {}) {
+  const { ledger } = query;
   const rows = await FinanceStatement.find({ status: 'reconciled', ...ledgerFilter(ledger) }).select('issuer accountLast4 periodStart periodEnd').lean();
   const series = new Map();
   for (const row of rows) {
     const from = row.periodStart || row.periodEnd;
     const to = row.periodEnd || row.periodStart;
-    if (!from) continue;
+    if (!validDate(from) || !validDate(to) || from > to) continue;
     const name = `${row.issuer}${row.accountLast4 ? ` ···${row.accountLast4}` : ''}`;
     series.set(name, [...(series.get(name) || []), { from, to }]);
   }
@@ -196,7 +211,7 @@ async function coverage({ ledger } = {}) {
     const sorted = [...covered].sort();
     result.push({ series: name, first: sorted[0], last: sorted.at(-1), months: sorted.length, missing, gaps });
   }
-  return { series: result.sort((a, b) => a.series.localeCompare(b.series)) };
+  return { ...await assessCoverage(query), series: result.sort((a, b) => a.series.localeCompare(b.series)) };
 }
 
 // Tags in use, most used first, for the explorer's tag picker.

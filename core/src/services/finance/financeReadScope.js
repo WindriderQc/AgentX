@@ -4,7 +4,7 @@
 // service. Unknown selectors fail instead of silently widening a question.
 const FILTERS = ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory', 'excludeTag'];
 const SPECS = {
-  balances: [], statements: ['status'], coverage: [], tags: [],
+  balances: [], statements: ['status'], coverage: ['account', 'from', 'to'], tags: [],
   transactions: [...FILTERS, 'limit'], monthly: FILTERS, yearly: FILTERS,
   merchants: [...FILTERS, 'limit'], categories: FILTERS,
   insights: [...FILTERS, 'months'], uncategorized: ['limit'], documents: ['minCents'],
@@ -33,7 +33,7 @@ function readScope(action, input = {}) {
     }
     if (typeof value !== 'string' || value.trim().length > LENGTHS[key]) throw invalid(`${key} must be a bounded string`);
     query[key] = value.trim();
-    if (['from', 'to'].includes(key) && !/^\d{4}-\d{2}-\d{2}$/.test(query[key])) throw invalid(`${key} must be a YYYY-MM-DD date`);
+    if (['from', 'to'].includes(key) && !require('./financeCompleteness').validDate(query[key])) throw invalid(`${key} must be a valid YYYY-MM-DD date`);
   }
   if (query.from && query.to && query.from > query.to) throw invalid('from must not be after to');
   if (query.status && !['reconciled', 'needs_review'].includes(query.status)) throw invalid('status must be reconciled or needs_review');

@@ -13,6 +13,8 @@ const FinanceRule = require('../../models/FinanceRule');
 const FinanceAlert = require('../../models/FinanceAlert');
 const FinanceOverride = require('../../models/FinanceOverride');
 const categories = require('../../src/services/finance/financeCategories');
+const EOP_COVERAGE = [{ ledger: 'perso', accountKey: 'caisse-exemple|0000|EOP' }];
+const FOLIO_COVERAGE = [...EOP_COVERAGE, { ledger: 'perso', accountKey: 'caisse-exemple|0000|MC1' }];
 
 // Synthetic statement: a chequing folio and a line of credit whose automatic
 // repayment sits in the interest column and leaves the balance unchanged (the
@@ -60,7 +62,8 @@ const extractWith = (...answers) => (text) => extractStatement(text, fakeInferen
 const readText = async () => 'statement text layer '.repeat(40);
 
 beforeEach(async () => {
-  await Promise.all([FinanceStatement.deleteMany({}), FinanceTransaction.deleteMany({}), FinanceRule.deleteMany({}), FinanceAlert.deleteMany({}), FinanceOverride.deleteMany({})]);
+  await Promise.all([FinanceStatement.deleteMany({}), FinanceTransaction.deleteMany({}), FinanceRule.deleteMany({}), FinanceAlert.deleteMany({}), FinanceOverride.deleteMany({}),
+    require('../../models/FinancePlan').deleteMany({})]);
   await require('mongoose').connection.db.collection('finance_ingestions').deleteMany({});
   await Promise.all([FinanceStatement.syncIndexes(), FinanceTransaction.syncIndexes()]);
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'finance-test-'));
@@ -195,6 +198,7 @@ describe('ledger ingestion', () => {
 
 describe('ledger questions', () => {
   beforeEach(async () => {
+    await require('../../src/services/finance/financePlan').savePlan({ coverageAccounts: FOLIO_COVERAGE });
     await ingestDocument(await writeDoc('june.pdf'), { readText, extract: extractWith(statement()) });
   });
 
@@ -203,7 +207,7 @@ describe('ledger questions', () => {
     expect(result.totals).toEqual({ count: 2, inCents: 0, outCents: -900, netCents: -900 });
     expect(result.rows).toHaveLength(2);
     expect((await query.monthly({ account: 'eop' })).months)
-      .toEqual([{ month: '2026-06', count: 3, inCents: 250000, outCents: -900, netCents: 249100, complete: true }]);
+      .toMatchObject([{ month: '2026-06', count: 3, inCents: 250000, outCents: -900, netCents: 249100, complete: true }]);
   });
 
   test('reports the latest closing balance per account', async () => {
@@ -377,6 +381,7 @@ describe('history, insights and export', () => {
   }
 
   beforeEach(async () => {
+    await require('../../src/services/finance/financePlan').savePlan({ coverageAccounts: EOP_COVERAGE });
     const plan = [
       ['2025-01', [['2025-01-02', 'PAIE EMPLOYEUR', 300000], ['2025-01-05', 'NETFLIX', -1799], ['2025-01-09', 'DOJO XYZ', -14900]]],
       ['2025-02', [['2025-02-02', 'PAIE EMPLOYEUR', 300000], ['2025-02-05', 'NETFLIX', -1799], ['2025-02-09', 'EPICERIE', -40000]]],
@@ -396,18 +401,19 @@ describe('history, insights and export', () => {
 
   test('totals each year, for everything or one tag', async () => {
     expect((await analysis.yearly({ tag: 'karate' })).years)
-      .toEqual([{ year: '2025', count: 2, inCents: 0, outCents: -29800, netCents: -29800, firstDate: '2025-01-09', lastDate: '2025-03-09',
-        complete: true, incompleteMonths: [] }]);
+      .toMatchObject([{ year: '2025', count: 2, inCents: 0, outCents: -29800, netCents: -29800, firstDate: '2025-01-09', lastDate: '2025-03-09',
+        complete: false, incompleteMonths: ['2025-04', '2025-05', '2025-06', '2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12'] },
+      { year: '2026', count: 0, netCents: null, complete: false }]);
     expect((await analysis.yearly({})).years.map((y) => [y.year, y.count])).toEqual([['2025', 9], ['2026', 3]]);
   });
 
   test('finds stable recurring charges and excludes internal transfers', async () => {
     const result = await analysis.insights({ months: 18 });
-    expect(result.period).toEqual({ from: '2024-08-01', to: '2026-01-20', months: 18 });
+    expect(result.period).toEqual({ from: '2024-08-01', to: '2026-01-31', months: 18 });
     expect(result.recurring.map((r) => [r.description, r.months, r.monthlyCents])).toEqual([['NETFLIX', 4, -1799]]);
     expect(result.largeExpenses.map((e) => e.description)).not.toContain('VIREMENT A EPARGNE');
     const january = result.savings.find((s) => s.month === '2026-01');
-    expect(january).toEqual({ month: '2026-01', inCents: 310000, outCents: -1999, netCents: 308001, complete: true, savingsRatePercent: 99.4 });
+    expect(january).toMatchObject({ month: '2026-01', inCents: 310000, outCents: -1999, netCents: 308001, complete: true, savingsRatePercent: 99.4 });
   });
 
   test('exports an Excel-friendly CSV with totals', async () => {
@@ -508,6 +514,8 @@ describe('payroll coverage, standing alerts and deadlines', () => {
   }
 
   test('marks a month without a full payroll statement incomplete, everywhere', async () => {
+    await plan.savePlan({ coverageAccounts: [...EOP_COVERAGE,
+      { ledger: 'perso', accountKey: 'exemple|1111|MC1', from: '2026-04-01', to: '2026-04-30' }] });
     await ingest('mar.pdf', account('EOP', ['2026-03-01', '2026-03-31'], [['2026-03-02', 'PAIE EMPLOYEUR', 300000]]));
     await ingest('apr-card.pdf', account('MC 1', ['2026-04-01', '2026-04-30'], [['2026-04-07', 'EPICERIE', -20000]]));
     await ingest('may.pdf', account('EOP', ['2026-05-01', '2026-05-31'],
@@ -515,6 +523,7 @@ describe('payroll coverage, standing alerts and deadlines', () => {
     await ingest('jun-partial.pdf', account('EOP', ['2026-06-01', '2026-06-15'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000]]));
 
     const monthly = await query.monthly({ ledger: 'perso' });
+    expect(monthly.coverage.inventoryConfirmed).toBe(true);
     expect(monthly.months.map((m) => [m.month, m.complete])).toEqual([['2026-03', true], ['2026-04', false], ['2026-05', true], ['2026-06', false]]);
     expect(monthly.incompleteMonths).toEqual(['2026-04', '2026-06']);
     expect(monthly.dataAsOf).toBe('2026-06-15');
@@ -528,16 +537,18 @@ describe('payroll coverage, standing alerts and deadlines', () => {
     expect(result.dataAsOf).toBe('2026-06-15');
 
     const years = await analysis.yearly({});
-    expect(years.years).toEqual([expect.objectContaining({ year: '2026', complete: false, incompleteMonths: ['2026-04', '2026-06'] })]);
+    expect(years.years).toEqual([expect.objectContaining({ year: '2026', complete: false,
+      incompleteMonths: ['2026-01', '2026-02', '2026-04', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12'] })]);
     expect(years.dataAsOf).toBe('2026-06-15');
   });
 
-  test('marks nothing incomplete when a ledger has no payroll statement at all', async () => {
+  test('does not infer complete coverage from an undeclared card-only book', async () => {
     await ingest('card-only.pdf', account('MC 1', ['2026-04-01', '2026-04-30'], [['2026-04-07', 'EPICERIE', -20000]]));
     const monthly = await query.monthly({});
-    expect(monthly.months.every((m) => m.complete)).toBe(true);
-    expect(monthly.incompleteMonths).toEqual([]);
-    expect(monthly.dataAsOf).toBeNull();
+    expect(monthly.months.every((m) => m.complete)).toBe(false);
+    expect(monthly.incompleteMonths).toEqual(['2026-04']);
+    expect(monthly.dataAsOf).toBe('2026-04-30');
+    expect(monthly.averageNetCents).toBeNull();
   });
 
   test('keeps a stale account listed while it stays stale, and not after a threshold change', async () => {
@@ -800,7 +811,7 @@ describe('finance line for the daily brief', () => {
       openItems: [{ title: 'Odyssée 150 $', dueDate: '2026-10-08', kind: 'payment' }, { title: 'Impôt corp', dueDate: '2026-09-30' }]
     });
     const line = await brief.summary({ now: new Date('2026-10-01T12:00:00Z') });
-    expect(line.summary).toBe('Finances : Impôt corp en retard · Odyssée à payer dans 7 jours · relevés à déposer : Caisse Exemple');
+    expect(line.summary).toBe('Finances : Impôt corp en retard · Odyssée à payer dans 7 jours · relevés à déposer : Caisse Exemple · couverture des comptes à confirmer');
     // Counts may be written; no amount ($ or cents) and no account-like number.
     expect(line.summary).not.toMatch(/\$|\d{3,}/);
     expect(line.counts).toMatchObject({ overdue: 1, dueSoon: 1, lateSeries: 1, missingStatements: 1 });
@@ -821,7 +832,7 @@ describe('finance line for the daily brief', () => {
     await eop(['2026-07-15', '2026-07-31'], 'PAIE');
     await plan.savePlan({ openItems: [{ title: 'Impôt corp', briefLabel: 'Payer le T2 corp', dueDate: '2026-09-30' }] });
     const line = await brief.summary({ now: new Date('2026-10-01T12:00:00Z') });
-    expect(line.summary).toBe('Finances : Payer le T2 corp en retard · relevés à déposer : Caisse Exemple');
+    expect(line.summary).toBe('Finances : Payer le T2 corp en retard · relevés à déposer : Caisse Exemple · couverture des comptes à confirmer');
     expect(line.counts.missingStatements).toBe(1);
   });
 
@@ -834,7 +845,8 @@ describe('finance line for the daily brief', () => {
   test('says nothing when there is nothing to say', async () => {
     await plan.savePlan({});
     const line = await brief.summary({ now: new Date('2026-09-01T12:00:00Z') });
-    expect(line).toEqual({ summary: null, counts: { overdue: 0, dueSoon: 0, lateSeries: 0, missingStatements: 0, proposals: 0 } });
+    expect(line).toMatchObject({ summary: null, counts: { overdue: 0, dueSoon: 0, lateSeries: 0, missingStatements: 0, proposals: 0 },
+      coverage: { status: 'unavailable', complete: false } });
   });
 });
 
@@ -948,6 +960,7 @@ describe('savings goals and the monthly review', () => {
     await eop(['2026-07-01', '2026-07-10'], [['2026-07-05', 'EPARGNE VAC', -90000]]);
     await categories.saveRules({ pattern: 'epargne vac', category: 'Restaurants', tags: ['vacances'] });
     await plan.savePlan({
+      coverageAccounts: EOP_COVERAGE,
       budget: [{ label: 'Restos', category: 'Restaurants', monthlyCents: 10000 }],
       goals: [
         { name: 'Vacances', targetCents: 500000, targetDate: '2026-12-31', priority: 'high', source: { kind: 'tag', ref: 'vacances' } },
@@ -964,11 +977,11 @@ describe('savings goals and the monthly review', () => {
 
   test('a goal with no pace says so, and a reached goal needs nothing more', async () => {
     await eop(['2026-06-01', '2026-06-30'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000]]);
-    await plan.savePlan({ assets: [{ name: 'REER', valueCents: 2000000 }],
+    await plan.savePlan({ coverageAccounts: EOP_COVERAGE, assets: [{ name: 'REER', valueCents: 2000000 }],
       goals: [{ name: 'REER', targetCents: 1500000, priority: 'medium', source: { kind: 'asset', ref: 'REER' } }] });
     const [reer] = (await goals.goals({ now: new Date('2026-07-15T12:00:00Z') })).goals;
     expect(reer).toMatchObject({ progressCents: 2000000, remainingCents: 0, status: 'reached', requiredMonthlyCents: 0 });
-    await plan.savePlan({ assets: [{ name: 'Compte', valueCents: 1 }], goals: [{ name: 'Tag', targetCents: 9000, source: { kind: 'tag', ref: 'nothing' } }] });
+    await plan.savePlan({ coverageAccounts: EOP_COVERAGE, assets: [{ name: 'Compte', valueCents: 1 }], goals: [{ name: 'Tag', targetCents: 9000, source: { kind: 'tag', ref: 'nothing' } }] });
     const [tag] = (await goals.goals({ now: new Date('2026-07-15T12:00:00Z') })).goals;
     // A tag with no movement has a pace of zero: nothing is set aside.
     expect(tag).toMatchObject({ status: 'no_pace', paceMonthlyCents: 0 });
@@ -977,7 +990,7 @@ describe('savings goals and the monthly review', () => {
   test('the monthly review plans the last complete month against actual and lists the three largest overspends', async () => {
     await eop(['2026-06-01', '2026-06-30'], [['2026-06-02', 'PAIE EMPLOYEUR', 300000], ['2026-06-10', 'EPARGNE VAC', -20000]]);
     await categories.saveRules({ pattern: 'epargne vac', category: 'Restaurants', tags: ['vacances'] });
-    await plan.savePlan({ budget: [{ label: 'Restos', category: 'Restaurants', monthlyCents: 10000 }, { label: 'Paie', category: 'Revenus', monthlyCents: 300000 }] });
+    await plan.savePlan({ coverageAccounts: EOP_COVERAGE, budget: [{ label: 'Restos', category: 'Restaurants', monthlyCents: 10000 }, { label: 'Paie', category: 'Revenus', monthlyCents: 300000 }] });
     const review = await goals.monthlyReview({ now: new Date('2026-07-15T12:00:00Z') });
     expect(review.month).toBe('2026-06');
     expect(review.topGaps).toEqual([expect.objectContaining({ label: 'Restos', plannedCents: 10000, actualCents: 20000, gapCents: 10000 })]);
@@ -1142,7 +1155,7 @@ describe('financial plan and situation', () => {
     await plan.savePlan({ debts: [{ name: 'Marge', accountCode: 'MC1', rateBp: 845, paymentCents: 0 }] });
     const s = await plan.situation({ months: 1 });
     expect(s.window.months).toEqual(['2026-05']);
-    expect(s.monthly).toEqual({ inCents: 0, outCents: 0, netCents: 0 });
+    expect(s.monthly).toMatchObject({ inCents: null, outCents: null, netCents: null });
     expect(s.debts[0]).toMatchObject({ liveBalanceCents: 0, currentCents: 0 });
     expect(s.totalDebtCents).toBe(0);
   });
@@ -1154,6 +1167,7 @@ describe('financial plan and situation', () => {
         { label: 'Café', category: 'Restaurants', tag: 'cafe', monthlyCents: 500 },
         { label: 'Restos', category: 'Restaurants', monthlyCents: 10000 }
       ],
+      coverageAccounts: FOLIO_COVERAGE,
       debts: [{ name: 'Marge', accountCode: 'MC1', rateBp: 845, paymentCents: 0, status: 'Sain' },
         { name: 'Impôt', balanceCents: 50000, status: 'À payer' }],
       credit: [{ name: 'Marge', accountCode: 'MC1', limitCents: 1700000, status: 'Coussin' }],
@@ -1169,12 +1183,12 @@ describe('financial plan and situation', () => {
     expect(s.credit[0]).toMatchObject({ usedCents: 1494277, availableCents: 205723 });
     expect(s.netWorthCents).toBe(50000000 + 349100 - 1544277);
     expect(s.budget.map((b) => [b.label, b.actualMonthlyCents])).toEqual([['Paye', 250000], ['Café', 900], ['Restos', 0]]);
-    expect(s.monthly).toEqual({ inCents: 250000, outCents: -900, netCents: 249100 });
+    expect(s.monthly).toMatchObject({ inCents: 250000, outCents: -900, netCents: 249100 });
     expect(s).toMatchObject({ provisionsMonthlyCents: 30000, taxRoomCents: 1000000, phase: 'Reconstruction' });
     expect(s.openItems).toEqual([{ title: 'Relevé manquant', detail: '', severity: 'warning', briefLabel: null, kind: null, dueDate: null, recurrence: null }]);
     expect(s.excludeTags).toEqual(['refi']);
     await categories.saveRules({ pattern: 'cafe du coin', category: 'Restaurants', tags: ['cafe', 'refi'] });
-    expect((await plan.situation({ months: 1 })).monthly).toEqual({ inCents: 250000, outCents: 0, netCents: 250000 });
+    expect((await plan.situation({ months: 1 })).monthly).toMatchObject({ inCents: 250000, outCents: 0, netCents: 250000 });
     expect((await query.monthly({ account: 'EOP', excludeTag: 'refi' })).months[0].count).toBe(1);
     expect((await query.transactions({ tag: 'cafe', excludeTag: 'refi' })).totals.count).toBe(0);
     expect((await plan.getPlan()).junk).toBeUndefined();

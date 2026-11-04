@@ -6,12 +6,7 @@
   const $ = (id) => document.getElementById(id);
   if (new URLSearchParams(window.location.search).get('ledger') === 'corp') return; // the plan is personal
 
-  function money(cents) {
-    if (!Number.isFinite(cents)) return '—';
-    const sign = cents < 0 ? '-' : '';
-    const abs = Math.abs(Math.round(cents));
-    return `${sign}$${String(Math.trunc(abs / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${String(abs % 100).padStart(2, '0')}`;
-  }
+  const { money, dollars, coverageText, monthLabel: qualification } = window.AgentXFinanceDisplay;
 
   function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
@@ -54,8 +49,8 @@
     const text = css.getPropertyValue('--finance-muted').trim();
     const grid = css.getPropertyValue('--finance-grid').trim();
     const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const labels = months.map((m) => { const [y, mm] = m.month.split('-'); return `${MONTHS[Number(mm) - 1]} ${y.slice(2)}`; });
-    const values = months.map((m) => m.netCents / 100);
+    const labels = months.map((m) => { const [y, mm] = m.month.split('-'); return `${MONTHS[Number(mm) - 1]} ${y.slice(2)}${m.complete ? '' : ' · partiel'}`; });
+    const values = months.map(m => dollars(m.netCents));
     const labelPlugin = {
       id: 'netLabels',
       afterDatasetsDraw(chart) {
@@ -66,6 +61,7 @@
         ctx.textAlign = 'center';
         chart.getDatasetMeta(0).data.forEach((bar, i) => {
           const v = months[i].netCents;
+          if (!Number.isSafeInteger(v)) return;
           ctx.fillText(`${v > 0 ? '+' : v < 0 ? '-' : ''}$${Math.abs(Math.round(v / 100)).toLocaleString('en-US')}`, bar.x, v >= 0 ? bar.y - 5 : bar.y + 13);
         });
         ctx.restore();
@@ -75,9 +71,9 @@
       window.Chart.getChart(canvas)?.destroy();
       new window.Chart(canvas, {
         type: 'bar',
-        data: { labels, datasets: [{ data: values, backgroundColor: values.map((v) => (v >= 0 ? good : bad)), borderRadius: 4, maxBarThickness: 40 }] },
+        data: { labels, datasets: [{ data: values, backgroundColor: values.map((v, index) => !months[index].complete ? text : v >= 0 ? good : bad), borderRadius: 4, maxBarThickness: 40 }] },
         options: { responsive: true, maintainAspectRatio: false, animation: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `Net: ${money(Math.round(c.parsed.y * 100))}` } } },
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `Net : ${money(months[c.dataIndex].netCents)} ${qualification(months[c.dataIndex])}` } } },
           scales: { x: { grid: { display: false }, ticks: { color: text } },
             y: { grid: { color: grid }, border: { display: false }, ticks: { color: text, callback: (v) => `$${Math.round(v).toLocaleString('en-US')}` } } } },
         plugins: [labelPlugin]
@@ -85,14 +81,14 @@
     }
     $('financeNetNote').textContent = 'In − out per month, all accounts, internal transfers excluded'
       + (excludedTags.length ? ` and exceptional movements (${excludedTags.map((t) => `#${t}`).join(', ')}) excluded` : '')
-      + ' · last 12 months with data';
+      + ' · mois partiels en couleur atténuée; une absence de données reste un espace vide';
   }
 
   function render(s) {
     $('financePhase').textContent = s.phase || '';
     const asOf = s.cash?.asOf ? `as of ${s.cash.asOf}` : '';
     const averaged = s.window?.averageMonths || [];
-    const window = averaged.length ? `average ${averaged[0]} → ${averaged.at(-1)}, complete months only` : '';
+    const window = s.monthly.netMeasure?.scopeText || '';
     $('financeSituation').replaceChildren(
       tile('Cash (EOP account)', s.cash ? money(s.cash.balanceCents) : '—', asOf),
       tile('Total debt', money(s.totalDebtCents), `${s.debts.length} tracked debt(s)`),
@@ -102,11 +98,13 @@
         s.netWorthCents < 0 ? 'finance-tile-bad' : ''),
       ...(s.taxRoom.length ? [tile('Available tax shelters', money(s.taxRoomCents),
         s.taxRoom.map((t) => `${t.name} ${money(t.roomCents)}`).join(' + '))] : []),
-      tile('Average monthly net', money(s.monthly.netCents), window, s.monthly.netCents < 0 ? 'finance-tile-bad' : 'finance-tile-good'));
+      tile('Net mensuel moyen', s.monthly.netMeasure?.display || '—', window,
+        s.monthly.netCents === null ? '' : s.monthly.netCents < 0 ? 'finance-tile-bad' : 'finance-tile-good'));
     $('financeSituationNote').textContent = s.planUpdatedAt
       ? `Plan updated ${String(s.planUpdatedAt).slice(0, 10)} · balances and actuals from the ledger, internal transfers`
         + `${s.excludeTags?.length ? ` and exceptional movements (${s.excludeTags.map((t) => `#${t}`).join(', ')})` : ''} excluded.`
       : 'No saved plan: budget, debts and provisions appear once the plan is imported.';
+    $('financeSituationNote').textContent += ` ${coverageText(s.coverage)}`;
 
     $('financeDone').replaceChildren(...s.milestones.map((m) => el('li', { class: m.done ? 'finance-done' : 'finance-todo' },
       `${m.done ? '✓' : '○'} ${m.text}`)));
@@ -139,8 +137,8 @@
     const largest = Math.max(1, ...lines.map((b) => Math.max(b.monthlyCents, b.actualMonthlyCents)));
     $('financeBudget').tBodies[0].replaceChildren(...s.budget.map((b) => {
       const income = b.category === 'Revenus';
-      const over = income ? b.gapCents < 0 : b.gapCents > 0;
-      const width = (value) => `${Math.min(100, (value / largest) * 100).toFixed(1)}%`;
+      const over = b.gapCents !== null && (income ? b.gapCents < 0 : b.gapCents > 0);
+      const width = value => `${value === null ? 0 : Math.min(100, (value / largest) * 100).toFixed(1)}%`;
       return el('tr', { class: over ? 'finance-over' : '' },
         el('td', {}, b.label, el('small', {}, ` · ${b.category}${b.tag ? ` #${b.tag}` : ''}`)),
         el('td', { class: 'num' }, money(b.monthlyCents)), el('td', { class: 'num' }, money(b.actualMonthlyCents)),
@@ -151,8 +149,8 @@
     }));
     const budgetAveraged = s.window?.averageMonths || [];
     $('financeBudgetNote').textContent = budgetAveraged.length
-      ? `Actual = average of ${budgetAveraged.length} complete months (${budgetAveraged[0]} → ${budgetAveraged.at(-1)}) · total budget spending ${money(s.budgetTotals.monthlyCents)} vs actual ${money(s.budgetTotals.actualMonthlyCents)}`
-      : '';
+      ? `Réel = moyenne mensuelle sur ${budgetAveraged.length} mois couverts (${budgetAveraged.join(', ')}) · budget ${money(s.budgetTotals.monthlyCents)}/mois, réel ${money(s.budgetTotals.actualMonthlyCents)}/mois`
+      : 'Réel et écarts indisponibles : aucun mois entier admissible.';
     show('financeBudgetCard', s.budget.length > 0);
 
     $('financeProvisions').tBodies[0].replaceChildren(...s.provisions.map((p) => el('tr', {},
