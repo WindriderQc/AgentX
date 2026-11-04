@@ -11,7 +11,7 @@ const FinanceTransaction = require('../../../models/FinanceTransaction');
 const FinanceOverride = require('../../../models/FinanceOverride');
 const { ledgerFilter } = require('./ledgers');
 
-const overrideKey = (row) => `${row.accountKey}|${row.date}|${row.fingerprint}|${row.occurrence}`;
+const { keyOf: overrideKey } = require('./financeTransactionIdentity');
 
 const CATEGORIES = Object.freeze([
   'Revenus', 'Logement', 'Épicerie', 'Restaurants', 'Transport', 'Auto', 'Enfants et activités', 'Santé',
@@ -56,6 +56,25 @@ function matchRule(rules, key) {
   return best;
 }
 
+function classification(row, rules, manual) {
+  const decided = manual.get(overrideKey(row));
+  const rule = decided ? null : matchRule(rules, descriptionKey(row.description));
+  return { rule, category: decided ? decided.category : rule ? rule.category : null,
+    tags: decided ? decided.tags : rule ? rule.tags : [], manual: Boolean(decided) };
+}
+
+// An ingestion prepares the exact classified after-images before its first
+// accounting write. The ordinary rule refresh uses the same decision logic.
+async function classifyRows(rows) {
+  const rules = await FinanceRule.find().lean();
+  const overrides = await FinanceOverride.find().lean();
+  const manual = new Map(overrides.map(item => [overrideKey(item), item]));
+  return rows.map(row => {
+    const { rule, ...values } = classification(row, rules, manual);
+    return { ...row, ...values };
+  });
+}
+
 // Recomputes category/tags for the given transactions (all by default).
 async function applyRules(filter = {}) {
   const [rules, overrides] = await Promise.all([FinanceRule.find().lean(), FinanceOverride.find().lean()]);
@@ -66,12 +85,8 @@ async function applyRules(filter = {}) {
     .select('accountKey date fingerprint occurrence description category tags manual').lean().cursor();
   const ops = [];
   for await (const row of cursor) {
-    const decided = manual.get(overrideKey(row));
-    const rule = decided ? null : matchRule(rules, descriptionKey(row.description));
+    const { rule, category, tags, manual: isManual } = classification(row, rules, manual);
     if (rule) winners.set(rule.pattern, (winners.get(rule.pattern) || 0) + 1);
-    const category = decided ? decided.category : rule ? rule.category : null;
-    const tags = decided ? decided.tags : rule ? rule.tags : [];
-    const isManual = Boolean(decided);
     if (row.category !== category || JSON.stringify(row.tags || []) !== JSON.stringify(tags) || Boolean(row.manual) !== isManual) {
       ops.push({ updateOne: { filter: { _id: row._id }, update: { $set: { category, tags, manual: isManual } } } });
     }
@@ -158,6 +173,6 @@ async function uncategorized({ limit, ledger } = {}) {
 }
 
 module.exports = { CATEGORIES, descriptionKey, cleanRule, matchRule, applyRules, listRules, saveRules, deleteRule, uncategorized,
-  setTransactions, FinanceCategoryError };
+  setTransactions, classifyRows, FinanceCategoryError };
 
-require('./financeAccess').guard(module.exports, ['applyRules', 'listRules', 'saveRules', 'deleteRule', 'uncategorized', 'setTransactions']);
+require('./financeAccess').guard(module.exports, ['applyRules', 'classifyRows', 'listRules', 'saveRules', 'deleteRule', 'uncategorized', 'setTransactions']);

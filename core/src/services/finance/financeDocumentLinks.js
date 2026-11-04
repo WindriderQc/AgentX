@@ -32,7 +32,7 @@ const TRANSFERS = 'Virements internes';
 const dayOf = (date) => Date.parse(`${date}T00:00:00Z`) / DAY_MS;
 const dayString = (day) => new Date(day * DAY_MS).toISOString().slice(0, 10);
 const fold = (value) => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-const transactionKey = (row) => [row.accountKey, row.date, row.fingerprint, row.occurrence].join('|');
+const { keyOf: transactionKey } = require('./financeTransactionIdentity');
 const includesAny = (text, words) => words.some((word) => fold(text).includes(word));
 const claimMaxCents = () => Number.parseInt(process.env.FINANCE_DOCUMENT_CLAIM_MAX_CENTS, 10) || DEFAULT_CLAIM_MAX_CENTS;
 

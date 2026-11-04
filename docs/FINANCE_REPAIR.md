@@ -27,11 +27,17 @@ receive `FINANCE_MAINTENANCE` (503). Repair observation stays available through
 not figures or execution credentials.
 
 The operator must name the native loopback Core origin. Before dispatch, the
-executor verifies that Core advertises `agentx.finance-maintenance/v1` for the
+executor verifies that Core advertises `agentx.finance-maintenance/v2` for the
 same coordination database, then verifies that its ordinary inbox API actually
 refuses admission while the repair holds it. All Core Finance writers must run
 this implementation before application; an old service or a direct database
 administrator is not made safe by a new CLI alone.
+
+The v2 maintenance protocol also excludes pending ordinary ingestions. Their
+native writer and recovery entrance are described in [Finance](FINANCE.md).
+Existing v1/v2 repair manifest digests and receipts remain unchanged. Statements
+with explicit `rowKeys` membership require a separately reviewed membership-aware
+repair and are refused by this legacy-identity repair contract.
 
 Each executor also holds a Linux kernel `flock` on its private receipt root.
 The writer retains the locked file descriptor itself; a helper's death cannot

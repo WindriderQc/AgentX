@@ -17,19 +17,21 @@ test('adds display strings beside every cents field, nested', () => {
   });
 });
 
-test('forwards only the filters of the chosen question to Core', async () => {
+test('forwards the selected filters and reports the requested scope', async () => {
   let captured;
   const ask = createCoreFinanceClient({ baseUrl: 'http://127.0.0.1:3180', fetchImpl: async (url, options) => {
     captured = { url: String(url), options };
     return { ok: true, json: async () => ({ status: 'success', data: { totals: { netCents: -900 } } }) };
   } });
-  const result = await ask({ action: 'transactions', q: ' dojo ', from: '2026-05-01', status: 'ignored', limit: 20 });
+  const result = await ask({ action: 'transactions', q: ' dojo ', from: '2026-05-01', limit: 20 });
   assert.equal(captured.url, 'http://127.0.0.1:3180/api/finance/transactions?from=2026-05-01&q=dojo&limit=20');
   assert.equal(captured.options.method, 'GET');
   assert.equal(captured.options.redirect, 'error');
-  assert.deepEqual(result, { action: 'transactions', authority: 'agentx.core', totals: { netCents: -900, netDisplay: '-9,00 $' } });
+  assert.deepEqual(result, { action: 'transactions', authority: 'agentx.core', requested: { ledger: 'perso', from: '2026-05-01', q: 'dojo', limit: '20' },
+    totals: { netCents: -900, netDisplay: '-9,00 $' } });
 
-  await ask({ action: 'balances', account: 'EOP' });
+  await assert.rejects(ask({ action: 'balances', account: 'EOP' }), /account is not supported for balances/);
+  await ask({ action: 'balances' });
   assert.equal(captured.url, 'http://127.0.0.1:3180/api/finance/balances');
 });
 
@@ -70,9 +72,37 @@ test('asks Core for yearly totals and insights with their filters', async () => 
   } });
   const yearly = await ask({ action: 'yearly', tag: 'karate' });
   assert.deepEqual(yearly.years, [{ year: '2025', outCents: -29800, outDisplay: '-298,00 $' }]);
-  await ask({ action: 'insights', months: 24, q: 'ignored' });
+  await ask({ action: 'insights', months: 24, q: 'dojo' });
   assert.deepEqual(urls, ['http://127.0.0.1:3180/api/finance/summary/yearly?tag=karate',
-    'http://127.0.0.1:3180/api/finance/insights?months=24']);
+    'http://127.0.0.1:3180/api/finance/insights?q=dojo&months=24']);
+});
+
+test('keeps the corporate book, merchant and period through the native reader', async () => {
+  const urls = [];
+  const ask = createCoreFinanceClient({ baseUrl: 'http://core.invalid', fetchImpl: async url => {
+    urls.push(new URL(url));
+    return { ok: true, json: async () => ({ status: 'success', data: { scope: { ledger: 'corp' }, accounts: [] } }) };
+  } });
+  const result = await ask({ action: 'balances', ledger: 'corp' });
+  assert.equal(urls[0].searchParams.get('ledger'), 'corp');
+  assert.equal(result.requested.ledger, 'corp');
+  assert.equal(result.scope.ledger, 'corp');
+  await ask({ action: 'insights', ledger: 'corp', from: '2026-01-01', to: '2026-03-31', q: 'Supplier', excludeTag: 'one-off' });
+  assert.deepEqual(Object.fromEntries(urls[1].searchParams), { from: '2026-01-01', to: '2026-03-31', q: 'Supplier', excludeTag: 'one-off', ledger: 'corp' });
+  await ask({ action: 'coverage', ledger: 'corp' });
+  assert.equal(urls[2].pathname, '/api/finance/coverage');
+  assert.equal(urls[2].searchParams.get('ledger'), 'corp');
+  const calls = urls.length;
+  await assert.rejects(ask({ action: 'balances', ledger: 'company' }), /ledger must/);
+  await assert.rejects(ask({ action: 'goals', ledger: 'corp' }), /ledger is not supported/);
+  await assert.rejects(ask({ action: 'monthly', months: 12 }), /months is not supported/);
+  assert.equal(urls.length, calls);
+});
+
+test('refuses an upstream response for another book', async () => {
+  const ask = createCoreFinanceClient({ baseUrl: 'http://core.invalid', fetchImpl: async () => ({ ok: true,
+    json: async () => ({ status: 'success', data: { scope: { ledger: 'perso' } } }) }) });
+  await assert.rejects(ask({ action: 'balances', ledger: 'corp' }), /different finance ledger/);
 });
 
 test('lists alerts with GET and reports them once with POST', async () => {

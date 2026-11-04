@@ -24,6 +24,8 @@ export default definePluginEntry({
         label: "Finance Ledger",
         description: "Read the owner's reconciled finance ledger (AgentX Core). Every amount and total is computed by Core: "
           + "quote the *Display strings as given and never add, average or convert amounts yourself. "
+          + "ledger selects perso (default) or corp for ledger questions; rules are shared and goals/review are personal only. "
+          + "requested records the requested filters; Core scope records the applied book and filters. Never substitute another book or period. "
           + "balances = latest closing balance per account with its date; "
           + "transactions = matching rows plus totals (filter by account code like EOP or CARD, from/to YYYY-MM-DD, "
           + "q = words of the merchant description); monthly = in/out/net per month plus the average; "
@@ -36,7 +38,7 @@ export default definePluginEntry({
           + "categories = totals per category (null = not categorized yet); uncategorized = descriptions still "
           + "to classify, biggest first, with a suggestedPattern; rules = the category list and learned rules; "
           + "excludeCategory 'Virements internes' removes transfers between the owner's accounts; "
-          + "statements = ingested statements and any that need review; "
+          + "statements = ingested statements and any that need review; coverage = statement series and uncovered intervals; "
           + "documents = the Secretary's invoices matched to ledger rows: proposals (to confirm), confirmed pairs, documents without "
           + "a transaction, big outflows without a document (thresholdCents), ambiguous matches (grouped: one document, several candidate rows, "
           + "the owner picks one), health and insurance claims still to file (toClaim, quote its totals as given), figures that look wrong "
@@ -46,7 +48,8 @@ export default definePluginEntry({
         parameters: {
           type: "object",
           properties: {
-            action: { type: "string", enum: ["balances", "transactions", "monthly", "yearly", "insights", "categories", "uncategorized", "rules", "statements", "documents", "goals", "review"] },
+            action: { type: "string", enum: ["balances", "transactions", "monthly", "yearly", "insights", "categories", "uncategorized", "rules", "statements", "coverage", "documents", "goals", "review"] },
+            ledger: { type: "string", enum: ["perso", "corp"] },
             account: { type: "string", maxLength: 80 },
             from: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
             to: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
@@ -54,6 +57,8 @@ export default definePluginEntry({
             category: { type: "string", maxLength: 60 },
             tag: { type: "string", maxLength: 60 },
             excludeCategory: { type: "string", maxLength: 60 },
+            excludeTag: { type: "string", maxLength: 500 },
+            minCents: { type: "integer", minimum: 1 },
             months: { type: "integer", minimum: 3, maximum: 60 },
             limit: { type: "integer", minimum: 1, maximum: 200 },
             status: { type: "string", enum: ["reconciled", "needs_review"] },

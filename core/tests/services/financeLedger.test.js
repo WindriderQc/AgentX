@@ -61,6 +61,7 @@ const readText = async () => 'statement text layer '.repeat(40);
 
 beforeEach(async () => {
   await Promise.all([FinanceStatement.deleteMany({}), FinanceTransaction.deleteMany({}), FinanceRule.deleteMany({}), FinanceAlert.deleteMany({}), FinanceOverride.deleteMany({})]);
+  await require('mongoose').connection.db.collection('finance_ingestions').deleteMany({});
   await Promise.all([FinanceStatement.syncIndexes(), FinanceTransaction.syncIndexes()]);
   tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'finance-test-'));
 });
@@ -173,7 +174,7 @@ describe('ledger ingestion', () => {
   test('replaces a re-downloaded statement for the same period and skips a known file', async () => {
     await ingestDocument(await writeDoc('june.pdf', 'bytes-a'), { readText, extract: extractWith(statement({ coffees: 1 })) });
     const again = await ingestDocument(await writeDoc('june-again.pdf', 'bytes-b'), { readText, extract: extractWith(statement()) });
-    expect(again).toMatchObject({ outcome: 'reconciled', replaced: true, inserted: 5 });
+    expect(again).toMatchObject({ outcome: 'reconciled', replaced: true, inserted: 1 });
     expect(await FinanceStatement.countDocuments()).toBe(1);
     expect(await FinanceTransaction.countDocuments()).toBe(5);
 

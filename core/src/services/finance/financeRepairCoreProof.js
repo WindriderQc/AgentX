@@ -1,7 +1,8 @@
 'use strict';
 
 const access = require('./financeAccess');
-const PROTOCOL = 'agentx.finance-maintenance/v1';
+// v2 requires repair executors and served readers to honor ingestion fences.
+const PROTOCOL = 'agentx.finance-maintenance/v2';
 function origin(value) {
   let url;
   try { url = new URL(value); } catch { throw access.error('An explicit loopback Core origin is required', 'FINANCE_REPAIR_CORE_REQUIRED',400); }

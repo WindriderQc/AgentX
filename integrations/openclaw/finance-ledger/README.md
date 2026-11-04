@@ -19,6 +19,14 @@ validates the category and re-applies every rule to past and future rows.
 `finance_alerts` lists Core's deterministic alerts, or reports them once
 (`report: true` marks them reported) for a scheduled delivery.
 
+Ledger questions accept `ledger: "perso"` (default) or `ledger: "corp"`.
+`coverage` reads the existing statement-series coverage and gaps. Supported
+date, merchant and exclusion filters reach Core; a selector unsupported by
+the chosen action is refused rather than discarded. The result records
+`requested` selectors and Core's `scope`. Rules are shared between books;
+goals and the monthly review use the personal plan only. Those actions do not
+take a ledger selector in the native client.
+
 The tool is visible only to the agents listed in `agentIds` (default
 `comptable`), unsandboxed, in their own sessions. Configure the plugin with the
 loopback Core URL:

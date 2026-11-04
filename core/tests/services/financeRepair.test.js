@@ -105,6 +105,17 @@ test('drains existing readers and blocks new API, model, scan and stream work',a
   expect((await execute({mode:'resume'})).phase).toBe('applied');
 });
 
+test('refuses a book repair that does not migrate explicit statement membership', async () => {
+  const update = manifest.updates[0];
+  update.before.rowKeys = [require('../../src/services/finance/financeTransactionIdentity').keyOf(manifest.updates[1].before)];
+  await Statement.collection.updateOne({ _id: new mongoose.Types.ObjectId(update.id) }, { $set: { rowKeys: update.before.rowKeys } });
+  update.expectedBeforeSha256 = storage.hash(update.before);
+  const before = await check.snapshot(mongoose.connection.db);
+  const bytes = Buffer.from(JSON.stringify(manifest));
+  await expect(execute({ bytes, confirmedDigest: storage.hash(bytes) })).rejects.toMatchObject({ code: 'FINANCE_REPAIR_STATE_CONFLICT' });
+  expect(await check.snapshot(mongoose.connection.db)).toEqual(before);
+});
+
 test.each(['before-image','destination','original','missing-original','links'])('refuses %s drift without an accounting write',async kind => {
   if(kind==='before-image')await Transaction.updateOne({_id:manifest.updates[1].id},{$set:{tags:['changed']}});
   if(kind==='destination')await Override.create({...manifest.updates[2].before,_id:new mongoose.Types.ObjectId(),accountKey:'corp:bank-example|-|EOP'});

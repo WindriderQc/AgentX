@@ -3,16 +3,17 @@
 // strings so the model never converts or sums amounts itself.
 
 const ACTIONS = {
-  balances: { path: '/api/finance/balances', params: [] },
-  transactions: { path: '/api/finance/transactions', params: ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory', 'limit'] },
-  monthly: { path: '/api/finance/summary/monthly', params: ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory'] },
-  categories: { path: '/api/finance/summary/categories', params: ['account', 'from', 'to', 'tag', 'excludeCategory'] },
-  uncategorized: { path: '/api/finance/uncategorized', params: ['limit'] },
-  yearly: { path: '/api/finance/summary/yearly', params: ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory'] },
-  insights: { path: '/api/finance/insights', params: ['account', 'category', 'tag', 'months'] },
+  balances: { path: '/api/finance/balances', params: [], book: true },
+  transactions: { path: '/api/finance/transactions', params: ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory', 'excludeTag', 'limit'], book: true },
+  monthly: { path: '/api/finance/summary/monthly', params: ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory', 'excludeTag'], book: true },
+  categories: { path: '/api/finance/summary/categories', params: ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory', 'excludeTag'], book: true },
+  uncategorized: { path: '/api/finance/uncategorized', params: ['limit'], book: true },
+  yearly: { path: '/api/finance/summary/yearly', params: ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory', 'excludeTag'], book: true },
+  insights: { path: '/api/finance/insights', params: ['account', 'from', 'to', 'q', 'category', 'tag', 'excludeCategory', 'excludeTag', 'months'], book: true },
   rules: { path: '/api/finance/rules', params: [] },
-  statements: { path: '/api/finance/statements', params: ['status'] },
-  documents: { path: '/api/finance/documents', params: ['minCents'] },
+  statements: { path: '/api/finance/statements', params: ['status'], book: true },
+  coverage: { path: '/api/finance/coverage', params: [], book: true },
+  documents: { path: '/api/finance/documents', params: ['minCents'], book: true },
   goals: { path: '/api/finance/goals', params: [] },
   review: { path: '/api/finance/review/monthly', params: [] }
 };
@@ -51,20 +52,28 @@ export function createCoreFinanceClient({ baseUrl, fetchImpl = fetch } = {}) {
   const base = new URL(baseUrl);
   if (!['http:', 'https:'].includes(base.protocol)) throw new Error('AgentX requires an HTTP URL');
   return async (input = {}) => {
-    const action = ACTIONS[input.action];
+    const action = Object.hasOwn(ACTIONS, input.action) ? ACTIONS[input.action] : null;
     if (!action) throw new Error('Unsupported finance ledger question');
+    const allowed = new Set(['action', ...action.params, ...(action.book ? ['ledger'] : [])]);
+    for (const [key, value] of Object.entries(input)) {
+      if (!allowed.has(key) && value !== undefined && value !== null && value !== '') throw new Error(`${key} is not supported for ${input.action}`);
+    }
+    if (input.ledger !== undefined && !['perso', 'corp'].includes(input.ledger)) throw new Error('ledger must be perso or corp');
     const url = new URL(action.path, base);
     for (const key of action.params) {
       const value = input[key];
       if (value !== undefined && value !== null && String(value).trim() !== '') url.searchParams.set(key, String(value).trim());
     }
+    if (action.book && input.ledger !== undefined) url.searchParams.set('ledger', input.ledger);
     const response = await fetchImpl(url, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(15000) });
     const body = await response.json().catch(() => null);
     if (!response.ok || body?.status !== 'success' || !body.data || typeof body.data !== 'object') {
       const reason = body?.message || `Core finance ledger unavailable (${response.status})`;
       throw new Error(reason);
     }
-    return { action: input.action, authority: 'agentx.core', ...withDisplay(body.data) };
+    const requested = { ...(action.book && { ledger: input.ledger || 'perso' }), ...Object.fromEntries(url.searchParams) };
+    if (action.book && body.data.scope?.ledger && body.data.scope.ledger !== requested.ledger) throw new Error('Core returned a different finance ledger');
+    return { action: input.action, authority: 'agentx.core', requested, ...withDisplay(body.data) };
   };
 }
 
