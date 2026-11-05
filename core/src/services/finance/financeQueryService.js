@@ -9,6 +9,7 @@ const { ledgerFilter } = require('./ledgers');
 const { coverageContext, assessCoverage, monthsBetween: expectedMonths, lastDayOf, validDate } = require('./financeCompleteness');
 const { monthlyAverage, periodTotal } = require('./financeMeasures');
 const { confirmedFor, transactionKey } = require('./financeDocumentLinks');
+const { totalsStage, monthlyPipeline } = require('./financeMoneyTotals');
 
 const MAX_ROWS = 500;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -56,16 +57,6 @@ function transactionFilter({ account, from, to, q, category, tag, excludeCategor
   return filter;
 }
 
-function totalsStage() {
-  return {
-    _id: null,
-    count: { $sum: 1 },
-    inCents: { $sum: { $cond: [{ $gt: ['$flowCents', 0] }, '$flowCents', 0] } },
-    outCents: { $sum: { $cond: [{ $lt: ['$flowCents', 0] }, '$flowCents', 0] } },
-    netCents: { $sum: '$flowCents' }
-  };
-}
-
 async function transactions(query = {}) {
   const filter = transactionFilter(query);
   const limit = Math.min(Math.max(Number.parseInt(query.limit, 10) || 100, 1), MAX_ROWS);
@@ -91,11 +82,7 @@ async function transactions(query = {}) {
 async function monthly(query = {}) {
   const filter = transactionFilter(query);
   const [months, coverage] = await Promise.all([
-    FinanceTransaction.aggregate([
-      { $match: filter },
-      { $group: { ...totalsStage(), _id: { $substrBytes: ['$date', 0, 7] } } },
-      { $sort: { _id: 1 } }
-    ]),
+    FinanceTransaction.aggregate(monthlyPipeline(filter)),
     coverageContext(query)
   ]);
   const period = coverage.bounds(query) || (months.length ? { from: `${months[0]._id}-01`, to: lastDayOf(months.at(-1)._id) } : null);
