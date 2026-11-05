@@ -15,15 +15,15 @@ function read(bytes, confirmation) {
   if (confirmation !== digest) throw error('Confirm the exact reviewed Finance manifest digest', 'FINANCE_REPAIR_CONFIRMATION_REQUIRED', 409);
   let m;
   try { m = JSON.parse(bytes); } catch { throw invalid('Manifest is not JSON'); }
-  if (!m || ![1,2,3,4,5].includes(m.schemaVersion) || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/.test(m.requestKey || '') || !Array.isArray(m.updates) || m.updates.length < 2 || m.updates.length > (m.schemaVersion >= 4 ? 251 : m.schemaVersion === 3 ? 151 : 101)) {
+  if (!m || ![1,2,3,4,5,6].includes(m.schemaVersion) || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/.test(m.requestKey || '') || !Array.isArray(m.updates) || m.updates.length < 2 || m.updates.length > (m.schemaVersion >= 4 ? 251 : m.schemaVersion === 3 ? 151 : 101)) {
     throw invalid('One reviewed statement and its bounded rows/decisions are required');
   }
   const names = ['finance_statements', 'finance_transactions', 'finance_overrides'];
   if (m.schemaVersion >= 3) names.push('finance_document_links');
   for (const u of m.updates) {
-    const inserted=m.schemaVersion===5 && u?.insert===true;
-    const retained=m.schemaVersion===5 && u?.set && Object.keys(u.set).length===0;
-    const times=inserted?{createdAt:'receipt.appliedAtUtc',updatedAt:'receipt.appliedAtUtc'}:retained?{}:{updatedAt:'receipt.appliedAtUtc'};
+    const inserted=m.schemaVersion>=5 && u?.insert===true;
+    const retained=m.schemaVersion>=5 && u?.set && Object.keys(u.set).length===0;
+    const times=inserted?{createdAt:'receipt.appliedAtUtc',updatedAt:'receipt.appliedAtUtc',...(m.schemaVersion===6&&u.collection==='finance_statements'?{ingestedAt:'receipt.appliedAtUtc'}:{})}:retained?{}:{updatedAt:'receipt.appliedAtUtc'};
     if (!u || !names.includes(u.collection) || !/^[a-f0-9]{24}$/.test(u.id || '') || (inserted ? u.before!==null : u.before?._id !== u.id)
       || hash(u.before) !== u.expectedBeforeSha256 || u.upsert !== false || u.insert !== inserted || u.matchCountRequired !== (inserted?0:1)
       || !u.setAtExecution || canonical(u.setAtExecution)!==canonical(times)

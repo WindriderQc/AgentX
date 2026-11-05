@@ -6,7 +6,9 @@ only, preserving any existing manual decisions. Version 3 also retains the
 statement's exact document links in place. Version 4 corrects a reviewed card
 issuer within its existing book, retaining the exact rows, decisions and links.
 Version 5 corrects a reviewed card's printed dates/period and restores at most
-ten missing rows within that same existing statement. Account-number normalization,
+ten missing rows within that same existing statement. Version 6 restores one
+completely reviewed absent monthly statement and its exact new rows.
+Account-number normalization,
 re-extraction and bulk historical correction remain outside this contract.
 The original PDF never moves or changes.
 
@@ -46,6 +48,8 @@ and executor share the same deterministic latest-balance projection.
 
 Version 5 requires `agentx.finance-printed-card-repair/v1`; updating only the
 operator CLI cannot qualify an older running reader.
+
+Version 6 separately requires `agentx.finance-statement-restoration/v1`.
 
 The v2 maintenance protocol also excludes pending ordinary ingestions. Their
 native writer and recovery entrance are described in [Finance](FINANCE.md).
@@ -167,6 +171,60 @@ later unreviewed balance change or owner decision refuses reversal. Full source
 evidence, same-request recovery and ambiguous-dispatch refusal remain in force.
 
 ## Durable effects and recovery
+
+### Absent monthly statement restoration
+
+`schemaVersion: 6`, `operation: "statement-restoration"`, accepts exactly one
+absent full-calendar-month statement, 1–200 new rows and 1–20 complete accounts.
+It uses only reviewed insertions: no update, upsert, existing decision/link
+mutation or replacement of a `needs_review` extraction. A matching PDF hash in
+any book/status, occupied statement key/ID, row key/ID, foreign row using the
+pinned statement ID, or existing decision/link referring to a destination row
+refuses before dispatch. It never clears those records to make a restore fit.
+
+`verifiedIdentity.accounts` holds the printed opening/closing cents, opening
+line evidence and every row in printed order, including the zero-row accounts.
+Each row names a pinned ID, source-line reference, date, description, bank code,
+exact monetary columns, running balance and original line evidence. Asset
+columns are debit/credit/fees; liability columns are advances, principal repaid
+and reported interest. Source values may carry a printed leading/trailing minus:
+a negative withdrawal is a refund. The signed amounts and description must
+occur in the reviewed source lines. Integer arithmetic derives each account
+effect and must match every running and closing balance. Reported interest beside
+a principal repayment is not added to debt again; a pure interest payment can
+have zero principal effect. The cash account retains its full payment.
+
+The manifest retains the legacy missing suffix (`accountLast4: null`) and names
+the printed last four separately as evidence. Native statement/account keys,
+fingerprints, repeated-row occurrences and wallet flow signs are derived by
+Core's existing identity and accounting rules. No existing account is renumbered.
+Latest-balance projection hashes must be equal in both books; a new historical
+account or changed latest source therefore refuses. All before/after monthly
+counts and integer monetary totals are separately pinned and received natively.
+
+The new reconciled statement records `model: null`, `attempts: 0`, `source:
+"text"`, empty problems and `sourceRepair` linking its request, PDF digest and
+reviewed account-image digest. Each row retains source repair provenance and a
+null category, empty tags and `manual: false`. Categories or decisions from an
+unqualified legacy output are never inferred. Native receipt time supplies
+statement `ingestedAt`/creation/update times and row creation/update times.
+
+Every update has `before: null`, its null digest, `insert: true`, `upsert: false`
+and `matchCountRequired: 0`. Only the closed derived statement/row images are
+allowed. Receipts use `agentx.finance-statement-restoration/v1`, with actual
+insert/update/delete counts and reviewed balance/monthly proofs. The same
+process lock, persistent intent, admission fence, immutable snapshot and
+uncertain-write rules apply to the statement as well as its rows. Reverse
+rollback removes only exact received insertions, including the statement last.
+A partial rollback reports only its actual prior effects. A later owner change,
+new relation or changed reviewed money refuses the old rollback rather than
+deleting useful work. Versions 1–5 retain their manifest and receipt semantics.
+
+Ordinary document consultation is a separate domain action. It can discover
+new unconfirmed proposals when restored dates/amounts become available. Qualify
+that follow-on against the full private register and receive its distinct
+effects without losing existing links; preparing or installing v6 does not
+approve a document rematch or a restoration manifest.
 
 ### Printed card correction
 
@@ -336,3 +394,10 @@ consultation, full/partial rollback and actual process death at insert and
 reverse-deletion dispatch/receipt boundaries. It proves uncertain outcomes stay
 held until the exact native effect arrives, without duplicate insertion or loss
 of a later owner decision.
+
+`core/tests/services/financeStatementRestore.test.js` covers complete absent
+statements, multi-account running balances and zero-row accounts, signed refunds
+and interest-only principal, unchanged existing decisions/relations, the200row
+bound, before-write collision/drift refusals, exact full/partial rollback and
+actual SIGKILL at statement/row insertion and final deletion boundaries. A CLI
+upgrade alone, ambiguous dispatch or unqualified original never grants a write.
