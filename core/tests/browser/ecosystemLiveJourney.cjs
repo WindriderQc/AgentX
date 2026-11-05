@@ -40,6 +40,7 @@ require('../../surfaces/diskx').register({ app, express, env: { AGENTX_INSTANCE_
   fetchWithTimeout: async () => ({ ok: true, headers: new Map([['content-type', 'text/javascript']]), text: async () => fs.readFileSync(modulePath, 'utf8') }) });
 app.use('/js', express.static(path.join(core, 'public/js')));
 app.use('/assets/household', express.static(path.join(core, 'surfaces/household/public')));
+app.get('/api/voix/player.js', (_req, res) => res.sendFile(path.join(core, '../integrations/voix/app/web/voice-audio.js')));
 app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation</title><iframe title="Carte" src="/diskx?app=ecosystem&presentation=live-fixture" style="width:100%;height:950px;border:0"></iframe>'));
 
 (async () => {

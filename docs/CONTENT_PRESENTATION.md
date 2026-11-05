@@ -76,6 +76,14 @@ and explicit node selection only after rendering. A constructor, iframe load or
 opening request cannot supply this receipt. The existing presentation observation
 reads the latest rendered state when the user submits the next turn.
 
+**Activer la voix** in a compatible GraphysX tour reads the current narration with
+Nestor's installed persona voice through Core's existing catalog, speech fallback
+ladder and Web Audio player. A device voice is the final fallback. Speech requires
+an explicit click; no microphone or conversation session is opened. GraphysX waits
+for playback completion before advancing and aborts speech on pause, replacement,
+closure or a hidden document. Resume reads the interrupted stop again. The host
+adapter supplies `element.narrator(text, signal)`; GraphysX owns the tour timing.
+
 Core validates freshness, card/instance binding, monotonic frames and document
 revisions, and rejects version changes within an instance. Accepting a newer frame
 or instance invalidates its predecessor's read reference. The immutable bounded
@@ -257,6 +265,9 @@ Targeted composed validation uses a locally built compatible GraphysX module:
 DISKX_TEST_MODULE=/path/to/GraphysX-Web/dist/embed/diskx.js \
   ECOSYSTEM_BROWSER_REPORT=/path/outside/git/ecosystem \
   node core/tests/browser/ecosystemPresentationJourney.cjs
+DISKX_TEST_MODULE=/path/to/GraphysX-Web/dist/embed/diskx.js \
+  ECOSYSTEM_BROWSER_REPORT=/path/outside/git/ecosystem-voice \
+  node core/tests/browser/ecosystemVoiceJourney.cjs
 DISKX_TEST_MODULE=/path/to/GraphysX-Web/dist/embed/diskx.js \
   DISKX_BROWSER_REPORT=/path/outside/git/janitor \
   node core/tests/browser/diskxPresentationJourney.cjs
