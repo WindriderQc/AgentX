@@ -47,6 +47,7 @@ const companion = registerPresentationCompanion({ router: app, catalog: pages,
 app.use('/assets/household', express.static(path.resolve(__dirname, '../../surfaces/household/public')));
 app.use('/assets/diskx', express.static(path.resolve(__dirname, '../../surfaces/diskx/public')));
 app.use('/js', express.static(path.resolve(__dirname, '../../public/js')));
+app.get('/api/voix/player.js', (_req, res) => res.sendFile(path.resolve(__dirname, '../../../integrations/voix/app/web/voice-audio.js')));
 app.get('/vendor/marked.js', (_req, res) => res.sendFile(path.resolve(__dirname, '../../node_modules/marked/lib/marked.umd.js')));
 app.get('/vendor/purify.js', (_req, res) => res.sendFile(path.resolve(__dirname, '../../node_modules/dompurify/dist/purify.min.js')));
 app.use('/assets', express.static(path.resolve(graph, 'dist/assets')));

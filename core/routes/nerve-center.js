@@ -11,6 +11,7 @@ const express = require('express');
 const { requestPrincipal } = require('../src/helpers/requestCaller');
 const router = express.Router();
 router.use(require('./nerve-center-principal-model'), require('./nerve-center-embeddings'), require('./nerve-center-runtime-topology'));
+router.use(require('./nerve-center-ecosystem-live')());
 const logger = require('../config/logger');
 
 const { getAllModelsHealth } = require('../src/services/modelRouter');

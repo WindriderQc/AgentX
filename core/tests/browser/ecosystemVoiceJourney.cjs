@@ -48,8 +48,18 @@ require('../../surfaces/diskx').register({ app, express, env: { DISKX_MODULE_URL
     await page.goto(`http://127.0.0.1:${server.address().port}/diskx?app=ecosystem&play=overview,frank,summary`);
     await page.waitForFunction(() => document.querySelector('agentx-ecosystem').state()?.presentation);
     assert.equal(requests.length, 0, 'visiting never starts speech without a click');
+    // Loading/rendering may outlast the unvoiced autoplay step on a busy CPU.
+    // Establish the exact stop before testing its spoken completion boundary.
+    await page.evaluate(() => { const view = document.querySelector('agentx-ecosystem'); view.tour.pause(); view.tour.goto(0); });
+    await page.waitForFunction(() => document.querySelector('agentx-ecosystem').state().presentation.tour.index === 0);
     await page.getByRole('button', { name: '🔊 Activer la voix', exact: true }).click();
-    const count = async n => { for (let i = 0; i < 100 && requests.length < n; i++) await new Promise(resolve => setTimeout(resolve, 50)); assert.equal(requests.length, n); };
+    const count = async n => {
+      for (let i = 0; i < 100 && requests.length < n; i++) await new Promise(resolve => setTimeout(resolve, 50));
+      assert.equal(requests.length, n);
+      // A server receiving a request does not prove its PCM reached the player.
+      // Exercise cancellation of the actually scheduled stream, not HTTP setup.
+      await page.waitForFunction(expected => audioEvents.filter(name => name === 'start').length >= expected, n);
+    };
     await count(1);
     const first = await page.evaluate(() => document.querySelector('agentx-ecosystem').state().presentation);
     assert.equal(requests[0].body.text, first.narration);

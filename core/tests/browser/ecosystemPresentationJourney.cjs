@@ -48,6 +48,7 @@ app.post('/fixture-turn', (req, res) => {
 });
 app.use('/assets/household', express.static(path.join(core, 'surfaces/household/public')));
 app.use('/js', express.static(path.join(core, 'public/js')));
+app.get('/api/voix/player.js', (_req, res) => res.sendFile(path.join(core, '../integrations/voix/app/web/voice-audio.js')));
 app.get('/vendor/marked.js', (_req, res) => res.sendFile(path.join(core, 'node_modules/marked/lib/marked.umd.js')));
 app.get('/vendor/purify.js', (_req, res) => res.sendFile(path.join(core, 'node_modules/dompurify/dist/purify.min.js')));
 app.get('/', (_req, res) => res.send(`<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">

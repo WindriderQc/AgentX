@@ -48,7 +48,7 @@ images and active links are excluded. Copy retains the source text.
 | Analytics inference overview | Catalogue page in a retained frame | Core snapshot of the same `/api/analytics/inference/summary` response; exact period and window | Overview, comparison and UTC trend; other detail panels retain their domain tools |
 | Analytics live inference and GPU cards | Same retained frame; refresh every 15 seconds | Separate Core references on the runtime-coordination and GPU-status responses used by the view | Independent of historical filters; at most 30 seconds, bounded further by collector freshness; failed refresh clears its reference |
 | Janitor report | Existing DiskX catalogue page and relayed GraphysX module | Core reads the displayed report date and group after the report/group display event | Changed report dates refuse; logical bytes and a survivor rule never authorize a file action |
-| Accompanied ecosystem tour | `ecosystem play=…` uses `/diskx?app=ecosystem` and the same module relay | GraphysX's after-render observation, bounded and referenced by Core as `graphysx.ecosystem` | Dated browser observation, not a Core inventory, live telemetry or pixel verification; at most 30 seconds |
+| Accompanied ecosystem tour | `ecosystem play=…` uses `/diskx?app=ecosystem` and the same module relay | GraphysX's after-render observation as `graphysx.ecosystem`; a configured owner view additionally binds the exact `core.ecosystem.live` read rendered by that frame | Static topology and operational evidence remain separate; each source has its own freshness and coverage |
 | Other AgentX pages | Validated catalogue destination | Same-origin title and six visible headings, or an existing domain tool | Headings do not supply values or prove an action |
 | External services | Validated frame or explicit tab link | Existing authorized domain tool, if available | External tabs are unseen; authentication/frame restrictions stay in force |
 | Text/Markdown, lists | Selected card | Original shown text, bounded to 8,000 characters in selected context; truncation/partial flags | Display/copy retains the complete body |
@@ -95,6 +95,64 @@ An explicit displayed node step selects that component; a workflow with multiple
 focused components requires clarification. Hover and earlier views do not select
 the referent of “this component”. Both native conversation transports receive the
 same current selection and clarification rule through the existing reply contract.
+
+### Automatic ecosystem state
+
+When the instance supplies `config/ecosystem-live.json` under
+`AGENTX_INSTANCE_ROOT`, the owner tour refreshes **all mapped nodes without a
+click** every ten seconds. Selection only chooses what to discuss. The existing
+PollingController pauses on a hidden tab, skips overlapping requests and resumes
+when visible. A hidden retained frame performs no collection; visibility restores
+the read. Reads time out after eight seconds. Core shares in-flight collection
+and caches it for at most five seconds, using the existing Nerve Center snapshot
+instead of starting another scanner. This is bounded polling, not an event stream.
+
+The private configuration maps scene identities to existing Core identities:
+
+```json
+{
+  "version": 1,
+  "nodes": [
+    { "id": "scene-host-id", "hosts": ["configured-host-key"] },
+    { "id": "scene-service-id", "services": ["configured-service-id"] }
+  ]
+}
+```
+
+Replace the example identities with actual node IDs already present in the scene
+and native host/service keys. Each node uses one source kind; there are at most
+32 nodes and eight native identities per node. Duplicate identities, malformed
+configuration and browser-chosen mappings refuse. No mapping is inferred from
+an IP, name or physical proximity. Unmapped devices retain their dated topology
+and have no operational evidence. Without configuration the existing static
+tour remains available. Family-pinned devices keep that static tour and cannot
+read the owner live endpoint.
+
+`GET /api/nerve-center/ecosystem/live` returns only bounded node states,
+observation/expiry dates, source scope and a Core presentation reference. It
+excludes model names, addresses, logs and task payloads. Inference availability
+describes the mapped endpoints; it does not prove the whole machine is healthy.
+Native preference transitions may establish occupation, never GPU utilization or
+the cause of a personal task's latency. Service health does not qualify a user
+journey. Missing, contradictory and stale observations never become healthy.
+
+The GraphysX element accepts this projection through `setLiveState`, preserving
+selection, camera and the scene. It attaches the exact Core reference to its
+observation only after rendering. Core resolves that reference through the same
+presentation reader and adds trusted `live.data` to the rendered observation
+used by Nestor. Browser-supplied state values are never accepted as Core data.
+Old renderer instances, out-of-order frames and forged references retain their
+existing refusals. Updates execute no model and grant no domain action.
+
+The live reference is fresh for at most thirty seconds; each collector may have
+a shorter remaining lifetime. Reading a cache does not renew its observations.
+For five additional minutes Core can return the captured source with explicit
+stale freshness, so Nestor can describe the same last-known state. An unavailable
+feed keeps its last reference with `live.status: unavailable`, or no reference
+before the first response. Captured `freshness` stays distinct from the derived
+`effectiveFreshness` at read time. Lost references return unavailable and never
+re-run collection. Source checks, composed browser tests and installed-instance
+acceptance remain separate.
 
 The self-contained embed retains GraphysX's scene geometry, tour and controls;
 external sky, texture and optional custom-model fetches are disabled in this mode
