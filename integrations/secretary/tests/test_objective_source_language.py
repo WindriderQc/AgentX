@@ -17,10 +17,15 @@ import test_objective_grounding as fixtures
 import test_objective_review as review_fixtures
 
 
-def response(content):
+def response(content, contract=grounding.CONTRACT):
     value = fixtures.grounded(content, hypotheses=False)
     value.pop("summary")
     value["summaryCitationIds"] = [grounding.catalog(content)[0]["id"]]
+    if contract == grounding.CONTRACT:
+        value["omittedCueIds"] = []
+        for moment in value["moments"]:
+            moment.pop("uncertainty")
+            moment["factType"] = "life-event"
     return value
 
 

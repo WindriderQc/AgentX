@@ -69,7 +69,23 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v3.
+Use the source-span grounding contract secretary.objective-grounding/v4.
+Keep useful explicit steps, not only completed milestones. A personal career
+contact, referral, CV submission, application, interview or offer can be retained
+at its stated stage. Choose factType: life-event, career-contact, application,
+interview, job-offer or employment-change. A request to discuss clients/projects
+with a CV is a career-contact, never evidence of an interview, hiring or new job.
+Dates may date that communication, never an inferred employment period. A
+generic greeting, advertisement or routine document exchange is still noise.
+selectionCues are lexical reminders to read the quoted lines, not verified facts
+or proof of identity. Each cue must be used in a cited observation or listed in
+omittedCueIds, which keeps the omission visible for source review. Use [] when
+there are no omitted cues; never fabricate an event to satisfy a cue.
+Do not provide uncertainty or a confidence label such as low/high. The application
+assembles concrete limits from the fact type, unknown dates, occurrence status,
+actor and exact passage scope. In hypotheses preserve an explicit unresolved
+source question, condition or possibility when it limits a proposed event;
+never answer it, turn it into an occurrence or invent one for completeness.
 For every moment, observations contains only statements explicitly supported by
 the selected citationCatalog IDs. Do not generate a summary: select up to three
 summaryCitationIds for complete source excerpts; an empty selection is valid.
@@ -147,7 +163,7 @@ def _exact_whitespace_quote(quote, content):
     return {"value": value, "spans": spans}
 
 
-def normalize_representation(value, content=None, grounded=False):
+def normalize_representation(value, content=None, grounded=False, source_context=None):
     """Project grounded wire results or normalize legacy representation differences.
 
     Keep the model value immutable. The caller retains its native result and
@@ -157,7 +173,7 @@ def normalize_representation(value, content=None, grounded=False):
     """
     if grounded or isinstance(value, dict) and "emptyAssessment" in value:
         from objective_grounding import project
-        normalized, changes = project(value, content, grounded or None)
+        normalized, changes = project(value, content, grounded or None, source_context)
     else:
         normalized, changes = copy.deepcopy(value), []
     if not isinstance(normalized, dict) or not isinstance(normalized.get("moments"), list):
