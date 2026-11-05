@@ -91,7 +91,8 @@ body[data-avatar-view=montre] :is(.avatar-scene-status, .avatar-scene-reply) { d
 .avatar-scene-clock { position: fixed; z-index: 115; top: max(18px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
   display: grid; justify-items: center; color: var(--text); text-shadow: 0 1px 10px #060d14; pointer-events: none; }
 .avatar-scene-time { font-size: clamp(40px, 8vw, 88px); font-weight: 200; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
-.avatar-scene-date { margin-top: 4px; color: var(--soft); font-size: clamp(14px, 1.8vw, 20px); }
+.avatar-scene-line { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px 16px; margin-top: 4px;
+  color: var(--soft); font-size: clamp(14px, 1.8vw, 20px); }
 .avatar-scene-date::first-letter { text-transform: uppercase; }body[data-avatar-view=plein] { overflow: hidden; }
 body[data-avatar-view=montre] :is(#nav-container, .conversation-heading, .conversation-toolbar, .conversation-team, .conversation-history, .conversation-recap, .conversation-settings),
 body[data-avatar-view=montre] .conversation-cockpit > :not(.conversation-dialogue),

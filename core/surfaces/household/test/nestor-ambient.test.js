@@ -127,7 +127,7 @@ test('alerts rank by severity and a guided visit stays rare and by day', () => {
   const at = Date.parse('2026-11-04T15:00:00Z');
   const critical = { weather: { temperatureC: 2, condition: 'Nuageux' }, alerts: { count: 2, critical: 1, nodes: ['ugalien'], fingerprint: 'f' } };
   const scene = choice.chooseScreen(critical, { at, hour: 10 });
-  assert.deepEqual(scene.chips.map(c => c.id), ['alert', 'weather']);
+  assert.deepEqual(scene.chips.map(c => c.id), ['alert'], 'the weather is beside the date, not a note');
   assert.equal(scene.chips[0].text, 'Système : un problème important');
   assert.equal(scene.moment.kind, 'visit');
   assert.equal(scene.moment.play, 'overview,node-ugalien');
@@ -251,7 +251,7 @@ test('Nestor paints by day after a quiet moment, the picture painted longest ago
   assert.equal(choice.chooseScreen(snapshot, { ...quiet, lastPaint: at - 5 * MIN }).moment, null);
   const first = choice.chooseScreen(snapshot, quiet);
   assert.deepEqual(first.moment, { kind: 'paint', id: 'a', source: 'family', label: 'Nestor peint un de vos dessins' });
-  assert.deepEqual(first.chips.map(chip => chip.id), ['paint', 'weather']);
+  assert.deepEqual(first.chips.map(chip => chip.id), ['paint']);
   const later = choice.chooseScreen(snapshot, { ...quiet, painted: { a: at - 20 * MIN }, lastPaint: at - 20 * MIN });
   assert.equal(later.moment.id, 'b');
   assert.equal(later.moment.label, 'Nestor peint une création de l’atelier');
@@ -365,4 +365,20 @@ test('the panorama turns so the Moon is never hidden behind Nestor', () => {
   assert.equal(choice.skyFrame(aside).center, 180);
   assert.equal(choice.skyFrame(aside).project({ azDeg: 180, altDeg: 0 }).x, 0.5);
   assert.equal(choice.skyFrame(aside).visible({ azDeg: 0, altDeg: 40 }), false, 'the north is behind us');
+});
+
+test('the weather beside the date: rounded, a night icon after sunset, hidden when old or empty', () => {
+  const at = Date.parse('2026-11-04T15:00:00Z');
+  const snapshot = { at: '2026-11-04T14:58:00Z', sun: { elevationDeg: 20 },
+    weather: { kind: 'cloud', temperatureC: 3.6, condition: 'Généralement nuageux', fetchedAt: '2026-11-04T14:40:00Z' } };
+  assert.deepEqual(choice.weatherLine(snapshot, { at }), { icon: 'cloud', text: '4 °C · Généralement nuageux' });
+  const clear = { ...snapshot, weather: { ...snapshot.weather, kind: 'clear', temperatureC: -0.4, condition: 'Dégagé' } };
+  assert.deepEqual(choice.weatherLine(clear, { at }), { icon: 'sun', text: '0 °C · Dégagé' });
+  assert.equal(choice.weatherLine({ ...clear, sun: { elevationDeg: -12 } }, { at }).icon, 'night');
+  assert.deepEqual(choice.weatherLine({ ...snapshot, weather: { temperatureC: -7 } }, { at }), { icon: null, text: '-7 °C' });
+  assert.equal(choice.weatherLine(snapshot, { at: at + 4 * 60 * MIN }), null, 'a reading over three hours old is hidden');
+  assert.equal(choice.weatherLine({ ...snapshot, weather: { kind: 'rain' } }, { at }), null, 'no number and no words');
+  assert.equal(choice.weatherLine({ weather: null }, { at }), null);
+  const talking = choice.chooseScreen(snapshot, { at, hour: 10, standby: false });
+  assert.deepEqual(talking.chips, [], 'a conversation still clears the notes');
 });
