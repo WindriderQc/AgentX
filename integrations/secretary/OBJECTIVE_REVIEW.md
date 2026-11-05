@@ -6,6 +6,34 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
+New objectives use `secretary.objective-grounding/v1` for model extraction.
+Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
+and source offsets. The response schema restricts `citationIds` to that page;
+local validation resolves each ID back to the original span. The model selects
+evidence rather than transcribing a quote. Unknown or duplicate IDs, missing
+evidence and a response that ignores the frozen contract fail closed.
+
+Each proposed event separates cited `observations` from cited `hypotheses`.
+The canonical description uses observations only. The rationale is assembled
+locally with separate labelled sections, and proposed associations retain their
+hypothesis label. Instructions explicitly exclude unsupported employment status,
+document ownership and certification inferences. This structure does not prove
+semantic entailment: a model can still mislabel an inference as an observation.
+Source re-reading and owner review remain necessary before publication.
+
+The extraction response has no independently generated `classification`.
+The application derives `life-events` from a nonempty event list; only an empty
+list uses `emptyAssessment` (`no-life-event` or `uncertain`). It never changes a
+contradictory retained legacy classification to make it pass validation.
+
+Native responses stay immutable. `resultProcessing` records the source-span
+projection and claim mappings, which are recalculated when receipts are read,
+including after an interrupted local projection. The canonical result and
+publisher contracts stay the same, and legacy receipts remain readable.
+Changed prompt/schema hashes require a new objective version; no prior objective
+or rejection is rewritten. This extraction contract grants no publication or
+owner confirmation and does not relax a campaign's existing review gate.
+
 The first supported objective is `life-timeline`. Its private JSON configuration
 contains `id`, `version`, `kind`, explicit `ownerAliases`, optional `instructions`,
 `pageChars` (default 6000), `overlap` (300), and optional `selection`:

@@ -11,7 +11,7 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evidence_store import load, save
 import objective_review as worker
-from objective_schema import normalize_representation, validate
+from objective_schema import SCHEMA as LEGACY_SCHEMA, normalize_representation, validate
 from objective_sources import inventory, materialize, pages
 import objective_equivalence as equivalent
 
@@ -47,15 +47,31 @@ class Client:
         self.calls.append(request_id)
         if self.fail:
             raise TimeoutError("uncertain transport")
-        passage = json.loads(prompt)["untrustedContent"]
+        payload = json.loads(prompt)
+        passage = payload["untrustedContent"]
         found = "Mon déménagement" in passage
-        return {"summary": "Ce passage contient une déclaration de déménagement." if found else "Aucun fait de vie personnel dans ce passage.",
+        value = {"summary": "Ce passage contient une déclaration de déménagement." if found else "Aucun fait de vie personnel dans ce passage.",
                 "classification": "life-events" if found else "no-life-event", "gaps": [],
                 "moments": [moment("absent" if self.invalid else "Mon déménagement est terminé en août 2014.")] if found else []}
+        if "citationCatalog" in payload:
+            value.pop("classification")
+            value["emptyAssessment"] = "no-life-event"
+            for item in value["moments"]:
+                text = item.pop("description")
+                quote = item.pop("quotes")[0]
+                ids = [row["id"] for row in payload["citationCatalog"] if quote in row["text"]][:1] or ["unknown-span"]
+                item.pop("rationale"); item.pop("relationHints")
+                item.update(observations=[{"text": text, "citationIds": ids}], hypotheses=[])
+        return value
 
 
 class ObjectiveTests(unittest.TestCase):
     def setUp(self):
+        # Keep the frozen pre-grounding response fixtures as compatibility
+        # coverage. The new transport has its own end-to-end tests.
+        self.legacy_schema = patch.object(worker, "SCHEMA", LEGACY_SCHEMA)
+        self.legacy_schema.start()
+        self.addCleanup(self.legacy_schema.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
