@@ -66,7 +66,7 @@ require('../../surfaces/diskx').register({ app, express, env: { DISKX_MODULE_URL
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
     await page.waitForTimeout(150);
     assert.equal(requests[2].closed, true);
-    assert.equal(await page.evaluate(() => document.querySelector('agentx-ecosystem').state().presentation.tour.playing), false);
+    await page.waitForFunction(() => document.querySelector('agentx-ecosystem').state().presentation.tour.playing === false);
     await page.getByRole('button', { name: 'Lire', exact: true }).click(); await count(4);
     assert.equal(requests[3].body.text, requests[2].body.text, 'resume reads the interrupted stop again');
     requests[3].release();
@@ -74,13 +74,20 @@ require('../../surfaces/diskx').register({ app, express, env: { DISKX_MODULE_URL
     await page.setViewportSize({ width: 390, height: 900 });
     await page.screenshot({ path: path.join(report, 'ecosystem-voice-mobile.png') });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
-    await page.getByRole('button', { name: 'Lire', exact: true }).click(); await count(5);
+    await page.evaluate(() => document.querySelector('agentx-ecosystem').tour.goto(0));
+    await page.waitForFunction(() => document.querySelector('agentx-ecosystem').state().presentation.tour.index === 0);
+    const node = await page.evaluate(() => document.querySelector('agentx-ecosystem').state().nodes.find(item => item.kind === 'host' && item.screen));
+    await page.mouse.click(...node.screen); await count(5);
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    await page.waitForTimeout(150); assert.equal(requests[4].closed, true, 'a selected component also offers a working Pause');
+    await page.getByRole('button', { name: 'Lire', exact: true }).click(); await count(6);
+    assert.equal(requests[5].body.text, requests[4].body.text, 'resume keeps the selected component');
     await page.getByRole('button', { name: 'Quitter', exact: true }).click();
     await page.waitForTimeout(100);
-    assert.equal(requests[4].closed, true, 'closing releases speech');
+    assert.equal(requests[5].closed, true, 'closing releases speech');
     assert.deepEqual(errors, []); assert.deepEqual(responses, []);
     const result = { ok: true, nativeModelCalls: 0, syntheticSpeech: true, realWebAudio: true,
-      checks: ['explicit activation', 'installed voice choice', 'full displayed narration', 'waits for speech completion', 'automatic next step', 'step replacement abort', 'pause abort', 'resume', 'last step stops', 'mobile controls', 'close abort'], errors, responses };
+      checks: ['explicit activation', 'installed voice choice', 'full displayed narration', 'waits for speech completion', 'automatic next step', 'step replacement abort', 'pause abort', 'resume', 'last step stops', 'mobile controls', 'selected component pause/resume', 'close abort'], errors, responses };
     fs.writeFileSync(path.join(report, 'result.json'), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));
   } finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
