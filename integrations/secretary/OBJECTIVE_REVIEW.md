@@ -6,12 +6,34 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
-New objectives use `secretary.objective-grounding/v3` for model extraction.
+New objectives use `secretary.objective-grounding/v4` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
 evidence rather than transcribing a quote. Unknown or duplicate IDs, missing
 evidence and a response that ignores the frozen contract fail closed.
+
+Useful facts include explicit personal career steps at their stated stage:
+`career-contact`, `application`, `interview`, `job-offer`, `employment-change`,
+or the generic `life-event`. Contacting a firm and sending a CV can be retained
+without implying hiring, a later interview or a new employment period.
+`selectionCues` points to source lines with personal wording and career terms.
+These lexical reminders are not facts, actor identification or proof of
+occurrence. A cue must appear in a cited observation or `omittedCueIds`.
+Omissions become exact quoted selection gaps for source review; they never
+create events automatically. No cue means an empty omission list. Routine
+administrative exchanges and advertisements still need no biographical event.
+
+The model supplies `factType` instead of a free `uncertainty` field. Local
+projection assembles concrete limits: scope of a contact/application/offer,
+missing event date, unconfirmed realization of plans, unknown or third-party
+actor, explicit cited uncertainty, and partial character range. Every proposal
+retains its source-only and unconfirmed status. Scope comes from the retained
+source record and is replayed when receipts are read, not guessed from prose.
+Other documents and representations outside the passage remain unqualified.
+Labels such as `low` or `high` cannot replace these limits. This explanation
+does not infer truth, prove that an observation follows from its citation or
+establish exhaustive recall.
 
 The model selects up to three `summaryCitationIds` instead of writing a free
 summary. Core-compatible summary text reports the extraction state and quotes
@@ -59,7 +81,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1` and `/v2` responses retain their original
+`secretary.objective-grounding/v1`, `/v2` and `/v3` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.

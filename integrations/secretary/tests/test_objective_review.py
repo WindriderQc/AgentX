@@ -56,7 +56,7 @@ class Client:
         if "citationCatalog" in payload:
             value.pop("classification")
             value["emptyAssessment"] = "no-life-event"
-            if payload.get("groundingContract", "").endswith(("/v2", "/v3")):
+            if payload.get("groundingContract", "").endswith(("/v2", "/v3", "/v4")):
                 value.pop("summary")
                 value["summaryCitationIds"] = [row["id"] for row in payload["citationCatalog"][:1]]
             for item in value["moments"]:
@@ -65,6 +65,11 @@ class Client:
                 ids = [row["id"] for row in payload["citationCatalog"] if quote in row["text"]][:1] or ["unknown-span"]
                 item.pop("rationale"); item.pop("relationHints")
                 item.update(observations=[{"text": text, "citationIds": ids}], hypotheses=[])
+            if payload.get("groundingContract", "").endswith("/v4"):
+                value["omittedCueIds"] = []
+                for item in value["moments"]:
+                    item.pop("uncertainty")
+                    item["factType"] = "life-event"
         return value
 
 

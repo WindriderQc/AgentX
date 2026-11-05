@@ -63,7 +63,7 @@ class AttributionContractTests(unittest.TestCase):
 
     def test_v2_schema_and_projection_preserve_old_proximity_and_sentinel_verbatim(self):
         body = "Un ancien échange documentaire."
-        raw = fixtures.response(body)
+        raw = fixtures.response(body, grounding.WORDING_CONTRACT)
         raw["moments"][0]["subject"] = "related"
         result, changes = grounding.project(raw, body, grounding.WORDING_CONTRACT)
         validate(result, body)
