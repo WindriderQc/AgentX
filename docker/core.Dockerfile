@@ -19,6 +19,7 @@ RUN npm ci --omit=dev
 
 COPY core/ ./
 COPY shared/ /shared/
+COPY integrations/coding/schedule_ui_profile.json /integrations/coding/schedule_ui_profile.json
 RUN mkdir -p /app/product-config/config
 COPY docker-compose.yml docker-compose.ollama.yml /app/product-config/
 COPY skills/agentx/ /app/product-config/skills/agentx/
