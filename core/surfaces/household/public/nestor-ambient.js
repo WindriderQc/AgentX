@@ -51,6 +51,7 @@
     const doc = documentRef;
     if (!Choice || !doc?.body) return null;
     const reducedMotion = !!root.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const artx = root.NestorArtx?.create({ now, fetchImpl });
     const canvas = doc.createElement('canvas');
     canvas.className = 'nestor-ambient-sky';
     canvas.setAttribute('aria-hidden', 'true');
@@ -71,7 +72,7 @@
     let snapshot = null, state = 'idle', sample = null, scene = null, disposed = false;
     let frame = 0, lastFrame = 0, particles = [], particleKind = '', flash = 0;
     let visitKey = null, visitMoment = null, visitTimer = null, dismissed = new Set(), visits = readVisits();
-    let paintLog = readPaintLog(), standbySince = null, painting = null;
+    let paintLog = readPaintLog(), standbySince = null, painting = null, paintedTaskId = null;
     const ctx = canvas.getContext?.('2d') || null;
 
     const dock = () => doc.querySelector('.avatar-dock');
@@ -89,7 +90,7 @@
     async function poll() {
       if (disposed || doc.hidden || !fetchImpl) return;
       try {
-        const response = await fetchImpl('/api/family/ambient', { credentials: 'same-origin', cache: 'no-store' });
+        const response = await fetchImpl('/api/family/ambient' + (artx ? '?displayId=' + encodeURIComponent(artx.displayId) : ''), { credentials: 'same-origin', cache: 'no-store' });
         const body = await response.json();
         if (response.ok && body?.data) snapshot = body.data;
       } catch { /* keep the last snapshot; the sky stays calm without one */ }
@@ -101,9 +102,10 @@
       const at = now();
       const quiet = standby();
       if (!quiet) standbySince = null; else if (standbySince === null) standbySince = at;
-      const next = Choice.chooseScreen(snapshot, { at, standby: quiet, visits, painted: paintLog.painted, lastPaint: paintLog.last,
-        idleMs: standbySince === null || photosShown() ? 0 : at - standbySince, painting: painting?.moment || null });
+      const next = Choice.artxScene(Choice.chooseScreen(snapshot, { at, standby: quiet, visits, painted: paintLog.painted, lastPaint: paintLog.last,
+        idleMs: standbySince === null || photosShown() ? 0 : at - standbySince, painting: painting?.moment || null }), snapshot, snapshot?.artx?.task, quiet);
       if (next.moment && dismissed.has(momentId(next.moment))) next.moment = null;
+      if (next.moment?.kind === 'paint' && next.artxTaskId === paintedTaskId) next.moment = null;
       // An open visit is already recorded (cooldown) but keeps the screen until its tour ends.
       if (!next.moment && visitMoment && standby()) next.moment = visitMoment;
       scene = next;
@@ -111,6 +113,7 @@
       const host = dock();
       if (host && canvas.parentElement !== host) host.prepend(canvas);
       const shown = plein() && !photosShown();
+      artx?.tick({ snapshot, quiet, visible: shown && !doc.hidden && !!ctx });
       renderChips(shown ? next.chips : []);
       if (next.moment?.kind === 'visit' && shown) openVisit(next.moment, at); else if (next.moment?.kind !== 'visit') closeVisit();
       if (next.moment?.kind === 'paint' && shown) startPaint(next.moment); else if (painting) endPaint();
@@ -192,7 +195,7 @@
       if (painting?.moment.id === moment.id) return;
       endPaint();
       const image = new root.Image();
-      const run = painting = { moment, image, startedAt: null, requestedAt: now() };
+      const run = painting = { moment, taskId: scene?.artxTaskId, image, startedAt: null, requestedAt: now() };
       image.decoding = 'async';
       image.onload = () => { if (painting === run) { run.startedAt = now(); run.box = null; } };
       image.onerror = () => { if (painting === run) { endPaint(); decide(); } };
@@ -205,6 +208,7 @@
       const painted = Object.fromEntries(Object.entries(paintLog.painted).filter(([id]) => pool.has(id)));
       paintLog = { painted: { ...painted, [painting.moment.id]: at }, last: at };
       savePaintLog(paintLog);
+      paintedTaskId = painting.taskId;
       painting.image.onload = painting.image.onerror = null;
       painting = null;
     }
@@ -364,8 +368,8 @@
       });
       // Planets: steady, a touch of colour, named.
       c.font = `${Math.round(12 * ratio)}px system-ui, sans-serif`;
-      for (const planet of sky.planets || []) {
-        if (!frame.visible(planet) || planet.sunSeparationDeg < 10) continue;
+      const bodies = Choice.skyBodies(sky, bg);
+      for (const planet of bodies.planets) {
         const p = place(planet), r = Math.max(1.8, 3.4 - 0.5 * planet.mag) * ratio, color = PLANET_COLORS[planet.id] || '#fff';
         const glow = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 4);
         glow.addColorStop(0, color); glow.addColorStop(1, 'rgba(255,255,255,0)');
@@ -374,7 +378,7 @@
         c.globalAlpha = 0.55; c.fillStyle = '#d9eef5'; c.fillText(planet.name, p.x, p.y + r + 15 * ratio);
       }
       c.globalAlpha = 1;
-      if (sky.moon && frame.visible(sky.moon) && sky.moon.altDeg > -1) drawMoon(c, b, sky, place);
+      if (bodies.moon) drawMoon(c, b, sky, place);
     }
 
     // The Moon, larger than life so its phase reads from across the kitchen. Its lit side faces
@@ -571,6 +575,7 @@
           if (!(bg.sky && snapshot?.sky && bg.kind !== 'cloud')) drawWeather(ctx, boxCache, bg, dt);
         }
         if (scene.moment?.kind === 'paint') drawPaint(ctx, boxCache, now());
+        artx?.rendered(snapshot, { ...scene, moment: scene.moment?.kind === 'paint' && !painting?.startedAt ? null : scene.moment });
       }
       // Reduced motion: one still picture per decision.
       if (!reducedMotion) frame = root.requestAnimationFrame(draw);
@@ -599,6 +604,7 @@
 
     function dispose() {
       disposed = true;
+      artx?.dispose();
       root.clearInterval(pollTimer); root.clearInterval(decideTimer); closeVisit(); painting = null;
       if (frame) root.cancelAnimationFrame?.(frame);
       root.removeEventListener('persona-presence', onPresence);
@@ -607,7 +613,8 @@
       canvas.remove(); chips.remove(); visit.remove(); weather.remove();
     }
     // Photos wait while Nestor shows a moment of his own.
-    return { busy: () => !!scene?.moment && standby() && plein(), scene: () => scene, decide, dispose };
+    return { busy: () => !!scene?.moment && standby() && plein(), scene: () => scene,
+      context: () => artx?.context({ visible: !!ctx && plein() && !doc.hidden && !photosShown() }), decide, dispose };
   }
 
   root.NestorAmbient = { mount };

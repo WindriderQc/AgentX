@@ -918,8 +918,15 @@ pages and APIs retain the parental gateway guard.
   while it passes. An alert naming a known machine opens a silent ecosystem tour to it,
   by day only and once per alert set and machine in six hours. A conversation, typed
   text or Escape removes the notes and moments; idle photos wait while a moment shows.
-  When the kitchen has been quiet for two minutes, by day and at most every quarter
-  hour, Nestor paints a picture: colour dabs fly from him onto an easel at his right,
+  After two quiet minutes, at most once per quarter hour, a silent Nestor task
+  uses the shared [ArtX capability](ARTX.md) to choose sky, painting, weather or rest.
+  Its portable skill guides the routed model; only a completed scene choice enables
+  a painting. Core re-derives the browser's current and recent render receipts
+  from issued source snapshots and supplies them to the dialogue, with planet
+  directions, panorama orientation and screen positions. A selected task is not
+  proof of display. Conversation invalidates pending choices while admitted
+  inference settles through its native owner. By day, when Nestor chooses a
+  picture, colour dabs fly from him onto an easel at his right,
   then the finished picture shows and fades. The snapshot lists only opaque identifiers
   (`family-paintings.js`): the family's own drawings first, then finished Atelier
   renders, all made from words alone (`imageService.listFinished` excludes retouches,

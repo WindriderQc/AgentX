@@ -1,10 +1,10 @@
 'use strict';
-// Select existing read handlers; family never receives an owner tool catalogue.
+// Select shared family reads and scoped display handlers, never an owner catalogue.
 const bus = require('../../src/services/mcpSkillBus');
 const web = require('../../src/services/mcpOwnerTools');
 const network = require('./secretary-mcp');
 const Ajv = require('ajv');
-const TOOLS = [...bus.TOOLS.filter(t => t.name === 'iss_passes'),
+const TOOLS = [...bus.TOOLS.filter(t => ['iss_passes', 'artx_read', 'artx_present'].includes(t.name)),
   ...web.TOOLS.filter(t => t.name === 'web_search'),
   ...network.SECRETARY_TOOLS.filter(t => t.name === 'network_devices')];
 const ajv = new Ajv({ strict: false, validateFormats: false });

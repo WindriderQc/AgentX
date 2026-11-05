@@ -177,6 +177,11 @@ function register(api) {
     surface: 'household', packId: 'personal_operator', scopeId: 'personal'
   });
   const executeConversation = createConversationExecutor({ agentClient, conversations, inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, env: conversationEnv, personalRecaps });
+  const ambient = require('./family-ambient').createFamilyAmbient({ paintings: require('./family-paintings').createFamilyPaintings() });
+  const artx = require('../../src/services/artxService').configureArtx(require('../../src/services/artxService').createArtxService({ ambient,
+    decide: require('../../src/services/artxDecision').createArtxDecision({ inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT,
+      taskType: require('./conversation-executor').voiceTask(conversationEnv) }),
+    householdActive: () => require('../../src/services/interactivePriorityService').householdTurnActive() }));
   const requireNativeAgent = async id => {
     if (id === 'main') return;
     const { agents } = await nestorClient({ operation: 'agents' });
@@ -461,7 +466,7 @@ function register(api) {
     agentIdFor, logger, instructions: (...args) => handlePersonaTurn.openingInstructions(...args) });
   warmup.register(personas);
   const handlePersonaTurn = createPersonaTurnHandler({
-    logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor, conversationWorks,
+    logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor, conversationWorks, artx,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
     sounds, visuals, brain, memberWork, conversationImages, screenPages, warmup, presentationCompanion, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
@@ -569,7 +574,7 @@ function register(api) {
   const plantCapture = plantAssistant ? require('../../src/services/householdPlantCapture').createPlantCapture({ assistant: plantAssistant }) : null;
   registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds, plantCapture });
 
-  registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, conversations });
+  registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, conversations, ambient, artx });
   if (runtimeServices.household?.plants) {
     require('./plant-routes').registerPlantRoutes({ app, express, plants: runtimeServices.household.plants, assistant: plantAssistant, standardJsonParser });
   }

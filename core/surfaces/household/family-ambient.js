@@ -197,11 +197,11 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
   return { snapshot, painting: id => (paintings ? paintings.image(id) : null) };
 }
 
-function registerFamilyAmbient(router, ambient = createFamilyAmbient({ paintings: createFamilyPaintings() })) {
-  router.get('/ambient', async (_req, res) => {
+function registerFamilyAmbient(router, ambient = createFamilyAmbient({ paintings: createFamilyPaintings() }), artx = null) {
+  router.get('/ambient', async (req, res) => {
     try {
       res.set('Cache-Control', 'no-store');
-      return res.json({ ok: true, status: 'success', data: await ambient.snapshot() });
+      return res.json({ ok: true, status: 'success', data: await (artx ? artx.snapshot(req.query.displayId) : ambient.snapshot()) });
     } catch (error) {
       return res.status(500).json({ ok: false, status: 'error', code: 'FAMILY_AMBIENT_FAILED', message: error.message });
     }

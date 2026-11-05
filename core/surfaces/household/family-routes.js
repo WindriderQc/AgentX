@@ -7,7 +7,7 @@ const defaultIdeaInbox = require('../../src/services/ideaInboxService');
 const { mathSceneFor } = require('./math-scene');
 const { registerFamilyAmbient } = require('./family-ambient');
 
-function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, shoppingList = defaultShoppingList, ideaInbox = defaultIdeaInbox, conversations = null, ambient = undefined }) {
+function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, shoppingList = defaultShoppingList, ideaInbox = defaultIdeaInbox, conversations = null, ambient = undefined, artx = null }) {
   const router = express.Router();
   const reply = async (res, status, operation) => {
     try { return res.status(status).json({ ok: true, status: 'success', data: await operation() }); }
@@ -68,7 +68,8 @@ function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, s
   router.post('/ideas/:id/set-aside', (req, res) => reply(res, 200,
     () => ideaInbox.setAside(req.params.id, { action: req.body?.action, by: 'household-dad-desk' })));
   // What Nestor's standby screen reacts to: weather, the next ISS pass, alert counts.
-  registerFamilyAmbient(router, ambient);
+  registerFamilyAmbient(router, ambient, artx);
+  require('./artx-routes').registerArtxRoutes(router, artx);
   // The docked mask's receipt for a counting or addition picture (#131).
   router.post('/math-receipts', (req, res) => reply(res, 200, () => recordMathReceipt(conversations, req.body)));
   app.use('/api/family', router);
