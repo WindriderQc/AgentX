@@ -59,7 +59,15 @@
   }
   if (typeof module === 'object' && module.exports) module.exports = { createNarrator, bindConversation };
   else {
-    let latest = { visible: root.parent === root, busy: false }, controller, questionPending = false;
+    if (root.document.querySelector('agentx-ecosystem')?.getAttribute('voice') === 'off') return;
+    const managed = !!root.frameElement?.closest('.page-presentation');
+    let latest = { visible: !managed, busy: false }, controller, questionPending = false;
+    const parentPresence = event => root.AgentXEcosystemConversation.update({ visible: true, busy: event.detail?.conversationBusy === true });
+    const parentQuestion = () => root.AgentXEcosystemConversation.pause();
+    // Family's simple board also embeds pages, without the personal workspace.
+    if (!managed && root.parent !== root) {
+      try { root.parent.addEventListener('persona-presence', parentPresence); root.parent.addEventListener('nestor-question-start', parentQuestion); } catch { /* another origin cannot coordinate this view */ }
+    }
     root.AgentXEcosystemConversation = Object.freeze({
       update(next) { latest = next; controller?.update(next); },
       pause() { questionPending = true; controller?.pause(); }
@@ -67,11 +75,16 @@
     root.customElements.whenDefined('agentx-ecosystem').then(() => {
       const view = root.document.querySelector('agentx-ecosystem');
       if (!view) return;
-      controller = bindConversation(view, { embedded: root.parent !== root });
+      controller = bindConversation(view, { embedded: managed });
       if (questionPending) controller.pause();
       controller.update(latest);
       if (root.VoixAudio?.Speech) view.narrator = createNarrator();
-      root.addEventListener('pagehide', () => view.tour?.pause());
+      root.addEventListener('pagehide', () => {
+        view.tour?.pause();
+        if (!managed && root.parent !== root) {
+          try { root.parent.removeEventListener('persona-presence', parentPresence); root.parent.removeEventListener('nestor-question-start', parentQuestion); } catch { /* another origin */ }
+        }
+      });
     });
   }
 })(typeof window === 'undefined' ? globalThis : window);

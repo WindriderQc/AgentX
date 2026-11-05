@@ -82,6 +82,9 @@ preferences. The existing speech service may resolve that voice through its
 configured reference aliases. The standard speech fallback ladder and Web Audio
 player remain the transport; no new agent or conversation session is opened.
 
+Ambient standby visits explicitly request `voice=off` and retain their silent
+animation clock. Normal requested visits keep voice enabled by default.
+
 A typed question pauses the guide immediately. Conversation activity pauses it
 at speech onset and prevents resume during recognition, thinking and Nestor's
 answer. The existing conversation speaker and voice preferences are unchanged.

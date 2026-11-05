@@ -91,3 +91,10 @@ test('a question during frame startup cancels its pending automatic start', () =
   guide.pause(); guide.update({ visible: true, busy: false });
   assert.deepEqual(calls, []);
 });
+
+test('silent ambient playback is an explicit, bounded ecosystem option', () => {
+  const diskx = require('../index');
+  assert.deepEqual(diskx.checkQuery({ app: 'ecosystem', voice: 'off' }), { app: 'ecosystem', voice: 'off' });
+  assert.throws(() => diskx.checkQuery({ app: 'ecosystem', voice: 'custom' }));
+  assert.throws(() => diskx.checkQuery({ voice: 'off' }));
+});
