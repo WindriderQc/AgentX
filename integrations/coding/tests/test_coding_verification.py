@@ -53,6 +53,28 @@ class VerificationCommandTest(unittest.TestCase):
         with self.assertRaises(verification.VerificationError):
             verification.focused_command(self.root, 'agentx-core-runner-tests/v1', [target])
 
+    def test_schedule_profile_runs_only_named_ui_suites_with_installed_configuration(self):
+        profile = verification.SCHEDULE_UI
+        for target in profile['testFiles']:
+            path = self.root / target
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('// fixture')
+        targets = list(profile['testFiles'])
+        command = verification.focused_command(self.root, profile['id'], targets)
+        self.assertEqual(command[:5], ['/opt/node/bin/node', 'core/node_modules/jest/bin/jest.js',
+                                     '--config', '/opt/coding/jest.schedule-ui.config.cjs', '--runInBand'])
+        self.assertEqual(command[5:], ['--runTestsByPath', *targets])
+        self.assertNotIn('--runTestsByPath', verification.full_command(profile['id']))
+
+    def test_schedule_profile_refuses_unreviewed_tests_even_before_file_creation(self):
+        for target in ['core/tests/unit/unrelated.test.js',
+                       'core/tests/unit/clusterScheduleInventedUi.test.js',
+                       'core/public/js/cluster-schedule-upcoming.js',
+                       'core/tests/unit/../unit/clusterScheduleUpcomingUi.test.js']:
+            with self.subTest(target=target), self.assertRaises(verification.VerificationError):
+                verification.focused_command(self.root, verification.SCHEDULE_UI['id'], [target],
+                                            require_exists=False)
+
 
 if __name__ == '__main__':
     unittest.main()

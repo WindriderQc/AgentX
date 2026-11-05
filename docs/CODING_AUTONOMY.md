@@ -213,9 +213,10 @@ binds it to the resulting intent. Identical grant retries retain their original
 fingerprint and receipts without adding credit.
 Readiness is a necessary contract check, not proof of model competence or a
 replacement for dependency eligibility, native admission and independent review.
-The installed Core verifier covers only `inferenceRuntimePolicy` source/tests;
-it cannot certify arbitrary `core/` changes. Other code needs a matching native
-verification profile.
+`agentx-core-runner-tests/v1` covers only `inferenceRuntimePolicy` source/tests;
+it cannot certify arbitrary `core/` changes. The separate Schedule UI verifier
+covers only the frontend scope described below. Other code needs a matching
+native verification profile.
 
 ### Report progress and bounded retries
 
@@ -272,7 +273,8 @@ that scope. Stops, native termination, release and billing remain distinct.
    then **Enable authorized scope**. Only authorized tasks are selected; the next
    eligible task starts without a separate per-launch confirmation.
    The authorization form exposes all cumulative budgets and the no-progress
-   window, plus the installed coding, Core and Benchmark comparison verifiers.
+   window, plus the installed coding, Core runtime, Schedule UI and Benchmark
+   comparison verifiers.
    Durations use minutes and model calls use a count; Core validates every limit.
 5. Follow the active request, stages, native unresolved calls, remaining budgets,
    PR SHA/check coverage and manual intervention history. Submit a review
@@ -564,6 +566,17 @@ the live panel counts waiting work, blocked cards and review separately.
 configuration comes from the installed runner, rather than the worker checkout.
 Loopback HTTP fixtures are permitted; production services and databases are not
 reachable. Independent review and full CI must still accept the published commit.
+
+`agentx-cluster-schedule-ui-tests/v1` covers only the Schedule controller,
+upcoming, attention and headline scripts and the eight named UI regression
+suites in `integrations/coding/schedule_ui_profile.json`. Core scope readiness
+and runner-owned focused/full verification use that same installed manifest.
+The native Jest configuration disables network and process access through the
+existing no-database guard; it starts no server, database or model. Schedule
+backend, identity, runtime claims and new page layouts require separate verified
+scope. Passing these CPU suites does not establish browser/device acceptance,
+installation or permission to launch a campaign. Existing intake, budgets,
+queue/admission, publication and human review gates still apply.
 
 The coding model route preserves up to 120 seconds (one quarter for shorter
 budgets) for completion. Core refuses fresh calls inside that reserve before

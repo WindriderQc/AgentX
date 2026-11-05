@@ -187,13 +187,18 @@ function authorizationValues(overrides) {
   expect(html).toContain(`<option value="${overrides.verificationProfile}">`);
   return { ...values, ...overrides };
 }
-test('authorization submits reduced cumulative budgets and the installed Benchmark verifier from the rendered form', async () => {
+test.each([
+  { profile: 'agentx-benchmark-artifact-tests/v1', scope: ['benchmark/src/services/benchmark/artifactComparison.js',
+    'benchmark/tests/unit/benchmark/artifactComparison.test.js'] },
+  { profile: 'agentx-cluster-schedule-ui-tests/v1', scope: ['core/public/js/cluster-schedule-upcoming.js',
+    'core/tests/unit/clusterScheduleUpcomingUi.test.js'] }
+])('authorization submits reduced cumulative budgets with installed verifier $profile', async ({ profile, scope }) => {
   const snapshot = state(); snapshot.tasks[0].authorizationRevision = 12;
   const { nodes, calls } = setup(snapshot); await flush();
   const form = nodes.codingAutonomyAuthorize;
   form.values = authorizationValues({ pipelineId: '0001', queueRequestId: KEY,
-    scope: ' benchmark/src/services/benchmark/artifactComparison.js \n\nbenchmark/tests/unit/benchmark/artifactComparison.test.js',
-    verificationProfile: 'agentx-benchmark-artifact-tests/v1', maxResumes: '0', workMinutes: '20',
+    scope: ` ${scope.join(' \n\n')}`,
+    verificationProfile: profile, maxResumes: '0', workMinutes: '20',
     acceptanceCriteria: 'Expected artifact comparison is reproduced.\nExisting behavior remains valid.',
     requiredCapabilities: 'source_read\nsource_write\ncpu_tests', estimatedWorkMinutes: '10', estimatedModelCalls: '12',
     testMinutes: '5', modelMinutes: '10', modelCalls: '17', ciMinutes: '8', noProgressMinutes: '3' });
@@ -205,8 +210,7 @@ test('authorization submits reduced cumulative budgets and the installed Benchma
   expect(mutation.url).toBe('/api/pipeline/coding-autonomy/tasks/0001/authorization');
   const body = JSON.parse(mutation.options.body);
   expect(body).toMatchObject({ confirm: true, authorized: true, lowRisk: true, expectedRevision: 12,
-    queueRequestId: KEY, verificationProfile: 'agentx-benchmark-artifact-tests/v1',
-    scope: ['benchmark/src/services/benchmark/artifactComparison.js', 'benchmark/tests/unit/benchmark/artifactComparison.test.js'],
+    queueRequestId: KEY, verificationProfile: profile, scope,
     qualification: { acceptanceCriteria: ['Expected artifact comparison is reproduced.', 'Existing behavior remains valid.'],
       requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { workSeconds: 600, modelCalls: 12 } },
     limits: { maxResumes: 0, workSeconds: 1200, testSeconds: 300, modelSeconds: 600,

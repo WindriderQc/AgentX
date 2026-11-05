@@ -18,7 +18,8 @@ const NATIVE_STOPS = new Set(['no_useful_progress', 'model_budget_reserve', 'mod
 const REVIEWED_STOPS = new Set([...NATIVE_STOPS, 'worker_exit', 'model_output_limit', 'tests_failed']);
 const CREDITS = ['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls', 'ciSeconds'];
 const TOTAL_CEILINGS = Object.freeze(Object.fromEntries(CREDITS.map(key => [key, policy.DEFAULT_LIMITS[key] * 4])));
-const PROFILES = ['agentx-dispatcher-tests/v1', 'agentx-core-runner-tests/v1', 'agentx-benchmark-artifact-tests/v1'];
+const PROFILES = ['agentx-dispatcher-tests/v1', 'agentx-core-runner-tests/v1', 'agentx-benchmark-artifact-tests/v1',
+  'agentx-cluster-schedule-ui-tests/v1'];
 const fail = message => policy.fail(message, 'CODING_CONTINUATION_UNVERIFIED');
 const same = (a, b) => a?.key === b.key && a?.fingerprint === b.fingerprint;
 function intent(input, requestId) {

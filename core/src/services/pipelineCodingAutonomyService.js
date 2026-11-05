@@ -81,7 +81,8 @@ async function authorize(id, input) {
       throw policy.fail('Authorization scope differs from the reviewed task intent');
     if (input.verificationProfile && input.verificationProfile !== task.automation.verificationProfile)
       throw policy.fail('Verification differs from the reviewed task intent');
-    if (!['agentx-dispatcher-tests/v1', 'agentx-core-runner-tests/v1', 'agentx-benchmark-artifact-tests/v1'].includes(task.automation.verificationProfile))
+    if (!['agentx-dispatcher-tests/v1', 'agentx-core-runner-tests/v1', 'agentx-benchmark-artifact-tests/v1',
+      'agentx-cluster-schedule-ui-tests/v1'].includes(task.automation.verificationProfile))
       throw policy.fail('Select an installed independent verification profile');
   }
   if (input.expectedRevision !== (task.codingAutonomy?.revision || 0)) throw policy.fail('Task authorization changed');
