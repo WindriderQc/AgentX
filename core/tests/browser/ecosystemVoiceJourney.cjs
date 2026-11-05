@@ -32,7 +32,7 @@ require('../../surfaces/diskx').register({ app, express, env: { DISKX_MODULE_URL
   fetchWithTimeout: async () => ({ ok: true, headers: new Map([['content-type', 'text/javascript']]), text: async () => fs.readFileSync(bundle, 'utf8') }) });
 const catalog = require('../../public/js/screen-pages').createCatalog(require('../../../shared/screenDestinations').screenDestinations({ agentxProfile: 'full' }));
 app.get('/fixture', (_req, res) => res.send(`<!doctype html><html lang="fr"><meta charset="utf-8"><title>Guide et Nestor</title>
-<style>body{margin:12px;background:#07181e;color:white;font:16px system-ui}.page-presentation-board iframe{width:100%;height:700px}.page-presentation-board[hidden]{display:none}</style>
+<style>*{box-sizing:border-box}body{margin:12px;background:#07181e;color:white;font:16px system-ui}.page-presentation-board iframe{width:100%;height:700px}.page-presentation-board[hidden]{display:none}</style>
 <div id="app"><div class="conversation-layout"><section id="text"></section><section id="visual"></section></div><button id="ask">Poser une question</button></div>
 <script src="/js/screen-pages.js"></script><script src="/assets/household/page-presentation.js"></script><script src="/assets/household/display-board.js"></script>
 <script src="/js/voice/speech-language.js"></script><script src="/js/voice/voice-capture.js"></script><script src="/js/voice/browser-conversation.js"></script><script src="/api/voix/player.js"></script>
@@ -119,6 +119,9 @@ document.getElementById('ask').onclick=async()=>{presence(true);const voice=new 
     requests[7].release();
     await page.waitForFunction(() => document.querySelector('iframe').contentDocument.querySelector('[data-action="toggle"]').disabled === false);
     assert.equal(requests.length,8,'Nestor finishing does not restart the guide');
+    await page.setViewportSize({width:390,height:900});
+    assert.equal(await frame.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'paused guide controls fit mobile');
+    await page.screenshot({path:path.join(report,'guide-question-mobile.png'),fullPage:true});
     assert.equal(await frame.evaluate(() => document.querySelector('agentx-ecosystem').state().presentation.tour.index),beforeQuestion);
     await frame.getByRole('button', { name: 'Reprendre la visite', exact: true }).click(); await count(9);
     assert.equal(requests[8].body.text,requests[6].body.text);
