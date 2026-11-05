@@ -97,11 +97,16 @@ async function nativeViews() {
   }
   return plain(result);
 }
-function assertBalances(manifest, before, after) {
+function assertBalancePlan(manifest,state,before,destination,direction='apply') {
+  if (manifest.schemaVersion === 4) require('./financeRepairBalanceProof').assertPlan(manifest,state,before,derive(state,manifest,destination),direction);
+}
+function assertBalances(manifest, before, after, direction='apply') {
+  if (manifest.schemaVersion === 4) return require('./financeRepairBalanceProof').assertResult(manifest,before,after,direction);
   if (manifest.expectedAccounting?.latestBalancesExpectedUnchangedInBothLedgers !== true || canonical(before) !== canonical(after)) {
     throw conflict('The repair changed the latest account balances');
   }
+  return { latestBalancesUnchanged:true };
 }
 
 module.exports = { snapshot, signatures, assertSignatures, images, derive, validateScope, assertImages,
-  typedAfter, replace, nativeViews, assertBalances, conflict };
+  typedAfter, replace, nativeViews, assertBalances, assertBalancePlan, conflict };

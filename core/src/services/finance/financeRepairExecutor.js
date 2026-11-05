@@ -35,7 +35,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
     async function finish(phase, proof) {
       const field = phase === 'applied' ? 'applyReceipt' : phase === 'rolled_back' ? 'rollbackReceipt' : 'refusalReceipt';
       if (!record[field]) {
-        await save({ phase, [field]: { schema: 'agentx.finance-repair/v1', requestKey: key, digest,
+        await save({ phase, [field]: { schema: m.schemaVersion === 4 ? 'agentx.finance-issuer-repair/v1' : 'agentx.finance-repair/v1', requestKey: key, digest,
           phase, actor: String(actor).trim(), completedAt: new Date(), ...proof } });
       }
       await checkpoint('terminal_saved', { phase });
@@ -68,6 +68,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       const after = check.typedAfter(before,m,appliedAt);
       check.validateScope(state,m,after);
       const balances = await check.nativeViews();
+      check.assertBalancePlan(m,state,balances,after);
       await storage.immutable(path.join(directory,'before.json'),state);
       await checkpoint('backup_saved');
       await save({ phase: 'applying', appliedAt, before, after, balances,
@@ -117,13 +118,13 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       for (let i=0;i<m.updates.length;i++) await dispatch(i,'apply');
       state = await check.snapshot(db);
       check.assertSignatures(state,record.expectedApplied);
-      check.assertBalances(m,record.balances,await check.nativeViews());
+      const balanceProof = check.assertBalances(m,record.balances,await check.nativeViews());
       await storage.immutable(path.join(directory,'after.json'),state);
       await checkpoint('verified');
       return finish('applied',{ documents: m.updates.length, inserted: 0, deleted: 0,
         appliedAtUtc: record.appliedAt.toISOString(),
         sourcePdfSha256: m.verifiedIdentity.pdfSha256, backupSha256: record.backupSha256,
-        stateSignatures: record.expectedApplied, arithmeticResidualCents: 0, latestBalancesUnchanged: true });
+        stateSignatures: record.expectedApplied, arithmeticResidualCents: 0, ...balanceProof });
     }
     async function rollback() {
       if (record.applyReceipt) await storage.immutable(path.join(directory,'applied.json'),record.applyReceipt);
@@ -140,6 +141,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
         if (record.phase !== 'applied') check.assertSignatures(check.derive(state,m,record.after),record.expectedApplied);
         check.validateScope(state,m,record.before);
         const balances = await check.nativeViews();
+        check.assertBalancePlan(m,state,balances,record.before,'rollback');
         await storage.immutable(path.join(directory,'rollback-before.json'),state);
         await save({ phase: 'rolling_back', rollbackBalances: balances,
           expectedRollback: check.signatures(check.derive(state,m,record.before)), rollbackRequestedBy: String(actor).trim() });
@@ -151,10 +153,11 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       for (const i of m.updates.map((_,i) => i).reverse()) await dispatch(i,'rollback');
       const restored = await check.snapshot(db);
       check.assertSignatures(restored,record.expectedRollback);
-      check.assertBalances(m,record.rollbackBalances,await check.nativeViews());
+      const balanceProof = check.assertBalances(m,record.rollbackBalances,await check.nativeViews(),'rollback');
       await storage.immutable(path.join(directory,'restored.json'),restored);
       return finish('rolled_back',{ documents: m.updates.length, inserted: 0, deleted: 0,
-        stateSignatures: record.expectedRollback, exactBeforeImagesRestored: true });
+        stateSignatures: record.expectedRollback, exactBeforeImagesRestored: true,
+        ...(m.schemaVersion === 4 ? balanceProof : {}) });
     }
     try {
       await access.bindExecutor(rootIdentity);
@@ -173,7 +176,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       }
       if (record.digest !== digest || record.executorRoot !== rootIdentity) throw error('Finance repair identity has different intent', 'FINANCE_REPAIR_INTENT_CONFLICT', 409);
       if (['rolled_back','rejected'].includes(record.phase) || (record.phase === 'applied' && mode !== 'rollback')) return await terminal();
-      await coreProof.protocol(coreOrigin, { linkedDocuments: m.schemaVersion === 3 });
+      await coreProof.protocol(coreOrigin, { linkedDocuments: m.schemaVersion >= 3, issuerCorrection: m.schemaVersion === 4 });
       await access.hold(key,digest,rootIdentity);
       await checkpoint('fenced');
       await coreProof.fenced(coreOrigin);
