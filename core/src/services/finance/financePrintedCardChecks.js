@@ -3,8 +3,7 @@
 const { error } = require('./financeAccess');
 const { parts } = require('./financeRepairStatementContract');
 const { keyOf } = require('./financeTransactionIdentity');
-const { canonical, hash } = require('./financeRepairStorage');
-const money = require('./financeMoneyTotals');
+const { canonical } = require('./financeRepairStorage');
 const conflict = () => error('The reviewed printed card scope or monthly money changed','FINANCE_REPAIR_STATE_CONFLICT',409);
 
 function validateScope(state,manifest,destination) {
@@ -28,17 +27,4 @@ function validateScope(state,manifest,destination) {
     }
   }
 }
-async function plan(db,manifest,state,target,direction='apply') {
-  const before=await money.nativeMonthly(db), expected=manifest.expectedAccounting.monthlyProjection;
-  if (canonical(money.projectMonthly(state.finance_transactions))!==canonical(before)
-    || (direction==='apply' && hash(before)!==expected.beforeSha256)
-    || hash(money.projectMonthly(target.finance_transactions))!==(direction==='apply'?expected.afterSha256:expected.beforeSha256)) throw conflict();
-  return before;
-}
-async function result(db,manifest,before,direction='apply') {
-  const after=await money.nativeMonthly(db), expected=manifest.expectedAccounting.monthlyProjection;
-  if ((direction==='apply' && hash(before)!==expected.beforeSha256)
-    || hash(after)!==(direction==='apply'?expected.afterSha256:expected.beforeSha256)) throw conflict();
-  return {reviewedMonthlyProjectionMatched:true,monthlyProjectionBeforeSha256:hash(before),monthlyProjectionAfterSha256:hash(after)};
-}
-module.exports={validateScope,plan,result};
+module.exports={validateScope,...require('./financeRepairMonthlyProof')};

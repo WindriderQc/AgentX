@@ -26,6 +26,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
     const key = m.requestKey;
     const directory = path.join(root.directory, storage.hash(key));
     const printed=m.schemaVersion===5;
+    const restoring=m.schemaVersion===6, projected=printed||restoring;
     let record;
     const load = () => journals.findOne({ _id: key });
     async function save(fields) {
@@ -36,7 +37,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
     async function finish(phase, proof) {
       const field = phase === 'applied' ? 'applyReceipt' : phase === 'rolled_back' ? 'rollbackReceipt' : 'refusalReceipt';
       if (!record[field]) {
-        await save({ phase, [field]: { schema: printed ? 'agentx.finance-printed-card-repair/v1' : m.schemaVersion === 4 ? 'agentx.finance-issuer-repair/v1' : 'agentx.finance-repair/v1', requestKey: key, digest,
+        await save({ phase, [field]: { schema: restoring ? 'agentx.finance-statement-restoration/v1' : printed ? 'agentx.finance-printed-card-repair/v1' : m.schemaVersion === 4 ? 'agentx.finance-issuer-repair/v1' : 'agentx.finance-repair/v1', requestKey: key, digest,
           phase, actor: String(actor).trim(), completedAt: new Date(), ...proof } });
       }
       await checkpoint('terminal_saved', { phase });
@@ -70,11 +71,11 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       check.validateScope(state,m,after);
       const balances = await check.nativeViews();
       check.assertBalancePlan(m,state,balances,after);
-      const monetary=printed?await require('./financePrintedCardChecks').plan(db,m,state,check.derive(state,m,after)):null;
+      const monetary=projected?await require('./financeRepairMonthlyProof').plan(db,m,state,check.derive(state,m,after)):null;
       await storage.immutable(path.join(directory,'before.json'),state);
       await checkpoint('backup_saved');
       await save({ phase: 'applying', appliedAt, before, after, balances,
-        ...(printed?{monetary}:{}),
+        ...(projected?{monetary}:{}),
         baseline: check.signatures(state), expectedApplied: check.signatures(check.derive(state,m,after)),
         backupSha256: storage.hash(state) });
       await checkpoint('intent_saved');
@@ -122,7 +123,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       state = await check.snapshot(db);
       check.assertSignatures(state,record.expectedApplied);
       const balanceProof = check.assertBalances(m,record.balances,await check.nativeViews());
-      const monetaryProof=printed?await require('./financePrintedCardChecks').result(db,m,record.monetary):{};
+      const monetaryProof=projected?await require('./financeRepairMonthlyProof').result(db,m,record.monetary):{};
       await storage.immutable(path.join(directory,'after.json'),state);
       await checkpoint('verified');
       return finish('applied',{ ...effectCounts('apply'),
@@ -131,7 +132,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
         stateSignatures: record.expectedApplied, arithmeticResidualCents: 0, ...balanceProof,...monetaryProof });
     }
     function effectCounts(direction) {
-      if (!printed) return {documents:m.updates.length,inserted:0,deleted:0};
+      if (!projected) return {documents:m.updates.length,inserted:0,deleted:0};
       const from=direction==='apply'?record.before:record.rollbackSource,to=direction==='apply'?record.after:record.before;
       const changed=from.map((row,i)=>storage.hash(row)!==storage.hash(to[i]));
       return {reviewedDocuments:m.updates.length,documents:changed.filter(Boolean).length,
@@ -155,10 +156,10 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
         check.validateScope(state,m,record.before);
         const balances = await check.nativeViews();
         check.assertBalancePlan(m,state,balances,record.before,'rollback');
-        const rollbackMonetary=printed?await require('./financePrintedCardChecks').plan(db,m,state,check.derive(state,m,record.before),'rollback'):null;
+        const rollbackMonetary=projected?await require('./financeRepairMonthlyProof').plan(db,m,state,check.derive(state,m,record.before),'rollback'):null;
         await storage.immutable(path.join(directory,'rollback-before.json'),state);
         await save({ phase: 'rolling_back', rollbackBalances: balances,
-          ...(printed?{rollbackMonetary,rollbackSource:current}:{}),
+          ...(projected?{rollbackMonetary,rollbackSource:current}:{}),
           expectedRollback: check.signatures(check.derive(state,m,record.before)), rollbackRequestedBy: String(actor).trim() });
         await checkpoint('rollback_intent_saved');
       }
@@ -169,11 +170,11 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       const restored = await check.snapshot(db);
       check.assertSignatures(restored,record.expectedRollback);
       const balanceProof = check.assertBalances(m,record.rollbackBalances,await check.nativeViews(),'rollback');
-      const monetaryProof=printed?await require('./financePrintedCardChecks').result(db,m,record.rollbackMonetary,'rollback'):{};
+      const monetaryProof=projected?await require('./financeRepairMonthlyProof').result(db,m,record.rollbackMonetary,'rollback'):{};
       await storage.immutable(path.join(directory,'restored.json'),restored);
       return finish('rolled_back',{ ...effectCounts('rollback'),
         stateSignatures: record.expectedRollback, exactBeforeImagesRestored: true,
-        ...([4,5].includes(m.schemaVersion) ? balanceProof : {}),...monetaryProof });
+        ...([4,5,6].includes(m.schemaVersion) ? balanceProof : {}),...monetaryProof });
     }
     try {
       await access.bindExecutor(rootIdentity);
@@ -192,7 +193,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       }
       if (record.digest !== digest || record.executorRoot !== rootIdentity) throw error('Finance repair identity has different intent', 'FINANCE_REPAIR_INTENT_CONFLICT', 409);
       if (['rolled_back','rejected'].includes(record.phase) || (record.phase === 'applied' && mode !== 'rollback')) return await terminal();
-      await coreProof.protocol(coreOrigin, { linkedDocuments: m.schemaVersion >= 3, issuerCorrection: m.schemaVersion === 4, printedCardCorrection:printed });
+      await coreProof.protocol(coreOrigin, { linkedDocuments: m.schemaVersion >= 3, issuerCorrection: m.schemaVersion === 4, printedCardCorrection:printed, statementRestoration:restoring });
       await access.hold(key,digest,rootIdentity);
       await checkpoint('fenced');
       await coreProof.fenced(coreOrigin);

@@ -43,7 +43,8 @@ function createFinanceRoutes({ inbox = financeInbox } = {}) {
       return res.json({status:'success',data:{protocol:require('../src/services/finance/financeRepairCoreProof').PROTOCOL,
         capabilities:[require('../src/services/finance/financeRepairCoreProof').LINKED_DOCUMENTS,
           require('../src/services/finance/financeRepairCoreProof').ISSUER_CORRECTION,
-          require('../src/services/finance/financeRepairCoreProof').PRINTED_CARD_CORRECTION],
+          require('../src/services/finance/financeRepairCoreProof').PRINTED_CARD_CORRECTION,
+          require('../src/services/finance/financeRepairCoreProof').STATEMENT_RESTORATION],
         databaseIdentity:state.identity,held:Boolean(state.repair || state.ingestion),
         operation:state.repair ? 'repair' : state.ingestion ? 'ingestion' : null}});
     } catch (e) { return sendError(res,e); }

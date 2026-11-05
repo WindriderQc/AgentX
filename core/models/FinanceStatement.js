@@ -27,6 +27,8 @@ const financeStatementSchema = new mongoose.Schema({
   // preserves genuine overlapping exports without treating lost rows as duplicates.
   rowKeys: { type: [String], default: undefined },
   reviewHistory: { type: [mongoose.Schema.Types.Mixed], default: undefined },
+  sourceRepair: {type:new mongoose.Schema({requestKey:{type:String,required:true},pdfSha256:{type:String,required:true},
+    verifiedAccountsSha256:{type:String,required:true}},{_id:false}),default:undefined},
   problems: { type: [String], default: [] },
   fileName: { type: String, required: true },
   fileSha256: { type: String, required: true },
