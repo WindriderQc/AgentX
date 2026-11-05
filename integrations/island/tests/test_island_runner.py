@@ -402,5 +402,71 @@ class StopAction(Fixture):
                 child.wait()
 
 
+class CloseAction(Fixture):
+    def dead_run(self, state):
+        run = self.root / "runs" / RUN
+        run.mkdir()
+        runner.write_json(run / "request.json", {"runId": RUN, "dispatchId": DISPATCH})
+        runner.write_json(run / "state.json", state)
+        runner.write_json(self.root / "runs" / "active.json", {"runId": RUN, "since": "2026-11-03T00:52:05-05:00"})
+        return run
+
+    def test_close_frees_a_runner_left_busy_by_a_failed_cleanup(self):
+        """The 2026-11-03 case: supervisor finished `failed` with localStopped false."""
+        run = self.dead_run({"phase": "finished", "outcome": "failed", "pid": 999999, "localStopped": False})
+        self.assertEqual(runner.active_run(self.config), RUN)
+        with mock.patch.object(runner, "leftover_processes", return_value=[]):
+            code, out = self.call("close", "--run-id", RUN)
+            self.assertEqual(code, 0, out)
+            self.assertEqual(out["data"], {"runId": RUN, "closed": True, "markerCleared": True,
+                                           "phase": "finished", "outcome": "failed"})
+            self.assertIsNone(runner.active_run(self.config))
+            status = runner.describe(self.config, RUN)
+        self.assertTrue(status["terminal"] and status["localStopped"] and not status["alive"])
+        self.assertEqual(status["leftover"], [])
+        self.assertEqual(status["events"][-1]["event"], "closed")
+        state = runner.read_json(run / "state.json")
+        self.assertEqual(state["outcome"], "failed", "close never turns a failure into a success")
+        with mock.patch.object(runner, "leftover_processes", return_value=[]):
+            code, out = self.call("close", "--run-id", RUN)
+        self.assertEqual(out["data"]["closed"], False, "closing twice changes nothing")
+
+    def test_close_marks_an_interrupted_supervisor_finished_failed(self):
+        self.dead_run({"phase": "running", "pid": 999999})
+        with mock.patch.object(runner, "leftover_processes", return_value=[]):
+            code, out = self.call("close", "--run-id", RUN)
+        self.assertEqual((out["data"]["phase"], out["data"]["outcome"]), ("finished", "failed"))
+
+    def test_close_refuses_while_processes_of_the_run_remain(self):
+        run = self.dead_run({"phase": "finished", "outcome": "failed", "pid": 999999, "localStopped": False})
+        with mock.patch.object(runner, "leftover_processes", return_value=[4242]):
+            code, out = self.call("close", "--run-id", RUN)
+        self.assertEqual((code, out["code"]), (1, "PROCESS_LEFT"))
+        with mock.patch.object(runner, "leftover_processes",
+                               side_effect=runner.RunnerError("PROCESS_OBSERVATION", "synthetic")):
+            code, out = self.call("close", "--run-id", RUN)
+        self.assertEqual(out["code"], "PROCESS_OBSERVATION", "an unobservable process table is not an empty one")
+        self.assertFalse(runner.read_json(run / "state.json")["localStopped"])
+        self.assertEqual(runner.active_run(self.config), RUN)
+
+    def test_close_refuses_a_live_supervisor_and_an_unknown_run(self):
+        import subprocess
+        run = self.root / "runs" / RUN
+        run.mkdir()
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", "supervise", RUN])
+        try:
+            runner.write_json(run / "state.json", {"pid": child.pid, "phase": "running"})
+            deadline = time.monotonic() + 5
+            while not runner.pid_alive(child.pid, RUN) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            code, out = self.call("close", "--run-id", RUN)
+            self.assertEqual(out["code"], "RUNNER_BUSY")
+        finally:
+            child.kill()
+            child.wait()
+        code, out = self.call("close", "--run-id", "00000000-0000-4000-8000-0000000000dd")
+        self.assertEqual(out["code"], "RUN_NOT_FOUND")
+
+
 if __name__ == "__main__":
     unittest.main()
