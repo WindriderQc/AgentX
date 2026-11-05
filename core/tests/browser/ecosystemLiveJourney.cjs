@@ -136,6 +136,7 @@ app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation
     console.log(JSON.stringify(result));
   } finally {
     await browser.close();
+    server.closeAllConnections();
     await new Promise(resolve => server.close(resolve));
     fs.rmSync(instance, { recursive: true });
   }
