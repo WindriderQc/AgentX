@@ -54,20 +54,21 @@
     update(context);
     return Object.freeze({
       update,
-      pause() { view.tour?.conversation?.(true); if (context.visible && !context.busy) view.tour?.conversation?.(false); }
+      pause() { startPending = false; view.tour?.conversation?.(true); if (context.visible && !context.busy) view.tour?.conversation?.(false); }
     });
   }
   if (typeof module === 'object' && module.exports) module.exports = { createNarrator, bindConversation };
   else {
-    let latest = { visible: root.parent === root, busy: false }, controller;
+    let latest = { visible: root.parent === root, busy: false }, controller, questionPending = false;
     root.AgentXEcosystemConversation = Object.freeze({
       update(next) { latest = next; controller?.update(next); },
-      pause() { controller?.pause(); }
+      pause() { questionPending = true; controller?.pause(); }
     });
     root.customElements.whenDefined('agentx-ecosystem').then(() => {
       const view = root.document.querySelector('agentx-ecosystem');
       if (!view) return;
       controller = bindConversation(view, { embedded: root.parent !== root });
+      if (questionPending) controller.pause();
       controller.update(latest);
       if (root.VoixAudio?.Speech) view.narrator = createNarrator();
       root.addEventListener('pagehide', () => view.tour?.pause());

@@ -83,3 +83,11 @@ test('a browser autoplay lock opens no synthesis request and a later gesture can
   allowed = true; await narrator('Bonjour.', new AbortController().signal);
   assert.deepEqual(calls, ['speech']);
 });
+
+test('a question during frame startup cancels its pending automatic start', () => {
+  const calls = [];
+  const view = { tour: { conversation() {}, play: () => calls.push('play') } };
+  const guide = bindConversation(view, { embedded: true });
+  guide.pause(); guide.update({ visible: true, busy: false });
+  assert.deepEqual(calls, []);
+});
