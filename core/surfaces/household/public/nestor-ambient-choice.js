@@ -64,12 +64,22 @@
     return minutes === 1 ? '1 min' : `${minutes} min`;
   }
 
-  function weatherChip(weather) {
+  // The weather beside the date: shown in the full screen at all times, a conversation
+  // included, so it is not one of the notes. An old reading is hidden rather than shown as now.
+  const WEATHER_STALE_MS = 3 * 60 * 60 * 1000;
+  const WEATHER_ICONS = ['cloud', 'rain', 'snow', 'storm', 'fog'];
+  function weatherLine(snapshot, { at = Date.now() } = {}) {
+    const weather = snapshot?.weather;
     if (!weather) return null;
-    const parts = [];
-    if (typeof weather.temperatureC === 'number') parts.push(`${Math.round(weather.temperatureC)} °C`);
-    if (weather.condition) parts.push(weather.condition);
-    return parts.length ? { id: 'weather', tone: 'calm', text: parts.join(' · ') } : null;
+    const ages = [weather.fetchedAt, snapshot.at].map(value => at - Date.parse(value)).filter(Number.isFinite);
+    if (ages.some(age => age > WEATHER_STALE_MS)) return null;
+    const temperature = typeof weather.temperatureC === 'number' && Number.isFinite(weather.temperatureC)
+      ? `${Math.round(weather.temperatureC) || 0} °C` : null;
+    const condition = typeof weather.condition === 'string' && weather.condition.trim() ? weather.condition.trim() : null;
+    if (!temperature && !condition) return null;
+    const night = typeof snapshot.sun?.elevationDeg === 'number' && snapshot.sun.elevationDeg < -0.83;
+    const icon = weather.kind === 'clear' ? (night ? 'night' : 'sun') : WEATHER_ICONS.includes(weather.kind) ? weather.kind : null;
+    return { icon, text: [temperature, condition].filter(Boolean).join(' · ') };
   }
 
   // The ISS: a chip before the pass, then the sky scene around it.
@@ -136,7 +146,7 @@
       || (painting?.kind === 'paint' ? painting : paintMoment(snapshot.paintings, { at, hour, idleMs, painted, lastPaint }));
     const paintChip = scene.moment?.kind === 'paint' ? { id: 'paint', tone: 'calm', text: scene.moment.label } : null;
     const ranked = [critical && alertChip(alerts), iss?.chip, !critical && alertChip(alerts), paintChip,
-      scene.moment?.kind === 'iss' ? null : skyChip(snapshot, scene.background), weatherChip(snapshot.weather)];
+      scene.moment?.kind === 'iss' ? null : skyChip(snapshot, scene.background)];
     scene.chips = ranked.filter(Boolean).slice(0, MAX_CHIPS);
     return scene;
   }
@@ -201,7 +211,7 @@
   }
 
   const api = { background, chooseScreen, skyFrame, paintMoment, paintPhase, passArc, passProgress, visitKey, minutesText,
-    ISS_NOTICE_MS, ISS_MOMENT_MS, VISIT_COOLDOWN_MS, MAX_CHIPS, PAINT_IDLE_MS, PAINT_EVERY_MS, PAINT_MS };
+    weatherLine, WEATHER_STALE_MS, ISS_NOTICE_MS, ISS_MOMENT_MS, VISIT_COOLDOWN_MS, MAX_CHIPS, PAINT_IDLE_MS, PAINT_EVERY_MS, PAINT_MS };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.NestorAmbientChoice = api;
 })(typeof window !== 'undefined' ? window : globalThis);

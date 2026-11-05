@@ -119,10 +119,11 @@
     sceneBar.innerHTML = `<p class="avatar-scene-status" aria-hidden="true"></p>
       <p class="avatar-scene-reply" aria-hidden="true" hidden></p>
       <div class="avatar-scene-actions"><form class="avatar-scene-input"${onSend ? '' : ' hidden'}><label class="sr-only" for="avatarSceneMessage">Message to ${family ? 'Nestor' : 'your agent'}</label><input id="avatarSceneMessage" type="text" maxlength="4000" autocomplete="off" enterkeyhint="send" placeholder="Write to ${family ? 'Nestor' : 'your agent'}…"><button type="submit">Send</button></form><button type="button" data-scene="close" aria-label="Close display" hidden>Close</button></div>`;
-    // The household's clock while Nestor fills the screen.
+    // The household's clock while Nestor fills the screen. A space may add a short reading
+    // beside the date in .avatar-scene-line (Famille adds the weather).
     const clock = doc.createElement('div');
     clock.className = 'avatar-scene-clock';
-    clock.innerHTML = '<time class="avatar-scene-time"></time><span class="avatar-scene-date"></span>';
+    clock.innerHTML = '<time class="avatar-scene-time"></time><div class="avatar-scene-line"><span class="avatar-scene-date"></span></div>';
     doc.body.append(dock, sceneBar, clock);
     const sceneStatus = sceneBar.querySelector('.avatar-scene-status');
     const sceneReply = sceneBar.querySelector('.avatar-scene-reply');

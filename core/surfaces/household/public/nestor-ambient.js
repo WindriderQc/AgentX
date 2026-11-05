@@ -1,6 +1,6 @@
 /* Nestor's living full screen on Famille: a sky that follows the real weather behind him
    (after sunset, the real Moon, planets and stars above the house),
-   a few short notes under the clock, the ISS drawn across the sky when it passes, now and
+   the weather beside the date, a few short notes under the clock, the ISS drawn across the sky when it passes, now and
    then a silent guided visit of the connected house to the machine an alert names, and,
    when the kitchen is quiet, Nestor painting one of the family's pictures with particles.
    The rules live in nestor-ambient-choice.js. Nothing here speaks, listens or sends a turn:
@@ -17,6 +17,17 @@
   // Awake listening is part of a conversation; listening or hearing while asleep (waiting
   // for "Hey Nestor") is standby.
   const ACTIVE_STATES = ['listening', 'hearing', 'transcribing', 'waiting', 'thinking', 'preparing', 'speaking', 'error'];
+  // Small line icons for the weather beside the date (24 x 24, drawn with currentColor).
+  const CLOUD = 'M7 15h10a3.5 3.5 0 0 0 .4-6.98A5.5 5.5 0 0 0 6.6 8.6 3.2 3.2 0 0 0 7 15z';
+  const WEATHER_PATHS = {
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/>',
+    night: '<path d="M19.5 14.5A8 8 0 1 1 9.5 4.5a6.3 6.3 0 0 0 10 10z"/>',
+    cloud: '<path d="M7 19h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 12 3.5 3.5 0 0 0 7 19z"/>',
+    rain: `<path d="${CLOUD}"/><path d="M9 18l-1 3M13 18l-1 3M17 18l-1 3"/>`,
+    snow: `<path d="${CLOUD}"/><path d="M8.5 19h.01M12.5 21h.01M16.5 19h.01" stroke-width="2.6"/>`,
+    storm: `<path d="${CLOUD}"/><path d="M13 16.5l-2.2 3.5h3l-1.8 3"/>`,
+    fog: '<path d="M4 8h16M6 12h13M4 16h16M8 20h9"/>'
+  };
 
   function readVisits() {
     try { return JSON.parse(root.localStorage?.getItem(VISITS_KEY) || '{}') || {}; } catch { return {}; }
@@ -52,6 +63,9 @@
     visit.hidden = true;
     visit.setAttribute('aria-label', 'Visite guidée de la maison');
     visit.innerHTML = '<p class="nestor-ambient-visit-label"></p>';
+    const weather = doc.createElement('span');
+    weather.className = 'nestor-ambient-weather';
+    weather.hidden = true;
     doc.body.append(chips, visit);
 
     let snapshot = null, state = 'idle', sample = null, scene = null, disposed = false;
@@ -93,6 +107,7 @@
       // An open visit is already recorded (cooldown) but keeps the screen until its tour ends.
       if (!next.moment && visitMoment && standby()) next.moment = visitMoment;
       scene = next;
+      renderWeather(at);
       const host = dock();
       if (host && canvas.parentElement !== host) host.prepend(canvas);
       const shown = plein() && !photosShown();
@@ -101,6 +116,25 @@
       if (next.moment?.kind === 'paint' && shown) startPaint(next.moment); else if (painting) endPaint();
       if (next.moment?.kind !== 'iss' && next.background.kind !== particleKind) { particleKind = next.background.kind; particles = []; }
       if (shown && !frame) frame = root.requestAnimationFrame?.(draw) || 0;
+    }
+
+    // Beside the date whenever the clock shows, standby or not; hidden when there is no recent reading.
+    function renderWeather(at) {
+      const line = doc.querySelector('.avatar-scene-line');
+      if (line && weather.parentElement !== line) line.append(weather);
+      const reading = Choice.weatherLine(snapshot, { at });
+      const key = reading ? reading.icon + '|' + reading.text : '';
+      if (weather.dataset.key === key) return;
+      weather.dataset.key = key;
+      weather.hidden = !reading;
+      weather.replaceChildren();
+      if (!reading) return;
+      if (WEATHER_PATHS[reading.icon]) {
+        weather.insertAdjacentHTML('beforeend', `<svg viewBox="0 0 24 24" aria-hidden="true">${WEATHER_PATHS[reading.icon]}</svg>`);
+      }
+      const text = doc.createElement('span');
+      text.textContent = reading.text;
+      weather.append(text);
     }
 
     function renderChips(list) {
@@ -570,7 +604,7 @@
       root.removeEventListener('persona-presence', onPresence);
       doc.removeEventListener('keydown', onKey);
       doc.removeEventListener('visibilitychange', onVisibility);
-      canvas.remove(); chips.remove(); visit.remove();
+      canvas.remove(); chips.remove(); visit.remove(); weather.remove();
     }
     // Photos wait while Nestor shows a moment of his own.
     return { busy: () => !!scene?.moment && standby() && plein(), scene: () => scene, decide, dispose };

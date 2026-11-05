@@ -911,8 +911,9 @@ pages and APIs retain the parental gateway guard.
   conditions, a computed sun elevation, the next naked-eye ISS pass and the operations
   watch's finding counts with the ecosystem machines they name; never coordinates or
   alert text. Each part is cached briefly and becomes null when its owner fails. The sky
-  behind the face follows the weather and the light; short notes under the clock rank a
-  critical alert, the ISS, other alerts and the weather. Three minutes before a pass the
+  behind the face follows the weather and the light. The temperature and conditions sit
+  beside the date under the clock at all times, hidden when the reading is over three
+  hours old; short notes under them rank a critical alert, the ISS and other alerts. Three minutes before a pass the
   sky becomes a horizon panorama with the predicted path and the station's real position
   while it passes. An alert naming a known machine opens a silent ecosystem tour to it,
   by day only and once per alert set and machine in six hours. A conversation, typed
