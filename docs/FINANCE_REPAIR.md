@@ -1,11 +1,12 @@
-# Bounded Finance book repair
+# Bounded Finance statement repair
 
 Core's native operator executor moves one whole reviewed statement and its exact
 transaction set between personal and corporate books. It changes the book prefix
 only, preserving any existing manual decisions. Version 3 also retains the
 statement's exact document links in place. Version 4 corrects a reviewed card
 issuer within its existing book, retaining the exact rows, decisions and links.
-Account-number normalization,
+Version 5 corrects a reviewed card's printed dates/period and restores at most
+ten missing rows within that same existing statement. Account-number normalization,
 re-extraction and bulk historical correction remain outside this contract.
 The original PDF never moves or changes.
 
@@ -42,6 +43,9 @@ older document synchronizer that would delete migrated proposals.
 
 Version 4 also requires `agentx.finance-issuer-repair/v1`. The installed reader
 and executor share the same deterministic latest-balance projection.
+
+Version 5 requires `agentx.finance-printed-card-repair/v1`; updating only the
+operator CLI cannot qualify an older running reader.
 
 The v2 maintenance protocol also excludes pending ordinary ingestions. Their
 native writer and recovery entrance are described in [Finance](FINANCE.md).
@@ -164,6 +168,69 @@ evidence, same-request recovery and ambiguous-dispatch refusal remain in force.
 
 ## Durable effects and recovery
 
+### Printed card correction
+
+`schemaVersion: 5`, `operation: "printed-card-correction"`, reviews exactly one
+existing reconciled legacy card statement with one liability account, at most
+100 complete rows, their existing owner decisions and at most 50 links. Up to
+ten rows may be explicitly absent. It never restores an absent statement or
+changes issuer, book, suffix, existing amounts, flows, fingerprints, occurrences,
+descriptions, categories, tags or manual field presence.
+
+`verifiedIdentity.printedRows` contains every printed reference, pinned row ID,
+transaction/posting date, description and integer amount. Both dates must be
+real calendar dates; posting must be within the reviewed period. A transaction
+may predate that period but cannot post more than 31 days later. Every existing
+row must match its reviewed printed amount and description prefix (wrapped
+descriptions are preserved). The complete printed sum must reconcile to the
+unchanged opening and closing amounts, without unsafe intermediate arithmetic.
+Only the reviewed period, its native statement key, existing transaction dates
+and the associated decision/link dates and stable keys may follow the source.
+
+Every existing row is included, even when it needs no edit. Such an update has
+`set: {}` and `setAtExecution: {}`; its bytes and original timestamp remain
+unchanged. Existing changes retain the v1–v4 before-image form. A new row uses
+`before: null`, `expectedBeforeSha256: hash(null)`, a pinned ID, `insert: true`,
+`upsert: false`, `matchCountRequired: 0` and native `createdAt`/`updatedAt`
+execution timestamps. Its full `set` is derived by the closed contract: native
+account/book identity, source date/description/amount/flow/fingerprint, occurrence
+one, null running balance and category, empty tags, `manual: false`, and
+`sourceRepair` with the request, PDF hash, printed reference and row digest.
+It cannot insert a decision or a document link, fabricate a balance or choose a
+category. Duplicate row identities or occupied IDs/keys refuse before dispatch;
+indexes are never removed to stage a correction.
+
+The linked-document contract retains the same link ID, document, proposal or
+decision, ambiguity, original creation and decision metadata. Its transaction
+date/key follows the exact existing row and its register digest is pinned with
+the same scoped retention used by earlier repairs. It remains readable even if
+the corrected date leaves the ordinary matching window. No relation is confirmed
+or inferred by this executor.
+
+The reviewed `expectedAccounting.balanceProjection` hashes must be equal:
+correcting historical dates must leave every latest account identity, amount and
+date unchanged. `monthlyProjection.beforeSha256` and `afterSha256` separately
+pin all stored monthly counts, incoming, outgoing and net cents in both books.
+The reader and native proof share the monetary aggregation. The executor checks
+the actual native before view and independently derived complete target before
+writing, then verifies the exact actual monthly after view. Existing monetary
+facts do not change; restored rows and corrected dates can change historical
+monthly totals only as reviewed. Coverage metadata and calendar zeroes do not
+enter these raw-money hashes.
+
+Receipts use `agentx.finance-printed-card-repair/v1`, distinguish
+`reviewedDocuments` from changed `documents`, and report actual expected
+`updated`, `inserted` and `deleted` effects with both projection proofs. Retained
+rows do not count as changes. A partial rollback counts only the effects present
+at its durable rollback intent; it cannot claim deletion of an undispatched row.
+An absent source image is not proof that a dispatched insertion failed. An
+uncertain insert or reverse deletion retains admission until its exact original
+outcome is reconciled, with no replacement dispatch. Reverse order removes only
+the pinned inserted rows and restores exact original images. Later changes to a
+restored row, owner decision, document relation, balance or reviewed monthly money
+refuse the old rollback instead of overwriting them. Earlier manifest versions
+and receipt semantics remain unchanged.
+
 `finance_repairs` owns intent, typed before/after images, scope signatures,
 direction, step observations, errors and terminal receipts. It has no TTL.
 The executor also writes private immutable evidence using fsync and atomic
@@ -261,3 +328,11 @@ process interruption during link application and rollback.
 bound, null category/balance preservation, safe arithmetic, false-account removal,
 reviewed balance hashes in both directions, unchanged owner decisions and
 ambiguous document links, native document consultations and actual interruption.
+
+`core/tests/services/financePrintedCardRepair.test.js` covers exact source dates
+and periods, bounded absent-row insertion, byte-identical retained rows, monetary
+projections, source/identity/decision/link drift, retained ambiguous document
+consultation, full/partial rollback and actual process death at insert and
+reverse-deletion dispatch/receipt boundaries. It proves uncertain outcomes stay
+held until the exact native effect arrives, without duplicate insertion or loss
+of a later owner decision.

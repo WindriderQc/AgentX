@@ -18,6 +18,7 @@ const parts = manifest => ({
 function validate(manifest) {
   const m = manifest;
   const group = parts(m);
+  if (m.schemaVersion === 5) return require('./financePrintedCardContract').validate(m,group);
   if (m.schemaVersion === 4) return require('./financeRepairIssuerContract').validate(m,group);
   const s = group.statement.before;
   const rows = group.transactions.map(u => u.before);

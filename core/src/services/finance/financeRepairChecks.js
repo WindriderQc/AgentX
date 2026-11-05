@@ -22,17 +22,25 @@ function assertSignatures(state, expected) {
 function images(state, manifest) {
   return manifest.updates.map(u => {
     const found = state[u.collection].filter(x => String(x._id) === u.id);
+    if (!found.length && manifest.schemaVersion===5 && u.insert) return null;
     if (found.length !== 1) throw conflict('A reviewed Finance document is missing');
     return found[0];
   });
 }
 function derive(state, manifest, documents) {
+  if (manifest.schemaVersion===5) return Object.fromEntries(COLLECTIONS.map(name=>{
+    const replacements=new Map(manifest.updates.flatMap((u,i)=>u.collection===name?[[u.id,documents[i]]]:[]));
+    const selected=state[name].filter(row=>!replacements.has(String(row._id)));
+    for (const next of replacements.values()) if (next!==null) selected.push(next);
+    return [name,replacements.size?selected.sort((a,b)=>String(a._id).localeCompare(String(b._id))):state[name]];
+  }));
   return Object.fromEntries(COLLECTIONS.map(name => [name, state[name].map(row => {
     const i = manifest.updates.findIndex(u => u.collection === name && u.id === String(row._id));
     return i === -1 ? row : documents[i];
   })]));
 }
 function validateScope(state, manifest, destination) {
+  if (manifest.schemaVersion===5) return require('./financePrintedCardChecks').validateScope(state,manifest,destination);
   const group = parts(manifest), s = group.statement.before;
   if (Array.isArray(s.rowKeys)) throw conflict('Explicit statement membership requires a membership-aware reviewed repair');
   const rowIds = group.transactions.map(u => u.id).sort();
@@ -65,13 +73,14 @@ function assertImages(current, allowed) {
 function typedAfter(current, manifest, at) {
   const derived = afterImages(manifest, at.toISOString());
   return current.map((doc,i) => {
+    if (doc===null) return require('./financeRepairManifest').revive(derived[i]);
     const next = BSON.deserialize(BSON.serialize(doc));
     for (const field of Object.keys(manifest.updates[i].set)) {
       const parts = field.split('.'); let at = next; let expected = derived[i];
       for (const part of parts.slice(0,-1)) { at = at[part]; expected = expected[part]; }
       at[parts.at(-1)] = expected[parts.at(-1)];
     }
-    next.updatedAt = new Date(derived[i].updatedAt);
+    for (const field of Object.keys(manifest.updates[i].setAtExecution)) next[field]=new Date(derived[i][field]);
     return next;
   });
 }
@@ -79,8 +88,18 @@ async function replace(db, update, expected, next) {
   const current = await db.collection(update.collection).findOne({ _id: new ObjectId(update.id) });
   if (hash(current) === hash(next)) return 'already_received';
   if (hash(current) !== hash(expected)) throw conflict('Finance CAS before image no longer matches');
+  if (update.insert===true && expected===null && next!==null) {
+    const result=await db.collection(update.collection).insertOne(next,{writeConcern:{w:'majority',j:true}});
+    if (String(result.insertedId)!==update.id) throw conflict('Finance exact reviewed insertion was refused');
+    return 'inserted';
+  }
   const filter = { ...expected };
   if (!Object.hasOwn(expected,'ledger')) filter.ledger = { $exists: false };
+  if (update.insert===true && next===null) {
+    const result=await db.collection(update.collection).deleteOne(filter,{writeConcern:{w:'majority',j:true}});
+    if (result.deletedCount!==1) throw conflict('Finance exact inserted row reversal was refused');
+    return 'deleted';
+  }
   const result = await db.collection(update.collection).replaceOne(filter, next, { writeConcern: { w: 'majority', j: true } });
   if (result.matchedCount !== 1 || result.modifiedCount !== 1) throw conflict('Finance CAS was refused');
   return 'changed';
@@ -98,10 +117,10 @@ async function nativeViews() {
   return plain(result);
 }
 function assertBalancePlan(manifest,state,before,destination,direction='apply') {
-  if (manifest.schemaVersion === 4) require('./financeRepairBalanceProof').assertPlan(manifest,state,before,derive(state,manifest,destination),direction);
+  if ([4,5].includes(manifest.schemaVersion)) require('./financeRepairBalanceProof').assertPlan(manifest,state,before,derive(state,manifest,destination),direction);
 }
 function assertBalances(manifest, before, after, direction='apply') {
-  if (manifest.schemaVersion === 4) return require('./financeRepairBalanceProof').assertResult(manifest,before,after,direction);
+  if ([4,5].includes(manifest.schemaVersion)) return require('./financeRepairBalanceProof').assertResult(manifest,before,after,direction);
   if (manifest.expectedAccounting?.latestBalancesExpectedUnchangedInBothLedgers !== true || canonical(before) !== canonical(after)) {
     throw conflict('The repair changed the latest account balances');
   }

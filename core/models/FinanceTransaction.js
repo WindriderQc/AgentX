@@ -21,7 +21,9 @@ const financeTransactionSchema = new mongoose.Schema({
   occurrence: { type: Number, required: true },
   category: { type: String, default: null },
   tags: { type: [String], default: [] },
-  manual: { type: Boolean, default: false }
+  manual: { type: Boolean, default: false },
+  sourceRepair: {type:new mongoose.Schema({requestKey:{type:String,required:true},pdfSha256:{type:String,required:true},
+    printedReference:{type:String,required:true},printedRowSha256:{type:String,required:true}},{_id:false}),default:undefined}
 }, { timestamps: true });
 
 financeTransactionSchema.index({ accountKey: 1, date: 1, fingerprint: 1, occurrence: 1 }, { unique: true });
