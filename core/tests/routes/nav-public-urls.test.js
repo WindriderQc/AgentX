@@ -74,6 +74,21 @@ describe('shared navigation public URL contract', () => {
     expect(hrefFor(await renderNav('core', 'full'), 'AgentX')).toBe('/');
   });
 
+  test.each(['full', 'demo'])('evaluation is directly reachable in Workshop in the %s profile', async (agentxProfile) => {
+    for (const service of ['core', 'benchmark', 'rag']) {
+      for (const activePage of ['benchmark', 'leaderboard']) {
+        const navigation = buildProductNavigation({ service, agentxProfile, activePage, publicUrls });
+        const workshop = navigation.navItems.find(group => group.id === 'workshop-group');
+        const evaluation = workshop.children.slice(workshop.children.findIndex(child => child.section === 'Evaluation') + 1);
+        expect(evaluation.slice(0, 2).map(item => item.id)).toEqual(['benchmark', 'leaderboard']);
+        expect(navigation.activeSpace.id).toBe('workshop-group');
+        expect(navigation.navItems.flatMap(group => group.children).filter(item => item.id === activePage)).toHaveLength(1);
+        const html = await renderNav(service, agentxProfile, activePage);
+        expect(hrefFor(html, 'Leaderboard')).toBe('https://core.example/benchmark/leaderboard');
+      }
+    }
+  });
+
   test('full navigation groups surfaces by use, with one secondary system door', () => {
     const full = buildProductNavigation({ publicUrls, activePage: 'finance' });
     expect(full.spaces.map(space => space.label)).toEqual(['Personal', 'Family', 'Workshop']);
