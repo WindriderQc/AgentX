@@ -547,6 +547,45 @@ def action_stop(config: dict, args) -> dict:
     return {"runId": args.run_id, "signalled": True}
 
 
+def action_close(config: dict, args) -> dict:
+    """Close a run whose supervisor died before its local cleanup said so.
+
+    A supervisor that fails during cleanup (or dies with its host) leaves `localStopped`
+    false. The active marker then keeps the runner busy and the queue cannot prove the
+    release. `close` is the runner's own way out: it refuses while the supervisor lives or
+    while any process of the run is left, and otherwise records the local stop it observed.
+    """
+    run = run_dir(config, args.run_id)
+    if not run.is_dir():
+        raise RunnerError("RUN_NOT_FOUND", "no run with this id on this runner")
+    with open(runs_root(config) / "runner.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        state = read_json(run / "state.json", {}) or {}
+        if pid_alive(state.get("pid"), args.run_id):
+            raise RunnerError("RUNNER_BUSY", "the supervisor is still running; stop it first")
+        leftover = leftover_processes(run)
+        if leftover:
+            raise RunnerError("PROCESS_LEFT", f"processes of this run are still running: {leftover}")
+        closed = state.get("localStopped") is not True
+        if closed:
+            state.setdefault("phase", "interrupted")
+            if state["phase"] != "finished":
+                state["phase"] = "finished"
+                state.setdefault("outcome", "failed")
+                state.setdefault("endedAt", now_iso())
+            state["localStopped"] = True
+            state["closedAt"] = now_iso()
+            state.setdefault("events", []).append(
+                {"at": state["closedAt"], "event": "closed", "reason": "supervisor gone and no run process left"})
+            write_json(run / "state.json", state)
+        marker = read_json(runs_root(config) / "active.json") or {}
+        cleared = marker.get("runId") == args.run_id
+        if cleared:
+            (runs_root(config) / "active.json").unlink(missing_ok=True)
+    return {"runId": args.run_id, "closed": closed, "markerCleared": cleared,
+            "phase": state.get("phase"), "outcome": state.get("outcome")}
+
+
 def action_memory(config: dict, args) -> dict:
     run = run_dir(config, args.run_id)
     request = read_json(run / "request.json")
@@ -646,6 +685,7 @@ def action_supervise(config: dict, args) -> dict:
 
 
 ACTIONS = {"check": action_check, "start": action_start, "status": action_status, "stop": action_stop,
+           "close": action_close,
            "memory": action_memory, "supervise": action_supervise}
 
 

@@ -248,6 +248,20 @@ python island_runner.py start --run-id $(uuidgen) --netcheck --minutes 5
 
 Le résultat est dans `agents/<agent>/workspace/netcheck.json` de la partie.
 
+**Partie morte.** Si le superviseur meurt (hôte redémarré) ou échoue pendant son
+nettoyage, `localStopped` reste faux : le marqueur `runs/active.json` garde le
+lanceur occupé et la file ne peut pas prouver la libération. La sortie propre :
+
+```bash
+python island_runner.py close --run-id <uuid>
+```
+
+`close` refuse tant que le superviseur vit (`RUNNER_BUSY`), qu’un processus de la
+partie reste (`PROCESS_LEFT`) ou que la table des processus est illisible. Sinon
+il note l’arrêt local constaté (événement `closed`), marque une partie
+interrompue `finished`/`failed` (jamais un succès), retire le marqueur s’il
+désigne cette partie, et `island-settle` peut ensuite prouver la libération.
+
 ## Les harnais : Codex, DSH, Pi
 
 Trois harnais peuvent jouer, avec le même modèle (`agentx-primary`), la même
