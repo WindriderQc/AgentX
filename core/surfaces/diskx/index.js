@@ -173,6 +173,13 @@ function renderPage({ roots, attributes }) {
 <script src="/assets/household/journey-timings.js?v=1"></script>
 <script src="/js/screen-pages.js?v=1"></script>
 <script type="module" src="${MODULE_ROUTE}"></script>
+${ecosystem ? `<script defer src="/js/voice/speech-language.js"></script>
+<script defer src="/js/voice/voice-capture.js"></script>
+<script defer src="/js/voice/browser-conversation.js"></script>
+<script defer src="/js/voice/speech-ladder.js"></script>
+<script defer src="/assets/household/persona-presentation.js"></script>
+<script defer src="/api/voix/player.js"></script>
+<script defer src="/assets/diskx/ecosystem-voice.js"></script>` : ''}
 <script defer src="/assets/diskx/${ecosystem ? 'ecosystem-page' : 'diskx-page'}.js"></script>
 </head>
 <body>
