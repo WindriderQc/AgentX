@@ -3,7 +3,9 @@
 Core's native operator executor moves one whole reviewed statement and its exact
 transaction set between personal and corporate books. It changes the book prefix
 only, preserving any existing manual decisions. Version 3 also retains the
-statement's exact document links in place. Account-number normalization,
+statement's exact document links in place. Version 4 corrects a reviewed card
+issuer within its existing book, retaining the exact rows, decisions and links.
+Account-number normalization,
 re-extraction and bulk historical correction remain outside this contract.
 The original PDF never moves or changes.
 
@@ -37,6 +39,9 @@ administrator is not made safe by a new CLI alone.
 Version 3 additionally requires the served maintenance response to advertise
 `agentx.finance-linked-book-repair/v1`. A CLI upgrade alone cannot qualify an
 older document synchronizer that would delete migrated proposals.
+
+Version 4 also requires `agentx.finance-issuer-repair/v1`. The installed reader
+and executor share the same deterministic latest-balance projection.
 
 The v2 maintenance protocol also excludes pending ordinary ingestions. Their
 native writer and recovery entrance are described in [Finance](FINANCE.md).
@@ -90,6 +95,18 @@ before dispatch. Every link must already refer to one reviewed outgoing row,
 its amount and document snapshot; unlisted relations, duplicate documents and
 occupied destination keys refuse execution. Earlier versions still refuse links.
 
+`schemaVersion: 4`, `operation: "issuer-reassignment"`, is a separate closed
+card operation: one reconciled legacy statement, 1–100 liability-account rows,
+their existing decisions, and at most 50 existing links (251 updates maximum,
+within the same 256 KiB file bound). The verified target issuer must use Core's
+canonical issuer normalization. Statement/account keys are derived by the native
+ingestion identity functions, retaining the book and missing account suffix.
+Only the issuer and identity prefixes change; no ledger field is added or moved.
+Null categories, absent manual fields and null running balances are retained.
+Every account's opening plus its complete row sum must equal its closing in safe
+integer cents. This validates issuer reassignment, not a fresh extraction or a
+claim that every historical description/date/category is correct.
+
 Each update carries its existing `id`, full `before` image, canonical
 `expectedBeforeSha256`, `matchCountRequired: 1`, `insert: false`, `upsert: false`,
 the proposed `set` and `setAtExecution: {updatedAt: "receipt.appliedAtUtc"}`.
@@ -124,6 +141,26 @@ timestamps; owner decisions are never recomputed. A changed/missing registered
 document or missing/moved payment returns `FINANCE_DOCUMENT_REPAIR_CONFLICT`
 before synchronization writes, preserving the relation for native review. A
 later owner confirmation/rejection remains possible and refuses an old rollback.
+
+## Reviewed issuer balance effects
+
+Changing an issuer can remove a spurious account from latest-balance views or
+change which historical statement supplies one. Version 4 therefore requires
+`expectedAccounting.balanceProjection.beforeSha256` and `afterSha256`, hashes of
+the reviewed native `{perso: {accounts}, corp: {accounts}}` projections. It
+derives the target from the whole protected statement snapshot with the same
+projection as the reader and verifies both hashes before the first write. The
+actual native after view must then match exactly. A transaction or printed
+statement amount never changes to manufacture that result.
+
+Issuer receipts use `agentx.finance-issuer-repair/v1`, with
+`reviewedBalanceProjectionMatched: true` and the actual
+`latestBalancesUnchanged` boolean, which may be false. Existing v1/v2/v3 manifests
+and receipt bytes retain their unchanged-balance interpretation. The exact
+issuer balance effect belongs in the private owner review before authorization.
+Rollback verifies its restored projection before dispatch and afterwards; a
+later unreviewed balance change or owner decision refuses reversal. Full source
+evidence, same-request recovery and ambiguous-dispatch refusal remain in force.
 
 ## Durable effects and recovery
 
@@ -219,3 +256,8 @@ accounting authorization and a live repair receipt.
 assignment, all link statuses, preserved ambiguity and decisions, repeated
 document consultations, source drift, link/destination conflicts and actual
 process interruption during link application and rollback.
+
+`core/tests/services/financeIssuerRepair.test.js` adds the complete card row
+bound, null category/balance preservation, safe arithmetic, false-account removal,
+reviewed balance hashes in both directions, unchanged owner decisions and
+ambiguous document links, native document consultations and actual interruption.

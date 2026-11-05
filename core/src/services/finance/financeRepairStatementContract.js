@@ -18,6 +18,7 @@ const parts = manifest => ({
 function validate(manifest) {
   const m = manifest;
   const group = parts(m);
+  if (m.schemaVersion === 4) return require('./financeRepairIssuerContract').validate(m,group);
   const s = group.statement.before;
   const rows = group.transactions.map(u => u.before);
   const decisions = group.overrides.map(u => u.before);
@@ -83,6 +84,16 @@ function validate(manifest) {
     }
     if (balance !== a.closingCents) throw invalid('Account arithmetic does not reconcile');
   }
+  validateDecisions(rows,decisions);
+  const move = key => ledgerPrefix(target) + key.replace(/^corp:/, '');
+  const sets = [{ledger:target,statementKey:ledgerPrefix(target)+base,
+    ...Object.fromEntries(s.accounts.map((a,i) => [`accounts.${i}.accountKey`,move(a.accountKey)]))},
+  ...rows.map(t => ({ledger:target,accountKey:move(t.accountKey)})), ...decisions.map(o => ({accountKey:move(o.accountKey)}))];
+  if (m.schemaVersion === 3) sets.push(...require('./financeRepairLinkContract').sets(m,group,{source,target,move}));
+  for (let i=0;i<sets.length;i++) if (canonical(sets[i]) !== canonical(m.updates[i].set)) throw invalid('Manifest attempts an unreviewed Finance mutation');
+}
+
+function validateDecisions(rows,decisions) {
   if (new Set(decisions.map(keyOf)).size !== decisions.length) throw invalid('Duplicate owner decision');
   for (const row of rows) {
     const related = decisions.filter(o => keyOf(o) === keyOf(row));
@@ -93,12 +104,6 @@ function validate(manifest) {
     if (!t || t.manual !== true || !Array.isArray(o.tags) || o.category !== t.category
       || canonical(o.tags) !== canonical(t.tags)) throw invalid('The owner decision must follow the exact transaction');
   }
-  const move = key => ledgerPrefix(target) + key.replace(/^corp:/, '');
-  const sets = [{ledger:target,statementKey:ledgerPrefix(target)+base,
-    ...Object.fromEntries(s.accounts.map((a,i) => [`accounts.${i}.accountKey`,move(a.accountKey)]))},
-  ...rows.map(t => ({ledger:target,accountKey:move(t.accountKey)})), ...decisions.map(o => ({accountKey:move(o.accountKey)}))];
-  if (m.schemaVersion === 3) sets.push(...require('./financeRepairLinkContract').sets(m,group,{source,target,move}));
-  for (let i=0;i<sets.length;i++) if (canonical(sets[i]) !== canonical(m.updates[i].set)) throw invalid('Manifest attempts an unreviewed Finance mutation');
 }
 
-module.exports = { validate, keyOf, parts };
+module.exports = { validate, keyOf, parts, validateDecisions };

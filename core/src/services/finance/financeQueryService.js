@@ -5,7 +5,7 @@
 
 const FinanceStatement = require('../../../models/FinanceStatement');
 const FinanceTransaction = require('../../../models/FinanceTransaction');
-const { ledgerFilter, isLiability } = require('./ledgers');
+const { ledgerFilter } = require('./ledgers');
 const { coverageContext, assessCoverage, monthsBetween: expectedMonths, lastDayOf, validDate } = require('./financeCompleteness');
 const { monthlyAverage, periodTotal } = require('./financeMeasures');
 const { confirmedFor, transactionKey } = require('./financeDocumentLinks');
@@ -148,20 +148,7 @@ async function byCategory(query = {}) {
 async function balances({ ledger } = {}) {
   const statements = await FinanceStatement.find({ status: 'reconciled', ...ledgerFilter(ledger) })
     .sort({ periodEnd: -1 }).select('issuer periodEnd accounts').lean();
-  const latest = new Map();
-  for (const statement of statements) {
-    for (const account of statement.accounts) {
-      if (!latest.has(account.accountKey)) {
-        latest.set(account.accountKey, {
-          accountKey: account.accountKey, code: account.code, issuer: statement.issuer,
-          balanceCents: account.closingCents, asOf: statement.periodEnd,
-          // A card or loan balance is owed (positive) or a credit (negative), not money held.
-          liability: isLiability(account.code)
-        });
-      }
-    }
-  }
-  return { accounts: [...latest.values()].sort((a, b) => a.accountKey.localeCompare(b.accountKey)), coverage: await assessCoverage({ ledger }) };
+  return { accounts: require('./financeBalanceProjection').projectBalances(statements), coverage: await assessCoverage({ ledger }) };
 }
 
 async function statements({ status, ledger } = {}) {

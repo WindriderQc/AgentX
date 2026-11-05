@@ -29,13 +29,13 @@ function sets(manifest, group, { source, target, move }) {
       || link.transaction?.description !== row.description || link.transaction?.flowCents !== row.flowCents
       || link.transaction?.category !== row.category) throw invalid('The document link must follow its exact reviewed row and registered document');
     return { key: doc.id + '|' + move(link.transactionKey), transactionKey: move(link.transactionKey),
-      'transaction.accountKey': move(row.accountKey), 'document.ledger': target,
+      'transaction.accountKey': move(row.accountKey), ...(source === target ? {} : { 'document.ledger': target }),
       bookRepair: { requestKey: manifest.requestKey, documentSha256: hash(doc) } };
   });
 }
 
 async function verifyDocuments(manifest) {
-  if (manifest.schemaVersion !== 3) return;
+  if (![3,4].includes(manifest.schemaVersion) || !manifest.verifiedIdentity.documents.length) return;
   const register = await loadRegister();
   if (register.status !== 'ok' || manifest.verifiedIdentity.documents.some(expected => {
     const found = register.invoices.filter(doc => doc.id === expected.id);
