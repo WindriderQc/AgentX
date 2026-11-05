@@ -634,7 +634,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (state === 'starting') void speechFallback.probe(() => api('/api/voix/health'));
     speechFallback.sync();
     el('conversationStatus').textContent = detail || (state === 'listening' && conversation.selection?.wakeWord ? listeningStatus() : stateLabel(state));
+    const conversationBusy = textBusy || ['hearing', 'transcribing', 'thinking', 'waiting', 'preparing', 'speaking', 'reviewing', 'recovering'].includes(state);
     el('conversationPresence').dataset.state = state;
+    el('conversationPresence').dataset.conversationBusy = String(conversationBusy);
     const reviewing = state === 'reviewing';
     const active = !['idle', 'paused', 'error', 'reviewing'].includes(state);
     holdScreen(active || textBusy);
@@ -664,7 +666,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     renderAudioReview();
     window.dispatchEvent(new CustomEvent('persona-presence', { detail: { personaId: conversation.session?.persona?.id || selected().id,
       personaVersion: conversation.session?.persona?.version || selected().version, state,
-      conversationBusy: textBusy || ['hearing', 'transcribing', 'thinking', 'waiting', 'preparing', 'speaking', 'reviewing', 'recovering'].includes(state), visual: conversation.session?.visual || conversation.session?.persona?.visual || selected().visual || null,
+      conversationBusy, visual: conversation.session?.visual || conversation.session?.persona?.visual || selected().visual || null,
       sample: { speech: () => conversation.audio?.readSpeechSample?.(), input: () => conversation.audio?.readInputLevel?.(),
         // Waiting for "Hey Nestor": the face dozes until the word wakes him.
         asleep: () => !!conversation.selection?.wakeWord && ['listening', 'hearing'].includes(conversation.state) && !conversation.wake.active() } } }));

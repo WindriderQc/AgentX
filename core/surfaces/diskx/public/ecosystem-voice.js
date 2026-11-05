@@ -66,6 +66,7 @@
     const parentQuestion = () => root.AgentXEcosystemConversation.pause();
     // Family's simple board also embeds pages, without the personal workspace.
     if (!managed && root.parent !== root) {
+      try { latest.busy = root.parent.document.getElementById('conversationPresence')?.dataset.conversationBusy === 'true'; } catch { /* another origin */ }
       try { root.parent.addEventListener('persona-presence', parentPresence); root.parent.addEventListener('nestor-question-start', parentQuestion); } catch { /* another origin cannot coordinate this view */ }
     }
     root.AgentXEcosystemConversation = Object.freeze({
@@ -75,7 +76,7 @@
     root.customElements.whenDefined('agentx-ecosystem').then(() => {
       const view = root.document.querySelector('agentx-ecosystem');
       if (!view) return;
-      controller = bindConversation(view, { embedded: managed });
+      controller = bindConversation(view, { embedded: root.parent !== root });
       if (questionPending) controller.pause();
       controller.update(latest);
       if (root.VoixAudio?.Speech) view.narrator = createNarrator();

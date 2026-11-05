@@ -40,7 +40,7 @@ app.get('/fixture', (_req, res) => res.send(`<!doctype html><html lang="fr"><met
 window.presence=busy=>dispatchEvent(new CustomEvent('persona-presence',{detail:{conversationBusy:busy}}));
 document.getElementById('ask').onclick=async()=>{presence(true);const voice=new VoixAudio.Speech();await voice.speak(signal=>fetch('/api/voix/synthesize/stream',{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({text:'Nestor répond à la question.',language:'fr',voice:'fixture-voice',tts_provider:'voxcpm'})}));presence(false);};</script></html>`));
 
-app.get('/simple-board', (_req,res)=>res.send('<!doctype html><html><iframe style="width:100%;height:800px" src="/diskx?app=ecosystem&play=overview,frank"></iframe></html>'));
+app.get('/simple-board', (_req,res)=>res.send('<!doctype html><html><div id="conversationPresence" data-conversation-busy="true"></div><iframe style="width:100%;height:800px" src="/diskx?app=ecosystem&play=overview,frank"></iframe></html>'));
 
 (async () => {
   const server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
@@ -153,8 +153,11 @@ app.get('/simple-board', (_req,res)=>res.send('<!doctype html><html><iframe styl
     assert.equal(await page.getByRole('button',{name:'🔊 Activer la voix',exact:true}).getAttribute('aria-pressed'),'false');
     assert.equal(requests.length,11,'ambient opt-out opens no synthesis');
     assert.equal(await page.evaluate(() => document.querySelector('agentx-ecosystem').state().presentation.tour.playing),true,'ambient silent clock still plays');
-    await page.goto(`http://127.0.0.1:${server.address().port}/simple-board`); await count(12);
+    await page.goto(`http://127.0.0.1:${server.address().port}/simple-board`);
     const simple = page.frames().find(f=>new URL(f.url()).pathname==='/diskx');
+    await simple.waitForFunction(()=>document.querySelector('agentx-ecosystem').state()?.presentation);
+    assert.equal(requests.length,11,'an already speaking parent also gates initial guide playback');
+    await page.evaluate(()=>dispatchEvent(new CustomEvent('persona-presence',{detail:{conversationBusy:false}}))); await count(12);
     await page.evaluate(()=>dispatchEvent(new CustomEvent('persona-presence',{detail:{conversationBusy:true}})));
     await simple.getByRole('button',{name:'Reprendre la visite',exact:true}).waitFor();
     assert.equal(await simple.getByRole('button',{name:'Reprendre la visite',exact:true}).isDisabled(),true);
