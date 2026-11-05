@@ -156,6 +156,22 @@ test('routing and idea intake grant no autonomous execution; switch defaults off
   await task(); await enable(); await service.tick(); expect(control.launch).not.toHaveBeenCalled(); expect(await selected()).toBeNull();
   await Settings.deleteMany({}); expect((await service.status()).enabled).toBe(false);
 });
+
+test('reviewed Schedule UI profile can be authorized without dispatch or widening its files', async () => {
+  await task('0001', { automation: undefined });
+  const scope = ['core/public/js/cluster-schedule-upcoming.js', 'core/tests/unit/clusterScheduleUpcomingUi.test.js'];
+  const before = await Settings.findOne({ _id: 'coding-autonomy' }).lean();
+  await service.authorize('0001', { authorized: true, confirm: true, expectedRevision: 0, lowRisk: true,
+    scope, verificationProfile: 'agentx-cluster-schedule-ui-tests/v1', queueRequestId: QUEUE,
+    qualification: { acceptanceCriteria: ['A planned occurrence is never reported as proven execution.'],
+      requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { workSeconds: 600, modelCalls: 10 } } });
+  const saved = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(saved.automation.scope).toEqual(scope);
+  expect(saved.automation.verificationProfile).toBe('agentx-cluster-schedule-ui-tests/v1');
+  expect(saved.codingAutonomy).toMatchObject({ authorized: true, state: 'queued' });
+  expect(await Settings.findOne({ _id: 'coding-autonomy' }).lean()).toEqual(before);
+  expect(control.launch).not.toHaveBeenCalled();
+});
 test('budgets below the native minimum lease refuse authorization before dispatch', async () => {
   await task();
   await expect(authorize('0001', { workSeconds: 9 })).rejects.toMatchObject({ code: 'CODING_AUTONOMY_INVALID' });

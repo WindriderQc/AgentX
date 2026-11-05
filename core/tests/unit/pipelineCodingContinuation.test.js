@@ -125,6 +125,15 @@ test('credits and one additional worker preserve all original runs, costs, scope
   expect((await settings()).active).toBeNull(); expect(control.launch).not.toHaveBeenCalled();
   expect(await Task.findOne({ pipelineId: '0002' }).lean()).toEqual(other);
 });
+
+test('Schedule verifier continuation passes parsing but refuses unrelated checkpoint scope without credit', async () => {
+  const before = await task(), config = await settings();
+  await expect(grant(grantBody({ verificationProfile: 'agentx-cluster-schedule-ui-tests/v1' })))
+    .rejects.toMatchObject({ code: 'CODING_TASK_NOT_READY' });
+  expect(await task()).toEqual(before);
+  expect(await settings()).toEqual(config);
+  expect(control.launch).not.toHaveBeenCalled();
+});
 test('same grant retry adds no credit or intervention and changed evidence refuses', async () => {
   const first = await grant(); const retry = await grant();
   expect(retry.codingAutonomy.budgetGrants).toHaveLength(1);
