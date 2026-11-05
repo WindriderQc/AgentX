@@ -6,7 +6,7 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
-New objectives use `secretary.objective-grounding/v2` for model extraction.
+New objectives use `secretary.objective-grounding/v3` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
@@ -29,8 +29,19 @@ generated interpretation text: each selects one complete source line plus a
 and a 450-character limit restrict eligible lines in the response schema and
 local validation. The application quotes that line with an uncertainty label,
 without inferring an answer or realization. No eligible expression means an
-empty hypothesis list. Thus a signature, document exchange or already-ended
+empty hypothesis list, enforced with `maxItems: 0`. No internal absence marker
+is offered as evidence. An empty passage also has empty moments and summary
+selections. Local validation still rejects invented references even when a
+backend ignores the schema. Thus a signature, document exchange or already-ended
 event cannot become an invented location, intimate relationship or probable date.
+
+Automatic subject attribution is limited to `owner`, `thirdparty` (another
+person) and `unknown`. The model cannot certify someone as a close person
+(`related`), even if a backend ignores its schema. Close-person classification
+requires human review. Explicit relationship wording can remain a cited source
+observation; an exchange or familiar salutation grants no proximity. The
+canonical schema still supports `related` for historical and reviewed results;
+old results are neither downgraded nor reinterpreted.
 
 The rationale is assembled locally from the separate observations and labelled
 source uncertainty. Instructions also exclude unsupported status, ownership,
@@ -48,10 +59,10 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1` responses retain their original projection;
-the v1 schema fingerprint and change descriptions are preserved. Each frozen
-grounding version requires its own verified projection, and v1 free text cannot
-satisfy a v2 response contract.
+`secretary.objective-grounding/v1` and `/v2` responses retain their original
+projections, schema fingerprints and change descriptions. Each frozen grounding
+version requires its own verified projection; an old contract cannot bypass the
+new attribution controls.
 Changed prompt/schema hashes require a new objective version; no prior objective
 or rejection is rewritten. This extraction contract grants no publication or
 owner confirmation and does not relax a campaign's existing review gate.
@@ -103,6 +114,10 @@ preserving old page receipts and raw results. This option chooses no model,
 host pin or context, performs no profile/load, and establishes no semantic
 quality by itself. A live comparison still needs native queue/admission and
 source-level output review before publication or a larger campaign.
+For bounded schema extraction, prefer `thinking: false`: hidden reasoning can
+finish without any visible JSON. This is a request policy for Secretary, not a
+change to Core's model/context pin or another agent's reasoning mode. Changing
+it requires a new objective; never use it to reissue a retained empty response.
 
 ```sh
 python3 integrations/secretary/objective_review.py run --objective "$PRIVATE_OBJECTIVE" \
@@ -119,6 +134,10 @@ The native client saves the received HTTP text before parsing its envelope,
 then saves the exact model text and output limits before parsing that text.
 Both private captures have hashes and retain the request/intent identity.
 Received malformed or length-limited output is a known validation failure;
+an empty or whitespace-only final is explicitly `empty-model-content`, never a
+valid abstention, empty object or JSON parse error. Hidden reasoning is never
+promoted into the final answer. Exact empty bytes and usage remain retained,
+without assuming a token limit or diagnosing an upstream cause from absence.
 transport loss or failed durable capture remains uncertain. Neither failure
 permits an automatic replacement call. An incomplete generation is rejected
 even if its final JSON happens to parse.
