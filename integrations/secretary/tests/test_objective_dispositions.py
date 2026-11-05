@@ -36,6 +36,13 @@ class DispositionTests(unittest.TestCase):
                 value = {"summary": "Un passage fictif lu.", "classification": "no-life-event", "moments": [], "gaps": []}
                 if "fichier.pdf" in prompt["untrustedContent"]:
                     value.update(classification="life-events", moments=[fixtures.moment("Nouvelles fictives")])
+                if "citationCatalog" in prompt:
+                    value["emptyAssessment"] = "no-life-event"
+                    value.pop("classification")
+                    for item in value["moments"]:
+                        text = item.pop("description")
+                        item.pop("quotes"); item.pop("rationale"); item.pop("relationHints")
+                        item.update(observations=[{"text": text, "citationIds": ["unknown-span"]}], hypotheses=[])
                 reply = {"response": json.dumps(value), "done": True, "done_reason": "stop", "eval_count": 200}
                 if output:
                     reply = output(prompt, reply)

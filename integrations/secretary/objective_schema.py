@@ -64,11 +64,26 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Every moment needs at least one EXACT nonempty quote copied from this passage.
-Preserve spelling/whitespace. Make title/description readable French. Attribute
-claims, distinguish observation from hypothesis, explain uncertainty and rationale.
-relationHints are proposed associations only: repeated fact, possible sequence,
-contradiction or hypothesis; never assert causality, identity or confirmation.
+Use the source-span grounding contract secretary.objective-grounding/v1.
+For every moment, observations contains only statements explicitly supported by
+the selected citationCatalog IDs. hypotheses contains interpretations and possible
+associations, each with its source IDs. Never put an inference in observations,
+the title, summary, dates or subject attribution. Omit an unsupported inference
+or place it only in hypotheses, explicitly uncertain. A citation alone does not
+prove that its paraphrase follows from it. A rationale is assembled locally from
+these two separate lists, not supplied as free-form reasoning.
+Timesheets, post-contract work and a departure do not establish employee versus
+independent/freelance status. An addressee or document title does not establish
+who owns a tax return or attachment. A signature records self-presentation at
+that date, not independent certification, its acquisition date or continuation.
+Select citationIds from citationCatalog; never retype, repair or invent a quote.
+The application copies each selected exact span, including its original spacing.
+Each observation and hypothesis requires at least one selected span. Existing
+quotes, forwarded material and multiple spans are not independent corroboration.
+Make observations and hypotheses readable French. Do not assert causality,
+identity, relationship or confirmation without an explicit supporting statement.
+Do not output classification: it is derived locally from the moments list.
+emptyAssessment is used ONLY when moments is empty: no-life-event or uncertain.
 Newsletters, promotions, generic invoices, administrative noise and third-party
 news usually add no personal life event. Empty moments and no-life-event are valid.
 Do not make an event from your own review, missing attachment or verification work.
@@ -113,14 +128,19 @@ def _exact_whitespace_quote(quote, content):
     return {"value": value, "spans": spans}
 
 
-def normalize_representation(value, content=None):
-    """Normalize bounded representation differences, never evidence semantics.
+def normalize_representation(value, content=None, grounded=False):
+    """Project grounded wire results or normalize legacy representation differences.
 
     Keep the model value immutable. The caller retains its native result and
     records every changed path, so a complete saved response can be resumed
-    without asking the model to regenerate it.
+    without asking the model to regenerate it. A grounded projection labels
+    declared hypotheses; it does not establish that observations are true.
     """
-    normalized, changes = copy.deepcopy(value), []
+    if grounded or isinstance(value, dict) and "emptyAssessment" in value:
+        from objective_grounding import project
+        normalized, changes = project(value, content)
+    else:
+        normalized, changes = copy.deepcopy(value), []
     if not isinstance(normalized, dict) or not isinstance(normalized.get("moments"), list):
         return normalized, changes
     for index, moment in enumerate(normalized["moments"]):

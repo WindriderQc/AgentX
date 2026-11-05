@@ -11,6 +11,7 @@ from pathlib import Path
 
 from evidence_store import load, now
 from objective_schema import normalize_representation, validate
+import objective_grounding as grounding
 from review_attempts import response_received, result_file
 from review_receipts import durable, hashed
 
@@ -69,11 +70,11 @@ def _proof(objective, page_id):
     return proof, state, value
 
 
-def _failure(value, state, body):
+def _failure(value, state, body, manifest):
     if state["phase"] == "invalid-output":
         return {"type": "ReviewInvalidOutput", "message": state["invalidReason"]}
     try:
-        normalized, _ = normalize_representation(value, body)
+        normalized, _ = normalize_representation(value, body, manifest.get("responseSchemaSha256") == hashed(grounding.SCHEMA))
         validate(normalized, body)
     except ValueError as error:
         return {"type": type(error).__name__, "message": str(error)}
@@ -117,7 +118,7 @@ def _read(objective, manifest, page_id, *, expected_identity=None):
     if (objective / "page-reviews" / (page_id + ".json")).exists():
         raise ValueError("A rejected page cannot also be an accepted review")
     proof, state, value = _proof(objective, page_id)
-    if row.get("proof") != proof or row.get("failure") != _failure(value, state, body):
+    if row.get("proof") != proof or row.get("failure") != _failure(value, state, body, manifest):
         raise ValueError("Rejected page disposition no longer matches its retained result")
     return row
 
@@ -135,7 +136,7 @@ def retain(objective, manifest, page, error):
     if prior:
         return prior
     proof, state, value = _proof(objective, page["pageId"])
-    failure = _failure(value, state, page["content"])
+    failure = _failure(value, state, page["content"], manifest)
     if failure != {"type": type(error).__name__, "message": str(error)}:
         raise ValueError("Rejected page error differs from the retained validation failure")
     row = {"schema": CONTRACT, "at": now(), "objectiveSha256": manifest["objectiveSha256"],

@@ -18,7 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from evidence_store import load, now
 from mail_catchup import Busy, CoreClient
 from mailbox_backfill import Lock
-from objective_schema import INSTRUCTIONS, SCHEMA, normalize_representation, validate
+from objective_schema import INSTRUCTIONS, normalize_representation, validate
+import objective_grounding as grounding
+from objective_grounding import SCHEMA
 from objective_sources import inventory, materialize, pages, retain_header_scope
 import objective_rtf_scope as rtf_scope
 import objective_equivalence as equivalent
@@ -102,9 +104,12 @@ def read_receipt(file, manifest):
             or record.get("bodySha256") != identity.get("contentSha256"):
         raise ValueError("Objective receipt integrity does not match its saved identity")
     validate(row["result"], record["body"])
+    grounded = manifest.get("responseSchemaSha256") == hashed(grounding.SCHEMA)
+    if grounded and "resultProcessing" not in row:
+        raise ValueError("A grounded result requires its retained native projection")
     if "resultProcessing" in row:
         raw = load(result_file(file.parent.parent, file.stem), {}).get("value")
-        normalized, changes = normalize_representation(raw, record["body"])
+        normalized, changes = normalize_representation(raw, record["body"], grounded)
         expected = {"contract": "secretary.objective-representation/v1", "rawResultSha256": hashed(raw), "changes": changes}
         if not changes or row["resultProcessing"] != expected or normalized != row["result"]:
             raise ValueError("Objective representation receipt does not match the retained native result")
@@ -281,6 +286,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         durable(objective / "status.json", status)
         return {**status, "coverage": coverage(objective, manifest)}
     system = INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + manifest["config"]["instructions"]
+    grounded = manifest["responseSchemaSha256"] == hashed(grounding.SCHEMA)
     started, made, rejected, deferred, inferences = clock(), 0, 0, 0, 0
     requested_stop = stop
     stop = lambda: requested_stop() or clock() - started >= max_seconds
@@ -408,15 +414,19 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     reason = client.busy()
                     if reason:
                         raise Busy(reason)
-                    prompt = json.dumps({"objectiveContext": {"asOf": manifest["createdAt"], "ownerAliases": manifest["config"]["ownerAliases"]},
+                    payload = {"objectiveContext": {"asOf": manifest["createdAt"], "ownerAliases": manifest["config"]["ownerAliases"]},
                         "source": page["source"], "representation": page["representation"],
                         "offset": page["offset"], "totalChars": page["totalChars"],
                         "moreOfThisRepresentation": page["moreOfThisRepresentation"], "sourceContext": page["sourceContext"],
-                        "untrustedContent": page["content"]}, ensure_ascii=False)
+                        "untrustedContent": page["content"]}
+                    if grounded:
+                        payload["citationCatalog"] = grounding.catalog(page["content"])
+                        client.schema = grounding.schema_for(page["content"])
+                    prompt = json.dumps(payload, ensure_ascii=False)
                     saved = result_file(objective, page["pageId"]).is_file() or page["pageId"] in cached_invalid_pages
                     raw = extract_once(fence, client, system, prompt, page)
                     inferences += not saved
-                    normalized, changes = normalize_representation(raw, page["content"])
+                    normalized, changes = normalize_representation(raw, page["content"], grounded)
                     validate(normalized, page["content"])
                     record = _source_record(page)
                     receipt = {
