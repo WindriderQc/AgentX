@@ -1,0 +1,19 @@
+{
+  "id": "agentx-cluster-schedule-ui-tests/v1",
+  "sourceFiles": [
+    "core/public/js/cluster-schedule.js",
+    "core/public/js/cluster-schedule-upcoming.js",
+    "core/public/js/cluster-schedule-attention.js",
+    "core/public/js/cluster-schedule-headline.js"
+  ],
+  "testFiles": [
+    "core/tests/unit/clusterScheduleAccessibilityUi.test.js",
+    "core/tests/unit/clusterScheduleCadenceUi.test.js",
+    "core/tests/unit/clusterScheduleControlsUi.test.js",
+    "core/tests/unit/clusterScheduleDateUi.test.js",
+    "core/tests/unit/clusterScheduleHeadlineUi.test.js",
+    "core/tests/unit/clusterScheduleMobileUi.test.js",
+    "core/tests/unit/clusterScheduleQueueUi.test.js",
+    "core/tests/unit/clusterScheduleUpcomingUi.test.js"
+  ]
+}

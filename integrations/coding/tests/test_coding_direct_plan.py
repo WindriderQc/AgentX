@@ -73,6 +73,19 @@ class BoundedPairTest(unittest.TestCase):
         (self.root / self.test).unlink()
         self.assertIsNone(direct.build(self.root, self.manifest))
 
+    def test_reviewed_schedule_ui_pair_keeps_native_one_step_planning(self):
+        paths = ['core/public/js/cluster-schedule-upcoming.js',
+                 'core/tests/unit/clusterScheduleUpcomingUi.test.js']
+        for name in paths:
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('// fixture\n')
+        manifest = {**self.manifest, 'scope': paths,
+                    'verificationProfile': direct.verification.SCHEDULE_UI['id']}
+        plan = direct.build(self.root, manifest)
+        self.assertEqual(plan['steps'][0]['paths'], paths)
+        self.assertEqual(plan['steps'][0]['testTargets'], [paths[1]])
+
     def test_file_and_parent_links_cannot_select_a_different_source(self):
         source = self.root / self.source
         source.unlink()

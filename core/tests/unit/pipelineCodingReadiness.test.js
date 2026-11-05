@@ -56,3 +56,33 @@ test('a continuation verifier override is assessed and invalidates the earlier r
   expect(readiness.taskBasis(input)).not.toBe(before);
   expect(readiness.assess(input, limits, definition()).issues[0].code).toBe('verification_scope_mismatch');
 });
+
+describe('bounded Schedule UI verification', () => {
+  const profile = require('../../../integrations/coding/schedule_ui_profile.json');
+  const input = scope => ({ ...task(), automation: { scope, verificationProfile: profile.id } });
+
+  test('the reviewed UI files are feasible without claiming execution authority', () => {
+    const candidate = input([...profile.sourceFiles, ...profile.testFiles]);
+    const before = structuredClone(candidate);
+    expect(readiness.assess(candidate, limits, definition())).toMatchObject({
+      status: 'ready', canAuthorize: true, executionAuthority: 'none', verificationProfile: profile.id
+    });
+    expect(candidate).toEqual(before);
+  });
+
+  test.each(['core/src/services/clusterScheduleService.js', 'core/routes/cluster-schedule.js',
+    'core/public/js/cluster-schedule-unreviewed.js', 'core/tests/unit/unrelated.test.js',
+    'core/views/pages/cluster-schedule.ejs', 'integrations/coding/coding_verification.py'])
+  ('unreviewed area %s requires a separate verifier', path => {
+    expect(readiness.assess(input([profile.sourceFiles[0], path]), limits, definition())).toMatchObject({
+      status: 'missing_prerequisite', canAuthorize: false,
+      issues: [expect.objectContaining({ code: 'verification_scope_mismatch' })]
+    });
+  });
+
+  test('Schedule scope does not widen the existing Core runtime verifier', () => {
+    const candidate = input(profile.sourceFiles);
+    candidate.automation.verificationProfile = 'agentx-core-runner-tests/v1';
+    expect(readiness.assess(candidate, limits, definition()).canAuthorize).toBe(false);
+  });
+});

@@ -565,6 +565,17 @@ configuration comes from the installed runner, rather than the worker checkout.
 Loopback HTTP fixtures are permitted; production services and databases are not
 reachable. Independent review and full CI must still accept the published commit.
 
+`agentx-cluster-schedule-ui-tests/v1` covers only the Schedule controller,
+upcoming, attention and headline scripts and the eight named UI regression
+suites in `integrations/coding/schedule_ui_profile.json`. Core scope readiness
+and runner-owned focused/full verification use that same installed manifest.
+The native Jest configuration disables network and process access through the
+existing no-database guard; it starts no server, database or model. Schedule
+backend, identity, runtime claims and new page layouts require separate verified
+scope. Passing these CPU suites does not establish browser/device acceptance,
+installation or permission to launch a campaign. Existing intake, budgets,
+queue/admission, publication and human review gates still apply.
+
 The coding model route preserves up to 120 seconds (one quarter for shorter
 budgets) for completion. Core refuses fresh calls inside that reserve before
 journal/admission. The runner stops source work before the hard model ceiling and

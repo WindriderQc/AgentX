@@ -3,7 +3,10 @@ const { basis } = require('./pipelineCodingAutonomyPolicy');
 const { createHash } = require('node:crypto');
 const workerScope = require('../helpers/workerTaskScope');
 const SCHEMA = 'agentx.coding-readiness/v1';
+const scheduleUi = require('../../../integrations/coding/schedule_ui_profile.json');
+const scheduleUiScope = new Set([...scheduleUi.sourceFiles, ...scheduleUi.testFiles]);
 const PROFILES = Object.freeze({
+  [scheduleUi.id]: path => scheduleUiScope.has(path),
   'agentx-dispatcher-tests/v1': path => path.startsWith('integrations/coding/'),
   'agentx-core-runner-tests/v1': path => ['core/src/services/inferenceRuntimePolicy.js',
     'core/tests/unit/inferenceRuntimePolicy.test.js'].includes(path),

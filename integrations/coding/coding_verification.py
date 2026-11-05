@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 from pathlib import Path, PurePosixPath
+import json
+
+SCHEDULE_UI = json.loads((Path(__file__).resolve().parent / 'schedule_ui_profile.json').read_text())
 
 
 FULL_COMMANDS = {
+    SCHEDULE_UI['id']: ['/opt/node/bin/node', 'core/node_modules/jest/bin/jest.js',
+                        '--config', '/opt/coding/jest.schedule-ui.config.cjs', '--runInBand'],
     'agentx-dispatcher-tests/v1': ['python3', '-m', 'unittest', 'discover', '-s', 'integrations/coding/tests'],
     'agentx-benchmark-artifact-tests/v1': ['/opt/node/bin/node', 'benchmark/node_modules/jest/bin/jest.js',
                                            '--config', '/opt/coding/jest.benchmark.config.cjs', '--runInBand'],
@@ -13,6 +18,7 @@ FULL_COMMANDS = {
 }
 
 ROOTS = {
+    SCHEDULE_UI['id']: ('core/tests/unit', '.js'),
     'agentx-dispatcher-tests/v1': ('integrations/coding/tests', '.py'),
     'agentx-benchmark-artifact-tests/v1': ('benchmark', '.js'),
     'agentx-core-runner-tests/v1': ('core', '.js'),
@@ -36,6 +42,8 @@ def _target(workspace: Path, profile: str, value: object, *, require_exists: boo
     path = PurePosixPath(value)
     if path.is_absolute() or '..' in path.parts or str(path) != value:
         raise VerificationError('A focused test target must stay inside the repository')
+    if profile == SCHEDULE_UI['id'] and value not in SCHEDULE_UI['testFiles']:
+        raise VerificationError('A focused test target is outside the reviewed Schedule UI profile')
     root, suffix = ROOTS[profile]
     if path.suffix != suffix or not (path == PurePosixPath(root) or PurePosixPath(root) in path.parents):
         raise VerificationError('A focused test target is incompatible with the verification profile')
