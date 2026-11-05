@@ -41,6 +41,7 @@ function createFinanceRoutes({ inbox = financeInbox } = {}) {
     try {
       const state = await access.state();
       return res.json({status:'success',data:{protocol:require('../src/services/finance/financeRepairCoreProof').PROTOCOL,
+        capabilities:[require('../src/services/finance/financeRepairCoreProof').LINKED_DOCUMENTS],
         databaseIdentity:state.identity,held:Boolean(state.repair || state.ingestion),
         operation:state.repair ? 'repair' : state.ingestion ? 'ingestion' : null}});
     } catch (e) { return sendError(res,e); }

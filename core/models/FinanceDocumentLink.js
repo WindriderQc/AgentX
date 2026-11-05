@@ -14,6 +14,9 @@ const financeDocumentLinkSchema = new mongoose.Schema({
   ambiguous: { type: Boolean, default: false },
   document: { type: mongoose.Schema.Types.Mixed, default: {} },
   transaction: { type: mongoose.Schema.Types.Mixed, default: {} },
+  // Only the reviewed native book-repair executor assigns this provenance.
+  // It preserves the proposal; it is never an owner confirmation.
+  bookRepair: { type: mongoose.Schema.Types.Mixed, default: undefined },
   decidedAt: { type: Date, default: null },
   decidedBy: { type: String, default: null }
 }, { timestamps: true });

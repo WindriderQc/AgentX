@@ -2,7 +2,7 @@
 
 // Both manifest versions describe one whole statement. Version 1 retains its
 // original one-row/one-decision shape; version 2 names every printed row and
-// each existing manual decision, with no document-link migration.
+// each existing manual decision. Version 3 also names exact document links.
 const { error } = require('./financeAccess');
 const { canonical } = require('./financeRepairStorage');
 const { ledgerOf, ledgerPrefix, flowOf } = require('./ledgers');
@@ -11,7 +11,8 @@ const keyOf = row => [row.accountKey, row.date, row.fingerprint, row.occurrence]
 const parts = manifest => ({
   statement: manifest.updates[0],
   transactions: manifest.updates.filter(u => u.collection === 'finance_transactions'),
-  overrides: manifest.updates.filter(u => u.collection === 'finance_overrides')
+  overrides: manifest.updates.filter(u => u.collection === 'finance_overrides'),
+  links: manifest.updates.filter(u => u.collection === 'finance_document_links')
 });
 
 function validate(manifest) {
@@ -21,11 +22,13 @@ function validate(manifest) {
   const rows = group.transactions.map(u => u.before);
   const decisions = group.overrides.map(u => u.before);
   if (group.statement.collection !== 'finance_statements' || rows.length < 1 || rows.length > 50
-    || decisions.length > rows.length || m.updates.length !== 1 + rows.length + decisions.length
+    || decisions.length > rows.length || group.links.length > 50
+    || (m.schemaVersion !== 3 && group.links.length)
+    || m.updates.length !== 1 + rows.length + decisions.length + group.links.length
     || (m.schemaVersion === 1 && (rows.length !== 1 || decisions.length !== 1))) throw invalid('One whole bounded statement is required');
-  const ordered = [group.statement, ...group.transactions, ...group.overrides];
+  const ordered = [group.statement, ...group.transactions, ...group.overrides, ...group.links];
   if (ordered.some((u,i) => u !== m.updates[i])) throw invalid('Statement, rows and decisions must be grouped in that order');
-  for (const updates of [group.transactions, group.overrides]) {
+  for (const updates of [group.transactions, group.overrides, group.links]) {
     const ids = updates.map(u => u.id);
     if (new Set(ids).size !== ids.length || canonical(ids) !== canonical([...ids].sort())) throw invalid('Reviewed document IDs must be unique and ordered');
   }
@@ -94,6 +97,7 @@ function validate(manifest) {
   const sets = [{ledger:target,statementKey:ledgerPrefix(target)+base,
     ...Object.fromEntries(s.accounts.map((a,i) => [`accounts.${i}.accountKey`,move(a.accountKey)]))},
   ...rows.map(t => ({ledger:target,accountKey:move(t.accountKey)})), ...decisions.map(o => ({accountKey:move(o.accountKey)}))];
+  if (m.schemaVersion === 3) sets.push(...require('./financeRepairLinkContract').sets(m,group,{source,target,move}));
   for (let i=0;i<sets.length;i++) if (canonical(sets[i]) !== canonical(m.updates[i].set)) throw invalid('Manifest attempts an unreviewed Finance mutation');
 }
 

@@ -98,24 +98,34 @@ function desiredLinks(documents, byAmount, confirmedDocs) {
 
 // Brings the proposals in line with the register; confirmed and rejected links are never recomputed.
 async function syncLinks(documents) {
+  const retained = await require('./financeRepairedLinks').retained(documents);
   const confirmed = await FinanceDocumentLink.find({ status: 'confirmed' }).select('documentId').lean();
   const confirmedDocs = new Set(confirmed.map((link) => link.documentId));
   // Each document matches rows of its own ledger only: a corporate invoice never links to a personal row.
   const desired = new Map();
   for (const ledger of ['perso', 'corp']) {
-    const dated = documents.filter((doc) => isMatchable(doc) && documentLedger(doc) === ledger);
+    const dated = documents.filter((doc) => !retained.has(doc.id) && isMatchable(doc) && documentLedger(doc) === ledger);
     if (!dated.length) continue;
     for (const [key, link] of desiredLinks(dated, await rowsByAmount(dated, ledger), confirmedDocs)) desired.set(key, link);
   }
   if (desired.size) {
-    await FinanceDocumentLink.bulkWrite([...desired].map(([key, link]) => ({ updateOne: {
-      filter: { key },
-      update: { $setOnInsert: { key, status: 'proposed', documentId: link.documentId, transactionKey: link.transactionKey },
-        $set: { ambiguous: link.ambiguous, document: link.document, transaction: link.transaction } },
-      upsert: true
-    } })));
+    const { hash } = require('./financeRepairStorage');
+    const existing = new Map((await FinanceDocumentLink.find({ key: { $in: [...desired.keys()] } }).lean()).map(link => [link.key,link]));
+    const operations = [...desired].flatMap(([key, link]) => {
+      const before = existing.get(key);
+      if (before && (before.status !== 'proposed'
+        || ['ambiguous','document','transaction'].every(field => hash({ value: before[field] }) === hash({ value: link[field] })))) return [];
+      return [{ updateOne: {
+        filter: { key, status: 'proposed' },
+        update: { $setOnInsert: { key, status: 'proposed', documentId: link.documentId, transactionKey: link.transactionKey },
+          $set: { ambiguous: link.ambiguous, document: link.document, transaction: link.transaction } },
+        upsert: !before
+      } }];
+    });
+    if (operations.length) await FinanceDocumentLink.bulkWrite(operations);
   }
-  await FinanceDocumentLink.deleteMany({ status: 'proposed', key: { $nin: [...desired.keys()] } });
+  await FinanceDocumentLink.deleteMany({ status: 'proposed', bookRepair: { $exists: false }, key: { $nin: [...desired.keys()] } });
+  return retained;
 }
 
 const summarize = (docs) => ({ count: docs.length, totalCents: docs.reduce((sum, doc) => sum + (doc.amountCents || 0), 0) });
@@ -139,8 +149,8 @@ async function documents({ minCents, ledger } = {}) {
   if (register.status !== 'ok') return { status: register.status, generatedAt: null };
   const threshold = Number.parseInt(minCents, 10) > 0 ? Number.parseInt(minCents, 10) : DEFAULT_THRESHOLD_CENTS;
   const scope = ledgerOf(ledger);
-  const invoices = register.invoices.filter((doc) => documentLedger(doc) === scope);
-  await syncLinks(register.invoices);
+  const retained = await syncLinks(register.invoices);
+  const invoices = register.invoices.filter((doc) => (retained.get(doc.id) || documentLedger(doc)) === scope);
 
   const links = (await FinanceDocumentLink.find({ status: { $in: ['proposed', 'confirmed'] } }).sort({ createdAt: -1 }).limit(500).lean())
     .filter((link) => (link.document?.ledger || 'perso') === scope);

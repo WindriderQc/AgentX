@@ -15,10 +15,11 @@ function read(bytes, confirmation) {
   if (confirmation !== digest) throw error('Confirm the exact reviewed Finance manifest digest', 'FINANCE_REPAIR_CONFIRMATION_REQUIRED', 409);
   let m;
   try { m = JSON.parse(bytes); } catch { throw invalid('Manifest is not JSON'); }
-  if (!m || ![1,2].includes(m.schemaVersion) || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/.test(m.requestKey || '') || !Array.isArray(m.updates) || m.updates.length < 2 || m.updates.length > 101) {
+  if (!m || ![1,2,3].includes(m.schemaVersion) || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$/.test(m.requestKey || '') || !Array.isArray(m.updates) || m.updates.length < 2 || m.updates.length > (m.schemaVersion === 3 ? 151 : 101)) {
     throw invalid('One reviewed statement and its bounded rows/decisions are required');
   }
   const names = ['finance_statements', 'finance_transactions', 'finance_overrides'];
+  if (m.schemaVersion === 3) names.push('finance_document_links');
   for (const u of m.updates) {
     if (!u || !names.includes(u.collection) || !/^[a-f0-9]{24}$/.test(u.id || '') || u.before?._id !== u.id
       || hash(u.before) !== u.expectedBeforeSha256 || u.upsert !== false || u.insert !== false || u.matchCountRequired !== 1

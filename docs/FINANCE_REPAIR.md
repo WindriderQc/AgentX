@@ -2,9 +2,10 @@
 
 Core's native operator executor moves one whole reviewed statement and its exact
 transaction set between personal and corporate books. It changes the book prefix
-only, preserving any existing manual decisions. Account-number normalization,
-document-link reassignment, re-extraction and bulk historical correction remain
-outside this contract. The original PDF never moves or changes.
+only, preserving any existing manual decisions. Version 3 also retains the
+statement's exact document links in place. Account-number normalization,
+re-extraction and bulk historical correction remain outside this contract.
+The original PDF never moves or changes.
 
 The implementation lives in `core/src/services/finance/financeRepairExecutor.js`.
 `core/scripts/finance-repair.js` is its operator entrance; no mutation route,
@@ -32,6 +33,10 @@ same coordination database, then verifies that its ordinary inbox API actually
 refuses admission while the repair holds it. All Core Finance writers must run
 this implementation before application; an old service or a direct database
 administrator is not made safe by a new CLI alone.
+
+Version 3 additionally requires the served maintenance response to advertise
+`agentx.finance-linked-book-repair/v1`. A CLI upgrade alone cannot qualify an
+older document synchronizer that would delete migrated proposals.
 
 The v2 maintenance protocol also excludes pending ordinary ingestions. Their
 native writer and recovery entrance are described in [Finance](FINANCE.md).
@@ -77,6 +82,14 @@ printed sequence. Each running balance and each closing equation must reconcile
 exactly in integer cents. Missing/extra rows, duplicate identities, unlisted
 manual decisions and either source or target document links refuse execution.
 
+`schemaVersion: 3` extends the same complete-statement contract with up to 50
+existing document links, appended after the decisions and sorted by ID (151
+updates maximum). `verifiedIdentity.documents` contains the exact normalized
+Secretary records referenced by those links. Their current bytes must match
+before dispatch. Every link must already refer to one reviewed outgoing row,
+its amount and document snapshot; unlisted relations, duplicate documents and
+occupied destination keys refuse execution. Earlier versions still refuse links.
+
 Each update carries its existing `id`, full `before` image, canonical
 `expectedBeforeSha256`, `matchCountRequired: 1`, `insert: false`, `upsert: false`,
 the proposed `set` and `setAtExecution: {updatedAt: "receipt.appliedAtUtc"}`.
@@ -88,15 +101,29 @@ The service derives the allowed field changes from the current book and native
 ledger prefixes. It rejects arbitrary update expressions, amount/category/tag
 changes, normalization of a missing account number, or an unmatched owner
 decision. All account closing equations, every printed running balance and the wallet
-flow signs must reconcile in integer cents. A matching source/target document
+flow signs must reconcile in integer cents. An unlisted source/target document
 link or an occupied destination identity requires another review. This bounded
-executor does not guess how to migrate such a link.
+executor never infers new document associations.
 
 All reviewed images in Mongo must still match their exact before images. The original
 must resolve inside the configured Finance archive and match its SHA-256.
 The owner's category, tags, manual flag, author and creation date survive;
 the decision's stable account key follows its row. No rules or document
 proposals are recomputed.
+
+Version 3 changes only a link's stable key, transaction account prefix, document
+book and native update timestamp. It adds `bookRepair` provenance containing the
+request key and the exact normalized document digest. The same link ID,
+document ID, status, ambiguity, decision author/date and both snapshots' other
+fields survive. Migration does not confirm a proposal or recategorize a row.
+
+Document consultation honors this scoped assignment without changing the
+Secretary register or global corporate-name configuration. Retained links are
+not regenerated or refreshed. Ordinary unchanged proposals also keep their
+timestamps; owner decisions are never recomputed. A changed/missing registered
+document or missing/moved payment returns `FINANCE_DOCUMENT_REPAIR_CONFLICT`
+before synchronization writes, preserving the relation for native review. A
+later owner confirmation/rejection remains possible and refuses an old rollback.
 
 ## Durable effects and recovery
 
@@ -187,3 +214,8 @@ recovery, destination/link conflicts, preserved decisions and exact reverse
 rollback. The existing finance service/profile tests remain required. These checks prove
 source behavior on disposable databases, separately from installation,
 accounting authorization and a live repair receipt.
+
+`core/tests/services/financeLinkedRepair.test.js` covers scoped document
+assignment, all link statuses, preserved ambiguity and decisions, repeated
+document consultations, source drift, link/destination conflicts and actual
+process interruption during link application and rollback.
