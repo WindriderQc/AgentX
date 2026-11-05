@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createPresentationReader, presentationReader, analyticsSnapshot, TTL_MS } = require('../../../src/services/presentationReadService');
+const { createPresentationReader, presentationReader, analyticsSnapshot } = require('../../../src/services/presentationReadService');
 const { screenContext, presentationEvidence } = require('../screen-context');
 const pages = require('../../../public/js/screen-pages').createCatalog([
   { id: 'analytics', label: 'Activity', href: '/analytics', mode: 'frame' },
@@ -33,7 +33,7 @@ test('expired, evicted, restarted and mismatched reads never re-query a source',
   let at = Date.now(); const reader = createPresentationReader({ now: () => at, capacity: 1 });
   const ref = reader.publishAnalytics(summary());
   assert.equal(reader.read({ ...ref, revision: 'a'.repeat(64) }).reason, 'revision_mismatch');
-  at += TTL_MS + 1;
+  at = Date.parse(ref.expiresAt) + 1;
   assert.equal(reader.read(ref).reason, 'expired');
   const next = reader.publishAnalytics(summary('24h'));
   assert.equal(reader.read(ref).status, 'unavailable');

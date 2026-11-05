@@ -51,6 +51,17 @@ function project(value, presentationId, now) {
     selection = focus.length === 1 ? { status: 'selected', basis: 'sole_focus', ...focus[0] }
       : { status: focus.length ? 'ambiguous' : 'none', candidates: focus, clarificationRequired: true };
   }
+  let live;
+  if (value.live !== undefined) {
+    const claim = value.live, ref = claim?.read;
+    if (!record(claim) || !['available', 'stale', 'unavailable'].includes(claim.status)) return fail('invalid_live_display');
+    if (ref !== null && (!record(ref) || ref.contract !== 'agentx.presentation-read/v1'
+      || ref.source !== 'core.ecosystem.live' || !/^[a-f0-9]{64}$/.test(ref.revision || '')
+      || ref.id !== 'view_' + ref.revision || !instant(ref.observedAt) || !instant(ref.expiresAt))) return fail('invalid_live_display');
+    if (!ref && claim.status !== 'unavailable') return fail('invalid_live_display');
+    live = { status: claim.status, read: ref ? { contract: ref.contract, source: ref.source,
+      id: ref.id, revision: ref.revision, observedAt: ref.observedAt, expiresAt: ref.expiresAt } : null };
+  }
   return { snapshot: { contract: 'agentx.presentation-read/v1', source: 'graphysx.ecosystem', page: 'ecosystem',
     observationOwner: 'browser_after_render', presentationId, instance: value.instance,
     version: value.version, snapshot: value.snapshot, documentRevision: value.documentRevision, sequence: value.sequence,
@@ -59,8 +70,10 @@ function project(value, presentationId, now) {
     tour: { kind: tour.kind, index: tour.index, count: tour.count, playing: tour.playing === true,
       label: tour.label, title: tour.title, script, adhoc }, focus, selection,
     narration: value.narration, narrationComplete: value.narrationComplete === true,
+    ...(live && { live }),
     limits: ['Browser-reported rendered tour, not pixel verification or a Core inventory.',
-      'Dated GraphysX snapshot, not live telemetry, file contents or execution evidence.',
+      live ? 'Static topology and Core operational data are separate. Only a matching Core live read supports current state; respect its freshness and source scope.'
+        : 'Dated GraphysX snapshot, not live telemetry, file contents or execution evidence.',
       'Use only this instance and selection; ambiguous or absent selection requires clarification.'] } };
 }
 

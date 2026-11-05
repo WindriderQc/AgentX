@@ -40,7 +40,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   their displayed data, with explicit collector freshness and unavailable reads. Current
   browser selection, display observation and Core data remain distinct; their
   evidence stays on the canonical turn. Shared MCP and an optional owner-only
-  OpenClaw adapter expose the reader. CPU/browser contracts are separate from
+  OpenClaw adapter expose the reader. A configured owner ecosystem tour refreshes
+  every mapped Core host/service state automatically; selection is independent
+  of refresh. Its after-render receipt binds the same Core observation for Nestor,
+  with explicit stale/unavailable evidence. Family keeps the static tour.
+  CPU/browser contracts are separate from
   installed runtime and physical-device acceptance. See
   [content presentation](CONTENT_PRESENTATION.md).
 

@@ -156,11 +156,12 @@ function allowWasm(policy) {
 const escapeAttribute = (value) => String(value)
   .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-function renderPage({ roots, attributes }) {
+function renderPage({ roots, attributes, liveEnabled = false }) {
   const ecosystem = attributes.app === 'ecosystem';
   const tag = ecosystem ? 'agentx-ecosystem' : 'diskx-city';
   const title = ecosystem ? 'Écosystème' : 'DiskX';
-  const element = ecosystem ? attributes : { 'api-base': API_BASE, roots: roots.join(','), ...attributes, 'actions-href': ACTIONS_HREF };
+  const element = ecosystem ? { ...attributes, ...(liveEnabled && { 'data-live-state': 'true' }) }
+    : { 'api-base': API_BASE, roots: roots.join(','), ...attributes, 'actions-href': ACTIONS_HREF };
   const attrs = Object.entries(element).map(([name, value]) => ` ${name}="${escapeAttribute(value)}"`).join('');
   return `<!doctype html>
 <html lang="fr">
@@ -173,6 +174,7 @@ function renderPage({ roots, attributes }) {
 <script src="/assets/household/journey-timings.js?v=1"></script>
 <script src="/js/screen-pages.js?v=1"></script>
 <script type="module" src="${MODULE_ROUTE}"></script>
+${liveEnabled ? '<script defer src="/js/utils/polling-controller-global.js"></script>\n<script defer src="/assets/diskx/ecosystem-live-page.js"></script>' : ''}
 <script defer src="/assets/diskx/${ecosystem ? 'ecosystem-page' : 'diskx-page'}.js"></script>
 </head>
 <body>
@@ -222,7 +224,12 @@ function register({ app, express, fetchWithTimeout, fetchData, env = process.env
     catch (error) { return res.status(error.status || 400).type('html').send(errorPage(error.message)); }
     const policy = res.getHeader('Content-Security-Policy');
     if (policy) res.set('Content-Security-Policy', allowWasm(policy));
-    return res.type('html').set('Cache-Control', 'no-store').send(renderPage({ roots, attributes }));
+    // The static tour remains family-readable. Operational state retains the
+    // existing owner Nerve Center boundary, including on a shared device.
+    const liveEnabled = ecosystem && !(req.familyDevice && !req.familyDevice.unlockedUntil)
+      && Boolean(env.AGENTX_INSTANCE_ROOT)
+      && require('node:fs').existsSync(path.join(env.AGENTX_INSTANCE_ROOT, 'config/ecosystem-live.json'));
+    return res.type('html').set('Cache-Control', 'no-store').send(renderPage({ roots, attributes, liveEnabled }));
   });
 
   app.get(MODULE_ROUTE, createScriptRelay({

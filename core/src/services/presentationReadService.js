@@ -61,8 +61,10 @@ function analyticsSnapshot(data) {
 function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
   const snapshots = new Map();
   const ecosystem = require('./ecosystemPresentation').createEcosystemObserver({ now, capacity });
+  const liveState = require('./ecosystemLiveState');
+  const retainedUntil = row => Date.parse(row.expiresAt) + (row.source === liveState.SOURCE ? liveState.RETAIN_MS : 0);
   const prune = () => {
-    for (const [id, row] of snapshots) if (Date.parse(row.expiresAt) <= now()) snapshots.delete(id);
+    for (const [id, row] of snapshots) if (retainedUntil(row) <= now()) snapshots.delete(id);
     while (snapshots.size >= capacity) snapshots.delete(snapshots.keys().next().value);
   };
   function publish(snapshot) {
@@ -76,35 +78,55 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
     return { contract: CONTRACT, id, revision, source: snapshot.source,
       filters: snapshot.filters, observedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt };
   }
+  function resolveLive(claim) {
+    if (!claim) return undefined;
+    const data = read(claim.read);
+    if (data.status !== 'available' || data.source !== liveState.SOURCE
+      || claim.read?.observedAt !== data.observedAt || claim.read?.expiresAt !== data.expiresAt) {
+      return { status: 'unavailable', reason: 'no_matching_core_live_read' };
+    }
+    return { status: claim.status === 'unavailable' ? 'unavailable'
+      : claim.status === 'stale' || data.freshness === 'stale' ? 'stale' : 'available', data };
+  }
+  function read(reference = {}) {
+    const { id, revision } = reference || {};
+    const missing = reason => ({ contract: CONTRACT, status: 'unavailable', reason });
+    if (!/^view_[a-f0-9]{64}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(revision || '')) return missing('invalid_reference');
+    const snapshot = snapshots.get(id);
+    if (!snapshot) return missing('expired_or_not_retained');
+    if (id !== 'view_' + revision) return missing('revision_mismatch');
+    if (retainedUntil(snapshot) <= now()) return missing('expired');
+    if (snapshot.source === 'graphysx.ecosystem' && !ecosystem.current(snapshot)) return missing('superseded_display_observation');
+    let result = JSON.parse(JSON.stringify(snapshot));
+    if (snapshot.source === liveState.SOURCE) result = liveState.readFreshness(result, now());
+    if (snapshot.source === 'graphysx.ecosystem' && result.live?.data) {
+      result.live.data = liveState.readFreshness(result.live.data, now());
+      if (result.live.status !== 'unavailable' && result.live.data.freshness === 'stale') result.live.status = 'stale';
+    }
+    return { ...result, id, revision, status: 'available' };
+  }
   return {
     publishAnalytics: data => publish(analyticsSnapshot(data)),
     publishJanitor: view => publish(require('./janitorPresentation').janitorSnapshot(view, now())),
     publishCalendar: view => publish(require('./calendarPresentation').calendarSnapshot(view, now())),
     publishRuntime: data => publish(require('./analyticsLivePresentation').runtimeSnapshot(data, now())),
     publishGpus: data => publish(require('./analyticsLivePresentation').gpuSnapshot(data, now())),
+    publishEcosystemLive: snapshot => snapshot?.source === liveState.SOURCE ? publish(snapshot) : null,
     observeEcosystem(value, presentationId) {
       const result = ecosystem.accept(value, presentationId);
       if (!result.snapshot) return { contract: CONTRACT, status: 'unavailable', reason: result.reason };
-      const reference = publish(result.snapshot);
-      return reference ? { ...JSON.parse(JSON.stringify(result.snapshot)), ...reference, status: 'available' }
+      const snapshot = { ...result.snapshot, ...(result.snapshot.live && { live: resolveLive(result.snapshot.live) }) };
+      const reference = publish(snapshot);
+      return reference ? { ...JSON.parse(JSON.stringify(snapshot)), ...reference, status: 'available' }
         : { contract: CONTRACT, status: 'unavailable', reason: 'observation_not_retained' };
     },
-    read({ id, revision } = {}) {
-      const missing = reason => ({ contract: CONTRACT, status: 'unavailable', reason });
-      if (!/^view_[a-f0-9]{64}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(revision || '')) return missing('invalid_reference');
-      const snapshot = snapshots.get(id);
-      if (!snapshot) return missing('expired_or_not_retained');
-      if (id !== 'view_' + revision) return missing('revision_mismatch');
-      if (Date.parse(snapshot.expiresAt) <= now()) return missing('expired');
-      if (snapshot.source === 'graphysx.ecosystem' && !ecosystem.current(snapshot)) return missing('superseded_display_observation');
-      return { ...JSON.parse(JSON.stringify(snapshot)), id, revision, status: 'available' };
-    }
+    read
   };
 }
 
 const presentationReader = createPresentationReader();
 const PRESENTATION_TOOLS = [{ name: 'read_presentation', title: 'Read Presented Content',
-  description: 'Read the exact Core Analytics, live runtime/GPU, owner calendar, Janitor report or bounded GraphysX ecosystem display observation referenced by the current screen context. Requires its id and revision. Each source has its own freshness and scope; a GraphysX observation is browser-reported, not a Core inventory or live telemetry. Never fetches a URL or re-executes a tool. A data receipt alone does not prove browser display; unavailable requires refreshing the view.',
+  description: 'Read the exact Core Analytics, live runtime/GPU/ecosystem, owner calendar, Janitor report or GraphysX display observation referenced by the current screen context. Requires id and revision. Ecosystem display observations may bind a separate Core live-state read: only that data attests operational state; freshness and source scope remain explicit. A browser observation alone is not telemetry. Never fetches a URL or re-executes a tool. Unavailable requires refreshing the view.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['id', 'revision'], properties: {
     id: { type: 'string', pattern: '^view_[a-f0-9]{64}$' }, revision: { type: 'string', pattern: '^[a-f0-9]{64}$' } } },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false } }];
