@@ -25,13 +25,22 @@ def limits(reply, requested=None):
 def parse_content(reply, requested=None, capture=None):
     observed = limits(reply, requested)
     message = reply.get("message") if isinstance(reply.get("message"), dict) else {}
-    content = message.get("content") or reply.get("response")
+    content = message.get("content")
+    if not isinstance(content, str) or not content.strip():
+        alternate = reply.get("response")
+        if isinstance(alternate, str) and (alternate.strip() or not isinstance(content, str)):
+            content = alternate
     if not isinstance(content, str):
         raise ReviewInvalidOutput("missing-model-content", observed)
     if capture:
         capture("model", content.encode("utf-8", errors="surrogatepass"), {"limits": observed})
     if observed["done"] is False or observed["completionReason"] in ("length", "max_tokens", "max_output_tokens", "token_limit"):
         raise ReviewInvalidOutput("incomplete-model-output", observed)
+    if not content.strip():
+        # A terminal blank final is neither an abstention nor usable reasoning.
+        # Preserve the exact empty bytes and native limits; never retry it or
+        # promote a hidden thinking/reasoning field into the final answer.
+        raise ReviewInvalidOutput("empty-model-content", observed)
     try:
         value = json.loads(content)
     except (ValueError, UnicodeError) as error:

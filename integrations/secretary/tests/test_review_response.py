@@ -93,6 +93,37 @@ class RetainedResponseTests(unittest.TestCase):
         self.assertEqual(caught.exception.reason, "invalid-model-json")
         self.assertEqual(load(self.directory / "attempt.json")["phase"], "invalid-output")
 
+    def test_terminal_empty_final_is_explicit_invalid_with_no_reissue_or_thinking_fallback(self):
+        raw = json.dumps({"message": {"content": "", "thinking": '{"moments": []}'},
+                          "response": "", "done": True, "done_reason": "stop", "eval_count": 9000,
+                          "agentx_contract": {"contextBudget": {"output": {"reservedTokens": 16384}}}}).encode()
+        client = self.client(raw, 16384)
+        for _ in range(2):
+            with self.assertRaises(ReviewInvalidOutput) as caught:
+                self.run_once(client)
+            self.assertEqual(caught.exception.reason, "empty-model-content")
+            self.assertFalse(caught.exception.limits["atOutputLimit"])
+        self.assertEqual((self.directory / "response-1-http.txt").read_bytes(), raw)
+        self.assertEqual((self.directory / "response-1-model.txt").read_bytes(), b'')
+        self.assertEqual(len(self.calls), 1)
+        self.assertFalse(self.calls[0]["think"])
+        self.assertFalse((self.directory / "result.json").exists())
+
+    def test_blank_content_keeps_exact_bytes_and_explicit_length_stop_keeps_priority(self):
+        from review_response import parse_content
+        for text in ("", " \r\n\t"):
+            captures = []
+            reply = {"message": {"content": text}, "done": True, "done_reason": "stop"}
+            with self.assertRaises(ReviewInvalidOutput) as caught:
+                parse_content(reply, capture=lambda stage, data, details: captures.append(data))
+            self.assertEqual(caught.exception.reason, "empty-model-content")
+            self.assertEqual(captures, [text.encode()])
+            reply["done_reason"] = "length"
+            with self.assertRaises(ReviewInvalidOutput) as caught:
+                parse_content(reply)
+            self.assertEqual(caught.exception.reason, "incomplete-model-output")
+        self.assertEqual(parse_content({"message": {"content": " "}, "response": '{"moments": []}'}), {"moments": []})
+
     def test_a_changed_output_budget_cannot_silently_replace_a_completed_invalid_call(self):
         client = self.client(json.dumps({"response": '{"broken":'}).encode(), 4096)
         with self.assertRaises(ReviewInvalidOutput): self.run_once(client)

@@ -85,9 +85,11 @@ class ProjectionTests(unittest.TestCase):
     def test_page_schema_only_advertises_its_own_citation_ids_and_does_not_mutate_template(self):
         before = copy.deepcopy(grounding.SCHEMA)
         schema = grounding.schema_for("Une ligne\nDeux lignes")
-        for kind in ("observations", "hypotheses"):
-            ids = schema["properties"]["moments"]["items"]["properties"][kind]["items"]["properties"]["citationIds"]["items"]["enum"]
-            self.assertEqual(ids, ["q1", "q2"] if kind == "observations" else ["no-explicit-uncertainty"])
+        props = schema["properties"]["moments"]["items"]["properties"]
+        ids = props["observations"]["items"]["properties"]["citationIds"]["items"]["enum"]
+        self.assertEqual(ids, ["q1", "q2"])
+        self.assertEqual(props["hypotheses"]["maxItems"], 0)
+        self.assertNotIn("no-explicit-uncertainty", json.dumps(schema))
         self.assertEqual(grounding.SCHEMA, before)
 
 

@@ -14,7 +14,8 @@ from review_receipts import hashed
 import objective_source_language as language
 
 LEGACY_CONTRACT = "secretary.objective-grounding/v1"
-CONTRACT = "secretary.objective-grounding/v2"
+WORDING_CONTRACT = "secretary.objective-grounding/v2"
+CONTRACT = "secretary.objective-grounding/v3"
 CLAIM = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -52,13 +53,19 @@ SCHEMA["properties"]["moments"]["items"]["properties"]["hypotheses"]["items"] = 
                    "citationIds": {"type": "array", "minItems": 1, "maxItems": 1, "items": field(minLength=1, maxLength=20)}},
     "required": ["basis", "citationIds"],
 }
+SCHEMA_V2 = SCHEMA
+SCHEMA = copy.deepcopy(SCHEMA_V2)
+# Close-person attribution is a human review decision, never a model inference
+# from an exchange, shared address, document title or familiar salutation.
+SCHEMA["properties"]["moments"]["items"]["properties"]["subject"]["enum"] = ["owner", "thirdparty", "unknown"]
 
 
 def contract_for(manifest):
     digest = manifest.get("responseSchemaSha256")
-    if digest == hashed(SCHEMA):
-        return CONTRACT
-    return LEGACY_CONTRACT if digest == hashed(SCHEMA_V1) else None
+    for contract, schema in ((CONTRACT, SCHEMA), (WORDING_CONTRACT, SCHEMA_V2), (LEGACY_CONTRACT, SCHEMA_V1)):
+        if digest == hashed(schema):
+            return contract
+    return None
 
 
 def catalog(content):
@@ -72,16 +79,29 @@ def catalog(content):
 
 
 def schema_for(content, contract=CONTRACT):
-    schema = copy.deepcopy(SCHEMA_V1 if contract == LEGACY_CONTRACT else SCHEMA)
+    schema = copy.deepcopy({LEGACY_CONTRACT: SCHEMA_V1, WORDING_CONTRACT: SCHEMA_V2, CONTRACT: SCHEMA}[contract])
     # An empty passage has no selectable evidence. A fabricated moment still
     # fails local resolution even if a backend ignores the response schema.
-    ids = [row["id"] for row in catalog(content)] or ["no-source-span"]
+    spans = catalog(content)
+    ids = [row["id"] for row in spans]
+    moments = schema["properties"]["moments"]
+    if contract == CONTRACT and not ids:
+        moments["maxItems"] = 0
+        schema["properties"]["summaryCitationIds"]["maxItems"] = 0
     for kind in ("observations", "hypotheses"):
-        claim = schema["properties"]["moments"]["items"]["properties"][kind]["items"]
-        eligible = [row["id"] for row in catalog(content) if language.uncertainty_bases(row["text"])]
-        claim["properties"]["citationIds"]["items"]["enum"] = (eligible or ["no-explicit-uncertainty"]) if kind == "hypotheses" and contract != LEGACY_CONTRACT else ids
+        claims = moments["items"]["properties"][kind]
+        eligible = [row["id"] for row in spans if language.uncertainty_bases(row["text"])]
+        selected = eligible if kind == "hypotheses" and contract != LEGACY_CONTRACT else ids
+        if contract == CONTRACT:
+            if selected:
+                claims["items"]["properties"]["citationIds"]["items"]["enum"] = selected
+            elif kind == "hypotheses":
+                claims["maxItems"] = 0
+        else:
+            claims["items"]["properties"]["citationIds"]["items"]["enum"] = selected or ["no-explicit-uncertainty" if kind == "hypotheses" and contract != LEGACY_CONTRACT else "no-source-span"]
     if contract != LEGACY_CONTRACT:
-        schema["properties"]["summaryCitationIds"]["items"]["enum"] = ids
+        if ids or contract != CONTRACT:
+            schema["properties"]["summaryCitationIds"]["items"]["enum"] = ids or ["no-source-span"]
     return schema
 
 
@@ -152,8 +172,12 @@ def project(value, content, contract=None):
     for moment in converted["moments"]:
         if not isinstance(moment, dict) or not isinstance(moment.get("hypotheses"), list):
             raise ValueError("Invalid grounded moment shape")
+        if contract != WORDING_CONTRACT and moment.get("subject") not in ("owner", "thirdparty", "unknown"):
+            raise ValueError("Personal proximity requires human review; use thirdparty or unknown")
         moment["hypotheses"] = [language.hypothesis(item, spans) for item in moment["hypotheses"]]
     result, changes = _project_v1(converted, content)
-    changes[0].update(contract=CONTRACT, summary=summary_proof,
+    changes[0].update(contract=contract or CONTRACT, summary=summary_proof,
                       reason="Whole source excerpts in summary; only explicitly expressed source uncertainty, without generated hypotheses.")
+    if contract != WORDING_CONTRACT:
+        changes[0]["reason"] += " Personal proximity is reserved for human review."
     return result, changes
