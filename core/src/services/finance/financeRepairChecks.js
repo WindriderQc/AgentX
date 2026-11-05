@@ -43,14 +43,16 @@ function validateScope(state, manifest, destination) {
   const decisionIds = group.overrides.map(u => u.id).sort();
   const decisions = state.finance_overrides.filter(x => keys.has(keyOf(x)));
   if (canonical(decisions.map(x => String(x._id)).sort()) !== canonical(decisionIds)) throw conflict('Statement owner decision scope changed');
-  if (state.finance_document_links.some(x => keys.has(x.transactionKey)
-    || (x.transaction?.accountKey && [...keys].some(k => k.startsWith(x.transaction.accountKey + '|' + x.transaction.date + '|'))))) {
-    throw conflict('Statement document links require a new reviewed manifest');
+  const documentIds = new Set(group.links.map(u => u.before.documentId));
+  const links = state.finance_document_links.filter(x => documentIds.has(x.documentId) || keys.has(x.transactionKey)
+    || (x.transaction?.accountKey && [...keys].some(k => k.startsWith(x.transaction.accountKey + '|' + x.transaction.date + '|'))));
+  if (canonical(links.map(x => String(x._id)).sort()) !== canonical(group.links.map(u => u.id).sort())) {
+    throw conflict('Statement document link scope changed or was not reviewed');
   }
-  for (const name of ['finance_statements','finance_transactions','finance_overrides']) {
+  for (const name of ['finance_statements','finance_transactions','finance_overrides','finance_document_links']) {
     const indexes = manifest.updates.flatMap((u,i) => u.collection === name ? [i] : []);
     const ownedIds = new Set(indexes.map(i => manifest.updates[i].id));
-    const identity = name === 'finance_statements' ? row => row.statementKey : keyOf;
+    const identity = name === 'finance_statements' ? row => row.statementKey : name === 'finance_document_links' ? row => row.key : keyOf;
     const targetKeys = new Set(indexes.map(i => identity(destination[i])));
     if (state[name].some(row => !ownedIds.has(String(row._id)) && targetKeys.has(identity(row)))) throw conflict('A destination identity is occupied');
   }

@@ -60,6 +60,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
     }
     async function prepare() {
       await storage.verifyOriginal(m, archiveRoot);
+      await require('./financeRepairLinkContract').verifyDocuments(m);
       const state = await check.snapshot(db);
       const before = check.images(state,m);
       check.assertImages(before,[m.updates.map(u => u.before)]);
@@ -107,6 +108,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
     }
     async function apply() {
       await storage.verifyOriginal(m, archiveRoot);
+      await require('./financeRepairLinkContract').verifyDocuments(m);
       let state = await check.snapshot(db);
       check.assertImages(check.images(state,m),[record.before, record.after]);
       check.validateScope(state,m,record.after);
@@ -171,7 +173,7 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
       }
       if (record.digest !== digest || record.executorRoot !== rootIdentity) throw error('Finance repair identity has different intent', 'FINANCE_REPAIR_INTENT_CONFLICT', 409);
       if (['rolled_back','rejected'].includes(record.phase) || (record.phase === 'applied' && mode !== 'rollback')) return await terminal();
-      await coreProof.protocol(coreOrigin);
+      await coreProof.protocol(coreOrigin, { linkedDocuments: m.schemaVersion === 3 });
       await access.hold(key,digest,rootIdentity);
       await checkpoint('fenced');
       await coreProof.fenced(coreOrigin);
@@ -188,7 +190,8 @@ function createExecutor({ checkpoint = async () => {} } = {}) {
         const gate = await access.state().catch(() => null);
         const ours = gate?.repair?.requestKey === key && gate.repair.digest === digest && gate.readers.length === 0;
         if (ours && record.phase === 'draining' && ['FINANCE_REPAIR_STATE_CONFLICT','FINANCE_REPAIR_ORIGINAL_CHANGED',
-          'FINANCE_REPAIR_ORIGINAL_INVALID','FINANCE_REPAIR_ARCHIVE_REQUIRED','FINANCE_REPAIR_CORE_UNQUALIFIED'].includes(e.code)) {
+          'FINANCE_REPAIR_ORIGINAL_INVALID','FINANCE_REPAIR_ARCHIVE_REQUIRED','FINANCE_REPAIR_CORE_UNQUALIFIED',
+          'FINANCE_REPAIR_DOCUMENTS_CHANGED'].includes(e.code)) {
           await finish('rejected',{ reason: e.code, documents: 0, inserted: 0, deleted: 0 });
         } else if (ours && record.phase === 'applied' && mode === 'rollback' && e.code === 'FINANCE_REPAIR_STATE_CONFLICT') {
           await save({ rollbackRefused: { code: e.code, at: new Date() } });
