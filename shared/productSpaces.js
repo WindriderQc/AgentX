@@ -45,6 +45,8 @@ function productSpaces(link) {
         item('rag-maintenance', 'Maintenance', '/maintenance', 'fa-screwdriver-wrench', 'rag'),
         item('memory-review', 'Memory Review', '/memory-review', 'fa-brain'),
         { section: 'Evaluation' },
+        item('benchmark', 'Compare models', '/', 'fa-trophy', 'benchmark'),
+        item('leaderboard', 'Leaderboard', '/leaderboard', 'fa-medal', 'benchmark'),
         item('profiler', 'Profiler', '/profiler', 'fa-microscope', 'benchmark'),
         item('courthouse', 'Courthouse', '/courthouse', 'fa-gavel', 'benchmark'),
         item('results-explorer', 'Results Explorer', '/results-explorer', 'fa-table-list', 'benchmark'),
@@ -73,10 +75,6 @@ function productSpaces(link) {
       item('operator-skill', 'Operator skill (zip)', '/api/operator-skill/download', 'fa-file-zipper', 'core', {
         description: 'The skill that teaches an assistant to operate this instance, matching the running version.'
       }),
-      { section: 'Evaluation' },
-      item('benchmark', 'Compare models', '/', 'fa-trophy', 'benchmark'),
-      item('leaderboard', 'Leaderboard', '/leaderboard', 'fa-medal', 'benchmark'),
-
       { label: 'Keyboard Shortcuts', icon: 'fa-keyboard', id: 'keyboard-shortcuts', action: 'show-shortcuts' }
     ] }
   ];

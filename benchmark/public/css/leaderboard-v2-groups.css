@@ -38,6 +38,12 @@
   align-items: flex-start;
   gap: 0.7rem 1.5rem;
 }
+.r-axis-help {
+  max-width: 23rem;
+  color: var(--r-text-muted, #a3adbd);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
 
 /* ─── Sections: ranked, then other evidence in a closed disclosure ─── */
 .cb-unranked { margin-top: 0.6rem; }

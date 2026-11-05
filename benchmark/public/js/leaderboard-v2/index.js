@@ -90,11 +90,12 @@ function restoreShell(main, hosts = []) {
             <div class="r-fgroup">
                 <span class="r-fgroup-label"><i class="fas fa-arrow-down-wide-short" aria-hidden="true"></i> Rank by</span>
                 <div class="r-seg">
-                    <button type="button" class="r-seg-btn" data-axis="composite" title="Blended deterministic + judge score">Composite</button>
-                    <button type="button" class="r-seg-btn" data-axis="quality" title="Common quality score; required when cloud models are shown">Quality</button>
+                    <button type="button" class="r-seg-btn" data-axis="composite" aria-describedby="rank-axis-help" title="Quality, speed and latency; switches to local models only">Composite</button>
+                    <button type="button" class="r-seg-btn" data-axis="quality" title="Quality score without speed or latency; available for local and cloud models">Quality</button>
                     <button type="button" class="r-seg-btn" data-axis="deterministic" title="Rule-based deterministic scoring only">Deterministic</button>
                     <button type="button" class="r-seg-btn" data-axis="subjective" title="Judge-model scoring only">Judge</button>
                 </div>
+                <small class="r-axis-help" id="rank-axis-help">Composite combines quality, speed and latency. Selecting it shows local models only.</small>
             </div>
             <div class="r-fgroup r-fgroup-hosts">
                 <span class="r-fgroup-label"><i class="fas fa-server" aria-hidden="true"></i> Hosts</span>
@@ -177,14 +178,17 @@ function wireAxisChip(main, leaderboardMeta = {}, coverageRes = null) {
 
     // Rank-by (score axis)
     bar.querySelectorAll('[data-axis]').forEach(btn => {
-        if (_includeCloud && btn.dataset.axis === 'composite') {
-            btn.disabled = true;
-            btn.title = 'Composite quality + latency is available only when Cloud models is unchecked';
-        }
         if (btn.dataset.axis === _currentAxis) btn.classList.add('is-active');
+        btn.setAttribute('aria-pressed', String(btn.dataset.axis === _currentAxis));
         btn.addEventListener('click', () => {
             if (btn.dataset.axis === _currentAxis) return;
             _currentAxis = btn.dataset.axis;
+            // Composite includes hardware-local performance. Make that view a
+            // direct choice while keeping cloud evidence out of its ranking.
+            if (_currentAxis === 'composite' && _includeCloud) {
+                _includeCloud = false;
+                try { localStorage.setItem('leaderboardIncludeCloud', 'false'); } catch (_) {}
+            }
             init();
         });
     });
