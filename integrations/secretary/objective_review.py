@@ -104,7 +104,7 @@ def read_receipt(file, manifest):
             or record.get("bodySha256") != identity.get("contentSha256"):
         raise ValueError("Objective receipt integrity does not match its saved identity")
     validate(row["result"], record["body"])
-    grounded = manifest.get("responseSchemaSha256") == hashed(grounding.SCHEMA)
+    grounded = grounding.contract_for(manifest)
     if grounded and "resultProcessing" not in row:
         raise ValueError("A grounded result requires its retained native projection")
     if "resultProcessing" in row:
@@ -286,7 +286,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         durable(objective / "status.json", status)
         return {**status, "coverage": coverage(objective, manifest)}
     system = INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + manifest["config"]["instructions"]
-    grounded = manifest["responseSchemaSha256"] == hashed(grounding.SCHEMA)
+    grounded = grounding.contract_for(manifest)
     started, made, rejected, deferred, inferences = clock(), 0, 0, 0, 0
     requested_stop = stop
     stop = lambda: requested_stop() or clock() - started >= max_seconds
@@ -421,7 +421,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                         "untrustedContent": page["content"]}
                     if grounded:
                         payload["citationCatalog"] = grounding.catalog(page["content"])
-                        client.schema = grounding.schema_for(page["content"])
+                        payload["groundingContract"] = grounded
+                        client.schema = grounding.schema_for(page["content"], grounded)
                     prompt = json.dumps(payload, ensure_ascii=False)
                     saved = result_file(objective, page["pageId"]).is_file() or page["pageId"] in cached_invalid_pages
                     raw = extract_once(fence, client, system, prompt, page)

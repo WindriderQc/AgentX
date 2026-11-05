@@ -52,7 +52,7 @@ class ProjectionTests(unittest.TestCase):
         self.assertIn("Hypothèses à vérifier :\nLe statut indépendant", moment["rationale"])
         self.assertTrue(moment["relationHints"][0].startswith("Hypothèse à vérifier :"))
         self.assertEqual(raw, before)
-        self.assertEqual(changes[0]["contract"], grounding.CONTRACT)
+        self.assertEqual(changes[0]["contract"], grounding.LEGACY_CONTRACT)
 
     def test_classification_is_derived_without_overriding_a_model_classification(self):
         body = "Une source explicite."
@@ -87,7 +87,7 @@ class ProjectionTests(unittest.TestCase):
         schema = grounding.schema_for("Une ligne\nDeux lignes")
         for kind in ("observations", "hypotheses"):
             ids = schema["properties"]["moments"]["items"]["properties"][kind]["items"]["properties"]["citationIds"]["items"]["enum"]
-            self.assertEqual(ids, ["q1", "q2"])
+            self.assertEqual(ids, ["q1", "q2"] if kind == "observations" else ["no-explicit-uncertainty"])
         self.assertEqual(grounding.SCHEMA, before)
 
 
@@ -128,6 +128,8 @@ class GroundedWorkerTests(unittest.TestCase):
     def test_known_invalid_selector_is_retained_without_retry_or_finding(self):
         def invalid_selector(prompt, reply):
             value = grounded(prompt["untrustedContent"])
+            value.pop("summary"); value["summaryCitationIds"] = []
+            value["moments"][0]["hypotheses"] = []
             value["moments"][0]["observations"][0]["citationIds"] = ["unknown-span"]
             reply["response"] = json.dumps(value)
             return reply

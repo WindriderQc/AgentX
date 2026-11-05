@@ -56,6 +56,9 @@ class Client:
         if "citationCatalog" in payload:
             value.pop("classification")
             value["emptyAssessment"] = "no-life-event"
+            if payload.get("groundingContract", "").endswith("/v2"):
+                value.pop("summary")
+                value["summaryCitationIds"] = [row["id"] for row in payload["citationCatalog"][:1]]
             for item in value["moments"]:
                 text = item.pop("description")
                 quote = item.pop("quotes")[0]
