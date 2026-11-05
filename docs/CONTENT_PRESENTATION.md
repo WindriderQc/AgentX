@@ -76,13 +76,24 @@ and explicit node selection only after rendering. A constructor, iframe load or
 opening request cannot supply this receipt. The existing presentation observation
 reads the latest rendered state when the user submits the next turn.
 
-**Activer la voix** in a compatible GraphysX tour reads the current narration with
-Nestor's installed persona voice through Core's existing catalog, speech fallback
-ladder and Web Audio player. A device voice is the final fallback. Speech requires
-an explicit click; no microphone or conversation session is opened. GraphysX waits
-for playback completion before advancing and aborts speech on pause, replacement,
-closure or a hidden document. Resume reads the interrupted stop again. The host
-adapter supplies `element.narrator(text, signal)`; GraphysX owns the tour timing.
+The ecosystem guide is enabled by default and uses the shared French feminine
+voice (`kokoro|ff_siwis`), independently of Nestor's persona and conversation
+preferences. The existing speech service may resolve that voice through its
+configured reference aliases. The standard speech fallback ladder and Web Audio
+player remain the transport; no new agent or conversation session is opened.
+
+A typed question pauses the guide immediately. Conversation activity pauses it
+at speech onset and prevents resume during recognition, thinking and Nestor's
+answer. The existing conversation speaker and voice preferences are unchanged.
+After the answer, **Reprendre la visite** reads the interrupted stop again;
+it does not automatically speak over a follow-up. Hiding or closing the content
+workspace also cancels its audio, including retained hidden frames.
+
+Browsers may block autoplay before a gesture. A bounded audio-unlock check then
+pauses before synthesis, keeps the voice enabled and lets a gesture inside the
+view or the ordinary Play button retry. This is not another voice-enable step.
+The host adapter supplies `element.narrator(text, signal)`; GraphysX owns pacing
+and the `tour.conversation(busy)` pause/resume guard.
 
 Core validates freshness, card/instance binding, monotonic frames and document
 revisions, and rejects version changes within an instance. Accepting a newer frame

@@ -1,47 +1,76 @@
-/* Narration adapter: existing Nestor voice catalog, fallback ladder and stream player. */
+/* The guide has its own French voice; conversation persona/preferences stay untouched. */
 (function (root) {
   'use strict';
   function createNarrator(env = root) {
     const speech = new env.VoixAudio.Speech({ retryUnplayed: true, playBrowser: env.AgentXVoice.speakWithBrowser });
+    const choice = { provider: 'kokoro', voice: env.NestorSpeech?.PROFILES?.fr?.nativeVoice || 'ff_siwis' };
     const ladder = env.AgentXSpeechLadder.createSpeechLadder({
       request: ({ text, language, choice }, signal) => env.fetch('/api/voix/synthesize/stream', {
         method: 'POST', signal, credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, language, voice: choice.voice, tts_provider: choice.provider })
       }),
       deviceVoice: () => !!env.speechSynthesis,
-      unavailable: 'La voix est indisponible.'
+      unavailable: 'La voix du guide est indisponible.'
     });
-    let persona;
-    async function choices(signal) {
-      if (!persona) {
-        const response = await env.fetch('/api/voice-personas/catalog', { signal, credentials: 'same-origin' });
-        if (!response.ok) {
-          if ([401, 403].includes(response.status)) throw new Error('Accès au catalogue de voix refusé.');
-          return [];
-        }
-        const body = await response.json();
-        persona = (body.data || body).personas?.find(item => item.id === 'nestor');
-      }
-      return env.PersonaPresentation.speechChoices(persona, 'fr');
+    let unlocked = false;
+    // A suspended autoplay context can leave resume() pending forever. Detect that
+    // before opening a synthesis request; the ordinary Play gesture can retry it.
+    async function unlock(signal) {
+      const Context = env.AudioContext || env.webkitAudioContext;
+      if (unlocked || !Context) return;
+      const context = new Context();
+      let timer, abort;
+      try {
+        await Promise.race([context.resume(), new Promise((_, reject) => {
+          timer = setTimeout(() => reject(Object.assign(new Error('Le navigateur attend un geste pour autoriser le son.'), { name: 'NotAllowedError' })), 1000);
+          abort = () => reject(Object.assign(new Error('Cancelled'), { name: 'AbortError' }));
+          signal.addEventListener('abort', abort, { once: true });
+          if (signal.aborted) abort();
+        })]);
+        unlocked = context.state === 'running';
+        if (!unlocked) throw Object.assign(new Error('Audio verrouillé.'), { name: 'NotAllowedError' });
+      } finally { clearTimeout(timer); signal.removeEventListener('abort', abort); await context.close().catch(() => {}); }
     }
-    return (text, signal) => {
-      if (signal.aborted) return Promise.resolve();
+    return async (text, signal) => {
+      if (signal.aborted) return;
+      await unlock(signal);
+      if (signal.aborted) return;
       const stop = () => speech.cancel();
       signal.addEventListener('abort', stop, { once: true });
-      // Speech opens/unlocks its context immediately, before fetching the catalog.
-      return speech.speak(async (playSignal, _segment, after) => {
-        const voices = await choices(playSignal);
-        return ladder.speak({ text, language: 'fr', choices: voices, after }, playSignal);
-      }).finally(() => signal.removeEventListener('abort', stop));
+      try {
+        await speech.speak((playSignal, _segment, after) => ladder.speak({ text, language: 'fr', choices: [choice], after }, playSignal));
+      } finally { signal.removeEventListener('abort', stop); }
     };
   }
-  if (typeof module === 'object' && module.exports) module.exports = { createNarrator };
+  function bindConversation(view, { embedded = false } = {}) {
+    let context = { visible: !embedded, busy: false }, startPending = embedded;
+    function update(next) {
+      context = { visible: next?.visible === true, busy: next?.busy === true };
+      view.tour?.conversation?.(!context.visible || context.busy);
+      if (startPending && context.visible && !context.busy && view.tour) {
+        startPending = false; view.tour.play();
+      }
+    }
+    update(context);
+    return Object.freeze({
+      update,
+      pause() { view.tour?.conversation?.(true); if (context.visible && !context.busy) view.tour?.conversation?.(false); }
+    });
+  }
+  if (typeof module === 'object' && module.exports) module.exports = { createNarrator, bindConversation };
   else {
+    let latest = { visible: root.parent === root, busy: false }, controller;
+    root.AgentXEcosystemConversation = Object.freeze({
+      update(next) { latest = next; controller?.update(next); },
+      pause() { controller?.pause(); }
+    });
     root.customElements.whenDefined('agentx-ecosystem').then(() => {
       const view = root.document.querySelector('agentx-ecosystem');
-      if (view && root.VoixAudio?.Speech) view.narrator = createNarrator();
-      // A hidden or removed presentation must never keep speaking in the background.
-      root.addEventListener('pagehide', () => view?.tour?.pause());
+      if (!view) return;
+      controller = bindConversation(view, { embedded: root.parent !== root });
+      controller.update(latest);
+      if (root.VoixAudio?.Speech) view.narrator = createNarrator();
+      root.addEventListener('pagehide', () => view.tour?.pause());
     });
   }
 })(typeof window === 'undefined' ? globalThis : window);

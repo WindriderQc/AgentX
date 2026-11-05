@@ -663,7 +663,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (!family) { el('conversationFiles').disabled = typing || reviewing || textBusy; renderDraftFiles(); }
     renderAudioReview();
     window.dispatchEvent(new CustomEvent('persona-presence', { detail: { personaId: conversation.session?.persona?.id || selected().id,
-      personaVersion: conversation.session?.persona?.version || selected().version, state, visual: conversation.session?.visual || conversation.session?.persona?.visual || selected().visual || null,
+      personaVersion: conversation.session?.persona?.version || selected().version, state,
+      conversationBusy: textBusy || ['hearing', 'transcribing', 'thinking', 'waiting', 'preparing', 'speaking', 'reviewing', 'recovering'].includes(state), visual: conversation.session?.visual || conversation.session?.persona?.visual || selected().visual || null,
       sample: { speech: () => conversation.audio?.readSpeechSample?.(), input: () => conversation.audio?.readInputLevel?.(),
         // Waiting for "Hey Nestor": the face dozes until the word wakes him.
         asleep: () => !!conversation.selection?.wakeWord && ['listening', 'hearing'].includes(conversation.state) && !conversation.wake.active() } } }));
@@ -835,6 +836,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     showTools(null); if (!privacyChoice.snapshot().ephemeral) void recap?.refresh();
     el('conversationMessage').value = ''; composer.sync(); draftFiles = []; renderDraftFiles(); restoreProfile(); describe(); el('conversationMessage').focus();
   };
+  el('conversationMessage').addEventListener('input', () => {
+    if (el('conversationMessage').value.trim()) window.dispatchEvent(new CustomEvent('nestor-question-start'));
+  });
   // Enter sends, Shift+Enter adds a line; an IME composition keeps its Enter.
   el('conversationMessage').addEventListener('keydown', event => {
     if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
