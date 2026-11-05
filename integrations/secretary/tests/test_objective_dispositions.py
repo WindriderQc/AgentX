@@ -39,6 +39,9 @@ class DispositionTests(unittest.TestCase):
                 if "citationCatalog" in prompt:
                     value["emptyAssessment"] = "no-life-event"
                     value.pop("classification")
+                    if prompt.get("groundingContract", "").endswith("/v2"):
+                        value.pop("summary")
+                        value["summaryCitationIds"] = []
                     for item in value["moments"]:
                         text = item.pop("description")
                         item.pop("quotes"); item.pop("rationale"); item.pop("relationHints")

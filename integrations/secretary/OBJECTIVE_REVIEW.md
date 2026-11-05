@@ -6,20 +6,38 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
-New objectives use `secretary.objective-grounding/v1` for model extraction.
+New objectives use `secretary.objective-grounding/v2` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
 evidence rather than transcribing a quote. Unknown or duplicate IDs, missing
 evidence and a response that ignores the frozen contract fail closed.
 
-Each proposed event separates cited `observations` from cited `hypotheses`.
-The canonical description uses observations only. The rationale is assembled
-locally with separate labelled sections, and proposed associations retain their
-hypothesis label. Instructions explicitly exclude unsupported employment status,
-document ownership and certification inferences. This structure does not prove
-semantic entailment: a model can still mislabel an inference as an observation.
-Source re-reading and owner review remain necessary before publication.
+The model selects up to three `summaryCitationIds` instead of writing a free
+summary. Core-compatible summary text reports the extraction state and quotes
+whole source lines in source order, without assigning them to the container's
+author. Negations, conditions and draft/latest wording are preserved. If the
+selected lines cannot fit the 2,000-character summary bound, the summary reports
+only the extraction state and refers to the complete observations/citations;
+it never shortens a clause. The selected spans and fallback reason remain in
+the verified projection receipt.
+
+Each proposed event separates cited `observations` from source `hypotheses`.
+The canonical description uses observations only. New hypotheses have no
+generated interpretation text: each selects one complete source line plus a
+`basis` (`question`, `condition` or `possibility`). A conservative lexical gate
+and a 450-character limit restrict eligible lines in the response schema and
+local validation. The application quotes that line with an uncertainty label,
+without inferring an answer or realization. No eligible expression means an
+empty hypothesis list. Thus a signature, document exchange or already-ended
+event cannot become an invented location, intimate relationship or probable date.
+
+The rationale is assembled locally from the separate observations and labelled
+source uncertainty. Instructions also exclude unsupported status, ownership,
+certification, completion and author-attribution claims in other fields. These
+controls do not prove semantic entailment: a model can still mislabel an
+inference as an observation or select a question answered elsewhere. Source
+re-reading and owner review remain necessary before publication.
 
 The extraction response has no independently generated `classification`.
 The application derives `life-events` from a nonempty event list; only an empty
@@ -29,7 +47,11 @@ contradictory retained legacy classification to make it pass validation.
 Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
-publisher contracts stay the same, and legacy receipts remain readable.
+publisher contracts stay the same. Legacy canonical receipts and frozen
+`secretary.objective-grounding/v1` responses retain their original projection;
+the v1 schema fingerprint and change descriptions are preserved. Each frozen
+grounding version requires its own verified projection, and v1 free text cannot
+satisfy a v2 response contract.
 Changed prompt/schema hashes require a new objective version; no prior objective
 or rejection is rewritten. This extraction contract grants no publication or
 owner confirmation and does not relax a campaign's existing review gate.

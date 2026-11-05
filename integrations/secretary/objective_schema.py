@@ -64,14 +64,26 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v1.
+Use the source-span grounding contract secretary.objective-grounding/v2.
 For every moment, observations contains only statements explicitly supported by
-the selected citationCatalog IDs. hypotheses contains interpretations and possible
-associations, each with its source IDs. Never put an inference in observations,
-the title, summary, dates or subject attribution. Omit an unsupported inference
-or place it only in hypotheses, explicitly uncertain. A citation alone does not
+the selected citationCatalog IDs. Do not generate a summary: select up to three
+summaryCitationIds for complete source excerpts; an empty selection is valid.
+The application renders those excerpts without paraphrasing or assigning them
+to the container's author. Preserve negation, qualifications and quoted speakers.
+Never upgrade latest/revised/draft to final, delivered to approved, requested to
+completed, a correspondent's question to the owner's own declaration, or an
+unknown interval to a probable narrow date. This applies to every generated field.
+Never put an inference in observations, titles, dates or subject attribution.
+Omit unsupported inferences entirely. A citation alone does not
 prove that its paraphrase follows from it. A rationale is assembled locally from
 these two separate lists, not supplied as free-form reasoning.
+The hypotheses list contains ONLY an unresolved question, condition or possibility
+explicitly expressed in one source line: select its citationId and basis
+(question, condition or possibility). Do not supply interpretation text. The
+application quotes the whole selected line with an uncertainty label. If the
+source contains no such expression, return hypotheses: []. No weak associations,
+conjugal/financial links from document exchanges, location from phone prefixes,
+job changes from generic greetings, or probable dates from an already-ended event.
 Timesheets, post-contract work and a departure do not establish employee versus
 independent/freelance status. An addressee or document title does not establish
 who owns a tax return or attachment. A signature records self-presentation at
@@ -138,7 +150,7 @@ def normalize_representation(value, content=None, grounded=False):
     """
     if grounded or isinstance(value, dict) and "emptyAssessment" in value:
         from objective_grounding import project
-        normalized, changes = project(value, content)
+        normalized, changes = project(value, content, grounded or None)
     else:
         normalized, changes = copy.deepcopy(value), []
     if not isinstance(normalized, dict) or not isinstance(normalized.get("moments"), list):

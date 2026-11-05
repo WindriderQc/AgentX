@@ -74,7 +74,7 @@ def _failure(value, state, body, manifest):
     if state["phase"] == "invalid-output":
         return {"type": "ReviewInvalidOutput", "message": state["invalidReason"]}
     try:
-        normalized, _ = normalize_representation(value, body, manifest.get("responseSchemaSha256") == hashed(grounding.SCHEMA))
+        normalized, _ = normalize_representation(value, body, grounding.contract_for(manifest))
         validate(normalized, body)
     except ValueError as error:
         return {"type": type(error).__name__, "message": str(error)}

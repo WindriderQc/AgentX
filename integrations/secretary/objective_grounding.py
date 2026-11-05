@@ -10,8 +10,11 @@ import copy
 import re
 
 from objective_schema import MOMENT, field
+from review_receipts import hashed
+import objective_source_language as language
 
-CONTRACT = "secretary.objective-grounding/v1"
+LEGACY_CONTRACT = "secretary.objective-grounding/v1"
+CONTRACT = "secretary.objective-grounding/v2"
 CLAIM = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -38,6 +41,24 @@ SCHEMA = {
     },
     "required": ["summary", "emptyAssessment", "moments", "gaps"],
 }
+SCHEMA_V1 = SCHEMA
+SCHEMA = copy.deepcopy(SCHEMA_V1)
+del SCHEMA["properties"]["summary"]
+SCHEMA["properties"]["summaryCitationIds"] = {"type": "array", "maxItems": 3, "items": field(minLength=1, maxLength=20)}
+SCHEMA["required"] = list(SCHEMA["properties"])
+SCHEMA["properties"]["moments"]["items"]["properties"]["hypotheses"]["items"] = {
+    "type": "object", "additionalProperties": False,
+    "properties": {"basis": field(enum=list(language.LABELS)),
+                   "citationIds": {"type": "array", "minItems": 1, "maxItems": 1, "items": field(minLength=1, maxLength=20)}},
+    "required": ["basis", "citationIds"],
+}
+
+
+def contract_for(manifest):
+    digest = manifest.get("responseSchemaSha256")
+    if digest == hashed(SCHEMA):
+        return CONTRACT
+    return LEGACY_CONTRACT if digest == hashed(SCHEMA_V1) else None
 
 
 def catalog(content):
@@ -50,22 +71,25 @@ def catalog(content):
     return result
 
 
-def schema_for(content):
-    schema = copy.deepcopy(SCHEMA)
+def schema_for(content, contract=CONTRACT):
+    schema = copy.deepcopy(SCHEMA_V1 if contract == LEGACY_CONTRACT else SCHEMA)
     # An empty passage has no selectable evidence. A fabricated moment still
     # fails local resolution even if a backend ignores the response schema.
     ids = [row["id"] for row in catalog(content)] or ["no-source-span"]
     for kind in ("observations", "hypotheses"):
         claim = schema["properties"]["moments"]["items"]["properties"][kind]["items"]
-        claim["properties"]["citationIds"]["items"]["enum"] = ids
+        eligible = [row["id"] for row in catalog(content) if language.uncertainty_bases(row["text"])]
+        claim["properties"]["citationIds"]["items"]["enum"] = (eligible or ["no-explicit-uncertainty"]) if kind == "hypotheses" and contract != LEGACY_CONTRACT else ids
+    if contract != LEGACY_CONTRACT:
+        schema["properties"]["summaryCitationIds"]["items"]["enum"] = ids
     return schema
 
 
-def project(value, content):
+def _project_v1(value, content):
     """Resolve IDs locally; never repair or retry a contradictory legacy output."""
     if not isinstance(content, str):
         raise ValueError("Grounded extraction requires the exact supplied passage")
-    if not isinstance(value, dict) or set(value) != set(SCHEMA["required"]):
+    if not isinstance(value, dict) or set(value) != set(SCHEMA_V1["required"]):
         raise ValueError("Invalid grounded objective result shape")
     if value["emptyAssessment"] not in ("no-life-event", "uncertain"):
         raise ValueError("Invalid empty passage assessment")
@@ -109,6 +133,27 @@ def project(value, content):
         moments.append(moment)
     result = {"summary": value["summary"], "classification": "life-events" if moments else value["emptyAssessment"],
               "moments": moments, "gaps": copy.deepcopy(value["gaps"])}
-    change = {"path": "", "contract": CONTRACT, "reason": "Source-span selection; classification derived from the event list; observations and hypotheses kept separate.",
+    change = {"path": "", "contract": LEGACY_CONTRACT, "reason": "Source-span selection; classification derived from the event list; observations and hypotheses kept separate.",
               "claims": mappings, "emptyAssessmentUsed": not bool(moments)}
     return result, [change]
+
+
+def project(value, content, contract=None):
+    if contract == LEGACY_CONTRACT or not contract and isinstance(value, dict) and "summary" in value:
+        return _project_v1(value, content)
+    if not isinstance(content, str):
+        raise ValueError("Grounded extraction requires the exact supplied passage")
+    if not isinstance(value, dict) or set(value) != set(SCHEMA["required"]) or not isinstance(value["moments"], list):
+        raise ValueError("Invalid grounded objective result shape")
+    spans = {row["id"]: row for row in catalog(content)}
+    converted = copy.deepcopy(value)
+    converted["summary"], summary_proof = language.summary(converted.pop("summaryCitationIds"), spans,
+                                                         len(converted["moments"]), converted["emptyAssessment"])
+    for moment in converted["moments"]:
+        if not isinstance(moment, dict) or not isinstance(moment.get("hypotheses"), list):
+            raise ValueError("Invalid grounded moment shape")
+        moment["hypotheses"] = [language.hypothesis(item, spans) for item in moment["hypotheses"]]
+    result, changes = _project_v1(converted, content)
+    changes[0].update(contract=CONTRACT, summary=summary_proof,
+                      reason="Whole source excerpts in summary; only explicitly expressed source uncertainty, without generated hypotheses.")
+    return result, changes
