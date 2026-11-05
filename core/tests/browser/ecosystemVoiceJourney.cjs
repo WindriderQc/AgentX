@@ -42,6 +42,8 @@ document.getElementById('ask').onclick=async()=>{presence(true);const voice=new 
 
 app.get('/simple-board', (_req,res)=>res.send('<!doctype html><html><div id="conversationPresence" data-conversation-busy="true"></div><iframe style="width:100%;height:800px" src="/diskx?app=ecosystem&play=overview,frank"></iframe></html>'));
 
+app.get('/ambient-board', (_req,res)=>res.send('<!doctype html><html><iframe class="nestor-ambient-visit-frame" style="width:100%;height:800px" src="/diskx?app=ecosystem&play=overview,frank"></iframe></html>'));
+
 (async () => {
   const server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
   const browser = await chromium.launch({ headless: true, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--autoplay-policy=no-user-gesture-required'] });
@@ -163,8 +165,14 @@ app.get('/simple-board', (_req,res)=>res.send('<!doctype html><html><div id="con
     assert.equal(await simple.getByRole('button',{name:'Reprendre la visite',exact:true}).isDisabled(),true);
     await page.evaluate(()=>dispatchEvent(new CustomEvent('persona-presence',{detail:{conversationBusy:false}})));
     assert.equal(requests.length,12,'a simple family board also waits for manual resume');
+    await page.goto(`http://127.0.0.1:${server.address().port}/ambient-board`);
+    const ambient = page.frames().find(f=>new URL(f.url()).pathname==='/diskx');
+    await ambient.waitForFunction(()=>document.querySelector('agentx-ecosystem').state()?.presentation);
+    assert.equal(await ambient.getByRole('button',{name:'🔊 Activer la voix',exact:true}).getAttribute('aria-pressed'),'false');
+    assert.equal(requests.length,12,'a retained legacy standby parent remains silent after rollout');
+    assert.equal(await ambient.evaluate(()=>document.querySelector('agentx-ecosystem').state().presentation.tour.playing),true);
     const result = { ok: true, nativeModelCalls: 0, syntheticSpeech: true, realWebAudio: true,
-      checks: ['voice enabled by default', 'explicit silent ambient playback retained', 'simple family board conversation pause', 'blocked autoplay retains voice and retries on Play', 'separate female guide voice', 'full displayed narration', 'waits for speech completion', 'automatic next step', 'step replacement abort', 'pause abort', 'resume', 'last step stops', 'mobile controls', 'selected component pause/resume', 'typed question pause', 'spoken question pause', 'Nestor voice unchanged', 'resume blocked during answer', 'manual resume at same stop', 'hidden workspace stops speech', 'close abort'], errors, responses };
+      checks: ['voice enabled by default', 'explicit silent ambient playback retained', 'legacy ambient parent remains silent', 'simple family board conversation pause', 'blocked autoplay retains voice and retries on Play', 'separate female guide voice', 'full displayed narration', 'waits for speech completion', 'automatic next step', 'step replacement abort', 'pause abort', 'resume', 'last step stops', 'mobile controls', 'selected component pause/resume', 'typed question pause', 'spoken question pause', 'Nestor voice unchanged', 'resume blocked during answer', 'manual resume at same stop', 'hidden workspace stops speech', 'close abort'], errors, responses };
     fs.writeFileSync(path.join(report, 'result.json'), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));
   } finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }

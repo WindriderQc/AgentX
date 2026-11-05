@@ -59,7 +59,12 @@
   }
   if (typeof module === 'object' && module.exports) module.exports = { createNarrator, bindConversation };
   else {
-    if (root.document.querySelector('agentx-ecosystem')?.getAttribute('voice') === 'off') return;
+    const target = root.document.querySelector('agentx-ecosystem');
+    if (target?.getAttribute('voice') === 'off' || root.frameElement?.classList.contains('nestor-ambient-visit-frame')) {
+      target?.setAttribute('voice', 'off');
+      root.customElements.whenDefined('agentx-ecosystem').then(() => target?.tour?.setVoice?.(false));
+      return;
+    }
     const managed = !!root.frameElement?.closest('.page-presentation');
     let latest = { visible: !managed, busy: false }, controller, questionPending = false;
     const parentPresence = event => root.AgentXEcosystemConversation.update({ visible: true, busy: event.detail?.conversationBusy === true });
