@@ -59,6 +59,15 @@ class ReplyBudgetTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             budget_module.ReplyBudget(10, time.monotonic() - 1)(reply(0, 'stop'), 'application/json')
 
+    def test_optional_sampling_policy_overrides_body_and_ollama_option(self):
+        body = {'temperature': 1, 'options': {'temperature': 0.5}}
+        policy = {'max_tokens': 4096, 'reasoning_effort': 'none', 'temperature': 0}
+        result = json.loads(relay.with_request_policy(json.dumps(body).encode(), policy))
+        self.assertEqual(result['temperature'], 0)
+        self.assertEqual(result['options']['temperature'], 0)
+        self.assertEqual(json.loads(relay.with_request_policy(json.dumps(body).encode(),
+            {'max_tokens': 4096, 'reasoning_effort': 'none'}))['temperature'], 1)
+
     def test_concurrent_replies_cannot_overdraw_the_same_budget(self):
         guard = budget_module.ReplyBudget(1, time.monotonic() + 30)
         accepted = []

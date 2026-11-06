@@ -50,6 +50,10 @@ def with_request_policy(body: bytes, policy: dict | None) -> bytes:
     if 'num_predict' in options:
         options['num_predict'] = cap
     value['reasoning_effort'] = policy['reasoning_effort']
+    if 'temperature' in policy:
+        value['temperature'] = policy['temperature']
+        if 'temperature' in options:
+            options['temperature'] = policy['temperature']
     if policy.get('tools') == 'edit_only':
         tools = value.get('tools')
         if not isinstance(tools, list):
@@ -286,9 +290,11 @@ def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, 
         raise ValueError('A report relay budget requires a nonnegative call count and step identity')
     if request_policy is not None and (not isinstance(request_policy, dict)
             or not {'max_tokens', 'reasoning_effort'} <= set(request_policy)
-            or set(request_policy) - {'max_tokens', 'reasoning_effort', 'tools', 'read_paths'}
+            or set(request_policy) - {'max_tokens', 'reasoning_effort', 'tools', 'read_paths', 'temperature'}
             or type(request_policy['max_tokens']) is not int or not 1 <= request_policy['max_tokens'] <= 32768
             or request_policy['reasoning_effort'] != 'none'
+            or ('temperature' in request_policy and (type(request_policy['temperature']) not in (int, float)
+                or not 0 <= request_policy['temperature'] <= 2))
             or ('tools' in request_policy and request_policy['tools'] != 'edit_only')
             or ('read_paths' in request_policy and (
                 request_policy.get('tools') != 'edit_only'
