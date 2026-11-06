@@ -172,9 +172,12 @@ describe('grouped board rendering', () => {
         expect(count(html, '<article class="cb-row')).toBe(7);
         expect(count(html, '<span class="cb-summary-model">qwen3.8:27b')).toBe(1);
         expect(html).toContain('Ranking <small>3 models</small>');
-        expect(html).toContain('aria-label="#1, provisional">#1<small>provisional</small>');
-        expect(html).toContain('aria-label="#2, provisional">#2<small>provisional</small>');
-        expect(html).toContain('aria-label="#3, provisional">#3<small>provisional</small>');
+        // Every ranked row is provisional: the header says it once, the ranks stay bare.
+        expect(html).toContain('aria-label="#1, provisional">#1</span>');
+        expect(html).toContain('aria-label="#2, provisional">#2</span>');
+        expect(html).toContain('aria-label="#3, provisional">#3</span>');
+        expect(html).not.toContain('<small>provisional</small>');
+        expect(html).toContain('Same test conditions · provisional ranking (grading not calibrated) · Open a model for details');
         expect(html).not.toContain('#4<');
         expect(html).toContain('<details class="cb-unranked"><summary class="cb-section-title cb-section-unranked" id="cb-unranked-title">Other evidence <small>4 not ranked: judged on other terms or without a score</small></summary>');
         expect(count(html, '<article class="cb-row cb-not-comparable"')).toBe(4);
@@ -206,14 +209,14 @@ describe('grouped board rendering', () => {
         const qwen = html.slice(html.indexOf('<article class="cb-row cb-comparable" data-group-key="qwen3.8:27b'), html.indexOf('<article class="cb-row', html.indexOf('qwen3.8:27b@@') + 1));
 
         expect(qwen).toContain('Headline: cohort 3f9a2c7d1e because it is the cohort the board compares');
-        expect(qwen).toContain('data-comparable="true" data-partial="false">Provisional · grading not calibrated</span>');
+        expect(qwen).toContain('data-comparable="true" data-partial="false"></span>');
         expect(qwen).toContain('<dt>Judge</dt><dd>judge-qwen3:32b</dd>');
         expect(qwen).toContain('<dt>Scorer</dt><dd>2.16.0 ×42</dd>');
         expect(qwen).toContain('<dt>Contexts</dt><dd>65536 ×42</dd>');
         expect(qwen).toContain('<dt>Results</dt><dd>42</dd>');
         expect(qwen).toContain('<dt>Dates</dt><dd>2026-09-18 → 2026-09-21</dd>');
         expect(qwen).toContain('Score 8.24 / 10 = quality 8.61 coverage −0.00 (7 categories, 100 % coverage)');
-        expect(qwen).toContain('<strong>quality 8.61</strong><small>42 results · no adjustment</small>');
+        expect(qwen).toContain('<strong>raw quality 8.61</strong><small>42 results · no adjustment</small>');
         expect(qwen).toContain('<span>tok/s (total)</span><strong>38.4 tok/s</strong>');
         expect(qwen).toContain('<span>tok/s (generation)</span><strong>46.1 tok/s</strong>');
         expect(qwen).toContain('<span>latency mean / p95</span><strong>1.8 s / 3.3 s</strong>');
@@ -258,7 +261,7 @@ describe('grouped board rendering', () => {
         const rowOf = (model) => html.slice(html.indexOf(`data-group-key="${model}@@`), html.indexOf('<article class="cb-row', html.indexOf(`data-group-key="${model}@@`)) > -1 ? html.indexOf('<article class="cb-row', html.indexOf(`data-group-key="${model}@@`)) : undefined);
 
         const phi4 = rowOf('phi4:14b');
-        expect(phi4).toContain('data-comparable="true" data-partial="true">Provisional · grading not calibrated · Partial coverage</span>');
+        expect(phi4).toContain('data-comparable="true" data-partial="true">Partial coverage</span>');
         expect(phi4).toContain('Score 6.17 / 10 = quality 7.90 coverage −1.25 (5 categories, 71 % coverage) hard-level −0.48');
         expect(phi4).toContain('<strong>unknown (3 attempts, 3 infrastructure errors, no denominator)</strong>');
         expect(phi4).not.toContain('100 %');
@@ -401,7 +404,7 @@ describe('screen rank and section labels', () => {
 
         const subset = container();
         await board.renderCombinedBoard(subset, fixtureGroups().filter(group => group.model !== 'qwen3.8:27b'));
-        expect(subset.innerHTML).toContain('>#2<small>provisional</small>');
+        expect(subset.innerHTML).toContain('aria-label="#2, provisional">#2</span>');
         expect(subset.innerHTML).not.toContain('>#1<');
     });
 });
@@ -489,12 +492,52 @@ describe('page wiring', () => {
 });
 
 
+describe('ties inside the uncertainty', () => {
+    // Scores and 95 % margins of the 2026-09-23 local board.
+    const live = [
+        ['gemma4:31b-it-q8_0', 8.29, 0.49], ['gemma4:12b-it-qat', 8.09, 0.54],
+        ['huihui_ai/Qwen3.8-abliterated:27b-q8_0', 8.01, 0.52], ['qwen3.8:27b-mtp-q8_0', 8.00, 0.53],
+        ['qwen2.5:3b', 4.13, 0.86], ['qwen2.5:3b', 4.10, 0.85]
+    ];
+    const groupsOf = (rows) => rows.map(([model, score, confidence], i) => ({
+        key: `${model}@@h${i}`, model, comparable: true, rank: i + 1,
+        headline: {
+            model, host: `http://h${i}:11434`, score, confidence, avgLatency: 4680, categoryScores: { coding: score },
+            dimensions: [], testCount: 105, fullScopeEligible: true,
+            verdict: { comparable: true, authoritative: false, authorityReasons: ['grader_qualification_unknown'], reasons: [], notes: [] }
+        },
+        history: []
+    }));
+
+    test('groups ranks whose gap is inside the combined uncertainty of the group leader', () => {
+        const tie = loadBrowserModule('leaderboard-v2/combined-board.js', 'tieMarks', boardStubs);
+        const list = groupsOf(live).map(group => ({ ...group, displayedRank: group.rank }));
+        const marks = tie.tieMarks(list);
+        expect(list.map(group => marks.get(group)?.withRank ?? null)).toEqual([null, 1, 1, 1, null, 5]);
+        expect(marks.get(list[1]).gap).toBeCloseTo(0.2, 5);
+        // Without a known uncertainty a row never ties.
+        const unknown = groupsOf([['a', 8, null], ['b', 7.99, null]]).map(group => ({ ...group, displayedRank: group.rank }));
+        expect(tie.tieMarks(unknown).size).toBe(0);
+    });
+
+    test('marks the tie on the rank, shows the margin under the score and the mean answer time', async () => {
+        const target = container();
+        await board.renderCombinedBoard(target, groupsOf(live));
+        const html = target.innerHTML;
+        expect(html).toContain('aria-label="#2, provisional, tied with #1">#2<small>tied #1</small></span>');
+        expect(html).toContain('aria-label="#6, provisional, tied with #5">#6<small>tied #5</small></span>');
+        expect(html).toContain('aria-label="#5, provisional">#5</span>');
+        expect(html).toContain('<span class="cb-score-margin" title="95 % uncertainty on the score">±0.49</span>');
+        expect(html).toContain('<small>mean answer 4680ms</small>');
+    });
+});
+
 describe('daily row clarity', () => {
     test('shows the dates and coverage behind the headline without opening its details', async () => {
         const target = container();
         await board.renderCombinedBoard(target, fixtureGroups());
         expect(target.innerHTML).toContain('class="cb-summary-date">Tests: 2026-');
-        expect(target.innerHTML).toContain('Provisional · grading not calibrated');
+        expect(target.innerHTML).toContain('provisional ranking (grading not calibrated)');
         expect(target.innerHTML).not.toContain('cb-summary-model">qwen3.8:27b<span class="ax-badge"');
     });
 

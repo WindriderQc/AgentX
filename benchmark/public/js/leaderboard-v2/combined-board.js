@@ -290,15 +290,19 @@ function thinkingLabel(entry) {
   return `${scope} · ${thinking.rows}/${entry.resultCount ?? entry.testCount ?? '?'} answers with thinking`;
 }
 
-function rowState(entry, comparable) {
+/**
+ * A row's own notes. A condition every ranked row shares (`boardTerms`) is
+ * stated once in the board header instead of on each row.
+ */
+function rowState(entry, comparable, boardTerms = {}) {
   const notes = [];
   if (!comparable) {
     const reasons = verdictReasons(entry);
     notes.push(`Not ranked: ${reasons.length ? reasons.map(reasonLabel).join(', ') : 'no reason recorded'}`);
   } else {
     const authority = authorityReasons(entry);
-    if (authority.length) notes.push('Provisional · grading not calibrated');
-    if (isPartialCoverage(entry)) {
+    if (authority.length && !boardTerms.provisional) notes.push('Provisional · grading not calibrated');
+    if (isPartialCoverage(entry) && !boardTerms.partial) {
       notes.push('Partial coverage');
     }
   }
@@ -347,7 +351,7 @@ function ordinal(n) {
  * `options.rankScope` says what it ranks: 'generalist' (the server's rank
  * across the whole board) or a category (position by that category's score).
  */
-function renderRow(entry, index, championMap, readinessMap, { provisional = false, group = null, position = null, rankScope = 'generalist' } = {}) {
+function renderRow(entry, index, championMap, readinessMap, { provisional = false, group = null, position = null, rankScope = 'generalist', boardTerms = {}, tie = null } = {}) {
   const rowGroup = group || asGroup(entry);
   const comparable = rowGroup.comparable ?? isComparable(entry);
   const scopeLabel = rankScope !== 'generalist' ? (CATEGORY_META[rankScope]?.label || rankScope) : null;
@@ -376,13 +380,23 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
   const provisionalTitle = provisionalRank
     ? ` — provisional: ${authorityReasons(entry).map(humanizeReason).join(' ')}`
     : '';
+  // A rank inside the uncertainty of the rank above it is a tie, not a lead.
+  const tiedRank = !scopeLabel && tie ? tie : null;
+  const tieTitle = tiedRank
+    ? ` — tied with #${tiedRank.withRank}: the gap (${tiedRank.gap.toFixed(2)}) is inside the combined uncertainty (±${tiedRank.margin.toFixed(2)})`
+    : '';
+  const rankNote = tiedRank
+    ? `<small>tied #${tiedRank.withRank}</small>`
+    : provisionalRank && !boardTerms.provisional ? '<small>provisional</small>' : '';
+  const rankClasses = `${provisionalRank ? ' cb-rank-provisional' : ''}${tiedRank ? ' cb-rank-tied' : ''}`;
+  const rankAria = `${rankText}${provisionalRank ? ', provisional' : ''}${tiedRank ? `, tied with #${tiedRank.withRank}` : ''}`;
   const rank = canMedal
     ? `<span class="cb-medal ${RANK_CLASS[shownPosition - 1]}">${MEDAL[shownPosition - 1]}</span>`
     : comparable
       ? (rankText
         ? (scopeLabel
           ? `<span class="cb-rank-num cb-rank-cat${provisionalRank ? ' cb-rank-provisional' : ''}" title="${esc(rankTitle + provisionalTitle)}" aria-label="${esc(rankText)}${provisionalRank ? ', provisional' : ''}"><b>${ordinal(shownPosition)}</b><small>${esc(scopeLabel)}</small></span>`
-          : `<span class="cb-rank-num${provisionalRank ? ' cb-rank-provisional' : ''}" title="${esc(rankTitle + provisionalTitle)}" aria-label="${esc(rankText)}${provisionalRank ? ', provisional' : ''}">${esc(rankText)}${provisionalRank ? '<small>provisional</small>' : ''}</span>`)
+          : `<span class="cb-rank-num${rankClasses}" title="${esc(rankTitle + provisionalTitle + tieTitle)}" aria-label="${esc(rankAria)}">${esc(rankText)}${rankNote}</span>`)
         : `<span class="cb-rank-num cb-rank-none" title="${esc(rankTitle)}" aria-label="${esc(rankTitle)}">—</span>`)
       : `<span class="cb-rank-num cb-rank-none" title="Unranked: no comparable verdict" aria-label="Unranked">—</span>`;
 
@@ -481,9 +495,14 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
 
   const key = detailKey(index);
   const speedValue = entry.tokPerSec != null ? `${entry.tokPerSec} tok/s (total)` : 'no speed data';
-  const ttftValue = entry.benchmarkTtft != null ? `TTFT measured ${formatMs(entry.benchmarkTtft)}` : 'TTFT not measured';
+  // Without a streamed first-token time, the mean answer time still tells the pace.
+  const ttftValue = entry.benchmarkTtft != null
+    ? `TTFT measured ${formatMs(entry.benchmarkTtft)}`
+    : entry.avgLatency != null ? `mean answer ${formatMs(entry.avgLatency)}` : 'TTFT not measured';
   const parts = entry.scoreParts || null;
-  const partsStrong = parts ? `quality ${parts.quality != null ? parts.quality.toFixed(2) : '—'}` : `${tests} results`;
+  // The score is this raw quality minus the adjustments listed under it.
+  const partsStrong = parts ? `raw quality ${parts.quality != null ? parts.quality.toFixed(2) : '—'}` : `${tests} results`;
+  const scoreMargin = comparable && entry.confidence != null ? ` ±${entry.confidence.toFixed(2)}` : '';
   const coverageLabel = entry.promptCoverage ? `${entry.promptCoverage.covered}/${entry.promptCoverage.boardPrompts} prompts` : `${tests} results`;
   const partsSmall = parts ? `${coverageLabel} · ${scoreAdjustments(parts)}` : (confidence === '—' ? 'uncertainty unknown' : `${confidence} uncertainty`);
   const summary = `<button type="button" class="cb-row-open" data-detail-key="${key}"
@@ -492,12 +511,13 @@ function renderRow(entry, index, championMap, readinessMap, { provisional = fals
     <span class="cb-summary-id">
       <span class="cb-summary-model">${esc(model)}</span>
       <span class="cb-summary-source"><i class="fas fa-${isLocal ? 'server' : 'cloud'}" aria-hidden="true"></i> ${agentTarget ? 'agent · ' : ''}${esc(entry.provider || 'ollama')} · ${esc(tierLabel)} · ${esc(hostName)}</span>
-      <span class="cb-summary-state" data-evidence-level="${esc(evidenceLevel)}" data-comparable="${comparable}" data-partial="${comparable && isPartialCoverage(entry)}">${esc(rowState(entry, comparable))}</span>
+      <span class="cb-summary-state" data-evidence-level="${esc(evidenceLevel)}" data-comparable="${comparable}" data-partial="${comparable && isPartialCoverage(entry)}">${esc(rowState(entry, comparable, boardTerms))}</span>
       <span class="cb-summary-date">Tests: ${esc(formatDateRange(entry.earliestTimestamp, entry.latestTimestamp))}</span>
     </span>
     <span class="cb-summary-score" style="--score-pct:${scorePct}%" title="${parts ? esc(scorePartsText(entry)) : 'No comparable score'}">
       <span class="cb-score ${scoreCls}">${Number.isFinite(score) ? score.toFixed(2) : '—'}</span>
       <span class="cb-score-label">${comparable ? 'score' : 'not ranked'}</span>
+      ${scoreMargin ? `<span class="cb-score-margin" title="95 % uncertainty on the score">${esc(scoreMargin.trim())}</span>` : ''}
     </span>
     <span class="cb-summary-categories" style="--category-count:${CATEGORY_ORDER.length}" aria-label="Category score profile">${compactCategoryStrip(entry)}</span>
     <span class="cb-summary-pace">
@@ -628,6 +648,49 @@ function sortGroups(groups, mode) {
   return sortRankings(groups.map(group => group.headline), mode).map(entry => byHeadline.get(entry));
 }
 
+/**
+ * Conditions every ranked row shares. The header states them once, so the
+ * rows only carry what sets them apart.
+ */
+export function sharedBoardTerms(groups) {
+  const ranked = groups.filter(group => group.comparable).map(group => group.headline);
+  if (!ranked.length) return { provisional: false, partial: false };
+  return {
+    provisional: ranked.every(entry => authorityReasons(entry).length > 0),
+    partial: ranked.every(entry => isPartialCoverage(entry))
+  };
+}
+
+/**
+ * Ties in the generalist order. A row ties with the leader of its tie group
+ * when the score gap is inside their combined 95 % uncertainty
+ * (√(a² + b²)); the first row outside it starts a new group. Rows without a
+ * known uncertainty never tie.
+ */
+export function tieMarks(rankedList) {
+  const marks = new Map();
+  let leader = null;
+  for (const group of rankedList) {
+    const entry = group.headline;
+    const score = Number(entry?.score);
+    const margin = Number(entry?.confidence);
+    if (!Number.isFinite(score) || !Number.isFinite(margin) || entry?.confidence == null) {
+      leader = null;
+      continue;
+    }
+    if (leader) {
+      const combined = Math.sqrt(leader.margin ** 2 + margin ** 2);
+      const gap = leader.score - score;
+      if (gap <= combined) {
+        marks.set(group, { withRank: leader.rank, gap, margin: combined });
+        continue;
+      }
+    }
+    leader = { score, margin, rank: group.displayedRank };
+  }
+  return marks;
+}
+
 /** "Judged by <judge> · scorer 2.17 · …": the terms the ranked rows share. */
 function boardSubtitle(groups) {
   const ranked = groups.find(group => group.comparable)?.headline || null;
@@ -669,10 +732,12 @@ export function rankedGroups(groups, mode) {
  */
 function renderGroupSections(groups, mode, championMap, readinessMap, options = {}) {
   const { comparable, others, scope } = rankedGroups(groups, mode);
+  const boardTerms = sharedBoardTerms(groups);
+  const ties = scope === 'generalist' ? tieMarks(comparable) : new Map();
   let index = 0;
   const rows = (list) => list.map(group => renderRow(
     group.headline, index++, championMap, readinessMap,
-    { ...options, group, position: group.displayedRank, rankScope: group.rankScope }
+    { ...options, group, position: group.displayedRank, rankScope: group.rankScope, boardTerms, tie: ties.get(group) || null }
   )).join('');
   const rankedBy = scope === 'generalist' ? '' : ` by ${CATEGORY_META[scope]?.label || scope}`;
   const comparableSection = comparable.length
@@ -754,6 +819,11 @@ export async function renderCombinedBoard(container, input) {
   const championMap = new Map();
   const comparableCount = groups.filter(group => group.comparable).length;
   const authoritativeCount = groups.filter(group => group.comparable && isAuthoritative(group.headline)).length;
+  const boardTerms = sharedBoardTerms(groups);
+  const rankingKind = authoritativeCount === comparableCount
+    ? 'validated ranking'
+    : boardTerms.provisional ? 'provisional ranking (grading not calibrated)' : 'provisional ranking';
+  const sharedNotes = boardTerms.partial ? ' · partial coverage for every model' : '';
 
   // Persist active triage on the container so re-renders preserve user choice.
   const active = container.dataset.triageMode || 'generalist';
@@ -762,7 +832,7 @@ export async function renderCombinedBoard(container, input) {
     <span class="r-sec-icon">🏁</span>
     <span class="r-sec-heading">
       <span class="r-sec-title r-t-cyan">Model leaderboard</span>
-      <span class="cb-board-subtitle" title="${esc(boardSubtitle(groups))}">${comparableCount ? `Same test conditions · ${authoritativeCount === comparableCount ? 'validated ranking' : 'provisional ranking'}` : 'No comparable results yet'} · Open a model for details</span>
+      <span class="cb-board-subtitle" title="${esc(boardSubtitle(groups))}">${comparableCount ? `Same test conditions · ${rankingKind}${sharedNotes}` : 'No comparable results yet'} · Open a model for details</span>
     </span>
     <span class="cb-board-count">${comparableCount} ranked${comparableCount ? ` (${authoritativeCount === comparableCount ? 'all' : authoritativeCount} authoritative)` : ''}${groups.length > comparableCount ? ` · ${groups.length - comparableCount} other` : ''}</span>
     <span class="r-sec-toggle">▼</span>
