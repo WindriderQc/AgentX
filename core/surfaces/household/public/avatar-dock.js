@@ -374,7 +374,8 @@
     return handle;
   }
 
-  const api = { phaseFor, createTokenMeter, nextView, sceneCaption, clockText, DEFAULT_MODE, mount, MODES, MODULE_URL, current: null };
+  // loadFace: the Math Lab card (#1270) asks for the GraphysX module even while the avatar is hidden.
+  const api = { phaseFor, createTokenMeter, nextView, sceneCaption, clockText, DEFAULT_MODE, mount, MODES, MODULE_URL, loadFace, current: null };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.AvatarDock = api;
 })(typeof window === 'undefined' ? globalThis : window);
