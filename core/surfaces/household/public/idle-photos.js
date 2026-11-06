@@ -5,6 +5,9 @@
     let enabled = false, active = false, disposed = false, pending = null, epoch = 0;
     let voiceState = 'idle', history = [], position = -1;
     let idleMs = 120000, intervalMs = 30000, lastActivity = now(), nextImage = 0, focused;
+    // The controls stay hidden over the photo until the mouse moves or Tab asks for them.
+    let controlsUntil = 0, hovering = false, keyboardControls = false, lastPoint = null;
+    const CONTROLS_MS = 3000;
     const region = document.createElement('section');
     region.className = 'nestor-idle-photos'; region.hidden = true;
     region.setAttribute('aria-label', 'Cadre photo');
@@ -24,9 +27,29 @@
     function cancelPending() {
       epoch++; pending = null; region.removeAttribute('aria-busy');
     }
+    function revealControls() {
+      controlsUntil = now() + CONTROLS_MS; region.setAttribute('data-controls', 'shown');
+    }
+    function hideControls() {
+      controlsUntil = 0; hovering = false; keyboardControls = false; region.removeAttribute('data-controls');
+    }
+    function hideControlsWhenDue() {
+      if (!controlsUntil || now() < controlsUntil) return;
+      // A pointer resting on the bar, or keyboard focus inside it, keeps it open.
+      if (hovering || (keyboardControls && actions.contains(document.activeElement))) { controlsUntil = now() + CONTROLS_MS; return; }
+      hideControls();
+    }
+    function pointerMove(event) {
+      const point = { x: event.screenX, y: event.screenY }, previous = lastPoint;
+      lastPoint = point;
+      // Ignore touch and the synthetic moves a browser sends when the photo appears under a still cursor.
+      if (!active || event.pointerType === 'touch' || !previous) return;
+      if (Math.abs(point.x - previous.x) + Math.abs(point.y - previous.y) < 2) return;
+      hovering = actions.contains(event.target); keyboardControls = false; revealControls();
+    }
     function leave({ focus = false } = {}) {
       const wasActive = active;
-      active = false; cancelPending(); region.hidden = true; image.removeAttribute('src');
+      active = false; cancelPending(); region.hidden = true; image.removeAttribute('src'); hideControls();
       if (wasActive) root.dispatchEvent(new CustomEvent('nestor-idle-photos-visibility'));
       lastActivity = now(); nextImage = 0; history = []; position = -1; status.textContent = '';
       if (focus && wasActive) focused?.focus?.({ preventScroll: true });
@@ -50,8 +73,17 @@
         && !editing(event.target) && !editing(document.activeElement)) {
         event.preventDefault(); navigate(event.key === 'ArrowLeft' ? -1 : 1); return;
       }
+      // Tab opens the hidden controls instead of leaving the photos.
+      if (active && event?.type === 'keydown' && event.key === 'Tab' && !actions.contains(event.target)
+        && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault(); revealControls(); keyboardControls = true;
+        actions.querySelector('button').focus({ preventScroll: true }); return;
+      }
       // Keep controls focusable/clickable until their own handler performs the action.
-      if (active && actions.contains(event?.target) && !(event.type === 'keydown' && event.key === 'Escape')) return;
+      if (active && actions.contains(event?.target) && !(event.type === 'keydown' && event.key === 'Escape')) {
+        if (event.type === 'keydown') { keyboardControls = true; revealControls(); }
+        return;
+      }
       leave({ focus: event?.type === 'keydown' && event.key === 'Escape' });
     }
     function presence(event) {
@@ -67,7 +99,6 @@
       image.src = value.src; active = true; region.hidden = false;
       if (!wasActive) root.dispatchEvent(new CustomEvent('nestor-idle-photos-visibility'));
       back.disabled = position <= 0; status.textContent = 'Photo ' + (position + 1);
-      if (!actions.contains(document.activeElement)) actions.querySelector('button').focus({ preventScroll: true });
       nextImage = now() + intervalMs;
     }
     async function advance() {
@@ -87,7 +118,7 @@
         history.push({ id: value.id, src: value.src }); position = history.length - 1; show(value);
       } catch {
         if (pending === request && epoch === request.epoch) {
-          if (active) { status.textContent = 'Photo indisponible. Réessayez avec « Photo suivante ».'; nextImage = now() + intervalMs; }
+          if (active) { status.textContent = 'Photo indisponible. Réessayez avec « Photo suivante ».'; nextImage = now() + intervalMs; revealControls(); }
           else { leave(); toggle.title = 'Photos indisponibles. Nestor reste accessible.'; }
         }
       } finally {
@@ -107,6 +138,7 @@
     }
     function tick() {
       if (disposed || !enabled) return;
+      if (active) hideControlsWhenDue();
       if (!available()) {
         if (active) leave();
         return;
@@ -116,6 +148,7 @@
     }
     const events = ['pointerdown', 'keydown', 'input', 'focusin'];
     events.forEach(name => document.addEventListener(name, activity, true));
+    document.addEventListener('pointermove', pointerMove, true);
     const visibility = () => leave();
     document.addEventListener('visibilitychange', visibility);
     root.addEventListener('persona-presence', presence);
@@ -132,6 +165,7 @@
     function dispose() {
       disposed = true; leave(); root.clearInterval(timer); observer.disconnect();
       events.forEach(name => document.removeEventListener(name, activity, true));
+      document.removeEventListener('pointermove', pointerMove, true);
       document.removeEventListener('visibilitychange', visibility);
       root.removeEventListener('persona-presence', presence); root.removeEventListener('persona-activity', activity);
       region.remove(); toggle.remove();

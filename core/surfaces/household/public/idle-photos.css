@@ -4,7 +4,15 @@
    lets GraphysX's existing visibility observer suspend the hidden 3D rendering. */
 body:has(.nestor-idle-photos:not([hidden])) :is(.avatar-dock, .avatar-scene-bar, .page-presentation, .conversation-visual) { display: none; }
 .nestor-idle-photos > img { width: 100%; height: 100%; object-fit: contain; }
-.nestor-idle-photos > nav { position: absolute; inset: auto 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px; background: rgb(0 0 0 / .8); }
+/* Photo only: the controls and cursor appear when the mouse moves or Tab is pressed. */
+.nestor-idle-photos:not([data-controls]) { cursor: none; }
+.nestor-idle-photos > nav { position: absolute; inset: auto 0 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 40px 12px 12px;
+  background: linear-gradient(to top, rgb(0 0 0 / .8), rgb(0 0 0 / .6) 65%, transparent);
+  opacity: 0; visibility: hidden; transition: opacity .3s ease, visibility 0s linear .3s; }
+.nestor-idle-photos[data-controls] > nav { opacity: 1; visibility: visible; transition: opacity .3s ease; }
 .nestor-idle-photos > nav > p { flex-basis: 100%; margin: 0; text-align: center; font-size: .85rem; color: #d3e0e8; }
 .nestor-idle-photos button { min-height: 44px; color: #fff; background: #182a38; border: 1px solid #71838f; }
-@media (prefers-reduced-motion: reduce) { .nestor-idle-photos { scroll-behavior: auto; } }
+@media (prefers-reduced-motion: reduce) {
+  .nestor-idle-photos { scroll-behavior: auto; }
+  .nestor-idle-photos > nav, .nestor-idle-photos[data-controls] > nav { transition: none; }
+}
