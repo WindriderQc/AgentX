@@ -70,7 +70,7 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v9.
+Use the source-span grounding contract secretary.objective-grounding/v10.
 Keep useful explicit steps, not only completed milestones. A personal career
 contact, referral, CV submission, application, interview or offer can be retained
 at its stated stage. Choose factType: life-event, career-contact, application,
@@ -106,7 +106,14 @@ does not prove relevance. Never call a personal activity administrative. An
 administrative document marker elsewhere cannot dismiss a personal reading cue.
 Quoted-speaker reasons retain the nearest literal author header and never prove
 identity or proximity. Do not borrow a later or unrelated header. If context is
-insufficient, choose an uncertain reason instead of asserting a confident absence.
+genuinely insufficient, choose only a supported uncertain reason. declarationCatalog
+identifies complete source declarations with their reading context. Unknown calendar
+dates do not make the activity or completed event insufficiently characterized.
+An explicit reported activity or completed move remains useful with null dates;
+retain its exact observation, alone or in the existing related event. Do not
+substitute an actor ambiguity when source reading context already names the owner.
+These cues do not prove identity or occurrence and never create a fact locally.
+Lexical reminders without a complete assertion keep their omission choices.
 Do not invent an event to satisfy a cue, and do not omit
 a useful personal event just because its date is unknown or relative. Unknown
 date alone is never an abstention/omission reason. Use [] when no cue is omitted.
@@ -125,10 +132,12 @@ Select only useful observations for the proposed event, retaining enough source
 author and addressee context for attribution. A source quotation is not proof of
 truth or occurrence. The application labels these source excerpts for human review.
 Dates and fact types still follow their complete schema alternatives.
-Do not generate a summary: select up to three summaryCitationIds for complete
-source excerpts. Include decisive temporal/conditional wording for retained
-proposals when selecting those lines. Empty selections are valid. Whole spans
-remain in source order; no sentence is shortened into a stronger claim.
+Do not generate a summary, a global excerpt selector or per-observation summary
+flags. The application summarizes at most three retained facts using their own
+selected title excerpts, copied whole in source order. An omitted cue or unrelated
+header cannot reappear as a summary claim. Choose a faithful titleCitationId among
+each fact's own observations, retaining decisive temporal/conditional wording.
+Empty extractions display their cited abstention locally.
 uncertaintyCatalog IDs bind literal source wording and admissible categories.
 Only select one when its wording matters in the SAME observation excerpt.
 An isolated si/if in a name is not a condition. These bounded reading aids can
