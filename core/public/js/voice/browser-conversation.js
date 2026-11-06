@@ -16,11 +16,14 @@
     ? new URL('./voice-capture-worklet.js?v=1.46.0', scriptUrl).href
     : '/js/voice/voice-capture-worklet.js?v=1.46.0';
 
-  function isStopControl(text) {
-    const normalized = String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  function controlWords(text) {
+    return String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .toLowerCase().replace(/[\p{P}\p{S}]/gu, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function isStopControl(text) {
     const command = '(?:stop(?: talking)?|arrete(?: de parler| toi)?|tais toi|silence)';
-    return new RegExp('^(?:nestor )?' + command + '(?: nestor)?(?: ' + command + '(?: nestor)?)*$').test(normalized);
+    return new RegExp('^(?:(?:ok|okay) )?(?:nestor )?' + command + '(?: nestor)?(?: ' + command + '(?: nestor)?)*$').test(controlWords(text));
   }
 
   function nextSpeechChunkLength(pending, first = false) {
@@ -64,7 +67,7 @@
     extend() { this.until = Infinity; }
     accept(text, followup = this.active()) {
       const value = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-      if (/^(?:dors nestor|bonne nuit nestor)[.!?]*$/.test(value)) {
+      if (/^(?:dors nestor|bonne nuit nestor)$/.test(controlWords(text))) {
         this.arm(); return { text: '', activated: false };
       }
       // Local STT can hear « Eille Nestor » as « Hey, Nesta » or similar variants.

@@ -17,8 +17,10 @@ COMMANDS = ("stop", "stop talking", "silence", "arrête", "arrête de parler", "
 # ordinary decoder still owns every non-command utterance.
 SHORT_REPLIES = ("sept", "oui", "non", "merci", "bonjour")
 GRAMMAR = json.dumps([
-    phrase for command in COMMANDS for phrase in (command, "nestor " + command, command + " nestor")
-] + ["stop stop", "stop stop stop", *SHORT_REPLIES, "[unk]"], ensure_ascii=False)
+    prefix + phrase for prefix in ("", "ok ", "okay ") for command in COMMANDS
+    for phrase in (command, "nestor " + command, command + " nestor")
+] + [prefix + phrase for prefix in ("", "ok ", "okay ") for phrase in ("stop stop", "stop stop stop")]
+    + [*SHORT_REPLIES, "[unk]"], ensure_ascii=False)
 
 
 def is_stop_result(results):
@@ -30,7 +32,7 @@ def is_stop_result(results):
     text = " ".join("".join(" " if unicodedata.category(char)[0] in "PS" else char
                             for char in text).split())
     command = r"(?:stop(?: talking)?|silence|arrete(?: de parler| toi)?|tais toi)"
-    pattern = r"^(?:nestor )?" + command + r"(?: nestor)?(?: " + command + r"(?: nestor)?)*$"
+    pattern = r"^(?:(?:ok|okay) )?(?:nestor )?" + command + r"(?: nestor)?(?: " + command + r"(?: nestor)?)*$"
     if not re.fullmatch(pattern, text):
         return False
     words = [word for row in results for word in row.get("result", [])]

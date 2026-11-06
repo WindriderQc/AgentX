@@ -127,7 +127,7 @@ test('a superseded early recognition cannot become the next turn’s receipt', a
 });
 
 for (const wakeWord of [false, true]) {
-  for (const phrase of ['Stop, stop, stop.', 'Nestor silence', 'Arrête.', 'Silence Nestor.']) {
+  for (const phrase of ['Stop, stop, stop.', 'Nestor silence', 'Arrête.', 'Silence Nestor.', 'OK, stop, stop.', 'Okay Nestor, stop.']) {
     test(`a spoken ${phrase} is silent without a pending reply, wake ${wakeWord}`, async () => {
       let turns = 0, syntheses = 0;
       const h = harness({ transcribe: async () => phrase,
@@ -344,6 +344,34 @@ test('wake requires an interjection and stays active until explicitly paused or 
   assert.equal(wake.active(), true);
   assert.equal(wake.accept('Dors Nestor.').text, '');
   assert.equal(wake.active(), false);
+});
+
+for (const sleep of ['Dors, Nestor !', '« Bonne nuit, Nestor. »']) {
+  test(`punctuated sleep control requires a fresh wake without another reply: ${sleep}`, async () => {
+    let phrase = 'Hey Nestor, bonjour', turns = 0;
+    const h = harness({ transcribe: async () => phrase,
+      turn: async () => { turns++; return { text: 'Bonjour.' }; } });
+    await h.conversation.start({ wakeWord: true, language: 'fr' });
+    await h.say();
+    assert.equal(turns, 1);
+    phrase = sleep; await h.say();
+    assert.equal(h.conversation.wake.active(), false);
+    assert.equal(turns, 1, 'sleep is local, without a model acknowledgement');
+    phrase = 'Combien font trois plus trois ?'; await h.say();
+    assert.equal(turns, 1, 'unaddressed speech stays out of the conversation');
+    phrase = 'Hey Nestor, combien font trois plus trois ?'; await h.say();
+    assert.equal(turns, 2);
+    assert.equal(h.conversation.session.sessionId, 'private-1');
+    h.conversation.stop();
+  });
+}
+
+test('sleep words inside a request preserve the active conversation', () => {
+  for (const phrase of ['Dis bonne nuit à Nestor.', 'Dors Nestor, puis raconte une histoire.', 'Pourquoi dit-on « Bonne nuit, Nestor » ?']) {
+    const wake = new WakeWindow(() => 1000); wake.extend();
+    assert.deepEqual(wake.accept(phrase), { text: phrase, activated: false });
+    assert.equal(wake.active(), true);
+  }
 });
 
 test('wake standby never sends ambient speech to the agent or transcript', async () => {
@@ -1035,7 +1063,7 @@ test('interruption after generation completes still marks the same session and c
   h.conversation.stop();
 });
 
-for (const text of ['Stop, stop, stop.', 'Nestor, arrête de parler !', 'Arrête-toi.', 'Stop talking, Nestor.', { text: '', control: 'stop' }]) {
+for (const text of ['Stop, stop, stop.', 'Nestor, arrête de parler !', 'Arrête-toi.', 'Stop talking, Nestor.', 'OK, stop, stop.', 'Okay Nestor, stop.', { text: '', control: 'stop' }]) {
   test(`a confirmed stop-only interruption resumes listening without another model reply: ${text}`, async () => {
     let transcriptions = 0, turns = 0, stopped = 0; const reasons = [];
     const h = harness({ transcribe: async () => ++transcriptions === 1 ? 'Bonjour' : text,
