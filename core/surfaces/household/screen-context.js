@@ -1,6 +1,7 @@
 'use strict';
 
 const { presentationReader } = require('../../src/services/presentationReadService');
+const mathExpression = require('../../public/js/math-expression');
 
 const clean = (text, max) => typeof text === 'string' ? text.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, max) : '';
 
@@ -9,7 +10,7 @@ function presentationEvidence(value, catalog) {
   if (!value.length) return { status: 'none' };
   const row = value[0];
   if (row?.contract !== 'agentx.presentation/v1') return null;
-  if (!row || !['text', 'list', 'table', 'code', 'link', 'secret', 'image', 'scene', 'page'].includes(row.kind)
+  if (!row || !['text', 'list', 'table', 'code', 'link', 'secret', 'image', 'scene', 'page', 'math'].includes(row.kind)
       || !['visible', 'loading', 'unavailable', 'external'].includes(row.status)) return null;
   const selected = { contract: 'agentx.presentation/v1', id: clean(row.id, 80), revision: clean(row.revision, 80),
     kind: row.kind, status: row.status, title: clean(row.title, 160) };
@@ -78,6 +79,16 @@ function presentationEvidence(value, catalog) {
     }
   } else if (row.kind === 'secret') selected.status = 'unavailable';
   else if (row.kind === 'image') selected.observation = 'pixels_not_supplied';
+  else if (row.kind === 'math') {
+    // #1270: the browser reports the formula and slider values; Core re-validates
+    // them and computes the points itself, so a page cannot hand the model numbers.
+    const parsed = row.status === 'visible' ? mathExpression.parsePlot(typeof row.text === 'string' ? row.text : '') : null;
+    if (parsed?.ok) {
+      selected.text = parsed.text;
+      selected.observation = 'formula_and_parameters';
+      selected.math = { ...mathExpression.describe(parsed), computedBy: 'core' };
+    } else if (row.status === 'visible') selected.status = 'unavailable';
+  }
   else if (row.status === 'visible') {
     selected.text = clean(row.text, 8000); selected.truncated = row.truncated === true;
     if (row.kind === 'scene') selected.observation = 'caption_only';

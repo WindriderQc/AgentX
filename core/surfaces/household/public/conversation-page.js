@@ -115,7 +115,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const show = block => {
     companion?.explicit();
     if (!board.add(block)) return;
-    el('conversationVisual').closest('.conversation-stage').dataset.shown = ['page', 'image', 'scene'].includes(block.kind) ? 'visual' : 'text';
+    el('conversationVisual').closest('.conversation-stage').dataset.shown = ['page', 'image', 'scene', 'math'].includes(block.kind) ? 'visual' : 'text';
     activity('show');
   };
   const pagePicker = family ? null : window.NestorScreenPicker.mount({ host: app.querySelector('.conversation-toolbar'), onShow: show });

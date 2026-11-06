@@ -6,7 +6,7 @@
 // only available live; a restored one says it was not retained.
 (function exposeDisplayBoard(root) {
   const MAX_BLOCKS = 30;
-  const KIND_LABELS = { text: 'Note', list: 'List', table: 'Table', code: 'Code', link: 'Link', secret: 'Secret', review: 'Proposition', image: 'Image', scene: '3D', page: 'Page' };
+  const KIND_LABELS = { text: 'Note', list: 'List', table: 'Table', code: 'Code', link: 'Link', secret: 'Secret', review: 'Proposition', image: 'Image', scene: '3D', page: 'Page', math: 'Math' };
   const STAGE_WAIT_MS = 4000;
   let sequence = 0;
 
@@ -235,7 +235,7 @@
     const header = node('header', 'display-block-header');
     header.append(node('span', 'display-block-kind', KIND_LABELS[block.kind] || KIND_LABELS.text));
     const title = (typeof block.title === 'string' && block.title.trim()) || (target && root.AgentXScreenPages.label(target))
-      || ({ text: 'Note', list: 'Liste', table: 'Tableau', code: 'Code', image: 'Image', scene: 'Scène', secret: 'Secret', link: 'Liens' }[block.kind] || 'Contenu');
+      || ({ text: 'Note', list: 'Liste', table: 'Tableau', code: 'Code', image: 'Image', scene: 'Scène', secret: 'Secret', link: 'Liens', math: 'Graphique' }[block.kind] || 'Contenu');
     header.append(node('strong', 'display-block-title', title));
     if (block.from === 'companion') header.append(node('span', 'display-block-note', 'Suggestion du contexte'));
     if (block.partial) header.append(node('span', 'display-block-note', 'Contenu partiel'));
@@ -246,6 +246,11 @@
     else if (block.kind === 'image') content = imageBody(block, space);
     else if (block.kind === 'scene') content = sceneBody(block, space);
     else if (block.kind === 'page') content = pageBody(block, target, actions, card.dataset.presentationId);
+    else if (block.kind === 'math') {
+      // #1270: drawn from its validated formula; without the plotter the formula stays readable.
+      content = root.NestorMathPlot ? root.NestorMathPlot.create(block) : node('pre', 'display-block-code', block.body);
+      actions.append(copyButton(block.body));
+    }
     else {
       if (block.kind === 'table') content = tableBody(block.body);
       else if (block.kind === 'link') content = linkBody(block.body, space);
@@ -261,6 +266,7 @@
     card._screenFrame = content._screenFrame;
     card._screenTarget = block.kind === 'page' ? target : null;
     card._screenState = () => content.dataset.state;
+    if (content._mathText) card._mathText = content._mathText;
     return card;
   }
 
@@ -346,7 +352,7 @@
         context: () => presentation.active() ? board.context() : [], clear: board.clear };
     }
     const boards = [create(text, { secrets, space, kinds: ['text', 'list', 'table', 'code', 'link', 'secret'] }),
-      create(visual, { secrets, space, kinds: ['page', 'image', 'scene'], heading: 'Pages and images' })];
+      create(visual, { secrets, space, kinds: ['page', 'image', 'scene', 'math'], heading: 'Pages and images' })];
     return {
       // True when one of the zones drew the block.
       add: block => boards.map(board => board.add(block)).some(Boolean),

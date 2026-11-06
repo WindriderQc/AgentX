@@ -40,6 +40,23 @@
 .display-block-stage.has-stage { aspect-ratio: 4 / 3; }
 .display-block-stage llmx-stage { position: absolute; inset: 0; width: 100%; height: 100%; }
 .display-block-stage-caption { margin: 0; font-size: 1.4rem; font-weight: 600; text-align: center; }
+/* Math Lab (#1270): a function drawn from its formula, with its sliders. */
+.display-block[data-kind="math"] { border-left-color: var(--amber); grid-column: 1 / -1; }
+.math-plot { display: grid; gap: 8px; }
+.math-plot-formula { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0; font-size: 1.05rem; overflow-wrap: anywhere; }
+.math-plot-values { color: var(--soft); font-size: .92rem; }
+.math-plot-chart { display: block; width: 100%; height: auto; max-height: max(200px, calc(100dvh - 360px)); border-radius: 8px; background: #06111a; }
+.math-plot-grid line { stroke: var(--line); stroke-width: 1; }
+.math-plot-axes line { stroke: var(--soft); stroke-width: 1.5; }
+.math-plot-labels text { fill: var(--soft); font-size: 15px; font-family: inherit; }
+.math-plot-curve { stroke: var(--amber); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.math-plot-controls { display: grid; gap: 6px; }
+.math-plot-slider { display: grid; grid-template-columns: 1.6em minmax(0, 1fr) minmax(4ch, auto); align-items: center; gap: 10px; min-height: 40px; }
+/* The household's `label > span` caption style must not turn a parameter name into a heading. */
+.math-plot-slider > .math-plot-name { display: block; margin: 0; color: var(--text); font-size: 1.05rem; font-weight: 700; font-style: italic; letter-spacing: normal; text-transform: none; text-align: center; }
+.math-plot-slider input { width: 100%; max-width: none; margin: 0; min-height: 32px; accent-color: var(--amber); }
+.math-plot-output { font-variant-numeric: tabular-nums; text-align: right; }
+.math-plot-note { margin: 0; font-size: .8rem; color: var(--soft); }
 .display-block-stage.has-stage .display-block-stage-caption { display: none; }
 /* "Pistes": the background brain's suggestions (#169). */
 .brain-suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
