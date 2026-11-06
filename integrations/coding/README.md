@@ -52,6 +52,22 @@ harness output. Queue any live DSH/OpenCode model comparison as heavy work.
 
 ## One run
 
+### Bounded qualification transport
+
+An isolated qualification runner can compose `model_relay.serve`'s
+`request_budget` and `request_policy` with `coding_reply_budget.ReplyBudget`
+as `response_guard`. Request admission fences model calls and caps each output;
+the reply guard atomically counts cumulative tool calls before the harness sees
+any part of the response. Guarded responses are buffered within
+`max_response_bytes`; incomplete JSON/SSE and exhausted deadlines are refused.
+This changes streaming latency, so qualification reports must not interpret the
+client's first byte as the model's first-token latency.
+
+Keep the same budget object across resumed sessions. Combine it with the
+runner's process deadline, isolated workspace and native workload/host ownership.
+The opt-in guard does not authorize a model run, open a native Benchmark gate,
+execute a tool, or change a runtime's capability set.
+
 ```bash
 AGENTX_CODING_MODEL=auto GH_TOKEN=<token> \
   python3 integrations/coding/coding_run.py 0903

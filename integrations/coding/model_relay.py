@@ -101,6 +101,8 @@ class ModelOnly(BaseHTTPRequestHandler):
     drain_on_disconnect = False
     budget_guidance = staticmethod(lambda: None)
     request_policy = None
+    response_guard = None
+    max_response_bytes = 2 * 1024 * 1024
 
     def refuse(self, status=403, message='The coding worker can reach the model route only.') -> None:
         body = json.dumps({'error': {'message': message, 'type': 'invalid_request_error'}}).encode()
@@ -149,6 +151,23 @@ class ModelOnly(BaseHTTPRequestHandler):
                                 **self.runner_headers, "x-agentx-coding-call": str(uuid.uuid4())}):
                 return
             with connection.getresponse() as upstream:
+                if self.response_guard is not None and upstream.status == 200:
+                    # Admit the whole reply before any tool instructions reach
+                    # the harness. A late veto after streaming is not a fence.
+                    data = upstream.read(self.max_response_bytes + 1)
+                    try:
+                        if len(data) > self.max_response_bytes:
+                            raise ValueError('Model response exceeds its byte allowance')
+                        self.response_guard(data, upstream.headers.get('Content-Type', 'application/json'))
+                    except ValueError as error:
+                        self.refuse(400, str(error))
+                        return
+                    self.send_response(200)
+                    self.send_header('Content-Type', upstream.headers.get('Content-Type', 'application/json'))
+                    self.send_header('Content-Length', str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
                 disconnected = False
                 try:
                     self.send_response(upstream.status)
@@ -258,7 +277,8 @@ class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
 
 
 def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, drain_on_disconnect=False,
-          budget_guidance=None, request_budget=None, request_policy=None) -> UnixServer:
+          budget_guidance=None, request_budget=None, request_policy=None, response_guard=None,
+          max_response_bytes=2 * 1024 * 1024) -> UnixServer:
     """Start the runner-side relay; the caller shuts it down."""
     if request_budget is not None and (not isinstance(request_budget, dict)
             or type(request_budget.get('calls')) is not int or request_budget['calls'] < 0
@@ -278,12 +298,17 @@ def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, 
                        or any(part in {'', '.', '..'} for part in p[len('/workspace/'):].split('/'))
                        for p in request_policy['read_paths'])))):
         raise ValueError('A source relay policy requires a bounded output allowance and disabled reasoning')
+    if response_guard is not None and (not callable(response_guard)
+            or type(max_response_bytes) is not int or not 1 <= max_response_bytes <= MAX_REQUEST_BYTES):
+        raise ValueError('A guarded reply requires a callable guard and a bounded byte allowance')
     if os.path.exists(socket_path):
         os.unlink(socket_path)
     handler = type("Handler", (ModelOnly,), {"model_url": model_url.rstrip("/"),
                     "observer": staticmethod(observer or (lambda _event: None)), "runner_headers": runner_headers or {},
                     "drain_on_disconnect": drain_on_disconnect,
                     "request_policy": dict(request_policy) if request_policy is not None else None,
+                    "response_guard": staticmethod(response_guard) if response_guard is not None else None,
+                    "max_response_bytes": max_response_bytes,
                     "budget_guidance": staticmethod(budget_guidance or (lambda: None))})
     server = UnixServer(socket_path, handler)
     server.request_budget = dict(request_budget) if request_budget is not None else None
