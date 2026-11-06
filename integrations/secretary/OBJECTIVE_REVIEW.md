@@ -6,7 +6,7 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
-New objectives use `secretary.objective-grounding/v4` for model extraction.
+New objectives use `secretary.objective-grounding/v5` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
@@ -15,7 +15,7 @@ evidence and a response that ignores the frozen contract fail closed.
 
 Useful facts include explicit personal career steps at their stated stage:
 `career-contact`, `application`, `interview`, `job-offer`, `employment-change`,
-or the generic `life-event`. Contacting a firm and sending a CV can be retained
+`work-activity`, `work-correspondence`, or the generic `life-event`. Contacting a firm and sending a CV can be retained
 without implying hiring, a later interview or a new employment period.
 `selectionCues` points to source lines with personal wording and career terms.
 These lexical reminders are not facts, actor identification or proof of
@@ -24,7 +24,26 @@ Omissions become exact quoted selection gaps for source review; they never
 create events automatically. No cue means an empty omission list. Routine
 administrative exchanges and advertisements still need no biographical event.
 
-The model supplies `factType` instead of a free `uncertainty` field. Local
+The model selects a proposed `factType` and matching `factTypeCitationIds`
+from `factTypeCatalog`, among that moment's own observation citations. Neutral
+`life-event` uses an empty type-evidence list. A code delivery or post-contract
+follow-up is not an employment transition. These lexical cues can contain
+questions, negation or third-party wording; they never certify a fact's type.
+Local labels say that the proposed nature requires review.
+
+Dates select `startDateRef` and `endDateRef` from `dateCatalog`, or null. The
+model cannot supply canonical date values, precision or `originalDate`. The
+local catalog preserves literal, calendar-valid French, English and ISO date
+expressions at their actual precision and exact source offsets. An event date
+must occur in that moment's own observation citations. Retained message metadata
+and recognized mail headers are communication dates: only a career contact,
+application or work correspondence may select one as its start date, with an
+explicit limitation. They cannot date an underlying move, trip or work activity.
+No relative-date calculation, missing-year completion or day-to-month rounding
+is offered. Bare date lines have no event association. Matching an event date
+within a cited line still requires source review for the actual association.
+
+The model supplies no free `uncertainty` field. Local
 projection assembles concrete limits: scope of a contact/application/offer,
 missing event date, unconfirmed realization of plans, unknown or third-party
 actor, explicit cited uncertainty, and partial character range. Every proposal
@@ -46,10 +65,12 @@ the verified projection receipt.
 
 Each proposed event separates cited `observations` from source `hypotheses`.
 The canonical description uses observations only. New hypotheses have no
-generated interpretation text: each selects one complete source line plus a
-`basis` (`question`, `condition` or `possibility`). A conservative lexical gate
-and a 450-character limit restrict eligible lines in the response schema and
-local validation. The application quotes that line with an uncertainty label,
+generated interpretation text: each selects a reference from `uncertaintyCatalog`
+that already binds one complete source line to its `basis` (`question`,
+`condition` or `possibility`). The response cannot independently change the basis
+or supply citation objects. A conservative lexical gate and a 450-character
+limit restrict eligible lines in the response schema and local validation.
+The application quotes that line with its bound uncertainty label,
 without inferring an answer or realization. No eligible expression means an
 empty hypothesis list, enforced with `maxItems: 0`. No internal absence marker
 is offered as evidence. An empty passage also has empty moments and summary
@@ -81,7 +102,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2` and `/v3` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3` and `/v4` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.

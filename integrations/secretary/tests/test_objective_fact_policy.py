@@ -31,7 +31,7 @@ class FactPolicyTests(unittest.TestCase):
     def test_cv_contact_remains_a_career_step_without_recruitment_or_certainty_label(self):
         body = "Je vous envoie mon CV et souhaite discuter de vos projets."
         raw = career_response(body);before = copy.deepcopy(raw)
-        result, changes = normalize_representation(raw, body, grounding.CONTRACT)
+        result, changes = normalize_representation(raw, body, grounding.FACT_CONTRACT)
         validate(result, body)
         moment = result["moments"][0]
         self.assertIsNone(moment["startDate"])
@@ -48,9 +48,9 @@ class FactPolicyTests(unittest.TestCase):
         body = "Je vous transmets mon CV ci-joint."
         raw = career_response(body);raw["moments"] = []
         with self.assertRaisesRegex(ValueError, "potentially useful career cue"):
-            grounding.project(raw, body, grounding.CONTRACT)
+            grounding.project(raw, body, grounding.FACT_CONTRACT)
         raw["omittedCueIds"] = ["q1"]
-        result, changes = grounding.project(raw, body, grounding.CONTRACT)
+        result, changes = grounding.project(raw, body, grounding.FACT_CONTRACT)
         validate(result, body)
         self.assertEqual(result["moments"], [])
         self.assertEqual(result["classification"], "no-life-event")
@@ -58,19 +58,19 @@ class FactPolicyTests(unittest.TestCase):
         self.assertEqual(changes[0]["factPolicy"]["careerCues"][0]["disposition"], "source-review-gap")
         for ids in (["q2"], ["q1", "q1"], [True]):
             raw["omittedCueIds"] = ids
-            with self.assertRaises(ValueError):grounding.project(raw, body, grounding.CONTRACT)
+            with self.assertRaises(ValueError):grounding.project(raw, body, grounding.FACT_CONTRACT)
 
     def test_a_cue_cannot_be_both_retained_and_omitted(self):
         body = "Je joins mon CV."
         raw = career_response(body);raw["omittedCueIds"] = ["q1"]
         with self.assertRaisesRegex(ValueError, "both retained and omitted"):
-            grounding.project(raw, body, grounding.CONTRACT)
+            grounding.project(raw, body, grounding.FACT_CONTRACT)
 
     def test_administrative_noise_does_not_acquire_an_automatic_fact(self):
         for body in ("Objet : Relevé annuel\nBonne soirée !", "Je prévois l'entretien de ma voiture."):
             self.assertEqual(policy.career_cues(grounding.catalog(body)), [])
             raw = fixtures.response(body);raw["moments"] = [];raw["summaryCitationIds"] = []
-            result, _ = grounding.project(raw, body, grounding.CONTRACT)
+            result, _ = grounding.project(raw, body, grounding.FACT_CONTRACT)
             self.assertEqual(result["moments"], [])
             self.assertEqual(result["gaps"], [])
 
@@ -80,7 +80,7 @@ class FactPolicyTests(unittest.TestCase):
         moment.update(subject="thirdparty", occurrenceStatus="planned", startDate=None,
                       startPrecision="unknown", hypotheses=[{"basis": "possibility", "citationIds": ["q1"]}])
         context = {"offset": 100, "end": 100 + len(body), "totalChars": 800}
-        result, changes = normalize_representation(raw, body, grounding.CONTRACT, context)
+        result, changes = normalize_representation(raw, body, grounding.FACT_CONTRACT, context)
         validate(result, body)
         text = result["moments"][0]["uncertainty"]
         for expected in ("réalisation non confirmée", "Date de l'événement", "Acteur tiers", "Passage partiel", "100", "800", "Questions, conditions ou possibilités"):
@@ -89,7 +89,7 @@ class FactPolicyTests(unittest.TestCase):
         self.assertTrue(changes[0]["factPolicy"]["scope"]["partial"])
         self.assertLessEqual(len(text), 2000)
         raw["moments"][0]["subject"] = "unknown"
-        result, _ = grounding.project(raw, body, grounding.CONTRACT)
+        result, _ = grounding.project(raw, body, grounding.FACT_CONTRACT)
         self.assertIn("Identité de l'acteur non établie", result["moments"][0]["uncertainty"])
 
     def test_scope_cannot_disagree_with_the_retained_character_range(self):
@@ -99,8 +99,8 @@ class FactPolicyTests(unittest.TestCase):
                         {"offset": True, "end": len(body), "totalChars": 100},
                         {"offset": 0, "end": len(body), "totalChars": 0}):
             with self.assertRaisesRegex(ValueError, "Source scope"):
-                grounding.project(raw, body, grounding.CONTRACT, context)
-        result, changes = grounding.project(raw, body, grounding.CONTRACT,
+                grounding.project(raw, body, grounding.FACT_CONTRACT, context)
+        result, changes = grounding.project(raw, body, grounding.FACT_CONTRACT,
             {"offset": 0, "end": len(body), "totalChars": len(body)})
         self.assertFalse(changes[0]["factPolicy"]["scope"]["partial"])
         self.assertNotIn("Passage partiel", result["moments"][0]["uncertainty"])
@@ -109,7 +109,7 @@ class FactPolicyTests(unittest.TestCase):
         body = "Je vous envoie mon CV."
         for key, value in (("uncertainty", "low"), ("factType", "confirmed-hiring"), ("category", "people")):
             raw = career_response(body);raw["moments"][0][key] = value
-            with self.assertRaises(ValueError):grounding.project(raw, body, grounding.CONTRACT)
+            with self.assertRaises(ValueError):grounding.project(raw, body, grounding.FACT_CONTRACT)
 
     def test_schema_disables_omissions_without_cues_and_advertises_actual_ids_only(self):
         before = copy.deepcopy(grounding.SCHEMA)
@@ -131,11 +131,14 @@ class FactPolicyTests(unittest.TestCase):
         self.assertEqual(changes[0]["contract"], grounding.PROXIMITY_CONTRACT)
         self.assertNotIn("factPolicy", changes[0])
         self.assertEqual(grounding.contract_for({"responseSchemaSha256": hashed(grounding.SCHEMA_V3)}), grounding.PROXIMITY_CONTRACT)
-        with self.assertRaises(ValueError):grounding.project(raw, body, grounding.CONTRACT)
+        with self.assertRaises(ValueError):grounding.project(raw, body, grounding.FACT_CONTRACT)
 
 
 class FactPolicyWorkerTests(unittest.TestCase):
-    setUp = fixtures.SourceLanguageWorkerTests.setUp
+    def setUp(self):
+        fixtures.SourceLanguageWorkerTests.setUp(self)
+        frozen = patch.object(worker, "SCHEMA", grounding.SCHEMA_V4)
+        frozen.start(); self.addCleanup(frozen.stop)
     mail = fixtures.SourceLanguageWorkerTests.mail
     prepare = fixtures.SourceLanguageWorkerTests.prepare
     run_worker = fixtures.SourceLanguageWorkerTests.run_worker

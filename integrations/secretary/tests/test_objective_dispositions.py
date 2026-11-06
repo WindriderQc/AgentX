@@ -39,18 +39,21 @@ class DispositionTests(unittest.TestCase):
                 if "citationCatalog" in prompt:
                     value["emptyAssessment"] = "no-life-event"
                     value.pop("classification")
-                    if prompt.get("groundingContract", "").endswith(("/v2", "/v3", "/v4")):
+                    if prompt.get("groundingContract", "").endswith(("/v2", "/v3", "/v4", "/v5")):
                         value.pop("summary")
                         value["summaryCitationIds"] = []
                     for item in value["moments"]:
                         text = item.pop("description")
                         item.pop("quotes"); item.pop("rationale"); item.pop("relationHints")
                         item.update(observations=[{"text": text, "citationIds": ["unknown-span"]}], hypotheses=[])
-                    if prompt.get("groundingContract", "").endswith("/v4"):
+                    if prompt.get("groundingContract", "").endswith(("/v4", "/v5")):
                         value["omittedCueIds"] = []
                         for item in value["moments"]:
                             item.pop("uncertainty")
                             item["factType"] = "life-event"
+                    if prompt.get("groundingContract", "").endswith("/v5"):
+                        from test_objective_claim_proofs import wire_v5
+                        value = wire_v5(value, prompt.get("dateCatalog", []))
                 reply = {"response": json.dumps(value), "done": True, "done_reason": "stop", "eval_count": 200}
                 if output:
                     reply = output(prompt, reply)

@@ -13,11 +13,14 @@ from objective_schema import MOMENT, field
 from review_receipts import hashed
 import objective_source_language as language
 import objective_fact_policy as facts
+import objective_claim_proofs as proofs
+import objective_date_evidence as dates
 
 LEGACY_CONTRACT = "secretary.objective-grounding/v1"
 WORDING_CONTRACT = "secretary.objective-grounding/v2"
 PROXIMITY_CONTRACT = "secretary.objective-grounding/v3"
-CONTRACT = "secretary.objective-grounding/v4"
+FACT_CONTRACT = "secretary.objective-grounding/v4"
+CONTRACT = "secretary.objective-grounding/v5"
 CLAIM = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -68,11 +71,22 @@ _moment = SCHEMA["properties"]["moments"]["items"]
 del _moment["properties"]["uncertainty"]
 _moment["properties"]["factType"] = field(enum=list(facts.FACT_TYPES))
 _moment["required"] = list(_moment["properties"])
+SCHEMA_V4 = SCHEMA
+SCHEMA = copy.deepcopy(SCHEMA_V4)
+_moment = SCHEMA["properties"]["moments"]["items"]
+for _key in ("startDate", "endDate", "startPrecision", "endPrecision", "originalDate"):
+    del _moment["properties"][_key]
+for _side in ("start", "end"):
+    _moment["properties"][_side + "DateRef"] = field(["string", "null"])
+_moment["properties"]["factType"] = field(enum=list(proofs.FACT_LABELS))
+_moment["properties"]["factTypeCitationIds"] = {"type": "array", "maxItems": 20, "items": field()}
+_moment["properties"]["hypotheses"]["items"] = field(minLength=1, maxLength=20)
+_moment["required"] = list(_moment["properties"])
 
 
 def contract_for(manifest):
     digest = manifest.get("responseSchemaSha256")
-    for contract, schema in ((CONTRACT, SCHEMA), (PROXIMITY_CONTRACT, SCHEMA_V3),
+    for contract, schema in ((CONTRACT, SCHEMA), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
                              (WORDING_CONTRACT, SCHEMA_V2), (LEGACY_CONTRACT, SCHEMA_V1)):
         if digest == hashed(schema):
             return contract
@@ -89,20 +103,27 @@ def catalog(content):
     return result
 
 
-def schema_for(content, contract=CONTRACT):
+def schema_for(content, contract=CONTRACT, source_context=None):
     schema = copy.deepcopy({LEGACY_CONTRACT: SCHEMA_V1, WORDING_CONTRACT: SCHEMA_V2,
-                            PROXIMITY_CONTRACT: SCHEMA_V3, CONTRACT: SCHEMA}[contract])
+                            PROXIMITY_CONTRACT: SCHEMA_V3, FACT_CONTRACT: SCHEMA_V4, CONTRACT: SCHEMA}[contract])
     # An empty passage has no selectable evidence. A fabricated moment still
     # fails local resolution even if a backend ignores the response schema.
     spans = catalog(content)
     ids = [row["id"] for row in spans]
     moments = schema["properties"]["moments"]
-    guarded = contract in (PROXIMITY_CONTRACT, CONTRACT)
+    guarded = contract in (PROXIMITY_CONTRACT, FACT_CONTRACT, CONTRACT)
     if guarded and not ids:
         moments["maxItems"] = 0
         schema["properties"]["summaryCitationIds"]["maxItems"] = 0
     for kind in ("observations", "hypotheses"):
         claims = moments["items"]["properties"][kind]
+        if kind == "hypotheses" and contract == CONTRACT:
+            ids_for_uncertainty = [row["id"] for row in proofs.uncertainty_catalog(spans)]
+            if ids_for_uncertainty:
+                claims["items"]["enum"] = ids_for_uncertainty
+            else:
+                claims["maxItems"] = 0
+            continue
         eligible = [row["id"] for row in spans if language.uncertainty_bases(row["text"])]
         selected = eligible if kind == "hypotheses" and contract != LEGACY_CONTRACT else ids
         if guarded:
@@ -115,11 +136,19 @@ def schema_for(content, contract=CONTRACT):
     if contract != LEGACY_CONTRACT:
         if ids or not guarded:
             schema["properties"]["summaryCitationIds"]["items"]["enum"] = ids or ["no-source-span"]
-    if contract == CONTRACT:
+    if contract in (FACT_CONTRACT, CONTRACT):
         cues = [row["id"] for row in facts.career_cues(spans)]
         schema["properties"]["omittedCueIds"]["maxItems"] = len(cues)
         if cues:
             schema["properties"]["omittedCueIds"]["items"]["enum"] = cues
+    if contract == CONTRACT:
+        props = moments["items"]["properties"]
+        date_ids = [row["id"] for row in dates.catalog(spans, source_context)]
+        for side in ("start", "end"):
+            props[side + "DateRef"]["enum"] = [None] + date_ids
+        props["factType"]["enum"] = ["life-event"] + [row["factType"] for row in proofs.fact_catalog(spans)]
+        if ids:
+            props["factTypeCitationIds"]["items"]["enum"] = ids
     return schema
 
 
@@ -181,15 +210,28 @@ def project(value, content, contract=None, source_context=None):
         return _project_v1(value, content)
     if not isinstance(content, str):
         raise ValueError("Grounded extraction requires the exact supplied passage")
-    contract = contract or (CONTRACT if isinstance(value, dict) and "omittedCueIds" in value else PROXIMITY_CONTRACT)
-    schema = SCHEMA if contract == CONTRACT else SCHEMA_V3
+    if not contract:
+        items = value.get("moments", []) if isinstance(value, dict) else []
+        contract = CONTRACT if isinstance(items, list) and any(isinstance(m, dict) and "startDateRef" in m for m in items) \
+            else FACT_CONTRACT if isinstance(value, dict) and "omittedCueIds" in value else PROXIMITY_CONTRACT
+    schema = SCHEMA if contract == CONTRACT else SCHEMA_V4 if contract == FACT_CONTRACT else SCHEMA_V3
     if not isinstance(value, dict) or set(value) != set(schema["required"]) or not isinstance(value["moments"], list):
         raise ValueError("Invalid grounded objective result shape")
     spans = {row["id"]: row for row in catalog(content)}
     if contract == CONTRACT:
+        converted, proof, date_quotes = proofs.convert(value, spans, source_context, content)
+        result, changes = project(converted, content, PROXIMITY_CONTRACT)
+        for moment, ids in zip(result["moments"], date_quotes):
+            for key in ids:
+                if spans[key]["text"] not in moment["quotes"]:
+                    moment["quotes"].append(spans[key]["text"])
+        changes[0].update(contract=CONTRACT, factPolicy=proof,
+                          reason="Dates selected from literal evidence with separate communication/event scope; proposed fact types require cited cues; uncertainty references carry their admissible categories. Source wording and human review preserved.")
+        return result, changes
+    if contract == FACT_CONTRACT:
         converted, proof = facts.convert(value, spans, source_context, content)
         result, changes = project(converted, content, PROXIMITY_CONTRACT)
-        changes[0].update(contract=CONTRACT, factPolicy=proof,
+        changes[0].update(contract=FACT_CONTRACT, factPolicy=proof,
                           reason="Useful career cues cited or retained for review; concrete uncertainty assembled from fact type, occurrence, source scope and dates. Literal summary and source hypotheses; personal proximity requires human review.")
         return result, changes
     converted = copy.deepcopy(value)

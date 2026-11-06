@@ -58,10 +58,10 @@ Container headers describe this message only. Quoted/forwarded text has its own
 unverified author/date. Repeated quotes and MIME alternatives are not independent
 testimonies. A signature attests a role at the source date, never its start/end.
 
-Separate source date from event date. startDate/endDate are printed event dates,
-normalized as YYYY-MM-DD, YYYY-MM or YYYY with matching precision; null when unknown.
+Separate source date from event date. The application resolves date references
+to canonical startDate/endDate with their printed precision; unknown stays null.
 Do not complete missing years, partial birthdays or retrospective approximations.
-Keep originalDate exact as written. Distinct stated start/end dates form an interval;
+The application retains exact original date expressions. Distinct stated start/end dates form an interval;
 never infer an end from a gap or another event. ongoing only when explicitly stated.
 Cancelled invitations are cancelled; invitations/bookings are planned, not attendance.
 reported means the source explicitly says it happened, not user confirmation.
@@ -69,13 +69,26 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v4.
+Use the source-span grounding contract secretary.objective-grounding/v5.
 Keep useful explicit steps, not only completed milestones. A personal career
 contact, referral, CV submission, application, interview or offer can be retained
 at its stated stage. Choose factType: life-event, career-contact, application,
-interview, job-offer or employment-change. A request to discuss clients/projects
+interview, job-offer, employment-change, work-activity or work-correspondence.
+A request to discuss clients/projects
 with a CV is a career-contact, never evidence of an interview, hiring or new job.
-Dates may date that communication, never an inferred employment period. A
+An ordinary work task is work-activity. Sending a version, requesting corrections
+or following up by email is work-correspondence, not employment-change.
+Select factTypeCitationIds among this event's observation IDs and the matching
+factTypeCatalog entry. life-event is neutral and uses []. Catalog entries are
+lexical cues, not proof that an event occurred or its classification is true.
+Select startDateRef/endDateRef from dateCatalog, or null when unknown. Never
+write date values, precisions or originalDate yourself. Communication dates are
+allowed only as a start date for career-contact, application or work-correspondence.
+They date the communication only, never an underlying move, trip, work activity
+or employment period. An event-expression date must be cited in that event's
+own observations. An already finished move with no event date uses two nulls,
+even when its email header has an exact date. Never round a message day to the
+month or year to date the start of a trip. A
 generic greeting, advertisement or routine document exchange is still noise.
 selectionCues are lexical reminders to read the quoted lines, not verified facts
 or proof of identity. Each cue must be used in a cited observation or listed in
@@ -98,9 +111,10 @@ Never put an inference in observations, titles, dates or subject attribution.
 Omit unsupported inferences entirely. A citation alone does not
 prove that its paraphrase follows from it. A rationale is assembled locally from
 these two separate lists, not supplied as free-form reasoning.
-The hypotheses list contains ONLY an unresolved question, condition or possibility
-explicitly expressed in one source line: select its citationId and basis
-(question, condition or possibility). Do not supply interpretation text. The
+The hypotheses list contains ONLY uncertaintyCatalog IDs for unresolved source
+questions, conditions or possibilities relevant to the proposed event. Each ID
+already binds the source citation and admissible category. Never supply a basis,
+citationIds object, interpretation text or a fabricated reference. The
 application quotes the whole selected line with an uncertainty label. If the
 source contains no such expression, return hypotheses: []. Only actual catalog
 IDs are evidence; internal labels or absence markers are never references.
