@@ -123,8 +123,9 @@ Labels such as `low` or `high` cannot replace these limits. This explanation
 does not infer truth, prove that an observation follows from its citation or
 establish exhaustive recall.
 
-The model selects up to three `summaryCitationIds` instead of writing a free
-summary. Core-compatible summary text reports the extraction state and quotes
+Current summaries derive their excerpts from retained title observations. Frozen
+v2–v9 responses retain their independent `summaryCitationIds` projection.
+Core-compatible summary text reports the extraction state and quotes
 whole source lines in source order, without assigning them to the container's
 author. Negations, conditions and draft/latest wording are preserved. If the
 selected lines cannot fit the 2,000-character summary bound, the summary reports
