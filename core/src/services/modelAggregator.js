@@ -396,6 +396,7 @@ async function fetchOllamaModels(hostFilter = null) {
   logger.debug('Fetching models from Ollama hosts', { hosts });
 
   const inventories = await Promise.all(hosts.map(async (host) => {
+    if (require('./runtimeTopologyParking').isParkedHost(host)) return [];
     try {
       const response = await fetch(`${host}/api/tags`, { timeout: 5000 });
 

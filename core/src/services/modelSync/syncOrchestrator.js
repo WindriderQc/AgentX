@@ -14,6 +14,8 @@ const ModelRegistry = require('../../../models/ModelRegistry');
 const logger = require('../../../config/logger');
 const { getFetchOptions } = require('../../helpers/httpAgent');
 const { getHostUrls } = require('../../helpers/ollamaHostConfig');
+const { defaultParking, isParkedHost } = require('../runtimeTopologyParking');
+const fetch = require('node-fetch');
 const { normalizeModelName } = require('../../helpers/modelNameNormalization');
 const {
   parseParameterCount,
@@ -165,7 +167,6 @@ async function retireMissingInstallations(successfulHosts, seenByHost, now = new
  * @returns {Promise<Array>} Array of Ollama model objects
  */
 async function fetchHostModels(hostUrl) {
-  const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
   const response = await fetch(`${hostUrl}/api/tags`, {
     timeout: 10000,
     ...getFetchOptions(hostUrl)
@@ -328,7 +329,11 @@ async function syncAllHosts() {
   const seenByHost = new Map();
 
   try {
+    // Startup discovery precedes the periodic topology observer. Read its
+    // persisted intent first so stopped lanes are not treated as failed hosts.
+    await defaultParking.refresh();
     for (const hostUrl of hosts) {
+      if (isParkedHost(hostUrl)) continue;
       try {
         logger.info('Syncing models from Ollama host', { hostUrl });
 

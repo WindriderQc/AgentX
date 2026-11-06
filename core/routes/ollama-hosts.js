@@ -27,6 +27,10 @@ async function fetchOllamaJson(hostUrl, endpoint) {
 // chat and benchmark clients consume it. `installedModels` is the additive,
 // unfiltered fleet-truth view (embeddings and diagnostic artifacts included).
 async function fetchModels(hostUrl) {
+    if (require('../src/services/runtimeTopologyParking').isParkedHost(hostUrl)) {
+        return { success: false, status: 'parked', reason: 'topology_parked',
+            models: [], installedModels: [], ollamaVersion: null };
+    }
     const [tagsResult, versionResult] = await Promise.allSettled([
         fetchOllamaJson(hostUrl, '/api/tags'),
         fetchOllamaJson(hostUrl, '/api/version')
@@ -97,6 +101,8 @@ router.get('/', async (req, res) => {
                 return {
                     ...host,
                     available: result.success,
+                    status: result.status,
+                    reason: result.reason,
                     models: result.models,
                     installedModels: result.installedModels,
                     ollamaVersion: result.ollamaVersion,
@@ -111,7 +117,8 @@ router.get('/', async (req, res) => {
             data: {
                 hosts: hostsWithModels,
                 total: hostsWithModels.length,
-                available: hostsWithModels.filter(h => h.available).length
+                available: hostsWithModels.filter(h => h.available).length,
+                parked: hostsWithModels.filter(h => h.status === 'parked').length
             }
         });
     } catch (err) {
@@ -147,6 +154,8 @@ router.get('/:hostId/models', async (req, res) => {
             data: {
                 host: host,
                 available: result.success,
+                status: result.status,
+                reason: result.reason,
                 models: result.models,
                 installedModels: result.installedModels,
                 ollamaVersion: result.ollamaVersion,
