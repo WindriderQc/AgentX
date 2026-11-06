@@ -18,13 +18,13 @@
 
   <div class="ao-main-grid<%= locals.agentxProfile === 'demo' ? ' is-history-only' : '' %>">
     <section class="ao-panel ao-trend" aria-labelledby="ao-trend-title">
-      <div class="ao-panel-head"><div><span class="ao-eyebrow">Volume × performance</span><h2 id="ao-trend-title">Activity over time</h2></div><div class="ao-trend-controls"><div class="ao-segment" role="group" aria-label="Overlay on call volume"><button type="button" data-ao-overlay="errors" aria-pressed="true">Errors</button><button type="button" data-ao-overlay="latency" aria-pressed="false">Latency</button></div><div class="ao-legend"><span>Calls</span><span id="ao-overlay-label">Errors %</span></div></div></div>
-      <div class="ao-chart"><canvas id="ao-trend-chart" role="img" aria-label="Inference calls and operational error rate over time"></canvas><p id="ao-trend-empty" hidden>No recorded calls in this window.</p></div>
-      <div class="ao-panel-foot"><span id="ao-trend-note">Same time buckets · calls on left, error rate on right</span><button id="ao-error-focus" type="button" hidden aria-controls="ao-comparison"></button><span id="ao-fallbacks">— fallbacks</span></div>
+      <div class="ao-panel-head"><div><span class="ao-eyebrow">Volume × performance</span><h2 id="ao-trend-title">Activity over time</h2></div><div class="ao-trend-controls"><div class="ao-legend"><span>Calls</span><span class="ao-legend-errors">Errors %</span><span class="ao-legend-latency">Mean latency (s)</span></div></div></div>
+      <div class="ao-chart"><canvas id="ao-trend-chart" role="img" aria-label="Inference calls, operational error rate and mean latency over time"></canvas><p id="ao-trend-empty" hidden>No recorded calls in this window.</p></div>
+      <div class="ao-panel-foot"><span id="ao-trend-note">Same time buckets · calls on left, errors and latency on right</span><button id="ao-error-focus" type="button" hidden aria-controls="ao-comparison"></button><span id="ao-fallbacks">— fallbacks</span></div>
     </section>
     <% if (locals.agentxProfile !== 'demo') { %>
     <section class="ao-panel ao-live" aria-labelledby="ao-live-title">
-      <div class="ao-panel-head"><div><span class="ao-eyebrow"><span class="ao-dot" aria-hidden="true"></span> Now / independent of window</span><h2 id="ao-live-title">Live inference</h2></div><div class="ao-live-tools"><span class="ao-live-key"><span>Load</span><span>VRAM</span></span><a href="/nerve-center?focus=cluster" aria-label="Open live GPU and host details"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div></div>
+      <div class="ao-panel-head"><div><span class="ao-eyebrow" title="Live reading every 15 seconds. It does not follow the period selected above."><span class="ao-dot" aria-hidden="true"></span> Live now · not tied to the period</span><h2 id="ao-live-title">Live inference</h2></div><div class="ao-live-tools"><span class="ao-live-key"><span>Load</span><span>VRAM</span></span><a href="/nerve-center?focus=cluster" aria-label="Open live GPU and host details"><i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></a></div></div>
       <div class="ao-live-count"><strong id="ao-active">—</strong><span>active admissions<small id="ao-live-status" role="status">Checking Core…</small></span></div>
       <div id="ao-active-models" class="ao-active-models"></div>
       <div id="ao-gpus" class="ao-gpus"><p class="ao-empty">Reading GPU telemetry…</p></div>
@@ -46,7 +46,9 @@
         <div class="ao-mix-visual"><div id="ao-mix-ring" class="ao-mix-ring is-empty" role="img" aria-label="Local and cloud call split not observed"><span><strong id="ao-mix-value">—</strong><small>local calls</small></span></div><span class="ao-mix-key"><span>Local</span><span>Cloud</span></span></div>
         <div class="ao-account-values"><div class="ao-account-row"><span>Local calls<small id="ao-local-share">— of recorded calls</small></span><strong id="ao-local-calls">—</strong></div>
         <div class="ao-account-row"><span>Local elapsed time<small>Sum of durations · includes waits</small></span><strong id="ao-local-time">—</strong></div>
-        <div class="ao-account-row"><span>Cloud estimate <small id="ao-cloud-note">Configured token prices only</small></span><strong id="ao-cloud-cost">—</strong></div></div>
+        <div class="ao-account-row"><span>Cloud via Core <small id="ao-cloud-note">Configured token prices only</small></span><strong id="ao-cloud-cost">—</strong></div>
+        <% if (locals.agentxProfile !== 'demo') { %>
+        <div class="ao-account-row ao-account-gap" title="Hermes text turns and OpenClaw requests to OpenRouter call their provider directly, so Core never records them. Their spend is only in the provider billing console."><span>Cloud outside Core <small>Hermes, OpenClaw → OpenRouter</small></span><strong>Not measured</strong></div><% } %></div>
       </div>
       <% if (locals.agentxProfile !== 'demo') { %><div class="ao-panel-foot"><a href="/nerve-center?focus=cluster">Actual GPU utilization &amp; VRAM →</a></div><% } %>
     </section>
@@ -56,8 +58,8 @@
   <p class="ao-coverage"><span id="ao-attribution" role="status">Reading consumer attribution…</span> <a id="ao-attribution-logs" hidden>Inspect unattributed calls →</a></p>
   <p id="ao-coverage" class="ao-coverage">Recorded AgentX calls only. Native calls that bypass Core are outside this view. Elapsed call time is not GPU busy time.</p>
   <nav class="ao-links" aria-label="Related activity">
-    <button type="button" data-analytics-target="chatLaneHeading"><i class="fas fa-comments" aria-hidden="true"></i> Playground conversations <small id="analytics-chat-detail">Conversations in this period</small></button>
+    <button type="button" data-analytics-target="chatLaneHeading"><i class="fas fa-comments" aria-hidden="true"></i> Conversations <small id="analytics-chat-detail">Nestor and Playground, this period</small></button>
     <a href="<%= publicUrls.rag %>/"><i class="fas fa-book-open" aria-hidden="true"></i> Knowledge <small id="analytics-knowledge-detail">Corpus and retrieval</small></a>
-    <a href="/performance"><i class="fas fa-gauge-high" aria-hidden="true"></i> Server performance <small>Page and API response times</small></a>
+    <a href="/performance"><i class="fas fa-gauge-high" aria-hidden="true"></i> AgentX server performance <small>Core page and API response times</small></a>
   </nav>
 </section>

@@ -11,14 +11,6 @@
 
 import { averageSignal, buildSignal, formatSignal, parseSignal } from '/dist/signal-evidence.js';
 
-const SERIES = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181'];
-const SURFACE = '#121726';
-const TEXT = '#e8edf5';
-const MUTED = '#93a0b5';
-const GRID = 'rgba(255,255,255,0.06)';
-
-let dailyChart = null;
-
 const $ = (id) => document.getElementById(id);
 
 function compact(n) {
@@ -109,7 +101,9 @@ async function fetchSummary(windowKey) {
 
 function renderTiles(d) {
   const t = d.totals || {};
-  setText('infScope', d.scope || '');
+  // The full scope sentence lives in the tooltip; the hint stays short.
+  if ($('infScope') && d.scope) $('infScope').title = d.scope;
+  setText('infScope', 'Recorded AgentX calls');
   setText('infCalls', compact(t.calls));
   setText('infCallsPerDay', compact(t.callsPerDay));
   setText('infTokensOut', compact(t.tokensOut));
@@ -130,6 +124,16 @@ function renderTiles(d) {
   renderSignal('infClassificationPct', classifier.overhead, 'infClassificationPctNote');
   const totalView = formatSignal(classifier.total);
   setText('infClassifiedTotal', totalView.text);
+  // Only Playground auto-routing classifies; with no classified call the
+  // tile would hold nothing but "Not observed".
+  const classifierChip = $('infClassifierChip');
+  if (classifierChip) classifierChip.hidden = !(Number(t.classifiedCalls) > 0);
+
+  const degraded = (d.byDegraded || []).find(row => row.degraded === true || row.degraded === 'true');
+  setText('infDegraded', observed ? compact(degraded?.calls || 0) : '—');
+  setText('infDegradedNote', degraded?.calls
+    ? `${(degraded.errorRate || 0).toFixed(1)}% of them failed`
+    : observed ? 'none in this period' : '—');
 
   const errorLink = $('infErrorLink');
   if (errorLink) {
@@ -156,29 +160,61 @@ function renderTiles(d) {
     : 'no cloud-routed calls');
 }
 
+// Producers that send no value (explicit-model clients send no task type;
+// some callers send no contract) are "not declared", not a real category.
+function dimensionLabel(value) {
+  if (value == null || value === '' || value === 'unknown') return 'not declared';
+  return String(value).replace(/_/g, ' ');
+}
+
+function errorTone(rate) {
+  return rate > 5 ? 'is-bad' : rate > 1 ? 'is-warn' : '';
+}
+
+/**
+ * One compact bar list per dimension: the top five values by calls, then
+ * "all others". The bar is the share of all recorded calls in the window.
+ */
+function dimensionRows(rows, key, total, limit = 5) {
+  const sorted = [...rows].sort((a, b) => (b.calls || 0) - (a.calls || 0));
+  const shown = sorted.slice(0, limit).map(row => ({
+    label: dimensionLabel(row[key]), calls: row.calls || 0,
+    errorRate: row.errorRate || 0, cancellationRate: row.cancellationRate || 0,
+    undeclared: dimensionLabel(row[key]) === 'not declared'
+  }));
+  const rest = sorted.slice(limit);
+  if (rest.length) {
+    const calls = rest.reduce((sum, row) => sum + (row.calls || 0), 0);
+    const errors = rest.reduce((sum, row) => sum + (row.calls || 0) * (row.errorRate || 0) / 100, 0);
+    shown.push({ label: `${rest.length} others`, calls, errorRate: calls > 0 ? errors / calls * 100 : 0, cancellationRate: null, other: true });
+  }
+  return shown.map(row => ({ ...row, share: total > 0 ? row.calls / total * 100 : 0 }));
+}
+
 function renderDimensionBreakdowns(d) {
   const container = $('infDimensionBreakdowns');
   if (!container) return;
+  const total = d.totals?.calls || 0;
   const dimensions = [
     ['Caller', d.byCaller || [], 'caller'],
-    ['Consumer Contract', d.byConsumerContract || [], 'consumerContract'],
-    ['Task Type', d.byTaskType || [], 'taskType'],
-    ['Fallback Used', d.byFallbackUsed || [], 'fallbackUsed'],
-    ['Degraded', d.byDegraded || [], 'degraded'],
+    ['Consumer contract', d.byConsumerContract || [], 'consumerContract'],
+    ['Task type', d.byTaskType || [], 'taskType'],
   ];
-  const cell = 'padding:6px 8px;border-bottom:1px solid var(--panel-border);';
-  container.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;">
-    ${dimensions.map(([title, rows, key]) => `<div>
-      <h3 style="font-size:13px;margin:0 0 6px;">${title}</h3>
-      <table style="width:100%;border-collapse:collapse;font-size:12px;"><tbody>
-        ${(rows.length ? rows.slice(0, 12) : [{ [key]: 'no data', calls: 0, errorRate: 0, cancellationRate: 0 }]).map(row => `<tr>
-          <td style="${cell}">${escapeHtml(String(row[key] ?? 'unknown').replace(/_/g, ' '))}</td>
-          <td style="${cell}text-align:right;">${compact(row.calls)}</td>
-          <td style="${cell}text-align:right;color:var(--muted);">${(row.errorRate || 0).toFixed(1)}% err · ${(row.cancellationRate || 0).toFixed(1)}% cancel</td>
-        </tr>`).join('')}
-      </tbody></table>
-    </div>`).join('')}
-  </div>`;
+  container.innerHTML = dimensions.map(([title, rows, key]) => `<div class="wb-dim">
+      <h4>${title}</h4>
+      ${rows.length ? dimensionRows(rows, key, total).map(row => `<div class="wb-bar${row.other ? ' is-other' : ''}${row.undeclared ? ' is-undeclared' : ''}" title="${escapeHtml(`${row.label}: ${row.calls.toLocaleString('en-US')} calls · ${row.errorRate.toFixed(1)}% errors${row.cancellationRate == null ? '' : ` · ${row.cancellationRate.toFixed(1)}% canceled`}`)}">
+        <span class="wb-bar-name" style="--share:${Math.max(0, Math.min(100, row.share)).toFixed(1)}%"><span>${escapeHtml(row.label)}</span></span>
+        <span class="wb-bar-calls">${compact(row.calls)}</span>
+        <span class="wb-bar-err ${errorTone(row.errorRate)}">${row.errorRate.toFixed(1)}%</span>
+      </div>`).join('') : '<p class="wb-empty">No data</p>'}
+    </div>`).join('');
+}
+
+// AgentX may label a cloud route through the local OpenClaw gateway
+// (openclaw:model:openrouter/...); the provider prefix still makes it cloud.
+const CLOUD_ROUTE = /(^|[:/])(openrouter|openai|anthropic|gemini|groq|mistral|together|deepseek-api)\//i;
+function isCloudModel(m) {
+  return Boolean(m.isCloud) || CLOUD_ROUTE.test(String(m.model || ''));
 }
 
 function renderModelTable(d) {
@@ -186,102 +222,28 @@ function renderModelTable(d) {
   if (!body) return;
   const rows = d.byModel || [];
   if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="7" style="padding:16px;text-align:center;color:var(--muted);">No inference recorded in this window.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="wb-empty">No inference recorded in this window.</td></tr>';
     return;
   }
-  const cell = 'padding:8px;border-bottom:1px solid var(--panel-border);';
   body.innerHTML = rows.map((m) => {
-    const model = escapeHtml(m.model);
-    const cost = m.isCloud
-      ? (Number.isFinite(m.estimatedCostUsd) ? `$${m.estimatedCostUsd.toFixed(4)}` : 'unpriced')
-      : '<span style="color:var(--muted);">local</span>';
-    const errColor = m.errorRate > 5 ? '#f87171' : m.errorRate > 1 ? '#f59e0b' : 'var(--muted)';
+    const cloud = isCloudModel(m);
+    const where = cloud
+      ? `<span class="wb-tag wb-tag-cloud">cloud${Number.isFinite(m.estimatedCostUsd) ? ` · $${m.estimatedCostUsd.toFixed(4)}` : ' · unpriced'}</span>`
+      : '<span class="wb-tag">local</span>';
+    // Embedding models produce no output tokens: throughput does not apply.
+    const embedding = !(m.tokensOut > 0);
+    const tokPerSec = embedding ? '<span class="wb-muted" title="No output tokens (embedding or failed calls)">n/a</span>'
+      : Number.isFinite(m.tokensOutPerSecond) ? m.tokensOutPerSecond.toFixed(1) : '—';
     return `<tr>
-      <td style="${cell}text-align:left;">${model}${m.isCloud ? ' <span style="font-size:11px;color:var(--muted);">cloud</span>' : ''}</td>
-      <td style="${cell}text-align:right;">${compact(m.calls)}</td>
-      <td style="${cell}text-align:right;color:${errColor};">${(m.errorRate || 0).toFixed(1)}% err<br><span style="color:var(--muted);">${(m.cancellationRate || 0).toFixed(1)}% cancel</span></td>
-      <td style="${cell}text-align:right;">${compact(m.tokensOut)}</td>
-      <td style="${cell}text-align:right;">${ms(m.avgLatencyMs)}</td>
-      <td style="${cell}text-align:right;">${Number.isFinite(m.tokensOutPerSecond) ? m.tokensOutPerSecond.toFixed(1) : '—'}</td>
-      <td style="${cell}text-align:right;">${cost}</td>
+      <td class="wb-model" title="${escapeHtml(m.model)}">${escapeHtml(m.model)}</td>
+      <td>${compact(m.calls)}</td>
+      <td><span class="${errorTone(m.errorRate)}">${(m.errorRate || 0).toFixed(1)}%</span> <span class="wb-muted">· ${(m.cancellationRate || 0).toFixed(1)}%</span></td>
+      <td>${embedding ? '<span class="wb-muted">—</span>' : compact(m.tokensOut)}</td>
+      <td>${ms(m.avgLatencyMs)}</td>
+      <td>${tokPerSec}</td>
+      <td>${where}</td>
     </tr>`;
   }).join('');
-}
-
-function renderDailyChart(d) {
-  const canvas = $('infDailyChart');
-  const empty = $('infDailyEmpty');
-  if (!canvas || typeof Chart === 'undefined') return;
-
-  const cross = d.byDayCaller || [];
-  const dates = [...new Set(cross.map((r) => r.date))].sort();
-
-  if (!dates.length) {
-    if (dailyChart) { dailyChart.destroy(); dailyChart = null; }
-    canvas.style.display = 'none';
-    if (empty) empty.style.display = 'block';
-    return;
-  }
-  canvas.style.display = 'block';
-  if (empty) empty.style.display = 'none';
-
-  // Fixed slot order by total volume, capped at 4 named series + Other,
-  // so a caller never changes colour when the window changes.
-  const totals = {};
-  cross.forEach((r) => { totals[r.caller] = (totals[r.caller] || 0) + r.calls; });
-  const ranked = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
-  const named = ranked.slice(0, 4);
-  const hasOther = ranked.length > 4;
-
-  const seriesKeys = hasOther ? [...named, 'other'] : named;
-  const datasets = seriesKeys.map((key, i) => ({
-    label: key,
-    backgroundColor: SERIES[i],
-    borderColor: SURFACE,
-    borderWidth: 2,          // 2px surface gap between stacked segments
-    borderRadius: 4,
-    borderSkipped: false,
-    data: dates.map((date) => cross
-      .filter((r) => r.date === date && (key === 'other' ? !named.includes(r.caller) : r.caller === key))
-      .reduce((sum, r) => sum + r.calls, 0))
-  }));
-
-  if (dailyChart) dailyChart.destroy();
-  dailyChart = new Chart(canvas.getContext('2d'), {
-    type: 'bar',
-    data: { labels: dates, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: {
-          position: 'bottom',
-          labels: { color: TEXT, boxWidth: 12, boxHeight: 12, usePointStyle: true, pointStyle: 'rectRounded' }
-        },
-        tooltip: {
-          backgroundColor: 'rgba(11,16,28,0.95)',
-          borderColor: 'rgba(255,255,255,0.12)',
-          borderWidth: 1,
-          titleColor: TEXT,
-          bodyColor: TEXT,
-          callbacks: {
-            footer: (items) => `total ${compact(items.reduce((s, i) => s + i.parsed.y, 0))} calls`
-          }
-        }
-      },
-      scales: {
-        x: { stacked: true, grid: { display: false }, ticks: { color: MUTED } },
-        y: {
-          stacked: true,
-          beginAtZero: true,
-          grid: { color: GRID },
-          ticks: { color: MUTED, callback: (v) => compact(v) },
-          title: { display: true, text: 'calls', color: MUTED }
-        }
-      }
-    }
-  });
 }
 
 /**
@@ -325,9 +287,9 @@ async function renderCodex(windowKey) {
     setText('infCodexTokens', compact(c.currentMonth?.totalTokens));
     setText('infCodexSessions', compact(c.currentMonth?.sessions));
     setText('infCodexCached', Number.isFinite(c.cachedInputPct) ? `${c.cachedInputPct.toFixed(1)}%` : '—');
-    setText('infCodexRate', Number.isFinite(c.effectiveCostPer1MTokensUsd)
-      ? `$${c.effectiveCostPer1MTokensUsd.toFixed(4)}`
-      : '—');
+    const rateKnown = Number.isFinite(c.effectiveCostPer1MTokensUsd);
+    setText('infCodexRate', rateKnown ? `$${c.effectiveCostPer1MTokensUsd.toFixed(4)}` : '—');
+    if ($('infCodexRateChip')) $('infCodexRateChip').hidden = !rateKnown;
     setText('infCodexMessage', c.valueMessage || '');
   } catch (err) {
     if (version !== loadVersion) return;
@@ -370,9 +332,13 @@ async function applyChatLaneCollapse() {
   const heading = $('chatLaneHeading');
   if (!note || chatLaneForced) return;
 
-  const days = { '24h': 1, '7d': 7, '30d': 30 }[$('analyticsWindow')?.value] || 1;
+  const select = $('analyticsWindow');
+  const since = Date.parse(select?.dataset.usageSince || '');
   const to = new Date();
-  const from = new Date(to.getTime() - days * 86400000);
+  const from = select?.value === 'usage' && Number.isFinite(since)
+    ? new Date(since)
+    : new Date(to.getTime() - ({ '24h': 1, '7d': 7, '30d': 30 }[select?.value] || 1) * 86400000);
+  const days = (to - from) / 86400000;
 
   let conversations = null;
   try {
@@ -401,10 +367,9 @@ async function applyChatLaneCollapse() {
   setChatLaneVisible(false);
   if (heading) heading.style.display = 'none';
   note.style.display = '';
-  note.innerHTML = `<strong>Chat lane: no conversations in the last ${days === 1 ? '24 hours' : `${days} days`}.</strong>
-    The usage, feedback, RAG-adoption and cost panels below read the
-    <code>conversations</code> collection, which only the chat UI writes — agent,
-    pipeline and proxy traffic is in Platform Inference above.
+  note.innerHTML = `<strong>No conversations in the ${days <= 1 ? 'last 24 hours' : `last ${Math.round(days)} days`}.</strong>
+    The conversation and cost panels read the <code>conversations</code> collection;
+    agent, pipeline and proxy traffic is in Platform inference above.
     <a href="#" id="chatLaneShowAnyway" style="color: var(--accent);">Show them anyway</a>.`;
 
   const link = $('chatLaneShowAnyway');
@@ -420,6 +385,7 @@ let loadVersion = 0;
 async function load() {
   const version = ++loadVersion;
   const windowKey = $('analyticsWindow')?.value || '24h';
+  setText('analytics-period-badge', $('analyticsWindow')?.selectedOptions?.[0]?.textContent || 'selected period');
   document.dispatchEvent(new CustomEvent('analytics:inference', { detail: { state: 'loading', windowKey } }));
   try {
     const data = await fetchSummary(windowKey);
@@ -428,7 +394,6 @@ async function load() {
     renderTiles(data);
     renderModelTable(data);
     renderDimensionBreakdowns(data);
-    renderDailyChart(data);
   } catch (err) {
     if (version !== loadVersion) return;
     document.dispatchEvent(new CustomEvent('analytics:inference', { detail: { state: 'error', windowKey } }));
@@ -467,12 +432,17 @@ async function initializePeriod() {
       if (!Number.isFinite(+since)) throw new Error('Invalid reporting period');
       select.add(new Option('Since daily use began', 'usage'), 0);
       select.value = 'usage';
+      // Every detail panel reads this boundary so "since" never means 24 hours.
+      select.dataset.usageSince = since.toISOString();
       setText('ao-period-note', `Daily use began ${since.toLocaleString()}. Earlier activity remains in the rolling periods. This period includes all recorded traffic.`);
     }
   } catch {
     setText('ao-period-note', 'Daily-use reporting boundary unavailable. Showing a rolling period.');
   }
   if ([...select.options].some(option => option.value === requested)) select.value = requested;
+  // Detail panels wait for this before their first read.
+  window.AgentXAnalyticsPeriodReady = true;
+  document.dispatchEvent(new Event('analytics:period-ready'));
 }
 
 if (document.readyState === 'loading') {

@@ -13,7 +13,6 @@
   let summary = null;
   let groupBy = 'byModel';
   let trend = null;
-  let overlay = 'errors';
   let livePending = false;
 
   function outcome(totals) {
@@ -167,6 +166,11 @@
     set('ao-model-note', groupBy === 'byConsumerContract' ? 'Server-attested consumers · unknown means contract missing' : 'Share of window total · durations include waits');
   }
 
+  const ERROR_COLOR = '#f0b47d';
+  const LATENCY_COLOR = '#bd9df7';
+
+  // Calls, operational errors and mean latency share one chart and one set
+  // of time buckets: bars on the left axis, two lines on their own axes.
   function renderTrend(data) {
     if (trend) { trend.destroy(); trend = null; }
     const canvas = $('ao-trend-chart');
@@ -177,25 +181,23 @@
       set('ao-trend-empty', 'Time buckets unavailable. See daily detail below.');
       return;
     }
-    const rows = buckets(data), empty = !(data.totals?.calls > 0), latency = overlay === 'latency';
-    const color = latency ? '#bd9df7' : '#f0b47d';
-    set('ao-overlay-label', latency ? 'Mean latency (s)' : 'Errors %');
-    $('ao-overlay-label').style.setProperty('--overlay-color', color);
-    canvas.setAttribute('aria-label', `Inference calls and ${latency ? 'mean end-to-end latency' : 'operational error rate'} over time; separate labeled axes`);
+    const rows = buckets(data), empty = !(data.totals?.calls > 0);
     canvas.hidden = empty;
     $('ao-trend-empty').hidden = !empty;
     set('ao-trend-empty', 'No recorded calls in this window.');
-    const basis = latency ? (rows.some(row => row.calls > 0 && finite(row.avgLatencyMs)) ? 'mean end-to-end latency' : 'latency not observed') : 'errors exclude cancellations';
-    set('ao-trend-note', `${data.bucketHours === 1 ? 'Hourly' : 'Daily'} UTC · edge buckets partial · ${basis}`);
+    const latencyObserved = rows.some(row => row.calls > 0 && finite(row.avgLatencyMs));
+    set('ao-trend-note', `${data.bucketHours === 1 ? 'Hourly' : 'Daily'} UTC · edge buckets partial · errors exclude cancellations${latencyObserved ? ' · latency is end to end' : ' · latency not observed'}`);
     if (empty || typeof Chart === 'undefined') return;
     const hourly = data.bucketHours === 1;
+    const line = (label, values, color, axis) => ({ type: 'line', label, data: values, borderColor: color, backgroundColor: color, yAxisID: axis, borderWidth: 2, pointRadius: rows.length < 40 ? 2 : 0, tension: .25, spanGaps: false, order: 1 });
     trend = new Chart(canvas, {
       type: 'bar',
       data: {
         labels: rows.map(row => new Date(row.at).toLocaleString('en-US', { timeZone: 'UTC', ...(hourly ? { hour: '2-digit', hour12: false } : { month: 'short', day: 'numeric' }) })),
         datasets: [
           { label: 'Calls', data: rows.map(row => row.calls), backgroundColor: '#6d9df580', hoverBackgroundColor: '#8fb7ff', borderRadius: 3, yAxisID: 'calls', order: 2 },
-          { type: 'line', label: latency ? 'Mean latency (s)' : 'Operational errors %', data: rows.map(row => latency ? (row.calls > 0 && finite(row.avgLatencyMs) ? row.avgLatencyMs / 1000 : null) : row.errorPct), borderColor: color, backgroundColor: color, yAxisID: 'rate', borderWidth: 2, pointRadius: rows.length < 40 ? 2 : 0, tension: .25, order: 1 }
+          line('Operational errors %', rows.map(row => row.errorPct), ERROR_COLOR, 'rate'),
+          line('Mean latency (s)', rows.map(row => row.calls > 0 && finite(row.avgLatencyMs) ? row.avgLatencyMs / 1000 : null), LATENCY_COLOR, 'latency')
         ]
       },
       options: {
@@ -203,12 +205,15 @@
         interaction: { mode: 'index', intersect: false },
         plugins: { legend: { display: false }, tooltip: { callbacks: {
           title: items => items.length ? `${new Date(rows[items[0].dataIndex].at).toISOString().slice(0, 16).replace('T', ' ')} UTC` : '',
-          label: item => item.dataset.yAxisID === 'rate' ? (latency ? `Mean call latency: ${duration(finite(item.raw) ? item.raw * 1000 : null)}` : `Errors: ${percent(item.raw)}`) : `Calls: ${count(item.raw)}`
+          label: item => item.dataset.yAxisID === 'rate' ? `Errors: ${percent(item.raw)}`
+            : item.dataset.yAxisID === 'latency' ? `Mean call latency: ${duration(finite(item.raw) ? item.raw * 1000 : null)}`
+            : `Calls: ${count(item.raw)}`
         } } },
         scales: {
           x: { grid: { display: false }, ticks: { color: '#8e9db5', maxTicksLimit: 9, maxRotation: 0, font: { size: 10 } } },
           calls: { beginAtZero: true, grid: { color: '#ffffff09' }, ticks: { color: '#8e9db5', maxTicksLimit: 4, precision: 0, font: { size: 10 } } },
-          rate: { position: 'right', beginAtZero: true, suggestedMax: 1, grid: { display: false }, ticks: { color, maxTicksLimit: 4, callback: v => `${v}${latency ? 's' : '%'}`, font: { size: 10 } } }
+          rate: { position: 'right', beginAtZero: true, suggestedMax: 1, grid: { display: false }, ticks: { color: ERROR_COLOR, maxTicksLimit: 4, callback: v => `${v}%`, font: { size: 10 } } },
+          latency: { position: 'right', beginAtZero: true, grid: { display: false }, ticks: { color: LATENCY_COLOR, maxTicksLimit: 4, callback: v => `${v}s`, font: { size: 10 } } }
         }
       }
     });
@@ -373,11 +378,13 @@
       if (!Array.isArray(hosts)) throw new Error('Malformed GPU snapshot');
       const rows = gpuRows(hosts);
       $('ao-gpus').innerHTML = rows.map(row => {
-        if (!row.fresh) return `<div class="ao-gpu is-unknown"><span>${esc(row.label)}</span><span>Unknown</span><small>GPU telemetry ${esc(row.state.replaceAll('_', ' '))}</small></div>`;
+        if (!row.fresh) return `<div class="ao-gpu is-unknown" title="GPU telemetry ${esc(row.state.replaceAll('_', ' '))}"><span>${esc(row.label)}</span><small>telemetry ${esc(row.state.replaceAll('_', ' '))}</small><strong>—</strong></div>`;
         const utilization = finite(row.utilization) ? Math.max(0, Math.min(100, row.utilization)) : null;
-        const vram = finite(row.vramUsed) && row.vramTotal > 0 ? `${(row.vramUsed / 1024).toFixed(1)} / ${(row.vramTotal / 1024).toFixed(1)} GiB VRAM` : 'VRAM unknown';
+        const vram = finite(row.vramUsed) && row.vramTotal > 0 ? `${(row.vramUsed / 1024).toFixed(1)}/${(row.vramTotal / 1024).toFixed(0)} GiB` : 'VRAM ?';
         const memoryPct = finite(row.vramUsed) && row.vramTotal > 0 ? Math.min(100, Math.max(0, row.vramUsed / row.vramTotal * 100)) : null;
-        return `<div class="ao-gpu"><span title="${esc(row.name)}">${esc(row.label)}</span><div class="ao-gpu-tracks"><div class="ao-meter" role="img" aria-label="GPU load ${esc(percent(utilization))}" title="GPU load: ${esc(percent(utilization))}"><span style="width:${utilization ?? 0}%"></span></div><div class="ao-meter ao-meter-memory" role="img" aria-label="VRAM allocation ${esc(percent(memoryPct))}" title="VRAM allocated: ${esc(percent(memoryPct))}"><span style="width:${memoryPct ?? 0}%"></span></div></div><strong>${finite(utilization) ? `${Math.round(utilization)}%` : '—'}</strong><small>${esc(vram)} · ${Math.round(row.age / 1000)}s old${finite(row.powerDraw) ? ` · ${Math.round(row.powerDraw)} W` : ''}</small></div>`;
+        // One line per GPU so every host fits without scrolling; age and power stay in the tooltip.
+        const detail = `${row.name || row.label} · ${vram} VRAM · ${Math.round(row.age / 1000)}s old${finite(row.powerDraw) ? ` · ${Math.round(row.powerDraw)} W` : ''}`;
+        return `<div class="ao-gpu" title="${esc(detail)}"><span>${esc(row.label)}</span><small>${esc(vram)}</small><div class="ao-gpu-tracks"><div class="ao-meter" role="img" aria-label="GPU load ${esc(percent(utilization))}"><span style="width:${utilization ?? 0}%"></span></div><div class="ao-meter ao-meter-memory" role="img" aria-label="VRAM allocation ${esc(percent(memoryPct))}"><span style="width:${memoryPct ?? 0}%"></span></div></div><strong>${finite(utilization) ? `${Math.round(utilization)}%` : '—'}</strong></div>`;
       }).join('') || '<p class="ao-empty">No GPU collector evidence. Open Nerve Center for hosts.</p>';
       window.AgentXPresentedLiveContent.gpus = { status: 'visible', read: body.presentation || null };
     } catch {
@@ -404,15 +411,13 @@
       // Only the committed response for this window may be discussed. Loading
       // and failure immediately invalidate the old reference.
       window.AgentXPresentedContent = { contract: 'agentx.presentation/v1', state,
-        filters: state === 'ready' ? data?.presentation?.filters || { window: windowKey } : { window: windowKey }, selection: { groupBy, overlay }, read: state === 'ready' ? data?.presentation || null : null };
-      const note = $('analytics-secondary-period');
-      if (note) note.hidden = windowKey !== 'usage';
-      if (state === 'ready') renderSummary(data);
+        filters: state === 'ready' ? data?.presentation?.filters || { window: windowKey } : { window: windowKey }, selection: { groupBy }, read: state === 'ready' ? data?.presentation || null : null };
+        if (state === 'ready') renderSummary(data);
       else clearSummary(state);
     });
     document.querySelectorAll('[data-ao-group]').forEach(button => button.addEventListener('click', () => {
       groupBy = button.dataset.aoGroup;
-      if (window.AgentXPresentedContent) window.AgentXPresentedContent.selection = { groupBy, overlay };
+      if (window.AgentXPresentedContent) window.AgentXPresentedContent.selection = { groupBy };
       document.querySelectorAll('[data-ao-group]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
       renderComparison();
     }));
@@ -421,12 +426,6 @@
       target.click();
       target.focus();
     });
-    document.querySelectorAll('[data-ao-overlay]').forEach(button => button.addEventListener('click', () => {
-      overlay = button.dataset.aoOverlay;
-      if (window.AgentXPresentedContent) window.AgentXPresentedContent.selection = { groupBy, overlay };
-      document.querySelectorAll('[data-ao-overlay]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
-      if (summary) renderTrend(summary);
-    }));
     document.addEventListener('analytics:refresh-live', refreshLive);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshLive(); });
     refreshLive();

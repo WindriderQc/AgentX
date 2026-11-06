@@ -50,6 +50,21 @@ async function requestCosts(days, groupBy = null, breakdown = null) {
   }
 }
 
+/**
+ * With no priced spend, the four cost panels hold only "—", "$0.00" and
+ * "No price". Collapse them to one sentence that says why, including the
+ * cloud traffic Core cannot see. Unknown (failed read) keeps the panels.
+ */
+function showCostPanels(visible) {
+  const panels = document.getElementById('costPanels');
+  const note = document.getElementById('costLocalNote');
+  if (panels) panels.hidden = !visible;
+  if (note) {
+    note.hidden = visible;
+    note.textContent = visible ? '' : 'No priced spend in this period. Local models have no per-token price, and cloud turns made outside Core (Hermes, OpenClaw → OpenRouter) carry no recorded cost or tokens. See Cloud usage below.';
+  }
+}
+
 async function refreshCostStats() {
   const isCurrent = beginRequest('costStats');
   const days = periodDays();
@@ -59,6 +74,7 @@ async function refreshCostStats() {
     if (!isCurrent()) return;
 
     if (!data) {
+      showCostPanels(true);
       elements.totalCost.textContent = '—';
       elements.costPerConversation.textContent = '—';
       elements.costPer1kTokens.textContent = '—';
@@ -70,6 +86,7 @@ async function refreshCostStats() {
     const totalCost = summary.totalCost || 0;
     const totalTokens = summary.totalTokens || 0;
     const tokensPerDollar = totalCost > 0 ? (totalTokens / totalCost) : 0;
+    showCostPanels(totalCost > 0);
 
     elements.totalCost.textContent = `$${(totalCost || 0).toFixed(2)}`;
     if (elements.totalCostConvCount) {
