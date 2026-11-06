@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createNarrator, bindConversation } = require('../public/ecosystem-voice');
+const { createNarrator, bindConversation, whenTourReady } = require('../public/ecosystem-voice');
 const { createSpeechLadder } = require('../../../public/js/voice/speech-ladder');
 const PersonaPresentation = require('../../household/public/persona-presentation');
 
@@ -90,6 +90,31 @@ test('a question during frame startup cancels its pending automatic start', () =
   const guide = bindConversation(view, { embedded: true });
   guide.pause(); guide.update({ visible: true, busy: false });
   assert.deepEqual(calls, []);
+});
+
+test('asynchronous composition mounts bind their tour before narration and never restart after an answer', () => {
+  const view = new EventTarget(), calls = [];
+  whenTourReady(view, () => {
+    const guide = bindConversation(view, { embedded: true });
+    guide.update({ visible: true, busy: false });
+    calls.push('narrator');
+    view.guide = guide;
+  });
+  assert.deepEqual(calls, [], 'definition alone cannot start the narrator');
+  view.tour = { conversation() {}, play: () => calls.push('play') };
+  view.dispatchEvent(new Event('ecosystem-first-frame'));
+  assert.deepEqual(calls, ['play', 'narrator']);
+  view.guide.update({ visible: true, busy: true });
+  view.guide.update({ visible: true, busy: false });
+  view.dispatchEvent(new Event('ecosystem-first-frame'));
+  assert.deepEqual(calls, ['play', 'narrator'], 'answer completion and later frames cannot replay the initial start');
+});
+
+test('an already mounted tour connects without waiting for another render', () => {
+  const view = new EventTarget(); view.tour = {};
+  let calls = 0;
+  whenTourReady(view, () => calls++);
+  assert.equal(calls, 1);
 });
 
 test('silent ambient playback is an explicit, bounded ecosystem option', () => {

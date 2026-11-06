@@ -57,7 +57,18 @@
       pause() { startPending = false; view.tour?.conversation?.(true); if (context.visible && !context.busy) view.tour?.conversation?.(false); }
     });
   }
-  if (typeof module === 'object' && module.exports) module.exports = { createNarrator, bindConversation };
+  function whenTourReady(view, ready) {
+    let connected = false;
+    const connect = () => {
+      if (connected || !view.tour) return;
+      connected = true;
+      view.removeEventListener('ecosystem-first-frame', connect);
+      ready();
+    };
+    view.addEventListener('ecosystem-first-frame', connect);
+    connect();
+  }
+  if (typeof module === 'object' && module.exports) module.exports = { createNarrator, bindConversation, whenTourReady };
   else {
     const target = root.document.querySelector('agentx-ecosystem');
     if (target?.getAttribute('voice') === 'off' || root.frameElement?.classList.contains('nestor-ambient-visit-frame')) {
@@ -81,10 +92,14 @@
     root.customElements.whenDefined('agentx-ecosystem').then(() => {
       const view = root.document.querySelector('agentx-ecosystem');
       if (!view) return;
-      controller = bindConversation(view, { embedded: root.parent !== root });
-      if (questionPending) controller.pause();
-      controller.update(latest);
-      if (root.VoixAudio?.Speech) view.narrator = createNarrator();
+      // Defining the element precedes its asynchronous composition verification.
+      // Bind the actual tour before narration, so its initial start is consumed once.
+      whenTourReady(view, () => {
+        controller = bindConversation(view, { embedded: root.parent !== root });
+        if (questionPending) controller.pause();
+        controller.update(latest);
+        if (root.VoixAudio?.Speech) view.narrator = createNarrator();
+      });
       root.addEventListener('pagehide', () => {
         view.tour?.pause();
         if (!managed && root.parent !== root) {
