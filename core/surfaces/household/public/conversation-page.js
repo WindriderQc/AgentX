@@ -99,7 +99,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <form id="conversationText" class="conversation-text"><label class="sr-only" for="conversationMessage">Message</label><textarea id="conversationMessage" rows="2" placeholder="Write a message…" required maxlength="4000"></textarea><button class="button" type="submit">Send</button></form>
       ${family ? '' : '<details class="conversation-attachments"><summary>Attach an image or document</summary><label class="sr-only" for="conversationFiles">Attachments</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">Up to 3 files · JPEG or PNG photos up to 50 MB (Nestor receives a reduced copy; the original is archived) · text or text PDF up to 2 MB (20 pages, 24,000 characters maximum). Add a message to send them.</p><div id="conversationDraftFiles" aria-live="polite"></div></details>'}
       <p id="conversationExecution" class="conversation-context muted" role="status" hidden></p><p id="conversationAgentContext" class="conversation-context muted"></p>
-    </div>${family ? '' : '<section id="conversationWorkflow" aria-label="Nestor component workflow"></section>'}</div></section></div></section>`;
+    </div>${family ? '' : '<details id="conversationPipeline" class="conversation-pipeline" open><summary>Request pipeline <small>each step of Nestor’s turn</small></summary><section id="conversationWorkflow" aria-label="Nestor component workflow"></section></details>'}</div></section></div></section>`;
   const el = id => document.getElementById(id);
   const composer = window.ConversationComposer.mount({ input: el('conversationMessage'), form: el('conversationText'), family });
   // Shown, never spoken (#167): secrets exist only in the private space.
@@ -242,6 +242,12 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const rememberVoiceIntent = wanted => { microphoneWanted = wanted; try { storage?.setItem(voiceIntentKey, wanted ? 'on' : 'off'); } catch {} };
   let preferences = P.read(storage, catalog);
   const backendKey = 'household.space.' + space + '.backend';
+  // The request pipeline sits under the conversation; its folded state is remembered.
+  if (!family) {
+    const pipeline = el('conversationPipeline'), pipelineKey = 'household.space.personal.pipeline';
+    try { pipeline.open = storage?.getItem(pipelineKey) !== 'closed'; } catch {}
+    pipeline.addEventListener('toggle', () => { try { storage?.setItem(pipelineKey, pipeline.open ? 'open' : 'closed'); } catch {} });
+  }
   if (!family) { try { backendPicker.value = engines.choose(runtime, false, storage?.getItem(backendKey)); } catch {} }
   try { const savedListening = storage?.getItem(listeningKey); wake.checked = (['wake', 'open'].includes(savedListening) ? savedListening : defaultListening) === 'wake'; } catch {}
   const describeListening = () => {
@@ -1070,7 +1076,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       || !!el('conversationMessage').value.trim(),
     controls: {
       Settings: () => { if (el('conversationSettings').hidden) el('conversationSettingsToggle').click(); },
-      Flow: () => { if (family) return el('conversationWorkshop').click(); diagnosticFlow.querySelectorAll('details').forEach(node => { node.open = true; }); diagnosticFlow.scrollIntoView({ block: 'start' }); },
+      Flow: () => { if (family) return el('conversationWorkshop').click(); el('conversationPipeline').open = true; diagnosticFlow.querySelectorAll('details').forEach(node => { node.open = true; }); diagnosticFlow.scrollIntoView({ block: 'start' }); },
       'Diagnostic micro': () => el('conversationWorkshop').click(),
       'Micro · activer / pause': () => el('conversationStart').click()
     }

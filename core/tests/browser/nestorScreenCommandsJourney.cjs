@@ -108,7 +108,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   const state = () => page.evaluate(() => {
     const zone = document.querySelector('.page-presentation');
     return { active: zone.classList.contains('is-active'), expanded: zone.classList.contains('is-expanded'),
-      selected: zone.querySelector('.display-block:not([hidden]) .display-block-title')?.textContent,
+      selected: zone.querySelector('.display-block[data-selected=true] .display-block-title')?.textContent,
       feedback: zone.querySelector('.page-presentation-feedback').textContent,
       rows: document.querySelectorAll('#conversationTranscript .conversation-message').length,
       draft: document.querySelector('#conversationMessage').value };
@@ -192,16 +192,16 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   await page.frameLocator('.page-presentation iframe').getByRole('heading', { name: 'Ma journée' }).waitFor();
   await expectStep('spoken', 'agrandis le texte', { feedback: 'Texte à 125 %.' });
   await listening();
-  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.display-block:not([hidden]) .display-page-holder')).zoom), '1.25');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.display-block[data-selected=true] .display-page-holder')).zoom), '1.25');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'bigger text does not widen the page');
-  const frameTop = () => page.evaluate(() => document.querySelector('.display-block:not([hidden]) iframe').contentDocument.scrollingElement.scrollTop);
+  const frameTop = () => page.evaluate(() => document.querySelector('.display-block[data-selected=true] iframe').contentDocument.scrollingElement.scrollTop);
   await expectStep('spoken', 'descends', { feedback: 'Défilement vers le bas.' });
   await listening();
-  await page.waitForFunction(() => document.querySelector('.display-block:not([hidden]) iframe').contentDocument.scrollingElement.scrollTop > 100);
+  await page.waitForFunction(() => document.querySelector('.display-block[data-selected=true] iframe').contentDocument.scrollingElement.scrollTop > 100);
   await page.screenshot({ path: path.join(output, 'text-zoom-scrolled-desktop.png'), fullPage: true });
   await expectStep('spoken', 'monte', { feedback: 'Défilement vers le haut.' });
   await listening();
-  await page.waitForFunction(() => document.querySelector('.display-block:not([hidden]) iframe').contentDocument.scrollingElement.scrollTop === 0);
+  await page.waitForFunction(() => document.querySelector('.display-block[data-selected=true] iframe').contentDocument.scrollingElement.scrollTop === 0);
   assert.equal(await frameTop(), 0);
   await expectStep('typed', 'réduis le texte', { feedback: 'Texte à 100 %.' });
   // A typed command follows a key press, so the browser lets the tab open.

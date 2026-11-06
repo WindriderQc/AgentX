@@ -1,16 +1,21 @@
-/* The signal has room to show both paths. Stage colors follow observed activity. */
-.household-product #app:has(#conversationWorkflow) { max-width: 1840px; }
+/* Same layout as Famille: the live bar, then the conversation with its pages and
+   images on top. Personal adds the request pipeline underneath, folded on request.
+   Stage colors follow observed activity. */
+.household-product #app:has(#conversationWorkflow) { max-width: 1440px; }
 .household-product .conversation-shell:has(#conversationWorkflow),
-.household-product .conversation-shell:has(#conversationWorkflow) .conversation-layout { max-width: 1760px; }
+.household-product .conversation-shell:has(#conversationWorkflow) .conversation-layout { max-width: 1360px; }
 .household-product .conversation-stage { padding: 18px; container-type: inline-size; }
-.conversation-cockpit { display: grid; grid-template-columns: minmax(300px, .85fr) minmax(0, 1.65fr); gap: 18px; align-items: start; }
-.conversation-cockpit-family { display: block; }
-.conversation-cockpit .conversation-live { grid-column: 1 / -1; position: sticky; top: 10px; z-index: 20; min-width: 0;
+.conversation-cockpit { display: block; }
+.conversation-cockpit .conversation-live { position: sticky; top: 10px; z-index: 20; min-width: 0;
   padding: 12px 16px; border: 1px solid #385364; border-radius: 14px; background: #101e2ef2;
   box-shadow: 0 10px 25px #07131dbb; backdrop-filter: blur(10px); }
 .conversation-workflow-signal { display: none; }
-.conversation-dialogue { min-width: 0; position: sticky; top: 94px; padding: 6px 14px 14px; border: 1px solid #304353; border-radius: 16px; background: #0c1622; }
-.conversation-cockpit-family .conversation-dialogue { margin-top: 14px; position: static; }
+.conversation-dialogue { min-width: 0; margin-top: 14px; padding: 6px 14px 14px; border: 1px solid #304353; border-radius: 16px; background: #0c1622; }
+.conversation-pipeline { margin-top: 14px; min-width: 0; }
+.conversation-pipeline > summary { display: flex; align-items: baseline; gap: 10px; min-height: 44px; box-sizing: border-box; padding: 11px 16px; cursor: pointer;
+  border: 1px solid #304353; border-radius: 14px; background: #0c1622; color: #b9cfe6; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase; }
+.conversation-pipeline > summary small { color: #7f97ae; letter-spacing: 0; text-transform: none; }
+.conversation-pipeline[open] > summary { margin-bottom: 10px; }
 .conversation-dialogue .conversation-transcript { min-height: min(38vh, 340px); max-height: 52vh; }
 .conversation-dialogue .conversation-text { margin-top: 6px; }
 #conversationWorkflow { --stage: #8fadc1; --stage-rgb: 143,173,193; min-width: 0; margin: 0; overflow: hidden;
@@ -130,18 +135,6 @@
 @keyframes workflow-breathe { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
 @keyframes workflow-halo { 0%, 100% { stroke-opacity: .3; } 50% { stroke-opacity: 1; } }
 @keyframes workflow-meter-travel { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(230%); } }
-@container (max-width: 1000px) {
-  .conversation-cockpit { grid-template-columns: minmax(0, 1fr); }
-  .conversation-cockpit .conversation-live { grid-column: 1; }
-  .conversation-dialogue { grid-row: 3; position: static; }
-  #conversationWorkflow { grid-row: 2; }
-}
-@media (max-width: 1100px) {
-  .conversation-cockpit { grid-template-columns: minmax(0, 1fr); }
-  .conversation-cockpit .conversation-live { grid-column: 1; }
-  .conversation-dialogue { grid-row: 3; position: static; }
-  #conversationWorkflow { grid-row: 2; }
-}
 @media (max-width: 760px) {
   .household-product #app { padding-inline: 10px; }
   .household-product .conversation-stage { padding: 8px; }
@@ -150,6 +143,8 @@
   .conversation-cockpit .conversation-actions { grid-column: auto; }
   .conversation-workflow-signal { display: block; grid-column: 1 / -1; margin: 0; padding: 5px 8px; border-top: 1px solid #3e526c; color: #b9cfe6; font-size: .72rem; }
   .conversation-dialogue { padding: 5px 9px 102px; }
+  /* The pinned composer must not cover the pipeline folded under the conversation. */
+  .conversation-pipeline { padding-bottom: 96px; }
   .conversation-dialogue .conversation-transcript { min-height: 90px; max-height: 28vh; }
   .household-product .conversation-cockpit:not(.conversation-cockpit-family) .conversation-text { position: fixed; z-index: 21; left: 50%;
     bottom: max(8px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(600px, calc(100vw - 20px));

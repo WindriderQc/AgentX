@@ -35,7 +35,9 @@ let server, browser;
       document.getElementById('conversationStart').textContent = 'Pause de la voix';
       document.getElementById('conversationTranscript').innerHTML = '<div class="conversation-message assistant">Voici votre journée. Je reste disponible pendant la consultation.</div><div class="conversation-message user">On regarde les rendez-vous ensemble.</div>';
       document.getElementById('conversationWorkflow').innerHTML = '<p>Diagnostic du moteur et de la voix</p>';
-      window.showPage = (body='dad-day', title='Ma journée') => board.add({kind:'page',body,title});
+      // As the conversation does: draw the card, then tell the avatar something is shown.
+      window.showPage = (body='dad-day', title='Ma journée') => { board.add({kind:'page',body,title});
+        dispatchEvent(new CustomEvent('persona-activity', { detail: { space: 'personal', kind: 'show' } })); };
     </script></html>`));
   let loads = 0;
   app.get('/dad/day', (_req, res) => { loads++; res.send(`<title>Ma journée</title><style>body{font:16px system-ui;background:#102333;color:#e1eef8;padding:24px}h1{font-size:36px}article{padding:24px;border:1px solid #426375;border-radius:14px;margin:20px 0;background:#183447}input{padding:12px;font:inherit}</style><h1>Ma journée</h1><h2>Mes rendez-vous</h2><article>09:00 · Réunion de projet</article><article>14:30 · Rendez-vous</article><label>Note <input value="À préparer"></label>`); });
@@ -55,28 +57,41 @@ let server, browser;
     await page.frameLocator('iframe').getByRole('heading', { name: 'Mes rendez-vous' }).waitFor();
     await page.frameLocator('iframe').getByRole('textbox').fill('Conserver cette note');
     const initialLoads = loads;
-    await page.waitForFunction(() => document.querySelector('.avatar-dock').getBoundingClientRect().width <= 64);
-    const bounds = await page.evaluate(() => {
-      const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { x:r.x,y:r.y,width:r.width,height:r.height }; };
-      return { frame:rect('iframe'), conversation:rect('.conversation-stage'), avatar:rect('.avatar-dock'), overflow:document.documentElement.scrollWidth > innerWidth };
-    });
+    const rect = selector => page.evaluate(selector => { const r = document.querySelector(selector).getBoundingClientRect();
+      return { x:r.x, y:r.y, width:r.width, height:r.height }; }, selector);
+    const overflow = () => page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+    // Nestor full screen presents the content alone, as in Famille.
+    assert.equal(await page.evaluate(() => document.body.dataset.avatarView), 'montre');
+    assert.equal(await page.locator('.page-presentation').isVisible(), true);
+    assert.equal(await page.locator('.conversation-transcript').isVisible(), false);
+    assert.equal(await page.locator('.page-presentation-actions').isVisible(), false);
+    const fullScreen = { frame: await rect('iframe'), overflow: await overflow() };
+    assert.equal(fullScreen.overflow, false);
+    assert.ok(fullScreen.frame.width >= viewport.width * (viewport.width > 700 ? .6 : .8));
+    await page.screenshot({ path: path.join(reportDir, `montre-${viewport.width}.png`) });
+    // In the page itself, the zone sits at the top of the conversation, above the messages.
+    await page.evaluate(() => dock.setMode('bulle'));
+    const bounds = { frame: await rect('iframe'), zone: await rect('.page-presentation'), dialogue: await rect('.conversation-dialogue'),
+      transcript: await rect('.conversation-transcript'), overflow: await overflow() };
     assert.equal(bounds.overflow, false);
-    assert.ok(bounds.avatar.width <= 64);
-    assert.ok(bounds.frame.width >= viewport.width * (viewport.width > 1000 ? .6 : .8));
-    if (viewport.width > 1000) assert.ok(bounds.frame.x + bounds.frame.width <= bounds.conversation.x);
-    else assert.ok(bounds.conversation.y >= bounds.frame.y + bounds.frame.height);
+    assert.ok(bounds.zone.y + bounds.zone.height <= bounds.transcript.y + 1);
+    assert.ok(bounds.zone.x >= bounds.dialogue.x && bounds.zone.x + bounds.zone.width <= bounds.dialogue.x + bounds.dialogue.width + 1);
+    assert.ok(bounds.frame.width >= bounds.dialogue.width * .8, JSON.stringify({ viewport, bounds }));
     await page.screenshot({ path: path.join(reportDir, `page-${viewport.width}.png`), fullPage: true });
     await page.getByRole('button', { name: 'Fermer le contenu' }).click();
     assert.equal(await page.locator('.page-presentation').evaluate(el => el.classList.contains('is-active')), false);
-    assert.equal(await page.evaluate(() => document.body.dataset.avatarView), 'menu');
     assert.deepEqual(await page.evaluate(() => board.context()), [], 'a collapsed page is not visible turn context');
     await page.getByRole('button', { name: 'Afficher le contenu' }).click();
     assert.equal(await page.frameLocator('iframe').getByRole('textbox').inputValue(), 'Conserver cette note');
     assert.equal(loads, initialLoads, 'switching layouts preserves the live frame');
     await page.evaluate(() => showPage('dad-memories', 'Mes souvenirs'));
+    // Every card stays in the zone; the selected one is what Nestor reads.
+    assert.equal(await page.locator('.page-presentation .display-block:visible').count(), 2);
+    assert.deepEqual(await page.evaluate(() => board.context().map(item => item.page)), ['dad-memories']);
     await page.locator('.page-presentation select').selectOption({ label: 'Ma journée' });
-    assert.equal(await page.frameLocator('iframe:visible').getByRole('textbox').inputValue(), 'Conserver cette note');
+    assert.equal(await page.frameLocator('.display-block[data-selected="true"] iframe').getByRole('textbox').inputValue(), 'Conserver cette note');
     assert.deepEqual(await page.evaluate(() => board.context().map(item => item.page)), ['dad-day']);
+    assert.equal(await page.locator('.page-presentation .display-block:visible').count(), 2);
     await page.evaluate(() => board.clear());
     assert.equal(await page.locator('.page-presentation').isVisible(), false);
     // Images, text and pages share the same personal content workspace.
@@ -90,14 +105,20 @@ let server, browser;
     assert.equal(await page.locator('.conversation-text').isVisible(), true);
     assert.equal(await page.locator('#conversationWorkflow').isVisible(), true);
     assert.equal(await page.locator('.conversation-toolbar').isVisible(), true);
+    // The request pipeline folds under the conversation.
+    await page.locator('#conversationPipeline > summary').click();
+    assert.equal(await page.locator('#conversationWorkflow').isVisible(), false);
+    await page.locator('#conversationPipeline > summary').click();
+    assert.equal(await page.locator('#conversationWorkflow').isVisible(), true);
     await page.evaluate(() => { dock.setMode('quart'); showPage(); });
-    assert.ok(await page.locator('#app').evaluate(el => el.getBoundingClientRect().width >= innerWidth * .95));
+    assert.equal(await page.locator('.page-presentation.is-active').isVisible(), true);
+    assert.equal(await overflow(), false);
     await page.getByRole('button', { name: 'Fermer le contenu' }).click();
     assert.equal(await page.evaluate(() => dock.mode), 'quart', 'the saved avatar mode is preserved');
     await page.evaluate(() => { showPage(); document.getElementById('app').replaceChildren(); });
     await page.waitForFunction(() => !document.querySelector('.page-presentation'));
     assert.equal(await page.evaluate(() => document.body.dataset.avatarMode), 'quart');
-    results.push({ viewport, bounds });
+    results.push({ viewport, fullScreen, bounds });
     await context.close();
   }
   assert.deepEqual(errors, []);

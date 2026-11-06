@@ -1,21 +1,31 @@
-/* A page owns the main column; the ongoing conversation stays beside it. */
-.page-presentation { min-width: 0; order: -1; }
+/* Personal content sits where Famille's "Pages and images" zone sits: at the
+   top of the conversation, every card stacked, the selected one outlined. */
+.page-presentation { min-width: 0; }
 .presentation-companion-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; margin: 0; }
 .presentation-companion-toggle input[type=checkbox] { width: auto; margin: 0; }
 .presentation-companion-status { flex-basis: 100%; font-size: .78rem; }
-.page-presentation-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 0; }
+.page-presentation-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px; }
+.page-presentation-toolbar > .display-board-heading { flex: 1 1 auto; margin: 0; }
 .page-presentation-toolbar label { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--soft); font-size: .82rem; }
-.page-presentation-toolbar select { width: auto; max-width: 100%; min-height: 44px; }
-.page-presentation-toolbar button { min-height: 44px; }
+.page-presentation-toolbar select { width: auto; max-width: 100%; min-height: 40px; }
+.page-presentation-toolbar button { min-height: 40px; padding: .35rem .8rem; font-size: .85rem; }
 .page-presentation-board.conversation-board { margin: 0; padding: 0; border: 0; background: none; }
 .page-presentation-board > .display-board-heading { display: none; }
-.page-presentation-board > .display-board-list { display: block; max-height: none; overflow: visible; }
+.page-presentation-board > .display-board-list { max-height: max(520px, 100dvh - 160px); }
+.page-presentation .display-block:not([data-kind="scene"]) { grid-column: 1 / -1; }
+.page-presentation .display-board-list > .display-block[data-selected="true"]:not(:only-child) { box-shadow: 0 0 0 1px #5fd4dc8c; }
 .page-presentation .display-block { padding: 12px; }
 .page-presentation .display-block-actions { flex-wrap: wrap; }
 .page-presentation .display-page-expand { display: none; }
-.page-presentation .display-block-page { height: calc(max(480px, 100dvh - 260px) / var(--presentation-text-zoom, 1)); }
+.page-presentation .display-block-page { height: calc(max(420px, 72dvh) / var(--presentation-text-zoom, 1)); }
 .page-presentation .display-block-note { margin-bottom: 8px; font-size: .78rem; }
 .page-presentation-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Labels change on press and text above the zone can move it: fixed widths and no
+   hover lift keep these buttons from jittering under a resting pointer. */
+.page-presentation-toolbar .button:hover { transform: none; }
+.page-presentation-actions [data-action=pin] { min-width: 9.5em; }
+.page-presentation-actions [data-action=expand] { min-width: 6.5em; }
+.page-presentation-actions [data-action=toggle] { min-width: 10.5em; }
 .page-presentation-feedback { flex-basis: 100%; margin: 0; color: var(--soft); font-size: .82rem; }
 /* Kept in the accessibility tree so a new message is announced. */
 .page-presentation-feedback:empty { height: 0; }
@@ -30,37 +40,20 @@
 .display-block-markdown :is(h1,h2,h3,h4) { font-size: 1.05rem; margin-block: 1em .5em; }
 .display-block-markdown :is(ul,ol) { padding-inline-start: 1.5em; }
 .display-block-markdown th, .display-block-markdown td { padding: 6px 10px; border: 1px solid var(--line); }
-.page-presentation.is-expanded :is(.display-block-page, .display-block-text) { height: calc(80dvh / var(--presentation-text-zoom, 1)); max-height: calc(80dvh / var(--presentation-text-zoom, 1)); }
+.page-presentation.is-expanded .page-presentation-board > .display-board-list { max-height: none; }
+.page-presentation.is-expanded :is(.display-block-page, .display-block-text) { height: calc(88dvh / var(--presentation-text-zoom, 1)); max-height: calc(88dvh / var(--presentation-text-zoom, 1)); }
 .page-presentation select { min-width: 0; width: min(420px, 70vw); text-overflow: ellipsis; }
 .page-presentation [hidden] { display: none !important; }
-
-body:has(.page-presentation.is-active) #app { width: 100%; max-width: 1920px; margin-inline: auto; padding-block: 12px; }
-body:has(.page-presentation.is-active) .conversation-shell { max-width: none; padding-block: 0; }
-body:has(.page-presentation.is-active) .conversation-shell > :is(.conversation-heading, .conversation-team, .conversation-history, .conversation-recap) { display: none; }
-body:has(.page-presentation.is-active) .conversation-shell .conversation-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 350px); gap: 20px; max-width: none; align-items: start; }
-body:has(.page-presentation.is-active) .conversation-stage { margin-top: 76px; padding: 10px; }
-body:has(.page-presentation.is-active) .conversation-cockpit { display: flex; flex-direction: column; gap: 10px; }
-body:has(.page-presentation.is-active) .conversation-live { position: static; width: 100%; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; }
-body:has(.page-presentation.is-active) .conversation-dialogue { position: static; width: 100%; box-sizing: border-box; padding: 8px; }
-body:has(.page-presentation.is-active) .conversation-transcript { min-height: 120px; max-height: 38dvh; }
-body:has(.page-presentation.is-active) .conversation-text { display: flex; flex-wrap: wrap; }
-body:has(.page-presentation.is-active) .conversation-text textarea { flex: 1 1 100%; min-width: 0; }
-body:has(.page-presentation.is-active) .avatar-dock:not([data-mode=cache]) { top: 86px; right: 26px; bottom: auto; left: auto; width: 64px; height: 64px; box-sizing: border-box; border-radius: 18px; }
-body:has(.page-presentation.is-active) .avatar-dock-bar { display: none; }
-
-/* Keep incoming dialogue inside its rail instead of moving the shared workspace. */
-@media (min-width: 1001px) {
-  body:has(.page-presentation.is-active) .conversation-stage { position: sticky; top: 12px; max-height: calc(100dvh - 100px); overflow: auto; overscroll-behavior: contain; box-sizing: border-box; }
-}
+/* Nestor full screen shows the content alone, as in Famille; voice commands still apply. */
+body[data-avatar-view=montre] .page-presentation-toolbar > :not(.display-board-heading, .page-presentation-feedback) { display: none; }
 
 @media (max-width: 1000px) {
-  body:has(.page-presentation.is-active) .conversation-shell .conversation-layout { grid-template-columns: minmax(0, 1fr); }
-  body:has(.page-presentation.is-active) .conversation-stage { margin-top: 0; padding-bottom: 0; }
-  body:has(.page-presentation.is-active) .conversation-stage .conversation-text { position: static; width: 100%; transform: none; }
-  body:has(.page-presentation.is-active) .conversation-stage .conversation-dialogue { padding-bottom: 8px; }
-  body:has(.page-presentation.is-active) .avatar-dock:not([data-mode=cache]) { position: static; flex: 0 0 48px; order: -1; width: 48px; height: 48px; }
-  body:has(.page-presentation.is-active) .conversation-stage .conversation-actions { justify-content: start; }
   .page-presentation .display-block-page { height: max(360px, 65dvh); }
+}
+/* A phone keeps the page wide: thinner frames around it. */
+@media (max-width: 760px) {
+  .page-presentation.conversation-board { padding: 10px 6px; }
+  .page-presentation .display-block { padding: 10px 6px; }
 }
 
 /* Screen commands (#924): the words Nestor's workspace obeys, and the owner's own. */

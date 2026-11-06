@@ -156,12 +156,12 @@ const server = http.createServer(async (req, res) => {
     slow = false;
     await page.screenshot({ path: path.join(report, 'analytics-desktop.png'), fullPage: true });
     await page.evaluate(blocks => board.restore(blocks), storedDisplay(fixture.display));
-    assert.equal(await page.locator('.display-block:not([hidden]) li').count(), 32);
-    assert.equal(await page.locator('.display-block:not([hidden]) h3').textContent(), 'Recherche');
-    assert.doesNotMatch(await page.locator('.display-block:not([hidden])').textContent(), /###|\*\*|`/);
+    assert.equal(await page.locator('.display-block[data-selected=true] li').count(), 32);
+    assert.equal(await page.locator('.display-block[data-selected=true] h3').textContent(), 'Recherche');
+    assert.doesNotMatch(await page.locator('.display-block[data-selected=true]').textContent(), /###|\*\*|`/);
     assert.equal((await page.evaluate(() => read())).kind, 'list');
     assert.equal(await page.locator('#visual').isVisible(), false); assert.equal(await page.locator('#text').isVisible(), false);
-    await page.locator('.display-block:not([hidden]) button').filter({ hasText: 'Copy' }).click();
+    await page.locator('.display-block[data-selected=true] button').filter({ hasText: 'Copy' }).click();
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), fixture.display[0].body);
     const before = summaryRequests;
     await page.locator('.page-presentation select').selectOption('1');
@@ -185,7 +185,7 @@ const server = http.createServer(async (req, res) => {
       await page.screenshot({ path: path.join(report, `list-${width}.png`), fullPage: true });
     }
     await page.evaluate(() => board.add({ kind: 'text', title: '', body: '## Note\n<script>window.INJECTED=true</script>\n<img src="https://bad.invalid/private">\n[unsafe](javascript:alert(1))\n**Lisible**' }));
-    assert.equal(await page.locator('.display-block:not([hidden]) img, .display-block:not([hidden]) script').count(), 0);
+    assert.equal(await page.locator('.display-block[data-selected=true] img, .display-block[data-selected=true] script').count(), 0);
     assert.equal(await page.evaluate(() => window.INJECTED), undefined);
     assert.equal(await page.locator('.page-presentation select option').first().textContent(), 'Note');
     await page.evaluate(() => board.add({ kind: 'code', body: 'const value = "' + 'x'.repeat(400) + '";' }));
@@ -194,13 +194,13 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     await page.evaluate(() => board.add({ kind: 'page', body: 'service' }));
     assert.equal((await page.evaluate(() => read())).status, 'external');
-    assert.match(await page.locator('.display-block:not([hidden])').textContent(), /ne voit pas/);
+    assert.match(await page.locator('.display-block[data-selected=true]').textContent(), /ne voit pas/);
     await page.evaluate(() => board.add({ kind: 'image', source: 'web', status: 'missing', body: 'example' }));
     current = await page.evaluate(() => read()); assert.equal(current.status, 'unavailable'); assert.equal(current.observation, 'pixels_not_supplied');
     await page.evaluate(() => { board.clear(); });
     assert.equal((await page.evaluate(() => read())).status, 'none');
     await page.reload(); await page.evaluate(blocks => board.restore(blocks), storedDisplay(fixture.display));
-    assert.equal(await page.locator('.display-block:not([hidden]) li').count(), 32);
+    assert.equal(await page.locator('.display-block[data-selected=true] li').count(), 32);
     assert.equal(requests.filter(r => /turns\/text|\/inference\/execute|\/images/.test(r)).length, 0);
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(report, 'result.json'), JSON.stringify({ ok: true, errors, summaryRequests, checks: 'selected snapshot, filter invalidation, canonical block restore, Markdown, copy, history without reload, close, keyboard, mobile widths, external/missing image, no business replay' }, null, 2));
