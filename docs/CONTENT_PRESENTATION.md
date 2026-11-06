@@ -99,6 +99,20 @@ preferences. The existing speech service may resolve that voice through its
 configured reference aliases. The standard speech fallback ladder and Web Audio
 player remain the transport; no new agent or conversation session is opened.
 
+A reviewed private composition can supply a short `narration` on each node and
+workflow, optional scene introductions in top-level `narration`, and a bounded
+`pronunciations` list of `{ name, spoken }` pairs. These strings are data within
+the same composition revision, never executable markup or instance-specific
+code in the renderer. Missing copy retains the earlier descriptive fallback.
+Node introductions name the component and read its short copy; technical specs,
+roles, plans and dated evidence remain in a persistent visual disclosure and
+the canonical selected-node description. Literal whole-name pronunciation
+replacements apply only to speech, longest first and without recursive expansion.
+The after-render observation retains displayed `narration` and optional exact
+prepared `spokenNarration` separately, so Nestor reads the same spelling, speech
+copy and technical selection. Prepared speech does not attest audible delivery.
+Family's static view does not receive the owner's composition or these strings.
+
 Ambient standby visits explicitly request `voice=off` and retain their silent
 animation clock. Normal requested visits keep voice enabled by default.
 

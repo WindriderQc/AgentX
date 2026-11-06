@@ -33,6 +33,7 @@ function project(value, presentationId, now) {
   const step = adhoc || script.split(',')[tour.index];
   if (tour.kind !== (step.startsWith('node-') ? 'node' : step)) return fail('display_step_mismatch');
   if (!Array.isArray(value.focus) || value.focus.length > 32 || !text(value.narration, 4000)) return fail('invalid_display_scope');
+  if (value.spokenNarration !== undefined && !text(value.spokenNarration, 4000)) return fail('invalid_display_scope');
   const seen = new Set();
   const focus = [];
   for (const item of value.focus) {
@@ -80,11 +81,13 @@ function project(value, presentationId, now) {
     tour: { kind: tour.kind, index: tour.index, count: tour.count, playing: tour.playing === true,
       label: tour.label, title: tour.title, script, adhoc }, focus, selection,
     narration: value.narration, narrationComplete: value.narrationComplete === true,
+    ...(value.spokenNarration !== undefined && { spokenNarration: value.spokenNarration }),
     ...(live && { live }), ...(composition && { composition }),
     limits: ['Browser-reported rendered tour, not pixel verification or a Core inventory.',
       live ? 'Static topology and Core operational data are separate. Only a matching Core live read supports current state; respect its freshness and source scope.'
         : 'Dated GraphysX snapshot, not live telemetry, file contents or execution evidence.',
-      'Use only this instance and selection; ambiguous or absent selection requires clarification.'] } };
+      'Use only this instance and selection; ambiguous or absent selection requires clarification.',
+      ...(value.spokenNarration !== undefined ? ['Spoken copy is prepared output, not proof of audible delivery.'] : [])] } };
 }
 
 function createEcosystemObserver({ now = Date.now, capacity = 128 } = {}) {
