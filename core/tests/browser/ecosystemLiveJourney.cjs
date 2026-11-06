@@ -16,12 +16,16 @@ if (!modulePath || !report) throw new Error('DISKX_TEST_MODULE and ECOSYSTEM_BRO
 fs.mkdirSync(report, { recursive: true });
 const instance = fs.mkdtempSync(path.join(os.tmpdir(), 'ecosystem-live-'));
 fs.mkdirSync(path.join(instance, 'config'));
+const compositionFixture = process.env.ECOSYSTEM_COMPOSITION_FIXTURE
+  ? JSON.parse(fs.readFileSync(process.env.ECOSYSTEM_COMPOSITION_FIXTURE, 'utf8')) : null;
+if (compositionFixture) fs.writeFileSync(path.join(instance, 'config/ecosystem-composition.json'), JSON.stringify(compositionFixture));
 fs.writeFileSync(path.join(instance, 'config/ecosystem-live.json'), JSON.stringify({ version: 1, nodes: [] }));
 let config = { version: 1, nodes: [{ id: 'core', services: ['core'] }] }, mode = 'online', failure = false, serviceDown = false;
 let collections = 0;
 const app = express(), core = path.resolve(__dirname, '../..');
 app.use('/api/nerve-center', require('../../routes/nerve-center-ecosystem-live')({
   config: () => config, reader: presentationReader,
+  composition: () => require('../../src/services/ecosystemComposition').compositionView({ env: { AGENTX_INSTANCE_ROOT: instance }, reader: presentationReader }),
   buildSnapshot: async () => {
     collections += 1;
     if (failure) throw new Error('Synthetic unavailable collector');
@@ -41,7 +45,7 @@ require('../../surfaces/diskx').register({ app, express, env: { AGENTX_INSTANCE_
 app.use('/js', express.static(path.join(core, 'public/js')));
 app.use('/assets/household', express.static(path.join(core, 'surfaces/household/public')));
 app.get('/api/voix/player.js', (_req, res) => res.sendFile(path.join(core, '../integrations/voix/app/web/voice-audio.js')));
-app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation</title><iframe title="Carte" src="/diskx?app=ecosystem&presentation=live-fixture" style="width:100%;height:950px;border:0"></iframe>'));
+app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation</title><iframe title="Carte" src="/diskx?app=ecosystem&presentation=live-fixture&voice=off" style="width:100%;height:950px;border:0"></iframe>'));
 
 (async () => {
   const server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
@@ -74,6 +78,12 @@ app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation
     const initial = await frame.evaluate(() => document.querySelector('agentx-ecosystem').state());
     const host = initial.nodes.find(node => node.kind === 'host');
     assert.ok(host);
+    if (compositionFixture) {
+      assert.equal(initial.snapshot, compositionFixture.reviewedAt);
+      assert.equal(initial.nodes.length, compositionFixture.nodes.length);
+      assert.deepEqual(initial.nodes.map(node => [node.id, node.name]).sort(), compositionFixture.nodes.map(node => [node.id, node.name]).sort());
+      assert.equal(initial.presentation.composition.contentRevision, require('../../src/services/ecosystemComposition').loadComposition({ AGENTX_INSTANCE_ROOT: instance }).contentRevision);
+    }
     config = { version: 1, nodes: [{ id: host.id, hosts: ['primary'] }, { id: 'core', services: ['core'] }] };
     const state = () => frame.evaluate(() => document.querySelector('agentx-ecosystem').state());
     const awaitState = expected => frame.waitForFunction(({ id, expected }) =>
@@ -97,6 +107,14 @@ app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation
     const evidence = presentationEvidence([{ contract: 'agentx.presentation/v1', id: 'live-fixture', revision: 'live-fixture',
       kind: 'page', page: 'ecosystem', status: 'visible', observation: selected.presentation }], catalog);
     assert.equal(evidence.selection.id, host.id);
+    if (compositionFixture) {
+      assert.equal(evidence.read.composition.status, 'available');
+      assert.deepEqual(evidence.read.composition.data.selection, compositionFixture.nodes.find(node => node.id === host.id));
+      const full = presentationReader.read(selected.presentation.composition.read);
+      assert.deepEqual(full.nodes, compositionFixture.nodes);
+      assert.deepEqual(full.links, compositionFixture.links);
+      assert.deepEqual(full.workflows, compositionFixture.workflows);
+    }
     assert.equal(evidence.read.live.data.nodes.find(node => node.id === host.id).state, 'offline');
     assert.equal(evidence.read.live.data.revision, selected.presentation.live.read.revision);
     const context = screenContext([], catalog, evidence);
@@ -121,6 +139,7 @@ app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation
     assert.equal(lastKnown.live.data.nodes.find(node => node.id === host.id).state, 'online');
     failure = false;
     await awaitState('online');
+    await page.screenshot({ path: path.join(report, 'reviewed-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 950 });
     await frame.locator('.gx-eco-live').scrollIntoViewIfNeeded();
     assert.equal(await frame.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
@@ -129,11 +148,18 @@ app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation
     assert.equal(await frame.evaluate(() => window.__requestedPollIntervals.includes(10000)), true);
     assert.deepEqual(errors, []); assert.deepEqual(httpErrors, []);
     const result = { ok: true, nativeModelCalls: 0, actualDeployedInterface: false, acceleratedPollingFixture: true,
-      collections, checks: ['automatic whole-map update without click', 'same frame and camera', 'selected component recovery',
+      collections, ...(compositionFixture && { reviewedComposition: { nodes: compositionFixture.nodes.length, date: compositionFixture.reviewedAt, coreParity: true } }), checks: ['automatic whole-map update without click', 'same frame and camera', 'selected component recovery',
         'Nestor reads exact rendered Core revision', 'source failure removes healthy appearance', 'last known read remains unavailable',
         'a failed service probe updates without selecting it', 'recovery', 'mobile keyboard controls', 'requested ten-second cadence'], errors, httpErrors };
     fs.writeFileSync(path.join(report, 'result.json'), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));
+  } catch (error) {
+    const page = browser.contexts()[0]?.pages()[0];
+    const frames = page ? await Promise.all(page.frames().map(async frame => ({ url: frame.url(),
+      body: await frame.locator('body').innerText().catch(() => ''),
+      state: await frame.evaluate(() => document.querySelector('agentx-ecosystem')?.state?.()).catch(() => null) }))) : [];
+    fs.writeFileSync(path.join(report, 'failure.json'), JSON.stringify({ error: String(error), errors, httpErrors, frames }, null, 2));
+    throw error;
   } finally {
     await browser.close();
     server.closeAllConnections();

@@ -70,7 +70,7 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
   function publish(snapshot) {
     if (!snapshot) return null;
     const json = JSON.stringify(snapshot);
-    if (Buffer.byteLength(json) > MAX_BYTES) return null;
+    if (Buffer.byteLength(json) > (snapshot.source === 'core.ecosystem.composition' ? 65536 : MAX_BYTES)) return null;
     const revision = createHash('sha256').update(json).digest('hex');
     const id = 'view_' + revision;
     prune();
@@ -88,6 +88,17 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
     return { status: claim.status === 'unavailable' ? 'unavailable'
       : claim.status === 'stale' || data.freshness === 'stale' ? 'stale' : 'available', data };
   }
+  function resolveComposition(claim, snapshot) {
+    const data = read(claim.read);
+    if (data.status !== 'available' || data.source !== 'core.ecosystem.composition' || data.contentRevision !== claim.contentRevision
+      || data.reviewedAt !== snapshot.snapshot || data.observedAt !== claim.read.observedAt || data.expiresAt !== claim.read.expiresAt
+      || snapshot.focus.some(item => !data.nodes.some(node => node.id === item.id && node.name === item.label))) {
+      return { status: 'unavailable', reason: 'no_matching_core_composition_read' };
+    }
+    const selection = data.nodes.find(node => node.id === snapshot.selection.id) || null;
+    return { status: 'available', read: claim.read, data: { contentRevision: data.contentRevision, reviewedAt: data.reviewedAt,
+      source: data.compositionSource, selection, components: data.nodes.length, relationships: data.links.length } };
+  }
   function read(reference = {}) {
     const { id, revision } = reference || {};
     const missing = reason => ({ contract: CONTRACT, status: 'unavailable', reason });
@@ -99,6 +110,10 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
     if (snapshot.source === 'graphysx.ecosystem' && !ecosystem.current(snapshot)) return missing('superseded_display_observation');
     let result = JSON.parse(JSON.stringify(snapshot));
     if (snapshot.source === liveState.SOURCE) result = liveState.readFreshness(result, now());
+    if (snapshot.source === 'graphysx.ecosystem' && result.composition?.read
+      && now() >= Date.parse(result.composition.read.expiresAt)) {
+      result.composition = { status: 'unavailable', reason: 'composition_read_expired' };
+    }
     if (snapshot.source === 'graphysx.ecosystem' && result.live?.data) {
       result.live.data = liveState.readFreshness(result.live.data, now());
       if (result.live.status !== 'unavailable' && result.live.data.freshness === 'stale') result.live.status = 'stale';
@@ -112,10 +127,12 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
     publishRuntime: data => publish(require('./analyticsLivePresentation').runtimeSnapshot(data, now())),
     publishGpus: data => publish(require('./analyticsLivePresentation').gpuSnapshot(data, now())),
     publishEcosystemLive: snapshot => snapshot?.source === liveState.SOURCE ? publish(snapshot) : null,
+    publishEcosystemComposition: snapshot => snapshot?.source === 'core.ecosystem.composition' ? publish(snapshot) : null,
     observeEcosystem(value, presentationId) {
       const result = ecosystem.accept(value, presentationId);
       if (!result.snapshot) return { contract: CONTRACT, status: 'unavailable', reason: result.reason };
-      const snapshot = { ...result.snapshot, ...(result.snapshot.live && { live: resolveLive(result.snapshot.live) }) };
+      const snapshot = { ...result.snapshot, ...(result.snapshot.live && { live: resolveLive(result.snapshot.live) }),
+        ...(result.snapshot.composition && { composition: resolveComposition(result.snapshot.composition, result.snapshot) }) };
       const reference = publish(snapshot);
       return reference ? { ...JSON.parse(JSON.stringify(snapshot)), ...reference, status: 'available' }
         : { contract: CONTRACT, status: 'unavailable', reason: 'observation_not_retained' };
@@ -126,7 +143,7 @@ function createPresentationReader({ now = Date.now, capacity = 128 } = {}) {
 
 const presentationReader = createPresentationReader();
 const PRESENTATION_TOOLS = [{ name: 'read_presentation', title: 'Read Presented Content',
-  description: 'Read the exact Core Analytics, live runtime/GPU/ecosystem, owner calendar, Janitor report or GraphysX display observation referenced by the current screen context. Requires id and revision. Ecosystem display observations may bind a separate Core live-state read: only that data attests operational state; freshness and source scope remain explicit. A browser observation alone is not telemetry. Never fetches a URL or re-executes a tool. Unavailable requires refreshing the view.',
+  description: 'Read the exact Core Analytics, live runtime/GPU/ecosystem, owner calendar, Janitor report or GraphysX display observation referenced by the current screen context. Requires id and revision. Ecosystem display observations may bind a reviewed private composition read (dated roles, relationships and canonical selected node) and a separate Core live-state read: only that data attests operational state; freshness and source scope remain explicit. A browser observation alone is not telemetry. Never fetches a URL or re-executes a tool. Unavailable requires refreshing the view.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['id', 'revision'], properties: {
     id: { type: 'string', pattern: '^view_[a-f0-9]{64}$' }, revision: { type: 'string', pattern: '^[a-f0-9]{64}$' } } },
   annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false } }];

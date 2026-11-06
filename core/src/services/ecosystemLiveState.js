@@ -112,10 +112,10 @@ function readFreshness(snapshot, now = Date.now()) {
       && now >= Date.parse(node.expiresAt) ? 'stale' : node.freshness })) };
 }
 
-function createLiveState({ buildSnapshot, config = loadConfig, reader, now = Date.now } = {}) {
+function createLiveState({ buildSnapshot, config = loadConfig, composition = () => null, reader, now = Date.now } = {}) {
   let cached = null, pending = null, epoch = 0;
   return async function read() {
-    const settings = config(), key = JSON.stringify(settings);
+    const settings = config(), inventory = composition(), key = JSON.stringify([settings, inventory?.contentRevision]);
     if (cached?.key === key && cached.until > now()) return cached.value;
     if (pending?.key === key) return pending.promise;
     const generation = ++epoch;
@@ -123,7 +123,8 @@ function createLiveState({ buildSnapshot, config = loadConfig, reader, now = Dat
       const snapshot = projectSnapshot(await buildSnapshot(), settings, now());
       const read = reader.publishEcosystemLive(snapshot);
       if (!read) throw fail('ECOSYSTEM_LIVE_NOT_RETAINED');
-      const value = { contract: CONTRACT, generatedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt, nodes: snapshot.nodes, read };
+      const value = { contract: CONTRACT, generatedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt, nodes: snapshot.nodes, read,
+        ...(inventory && { composition: { contentRevision: inventory.contentRevision, read: inventory.read } }) };
       if (generation === epoch) cached = { key, until: Math.min(now() + CACHE_MS, Date.parse(value.expiresAt)), value };
       return value;
     })();

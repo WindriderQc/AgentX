@@ -160,11 +160,11 @@ function allowWasm(policy) {
 const escapeAttribute = (value) => String(value)
   .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-function renderPage({ roots, attributes, liveEnabled = false }) {
+function renderPage({ roots, attributes, liveEnabled = false, composition = null }) {
   const ecosystem = attributes.app === 'ecosystem';
   const tag = ecosystem ? 'agentx-ecosystem' : 'diskx-city';
   const title = ecosystem ? 'Écosystème' : 'DiskX';
-  const element = ecosystem ? { ...attributes, ...(liveEnabled && { 'data-live-state': 'true' }) }
+  const element = ecosystem ? { ...attributes, ...(composition && { composition: JSON.stringify(composition) }), ...(liveEnabled && { 'data-live-state': 'true' }) }
     : { 'api-base': API_BASE, roots: roots.join(','), ...attributes, 'actions-href': ACTIONS_HREF };
   const attrs = Object.entries(element).map(([name, value]) => ` ${name}="${escapeAttribute(value)}"`).join('');
   return `<!doctype html>
@@ -240,7 +240,17 @@ function register({ app, express, fetchWithTimeout, fetchData, env = process.env
     const liveEnabled = ecosystem && !(req.familyDevice && !req.familyDevice.unlockedUntil)
       && Boolean(env.AGENTX_INSTANCE_ROOT)
       && require('node:fs').existsSync(path.join(env.AGENTX_INSTANCE_ROOT, 'config/ecosystem-live.json'));
-    return res.type('html').set('Cache-Control', 'no-store').send(renderPage({ roots, attributes, liveEnabled }));
+    let composition = null;
+    if (ecosystem && !(req.familyDevice && !req.familyDevice.unlockedUntil)) {
+      try {
+        composition = require('../../src/services/ecosystemComposition').compositionView({ env,
+          reader: require('../../src/services/presentationReadService').presentationReader });
+      } catch {
+        return res.status(503).type('html').set('Cache-Control', 'no-store')
+          .send(errorPage('Composition de l’écosystème indisponible : vérifiez la configuration de l’instance.'));
+      }
+    }
+    return res.type('html').set('Cache-Control', 'no-store').send(renderPage({ roots, attributes, liveEnabled, composition }));
   });
 
   app.get(MODULE_ROUTE, createScriptRelay({
