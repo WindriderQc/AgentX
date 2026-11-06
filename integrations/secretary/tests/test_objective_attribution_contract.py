@@ -34,7 +34,7 @@ class AttributionContractTests(unittest.TestCase):
         self.assertEqual(grounding.SCHEMA, template)
 
     def test_empty_source_has_no_selectable_moment_summary_or_absence_marker(self):
-        schema = grounding.schema_for(" \r\n\t")
+        schema = grounding.schema_for(" \r\n\t", grounding.SOURCE_CONTRACT)
         self.assertEqual(schema["properties"]["moments"]["maxItems"], 0)
         self.assertEqual(schema["properties"]["summaryCitationIds"]["maxItems"], 0)
         self.assertNotIn("no-source-span", json.dumps(schema))
@@ -58,7 +58,7 @@ class AttributionContractTests(unittest.TestCase):
                 result, _ = grounding.project(raw, body, grounding.FACT_CONTRACT)
                 validate(result, body)
                 self.assertEqual(result["moments"][0]["subject"], subject)
-        for branch in grounding.SCHEMA["properties"]["moments"]["items"]["anyOf"]:
+        for branch in grounding.SCHEMA_V7["properties"]["moments"]["items"]["anyOf"]:
             self.assertNotIn("related", branch["properties"]["subject"]["enum"])
 
     def test_v2_schema_and_projection_preserve_old_proximity_and_sentinel_verbatim(self):

@@ -56,7 +56,7 @@ class Client:
         if "citationCatalog" in payload:
             value.pop("classification")
             value["emptyAssessment"] = "no-life-event"
-            if payload.get("groundingContract", "").endswith(("/v2", "/v3", "/v4", "/v5", "/v6", "/v7")):
+            if payload.get("groundingContract", "").endswith(("/v2", "/v3", "/v4", "/v5", "/v6", "/v7", "/v8")):
                 value.pop("summary")
                 value["summaryCitationIds"] = [row["id"] for row in payload["citationCatalog"][:1]]
             for item in value["moments"]:
@@ -65,17 +65,20 @@ class Client:
                 ids = [row["id"] for row in payload["citationCatalog"] if quote in row["text"]][:1] or ["unknown-span"]
                 item.pop("rationale"); item.pop("relationHints")
                 item.update(observations=[{"text": text, "citationIds": ids}], hypotheses=[])
-            if payload.get("groundingContract", "").endswith(("/v4", "/v5", "/v6", "/v7")):
+            if payload.get("groundingContract", "").endswith(("/v4", "/v5", "/v6", "/v7", "/v8")):
                 value["omittedCueIds"] = []
                 for item in value["moments"]:
                     item.pop("uncertainty")
                     item["factType"] = "life-event"
-            if payload.get("groundingContract", "").endswith(("/v5", "/v6", "/v7")):
+            if payload.get("groundingContract", "").endswith(("/v5", "/v6", "/v7", "/v8")):
                 from test_objective_claim_proofs import wire_v5
                 value = wire_v5(value, payload.get("dateCatalog", []))
-                if payload.get("groundingContract", "").endswith("/v7"):
+                if payload.get("groundingContract", "").endswith(("/v7", "/v8")):
                     from test_objective_source_observations import wire_v7
                     value = wire_v7(value)
+                    if payload.get("groundingContract", "").endswith("/v8"):
+                        from test_objective_useful_selection import wire_v8
+                        value = wire_v8(value, payload["untrustedContent"])
         return value
 
 

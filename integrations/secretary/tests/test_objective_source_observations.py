@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import objective_grounding as grounding
@@ -35,7 +36,7 @@ def response(body, ids=('q1',), qualifications=None, **extra):
 
 
 def project(value, body, context=None):
-    result, changes = normalize_representation(value, body, grounding.CONTRACT, context)
+    result, changes = normalize_representation(value, body, grounding.SOURCE_CONTRACT, context)
     validate(result, body)
     return result, changes
 
@@ -133,7 +134,7 @@ class SourceObservationTests(unittest.TestCase):
 
     def test_schema_binds_qualification_choices_and_removes_generated_wording(self):
         body = 'Une activité est terminée.\nNous appellerons si on se perd.'
-        schema = grounding.schema_for(body)
+        schema = grounding.schema_for(body, grounding.SOURCE_CONTRACT)
         for branch in schema['properties']['moments']['items']['anyOf']:
             props = branch['properties']
             for name in ('title', 'ongoing', 'hypotheses'):self.assertNotIn(name, props)
@@ -144,7 +145,7 @@ class SourceObservationTests(unittest.TestCase):
                 if fields['citationId']['enum'] == ['q2']:
                     self.assertEqual(fields['qualificationIds']['items']['enum'], ['u1'])
                 else:self.assertEqual(fields['qualificationIds']['maxItems'], 0)
-        empty = grounding.schema_for(' \n ')
+        empty = grounding.schema_for(' \n ', grounding.SOURCE_CONTRACT)
         self.assertEqual(empty['properties']['moments']['maxItems'], 0)
 
     def test_frozen_v6_still_projects_its_own_generated_wording(self):
@@ -160,7 +161,10 @@ class SourceObservationTests(unittest.TestCase):
 
 
 class SourceObservationWorkerTests(unittest.TestCase):
-    setUp = fixtures.fixtures.SourceLanguageWorkerTests.setUp
+    def setUp(self):
+        fixtures.fixtures.SourceLanguageWorkerTests.setUp(self)
+        frozen = patch.object(worker, 'SCHEMA', grounding.SCHEMA_V7)
+        frozen.start(); self.addCleanup(frozen.stop)
     mail = fixtures.fixtures.SourceLanguageWorkerTests.mail
     prepare = fixtures.fixtures.SourceLanguageWorkerTests.prepare
     run_worker = fixtures.fixtures.SourceLanguageWorkerTests.run_worker
@@ -169,7 +173,7 @@ class SourceObservationWorkerTests(unittest.TestCase):
         body = "J'ai terminé ce projet.\nJe peux aider au projet. (Ou si je peux aider autrement.)"
         self.mail('message01', body)
         def output(prompt, reply):
-            self.assertEqual(prompt['groundingContract'], grounding.CONTRACT)
+            self.assertEqual(prompt['groundingContract'], grounding.SOURCE_CONTRACT)
             self.assertEqual(prompt['uncertaintyCatalog'][0]['reservationSpan']['text'], '(Ou si je peux aider autrement.)')
             reply['response'] = json.dumps(response(body, ('q1', 'q2'), {'q2': ['u1']},
                 factType='work-activity', category='work', factTypeCitationIds=['q1']))
@@ -178,7 +182,7 @@ class SourceObservationWorkerTests(unittest.TestCase):
         self.assertEqual(self.run_worker(client)['newlyReviewedPages'], 1)
         objective, manifest = self.prepare();file = next((objective/'page-reviews').glob('*.json'))
         row = worker.read_receipt(file, manifest)
-        self.assertEqual(row['resultProcessing']['changes'][0]['contract'], grounding.CONTRACT)
+        self.assertEqual(row['resultProcessing']['changes'][0]['contract'], grounding.SOURCE_CONTRACT)
         self.assertFalse(load(objective/'findings.json')[0]['userConfirmed'])
         self.assertEqual(self.run_worker(client)['inferenceCalls'], 0)
         self.assertEqual(len(calls), 1)
