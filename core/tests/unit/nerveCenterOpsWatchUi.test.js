@@ -85,6 +85,18 @@ describe('Nerve Center operations watch UI', () => {
     expect(summary.className).toBe('nc-section-summary critical');
   });
 
+  it('shows a line the report repeats once, with its count', async () => {
+    const { report } = await harness({
+      report: { at: '2026-10-03T23:24:51.000Z', findingCount: 3, findings: FINDINGS,
+        summary: 'Task failed: check receipts.\nTask failed: check receipts.\n\nWindow expired.', source: 'model', model: 'm' },
+      settings: SETTINGS, scheduled: true, checking: false
+    });
+    expect(report.innerHTML.match(/Task failed: check receipts\./g)).toHaveLength(1);
+    expect(report.innerHTML).toContain('×2');
+    expect(report.innerHTML).toContain('Window expired.');
+    expect(report.innerHTML).not.toContain('Window expired. <span');
+  });
+
   it('says when the plain rule list replaces an unavailable model', async () => {
     const { report, summary } = await harness({
       report: { at: '2026-10-03T23:24:51.000Z', findingCount: 1, findings: [FINDINGS[1]],

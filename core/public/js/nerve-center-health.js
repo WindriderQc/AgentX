@@ -69,37 +69,33 @@
                 </div>`;
             };
 
-            const feedRows = pinned.map(event => renderEvent(event, true)).concat(rest.map(event => renderEvent(event, false)));
+            // Active alerts that need a person come first. Informational active
+            // alerts (completed-work receipts) and history fold below them.
+            const actionable = pinned.filter(event => (event.severity || 'info') !== 'info');
+            const receipts = pinned.filter(event => (event.severity || 'info') === 'info');
+            const actionRows = actionable.map(event => renderEvent(event, true));
+            const foldedRows = receipts.map(event => renderEvent(event, false)).concat(rest.map(event => renderEvent(event, false)));
             const activeAlertCount = Number.isFinite(Number(feedMeta.activeAlertCount))
                 ? Number(feedMeta.activeAlertCount)
                 : pinned.length;
             const groupedRows = Number(feedMeta.groupedRows) || 0;
-            const feedContext = `<div class="nc-host-card" role="status" style="margin-bottom:10px;padding:10px;border-left:3px solid ${activeAlertCount > 0 ? '#f59e0b' : '#4ade80'}">
-                <strong style="color:${activeAlertCount > 0 ? '#f59e0b' : '#4ade80'}">${activeAlertCount} ACTIVE ${activeAlertCount === 1 ? 'ALERT' : 'ALERTS'}</strong>
-                <span class="nc-muted" style="margin-left:8px">The feed below includes labelled history${groupedRows > 0 ? ` · ${groupedRows} repeated persisted rows grouped` : ''}.</span>
+            const tone = actionable.length > 0 ? '#f59e0b' : '#4ade80';
+            const feedContext = `<div class="nc-host-card" role="status" style="margin-bottom:10px;padding:10px;border-left:3px solid ${tone}">
+                <strong style="color:${tone}">${actionable.length === 0 ? 'Nothing needs action' : `${actionable.length} ${actionable.length === 1 ? 'alert needs' : 'alerts need'} action`}</strong>
+                <span class="nc-muted" style="margin-left:8px">in the latest ${events.length} events · ${activeAlertCount} active ${activeAlertCount === 1 ? 'alert' : 'alerts'} in total, receipts included${groupedRows > 0 ? ` · ${groupedRows} repeated rows grouped` : ''}.</span>
             </div>`;
             const voiceCard = renderVoices(panel?.data?.voix);
-            const feedHtml = feedRows.length > 0
-                ? `${voiceCard}${feedContext}<div class="nc-event-list" style="max-height:400px;overflow-y:auto;">${feedRows.join('')}</div>`
+            const actionList = actionRows.length > 0
+                ? `<div class="nc-event-list" style="max-height:400px;overflow-y:auto;">${actionRows.join('')}</div>` : '';
+            const folded = foldedRows.length > 0
+                ? `<details class="nc-feed-folded"><summary>Completed receipts and history (${foldedRows.length})</summary>
+                    <div class="nc-event-list" style="max-height:400px;overflow-y:auto;">${foldedRows.join('')}</div></details>`
+                : '';
+            const feedHtml = events.length > 0
+                ? `${voiceCard}${feedContext}${actionList}${folded}`
                 : `${voiceCard}${feedContext}<div class="nc-section-placeholder" style="padding:20px;text-align:center;color:var(--muted);">No health events</div>`;
 
-            const column = (accent, title, icon, items) => `
-                <div style="background:rgba(255,255,255,0.02);border:1px solid var(--panel-border);border-radius:8px;padding:14px;border-top:3px solid ${accent};">
-                    <div style="font-size:0.8rem;font-weight:700;margin-bottom:8px;"><i class="fas ${icon}" style="color:${accent};margin-right:6px;"></i>${title}</div>
-                    <ul style="list-style:none;padding:0;margin:0;font-size:0.8rem;color:var(--muted);">${items.map(item => `<li style="margin:4px 0;">${shared.escapeHtml(item)}</li>`).join('')}</ul>
-                </div>`;
-
-            const healingHtml = `
-                <div style="margin-top:20px;">
-                    <h4 style="font-size:0.9rem;margin-bottom:12px;">Self-Healing Capabilities</h4>
-                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
-                        ${column('#4ade80', 'Automated', 'fa-check-circle', ['Host failover', 'GPU pin reload', 'Notifications'])}
-                        ${column('#f59e0b', 'Detection Only', 'fa-eye', ['Host health monitoring', 'Benchmark anomaly detection', 'VRAM tracking'])}
-                        ${column('#f87171', 'Manual', 'fa-hand-paper', ['Service restart', 'Cluster rebalance', 'Model reload'])}
-                    </div>
-                </div>`;
-
-            body.innerHTML = `${feedHtml}${healingHtml}`;
+            body.innerHTML = feedHtml;
         } catch (err) {
             console.error('[NerveCenter] loadHealth error:', err);
             shared.renderSectionError(body, 'Failed to load health data');
