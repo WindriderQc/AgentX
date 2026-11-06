@@ -13,6 +13,7 @@ module.exports = function createRouter(options = {}) {
     composition: options.composition || (() => require('../src/services/ecosystemComposition').compositionView({
       reader: options.reader || require('../src/services/presentationReadService').presentationReader })),
     reader: options.reader || require('../src/services/presentationReadService').presentationReader,
+    ...(options.observations && { observations: options.observations }),
     ...(options.now && { now: options.now })
   });
   router.get('/ecosystem/live', async (req, res) => {

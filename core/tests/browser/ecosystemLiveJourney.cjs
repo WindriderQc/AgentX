@@ -13,6 +13,7 @@ const { screenDestinations } = require('../../../shared/screenDestinations');
 const catalog = require('../../public/js/screen-pages').createCatalog(screenDestinations({ agentxProfile: 'full' }));
 const modulePath = process.env.DISKX_TEST_MODULE, report = process.env.ECOSYSTEM_BROWSER_REPORT;
 if (!modulePath || !report) throw new Error('DISKX_TEST_MODULE and ECOSYSTEM_BROWSER_REPORT are required');
+fs.statSync(modulePath);
 fs.mkdirSync(report, { recursive: true });
 const instance = fs.mkdtempSync(path.join(os.tmpdir(), 'ecosystem-live-'));
 fs.mkdirSync(path.join(instance, 'config'));
@@ -21,10 +22,14 @@ const compositionFixture = process.env.ECOSYSTEM_COMPOSITION_FIXTURE
 if (compositionFixture) fs.writeFileSync(path.join(instance, 'config/ecosystem-composition.json'), JSON.stringify(compositionFixture));
 fs.writeFileSync(path.join(instance, 'config/ecosystem-live.json'), JSON.stringify({ version: 1, nodes: [] }));
 let config = { version: 1, nodes: [{ id: 'core', services: ['core'] }] }, mode = 'online', failure = false, serviceDown = false;
+let nativeState = 'online';
+const expandedFixture = process.env.ECOSYSTEM_LIVE_FIXTURE ? JSON.parse(fs.readFileSync(process.env.ECOSYSTEM_LIVE_FIXTURE, 'utf8')) : null;
 let collections = 0;
 const app = express(), core = path.resolve(__dirname, '../..');
 app.use('/api/nerve-center', require('../../routes/nerve-center-ecosystem-live')({
   config: () => config, reader: presentationReader,
+  observations: async () => (config.nodes || []).filter(row => row.observations).flatMap(row => row.observations.map(id => ({
+    id, source: 'native_process', state: nativeState, observedAt: new Date().toISOString() }))),
   composition: () => require('../../src/services/ecosystemComposition').compositionView({ env: { AGENTX_INSTANCE_ROOT: instance }, reader: presentationReader }),
   buildSnapshot: async () => {
     collections += 1;
@@ -74,7 +79,7 @@ app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation
     await page.goto(origin);
     const frame = page.frames().find(frame => new URL(frame.url()).pathname === '/diskx');
     assert.ok(frame);
-    await frame.waitForFunction(() => document.querySelector('agentx-ecosystem')?.state()?.presentation?.live?.status === 'available');
+    await frame.waitForFunction(() => document.querySelector('agentx-ecosystem')?.state?.()?.presentation?.live?.status === 'available');
     const initial = await frame.evaluate(() => document.querySelector('agentx-ecosystem').state());
     const host = initial.nodes.find(node => node.kind === 'host');
     assert.ok(host);
@@ -139,6 +144,25 @@ app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation
     assert.equal(lastKnown.live.data.nodes.find(node => node.id === host.id).state, 'online');
     failure = false;
     await awaitState('online');
+    if (expandedFixture) {
+      config = expandedFixture;
+      const nodeId = config.nodes.find(row => row.observations).id;
+      await frame.waitForFunction(count => document.querySelectorAll('.gx-eco-live li').length === count, config.nodes.length, {timeout:20000});
+      const expanded = await state();
+      assert.equal(expanded.live.nodes.filter(node => node.source !== 'unobserved').length, config.nodes.filter(row => !row.unobserved).length);
+      assert.equal(expanded.presentation.selection.id,host.id);
+      nativeState = 'offline';
+      await frame.waitForFunction(id => document.querySelector(`.gx-eco-live li[data-node-id="${id}"]`)?.dataset.state === 'offline',nodeId,{timeout:20000});
+      const changed = await state();
+      assert.equal(changed.presentation.instance,expanded.presentation.instance);
+      assert.deepEqual(changed.nodes.map(node=>node.screen),expanded.nodes.map(node=>node.screen));
+      const exact = presentationReader.read(changed.presentation.live.read);
+      assert.equal(exact.nodes.find(node=>node.id===nodeId).state,'offline');
+      assert.equal(exact.nodes.find(node=>node.id===nodeId).observedAt,changed.live.nodes.find(node=>node.id===nodeId).observedAt);
+      assert.ok(changed.live.nodes.filter(node=>node.source==='unobserved').every(node=>node.displayState==='unknown'));
+      nativeState='online';
+      await frame.waitForFunction(id => document.querySelector(`.gx-eco-live li[data-node-id="${id}"]`)?.dataset.state === 'online',nodeId,{timeout:20000});
+    }
     await page.screenshot({ path: path.join(report, 'reviewed-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 390, height: 950 });
     await frame.locator('.gx-eco-live').scrollIntoViewIfNeeded();
@@ -148,7 +172,7 @@ app.get('/', (_req, res) => res.send('<!doctype html><title>Fixture conversation
     assert.equal(await frame.evaluate(() => window.__requestedPollIntervals.includes(10000)), true);
     assert.deepEqual(errors, []); assert.deepEqual(httpErrors, []);
     const result = { ok: true, nativeModelCalls: 0, actualDeployedInterface: false, acceleratedPollingFixture: true,
-      collections, ...(compositionFixture && { reviewedComposition: { nodes: compositionFixture.nodes.length, date: compositionFixture.reviewedAt, coreParity: true } }), checks: ['automatic whole-map update without click', 'same frame and camera', 'selected component recovery',
+      collections, expandedLiveComponents: expandedFixture?.nodes.length || null, ...(compositionFixture && { reviewedComposition: { nodes: compositionFixture.nodes.length, date: compositionFixture.reviewedAt, coreParity: true } }), checks: ['automatic whole-map update without click', 'same frame and camera', 'selected component recovery',
         'Nestor reads exact rendered Core revision', 'source failure removes healthy appearance', 'last known read remains unavailable',
         'a failed service probe updates without selecting it', 'recovery', 'mobile keyboard controls', 'requested ten-second cadence'], errors, httpErrors };
     fs.writeFileSync(path.join(report, 'result.json'), JSON.stringify(result, null, 2));
