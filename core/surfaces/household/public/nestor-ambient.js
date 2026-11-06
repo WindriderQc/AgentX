@@ -166,7 +166,9 @@
       saveVisits(visits);
       const iframe = doc.createElement('iframe');
       iframe.className = 'nestor-ambient-visit-frame';
-      iframe.src = src;
+      const silent = new URL(src, root.location.origin);
+      silent.searchParams.set('voice', 'off');
+      iframe.src = silent.href;
       iframe.title = 'Visite guidée de la maison connectée';
       iframe.tabIndex = -1;
       iframe.referrerPolicy = 'no-referrer';

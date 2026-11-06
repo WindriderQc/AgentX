@@ -27,19 +27,37 @@
     const pin = region.querySelector('[data-action="pin"]');
     const manual = () => root.dispatchEvent(new CustomEvent('nestor-presentation-user-change'));
     const feedback = region.querySelector('.page-presentation-feedback');
-    let cards = [], latest = null, selected = null;
+    let cards = [], latest = null, selected = null, conversationBusy = false;
 
     // The read-only task frame discards profile data when hidden or closed.
     // Only visibility crosses this same-origin boundary, never profile content.
     function notifyTaskFrames() {
       for (const card of cards) {
-        if (card._screenTarget?.page !== 'kids-tasks') continue;
+        const page = card._screenTarget?.page;
+        if (!['kids-tasks', 'ecosystem'].includes(page)) continue;
         const frame = card.querySelector('iframe'); if (!frame) continue;
         if (!frame._taskVisibilityBound) { frame._taskVisibilityBound = true; frame.addEventListener('load', notifyTaskFrames); }
-        frame.contentWindow?.postMessage({ type: 'agentx.page-visibility', visible: !document.hidden && !document.querySelector('.nestor-idle-photos:not([hidden])') && region.classList.contains('is-active') && selected === card }, root.location.origin);
+        const visible = !document.hidden && !document.querySelector('.nestor-idle-photos:not([hidden])') && region.classList.contains('is-active') && selected === card;
+        if (page === 'kids-tasks') frame.contentWindow?.postMessage({ type: 'agentx.page-visibility', visible }, root.location.origin);
+        else {
+          try { frame.contentWindow?.AgentXEcosystemConversation?.update({ visible, busy: conversationBusy }); } catch { /* only a same-origin guide participates */ }
+        }
       }
     }
 
+    const conversation = event => {
+      const busy = event.detail?.conversationBusy === true;
+      if (busy === conversationBusy) return;
+      conversationBusy = busy; notifyTaskFrames();
+    };
+    const question = () => {
+      for (const card of cards) {
+        if (card._screenTarget?.page !== 'ecosystem') continue;
+        try { card.querySelector('iframe')?.contentWindow?.AgentXEcosystemConversation?.pause(); } catch { /* unavailable frame */ }
+      }
+    };
+    root.addEventListener('persona-presence', conversation);
+    root.addEventListener('nestor-question-start', question);
     document.addEventListener('visibilitychange', notifyTaskFrames);
     root.addEventListener('nestor-idle-photos-visibility', notifyTaskFrames);
     function present(active) {
@@ -79,6 +97,8 @@
     const observer = new MutationObserver(() => {
       if (region.isConnected) return;
       observer.disconnect();
+      root.removeEventListener('persona-presence', conversation);
+      root.removeEventListener('nestor-question-start', question);
       document.removeEventListener('visibilitychange', notifyTaskFrames);
       root.removeEventListener('nestor-idle-photos-visibility', notifyTaskFrames);
       root.dispatchEvent(new CustomEvent('nestor-page-presentation'));

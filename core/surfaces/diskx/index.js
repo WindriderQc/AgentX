@@ -82,13 +82,17 @@ const single = (value) => (Array.isArray(value) ? value[0] : value);
  */
 function checkQuery(query = {}, roots = []) {
   const ecosystem = single(query.app) === 'ecosystem';
-  const allowed = ecosystem ? ['app', 'view', 'from', 'play', 'presentation'] : ['janitor', 'group', 'focus', 'report', 'view', 'from', 'play'];
+  const allowed = ecosystem ? ['app', 'view', 'from', 'play', 'presentation', 'voice'] : ['janitor', 'group', 'focus', 'report', 'view', 'from', 'play'];
   const unknown = Object.keys(query).filter((key) => !allowed.includes(key));
   if (unknown.length) throw invalid(`Unknown parameter: ${unknown[0].slice(0, 40)}`);
   if (query.view !== undefined && single(query.view) !== 'screen') throw invalid('view must be screen');
   if (query.from !== undefined && single(query.from) !== 'nestor') throw invalid('from must be nestor');
   if (ecosystem) {
     const attributes = { app: 'ecosystem' };
+    if (query.voice !== undefined) {
+      if (single(query.voice) !== 'off') throw invalid('voice must be off when explicitly supplied');
+      attributes.voice = 'off';
+    }
     if (query.play !== undefined) {
       const play = ecosystemPlay(single(query.play));
       if (!play) throw invalid('play must be an ecosystem presentation list');

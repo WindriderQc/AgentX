@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createNarrator } = require('../public/ecosystem-voice');
+const { createNarrator, bindConversation } = require('../public/ecosystem-voice');
 const { createSpeechLadder } = require('../../../public/js/voice/speech-ladder');
 const PersonaPresentation = require('../../household/public/persona-presentation');
 
@@ -23,14 +23,14 @@ function harness({ status = 200, catalogStatus = 200 } = {}) {
   return { narrator: createNarrator(env), requests, spoken, signal: () => abort?.signal };
 }
 
-test('the tour resolves the installed Nestor voice and sends only the displayed French narration', async () => {
+test('the guide uses the shared French female voice without reading or mutating Nestor preferences', async () => {
   const h = harness();
   assert.equal(h.requests.length, 0, 'no speech or catalog request on page load');
   await h.narrator('Voici le composant.', new AbortController().signal);
-  assert.deepEqual(h.requests.map(row => row.url), ['/api/voice-personas/catalog', '/api/voix/synthesize/stream']);
-  assert.deepEqual(JSON.parse(h.requests[1].options.body), { text: 'Voici le composant.', language: 'fr', voice: 'configured-voice', tts_provider: 'voxcpm' });
+  assert.deepEqual(h.requests.map(row => row.url), ['/api/voix/synthesize/stream']);
+  assert.deepEqual(JSON.parse(h.requests[0].options.body), { text: 'Voici le composant.', language: 'fr', voice: 'ff_siwis', tts_provider: 'kokoro' });
   await h.narrator('Étape suivante.', new AbortController().signal);
-  assert.equal(h.requests.filter(row => row.url.endsWith('/catalog')).length, 1);
+  assert.equal(h.requests.filter(row => row.url.endsWith('/catalog')).length, 0);
 });
 
 test('speech outage falls back to the device, while access refusals remain terminal', async () => {
@@ -38,7 +38,6 @@ test('speech outage falls back to the device, while access refusals remain termi
   await h.narrator('Bonjour.', new AbortController().signal);
   assert.deepEqual(h.spoken[0], { browserSpeech: { text: 'Bonjour.', language: 'fr' } });
   await assert.rejects(harness({ status: 403 }).narrator('Bonjour.', new AbortController().signal), /refused/);
-  await assert.rejects(harness({ catalogStatus: 403 }).narrator('Bonjour.', new AbortController().signal), /refusé/);
 });
 
 test('a replaced step aborts pending synthesis and an already cancelled phrase never starts', async () => {
@@ -53,5 +52,49 @@ test('a replaced step aborts pending synthesis and an already cancelled phrase n
     } }
   };
   const signal = new AbortController(), speaking = createNarrator(env)('Étape.', signal.signal);
-  signal.abort(); await speaking;
+  await Promise.resolve(); signal.abort(); await speaking;
+});
+
+test('embedded guides wait until visible and idle, and questions never resume them automatically', () => {
+  const calls = [];
+  const view = { tour: { conversation: busy => calls.push(['busy', busy]), play: () => calls.push(['play']) } };
+  const guide = bindConversation(view, { embedded: true });
+  assert.deepEqual(calls, [['busy', true]]);
+  guide.update({ visible: true, busy: true });
+  assert.equal(calls.some(row => row[0] === 'play'), false);
+  guide.update({ visible: true, busy: false });
+  assert.equal(calls.filter(row => row[0] === 'play').length, 1);
+  guide.pause(); guide.update({ visible: true, busy: true }); guide.update({ visible: true, busy: false });
+  assert.equal(calls.filter(row => row[0] === 'play').length, 1, 'answer completion leaves manual resume available');
+  guide.update({ visible: false, busy: false });
+  assert.deepEqual(calls.at(-1), ['busy', true]);
+});
+
+test('a browser autoplay lock opens no synthesis request and a later gesture can retry', async () => {
+  const calls = [];
+  let allowed = false;
+  const env = { AgentXVoice: {}, AgentXSpeechLadder: { createSpeechLadder },
+    AudioContext: class { state = allowed ? 'running' : 'suspended'; resume() { return allowed ? Promise.resolve() : new Promise(() => {}); } async close() {} },
+    VoixAudio: { Speech: class { async speak() { calls.push('speech'); } cancel() {} } }
+  };
+  const narrator = createNarrator(env);
+  await assert.rejects(narrator('Bonjour.', new AbortController().signal), { name: 'NotAllowedError' });
+  assert.deepEqual(calls, []);
+  allowed = true; await narrator('Bonjour.', new AbortController().signal);
+  assert.deepEqual(calls, ['speech']);
+});
+
+test('a question during frame startup cancels its pending automatic start', () => {
+  const calls = [];
+  const view = { tour: { conversation() {}, play: () => calls.push('play') } };
+  const guide = bindConversation(view, { embedded: true });
+  guide.pause(); guide.update({ visible: true, busy: false });
+  assert.deepEqual(calls, []);
+});
+
+test('silent ambient playback is an explicit, bounded ecosystem option', () => {
+  const diskx = require('../index');
+  assert.deepEqual(diskx.checkQuery({ app: 'ecosystem', voice: 'off' }), { app: 'ecosystem', voice: 'off' });
+  assert.throws(() => diskx.checkQuery({ app: 'ecosystem', voice: 'custom' }));
+  assert.throws(() => diskx.checkQuery({ voice: 'off' }));
 });
