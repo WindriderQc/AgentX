@@ -311,10 +311,10 @@
   }
   const activeState = state => ['Active', 'In progress'].includes(state);
   function stageTone(state) {
-    return activeState(state) ? 'active'
+    return activeState(state) ? 'active' : state === 'Not used' ? 'unused'
       : ['Failed', 'Uncertain', 'Interrupted', 'Cancelled', 'Paused', 'Waiting', 'Unavailable'].includes(state) ? 'caution'
         : ['Done', 'Available', 'Included'].includes(state) ? 'complete'
-          : ['Unknown', 'No voice'].includes(state) ? 'unknown' : 'observed';
+          : ['Unknown', 'No voice', 'No receipt'].includes(state) ? 'unknown' : 'observed';
   }
   function svgNode(tag, attributes = {}, value) {
     const element = document.createElementNS ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
@@ -322,50 +322,139 @@
     if (value !== undefined) element.textContent = value;
     return element;
   }
-  function flowGraph(stateFor, connections, stale, compact, inspect) {
-    const figure = node('figure', 'workflow-graph'); figure.dataset.key = 'graph';
+  // One fixed line for every engine: a stop that is not used stays in place, dotted, so the drawing never changes shape.
+  const MAIN_STOPS = ['origin', 'stt', 'guardian', 'tools', 'tts', 'answer'];
+  const BRANCH_STOPS = ['review', 'agents'];
+  const STOP_LABELS = { origin: 'Your turn', stt: 'Transcription', guardian: 'Nestor', tools: 'Tools', tts: 'Voice',
+    answer: 'Answer', review: 'Review', agents: 'Agents' };
+  const TRAIL_LABELS = { stt: 'Heard', guardian: 'Nestor', tools: 'Tools', tts: 'Voice', review: 'Review' };
+  function stopState(key, row, stateFor, stale) {
+    if (key === 'origin') return row ? [row.channel === 'voice' ? 'Spoken' : row.channel === 'text' ? 'Written' : 'Received', 'complete'] : ['Waiting', 'unknown'];
+    if (key === 'answer') {
+      if (!row) return ['Pending', 'unknown'];
+      if (row.error) return ['Failed', 'caution'];
+      if (row.interrupted) return ['Interrupted', 'caution'];
+      if (row.done) return ['Received', 'complete'];
+      if (row.deferred) return ['Kept for later', 'observed'];
+      return row.firstText ? ['Writing', 'observed'] : ['Pending', 'unknown'];
+    }
+    const [state] = stateFor(key);
+    return [state, stale && activeState(state) ? 'unknown' : stageTone(state)];
+  }
+  // The train stands on the furthest stop with evidence; it pulses while the browser turn is still open.
+  function metroProgress(row, stateFor, stale) {
+    const states = Object.fromEntries([...MAIN_STOPS, ...BRANCH_STOPS].map(key => [key, stopState(key, row, stateFor, stale)]));
+    const reached = key => !['unknown', 'unused'].includes(states[key][1]);
+    const active = MAIN_STOPS.map((key, index) => states[key][1] === 'active' ? index : -1).filter(index => index >= 0);
+    const furthest = MAIN_STOPS.reduce((best, key, index) => reached(key) ? index : best, -1);
+    const train = active.length ? active.at(-1) : furthest;
+    const live = !!row?.live && !stale;
+    const branchTrain = BRANCH_STOPS.reduce((best, key, index) => reached(key) ? index : best, -1);
+    return { states, reached, train, live, branchTrain,
+      skipped: key => { const index = MAIN_STOPS.indexOf(key); return index >= 0 && index < train && !reached(key); } };
+  }
+  function nowLine(row, progress) {
+    if (!row) return 'Waiting for your next turn';
+    if (row.error) return 'The answer failed · see the log';
+    if (row.interrupted) return 'Turn interrupted';
+    const activity = row.currentActivity;
+    const background = BRANCH_STOPS.some(key => progress.states[key][1] === 'active');
+    if (row.live) {
+      if (activity?.kind === 'tool') return `Nestor is using a tool${activity.tool ? ` · ${safe(activity.tool)}` : ''}`;
+      if (activity?.kind === 'waiting_agent') return `Waiting for an agent${activity.agentId ? ` · ${safe(activity.agentId)}` : ''}`;
+      if (row.phase === 'waiting_host') return 'Waiting for the inference host';
+      if (row.phase === 'transcribing') return 'Recognizing your voice';
+      if (row.firstText) return 'Nestor is answering';
+      if (row.stream?.includes('accepted')) return 'Nestor is preparing the answer';
+      return 'Request sent to Nestor';
+    }
+    if (row.deferred) return 'Request kept · Nestor will come back to it';
+    if (row.done) return background ? 'Answer delivered · background review still running' : 'Answer delivered';
+    return 'Turn recorded';
+  }
+  function metroGraph(row, stateFor, connections, stale, compact, inspect, measures = {}, hermes = false) {
+    const figure = node('figure', 'workflow-graph workflow-metro'); figure.dataset.key = 'graph';
     figure.dataset.compact = String(compact);
-    const svg = svgNode('svg', { viewBox: compact ? '0 0 350 358' : '0 0 740 248', role: 'group',
-      'aria-label': `Turn flow. ${STAGES.map(([key, label]) => `${label}: ${stateFor(key)[0]}`).join('. ')}. Solid paths have recorded handoffs; dotted paths await evidence.` });
-    const route = (name, path, connected, target) => {
+    const progress = metroProgress(row, stateFor, stale);
+    const svg = svgNode('svg', { viewBox: compact ? '0 0 350 430' : '0 0 740 196', role: 'group',
+      'aria-label': `Turn path. ${[...MAIN_STOPS, ...BRANCH_STOPS].map(key => `${STOP_LABELS[key]}: ${progress.states[key][0]}`).join('. ')}. Bright lines have recorded handoffs; dotted lines are not reached.` });
+    const main = compact ? MAIN_STOPS.map((key, index) => [key, 40, 30 + index * 70]) : MAIN_STOPS.map((key, index) => [key, 36 + index * 130, 120]);
+    const branch = compact ? [['review', 230, 250], ['agents', 230, 320]] : [['review', 456, 46], ['agents', 596, 46]];
+    const at = Object.fromEntries([...main, ...branch].map(([key, x, y]) => [key, [x, y]]));
+    const route = (name, path, connected, target, travelled, unused = false) => {
       const tone = connected ? !stale && activeState(stateFor(target)[0]) ? 'active' : 'recorded' : 'pending';
       const group = svgNode('g', { class: 'workflow-route', 'data-key': `route:${name}`, 'data-stage': target,
-        'data-connected': String(!!connected), 'data-tone': tone });
+        'data-connected': String(!!connected), 'data-tone': tone, 'data-travelled': String(!!travelled), 'data-unused': String(unused) });
       group.append(svgNode('path', { d: path, class: 'workflow-route-base' }), svgNode('path', { d: path, class: 'workflow-route-packet' }));
       svg.append(group);
     };
-    route('recognition', compact ? 'M87 106V150' : 'M212 66H270', connections.recognition, 'guardian');
-    route('playback', compact ? 'M87 226V270' : 'M470 66H528', connections.playback, 'tts');
-    route('background', compact ? 'M166 188H175V68H184' : 'M370 104V119Q370 127 362 127H120Q112 127 112 135V162', connections.background, 'review');
-    if (connections.guardianTools) route('guardian-tools', compact ? 'M166 206H175V250H263V270' : 'M420 104V119Q420 127 428 127H620Q628 127 628 135V162', true, 'tools');
-    route('delegation', compact ? 'M263 106V150' : 'M212 200H270', connections.delegation, 'agents');
-    route('tools', compact ? 'M263 226V270' : 'M470 200H528', connections.tools, 'tools');
-    svg.append(svgNode('text', { x: compact ? 8 : 12, y: 15, class: 'workflow-graph-lane' }, compact ? '01 / DIRECT' : '01 / DIRECT ANSWER'),
-      svgNode('text', { x: compact ? 184 : 12, y: compact ? 15 : 149, class: 'workflow-graph-lane workflow-graph-lane-background' }, compact ? '02 / BACKGROUND' : '02 / BACKGROUND WORK'));
-    const positions = compact
-      ? [['stt', 8, 30], ['guardian', 8, 150], ['tts', 8, 270], ['review', 184, 30], ['agents', 184, 150], ['tools', 184, 270]]
-      : [['stt', 12, 28], ['guardian', 270, 28], ['tts', 528, 28], ['review', 12, 162], ['agents', 270, 162], ['tools', 528, 162]];
-    for (const [key, x, y] of positions) {
-      const [state] = stateFor(key), label = STAGES.find(stage => stage[0] === key)[1];
-      const group = svgNode('g', { transform: `translate(${x} ${y})`, class: 'workflow-graph-node',
-        'data-stage': key, 'data-key': `graph:${key}`, 'data-tone': stale && activeState(state) ? 'unknown' : stageTone(state),
-        role: 'button', tabindex: '0', 'aria-label': `${label}: ${state}. Inspect stage receipts.` });
-      group.addEventListener?.('click', () => inspect(key));
-      group.addEventListener?.('keydown', event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); inspect(key); } });
-      const icon = svgNode('g', { transform: compact ? 'translate(12 16)' : 'translate(15 16)', class: 'workflow-graph-icon', fill: 'none', stroke: 'currentColor',
-        'stroke-width': 1.7, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });
-      icon.innerHTML = ICONS[key];
-      group.append(svgNode('rect', { width: compact ? 158 : 200, height: 76, rx: 12, class: 'workflow-graph-node-bg' }),
-        svgNode('circle', { cx: compact ? 24 : 27, cy: 28, r: 19, class: 'workflow-graph-halo' }), icon,
-        svgNode('text', { x: compact ? 47 : 56, y: 28, class: 'workflow-graph-label' }, label),
-        svgNode('circle', { cx: compact ? 49 : 61, cy: 49, r: 3, class: 'workflow-graph-led' }),
-        svgNode('text', { x: compact ? 58 : 72, y: 53, class: 'workflow-graph-state' }, compact && state === 'Playback requested' ? 'Requested' : state));
-      for (let bar = 0; bar < (compact ? 9 : 12); bar++) group.append(svgNode('rect', { x: 16 + bar * 14, y: 65, width: 8, height: 2,
-        rx: 1, class: 'workflow-graph-bar', style: `--bar-delay:${bar * -90}ms` }));
+    const segment = (from, to) => {
+      const [x1, y1] = at[from], [x2, y2] = at[to];
+      return compact ? `M${x1} ${y1 + 11}V${y2 - 11}` : `M${x1 + 11} ${y1}H${x2 - 11}`;
+    };
+    const index = key => MAIN_STOPS.indexOf(key);
+    const has = type => row?.stream?.includes(type);
+    route('intake', segment('origin', 'stt'), has('accepted'), 'stt', progress.train >= index('stt'));
+    route('recognition', segment('stt', 'guardian'), connections.recognition, 'guardian', progress.train >= index('guardian'));
+    route('guardian-tools', segment('guardian', 'tools'), connections.guardianTools, 'tools', progress.train >= index('tools'));
+    route('playback', segment('tools', 'tts'), connections.playback, 'tts', progress.train >= index('tts'));
+    route('answer', segment('tts', 'answer'), !!row?.done, 'answer', progress.train >= index('answer'));
+    route('background', compact ? 'M48 178C70 196 120 200 200 200Q230 200 230 230V239' : 'M296 109C296 72 318 46 358 46H445',
+      connections.background, 'review', progress.branchTrain >= 0, hermes);
+    route('delegation', compact ? 'M230 261V309' : 'M467 46H585', connections.delegation, 'agents', progress.branchTrain >= 1, hermes);
+    svg.append(svgNode('text', { x: compact ? 8 : 12, y: compact ? 12 : 96, class: 'workflow-graph-lane' }, compact ? '01 / DIRECT' : '01 / DIRECT ANSWER'),
+      svgNode('text', { x: compact ? 252 : 12, y: compact ? 222 : 50, class: 'workflow-graph-lane workflow-graph-lane-background' },
+        compact ? '02 / BACKGROUND' : hermes ? '02 / BACKGROUND · NOT USED' : '02 / BACKGROUND WORK'));
+    if (!compact) svg.append(svgNode('path', { d: 'M700 38V54', class: 'workflow-metro-end' }));
+    const stop = (key, x, y, lane) => {
+      const [state, tone] = progress.states[key];
+      const stage = !['origin', 'answer'].includes(key);
+      const current = lane === 'main' ? progress.train === index(key) : false;
+      const group = svgNode('g', { class: 'workflow-graph-node workflow-metro-stop', 'data-stage': key, 'data-key': `graph:${key}`,
+        'data-tone': tone, 'data-skipped': String(lane === 'main' && progress.skipped(key)), 'data-current': String(current && progress.live) });
+      if (stage) {
+        group.setAttribute('role', 'button'); group.setAttribute('tabindex', '0');
+        group.setAttribute('aria-label', `${STOP_LABELS[key]}: ${state}. Inspect stage receipts.`);
+        group.addEventListener?.('click', () => inspect(key));
+        group.addEventListener?.('keydown', event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); inspect(key); } });
+      }
+      const measured = validMs(measures[key]) ? ` · ${duration(measures[key])}` : '';
+      const shown = (compact && state === 'Playback requested' ? 'Requested' : state) + measured;
+      const above = lane === 'branch' && !compact;
+      const label = compact ? { x: x + 22, y: y - 1, anchor: 'start' } : { x, y: above ? y - 22 : y + 32, anchor: 'middle' };
+      group.append(svgNode('circle', { cx: x, cy: y, r: 16, class: 'workflow-metro-halo' }),
+        svgNode('circle', { cx: x, cy: y, r: lane === 'main' ? 9 : 7, class: 'workflow-metro-dot' }),
+        svgNode('text', { x: label.x, y: label.y, 'text-anchor': label.anchor, class: 'workflow-graph-label' }, STOP_LABELS[key]),
+        svgNode('text', { x: label.x, y: compact ? label.y + 16 : above ? y + 24 : label.y + 18, 'text-anchor': label.anchor, class: 'workflow-graph-state' }, shown));
       svg.append(group);
-    }
-    figure.append(svg, node('figcaption', 'workflow-graph-legend', 'Solid paths · recorded handoffs    /    Dotted paths · awaiting evidence    /    Select a stage to inspect'));
+    };
+    main.forEach(([key, x, y]) => stop(key, x, y, 'main'));
+    branch.forEach(([key, x, y]) => stop(key, x, y, 'branch'));
+    const [tx, ty] = at[MAIN_STOPS[Math.max(0, progress.train)]];
+    const train = svgNode('g', { class: 'workflow-metro-train', 'data-key': 'train', 'data-live': String(progress.live),
+      'data-placed': String(progress.train >= 0), style: `transform: translate(${tx}px, ${ty}px)` });
+    train.append(svgNode('circle', { r: 13, class: 'workflow-metro-train-ring' }), svgNode('circle', { r: 6, class: 'workflow-metro-train-core' }));
+    svg.append(train);
+    figure.append(svg, node('figcaption', 'workflow-graph-legend', 'Moving dot · furthest step with evidence    /    Bright line · recorded handoff    /    Dotted · not reached or not used    /    Select a stop to inspect'));
     return figure;
+  }
+  // A compact copy of the same line under the message that started the turn.
+  function trailFor(row, stale) {
+    const stateFor = key => stageState(key, { ...row, telemetryStale: stale });
+    const progress = metroProgress(row, stateFor, stale);
+    const trail = node('span');
+    for (const key of ['stt', 'guardian', 'tools', 'tts']) {
+      const item = node('span', 'turn-trail-stop'); item.dataset.key = `trail:${key}`;
+      item.dataset.tone = progress.states[key][1]; item.dataset.skipped = String(progress.skipped(key));
+      item.dataset.current = String(progress.train === MAIN_STOPS.indexOf(key) && progress.live);
+      item.append(node('i', 'turn-trail-dot'), node('span', 'turn-trail-label', TRAIL_LABELS[key]));
+      trail.append(item);
+    }
+    const [reviewState, reviewTone] = progress.states.review;
+    const chip = node('span', 'turn-trail-branch', `${TRAIL_LABELS.review} · ${reviewTone === 'unused' ? 'not used' : reviewState.toLowerCase()}`);
+    chip.dataset.key = 'trail:review'; chip.dataset.tone = reviewTone;
+    if (reviewTone !== 'unknown') trail.append(chip);
+    return { trail, summary: `${nowLine(row, progress)}. ${['stt', 'guardian', 'tools', 'tts', 'review'].map(key => `${TRAIL_LABELS[key]}: ${progress.states[key][0]}`).join(' · ')}` };
   }
   function reconcileChildren(parent, fresh) {
     if (!parent.childNodes) { parent.replaceChildren(...fresh.children); return; }
@@ -409,11 +498,11 @@
     }
     return null;
   }
-  function create({ host, signal = null, onSnapshot = () => {} }) {
+  function create({ host, signal = null, onSnapshot = () => {}, trails = null }) {
     const model = createModel();
     const compactMedia = root.matchMedia?.('(max-width: 760px)');
     let compactFlow = !!compactMedia?.matches || (host.getBoundingClientRect?.().width || Infinity) < 600;
-    let selected = null, turnOffset = 0, eventOffset = 0;
+    let selected = null, turnOffset = 0, eventOffset = 0, clock = null;
     const overview = node('div', 'workflow-map'); overview.setAttribute('aria-label', 'Workflow components');
     const panel = node('details', 'workflow-panel');
     const summary = node('summary', 'workflow-toggle', 'Log and receipts');
@@ -439,7 +528,8 @@
       const canvas = node('div');
       const chosen = { ...(current || { channel: 'unknown', works: [], reviews: [] }), telemetryStale: view.stale };
       const hermes = current?.execution?.backend === 'hermes';
-      const stages = hermes ? STAGES.filter(([key]) => !['review', 'agents'].includes(key)) : STAGES;
+      // Every engine keeps the same stages; one it does not use reports "Not used" in place.
+      const stages = STAGES;
       const stageLabel = key => hermes && key === 'guardian' ? 'Hermes' : STAGES.find(stage => stage[0] === key)[1];
       const stateFor = key => stageState(key, chosen);
       const isActive = activeState;
@@ -477,44 +567,47 @@
         node('strong', 'workflow-map-title', current ? `Turn ${rows.indexOf(current) + 1} · ${current.channel === 'voice' ? compact ? 'voice' : 'voice conversation' : current.channel === 'text' ? compact ? 'text' : 'text conversation' : 'unknown channel'}` : 'Waiting for a turn'));
       head.append(node('span', 'workflow-live-count', view.stale ? 'Core data not refreshed' : activeCount ? `${activeCount} component${activeCount > 1 ? 's' : ''} in progress` : 'No active stage'));
       canvas.append(head);
+      const progress = metroProgress(current, stateFor, view.stale);
+      clock = Number.isFinite(current?.browserStartedAt) ? { start: current.browserStartedAt, end: current.browserEndedAt, live: !!current.live && !view.stale } : null;
+      const now = node('div', 'workflow-now'); now.dataset.key = 'now'; now.dataset.live = String(progress.live);
+      const nowText = node('span', 'workflow-now-text', nowLine(current, progress)); nowText.setAttribute('role', 'status');
+      now.append(nowText, node('span', 'workflow-clock', clockText()));
+      canvas.append(now);
       const lastCapture = view.captures.at(-1);
       const captureLabels = { stop: 'Stop recognized · no new request', local: 'Screen command handled on this page · no request', activation: 'Activation recognized · conversation open',
         not_addressed: 'Not addressed · no request', empty: 'No recognized words · no request', echo: 'Playback echo filtered · no request',
         failed: 'Transcription failed · no request', cancelled: 'Capture cancelled · no request', recognized: 'Capture recognized · no Core request',
         not_submitted: 'Capture ended · no Core request' };
-      if (lastCapture) { const captureStatus = node('p', 'workflow-capture-status', lastCapture.live
+      // The line keeps its place before the first capture so the drawing below never shifts.
+      const captureStatus = node('p', 'workflow-capture-status', !lastCapture ? 'Microphone · no capture yet' : lastCapture.live
         ? 'Microphone · recognizing speech; no request submitted yet'
         : `Microphone · ${captureLabels[lastCapture.captureOutcome] || 'No Core request'}`);
-        captureStatus.dataset.live = String(!!lastCapture.live); captureStatus.dataset.key = 'capture-status'; canvas.append(captureStatus); }
+      captureStatus.dataset.live = String(!!lastCapture?.live); captureStatus.dataset.key = 'capture-status'; canvas.append(captureStatus);
       const meters = node('div', 'workflow-meters'); meters.setAttribute('aria-label', 'Measured timings');
       meters.dataset.key = 'meters';
       const voice = current?.voiceTimings || {}, guardianMs = measuredSpan(current?.events, 'guardian_started', ['guardian_settled']);
       const reviewMs = measuredSpan(current?.events, 'dispatch_marked', ['result_published', 'native_result_published']);
       const longest = Math.max(1, ...[voice.sttDone, guardianMs, reviewMs, voice.firstAudio].filter(validMs));
-      const meter = (key, label, value, basis, active = false) => {
+      const meter = (key, label, value, basis, active = false, empty = 'Unknown') => {
         const block = node('div', 'workflow-meter'); block.dataset.active = String(active && !validMs(value) && !view.stale);
         block.dataset.key = `meter:${key}`;
         block.dataset.stage = key; block.dataset.measured = String(validMs(value));
         block.setAttribute('style', `--metric-fill:${validMs(value) ? Math.max(2, value / longest * 100) : 0}%`);
         block.append(node('span', 'workflow-meter-label', label),
-          node('strong', 'workflow-meter-value', validMs(value) ? duration(value) : active ? 'In progress' : 'Unknown'),
+          node('strong', 'workflow-meter-value', validMs(value) ? duration(value) : active ? 'In progress' : empty),
           node('small', 'workflow-meter-basis', basis));
         const signal = node('span', 'workflow-meter-signal'); signal.setAttribute('aria-hidden', 'true'); block.append(signal);
         meters.append(block);
       };
+      const serverTimes = current?.serverTimings || {};
+      const nestorMs = validMs(guardianMs) ? guardianMs : hermes && validMs(serverTimes.executed) ? serverTimes.executed : null;
       meter('stt', 'TRANSCRIPTION', voice.sttDone, 'Browser · end of speech', isActive(stateFor('stt')[0]));
-      if (!hermes) {
-        meter('guardian', 'GUARDIAN', guardianMs, 'Core · start → end', isActive(stateFor('guardian')[0]));
-        meter('review', 'REVIEW', reviewMs, 'Core · handoff → advice', isActive(stateFor('review')[0]));
-      }
+      meter('guardian', 'NESTOR', nestorMs, hermes && !validMs(guardianMs) ? 'Core · request → answer' : 'Core · start → end', isActive(stateFor('guardian')[0]));
+      meter('review', 'REVIEW', reviewMs, hermes ? 'Hermes conversation' : 'Core · handoff → advice', isActive(stateFor('review')[0]), hermes ? 'Not used' : 'Unknown');
       meter('tts', 'PLAYBACK REQUESTED', voice.firstAudio, 'Browser · end of speech', isActive(stateFor('tts')[0]));
       canvas.append(meters);
       const flow = node('div', 'workflow-flow'); flow.setAttribute('aria-label', 'Turn flow and background work');
       flow.dataset.key = 'flow';
-      const origin = node('div', 'workflow-origin');
-      origin.setAttribute('title', current?.id || 'No turn received');
-      origin.append(node('span', 'workflow-origin-mark', '◎'), node('span', 'workflow-origin-label', current ? `Your turn · ${String(rows.indexOf(current) + 1).padStart(2, '0')}` : 'Your next turn'));
-      flow.append(origin);
       const lanes = node('div', 'workflow-lanes');
       const immediate = node('section', 'workflow-lane workflow-lane-immediate');
       immediate.dataset.connected = String(!!current && (current.channel !== 'unknown' || current.stream?.length
@@ -549,8 +642,8 @@
         const stage = host.querySelector(`details[data-key="stage:${key}"]`);
         if (inspector && stage) { inspector.open = true; stage.open = true; stage.querySelector('summary')?.focus({ preventScroll: true }); }
       };
-      if (hermes) flow.append(immediate);
-      else flow.append(flowGraph(stateFor, connections, view.stale, compact, inspect));
+      flow.append(metroGraph(current, stateFor, connections, view.stale, compact, inspect,
+        { stt: voice.sttDone, guardian: nestorMs, review: reviewMs }, hermes));
       const milestone = node('div', 'workflow-milestone');
       const lastStep = current?.events?.at(-1);
       milestone.append(node('span', 'workflow-milestone-label', view.stale ? 'LAST KNOWN STEP' : 'LATEST STEP'),
@@ -558,7 +651,7 @@
       flow.append(milestone);
       const inspector = node('details', 'workflow-inspector'); inspector.dataset.key = 'inspector'; inspector.open = expanded.has('inspector');
       inspector.append(node('summary', 'workflow-inspector-toggle', 'Inspect stages and resources'));
-      if (!hermes) { lanes.append(immediate, background); inspector.append(lanes); }
+      lanes.append(immediate, background); inspector.append(lanes);
       flow.append(inspector);
       const services = node('div', 'workflow-services');
       services.append(node('div', 'workflow-services-heading', 'SERVICES IN USE'));
@@ -591,6 +684,7 @@
       const note = node('p', 'workflow-map-note', hermes ? 'Hermes model, transcription and playback are shown from observed receipts.' : 'Links and steps are based on turn receipts. Included advice does not prove its influence.'); note.dataset.key = 'map-note';
       canvas.append(flow, note);
       reconcileChildren(overview, canvas);
+      renderTrails(view);
       body.replaceChildren();
       if (!panel.open) { restoreFocus(); return; }
       if (view.captures.length) {
@@ -691,6 +785,32 @@
         `Context of this turn: ${ref.source === 'work' ? `work ${ref.workId}` : `advice ${ref.adviceId}`} · version ${ref.version} · coverage ${(ref.coverage || []).join(', ') || 'unknown'} · influence not proven`));
       restoreFocus();
     }
+    function clockText() {
+      if (!clock) return '';
+      const end = Number.isFinite(clock.end) ? clock.end : clock.live ? Date.now() : null;
+      return end === null ? '' : duration(Math.max(0, end - clock.start));
+    }
+    // Only the clock text moves between updates; the drawing itself changes only with new evidence.
+    const ticker = root.setInterval?.(() => {
+      if (!clock?.live || root.document?.hidden) return;
+      const element = overview.querySelector?.('.workflow-clock');
+      const text = clockText();
+      if (element && element.textContent !== text) element.textContent = text;
+    }, 250);
+    ticker?.unref?.();
+    function renderTrails(view) {
+      if (!trails?.querySelectorAll) return;
+      const rows = new Map(view.turns.map(row => [row.id, row]));
+      for (const message of trails.querySelectorAll('.conversation-message.user[data-turn]')) {
+        const row = rows.get(message.dataset.turn);
+        if (!row) continue;
+        let trail = [...message.children].find(child => child.classList?.contains('turn-trail'));
+        if (!trail) { trail = node('span', 'turn-trail'); trail.setAttribute('aria-hidden', 'true'); message.append(trail); }
+        const fresh = trailFor(row, view.stale);
+        reconcileChildren(trail, fresh.trail);
+        if (trail.title !== fresh.summary) trail.title = fresh.summary;
+      }
+    }
     function update(action) { if (action() !== false) render(); }
     render();
     panel.addEventListener?.('toggle', render);
@@ -717,7 +837,7 @@
       pollFailure: id => update(() => model.pollFailure(id))
     };
   }
-  const api = { create, createModel, stageState, duration, intervals };
+  const api = { create, createModel, stageState, duration, intervals, metroProgress, nowLine };
   root.NestorWorkflow = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof globalThis === 'undefined' ? this : globalThis);

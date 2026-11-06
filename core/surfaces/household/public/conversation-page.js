@@ -151,7 +151,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const wake = el('conversationWake');
   wake.checked = family;
   const progress = family ? null : NestorProgress.create({ host: el('nestorProgress'), getLanguage: () => language.value });
-  const workflow = family ? null : NestorWorkflow.create({ host: diagnosticFlow, signal: el('conversationWorkflowSignal'), onSnapshot: view => progress.update(view) });
+  const workflow = family ? null : NestorWorkflow.create({ host: diagnosticFlow, signal: el('conversationWorkflowSignal'), trails: transcript, onSnapshot: view => progress.update(view) });
   // The background brain (#169): tapping a suggestion asks it; a remark is spoken at a pause
   // when the voice conversation is listening, otherwise shown in the transcript.
   const brain = window.NestorBrain.create(el('conversationBrain'), { base: sessionBase,
@@ -341,6 +341,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (interrupted) { row.dataset.interrupted = 'true'; row.setAttribute('aria-label', 'Interrupted reply'); }
     if (role === 'assistant') window.AvatarDock?.current?.reply?.(row.firstChild?.nodeValue || '');
     transcript.scrollTop = transcript.scrollHeight;
+    return row;
   };
   async function createSession(prefs, signal) {
     recap?.clear();
@@ -367,6 +368,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     const presentationCompanion = companion?.begin(session, turnId) === true;
     personalNotes.show(null);
     activeBrowserTurn = turnId; activity('turn'); brain.cancel(); turnSpeaker = null;
+    // The message that starts this turn was just added: its path is drawn under it.
+    if (workflow) { const asked = [...transcript.querySelectorAll('.conversation-message.user:not([data-turn])')].at(-1); if (asked) asked.dataset.turn = turnId; }
     workflow?.begin(session.sessionId, turnId, textBusy ? 'text' : 'voice');
     let response;
     try {
@@ -955,7 +958,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       language.value = P.profile(data.session.voice).language;
       transcript.replaceChildren(); partial = null; clearBoard(); brain.reset();
       (data.turns || []).forEach(turn => {
-        if (turn.inputText) message('user', turn.inputText, false, null, turn.attachments);
+        if (turn.inputText) { const asked = message('user', turn.inputText, false, null, turn.attachments); const id = turn.clientTurnId || turn.traceId; if (id && !family) asked.dataset.turn = id; }
         if (turn.replyText) message('assistant', turn.replyText, turn.interrupted, null, [], turn.speakerAgentId ? ConversationTeam.memberName(team, agents, turn.speakerAgentId) : '');
         board.restore(turn.display);
       });

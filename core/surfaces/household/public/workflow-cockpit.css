@@ -199,3 +199,59 @@
   border: 1px solid #3c4e68; border-radius: 5px; color: #b49aff; }
 #conversationWorkflow .workflow-inspector[open] > .workflow-inspector-toggle::before { content: '−'; }
 #conversationWorkflow .workflow-inspector .workflow-resources { margin-top: 12px; }
+/* Metro line: the stops never move. Only colors, the moving dot and the clock change as evidence arrives. */
+#conversationWorkflow [data-stage="origin"], #conversationWorkflow [data-stage="answer"] { --stage: #86aaff; --stage-rgb: 134,170,255; }
+#conversationWorkflow .workflow-now { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: -6px 0 12px;
+  padding: 10px 12px; border: 1px solid #2c3b50; border-radius: 10px; background: #111d2d; }
+#conversationWorkflow .workflow-now[data-live="true"] { border-color: #4b5fa8; background: #131f36; }
+#conversationWorkflow .workflow-now-text { min-width: 0; color: #e9f0ff; font-size: .86rem; font-weight: 600; letter-spacing: -.01em; }
+#conversationWorkflow .workflow-now[data-live="true"] .workflow-now-text::before { content: ''; display: inline-block; width: 8px; height: 8px;
+  margin-right: 9px; border-radius: 50%; background: #86aaff; box-shadow: 0 0 0 3px #86aaff33; vertical-align: 1px;
+  animation: workflow-breathe 1.4s ease-in-out infinite; }
+#conversationWorkflow .workflow-clock { color: #b9c8e0; font: 600 1rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+#conversationWorkflow .workflow-metro .workflow-route-base { stroke: #33425a; stroke-width: 3; stroke-dasharray: 1 7; }
+#conversationWorkflow .workflow-metro .workflow-route[data-travelled="true"] .workflow-route-base { stroke: #4a5e7e; stroke-width: 5; stroke-dasharray: none; }
+#conversationWorkflow .workflow-metro .workflow-route[data-connected="true"] .workflow-route-base { stroke: var(--stage); stroke-width: 5; stroke-dasharray: none; }
+#conversationWorkflow .workflow-metro .workflow-route[data-unused="true"] .workflow-route-base { stroke: #2a3546; stroke-width: 3; stroke-dasharray: 1 7; }
+#conversationWorkflow .workflow-metro .workflow-route[data-tone="active"] .workflow-route-packet { stroke: #fff; stroke-width: 3; }
+#conversationWorkflow .workflow-metro-end { stroke: #33425a; stroke-width: 3; stroke-linecap: round; }
+#conversationWorkflow .workflow-metro-dot { fill: #0e1826; stroke: #3c4a5d; stroke-width: 2.5; transition: fill .35s, stroke .35s; }
+#conversationWorkflow .workflow-metro-halo { fill: none; stroke: none; transform-box: fill-box; transform-origin: center; }
+#conversationWorkflow .workflow-metro-stop .workflow-graph-label { font-size: 14px; }
+#conversationWorkflow .workflow-metro-stop[data-tone="complete"] .workflow-metro-dot,
+#conversationWorkflow .workflow-metro-stop[data-tone="observed"] .workflow-metro-dot { fill: var(--stage); stroke: var(--stage); }
+#conversationWorkflow .workflow-metro-stop[data-tone="active"] .workflow-metro-dot { stroke: var(--stage); stroke-width: 4; }
+#conversationWorkflow .workflow-metro-stop[data-tone="active"] .workflow-metro-halo,
+#conversationWorkflow .workflow-metro-stop[data-current="true"] .workflow-metro-halo { stroke: var(--stage); stroke-width: 2; animation: workflow-stop-pulse 1.6s ease-out infinite; }
+#conversationWorkflow .workflow-metro-stop[data-tone="caution"] .workflow-metro-dot { fill: #ffbd7c; stroke: #ffbd7c; }
+#conversationWorkflow .workflow-metro-stop[data-tone="unknown"] .workflow-graph-state { fill: #6f819a; }
+#conversationWorkflow .workflow-metro-stop:is([data-skipped="true"], [data-tone="unused"]) .workflow-metro-dot { fill: none; stroke-dasharray: 2 3; }
+#conversationWorkflow .workflow-metro-stop:is([data-skipped="true"], [data-tone="unused"]) :is(.workflow-graph-label, .workflow-graph-state) { opacity: .5; }
+#conversationWorkflow .workflow-metro-stop:hover .workflow-metro-dot,
+#conversationWorkflow .workflow-metro-stop:focus-visible .workflow-metro-dot { stroke: #fff; }
+#conversationWorkflow .workflow-metro-train { transition: transform .6s cubic-bezier(.3, .7, .2, 1); pointer-events: none; }
+#conversationWorkflow .workflow-metro-train[data-placed="false"] { opacity: 0; }
+#conversationWorkflow .workflow-metro-train-core { fill: #fff; }
+#conversationWorkflow .workflow-metro-train-ring { fill: none; stroke: #fff; stroke-opacity: .55; stroke-width: 2; transform-box: fill-box; transform-origin: center; }
+#conversationWorkflow .workflow-metro-train[data-live="true"] .workflow-metro-train-ring { animation: workflow-train 1.2s ease-out infinite; }
+@keyframes workflow-stop-pulse { 0% { transform: scale(.7); opacity: .9; } 100% { transform: scale(1.35); opacity: 0; } }
+@keyframes workflow-train { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(1.7); opacity: 0; } }
+/* The same path, small, under the message that started the turn. */
+.conversation-message.user .turn-trail { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin-top: 7px; padding-top: 6px;
+  border-top: 1px solid #ffffff14; color: #9fc2b8; font-size: .68rem; line-height: 1.2; }
+.turn-trail-stop { display: inline-flex; align-items: center; gap: 5px; }
+.turn-trail-stop + .turn-trail-stop::before { content: ''; width: 14px; height: 2px; margin: 0 5px; border-radius: 2px; background: #ffffff26; }
+.turn-trail-dot { width: 8px; height: 8px; box-sizing: border-box; border: 1.5px solid #ffffff4d; border-radius: 50%; }
+.turn-trail-stop:is([data-tone="complete"], [data-tone="observed"]) .turn-trail-dot { border-color: #86aaff; background: #86aaff; }
+.turn-trail-stop[data-tone="active"] .turn-trail-dot { border: 2.5px solid #86aaff; animation: workflow-breathe 1.2s ease-in-out infinite; }
+.turn-trail-stop[data-tone="caution"] .turn-trail-dot { border-color: #ffbd7c; background: #ffbd7c; }
+.turn-trail-stop[data-skipped="true"] .turn-trail-dot { border-style: dashed; }
+.turn-trail-stop:is([data-skipped="true"], [data-tone="unknown"]) .turn-trail-label { opacity: .55; }
+.turn-trail-stop[data-current="true"] .turn-trail-label { color: #fff; }
+.turn-trail-branch { margin-left: 10px; padding: 1px 7px; border: 1px solid #84e2b655; border-radius: 999px; color: #9ee9c4; }
+.turn-trail-branch[data-tone="active"] { animation: workflow-breathe 1.6s ease-in-out infinite; }
+.turn-trail-branch[data-tone="unused"] { opacity: .5; }
+@media (prefers-reduced-motion: reduce) {
+  .turn-trail-stop .turn-trail-dot, .turn-trail-branch { animation: none !important; }
+}

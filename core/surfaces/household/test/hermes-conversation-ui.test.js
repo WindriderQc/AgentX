@@ -64,7 +64,7 @@ test('workflow retains observed execution from the stream and from canonical his
   assert.equal(model.snapshot().turns[0].execution, undefined, 'legacy history does not invent a model');
 });
 
-test('Hermes diagnostics show its observed model and voice timings without the OpenClaw pipeline', () => {
+test('Hermes diagnostics keep the same drawing and mark the unused review path in place', () => {
   const { create, stageState } = require('../public/workflow-panel');
   const prior = global.document;
   class Element {
@@ -77,16 +77,23 @@ test('Hermes diagnostics show its observed model and voice timings without the O
   global.document = { createElement: () => new Element() };
   try {
     const host = new Element(), panel = create({ host });
+    const flatten = node => [node, ...node.children.flatMap(flatten)];
+    const keyOf = node => node.dataset.key || node.attributes['data-key'];
+    const keys = () => flatten(host).map(keyOf).filter(Boolean).sort();
     panel.begin('session-hermes', 'turn-hermes', 'voice');
+    const before = keys();
     panel.timings('turn-hermes', { sttDone: 125, firstAudio: 800, playbackOutcome: 'completed' });
     panel.stream('turn-hermes', { type: 'done', data: { routing: { backend: 'hermes' }, model: { model: 'actual-sol' } } });
-    const flatten = node => [node, ...node.children.flatMap(flatten)];
+    assert.deepEqual(keys(), before, 'learning the engine at the end of the turn changes no part of the drawing');
     const nodes = flatten(host), text = nodes.map(node => node.textContent).join(' ');
+    const find = key => nodes.find(node => keyOf(node) === key);
     assert.match(text, /Hermes · actual-sol/);
-    assert.ok(nodes.some(node => node.dataset.key === 'meter:stt'));
-    assert.ok(nodes.some(node => node.dataset.key === 'meter:tts'));
-    assert.ok(!nodes.some(node => ['meter:guardian', 'meter:review', 'stage:review', 'stage:agents'].includes(node.dataset.key)));
-    assert.ok(!nodes.some(node => /workflow-graph/.test(node.className || '')));
+    for (const key of ['meter:stt', 'meter:guardian', 'meter:review', 'meter:tts', 'stage:review', 'stage:agents', 'graph:review', 'graph:agents']) assert.ok(find(key), key);
+    assert.equal(find('graph:review').attributes['data-tone'], 'unused');
+    assert.equal(find('graph:agents').attributes['data-tone'], 'unused');
+    assert.equal(find('route:background').attributes['data-unused'], 'true');
+    assert.match(flatten(find('meter:review')).map(node => node.textContent).join(' '), /Not used/);
+    assert.equal(find('graph:tools').attributes['data-skipped'], 'true', 'the train passed Tools without a tool receipt');
     const row = panel.model.snapshot().turns[0];
     assert.deepEqual(stageState('guardian', row), ['Done', 'Hermes · actual-sol']);
     assert.equal(stageState('stt', row)[0], 'Done');
