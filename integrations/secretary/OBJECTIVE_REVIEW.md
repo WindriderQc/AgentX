@@ -6,7 +6,7 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
-New objectives use `secretary.objective-grounding/v8` for model extraction.
+New objectives use `secretary.objective-grounding/v9` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
@@ -26,15 +26,15 @@ Undated/relative-date travel and planned personal activities can remain useful;
 missing absolute dates alone do not justify omitting them.
 
 Every cue must be cited in an observation or have an `omittedCues` decision:
-`citationId`, a bounded `reasonCode`, and `contextCitationIds` including the cue
-itself. Unknown, duplicated, overlapping or silently ignored cue decisions fail
+`citationId` and its own `reasonRef` from `omissionReasonCatalog`. Unknown,
+cross-cue, duplicated, overlapping or silently ignored cue decisions fail
 closed. A lexical match can still be omitted with source-backed proposed reasons;
 it never automatically creates a fact. The canonical gaps retain the reason and
 complete source excerpts for review. Career cues retain their frozen legacy
 projection as well; prior results are neither rewritten nor reinterpreted.
 
-Every empty extraction also requires `abstention: {reasonCode, citationIds}` with
-actual source evidence, including administrative passages without cues. The
+Every empty extraction also requires `abstention: {reasonRef}` selecting an
+actual whole-passage catalog option, including administrative passages without cues. The
 response schema separates positive extractions (`abstention: null`) from cited
 negative and uncertain decisions. Ambiguous actor or insufficient event context
 requires `emptyAssessment: uncertain`, not a confident no-event classification.
@@ -44,6 +44,24 @@ reason. Proposed reasons are not semantic proof: source review can still find
 an unjustified abstention. The canonical summary displays its reason and whole
 supporting excerpts, or refers to their complete gap text when they exceed the
 summary bound. `selectionReview` retains the exact source spans and cue decisions.
+
+The source-conditioned reason catalog is a conservative admission policy, not
+a semantic classifier. Personal reading cues cannot be confidently dismissed
+as administrative; a document marker elsewhere cannot justify that omission.
+Administrative whole-passage negatives require a literal administrative marker
+and no unresolved personal cues. Non-biographical cue reasons require explicit
+local promotional/fictional context, with lexical negations conservatively
+blocking that option. Uncertain actor/context alternatives remain available;
+they create neither an event nor a confident no-event decision.
+
+A proposed other-person cue reason retains both the cue and its nearest preceding
+quoted author header. A following header, an owner alias in that header, or absent
+owner aliases makes that option unavailable. This is quoted-speaker context only,
+never verified authorship or proof that every unmatched name is another person.
+Aliases come from the immutable objective for schema generation, projection and
+receipt/disposition replay. `omissionPolicy` retains the chosen catalog entries.
+Source review still assesses their relevance; a valid reason reference is not
+semantic acceptance. No rejected output is rewritten or automatically retried.
 
 The model selects a proposed `factType` and matching `factTypeCitationIds`
 from `factTypeCatalog`, among that moment's own observation citations. Neutral
@@ -143,7 +161,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6` and `/v7` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7` and `/v8` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.

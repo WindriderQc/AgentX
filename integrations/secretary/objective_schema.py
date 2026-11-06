@@ -70,7 +70,7 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v8.
+Use the source-span grounding contract secretary.objective-grounding/v9.
 Keep useful explicit steps, not only completed milestones. A personal career
 contact, referral, CV submission, application, interview or offer can be retained
 at its stated stage. Choose factType: life-event, career-contact, application,
@@ -100,9 +100,14 @@ never invent a date or claim realization to make it useful.
 selectionCues are exact source lines with career or nonprofessional reading cues.
 Their kinds are lexical reminders, not facts, actor identity or proof of occurrence.
 Every cue must appear in an observation or in omittedCues. Each omission has
-citationId, reasonCode and contextCitationIds, including that omitted cue itself.
-Use an allowed proposed reason backed by source context, such as administrative
-wording or another actor. Do not invent an event to satisfy a cue, and do not omit
+citationId and reasonRef from omissionReasonCatalog for that same cue. Select only
+source-supported reasons that actually fit the passage; a valid reference alone
+does not prove relevance. Never call a personal activity administrative. An
+administrative document marker elsewhere cannot dismiss a personal reading cue.
+Quoted-speaker reasons retain the nearest literal author header and never prove
+identity or proximity. Do not borrow a later or unrelated header. If context is
+insufficient, choose an uncertain reason instead of asserting a confident absence.
+Do not invent an event to satisfy a cue, and do not omit
 a useful personal event just because its date is unknown or relative. Unknown
 date alone is never an abstention/omission reason. Use [] when no cue is omitted.
 Select titleCitationId from this event's own observation excerpts. Do not write
@@ -148,14 +153,17 @@ Do not output classification: it is derived locally from the moments list.
 emptyAssessment is used ONLY when moments is empty: no-life-event or uncertain.
 Newsletters, promotions, generic invoices, administrative noise and third-party
 news usually add no personal life event. Empty moments are valid only with a
-structured abstention: {reasonCode, citationIds}. Cite one to three actual source
-lines supporting this proposed reason, even when no selectionCue exists.
+structured abstention: {reasonRef}. Select a scope: passage entry from
+omissionReasonCatalog, even when no selectionCue exists. Its exact source
+evidence is retained locally. A cue reason cannot stand for the whole passage.
 A global abstention does not replace the separate decision for every omitted cue.
-Use emptyAssessment: uncertain for ambiguous-actor, insufficient-event-context
-or no-readable-source; use no-life-event for administrative-context,
-other-person-context or non-biographical-context. no-readable-source is allowed
-only for a genuinely empty passage and has citationIds: []. Never invent an
-absence reference. A nonempty moments list requires abstention: null.
+Use emptyAssessment: uncertain when the selected catalog reason is
+ambiguous-actor, insufficient-event-context or no-readable-source. A passage
+with unresolved personal cues cannot receive a confident administrative negative.
+Only source-supported non-biographical or administrative whole-passage options
+permit no-life-event. no-readable-source exists only for genuinely empty text.
+Never invent a reason, citation, absence reference or free reason code.
+A nonempty moments list requires abstention: null.
 These are proposed reading decisions for human review, not established truth.
 Do not make an event from your own review, missing attachment or verification work.
 gaps records actual missing context/representations/illegibility. Existing OCR is

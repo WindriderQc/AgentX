@@ -108,14 +108,14 @@ def read_receipt(file, manifest):
         raise ValueError("Objective receipt integrity does not match its saved identity")
     validate(row["result"], record["body"])
     grounded = grounding.contract_for(manifest)
-    if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.CONTRACT) and any(record.get("nativeRef", {}).get(key) != identity.get(key)
+    if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.CONTRACT) and any(record.get("nativeRef", {}).get(key) != identity.get(key)
                                              for key in ("offset", "end")):
         raise ValueError("Source scope differs from the retained page identity")
     if grounded and "resultProcessing" not in row:
         raise ValueError("A grounded result requires its retained native projection")
     if "resultProcessing" in row:
         raw = load(result_file(file.parent.parent, file.stem), {}).get("value")
-        normalized, changes = normalize_representation(raw, record["body"], grounded, claim_proofs.context_for(record))
+        normalized, changes = normalize_representation(raw, record["body"], grounded, grounding.extraction_context(record, manifest))
         expected = {"contract": "secretary.objective-representation/v1", "rawResultSha256": hashed(raw), "changes": changes}
         if not changes or row["resultProcessing"] != expected or normalized != row["result"]:
             raise ValueError("Objective representation receipt does not match the retained native result")
@@ -428,25 +428,27 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     if grounded:
                         payload["citationCatalog"] = grounding.catalog(page["content"])
                         payload["groundingContract"] = grounded
-                        evidence_context = claim_proofs.context_for(_source_record(page))
+                        evidence_context = grounding.extraction_context(_source_record(page), manifest)
                         client.schema = grounding.schema_for(page["content"], grounded, evidence_context)
-                        if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.CONTRACT):
+                        if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.CONTRACT):
                             payload["selectionCues"] = fact_policy.career_cues(payload["citationCatalog"])
-                            if grounded == grounding.CONTRACT:
+                            if grounded in (grounding.SELECTION_CONTRACT, grounding.CONTRACT):
                                 payload["selectionCues"] = grounding.useful_selection.cues(payload["citationCatalog"])
-                        if grounded in (grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.CONTRACT):
+                            if grounded == grounding.CONTRACT:
+                                payload["omissionReasonCatalog"] = grounding.omission_policy.catalog(payload["citationCatalog"], evidence_context)
+                        if grounded in (grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.CONTRACT):
                             payload["dateCatalog"] = date_evidence.catalog(payload["citationCatalog"], evidence_context)
                             payload["factTypeCatalog"] = claim_proofs.fact_catalog(payload["citationCatalog"])
                             payload["uncertaintyCatalog"] = (grounding.contextual.catalog(payload["citationCatalog"])
-                                if grounded in (grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.CONTRACT) else claim_proofs.uncertainty_catalog(payload["citationCatalog"]))
-                            if grounded in (grounding.SOURCE_CONTRACT, grounding.CONTRACT):
+                                if grounded in (grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.CONTRACT) else claim_proofs.uncertainty_catalog(payload["citationCatalog"]))
+                            if grounded in (grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.CONTRACT):
                                 payload["uncertaintyCatalog"] = grounding.source_observations.qualification_catalog(payload["citationCatalog"])
                     prompt = json.dumps(payload, ensure_ascii=False)
                     saved = result_file(objective, page["pageId"]).is_file() or page["pageId"] in cached_invalid_pages
                     raw = extract_once(fence, client, system, prompt, page)
                     inferences += not saved
                     normalized, changes = normalize_representation(raw, page["content"], grounded,
-                        claim_proofs.context_for(_source_record(page)))
+                        grounding.extraction_context(_source_record(page), manifest))
                     validate(normalized, page["content"])
                     record = _source_record(page)
                     receipt = {
