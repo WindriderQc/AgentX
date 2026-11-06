@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const { handleMcpMessage } = require('../src/services/mcpSkillBus');
-const { countExchange } = require('../src/services/agentToolUsage');
 
 router.post(['/', '/memory'], async (req, res) => {
   if (Array.isArray(req.body)) {
@@ -12,16 +11,13 @@ router.post(['/', '/memory'], async (req, res) => {
     });
   }
 
-  const bus = req.path.replace(/\/$/, '').toLowerCase() === '/memory' ? 'memory' : 'general';
   try {
-    const response = bus === 'memory'
+    const response = req.path.replace(/\/$/, '').toLowerCase() === '/memory'
       ? await handleMcpMessage(req.body || {}, {}, { profile: 'memory' })
       : await handleMcpMessage(req.body || {});
-    countExchange(bus, req, response);
     if (!response) return res.status(202).end();
     return res.type('application/json').json(response);
   } catch (err) {
-    countExchange(bus, req, { error: { code: -32603 } });
     return res.status(500).json({
       jsonrpc: '2.0',
       id: req.body?.id ?? null,

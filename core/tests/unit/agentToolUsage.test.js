@@ -4,7 +4,8 @@ const express = require('express');
 const request = require('supertest');
 
 const AgentToolUsage = require('../../models/AgentToolUsage');
-const { countToolCall, countExchange, readToolUsage, _internal: { dayOf } } = require('../../src/services/agentToolUsage');
+const AgentToolCatalog = require('../../models/AgentToolCatalog');
+const { countToolCall, countExchange, observeCatalog, usageMiddleware, readToolUsage, _internal: { dayOf, observed } } = require('../../src/services/agentToolUsage');
 const { createAgentToolsRouter } = require('../../routes/agent-tools');
 
 const AT = Date.parse('2026-11-06T15:20:00.000Z');
@@ -13,7 +14,7 @@ const model = AgentToolUsage;
 const known = { general: ['memory_search', 'check_health', 'iss_passes'], memory: ['memory_search'], owner: ['work_queue', 'web_search'] };
 
 describe('agent tool usage', () => {
-  beforeEach(async () => { await AgentToolUsage.deleteMany({}); });
+  beforeEach(async () => { await AgentToolUsage.deleteMany({}); await AgentToolCatalog.deleteMany({}); observed.clear(); });
 
   test('calls increment one daily row per bus, tool and caller; unknown tools are ignored', async () => {
     await AgentToolUsage.createIndexes();
@@ -73,5 +74,48 @@ describe('agent tool usage', () => {
     expect(res.body).toEqual({ ok: true, data: { days: 400, tools: [] } });
     await request(app).get('/api/agent-tools/usage').expect(200);
     expect(read).toHaveBeenLastCalledWith({ days: 30 });
+  });
+
+  test('the middleware counts calls answered by a surface layer and by Core, and learns the advertised list', async () => {
+    const store = { updateOne: jest.fn(async () => ({})) };
+    const catalog = AgentToolCatalog;
+    const app = express();
+    app.use(express.json());
+    app.use('/mcp', usageMiddleware({ options: { model: store, catalog: { model: catalog } } }));
+    // A surface answers its own tool and merges its listing, like the household layer.
+    app.use('/mcp', (req, res, next) => {
+      if (req.body.method === 'tools/list') {
+        const send = res.json.bind(res);
+        res.json = body => send({ ...body, result: { tools: [...body.result.tools, { name: 'shopping_list' }] } });
+        return next();
+      }
+      if (req.body.params?.name === 'shopping_list') return res.json({ jsonrpc: '2.0', id: req.body.id, result: { isError: false } });
+      return next();
+    });
+    app.post(['/mcp', '/mcp/memory'], (req, res) => res.json(req.body.method === 'tools/list'
+      ? { jsonrpc: '2.0', id: req.body.id, result: { tools: [{ name: 'memory_search' }] } }
+      : { jsonrpc: '2.0', id: req.body.id, result: { isError: true } }));
+    const post = (path, body) => request(app).post(path).set('x-service-caller', 'codex-devx').send({ jsonrpc: '2.0', id: 1, ...body }).expect(200);
+    await post('/mcp', { method: 'tools/list' });
+    await post('/mcp', { method: 'tools/call', params: { name: 'shopping_list', arguments: {} } });
+    await post('/mcp/memory', { method: 'tools/call', params: { name: 'memory_search', arguments: {} } });
+    await post('/mcp', { method: 'tools/call', params: { name: 'made_up_tool', arguments: {} } });
+    await new Promise(resolve => setImmediate(resolve));
+    expect((await AgentToolCatalog.findById('general').lean()).names).toEqual(['memory_search', 'shopping_list']);
+    expect(store.updateOne.mock.calls.map(([key, update]) => [key.bus, key.tool, key.caller, update.$inc.failures])).toEqual([
+      ['general', 'shopping_list', 'codex-devx', 0],
+      ['memory', 'memory_search', 'codex-devx', 1],
+    ]);
+    const report = await readToolUsage({ days: 30 }, { model: AgentToolUsage, catalog: AgentToolCatalog });
+    expect(report.catalogSource.general).toBe('observed');
+    expect(report.tools.filter(item => item.bus === 'general').map(item => item.tool).sort()).toEqual(['memory_search', 'shopping_list']);
+  });
+
+  test('an unchanged listing is stored once', async () => {
+    const catalog = { updateOne: jest.fn(async () => ({})) };
+    await observeCatalog('owner', ['b', 'a'], { model: catalog });
+    await observeCatalog('owner', ['a', 'b'], { model: catalog });
+    await observeCatalog('nowhere', ['a'], { model: catalog });
+    expect(catalog.updateOne).toHaveBeenCalledTimes(1);
   });
 });
