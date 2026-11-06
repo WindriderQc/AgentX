@@ -41,6 +41,23 @@ stored history. A proposed block does not prove browser loading or playback.
 Markdown uses Core's pinned parser and sanitizer; HTML controls, remote Markdown
 images and active links are excluded. Copy retains the source text.
 
+## Reviewed ecosystem composition
+
+An owner instance may install a data-only `config/ecosystem-composition.json`
+under `AGENTX_INSTANCE_ROOT`. Core validates its bounded nodes, relationships,
+workflows, evidence text and placements; it carries no executable URLs or model
+configuration. The owner page supplies it to the existing GraphysX element.
+A configured invalid manifest refuses the page rather than substituting history.
+An absent manifest and Family views retain the bundled, explicitly dated tour.
+
+Composition references use `core.ecosystem.composition`. The after-render
+observation binds the same content revision; Core resolves the canonical selected
+node and dated provenance through the existing presentation reader. Operational
+refresh renews the reference only for the composition that frame mounted, without
+changing scene, selection or camera. A changed manifest takes effect on a new page
+load; an older frame cannot claim a newer composition. Composition evidence is
+reviewed configuration, not collected health or physical-device acceptance.
+
 ## Content and authority
 
 | Content | Presentation | Agent reading/source | Limit |

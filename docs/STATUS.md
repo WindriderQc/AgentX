@@ -50,7 +50,7 @@ Instance configuration, data and deployment receipts remain outside Git.
   OpenClaw adapter expose the reader. A configured owner ecosystem tour refreshes
   every mapped Core host/service state automatically; selection is independent
   of refresh. Its after-render receipt binds the same Core observation for Nestor,
-  with explicit stale/unavailable evidence. Family keeps the static tour.
+  with explicit stale/unavailable evidence. An owner instance may supply a reviewed private composition with its own nodes, relationships, workflows and dates; Core binds that same composition and canonical selected node for Nestor. Invalid configured composition refuses instead of falling back to history. Family keeps the static tour.
   CPU/browser contracts are separate from
   installed runtime and physical-device acceptance. See
   [content presentation](CONTENT_PRESENTATION.md).

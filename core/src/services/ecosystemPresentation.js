@@ -51,6 +51,16 @@ function project(value, presentationId, now) {
     selection = focus.length === 1 ? { status: 'selected', basis: 'sole_focus', ...focus[0] }
       : { status: focus.length ? 'ambiguous' : 'none', candidates: focus, clarificationRequired: true };
   }
+  let composition;
+  if (value.composition !== undefined) {
+    const claim = value.composition, ref = claim?.read;
+    if (!record(claim) || !/^[a-f0-9]{64}$/.test(claim.contentRevision || '') || !record(ref)
+      || ref.contract !== 'agentx.presentation-read/v1' || ref.source !== 'core.ecosystem.composition'
+      || !/^[a-f0-9]{64}$/.test(ref.revision || '') || ref.id !== 'view_' + ref.revision
+      || !instant(ref.observedAt) || !instant(ref.expiresAt)) return fail('invalid_composition_display');
+    composition = { contentRevision: claim.contentRevision, read: { contract: ref.contract, source: ref.source,
+      id: ref.id, revision: ref.revision, observedAt: ref.observedAt, expiresAt: ref.expiresAt } };
+  }
   let live;
   if (value.live !== undefined) {
     const claim = value.live, ref = claim?.read;
@@ -70,7 +80,7 @@ function project(value, presentationId, now) {
     tour: { kind: tour.kind, index: tour.index, count: tour.count, playing: tour.playing === true,
       label: tour.label, title: tour.title, script, adhoc }, focus, selection,
     narration: value.narration, narrationComplete: value.narrationComplete === true,
-    ...(live && { live }),
+    ...(live && { live }), ...(composition && { composition }),
     limits: ['Browser-reported rendered tour, not pixel verification or a Core inventory.',
       live ? 'Static topology and Core operational data are separate. Only a matching Core live read supports current state; respect its freshness and source scope.'
         : 'Dated GraphysX snapshot, not live telemetry, file contents or execution evidence.',

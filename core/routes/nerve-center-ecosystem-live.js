@@ -10,6 +10,8 @@ module.exports = function createRouter(options = {}) {
     // finish loading before this route reads its shared snapshot capability.
     buildSnapshot: options.buildSnapshot || (() => require('./nerve-center').buildEcosystemSnapshot()),
     config: options.config || loadConfig,
+    composition: options.composition || (() => require('../src/services/ecosystemComposition').compositionView({
+      reader: options.reader || require('../src/services/presentationReadService').presentationReader })),
     reader: options.reader || require('../src/services/presentationReadService').presentationReader,
     ...(options.now && { now: options.now })
   });
