@@ -333,6 +333,20 @@ class CoreClientTests(unittest.TestCase):
         self.assertEqual((calls[0]["taskType"], calls[0]["format"], calls[0]["think"]), ("analysis", catchup.REVIEW_SCHEMA, False))
         self.assertEqual((calls[1]["model"], calls[1]["host"], "taskType" in calls[1]), ("small-model", "spare", False))
 
+    def test_every_core_call_declares_the_secretary_service_identity(self):
+        seen = []
+
+        def open_(request, timeout):
+            seen.append(request.get_header("X-agentx-caller"))
+            reply = mock.MagicMock(status=200)
+            reply.read.return_value = json.dumps({"message": {"content": json.dumps(review())}}).encode()
+            reply.__enter__.return_value = reply
+            return reply
+        client = catchup.CoreClient("http://core.invalid", opener=open_, caller="secretary-objective-review")
+        client.extract("sys", "page")
+        client.busy()
+        self.assertEqual(seen, ["secretary-service", "secretary-service"])
+
     def test_refusals_and_outages_pause_instead_of_failing(self):
         refused = urllib.error.HTTPError("http://core.invalid", 409, "claim", {"Retry-After": "30"}, io.BytesIO(b'{"code":"BENCHMARK_CLAIM_ACTIVE"}'))
         open_, _ = self.opener(refused, urllib.error.URLError("down"), {"data": {"maintenance": None, "workloads": [{"kind": "benchmark"}]}})

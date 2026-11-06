@@ -38,7 +38,7 @@ const {
 } = require('../src/services/routing/inferenceLogReadProjection');
 const envelope = require('../src/helpers/responseEnvelope');
 const logger = require('../config/logger');
-const { isCloudCall, modelProvider } = require('../src/services/budgetAccountingService');
+const { billingModelName, isCloudCall, modelProvider } = require('../src/services/budgetAccountingService');
 const { COST_CURRENCY, resolvePricing } = require('../src/services/costCalculator');
 const {
   averageSignal,
@@ -362,7 +362,7 @@ router.get('/contention', async (req, res) => {
 async function estimateCloudCost(model, tokensIn, tokensOut) {
   try {
     const provider = modelProvider(model);
-    const modelName = String(model || '').slice(`${provider}/`.length);
+    const modelName = billingModelName(model).slice(`${provider}/`.length);
     const pricing = await resolvePricing(provider, modelName);
     if (!pricing) return null;
     const promptRate = Number(pricing.promptTokenCost);
@@ -504,7 +504,8 @@ router.get('/summary', async (req, res) => {
           ? Math.round((row.classificationMs || 0) / row.classifiedCalls)
           : null,
         // Effective output throughput includes routing and waits, not just decoding.
-        tokensOutPerSecond: seconds > 0 ? round(tokensOut / seconds) : 0
+        // null, never 0, without output tokens: embeddings produce none.
+        tokensOutPerSecond: seconds > 0 && tokensOut > 0 ? round(tokensOut / seconds) : null
       };
     };
 
@@ -615,7 +616,7 @@ router.get('/summary', async (req, res) => {
         classificationOverheadPct: (t.classifiedDurationMs || 0) > 0
           ? rate(t.classificationMs || 0, t.classifiedDurationMs || 0)
           : null,
-        tokensOutPerSecond: totalSeconds > 0 ? round(t.tokensOut / totalSeconds) : 0,
+        tokensOutPerSecond: totalSeconds > 0 && t.tokensOut > 0 ? round(t.tokensOut / totalSeconds) : null,
         callsPerDay: requestedDays > 0 ? round(t.calls / Math.min(requestedDays, (+to - +from) / 86400000), 1) : 0
       },
       local: {

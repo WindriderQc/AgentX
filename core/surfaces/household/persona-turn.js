@@ -30,6 +30,7 @@ const { turnDirective, localTimeContext } = require('./persona-prompt');
 const { interruptedRequestContext } = require('./persona-records');
 const dedicatedGuardian = require('./dedicated-guardian');
 const { profileUnavailable } = require('../../src/services/conversationWorks/performance');
+const { turnUsage } = require('../../src/services/conversations/turnAccounting');
 
 // A team member's own personality: the active catalog persona naming that agent, so an
 // edit made on the Team page applies; the shared definition when the catalog is unreadable.
@@ -485,11 +486,12 @@ function createPersonaTurnHandler({
             ['agentx__get_sound', 'get_sound'].includes(row.tool) && row.runId === toolEvidence.runId).at(-1) : null;
           sound = receipt?.status === 'verified' ? sounds.get(receipt.soundId) : null;
         }
-        if (backend === 'openclaw' && !pack.childSafe) knowledge = { ...knowledge, status: 'agent-managed', enabled: true,
-          used: toolEvidence.receipts?.some(receipt => /rag_search|memory_search|wiki_search/.test(receipt.tool)) || false };
+        // A native agent owns its knowledge tools: its receipts say whether one ran.
+        if (['openclaw', 'hermes'].includes(backend) && !pack.childSafe) knowledge = { ...knowledge, status: 'agent-managed', enabled: true,
+          used: toolEvidence?.receipts?.some(receipt => /rag_search|memory_search|wiki_search/.test(receipt.tool)) || false };
         entry.auditContext = { model: metadata.model || '', routingSource: metadata.routingSource || '', routeTier, toolEvidence,
-          ...(adviceRefs.length ? { adviceRefs } : {}),
-          knowledgeStatus: knowledge.status, knowledgeSourceCount: knowledge.sourceCount,
+          ...(adviceRefs.length ? { adviceRefs } : {}), ...turnUsage(metadata),
+          knowledgeStatus: knowledge.status, knowledgeSourceCount: knowledge.sourceCount, knowledgeUsed: knowledge.used === true,
           knowledgeCorpusFingerprint: knowledge.corpusFingerprint, safetyFlags: safety.flagIds,
           parentAttention: safety.requiresParentAttention, soundId: sound?.id || '' };
         if (abort.signal.aborted) return;
@@ -540,11 +542,13 @@ function createPersonaTurnHandler({
         model: metadata.model || '',
         hostKey: metadata.hostKey || '',
         routingSource: metadata.routingSource || '',
+        ...turnUsage(metadata),
         routeTier,
         fallbackUsed,
         fallbackReason,
         knowledgeStatus: knowledge.status,
         knowledgeSourceCount: knowledge.sourceCount,
+        knowledgeUsed: knowledge.used === true,
         knowledgeCorpusFingerprint: knowledge.corpusFingerprint,
         personalContinuity: continuity.personal || null, toolEvidence,
         ...(entry.presentationContext && { presentationContext: entry.presentationContext }),

@@ -5,6 +5,7 @@ const Conversation = require('../../models/Conversation');
 const { Readable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const Attachment = require('../../models/ConversationAttachment');
+const { accountingPaths, messageAccounting, conversationRagFlags } = require('./conversations/turnAccounting');
 const TURN_TEXT_LIMIT = 16000;
 const SURFACE_REPLY_LIMITS = Object.freeze({ household: 50000 });
 const SURFACE_INPUT_LIMITS = Object.freeze({ 'image-workshop': 32000 });
@@ -54,7 +55,9 @@ function mapFields(value, field) {
   }));
 }
 const sessionField = key => ['_id', 'createdAt', 'updatedAt'].includes(key) ? key : `surfaceSession.${key}`;
-const turnField = key => key === '_id' ? '_id' : key === 'replyText' ? 'content' : `turn.${key}`;
+// `stats.*` and `cost` are message fields shared with the Playground's analytics.
+const turnField = key => key === '_id' ? '_id' : key === 'replyText' ? 'content'
+  : key.startsWith('stats.') || key === 'cost' ? key : `turn.${key}`;
 const sessionView = row => row ? { ...row.surfaceSession, _id: row._id,
   conversationId: String(row._id), createdAt: row.createdAt, updatedAt: row.updatedAt } : null;
 function turnView(conversation, message, users) {
@@ -131,7 +134,7 @@ function forSurface(surface) {
   }
 
   async function recordTurn(input, { sessionPatch = {}, sessionConditions = {} } = {}) {
-    const { inputText = '', replyText = '', attachments = [], ...event } = input;
+    const { inputText = '', replyText = '', attachments = [], usage, modelProvider, ...event } = input;
     if (typeof event.traceId !== 'string' || !/^[a-zA-Z0-9_.:-]{1,260}$/.test(event.traceId)
       || typeof inputText !== 'string' || typeof replyText !== 'string'
       || inputText.length > inputTextLimit || replyText.length > replyTextLimit) throw failure('Invalid bounded conversation turn');
@@ -143,10 +146,11 @@ function forSurface(surface) {
       throw failure('A turn cannot change the conversation identity or counters');
     }
     const messageId = new Types.ObjectId();
+    const accounting = await messageAccounting({ model: event.model, provider: modelProvider, usage });
     const messages = [
       ...(inputText ? [{ _id: new Types.ObjectId(), role: 'user', content: inputText, turnId: event.traceId, timestamp: now,
         ...(refs.length ? { attachments: refs } : {}) }] : []),
-      { _id: messageId, role: 'assistant', content: replyText, turnId: event.traceId, timestamp: now,
+      { _id: messageId, role: 'assistant', content: replyText, turnId: event.traceId, timestamp: now, ...accounting,
         turn: { ...event, createdAt: event.createdAt || now, updatedAt: event.updatedAt || now } }
     ];
     // One document update is the durability boundary for transcript, evidence
@@ -159,7 +163,9 @@ function forSurface(surface) {
     }, { $push: { messages: { $each: messages } }, $inc: { 'surfaceSession.turnCount': 1 },
       $set: { 'surfaceSession.lastTurnAt': event.sourceCompletedAt || now, updatedAt: now,
         ...mapFields(sessionPatch, sessionField),
-        ...(event.model ? { model: event.model } : {}) } }, { new: true, runValidators: true }).lean();
+        ...conversationRagFlags(event),
+        // The latest served model; analytics attributes each message by its own.
+        ...(accounting.stats?.meta?.model ? { model: accounting.stats.meta.model } : {}) } }, { new: true, runValidators: true }).lean();
     if (!row) {
       if (await getTurn({ traceId: event.traceId })) throw failure('This turn is already recorded', 409, 11000);
       if (Object.keys(sessionConditions).length && await getSession({ sessionId: event.sessionId, packId: event.packId, scopeId: event.scopeId })) {
@@ -222,12 +228,29 @@ function forSurface(surface) {
     return mapped;
   }
 
+  // A settled or recovered turn carries the same usage, model and knowledge
+  // evidence as a turn recorded in one write.
+  async function accountedUpdate(update) {
+    const set = update.$set;
+    if (!set || !['usage', 'modelProvider', 'model', 'knowledgeUsed', 'knowledgeSourceCount', 'knowledgeStatus'].some(key => Object.hasOwn(set, key))) {
+      return { update, conversation: {} };
+    }
+    const { usage, modelProvider, ...fields } = set;
+    const accounting = Object.hasOwn(set, 'usage') || Object.hasOwn(set, 'model')
+      ? await messageAccounting({ model: set.model, provider: modelProvider, usage }) : {};
+    return { update: { ...update, $set: { ...fields, ...accountingPaths(accounting) } },
+      conversation: { ...conversationRagFlags(set), ...(accounting.stats?.meta?.model ? { model: accounting.stats.meta.model } : {}) } };
+  }
+
   async function updateTurn(query, update) {
     const previous = await getTurn(query);
     if (!previous) return null;
     const exact = { ...query, _id: previous._id };
+    const accounted = await accountedUpdate(update);
+    const mapped = turnUpdate(accounted.update);
+    mapped.$set = { ...mapped.$set, ...accounted.conversation };
     const row = await Conversation.findOneAndUpdate({ _id: previous.conversationId, surface,
-      messages: { $elemMatch: mapFields(exact, turnField) } }, turnUpdate(update),
+      messages: { $elemMatch: mapFields(exact, turnField) } }, mapped,
     // The exact row and all preconditions are checked together by $elemMatch.
     // The array filter only selects that row; it must not re-cast logical query
     // branches as message subdocuments (Mongoose otherwise injects defaults).

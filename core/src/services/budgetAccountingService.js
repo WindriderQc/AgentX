@@ -38,9 +38,19 @@ function cloudProviders() {
   return new Set([...DEFAULT_CLOUD_PROVIDERS, ...extra]);
 }
 
+// OpenClaw records a model it ran itself as `openclaw:model:<provider>/<model>`.
+// The gateway is on the LAN, so the provider inside the name is what bills.
+const OPENCLAW_MODEL_PREFIX = 'openclaw:model:';
+
+/** The provider-qualified model name, without OpenClaw's execution prefix. */
+function billingModelName(model) {
+  const name = String(model || '').trim();
+  return name.toLowerCase().startsWith(OPENCLAW_MODEL_PREFIX) ? name.slice(OPENCLAW_MODEL_PREFIX.length) : name;
+}
+
 /** The segment before the first '/', lowercased. `null` when unqualified. */
 function modelProvider(model) {
-  const name = String(model || '').trim();
+  const name = billingModelName(model);
   if (!name) return null;
   const idx = name.indexOf('/');
   if (idx <= 0) return null;
@@ -171,6 +181,7 @@ module.exports = {
   CLOUD_HOST_PATTERNS,
   cloudProviders,
   cloudHosts,
+  billingModelName,
   modelProvider,
   isCloudModel,
   isCloudHost,

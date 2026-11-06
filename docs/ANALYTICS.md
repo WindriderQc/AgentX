@@ -172,3 +172,30 @@ and records the same contract on embedding attempts and their route decisions,
 including failures. This is the existing private-LAN attribution boundary, not
 an authentication change; caller detail and request-body contracts do not
 establish service identity. Direct native calls and historical rows are unchanged.
+
+The instance's secretary review jobs declare the `secretary-service` principal
+and Core's memory-note index declares `core-memory`; Core maps them to
+`secretary-service-v1` and `core-memory-v1` the same way. Explicit-model clients
+such as OpenClaw and Eko name no router task, so their calls stay **not
+declared** for task type: Core does not derive a task from the consumer
+contract. Group them by contract instead.
+
+Household (surface) turns record the same message fields as the Playground:
+`stats.usage` with the tokens the engine measured (summed over a tool loop),
+`stats.meta.model` with the model that served the message (the principal
+alias resolved to the host pin current at record time, alias kept in
+`requestedModel`) and `cost`. An engine that reports no counts, such as an
+OpenClaw agent today, leaves usage unknown. A cloud provider without a
+configured price keeps its tokens and an unknown cost, never $0. Chat cost,
+feedback and stats grouped by model use each message's own model; the
+conversation's `model` is only its latest one. A turn with supplied knowledge
+sources, or a native agent turn with a `rag_search`, `memory_search` or
+`wiki_search` receipt, marks the conversation `ragUsed`; a turn where retrieval
+ran or the agent owns a knowledge tool marks it `ragRequested`. Historical
+turns are not backfilled.
+
+Output throughput (`tokensOutPerSecond`) is null when a row produced no output
+tokens, as embeddings never do. A model OpenClaw ran itself is recorded as
+`openclaw:model:<provider>/<model>`; cloud classification and pricing read the
+provider inside that name, so OpenRouter calls through the LAN gateway count
+as cloud.

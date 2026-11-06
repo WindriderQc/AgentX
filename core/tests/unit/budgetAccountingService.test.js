@@ -7,6 +7,8 @@
  */
 
 const {
+  billingModelName,
+  isCloudCall,
   modelProvider,
   isCloudModel,
   healthFromRatio,
@@ -38,6 +40,17 @@ describe('model classification', () => {
     expect(isCloudModel('qllama/bge-m3:f16')).toBe(false);
     expect(isCloudModel('hf.co/Jackrong/Qwopus3.6-27B-Coder-MTP-GGUF:Q5_K_M')).toBe(false);
     expect(isCloudModel('ollama/ax/gemma4:e4b')).toBe(false);
+  });
+
+  test('a cloud model OpenClaw ran itself is cloud, even through the LAN gateway', () => {
+    const model = 'openclaw:model:openrouter/vendor-synthetic/model-synthetic:free';
+    expect(billingModelName(model)).toBe('openrouter/vendor-synthetic/model-synthetic:free');
+    expect(modelProvider(model)).toBe('openrouter');
+    expect(isCloudModel(model)).toBe(true);
+    expect(isCloudCall({ model, hosts: ['http://192.168.2.99:18789'] })).toBe(true);
+    // An OpenClaw agent or a local model it ran stays local.
+    expect(isCloudModel('openclaw:agent:main')).toBe(false);
+    expect(isCloudModel('openclaw:model:ollama/local-synthetic:8b')).toBe(false);
   });
 
   test('bare model names are local', () => {

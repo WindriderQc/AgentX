@@ -4,6 +4,7 @@ const { readReplyFrames } = require('./persona-catalog');
 const { conversationInput } = require('./llmx-conversation');
 const { selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL } = require('./conversation-agent');
 const interactivePriority = require('../../src/services/interactivePriorityService');
+const { sumUsage } = require('../../src/services/conversations/turnAccounting');
 const { configuredHermes, createHermesTransport } = require('../../src/services/conversations/hermesTransport');
 
 const HOST_BUSY_CODES = new Set(['BENCHMARK_CLAIM_ACTIVE', 'RUNTIME_INFERENCE_ADMISSION_DENIED']);
@@ -141,6 +142,8 @@ function runTurn({ agentClient, hermesClient, inference, consumerContract, env }
     const receipts = [];
     let conversation = [{ role: 'system', content: agentxInstructions }, ...prepared.map(({ attachments, ...message }) => message)];
     let result, streamed = '', toolCalls = [], toolsOffered = Boolean(toolset), rounds = 0;
+    // Measured counts of every call this reply made, summed into the turn.
+    const callUsage = [];
     for (;;) {
       const offerTools = toolsOffered && rounds < toolset.maxRounds;
       const execute = (withTools) => inference.execute({
@@ -167,9 +170,10 @@ function runTurn({ agentClient, hermesClient, inference, consumerContract, env }
       } finally {
         if (result.stream) {
           if (!result.completion?.then) throw new Error('Core does not expose verified stream completion. Update the paired Product release.');
-          await result.completion;
+          callUsage.push(await result.completion);
         }
       }
+      if (!result.stream) callUsage.push(result.body);
       const message = result.body?.message;
       const text = frames.text || message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '';
       streamed += text;
@@ -185,7 +189,7 @@ function runTurn({ agentClient, hermesClient, inference, consumerContract, env }
       }
     }
     return { backend, text: streamed,
-      metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}) },
+      metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}), usage: sumUsage(callUsage) },
       tools: toolset && toolsOffered
         ? { status: 'observed', authority: 'agentx/core', offered: toolset.names, receipts }
         : { status: 'not_supported', authority: 'agentx/ollama', receipts: [],
