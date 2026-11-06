@@ -69,7 +69,7 @@ app.get('/ambient-board', (_req,res)=>res.send('<!doctype html><html><iframe cla
         AudioBufferSourceNode.prototype[name] = function (...args) { const result = original.apply(this, args);
           window.audioEvents.push(name);
           if (name === 'start') { const row = window.speechRequests.find(row => !row.aborted && !row.scheduled); if (row) row.scheduled = true; }
-          return original.apply(this, args); };
+          return result; };
       }
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/diskx?app=ecosystem&play=overview,frank,summary`);
@@ -171,7 +171,7 @@ app.get('/ambient-board', (_req,res)=>res.send('<!doctype html><html><iframe cla
         AudioBufferSourceNode.prototype[name] = function (...args) { const result = original.apply(this, args);
           window.audioEvents.push(name);
           if (name === 'start') { const row = window.speechRequests.find(row => !row.aborted && !row.scheduled); if (row) row.scheduled = true; }
-          return original.apply(this, args); };
+          return result; };
       }
     });
       await locked.goto(`http://127.0.0.1:${server.address().port}/diskx?app=ecosystem&play=overview,frank`);
