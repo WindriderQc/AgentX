@@ -223,6 +223,7 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
   router.post('/mcp', asyncRoute(async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     const message = await require('../src/services/mcpOwnerTools').handleOwnerMcp(req.body);
+    require('../src/services/agentToolUsage').countExchange('owner', req, message);
     if (!message) return res.status(202).end();
     return res.json(message);
   }));

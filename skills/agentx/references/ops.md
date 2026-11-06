@@ -46,7 +46,7 @@ legacy `QUEUE.md` is an archive: never add rows to it. If Core refuses writes
 because an instance still has an unmigrated `QUEUE.md`, stop and ask the owner.
 Product procedure: `docs/HEAVY_WORK_QUEUE.md`.
 
-**Reading.** `work_queue` (owner bus) or `GET /api/cluster/schedule/work-queue`.
+**Reading and planning.** `work_queue` (owner bus) or `GET /api/cluster/schedule/work-queue`.
 Use `summary.counts` before pagination: it separates automatic queue, action
 required, recorded dispatch or execution, and uncertainty. Reservations are
 counted apart. Explain the actor and step in `presentation.nextAction`, not the
@@ -54,6 +54,14 @@ stored state alone. A planning proposal without an executor cannot start.
 Qualify task, issue, queue and native execution references and keep their
 original identities and observation times. A queue completion does not
 close its task or issue.
+
+`work_queue` also files a **planning request** (`action: "request"`): a
+stable `key`, `title`, `kind`, `hosts`, `estimatedMinutes`, optional
+`notBefore`/`startBefore`, and `source.type: "coding"` with your `taskId` or
+`issueUrl` (or `"nestor"`). Resubmitting the same key returns the same
+request. It carries no executor, so it cannot start; the owner or an
+operator turns it into a run below. `action: "cancel"` with `id` and the
+current `expectedRevision` withdraws a requested or reserved one.
 
 **Submitting a custom check** (live model test, GPU test, a turn through an
 agent) with the instance's operator entrance (`references/instance.md`; the

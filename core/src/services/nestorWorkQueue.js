@@ -22,7 +22,12 @@ async function operate(body, actor = 'nestor') {
   if (body.action === 'show') return view(await queue.get(body.id));
   if (body.action === 'cancel') return view(await queue.cancel(body.id, body, actor));
   if (body.action === 'request') {
-    if (body.request?.executor || body.request?.source?.type !== 'nestor') throw fail('Nestor submits planning requests only, attributed to its native session');
+    // Agents on the owner bus may also file a coding session's plan; nobody here adds an executor.
+    const sources = actor === 'owner-mcp' ? ['nestor', 'coding'] : ['nestor'];
+    if (body.request?.executor || !sources.includes(body.request?.source?.type)) {
+      throw fail(actor === 'owner-mcp' ? 'Agents submit planning requests only, attributed to a coding task or Nestor session'
+        : 'Nestor submits planning requests only, attributed to its native session');
+    }
     return view(await queue.submit(body.request, actor));
   }
   const offset = body.offset ?? 0, limit = body.limit ?? 20;
