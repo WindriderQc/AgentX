@@ -104,3 +104,23 @@ test('Nestor and operator reads share automatic/action counts without changing n
   expect(after.jobs.every(job => job.presentation === undefined)).toBe(true);
   expect(await Runtime.countDocuments()).toBe(0);
 });
+
+test('agents on the owner bus file and cancel coding plans through the same queue, never with an executor', async () => {
+  const { handleOwnerMcp } = require('../../src/services/mcpOwnerTools');
+  const call = args => handleOwnerMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'work_queue', arguments: args } });
+  const { executor: _executor, ...request } = fixture('agent-plan');
+  const filed = await call({ action: 'request', request });
+  expect(filed.result.isError).toBe(false);
+  const job = filed.result.structuredContent;
+  expect(job).toMatchObject({ state: 'requested', source: { type: 'coding', taskId: 'synthetic-task' } });
+  expect((await call({ action: 'request', request })).result.structuredContent.id).toBe(job.id);
+  const withExecutor = await call({ action: 'request', request: { ...request, key: 'agent-run', executor: fixture('x').executor } });
+  expect(withExecutor.result).toMatchObject({ isError: true, structuredContent: { error: 'INVALID_ARGUMENTS' } });
+  await expect(nestor.operate({ action: 'request', request: { ...request, key: 'agent-run', executor: fixture('x').executor } }, 'owner-mcp')).rejects.toMatchObject({ statusCode: 400 });
+  await expect(nestor.operate({ action: 'request', request: { ...request, key: 'nestor-coding' } })).rejects.toMatchObject({ statusCode: 400 });
+  const stale = await call({ action: 'cancel', id: job.id, expectedRevision: job.revision + 1 });
+  expect(stale.result.isError).toBe(true);
+  const cancelled = await call({ action: 'cancel', id: job.id, expectedRevision: job.revision });
+  expect(cancelled.result.structuredContent.state).toBe('cancelled');
+  expect(await Runtime.countDocuments()).toBe(0);
+});

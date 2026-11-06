@@ -20,11 +20,15 @@ This skill is one entry page plus chapters. Read only the chapter you need.
    - General bus `<core>/mcp`: memory, RAG, personal tasks, calendar, photos,
      health, ecosystem, Benchmark results, ArtX, ISS passes, ideas, shopping.
    - Owner bus `<core>/api/consumers/nestor/v1/mcp`: team briefs and
-     consultations, mail recall, web search, file search, heavy-work queue,
-     Pipeline tasks and deliverables, work authority and relationships.
+     consultations, mail recall, web search, file search, heavy-work queue
+     (read, plan, cancel), Pipeline tasks, feedback and deliverables, work
+     authority and relationships.
      Owner-only: never connect it to a family or child runtime.
    Use the tools your session actually advertises. A runtime may hide shared
    tools until searched: search its tool catalogue before saying one is missing.
+   Send `x-service-caller: <who you are>` on the buses too: Core counts each
+   tool call by caller (`GET <core>/api/agent-tools/usage`). Clients that can
+   only launch local commands (Claude Desktop) use `integrations/mcp-relay`.
 2. **Plain HTTPS** when no tool covers the need: [endpoints](references/endpoints.md).
    Send `x-service-caller: <who you are>`. Answers are `{ ok, data | error }`
    (older routes: `{ status, message, data }`).
@@ -80,7 +84,7 @@ These apply to every chapter. They are the owner's rules, not tool limits.
 | Benchmark scores or a measurement | `benchmark_results`, `benchmark_coverage` | [ops](references/ops.md#benchmark) |
 | Queue or follow heavy work | `work_queue`, `agentx-work-queue` | [ops](references/ops.md#heavy-work-queue) |
 | The nightly memory review | HTTP reads | [ops](references/ops.md#memory-review) |
-| File or follow engineering work | `pipeline_tasks`, `create_todo`, `POST /api/pipeline/tasks` | [dev](references/dev.md#pipeline-tasks) |
+| File, follow or report on engineering work | `pipeline_tasks`, `create_todo`, `pipeline_feedback` | [dev](references/dev.md#pipeline-tasks) |
 | Code, test or deploy the AgentX product | repository, devX worktree | [dev](references/dev.md) |
 | Write a task brief or report worker evidence | — | [coding-work](references/coding-work.md) |
 | Audit documentation against source | — | [documentation-review](references/documentation-review.md) |

@@ -114,13 +114,19 @@ new model-supplied audience. Do not configure it for a family runtime.
 | Owner notes, mail journal and archive | Existing Core note, journal and owner-private recall services |
 | Secretary and Accountant records | `team_brief`, including freshness and unavailable sections |
 | Live specialist actions | `consult_team` with the installed native collaborator |
-| Pipeline status and tasks | `ecosystem_snapshot`, `pipeline_tasks`, existing `create_todo` |
+| Pipeline status and tasks | `ecosystem_snapshot`, `pipeline_tasks`, existing `create_todo`; `pipeline_feedback` records an agent note or verdict through the same feedback record as the Pipeline route, refused under an active automation lease |
 | Engineering provenance and authority | `work_relationships` and `work_authority`, shared Core dossier reads; no authenticated human principal or execution grant |
 | Pipeline deliverables | `pipeline_artifacts`: registered receipts and verified bounded text |
 | Storage file names | `find_files`, reading the existing index, not arbitrary disk content |
 | Current public research | `web_search` through Core SearXNG; native Main for page reading |
-| Heavy-work observation | `work_queue`, without dispatch or resource ownership |
+| Heavy-work queue | `work_queue`: read, file a planning request (coding or Nestor source, no executor) and cancel an unstarted one; no reservation, dispatch or resource ownership |
 | Existing coding and assistant workflows | Native Main consultation retains its installed tools and Pipeline policies |
+
+Clients that can only launch local commands, such as Claude Desktop, reach
+either bus through `integrations/mcp-relay`, which forwards messages unchanged.
+Core counts each `tools/call` by day, bus, tool and `x-service-caller`
+(no arguments or results); `GET /api/agent-tools/usage?days=30` reports
+every advertised tool, including unused ones, as evidence for removals.
 
 Consultation requests require a stable UUID. Core stores the complete question,
 dispatch fence, exact native session/run, answer and tool evidence in canonical

@@ -109,6 +109,11 @@ source checks stay direct.
    deploy; others need their allowlist updated in the instance repository.
 6. Qualify separately: listed, called in a real client turn, result present in
    Core.
+7. Core counts every call by day, bus, tool and caller
+   (`core/src/services/agentToolUsage.js`). `GET /api/agent-tools/usage?days=30`
+   lists every advertised tool, least used first. Read it before removing a
+   tool: zero calls since `measuredSince`, plus no reference in code, agent
+   configs or docs, makes it a removal candidate; still ask the owner.
 
 ## Changing this skill
 
@@ -147,6 +152,12 @@ audits: [documentation-review](documentation-review.md).
 - **File:** `create_todo`, or `POST /api/pipeline/tasks` with a brief
   (`{ title, spec, service }` or Core's structured fields; see coding-work).
   Filing never executes or approves anything.
+- **Report:** `pipeline_feedback` (owner bus) with `pipelineId`, `by` (your
+  name, such as `claude-code` or `codex`) and `text`; `status` `done` moves
+  the task to review, `blocked` to blocked, `partial` back to in progress,
+  none adds a plain note. Same record as
+  `POST /api/pipeline/tasks/:id/feedback`. A task under an active automation
+  lease refuses it: that worker reports through its own executor.
 - **Intake:** new generic captures start as proposals. Relay `intakeView` and
   `nextAction`: accepting the need, approving a plan and authorizing execution
   are three decisions. Do not claim, prepare or launch work whose intake says
