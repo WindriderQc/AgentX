@@ -44,6 +44,11 @@ runtime prefix. A missing tool is a limit to report, not evidence of an action.
   window, and say "si le ciel est dégagé". Never estimate a pass time from the
   web and never send the household location to a website to compute one; when
   the tool is unavailable, say so.
+- For Nestor’s animated background, sky or painting, use the supplied ArtX
+  display context or `artx_read`, with its display reference. Read
+  [the ArtX skill](../agentx-artx/SKILL.md) when selecting a scene or explaining
+  its geometry. A scene selected by `artx_present` is confirmed visible only
+  by a subsequent browser receipt; its computed sky positions are not camera pixels.
 - Read personal tasks and briefing through Core. Personal errands and coding
   Pipeline tasks are separate capabilities; do not substitute one for the other.
 - In personal Nestor, accompany a Secretary answer about priorities, personal

@@ -210,7 +210,34 @@
     return { center, project: point => project(point, center), visible: point => Math.abs(project(point, center).offset) <= SKY_SPAN && point.altDeg > -1 };
   }
 
-  const api = { background, chooseScreen, skyFrame, paintMoment, paintPhase, passArc, passProgress, visitKey, minutesText,
+  // Shared by the canvas and Core's display reader: never explain a body the
+  // renderer omitted as though it were visible in this panorama.
+  function skyBodies(sky, background) {
+    if (!sky || !background?.sky) return { moon: null, planets: [] };
+    const frame = skyFrame(sky);
+    return { moon: sky.moon && frame.visible(sky.moon) ? sky.moon : null,
+      planets: (sky.planets || []).filter(planet => frame.visible(planet) && planet.sunSeparationDeg >= 10) };
+  }
+
+  function artxScene(scene, snapshot, task, standby) {
+    const next = { ...scene, background: { ...scene.background }, ...(task?.id ? { artxTaskId: task.id } : {}) };
+    // No autonomous painting without Nestor's completed scene-selection task.
+    if (next.moment?.kind === 'paint' && task?.mode !== 'paint') next.moment = null;
+    if (['weather', 'rest'].includes(task?.mode)) next.background.sky = null;
+    if (task?.mode === 'rest') next.chips = next.chips.filter(chip => ['iss', 'alert'].includes(chip.id));
+    if (!next.background.sky) next.chips = next.chips.filter(chip => chip.id !== 'sky');
+    if (task?.mode === 'paint' && next.moment?.kind === 'paint') {
+      const picture = snapshot?.paintings?.find(item => item.id === task.paintingId);
+      if (picture) next.moment = { ...next.moment, id: picture.id, source: picture.source,
+        label: picture.source === 'family' ? 'Nestor peint un de vos dessins' : 'Nestor peint une création de l’atelier' };
+      else next.moment = null;
+    }
+    if (!standby) next.moment = null;
+    if (next.moment?.kind !== 'paint') next.chips = next.chips.filter(chip => chip.id !== 'paint');
+    return next;
+  }
+
+  const api = { background, chooseScreen, skyFrame, skyBodies, artxScene, paintMoment, paintPhase, passArc, passProgress, visitKey, minutesText,
     weatherLine, WEATHER_STALE_MS, ISS_NOTICE_MS, ISS_MOMENT_MS, VISIT_COOLDOWN_MS, MAX_CHIPS, PAINT_IDLE_MS, PAINT_EVERY_MS, PAINT_MS };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.NestorAmbientChoice = api;

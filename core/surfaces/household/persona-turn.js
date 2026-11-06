@@ -45,7 +45,7 @@ async function teamPersona(agentId, personas) {
 const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
 
 function createPersonaTurnHandler({
-  logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null, conversationWorks = null,
+  logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null, conversationWorks = null, artx = null,
   familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
   sounds, visuals, brain, memberWork, conversationImages, screenPages = require('../../public/js/screen-pages'), warmup = null, presentationCompanion = null, activePersonaTurns, validClientTurnId,
   envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
@@ -363,9 +363,12 @@ function createPersonaTurnHandler({
           turnId: clientTurnId || entry.imageTurnId, enabled: req.body?.presentationCompanion === true && !member, paused: req.body?.presentationPinned === true,
           frame: { text: userText, history, screen: entry.presentationContext }, signal: abort.signal }) : null;
         const contextTail = [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
+          !isLlmX && !member && !consult ? require('./artx-context').artxContext(artx, req.body?.artx,
+            evidence => { entry.artxEvidence = evidence; }) : '',
           screen?.screenContext(req.body?.screen, pagesFor(pack), entry.presentationContext) || '',
           entry.companion ? presentationCompanion.contextFor(session.sessionId) : '',
           require('../../src/services/pipelineSpokenFacts').context(entry.pipelineFacts)].join('');
+        if (entry.artxEvidence) entry.presentationContext = { ...(entry.presentationContext || {}), artx: entry.artxEvidence };
         const turnContext = [contextBase, brainAdvice.text, workAdvice.text, contextTail].join('').trim();
         const guardianContext = guardianSession ? dedicatedGuardian.selectedContext({
           base: contextBase, brain: brainAdvice, work: workAdvice, tail: contextTail }) : null;
@@ -391,7 +394,7 @@ function createPersonaTurnHandler({
         // transports. Adult conversations keep their normal style overlay order.
         // Famille on the AgentX engine may call the Core tools the instance turned on (HOUSEHOLD_FAMILY_TOOLS).
         const familyTools = backend === 'agentx' && pack.childSafe && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !isOpening && !member
-          ? familyToolset(conversationEnv) : null;
+          ? familyToolset(conversationEnv, { artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { artx } }) : null;
         const agentxInstructions = [pack.childSafe ? familyIdentity(session.persona) : '',
           entry.ephemeral ? 'This is an ephemeral conversation. Use only its supplied active dialogue and attachments. Persistent personal memory and RAG are unavailable; no memory save or later recollection is confirmed.' : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,

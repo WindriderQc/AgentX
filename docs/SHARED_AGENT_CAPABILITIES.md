@@ -89,6 +89,15 @@ qualification through [the heavy-work procedure](HEAVY_WORK_QUEUE.md). Retain
 native admission, stable request identity and recovery rules. Do not replay a
 possibly executed mutation to compensate for an uncertain transport result.
 
+## ArtX display capability
+
+Nestor’s [ArtX](ARTX.md) shares its scene selection and source-backed display
+reader through Core's `artx_present` and `artx_read` tools. The browser reports
+visibility; Core supplies sky geometry from the same snapshot used to draw it.
+Use the current display reference and preserve selected, hidden, expired and
+unavailable states. The [portable skill](../skills/agentx-artx/SKILL.md) also
+guides the silent idle task; it grants no additional runtime permissions.
+
 ## Personal runtime parity
 
 Personal harnesses retain the general Core MCP bus and may additionally connect

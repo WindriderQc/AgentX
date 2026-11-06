@@ -9,6 +9,13 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## On main
 
+- **Nestor ArtX.** The family standby screen supplies its current and recent
+  render receipts to the dialogue, using Core’s source snapshots and the
+  renderer’s panorama geometry. A silent routed Nestor task chooses a scene
+  after two quiet minutes, at most once per fifteen minutes. Shared ArtX tools
+  and a portable skill distinguish selection, reported visibility and unavailable
+  observations. See [ArtX](ARTX.md) for qualification and process-local limits.
+
 - **Coding work in Studio and Nestor.** The optional DSH bundle exposes native
   worker conversations with read-only progress and independent human
   continuations, using the retained worker logs and separate repository copies.
