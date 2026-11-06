@@ -569,3 +569,67 @@ test('explicit playback receipts distinguish user Pause, interruption and transp
   assert.equal(stageState('tts', row)[0], 'Interrupted');
   assert.match(stageState('tts', row)[1], /clip playback ended in browser/);
 });
+
+test('the metro train stands on the furthest stop with evidence and pulses only while the turn is open', () => {
+  const { metroProgress, nowLine } = require('../public/workflow-panel');
+  const model = createModel();
+  const progressOf = (stale = false) => { const row = model.snapshot().turns[0];
+    return [row, metroProgress(row, key => stageState(key, { ...row, telemetryStale: stale }), stale)]; };
+  model.begin('session-1', 'turn-a', 'voice');
+  model.timings('turn-a', { sttDone: 640, requestSent: 700 });
+  model.ingest('session-1', { items: [work('work-a', 'turn-a')], events: [] });
+  let [row, progress] = progressOf();
+  assert.equal(progress.train, 2, 'an active Guardian holds the train on Nestor');
+  assert.equal(progress.live, true);
+  assert.equal(progress.skipped('stt'), false);
+  assert.equal(nowLine(row, progress), 'Request sent to Nestor');
+  model.stream('turn-a', { type: 'accepted' });
+  model.stream('turn-a', { type: 'status', phase: 'activity', activity: { kind: 'tool', tool: 'calendar' } });
+  [row, progress] = progressOf();
+  assert.equal(nowLine(row, progress), 'Nestor is using a tool · calendar');
+  [row, progress] = progressOf(true);
+  assert.equal(progress.live, false, 'stale telemetry stops the pulse');
+  model.ingest('session-1', { items: [work('work-a', 'turn-a', 2, { state: 'completed', guardianStatus: 'completed' })], events: [] });
+  model.timings('turn-a', { sttDone: 640, requestSent: 700, firstAudio: 1800, playbackOutcome: 'completed' });
+  model.stream('turn-a', { type: 'done', data: {} });
+  [row, progress] = progressOf();
+  assert.equal(progress.train, 5, 'a received answer brings the train to the last stop');
+  assert.equal(progress.live, false);
+  assert.equal(progress.skipped('tools'), false, 'a reported tool keeps its stop reached');
+  assert.equal(nowLine(row, progress), 'Answer delivered');
+});
+
+test('each submitted message carries a compact copy of its own turn path', () => {
+  const previousDocument = global.document;
+  class Element {
+    constructor(tag) { this.tag = tag; this.children = []; this.dataset = {}; this.attributes = {}; this.className = ''; this.title = ''; }
+    get classList() { return { contains: name => this.className.split(' ').includes(name) }; }
+    append(...nodes) { this.children.push(...nodes); }
+    replaceChildren(...nodes) { this.children = nodes; }
+    setAttribute(key, value) { this.attributes[key] = value; }
+    querySelectorAll() { return []; }
+  }
+  global.document = { createElement: tag => new Element(tag) };
+  const asked = new Element('div'), unbound = new Element('div');
+  asked.dataset.turn = 'turn-a';
+  const transcript = { querySelectorAll: selector => selector === '.conversation-message.user[data-turn]' ? [asked, unbound].filter(row => row.dataset.turn) : [] };
+  const trailOf = row => row.children.filter(child => child.className === 'turn-trail');
+  const stop = (row, key) => trailOf(row)[0].children.find(child => child.dataset.key === key);
+  try {
+    const panel = create({ host: new Element('section'), trails: transcript });
+    panel.begin('session-1', 'turn-a', 'text');
+    assert.equal(trailOf(asked).length, 1);
+    assert.equal(trailOf(unbound).length, 0, 'a message without a turn receives no path');
+    assert.equal(trailOf(asked)[0].attributes['aria-hidden'], 'true', 'the live transcript is not re-announced; the panel stays the accessible record');
+    panel.ingest('session-1', { items: [work('work-a', 'turn-a')], events: [] });
+    assert.equal(stop(asked, 'trail:guardian').dataset.tone, 'active');
+    assert.equal(stop(asked, 'trail:guardian').dataset.current, 'true');
+    panel.ingest('session-1', { items: [work('work-a', 'turn-a', 2, { state: 'completed', guardianStatus: 'completed' })], events: [] });
+    panel.stream('turn-a', { type: 'done', data: {} });
+    assert.equal(trailOf(asked).length, 1, 'updates reuse the same path');
+    assert.equal(stop(asked, 'trail:stt').dataset.skipped, 'true', 'a written message passes the transcription stop');
+    assert.equal(stop(asked, 'trail:guardian').dataset.tone, 'complete');
+    assert.equal(stop(asked, 'trail:tts').dataset.skipped, 'true');
+    assert.match(trailOf(asked)[0].title, /^Answer delivered\./);
+  } finally { global.document = previousDocument; }
+});
