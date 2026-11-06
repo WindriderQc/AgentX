@@ -21,8 +21,8 @@ class AttributionContractTests(unittest.TestCase):
         body = "Objet : Copies annuelles\nDe : Alex\nBonne soirée !"
         template = copy.deepcopy(grounding.SCHEMA)
         schema = grounding.schema_for(body)
-        hypotheses = schema["properties"]["moments"]["items"]["properties"]["hypotheses"]
-        self.assertEqual(hypotheses["maxItems"], 0)
+        for branch in schema["properties"]["moments"]["items"]["anyOf"]:
+            self.assertEqual(branch["properties"]["hypotheses"]["maxItems"], 0)
         self.assertNotIn("no-explicit-uncertainty", json.dumps(schema))
         raw = fixtures.response(body)
         result, _ = grounding.project(raw, body, grounding.FACT_CONTRACT)
@@ -58,8 +58,8 @@ class AttributionContractTests(unittest.TestCase):
                 result, _ = grounding.project(raw, body, grounding.FACT_CONTRACT)
                 validate(result, body)
                 self.assertEqual(result["moments"][0]["subject"], subject)
-        choices = grounding.SCHEMA["properties"]["moments"]["items"]["properties"]["subject"]["enum"]
-        self.assertNotIn("related", choices)
+        for branch in grounding.SCHEMA["properties"]["moments"]["items"]["anyOf"]:
+            self.assertNotIn("related", branch["properties"]["subject"]["enum"])
 
     def test_v2_schema_and_projection_preserve_old_proximity_and_sentinel_verbatim(self):
         body = "Un ancien échange documentaire."
