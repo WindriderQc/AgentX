@@ -25,12 +25,12 @@ class AttributionContractTests(unittest.TestCase):
         self.assertEqual(hypotheses["maxItems"], 0)
         self.assertNotIn("no-explicit-uncertainty", json.dumps(schema))
         raw = fixtures.response(body)
-        result, _ = grounding.project(raw, body, grounding.CONTRACT)
+        result, _ = grounding.project(raw, body, grounding.FACT_CONTRACT)
         validate(result, body)
         self.assertEqual(result["moments"][0]["relationHints"], [])
         raw["moments"][0]["hypotheses"] = [{"basis": "possibility", "citationIds": ["no-explicit-uncertainty"]}]
         with self.assertRaisesRegex(ValueError, "known distinct source spans"):
-            grounding.project(raw, body, grounding.CONTRACT)
+            grounding.project(raw, body, grounding.FACT_CONTRACT)
         self.assertEqual(grounding.SCHEMA, template)
 
     def test_empty_source_has_no_selectable_moment_summary_or_absence_marker(self):
@@ -40,7 +40,7 @@ class AttributionContractTests(unittest.TestCase):
         self.assertNotIn("no-source-span", json.dumps(schema))
 
     def test_source_uncertainty_remains_available_when_explicit(self):
-        schema = grounding.schema_for("Un envoi administratif.\nViendras-tu ?")
+        schema = grounding.schema_for("Un envoi administratif.\nViendras-tu ?", grounding.FACT_CONTRACT)
         hypotheses = schema["properties"]["moments"]["items"]["properties"]["hypotheses"]
         self.assertEqual(hypotheses["maxItems"], 4)
         self.assertEqual(hypotheses["items"]["properties"]["citationIds"]["items"]["enum"], ["q2"])
@@ -51,11 +51,11 @@ class AttributionContractTests(unittest.TestCase):
             raw["moments"][0].update(subject="related", subjectName="Alex")
             before = copy.deepcopy(raw)
             with self.assertRaisesRegex(ValueError, "Personal proximity requires human review"):
-                grounding.project(raw, body, grounding.CONTRACT)
+                grounding.project(raw, body, grounding.FACT_CONTRACT)
             self.assertEqual(raw, before)
             for subject in ("thirdparty", "unknown", "owner"):
                 raw["moments"][0]["subject"] = subject
-                result, _ = grounding.project(raw, body, grounding.CONTRACT)
+                result, _ = grounding.project(raw, body, grounding.FACT_CONTRACT)
                 validate(result, body)
                 self.assertEqual(result["moments"][0]["subject"], subject)
         choices = grounding.SCHEMA["properties"]["moments"]["items"]["properties"]["subject"]["enum"]

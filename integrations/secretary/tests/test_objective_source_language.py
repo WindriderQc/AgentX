@@ -17,11 +17,11 @@ import test_objective_grounding as fixtures
 import test_objective_review as review_fixtures
 
 
-def response(content, contract=grounding.CONTRACT):
+def response(content, contract=grounding.FACT_CONTRACT):
     value = fixtures.grounded(content, hypotheses=False)
     value.pop("summary")
     value["summaryCitationIds"] = [grounding.catalog(content)[0]["id"]]
-    if contract == grounding.CONTRACT:
+    if contract == grounding.FACT_CONTRACT:
         value["omittedCueIds"] = []
         for moment in value["moments"]:
             moment.pop("uncertainty")
@@ -38,7 +38,7 @@ class SourceLanguageTests(unittest.TestCase):
         self.assertIn("« " + body + " »", result["summary"])
         self.assertNotIn("version finale", result["summary"])
         self.assertNotIn("Le propriétaire affirme", result["summary"])
-        self.assertEqual(changes[0]["contract"], grounding.CONTRACT)
+        self.assertEqual(changes[0]["contract"], grounding.FACT_CONTRACT)
         span = changes[0]["summary"]["sourceSpans"][0]
         self.assertEqual(body[span["start"]:span["end"]], body)
 
@@ -46,7 +46,7 @@ class SourceLanguageTests(unittest.TestCase):
         body = "La proposition attend une réponse."
         raw = response(body); raw["summary"] = "La proposition est acceptée."
         with self.assertRaisesRegex(ValueError, "result shape"):
-            grounding.project(raw, body, grounding.CONTRACT)
+            grounding.project(raw, body, grounding.FACT_CONTRACT)
 
     def test_long_summary_span_is_not_cut_before_negation_or_condition(self):
         body = "Le document " + "révisé " * 350 + "n’est pas accepté."
@@ -105,7 +105,7 @@ class SourceLanguageTests(unittest.TestCase):
                 grounding.project(raw, body)
 
     def test_page_schema_exposes_only_explicit_uncertainty_spans(self):
-        schema = grounding.schema_for("Un titre et un numéro.\nViendras-tu ?\nPeut-être en hiver.")
+        schema = grounding.schema_for("Un titre et un numéro.\nViendras-tu ?\nPeut-être en hiver.", grounding.FACT_CONTRACT)
         item = schema["properties"]["moments"]["items"]["properties"]["hypotheses"]["items"]
         self.assertEqual(item["properties"]["citationIds"]["items"]["enum"], ["q2", "q3"])
         self.assertNotIn("text", item["properties"])
@@ -121,7 +121,7 @@ class SourceLanguageTests(unittest.TestCase):
         self.assertEqual(raw, before)
         self.assertEqual(grounding.contract_for({"responseSchemaSha256": hashed(grounding.SCHEMA_V1)}), grounding.LEGACY_CONTRACT)
         with self.assertRaises(ValueError):
-            grounding.project(raw, body, grounding.CONTRACT)
+            grounding.project(raw, body, grounding.FACT_CONTRACT)
 
 
 class SourceLanguageWorkerTests(unittest.TestCase):

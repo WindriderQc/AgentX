@@ -12,6 +12,7 @@ from pathlib import Path
 from evidence_store import load, now
 from objective_schema import normalize_representation, validate
 import objective_grounding as grounding
+from objective_claim_proofs import context_for
 from review_attempts import response_received, result_file
 from review_receipts import durable, hashed
 
@@ -74,7 +75,7 @@ def _failure(value, state, body, manifest, source_context=None):
     if state["phase"] == "invalid-output":
         return {"type": "ReviewInvalidOutput", "message": state["invalidReason"]}
     try:
-        normalized, _ = normalize_representation(value, body, grounding.contract_for(manifest), source_context)
+        normalized, _ = normalize_representation(value, body, grounding.contract_for(manifest), context_for(source_context))
         validate(normalized, body)
     except ValueError as error:
         return {"type": type(error).__name__, "message": str(error)}
