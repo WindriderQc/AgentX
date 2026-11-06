@@ -108,6 +108,18 @@ async function listPrincipalHostModels({ listInstalledModels = defaultInstalledM
   return { hostUrl, models: (await listInstalledModels(hostUrl)).sort((a, b) => a.localeCompare(b)) };
 }
 
+// A role route names no model: it serves whatever its endpoint has pinned. A
+// principal route (daily_operator) whose role resolves to the principal host
+// therefore follows the pin and moves with it (#360). A role resolving to
+// another endpoint, or not resolving, stays a dedicated override.
+async function principalRoleFollowsPin(configs, current) {
+  if (!require('./routing/topologyRoleRouting').isRoleRoute(configs.daily_operator)) return false;
+  const resolution = await routerConfig.resolvePrincipalTopology();
+  const trim = url => String(url || '').replace(/\/+$/, '');
+  return Boolean(resolution?.ok && trim(resolution.url) === trim(current.hostUrl)
+    && (current.pinnedModels || []).some(pin => modelsMatch(pin.model, resolution.model)));
+}
+
 const ROLLBACK_CODES = ['HOST_PIN_RESTORE_FAILED', 'PRINCIPAL_ROUTES_UNVERIFIED', 'PRINCIPAL_CHOICES_CHANGED'];
 
 async function movePrincipal({ targetModel, expectedModel, principal, requestId, afterVerified = null }) {
@@ -129,7 +141,9 @@ async function movePrincipal({ targetModel, expectedModel, principal, requestId,
       return { error: refusal(`Routes on the principal host name an unpinned model: ${current.divergentRoutes.join(', ')}`, 'PRINCIPAL_ROUTES_DIVERGE') };
     }
     const routes = followedRoutes(configs, current);
-    if (!routes.some(([task]) => task === 'daily_operator')) return { error: refusal('The principal route has a dedicated override') };
+    if (!routes.some(([task]) => task === 'daily_operator') && !await principalRoleFollowsPin(configs, current)) {
+      return { error: refusal('The principal route has a dedicated override') };
+    }
     // Routes without a stored route already follow the pin; storing one for
     // them would freeze a model name the next switch must rewrite.
     const pinFollowers = new Set(routerConfig.getHostPinFollowers());
