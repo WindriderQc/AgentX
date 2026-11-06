@@ -249,6 +249,9 @@ app.use(responseEnvelopeCompatibility);
 // disabled by default and outside the demo profile. Registration happens after
 // the origin guard, body parsers, sanitizer and profile guard but before built-in
 // routes so an extension can protect Core-owned paths without bypassing them.
+// Count agent tool calls on the shared MCP bus in front of every layer that
+// answers it (Core, household and GraphysX surfaces).
+app.use(['/mcp', '/api/mcp'], standardJsonParser, require('./services/agentToolUsage').usageMiddleware());
 const runtimeServices = createTrustedRuntimeServices();
 require('./ui/productShell').registerProductHome(app);
 if (!isDemoProfile(agentxProfile)) {
