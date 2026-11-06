@@ -47,7 +47,7 @@ def omission(key, reason='non-biographical-context', context=None):
 
 
 def project(value, body):
-    result, changes = normalize_representation(value, body, grounding.CONTRACT)
+    result, changes = normalize_representation(value, body, grounding.SELECTION_CONTRACT)
     validate(result, body)
     return result, changes
 
@@ -145,7 +145,7 @@ class UsefulSelectionTests(unittest.TestCase):
         self.assertEqual(result['moments'], [])
         with self.assertRaisesRegex(ValueError, 'cannot be justified as absent'):
             project(abstention('Du texte lisible.', reason='no-readable-source', ids=()), 'Du texte lisible.')
-        schema = grounding.schema_for(' ')
+        schema = grounding.schema_for(' ', grounding.SELECTION_CONTRACT)
         self.assertEqual(len(schema['anyOf']), 1)
         branch = schema['anyOf'][0]['properties']
         self.assertEqual(branch['moments']['maxItems'], 0)
@@ -176,7 +176,10 @@ class UsefulSelectionTests(unittest.TestCase):
 
 
 class UsefulSelectionWorkerTests(unittest.TestCase):
-    setUp = fixtures.fixtures.fixtures.SourceLanguageWorkerTests.setUp
+    def setUp(self):
+        fixtures.fixtures.fixtures.SourceLanguageWorkerTests.setUp(self)
+        frozen = patch.object(worker, 'SCHEMA', grounding.SCHEMA_V8)
+        frozen.start(); self.addCleanup(frozen.stop)
     mail = fixtures.fixtures.fixtures.SourceLanguageWorkerTests.mail
     prepare = fixtures.fixtures.fixtures.SourceLanguageWorkerTests.prepare
     run_worker = fixtures.fixtures.fixtures.SourceLanguageWorkerTests.run_worker
@@ -185,7 +188,7 @@ class UsefulSelectionWorkerTests(unittest.TestCase):
         body = 'Notre brochure décrit un voyage promotionnel.'
         self.mail('message01', body)
         def output(prompt, reply):
-            self.assertEqual(prompt['groundingContract'], grounding.CONTRACT)
+            self.assertEqual(prompt['groundingContract'], grounding.SELECTION_CONTRACT)
             self.assertIn('travel', prompt['selectionCues'][0]['kinds'])
             reply['response'] = json.dumps(abstention(body, omitted=[omission('q1')]))
             return reply
