@@ -72,7 +72,12 @@ app.get('/', (_req, res) => res.send(`<!doctype html><html lang="fr"><meta chars
     page.on('response', response => { if (response.status() >= 400) httpErrors.push({ url: response.url(), status: response.status() }); });
     await page.route('**/*', route => {
       requests.push(route.request().method() + ' ' + route.request().url());
-      return new URL(route.request().url()).origin === origin ? route.continue() : route.abort();
+      const url = new URL(route.request().url());
+      if (url.origin !== origin) return route.abort();
+      // This journey verifies display/context. The dedicated voice journey owns
+      // synthesis, so explicitly request the supported silent mode here.
+      if (url.pathname === '/diskx' && url.searchParams.get('app') === 'ecosystem') url.searchParams.set('voice', 'off');
+      return route.continue({ url: url.toString() });
     });
     await page.goto(origin);
     const send = async text => { await page.getByRole('textbox', { name: 'Message' }).fill(text); await page.getByRole('button', { name: 'Envoyer', exact: true }).click(); };
