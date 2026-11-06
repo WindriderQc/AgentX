@@ -170,6 +170,27 @@ function mathTurnFor(text, language) {
   return { scene, reply: mathReply(scene, ['fr', 'en'].includes(language) ? language : questionLanguage(tokens(text))) };
 }
 
+/**
+ * Which math picture a turn gets. Famille (#131): the picture and Core's own
+ * answer, without the model. Super Dad (#1270): the same picture beside the
+ * model's own answer, so an adult question keeps its full explanation.
+ */
+function mathPictureFor(text, { childSafe = false, language } = {}) {
+  if (childSafe) {
+    const turn = mathTurnFor(text, language);
+    return turn && { ...turn, answeredBy: 'core' };
+  }
+  const scene = mathSceneFor(text);
+  return scene && { scene, reply: null, answeredBy: 'model', context: mathSceneNote(scene) };
+}
+
+// What the model is told when Core puts a cube picture beside its answer.
+function mathSceneNote(scene) {
+  const what = scene.kind === 'add' ? `${scene.a} + ${scene.b} = ${scene.a + scene.b}` : `counting to ${scene.to}`;
+  return `\n\nCore is putting a cube picture of ${what} beside your answer; it computed the picture itself. `
+    + 'Answer the question normally. You may refer to the cubes, but their display is not confirmed.';
+}
+
 // Reuse the canonical Family turn and its existing browser receipt. This is
 // historical rendering evidence, never a claim about the current screen or
 // what the child actually saw. No browser text or receipt reason enters context.
@@ -192,4 +213,4 @@ function mathPictureContext(rows = []) {
     + JSON.stringify(scene) + '. ' + observation;
 }
 
-module.exports = { mathSceneFor, mathReply, mathTurnFor, mathPictureContext, LIMITS, SCHEMA };
+module.exports = { mathSceneFor, mathReply, mathTurnFor, mathPictureFor, mathPictureContext, LIMITS, SCHEMA };

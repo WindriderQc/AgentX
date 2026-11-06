@@ -16,6 +16,11 @@
             || (card.querySelector('.display-block-note') ? 'unavailable' : 'loading'), observation: 'pixels_not_supplied' };
       }
       if (block.kind === 'scene') return { ...base, observation: 'caption_only', text: block.title || '' };
+      // #1270: the formula with the sliders' current values; Core re-validates it and computes the points.
+      if (block.kind === 'math') {
+        const text = card._mathText?.() || '';
+        return text ? { ...base, observation: 'formula_and_parameters', text } : { ...base, status: 'unavailable' };
+      }
       return { ...base, text: block.body.slice(0, 8000), truncated: block.body.length > 8000 };
     }
     const target = card._screenTarget;

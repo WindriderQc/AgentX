@@ -14,10 +14,12 @@ const { SPOKEN_REPLY_INSTRUCTION } = require('../../src/services/voice/presentat
 const path = require('node:path');
 const spokenPresentation = require('../../public/js/voice/spoken-presentation');
 const screenPages = require('../../public/js/screen-pages');
+const mathExpression = require('../../public/js/math-expression');
 
-const KINDS = Object.freeze(['text', 'list', 'table', 'code', 'link', 'secret', 'image']);
+const KINDS = Object.freeze(['text', 'list', 'table', 'code', 'link', 'secret', 'image', 'math']);
 const LIMITS = Object.freeze({ blocks: 20, body: 8000, title: 120, spokenListItems: 3, token: 24, openTag: 300 });
 const ON_SCREEN = Object.freeze({ fr: '(à l’écran)', en: '(on screen)' });
+const NOT_DRAWN = Object.freeze({ fr: 'Formule non tracée', en: 'Formula not drawn' });
 const ONLY_SHOWN = Object.freeze({ fr: 'Je te propose ce contenu à l’écran.', en: 'Here is the content for your screen.' });
 const OPEN = /<show\b([^>]*)>/i;
 const OPEN_UNFINISHED = /<show\b[^>]*$/i;
@@ -101,7 +103,7 @@ function spokenTable(lines) {
   return lines.map(row => row.replace(/^\s*\||\|\s*$/g, '').split('|').map(cell => cell.trim()).filter(Boolean).join('. ')).join('\n');
 }
 
-function createReplyChannels({ allowSecrets = false, allowPages = false, canonicalPageTitles = false, pageTarget = null, pageCatalog = screenPages, answerForPage = null, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
+function createReplyChannels({ allowSecrets = false, allowMath = false, allowPages = false, canonicalPageTitles = false, pageTarget = null, pageCatalog = screenPages, answerForPage = null, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
   let pending = '', inShow = false, showAttributes = null, received = false, ended = false;
@@ -124,8 +126,15 @@ function createReplyChannels({ allowSecrets = false, allowPages = false, canonic
     // A page names a Core page and a bounded focus (#924); Core builds the address.
     const target = kind === 'page' && allowPages ? pageCatalog.parse(pageTarget || content) : null;
     if (kind === 'page' && (!target || pageTarget && display.some(row => row.kind === 'page'))) return false;
+    // A math block (#1270) is drawn only when its formula passes the shared grammar.
+    // Otherwise it stays readable as code, titled so nobody mistakes it for a picture.
+    if (kind === 'math') {
+      const plot = allowMath ? mathExpression.parsePlot(content) : null;
+      if (!plot?.ok) return addBlock('code', [NOT_DRAWN[lang], title].filter(Boolean).join(' : '), content, extra);
+      body = plot.text;
+    }
     const block = { id: 'b' + (display.length + 1), kind, title: target ? canonicalPageTitles ? pageCatalog.label(target) : title || pageCatalog.label(target) : title,
-      body: target ? pageCatalog.canonical(target) : content, ...extra };
+      body: target ? pageCatalog.canonical(target) : kind === 'math' ? body : content, ...extra };
     display.push(block);
     onShow(block);
     return true;
@@ -135,7 +144,7 @@ function createReplyChannels({ allowSecrets = false, allowPages = false, canonic
   const showBlock = (body, partial = false) => {
     const { kind, title, source, from } = showAttributes;
     addBlock(kind, title, body, { ...(source === undefined ? {} : { source }), ...(from ? { from } : {}), ...(partial ? { partial: true } : {}) });
-    if (readAloud && !['secret', 'consult', 'image', 'page'].includes(kind)) {
+    if (readAloud && !['secret', 'consult', 'image', 'page', 'math'].includes(kind)) {
       feedSpoken('\n'); closeGroup();
       speakProse((kind === 'table' ? spokenTable(body.split('\n')) : body) + '\n');
     }
@@ -313,6 +322,17 @@ function historyText(replyText, display = []) {
   return [String(replyText || ''), ...blocks].filter(Boolean).join('\n');
 }
 
+// Math Lab (#1270), adult conversations only. Core validates the formula and
+// computes every point itself; Famille keeps its cube pictures.
+const MATH_CONTRACT = 'To draw a function y = f(x), write one formula per block, one statement per line: '
+  + '<show kind="math" title="short title">y = a*sin(b*x)\na = 1 in [-3, 3]\nb = 2 in [0.5, 4]\nx in [-2*pi, 2*pi]</show>. '
+  + 'Use x as the variable; operators + - * / ^ and parentheses; functions sin cos tan exp log (natural) sqrt abs; constants pi and e. '
+  + 'Every other letter is a single-letter parameter declared on its own line with its starting value and slider range; the user can move the sliders. '
+  + 'The x line sets the window (default [-10, 10]); an optional "y in [min, max]" line fixes the vertical window. '
+  + 'Core checks the formula and draws every point from it: explain the curve and what each parameter changes aloud, never list computed points, and do not claim the picture loaded. '
+  + 'When a math card is the current presentation, its formula and current parameter values come from the screen observation. '
+  + 'Counting and small additions get Core\'s cube picture automatically beside your answer.';
+
 function contract({ family = false, imageSources = [], pages = false, pageCatalog = screenPages } = {}) {
   if (family) {
     pageCatalog = screenPages.createCatalog(pageCatalog.entries.filter(row => ['ecosystem', 'earth', 'iss', 'kids-tasks'].includes(row.id)));
@@ -328,6 +348,7 @@ function contract({ family = false, imageSources = [], pages = false, pageCatalo
       : 'Use kind="secret" for passwords, keys and tokens: it is displayed masked, is not retained and is never spoken.',
     'Do not read a show block aloud unless the user asks you to; then speak its content outside any block.',
     'An explicit request to display a list or document needs only a short spoken announcement. A show block is a presentation proposal, not proof it loaded. Use the current presentation context for references to this page, chart or image; earlier show blocks are history. A Core snapshot attests data and period, separately from browser display. Never describe image pixels unless an image was actually supplied to your vision input.',
+    family ? '' : MATH_CONTRACT,
     imageSources.length
       ? `To show a picture, write <show kind="image" source="${imageSources.join('|')}" title="short caption">a few search words</show>. `
         + 'web searches the internet; photos and media search the household\'s own pictures by file or folder name. Never write a URL or a path; Household finds the picture and it may find none. '

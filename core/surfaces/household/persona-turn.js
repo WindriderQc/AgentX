@@ -18,7 +18,7 @@ const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('
 const familyPages = require('./family-pages');
 const { familyClockContext, familyIdentity } = require('./family-clock');
 const { familyIntroduction, soundOnlyRequest } = require('./sound-library');
-const { mathTurnFor, mathPictureContext } = require('./math-scene');
+const { mathPictureFor, mathPictureContext } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels;
 const { scoreSpeechLanguage, speechText } = require('../../public/js/voice/speech-language');
@@ -202,7 +202,10 @@ function createPersonaTurnHandler({
       entry.familyPage = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? await familyPages.forTurn(userText, pagesFor(pack), conversations, session) : null;
       const assessedSafety = assessSafety(userText, { adult: !pack.childSafe });
       const safety = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyPages.navigationSafety(userText, assessedSafety, assessSafety) : assessedSafety;
-      const childBoundary = childBoundaryReply(pack, safety, userText), mathTurn = pack.childSafe && !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathTurnFor(userText, preferredSpeechLanguage) : null;
+      const childBoundary = childBoundaryReply(pack, safety, userText);
+      // #131 Famille answers a math question itself; #1270 Super Dad shows the picture beside the model's answer.
+      const mathPicture = !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathPictureFor(userText, { childSafe: pack.childSafe, language: preferredSpeechLanguage }) : null;
+      const mathTurn = mathPicture?.answeredBy === 'core' ? mathPicture : null;
       let replyText, afterSoundText = '', sceneProposal = null, display = [];
       // Only browser child-safe turns offer clips, and never over a safety
       // escalation or boundary reply. Native VoiX owns its own playback and does
@@ -244,6 +247,7 @@ function createPersonaTurnHandler({
         replyText = familyIntroduction(localSound, preferredSpeechLanguage);
         knowledge.status = 'not-required-local-sound';
       } else {
+        if (mathPicture) event('scene', { scene: mathPicture.scene });
         // Scope chooses context and permissions. The same executor handles every
         // pack; its selected backend stays fixed for this conversation.
         const backend = conversationBackend(session.backend, conversationEnv);
@@ -287,6 +291,7 @@ function createPersonaTurnHandler({
           }
           catch { return fail(res, 503, 'Conversation history is unavailable; no out-of-context answer was generated.', 'VOICE_PERSONA_HISTORY_UNAVAILABLE'); }
         }
+        if (mathPicture?.context) mathContext = mathPicture.context;
         if (!session.backend) {
           await conversations.updateSession({ sessionId: session.sessionId }, { $set: { backend, agentId: agentIdFor(session) } });
           session.backend = backend;
@@ -409,7 +414,7 @@ function createPersonaTurnHandler({
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
+        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: !pack.childSafe, allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
           canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target,
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },

@@ -156,7 +156,7 @@
         option.value = String(index);
         option.textContent = card.querySelector('.display-block-title')?.textContent
           || (card._screenTarget && root.AgentXScreenPages.label(card._screenTarget))
-          || ({ text: 'Note', list: 'Liste', table: 'Tableau', code: 'Code', image: 'Image', scene: 'Scène', secret: 'Secret', link: 'Lien' }[card.dataset.kind] || 'Contenu');
+          || ({ text: 'Note', list: 'Liste', table: 'Tableau', code: 'Code', image: 'Image', scene: 'Scène', secret: 'Secret', link: 'Lien', math: 'Graphique' }[card.dataset.kind] || 'Contenu');
         return option;
       }));
       if (!cards.length) {
