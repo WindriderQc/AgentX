@@ -356,6 +356,19 @@ test('after sunset the background shows the real sky, and a note says what is up
   assert.equal(choice.chooseScreen(night, { hour: 20, standby: false }).chips.length, 0, 'a conversation keeps only the sky');
 });
 
+test('planet ephemerides retain below-horizon Saturn without adding it to drawing candidates', () => {
+  const sky = nightSky.skyView(...QUEBEC, new Date('2026-11-06T13:39:00Z'));
+  const saturn = sky.planetPositions.find(planet => planet.id === 'saturn');
+  assert.ok(saturn.altDeg < -1);
+  assert.ok(Number.isFinite(saturn.azDeg));
+  assert.equal(sky.planets.some(planet => planet.id === 'saturn'), false);
+  assert.equal(sky.planetPositions.length, 4);
+  assert.deepEqual(sky.planets, sky.planetPositions.filter(planet => planet.altDeg >= -1));
+  const night = nightSky.skyView(...QUEBEC, new Date('2026-11-20T01:00:00Z'));
+  assert.deepEqual(night.planets.find(planet => planet.id === 'saturn'),
+    night.planetPositions.find(planet => planet.id === 'saturn'));
+});
+
 test('the panorama turns so the Moon is never hidden behind Nestor', () => {
   const ahead = { moon: { altDeg: 40, azDeg: 185 } };
   const frame = choice.skyFrame(ahead);

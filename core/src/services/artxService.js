@@ -17,14 +17,15 @@ function describe(snapshot, receipt, task) {
   if (['weather', 'rest'].includes(task?.mode) || receipt.moment?.kind === 'iss') background.sky = null;
   const sky = snapshot.sky, frame = Choice.skyFrame(sky);
   const bodies = Choice.skyBodies(sky, background);
-  const planets = (sky?.planets || []).map(planet => {
+  const planets = (sky?.planetPositions || sky?.planets || []).map(planet => {
     const rendered = receipt.visible && bodies.planets.some(body => body.id === planet.id);
     const p = frame.project(planet);
     return { id: planet.id, name: planet.name, altitudeDeg: planet.altDeg, azimuthDeg: planet.azDeg,
-      direction: direction(planet.azDeg), rendered,
+      direction: direction(planet.azDeg), aboveHorizon: planet.altDeg > 0, rendered,
       ...(rendered ? { screen: { x: +p.x.toFixed(3), y: +p.y.toFixed(3),
         side: p.x < 0.4 ? 'gauche' : p.x > 0.6 ? 'droite' : 'centre' } }
-        : { reason: !receipt.visible ? 'display_hidden' : !background.sky ? 'sky_hidden' : !frame.visible(planet) ? 'outside_panorama' : 'too_close_to_sun' }) };
+        : { reason: !receipt.visible ? 'display_hidden' : !background.sky ? 'sky_hidden'
+          : !frame.visible(planet) ? (planet.altDeg < 0 ? 'below_horizon' : 'outside_panorama') : 'too_close_to_sun' }) };
   });
   const picture = receipt.moment?.kind === 'paint'
     ? snapshot.paintings?.find(item => item.id === receipt.moment.id) : null;

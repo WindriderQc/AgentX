@@ -30,6 +30,14 @@ functions with the renderer. Browser-supplied text, labels and planet positions
 are never accepted as source data. A receipt attests the browser’s report of
 visibility, not camera pixels or human attention.
 
+The sky source retains all computed `planetPositions`, including planets below
+the horizon, separately from the renderer's horizon-filtered `planets` candidates.
+ArtX supplies their direction, altitude and `aboveHorizon` independently of
+`rendered` and `screen`. Weather, a hidden display or an off-panorama planet
+does not remove its calculated outdoor position. A negative altitude means it
+cannot currently be seen outside; an unavailable or expired source cannot
+establish its current position. Screen left/right is not a compass direction.
+
 The conversation receives that bounded ArtX context on both Core inference and
 native agent transports. Its exact evidence is retained under
 `presentationContext.artx` on the canonical turn. Hidden displays, weather-masked
