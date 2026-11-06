@@ -348,9 +348,11 @@ describe('leaderboard evidence-honesty UI', () => {
 
         expect(container.innerHTML).not.toContain('P1');
         // Without an assessed grader the rank is provisional, never a medal.
-        expect(container.innerHTML).toContain('>#1<small>provisional</small>');
+        // Every ranked row shares both conditions, so the header states them once.
+        expect(container.innerHTML).toContain('aria-label="#1, provisional">#1</span>');
         expect(container.innerHTML).not.toContain('cb-rank-none');
-        expect(container.innerHTML).toContain('data-partial="true">Provisional · grading not calibrated · Partial coverage</span>');
+        expect(container.innerHTML).toContain('provisional ranking (grading not calibrated) · partial coverage for every model');
+        expect(container.innerHTML).toContain('data-partial="true"></span>');
         expect(container.innerHTML).toContain('id="cb-model-dialog"');
         expect(container.innerHTML).not.toContain('🥇');
     });

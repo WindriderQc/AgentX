@@ -172,9 +172,20 @@ try {
     if (savedHost) { _selectedHost = savedHost; _hostScope = 'current'; }
 } catch (_) {}
 
+// The help line under "Rank by" describes the axis that is selected.
+const AXIS_HELP = {
+    composite: 'Composite combines quality, speed and latency. Selecting it shows local models only.',
+    quality: 'Quality ranks on answer quality alone, without speed or latency. Cloud models can be included.',
+    deterministic: 'Deterministic ranks on rule-checked answers only, without the judge model.',
+    subjective: 'Judge ranks on the judge model\'s scores only.'
+};
+
 function wireAxisChip(main, leaderboardMeta = {}, coverageRes = null) {
     const bar = main.querySelector('#filter-bar');
     if (!bar) return;
+
+    const axisHelp = bar.querySelector('#rank-axis-help');
+    if (axisHelp && AXIS_HELP[_currentAxis]) axisHelp.textContent = AXIS_HELP[_currentAxis];
 
     // Rank-by (score axis)
     bar.querySelectorAll('[data-axis]').forEach(btn => {
