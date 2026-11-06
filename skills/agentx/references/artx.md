@@ -1,8 +1,3 @@
----
-name: agentx-artx
-description: Choose Nestor’s silent ArtX scenes after an idle interval and explain the sky or painting currently displayed from Core’s ArtX receipts.
----
-
 # Nestor ArtX
 
 ArtX is your animated family display. Core provides weather, computed local sky

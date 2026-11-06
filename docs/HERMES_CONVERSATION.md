@@ -38,8 +38,9 @@ with Local; the human decision remains in My day. Explicitly add the tool to
 the native profile's selected MCP tools when installing this capability.
 Discovery alone does not grant it to an existing Hermes or OpenClaw session.
 
-Install the reviewed [AgentX Core skill](../skills/agentx-core/SKILL.md) through
-the native Hermes skill mechanism. The same source is suitable for other
+Install the reviewed [agentx skill](../skills/agentx/SKILL.md) through
+the native Hermes skill mechanism (for example `skills.external_dirs`
+pointing at the deployed checkout's `skills/`, so each deploy updates it). The same source is suitable for other
 authorized clients. Native skill-reading tools and API toolsets must be enabled
 explicitly; a copied skill alone does not activate Core tools. Keep native
 sampling disabled unless the instance deliberately admits that extra inference.

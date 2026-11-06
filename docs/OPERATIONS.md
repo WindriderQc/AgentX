@@ -166,7 +166,7 @@ The existing private Core MCP bus exposes `personal_calendar` to explicitly
 granted personal runtimes. Its bounded host helper reuses native gog Google
 authorization; no account token enters Core. Install the helper from the same
 reviewed product checkout (all Calendar helper modules together) and publish
-the shared AgentX Core skill. Conditional writes require Linux anonymous
+the shared agentx skill. Conditional writes require Linux anonymous
 memory descriptors and a current native gog token; they fail closed when
 unavailable. Core's durable operation journal has no TTL; never clear uncertain
 receipts to retry a mutation. Calendar scope, runtime grants and provider/device

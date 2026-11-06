@@ -9,7 +9,8 @@ and docs/OPERATIONS.md before changing architecture.
   and events belong to Core capabilities. Surfaces and personas compose them.
 - External agents reuse those capabilities; extend AgentX rather than duplicate
   tools in a runtime. Follow docs/SHARED_AGENT_CAPABILITIES.md for development
-  and deploy skills/agentx-core/SKILL.md for shared runtime usage guidance.
+  and deploy the skills/agentx skill (one entry page plus chapters) for
+  runtime usage and repository guidance.
 - Nestor is the personal assistant. Household is the family surface. External
   harnesses are replaceable and must not become the canonical business or memory owner.
 - Distribute the same code through profiles/capabilities. No parallel product/ops repository:
