@@ -50,9 +50,7 @@ as private persistent instance state shared by Core restarts. It is not a Git
 checkout or a worker checkpoint. CPU tests use temporary repositories and fake
 harness output. Queue any live DSH/OpenCode model comparison as heavy work.
 
-## One run
-
-### Bounded qualification transport
+## Bounded qualification transport
 
 An isolated qualification runner can compose `model_relay.serve`'s
 `request_budget` and `request_policy` with `coding_reply_budget.ReplyBudget`
@@ -67,6 +65,8 @@ Keep the same budget object across resumed sessions. Combine it with the
 runner's process deadline, isolated workspace and native workload/host ownership.
 The opt-in guard does not authorize a model run, open a native Benchmark gate,
 execute a tool, or change a runtime's capability set.
+
+## One run
 
 ```bash
 AGENTX_CODING_MODEL=auto GH_TOKEN=<token> \
