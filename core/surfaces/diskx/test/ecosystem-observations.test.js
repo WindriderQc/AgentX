@@ -71,6 +71,7 @@ test('Data presence binds stable device identity and retains last seen instead o
   assert.equal(row.observedAt,iso(at-600000)); assert.equal(row.ttlMs,1800000);
   const projected = projectSnapshot(snapshot(), {...config(),nodes:[{id:'edge',observations:['edge']}]},at,[row]);
   assert.equal(projected.nodes[0].freshness,'current');
+  state='never_confirmed'; assert.equal((await networkRows(c,fetchData,at))[0].state,'unknown');
   state='historical'; assert.equal((await networkRows(c,fetchData,at))[0].state,'offline');
   const old = await networkRows(c,fetchData,at+1900000); assert.equal(old[0].state,'unknown');
 });

@@ -62,7 +62,8 @@ async function networkRows(config, fetchData, now) {
     const seen = Date.parse(device?.observation?.lastSeenAt);
     const online = device?.observation?.state === 'online' && seen <= now && now - seen < ttl;
     // Absence is a network observation, never proof of machine shutdown.
-    const absent = device && !online && scan <= now && now - scan < ttl;
+    const absent = device && !online && Number.isFinite(seen) && seen <= now
+      && ['recent', 'historical', 'offline'].includes(device.observation?.state) && scan <= now && now - scan < ttl;
     return { id: check.id, source: 'network_presence', state: online ? 'online' : absent ? 'offline' : 'unknown',
       observedAt: online ? new Date(seen).toISOString() : absent ? new Date(scan).toISOString() : null, ttlMs: ttl };
   });
