@@ -59,6 +59,15 @@ class LiteralDateTests(unittest.TestCase):
             self.assertEqual((row["value"], row["precision"]), (value, precision))
             self.assertEqual(body[row["start"]:row["end"]], row["text"])
 
+    def test_ordinal_days_keep_day_precision_and_invalid_days_cannot_be_reduced_to_month(self):
+        for words in ("9th May 2021", "May 9th, 2021", "21st May 2021"):
+            rows = dates.catalog(grounding.catalog("Une étape est annoncée " + words + "."))
+            self.assertEqual(len(rows), 1, words)
+            self.assertEqual(rows[0]["precision"], "day", words)
+            self.assertEqual(rows[0]["text"], words)
+        for words in ("31st February 2024", "February 31st, 2024", "999th May 2021"):
+            self.assertEqual(dates.catalog(grounding.catalog("Une étape est annoncée " + words + ".")), [], words)
+
     def test_invalid_partial_relative_and_bare_dates_are_not_completed_or_downgraded(self):
         for body in ("Je pars après-demain.", "Départ le 12 juillet.", "Date : 31 février 2024",
                      "Date : en 2024-13-01", "31 février 2024", "12 mai 2021"):

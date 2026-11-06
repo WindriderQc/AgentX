@@ -22,8 +22,8 @@ ACCENTS = str.maketrans({chr(n): folded(chr(n)) for n in range(0xC0, 0x180)
 # untouched original. NFKD accents are removed one character at a time below.
 PATTERNS = [
     (re.compile(r"(?<!\d)(?P<year>[12]\d{3})-(?P<number>\d{2})(?:-(?P<day>\d{2}))?(?![\d-])"), None),
-    (re.compile(r"(?<!\w)(?P<day>\d{1,2})(?:er)?\s+(?P<month>" + MONTH_PATTERN + r")\s+(?P<year>[12]\d{3})(?!\d)", re.I), "day"),
-    (re.compile(r"\b(?P<month>" + MONTH_PATTERN + r")\s+(?P<day>\d{1,2}),?\s+(?P<year>[12]\d{3})(?!\d)", re.I), "day"),
+    (re.compile(r"(?<!\w)(?P<day>\d{1,2})(?:er|st|nd|rd|th)?\s+(?P<month>" + MONTH_PATTERN + r")\s+(?P<year>[12]\d{3})(?!\d)", re.I), "day"),
+    (re.compile(r"\b(?P<month>" + MONTH_PATTERN + r")\s+(?P<day>\d{1,2})(?:st|nd|rd|th)?,?\s+(?P<year>[12]\d{3})(?!\d)", re.I), "day"),
     (re.compile(r"\b(?P<month>" + MONTH_PATTERN + r")\s+(?P<year>[12]\d{3})(?!\d)", re.I), "month"),
     (re.compile(r"\b(?:en|in)\s+(?P<year>[12]\d{3})(?![\d-])", re.I), "year"),
 ]
@@ -39,6 +39,10 @@ def expressions(text):
     for pattern, precision in PATTERNS:
         for match in pattern.finditer(plain):
             if any(match.start() < end and match.end() > start for start, end in occupied):
+                continue
+            if precision == "month" and re.search(r"\b\d+(?:er|st|nd|rd|th)?\s+$", plain[:match.start()], re.I):
+                # An unsupported/invalid printed day must not disappear when
+                # the lower-priority month expression is considered.
                 continue
             occupied.append((match.start(), match.end()))
             values = match.groupdict()
