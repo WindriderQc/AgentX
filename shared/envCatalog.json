@@ -1,6 +1,16 @@
 {
   "version": 1,
   "variables": {
+    "AGENT_TOOL_USAGE_TTL_DAYS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Days Core keeps daily agent tool call counts (agenttoolusage collection, GET /api/agent-tools/usage). Read when the TTL index is built. Unset: 400."
+    },
     "AGENTX_ACCESS_CODE_FILE": {
       "services": [
         "core"
