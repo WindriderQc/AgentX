@@ -568,13 +568,14 @@ app.get('/nerve-center', (req, res) => {
     bodyClass: 'nerve-center-page',
     headCss: [
       '<link rel="stylesheet" href="/styles.css">',
-      '<link rel="stylesheet" href="/css/nerve-center.css"><link rel="stylesheet" href="/css/nerve-center-diagnostics.css"><link rel="stylesheet" href="/css/nerve-center-controls.css">',
+      '<link rel="stylesheet" href="/css/nerve-center.css"><link rel="stylesheet" href="/css/nerve-center-diagnostics.css"><link rel="stylesheet" href="/css/nerve-center-controls.css"><link rel="stylesheet" href="/css/nerve-center-live.css">',
       '<script src="/vendor/chart.js/4.5.1/chart.umd.js"></script>'
     ].join('\n'),
     footerJs: [
       '<script src="/js/nerve-center-mode.js"></script>',
       '<script src="/js/nerve-center.js"></script>',
       '<script src="/js/nerve-center-principal-model.js"></script><script src="/js/nerve-center-runtime-topology.js"></script>',
+      '<script src="/js/nerve-center-model.js"></script><script src="/js/nerve-center-live.js"></script>',
       '<script src="/js/nerve-center-routing.js"></script>',
       '<script src="/js/nerve-center-gpu-health.js"></script><script src="/js/nerve-center-gpu-occupancy.js"></script><script src="/js/nerve-center-cluster.js"></script><script src="/js/nerve-center-hosts.js"></script><script src="/js/nerve-center-ops-watch.js"></script>',
       '<script src="/js/nerve-center-health.js"></script>',

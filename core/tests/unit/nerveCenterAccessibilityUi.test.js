@@ -61,7 +61,7 @@ describe('Nerve Center accessibility surface', () => {
       expect(widget).toContain('aria-expanded="true"');
     });
 
-    expect(toggles).toHaveLength(12);
+    expect(toggles).toHaveLength(14);
     toggles.forEach(toggle => {
       expect(toggle).toContain('type="button"');
       expect(toggle).toContain('data-section=');
@@ -136,8 +136,9 @@ describe('Nerve Center accessibility surface', () => {
     expect(body.innerHTML).toContain('role="alert"');
     expect(body.innerHTML).toContain('Failed &lt;cluster&gt;');
 
-    expect((viewSource.match(/class="nc-section-body"[^>]*aria-busy="true"/g) || [])).toHaveLength(12);
-    expect((viewSource.match(/role="status" aria-live="polite"/g) || [])).toHaveLength(12);
+    expect((viewSource.match(/class="nc-section-body"[^>]*aria-busy="true"/g) || [])).toHaveLength(14);
+    // 14 section placeholders plus the live status line.
+    expect((viewSource.match(/role="status" aria-live="polite"/g) || [])).toHaveLength(15);
   });
 
   test.each([

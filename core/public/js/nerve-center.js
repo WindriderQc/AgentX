@@ -8,7 +8,9 @@ const NerveCenter = (() => {
     const POLL_INTERVAL = 30_000;
     const ECOSYSTEM_SNAPSHOT_URL = '/api/nerve-center/ecosystem';
     const ECOSYSTEM_SNAPSHOT_TTL_MS = 2_000;
-    const STORAGE_KEY = 'nc_section_states';
+    // v2: the layout changed (live machines first, settings folded); old saved
+    // open/closed states would reopen the long settings cards.
+    const STORAGE_KEY = 'nc_section_states_v2';
     const HOT_STATES = new Set(['READY']);
     const HOST_ORDER = ['primary', 'secondary', 'tertiary'];
     const CONTEXT_SECTIONS = {
@@ -213,6 +215,8 @@ const NerveCenter = (() => {
 
     function getSectionLoader(name) {
         const loaders = {
+            live: () => window.NerveCenterLive?.startLive?.(),
+            model: () => window.NerveCenterModel?.loadModel?.(),
             routing: () => window.NerveCenterRouting?.loadRouting?.(),
             cluster: () => window.NerveCenterCluster?.loadCluster?.(),
             health: () => window.NerveCenterHealth?.loadHealth?.(),
@@ -274,6 +278,8 @@ const NerveCenter = (() => {
         setupControls();
 
         loadSummary();
+        loadSection('live');
+        loadSection('model');
         loadSection('cluster');
         loadSection('routing');
         loadSection('health');
@@ -417,8 +423,9 @@ const NerveCenter = (() => {
         }
     }
 
-    // Sections collapsed by default for new users (no saved prefs)
-    const DEFAULT_COLLAPSED = ['sectionHealth', 'sectionInference', 'sectionAlerts', 'sectionPerformance', 'sectionRag'];
+    // Sections collapsed by default for new users (no saved prefs): the page
+    // opens on the live machines, the principal model and the watch report.
+    const DEFAULT_COLLAPSED = ['sectionCluster', 'sectionHosts', 'sectionHealth', 'sectionInference', 'sectionAlerts', 'sectionPerformance', 'sectionRag'];
 
     function restoreSectionStates() {
         try {
@@ -493,7 +500,7 @@ const NerveCenter = (() => {
         if (btnRefresh) {
             btnRefresh.addEventListener('click', async () => {
                 Toast.info('Refreshing cluster data...');
-                await Promise.all([loadSummary({ forceSnapshot: true }), loadSection('cluster')]);
+                await Promise.all([loadSummary({ forceSnapshot: true }), loadSection('cluster'), window.NerveCenterLive?.loadLive?.({ quiet: true })]);
             });
         }
 
