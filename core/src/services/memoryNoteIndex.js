@@ -31,7 +31,8 @@ async function embedThroughCore(text, { model = embeddingModel(), timeoutMs = EM
   try {
     const response = await fetch(`http://127.0.0.1:${process.env.PORT || 3080}/api/inference/embed`, {
       method: 'POST', signal: controller.signal,
-      headers: { 'Content-Type': 'application/json', 'x-service-caller': 'memory-notes' },
+      // x-agentx-caller binds the call to Core's memory contract in inference telemetry.
+      headers: { 'Content-Type': 'application/json', 'x-service-caller': 'memory-notes', 'x-agentx-caller': 'core-memory' },
       body: JSON.stringify({ model, prompt: String(text).slice(0, EMBED_TEXT_MAX) }),
     });
     const body = await response.json().catch(() => ({}));

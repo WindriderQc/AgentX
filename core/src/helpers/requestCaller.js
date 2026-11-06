@@ -4,7 +4,10 @@
 // access control: the platform runs on a private LAN and every caller is
 // trusted. Services declare who they are with a non-secret header.
 const CALLER_HEADER = 'x-agentx-caller';
-const KNOWN_PRINCIPALS = Object.freeze(['operator', 'benchmark-service', 'rag-service', 'runtime-bridge']);
+// `secretary-service`: the instance's mail review jobs. `core-memory`: Core's
+// own memory-note index, which embeds through Core's HTTP route.
+const KNOWN_PRINCIPALS = Object.freeze(['operator', 'benchmark-service', 'rag-service', 'runtime-bridge',
+  'secretary-service', 'core-memory']);
 
 function requestPrincipal(req) {
   const declared = String(req.get?.(CALLER_HEADER) || '').trim();

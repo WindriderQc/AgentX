@@ -4,10 +4,22 @@ const { createReq } = require('../helpers/runMiddleware');
 const { DEFAULT_POLICY } = require('../../src/services/routing/callerPolicy');
 const {
   inferenceCallerPrincipal,
+  resolveInferenceConsumer,
   resolveInferenceRequestCaller
 } = require('../../src/services/routing/inferenceCallerAccess');
 
 describe('inference caller access', () => {
+  test('binds the secretary jobs and Core memory index to their consumer contracts', () => {
+    const contract = caller => resolveInferenceConsumer(createReq({ method: 'POST',
+      headers: caller ? { 'x-agentx-caller': caller } : {}, body: { callerDetail: 'secretary-catchup' } }));
+    expect(contract('secretary-service')).toBe('secretary-service-v1');
+    expect(contract('core-memory')).toBe('core-memory-v1');
+    expect(contract('rag-service')).toBe('rag-service-v1');
+    // callerDetail alone never establishes an identity.
+    expect(contract(null)).toBeNull();
+    expect(contract('secretary-catchup')).toBeNull();
+  });
+
   test('defaults the principal to operator when no caller header is declared', () => {
     const req = createReq({
       method: 'POST',

@@ -50,6 +50,9 @@ module.exports = new Schema({
     fallbackReason: { type: String, default: '' },
     knowledgeStatus: String,
     knowledgeSourceCount: { type: Number, default: 0 },
+    // Supplied context or a knowledge tool receipt (rag_search, memory_search,
+    // wiki_search) on this turn. Unset on turns recorded before it existed.
+    knowledgeUsed: { type: Boolean, default: undefined },
     knowledgeCorpusFingerprint: String,
     personalContinuity: { type: Object, default: null },
     toolEvidence: { type: Object, default: null },

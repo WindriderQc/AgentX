@@ -265,6 +265,33 @@ describe('inference analytics summary', () => {
     expect(res.body.data.byModel[0].avgLatencyMs).toBe(10000);
   });
 
+  test('an embedding model has no output throughput: null, never 0 tok/s', async () => {
+    InferenceLog.aggregate.mockResolvedValue(facet({
+      byModel: [{
+        _id: 'embed-synthetic:v1', calls: 40, errors: 0, tokensIn: 4000,
+        tokensOut: 0, durationMs: 8000, fallbacks: 0, hosts: []
+      }]
+    }));
+
+    const res = await request(server).get('/api/analytics/inference/summary');
+    expect(res.body.data.byModel[0].tokensOutPerSecond).toBeNull();
+    expect(res.body.data.byModel[0].avgLatencyMs).toBe(200);
+  });
+
+  test('prices an OpenClaw-run cloud model by its provider name, not the execution prefix', async () => {
+    resolvePricing.mockResolvedValue({ promptTokenCost: 1, completionTokenCost: 2 });
+    InferenceLog.aggregate.mockResolvedValue(facet({
+      byModel: [{
+        _id: 'openclaw:model:openrouter/vendor-synthetic/model-synthetic', calls: 1, errors: 0,
+        tokensIn: 1000000, tokensOut: 1000000, durationMs: 1000, fallbacks: 0, hosts: ['http://192.168.2.99:18789']
+      }]
+    }));
+
+    const res = await request(server).get('/api/analytics/inference/summary');
+    expect(res.body.data.byModel[0]).toMatchObject({ isCloud: true, provider: 'openrouter' });
+    expect(resolvePricing).toHaveBeenCalledWith('openrouter', 'vendor-synthetic/model-synthetic');
+  });
+
   test('survives an empty collection without dividing by zero', async () => {
     InferenceLog.aggregate.mockResolvedValue([{
       totals: [], byModel: [], byCaller: [], byRuntime: [],
@@ -277,7 +304,7 @@ describe('inference analytics summary', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.totals.calls).toBe(0);
     expect(res.body.data.totals.errorRate).toBe(0);
-    expect(res.body.data.totals.tokensOutPerSecond).toBe(0);
+    expect(res.body.data.totals.tokensOutPerSecond).toBeNull();
   });
 
   test('reports classifier time as not observed, never 0ms, when no call was classified', async () => {

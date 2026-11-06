@@ -131,8 +131,16 @@ function activityDayPipeline(fromDate, toDate) {
   ];
 }
 
+// The model that produced one unwound message. Each message records its own
+// (Playground and surface turns alike); the conversation's field is only its
+// latest model, so it is the fallback for older messages without one.
+function messageModelKey(path = '$messages') {
+  return { $ifNull: [`${path}.stats.meta.model`, '$model'] };
+}
+
 module.exports = {
   analyticsDayKey,
+  messageModelKey,
   parseAnalyticsRange,
   activeMessageCostExpression,
   activeMessageStages,

@@ -134,8 +134,9 @@ class CoreClient:
 
     def _call(self, method, path, body=None):
         data = None if body is None else json.dumps(body).encode()
+        # x-agentx-caller binds these calls to Core's secretary consumer contract.
         request = urllib.request.Request(self.base + path, data=data, method=method,
-                                         headers={"content-type": "application/json"})
+                                         headers={"content-type": "application/json", "x-agentx-caller": "secretary-service"})
         try:
             with self.opener(request, timeout=self.timeout) as response:
                 raw = response.read()

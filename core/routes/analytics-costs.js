@@ -9,7 +9,7 @@ const router = express.Router();
 const Conversation = require('../models/Conversation');
 const logger = require('../config/logger');
 const { COST_CURRENCY } = require('../src/services/costCalculator');
-const { activeMessageStages, analyticsDayKey, parseAnalyticsRange } = require('../src/services/conversationActivityAnalytics');
+const { activeMessageStages, analyticsDayKey, messageModelKey, parseAnalyticsRange } = require('../src/services/conversationActivityAnalytics');
 const { rankingSignal, serializeSignal } = require('../../shared/signalEvidence');
 
 // Same freshness contract as the rest of the chat lane (routes/analytics.js).
@@ -43,7 +43,7 @@ router.get('/costs', async (req, res) => {
     } else if (groupBy === 'promptVersion') {
       groupKey = { name: '$promptName', version: '$promptVersion' };
     } else {
-      groupKey = '$model';
+      groupKey = messageModelKey();
     }
 
     // Aggregate cost data

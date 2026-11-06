@@ -244,6 +244,28 @@ test('Famille tools: a streamed tool call is executed and only the answer is spo
   assert.equal(reply.text, 'Demain à 06 h 03.');
 });
 
+test('Core inference turns report the summed tokens of every call, streamed or not', async () => {
+  const streams = [
+    ['{"message":{"content":"","tool_calls":[{"function":{"name":"iss_passes","arguments":{"visible_only":true}}}]}}\n', '{"message":{"content":""},"done":true}\n'],
+    ['{"message":{"content":"Demain."},"done":true}\n'],
+  ];
+  const completions = [{ completed: true, terminalComplete: true, prompt_eval_count: 300, eval_count: 12 },
+    { completed: true, terminalComplete: true, prompt_eval_count: 340, eval_count: 8 }];
+  const streamed = createConversationExecutor({ agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async () => ({ ok: true, completion: Promise.resolve(completions.shift()), stream: Readable.from(streams.shift()) }) } });
+  const reply = await streamed({ ...request(), streaming: true, onDelta: () => {}, familyTools: syntheticToolset().toolset });
+  assert.deepEqual(reply.metadata.usage, { promptTokens: 640, completionTokens: 20, totalTokens: 660 });
+
+  const plain = createConversationExecutor({ agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async () => ({ ok: true, body: { message: { content: 'Bonjour.' }, prompt_eval_count: 50, eval_count: 4 } }) } });
+  assert.deepEqual((await plain(request())).metadata.usage, { promptTokens: 50, completionTokens: 4, totalTokens: 54 });
+
+  // A call without counts makes the turn's usage unknown, never a partial sum.
+  const unknown = createConversationExecutor({ agentClient: () => assert.fail('No native dependency'),
+    inference: { execute: async () => ({ ok: true, body: { message: { content: 'Bonjour.' } } }) } });
+  assert.equal((await unknown(request())).metadata.usage, null);
+});
+
 test('Famille tools: rounds are bounded, and the last request offers no tool', async () => {
   const bodies = [];
   const execute = createConversationExecutor({ agentClient: () => assert.fail('No native dependency'),

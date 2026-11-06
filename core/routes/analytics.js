@@ -16,7 +16,8 @@ const {
   activeMessagesExpression,
   activeMessageStages,
   activityDayPipeline,
-  conversationActivityFilter
+  conversationActivityFilter,
+  messageModelKey
 } = require('../src/services/conversationActivityAnalytics');
 const {
   differenceSignal,
@@ -226,7 +227,7 @@ router.get('/feedback', async (req, res) => {
         ...windowMessages,
         { $match: { 'messages.feedback.rating': { $in: [1, -1] } } },
         { $group: {
-            _id: '$model',
+            _id: messageModelKey(),
             total: { $sum: 1 },
             positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
             negative: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', -1] }, 1, 0] } }
@@ -252,7 +253,7 @@ router.get('/feedback', async (req, res) => {
             _id: {
               name: '$promptName',
               version: '$promptVersion',
-              model: '$model'
+              model: messageModelKey()
             },
             total: { $sum: 1 },
             positive: { $sum: { $cond: [{ $eq: ['$messages.feedback.rating', 1] }, 1, 0] } },
@@ -459,7 +460,7 @@ router.get('/stats', async (req, res) => {
     };
 
     // Grouping key selection
-    let groupKey = '$model'; // Default to model
+    let groupKey = messageModelKey(); // Default to each message's model
     if (groupBy === 'day') {
       groupKey = analyticsDayKey('$createdAt');
     }
