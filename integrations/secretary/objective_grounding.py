@@ -17,13 +17,15 @@ import objective_claim_proofs as proofs
 import objective_date_evidence as dates
 import objective_conditional_schema as conditional
 import objective_uncertainty_context as contextual
+import objective_source_observations as source_observations
 
 LEGACY_CONTRACT = "secretary.objective-grounding/v1"
 WORDING_CONTRACT = "secretary.objective-grounding/v2"
 PROXIMITY_CONTRACT = "secretary.objective-grounding/v3"
 FACT_CONTRACT = "secretary.objective-grounding/v4"
 PROOF_CONTRACT = "secretary.objective-grounding/v5"
-CONTRACT = "secretary.objective-grounding/v6"
+CONDITIONAL_CONTRACT = "secretary.objective-grounding/v6"
+CONTRACT = "secretary.objective-grounding/v7"
 CLAIM = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -88,11 +90,13 @@ _moment["required"] = list(_moment["properties"])
 
 SCHEMA_V5 = SCHEMA
 SCHEMA = conditional.schema(SCHEMA_V5)
+SCHEMA_V6 = SCHEMA
+SCHEMA = source_observations.schema(SCHEMA_V6)
 
 
 def contract_for(manifest):
     digest = manifest.get("responseSchemaSha256")
-    for contract, schema in ((CONTRACT, SCHEMA), (PROOF_CONTRACT, SCHEMA_V5), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
+    for contract, schema in ((CONTRACT, SCHEMA), (CONDITIONAL_CONTRACT, SCHEMA_V6), (PROOF_CONTRACT, SCHEMA_V5), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
                              (WORDING_CONTRACT, SCHEMA_V2), (LEGACY_CONTRACT, SCHEMA_V1)):
         if digest == hashed(schema):
             return contract
@@ -111,6 +115,8 @@ def catalog(content):
 
 def schema_for(content, contract=CONTRACT, source_context=None):
     if contract == CONTRACT:
+        return source_observations.schema(schema_for(content, CONDITIONAL_CONTRACT, source_context), catalog(content))
+    if contract == CONDITIONAL_CONTRACT:
         return conditional.schema(schema_for(content, PROOF_CONTRACT, source_context), catalog(content), source_context)
     schema = copy.deepcopy({LEGACY_CONTRACT: SCHEMA_V1, WORDING_CONTRACT: SCHEMA_V2,
                             PROXIMITY_CONTRACT: SCHEMA_V3, FACT_CONTRACT: SCHEMA_V4, PROOF_CONTRACT: SCHEMA_V5}[contract])
@@ -214,20 +220,26 @@ def _project_v1(value, content):
 
 
 def project(value, content, contract=None, source_context=None):
+    items = value.get('moments') if isinstance(value, dict) else None
+    if contract == CONTRACT or not contract and isinstance(items, list) and any(
+            isinstance(m, dict) and 'titleCitationId' in m for m in items):
+        if not isinstance(content, str):
+            raise ValueError('Grounded extraction requires the exact supplied passage')
+        return source_observations.project(value, content, {r['id']: r for r in catalog(content)}, source_context, SCHEMA, CONTRACT)
     if contract == LEGACY_CONTRACT or not contract and isinstance(value, dict) and "summary" in value:
         return _project_v1(value, content)
     if not isinstance(content, str):
         raise ValueError("Grounded extraction requires the exact supplied passage")
     if not contract:
         items = value.get("moments", []) if isinstance(value, dict) else []
-        contract = CONTRACT if isinstance(items, list) and any(isinstance(m, dict) and "startDateRef" in m for m in items) \
+        contract = CONDITIONAL_CONTRACT if isinstance(items, list) and any(isinstance(m, dict) and "startDateRef" in m for m in items) \
             else FACT_CONTRACT if isinstance(value, dict) and "omittedCueIds" in value else PROXIMITY_CONTRACT
-    schema = SCHEMA if contract == CONTRACT else SCHEMA_V5 if contract == PROOF_CONTRACT else SCHEMA_V4 if contract == FACT_CONTRACT else SCHEMA_V3
+    schema = SCHEMA_V6 if contract == CONDITIONAL_CONTRACT else SCHEMA_V5 if contract == PROOF_CONTRACT else SCHEMA_V4 if contract == FACT_CONTRACT else SCHEMA_V3
     if not isinstance(value, dict) or set(value) != set(schema["required"]) or not isinstance(value["moments"], list):
         raise ValueError("Invalid grounded objective result shape")
     spans = {row["id"]: row for row in catalog(content)}
-    if contract in (PROOF_CONTRACT, CONTRACT):
-        rows = contextual.catalog(list(spans.values())) if contract == CONTRACT else None
+    if contract in (PROOF_CONTRACT, CONDITIONAL_CONTRACT):
+        rows = contextual.catalog(list(spans.values())) if contract == CONDITIONAL_CONTRACT else None
         converted, proof, date_quotes = proofs.convert(value, spans, source_context, content, uncertainty_rows=rows)
         result, changes = project(converted, content, PROXIMITY_CONTRACT)
         for moment, ids in zip(result["moments"], date_quotes):
@@ -236,7 +248,7 @@ def project(value, content, contract=None, source_context=None):
                     moment["quotes"].append(spans[key]["text"])
         changes[0].update(contract=contract, factPolicy=proof,
                           reason="Dates selected from literal evidence with separate communication/event scope; proposed fact types require cited cues; uncertainty references carry their admissible categories. Source wording and human review preserved.")
-        if contract == CONTRACT:
+        if contract == CONDITIONAL_CONTRACT:
             changes[0]['reason'] += " Fact-type-specific generation choices; conditions require an explicit clause, not an isolated name token."
         return result, changes
     if contract == FACT_CONTRACT:

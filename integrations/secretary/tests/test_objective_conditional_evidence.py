@@ -18,7 +18,7 @@ import test_objective_dispositions as disposition_fixtures
 
 
 def alternatives(body, context=None):
-    schema = grounding.schema_for(body, source_context=context)
+    schema = grounding.schema_for(body, grounding.CONDITIONAL_CONTRACT, source_context=context)
     return {b['properties']['factType']['enum'][0]: b
             for b in schema['properties']['moments']['items']['anyOf']}
 
@@ -30,7 +30,7 @@ class ConditionalSchemaTests(unittest.TestCase):
                 "Je travaille au projet le 12 mai 2020.\nJe démissionne de mon poste.\n"
                 "Ma candidature est transmise.\nUn entretien d'embauche est proposé.\nUne offre d'emploi est reçue.")
         context = fixtures.context(body, mailDate='2020-05-05T12:30:00-04:00')
-        before = copy.deepcopy(grounding.SCHEMA)
+        before = copy.deepcopy(grounding.SCHEMA_V6)
         branches = alternatives(body, context)
         spans = grounding.catalog(body)
         kinds = {r['factType']: r['citationIds'] for r in grounding.proofs.fact_catalog(spans)}
@@ -58,7 +58,7 @@ class ConditionalSchemaTests(unittest.TestCase):
                     expected |= communication
                 self.assertEqual(allowed, expected, (kind, side))
             self.assertNotIn('startDate', props)
-        self.assertEqual(grounding.SCHEMA, before)
+        self.assertEqual(grounding.SCHEMA_V6, before)
 
     def test_neutral_event_has_no_work_evidence_or_communication_date_choices(self):
         body = 'Envoyé : 5 mai 2020\nMon installation est terminée.'
@@ -76,18 +76,18 @@ class ConditionalSchemaTests(unittest.TestCase):
         raw['moments'][0]['observations'][0]['citationIds'] = ['q2']
         raw['moments'][0]['startDateRef'] = 'd1'
         with self.assertRaisesRegex(ValueError, 'communication date cannot date'):
-            grounding.project(raw, body, grounding.CONTRACT)
+            grounding.project(raw, body, grounding.CONDITIONAL_CONTRACT)
         raw['moments'][0]['startDateRef'] = None
         raw['moments'][0]['factTypeCitationIds'] = ['q2']
         with self.assertRaisesRegex(ValueError, 'neutral life-event'):
-            grounding.project(raw, body, grounding.CONTRACT)
+            grounding.project(raw, body, grounding.CONDITIONAL_CONTRACT)
         raw['moments'][0]['factTypeCitationIds'] = []
-        result, _ = grounding.project(raw, body, grounding.CONTRACT)
+        result, _ = grounding.project(raw, body, grounding.CONDITIONAL_CONTRACT)
         validate(result, body)
         self.assertIsNone(result['moments'][0]['startDate'])
 
     def test_empty_passage_still_forbids_moments_and_absence_references(self):
-        schema = grounding.schema_for(' \r\n')
+        schema = grounding.schema_for(' \r\n', grounding.CONDITIONAL_CONTRACT)
         self.assertEqual(schema['properties']['moments']['maxItems'], 0)
         self.assertEqual(schema['properties']['summaryCitationIds']['maxItems'], 0)
         self.assertNotIn('no-explicit-uncertainty', json.dumps(schema))
@@ -131,22 +131,22 @@ class ContextualConditionTests(unittest.TestCase):
         raw = fixtures.response(body)
         raw['moments'][0]['hypotheses'] = ['u1']
         raw['moments'][0]['observations'].append({'text': 'Un appel est prévu sous condition.', 'citationIds': ['q2']})
-        result, changes = normalize_representation(raw, body, grounding.CONTRACT)
+        result, changes = normalize_representation(raw, body, grounding.CONDITIONAL_CONTRACT)
         validate(result, body)
         self.assertIn('Condition citée, sans en déduire la réalisation : « Nous appellerons si on se perd. »', result['moments'][0]['relationHints'][0])
         self.assertNotIn('Port Si Doré', result['moments'][0]['relationHints'][0])
-        self.assertEqual(changes[0]['contract'], grounding.CONTRACT)
+        self.assertEqual(changes[0]['contract'], grounding.CONDITIONAL_CONTRACT)
         self.assertEqual(changes[0]['factPolicy']['facts'][0]['uncertaintyRefs'], ['u1'])
         raw['moments'][0]['hypotheses'] = ['u2']
         with self.assertRaisesRegex(ValueError, 'categorized reference'):
-            grounding.project(raw, body, grounding.CONTRACT)
+            grounding.project(raw, body, grounding.CONDITIONAL_CONTRACT)
 
     def test_ignored_schema_cannot_reintroduce_a_name_only_condition(self):
         body = 'Nous visitons Port Si Doré.'
         raw = fixtures.response(body)
         raw['moments'][0]['hypotheses'] = ['u1']
         with self.assertRaisesRegex(ValueError, 'categorized reference'):
-            grounding.project(raw, body, grounding.CONTRACT)
+            grounding.project(raw, body, grounding.CONDITIONAL_CONTRACT)
         # Old results keep their literal original projection, including its
         # known lexical limitation; never reinterpret or rewrite an old read.
         result, changes = grounding.project(raw, body, grounding.PROOF_CONTRACT)
@@ -156,7 +156,7 @@ class ContextualConditionTests(unittest.TestCase):
     def test_v5_schema_fingerprint_and_page_choices_remain_frozen(self):
         self.assertEqual(hashed(grounding.SCHEMA_V5), '3b60241755f9f97c0a0954a5d7fbd1afc9f0df283ed75585de5c88d1e15856f8')
         self.assertEqual(grounding.contract_for({'responseSchemaSha256': hashed(grounding.SCHEMA_V5)}), grounding.PROOF_CONTRACT)
-        self.assertEqual(grounding.contract_for({'responseSchemaSha256': hashed(grounding.SCHEMA)}), grounding.CONTRACT)
+        self.assertEqual(grounding.contract_for({'responseSchemaSha256': hashed(grounding.SCHEMA_V6)}), grounding.CONDITIONAL_CONTRACT)
         body = 'Envoyé : 5 mai 2020\nNous visitons Port Si Doré.'
         schema = grounding.schema_for(body, grounding.PROOF_CONTRACT)
         props = schema['properties']['moments']['items']['properties']
@@ -165,7 +165,10 @@ class ContextualConditionTests(unittest.TestCase):
 
 
 class ConditionalWorkerTests(unittest.TestCase):
-    setUp = fixtures.fixtures.SourceLanguageWorkerTests.setUp
+    def setUp(self):
+        fixtures.fixtures.SourceLanguageWorkerTests.setUp(self)
+        frozen = patch.object(worker, 'SCHEMA', grounding.SCHEMA_V6)
+        frozen.start(); self.addCleanup(frozen.stop)
     mail = fixtures.fixtures.SourceLanguageWorkerTests.mail
     prepare = fixtures.fixtures.SourceLanguageWorkerTests.prepare
     run_worker = fixtures.fixtures.SourceLanguageWorkerTests.run_worker
@@ -174,7 +177,7 @@ class ConditionalWorkerTests(unittest.TestCase):
         body = 'Nous visitons Port Si Doré.\nNous appellerons si on se perd.'
         self.mail('message01', body)
         def output(prompt, reply):
-            self.assertEqual(prompt['groundingContract'], grounding.CONTRACT)
+            self.assertEqual(prompt['groundingContract'], grounding.CONDITIONAL_CONTRACT)
             self.assertEqual(prompt['uncertaintyCatalog'], uncertainty.catalog(grounding.catalog(body)))
             self.assertEqual(prompt['uncertaintyCatalog'][0]['citationIds'], ['q2'])
             value = fixtures.response(body)
@@ -185,7 +188,7 @@ class ConditionalWorkerTests(unittest.TestCase):
         self.assertEqual(self.run_worker(client)['newlyReviewedPages'], 1)
         objective, manifest = self.prepare()
         row = worker.read_receipt(next((objective / 'page-reviews').glob('*.json')), manifest)
-        self.assertEqual(row['resultProcessing']['changes'][0]['contract'], grounding.CONTRACT)
+        self.assertEqual(row['resultProcessing']['changes'][0]['contract'], grounding.CONDITIONAL_CONTRACT)
         self.assertEqual(self.run_worker(client)['inferenceCalls'], 0)
         self.assertEqual(len(calls), 1)
         self.assertFalse(load(objective / 'findings.json')[0]['userConfirmed'])

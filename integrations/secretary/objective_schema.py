@@ -62,14 +62,15 @@ Separate source date from event date. The application resolves date references
 to canonical startDate/endDate with their printed precision; unknown stays null.
 Do not complete missing years, partial birthdays or retrospective approximations.
 The application retains exact original date expressions. Distinct stated start/end dates form an interval;
-never infer an end from a gap or another event. ongoing only when explicitly stated.
+never infer an end from a gap or another event. The application never infers current continuation
+from historical present-tense wording; ongoing is not a model field.
 Cancelled invitations are cancelled; invitations/bookings are planned, not attendance.
 reported means the source explicitly says it happened, not user confirmation.
 documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v6.
+Use the source-span grounding contract secretary.objective-grounding/v7.
 Keep useful explicit steps, not only completed milestones. A personal career
 contact, referral, CV submission, application, interview or offer can be retained
 at its stated stage. Choose factType: life-event, career-contact, application,
@@ -96,33 +97,32 @@ selectionCues are lexical reminders to read the quoted lines, not verified facts
 or proof of identity. Each cue must be used in a cited observation or listed in
 omittedCueIds, which keeps the omission visible for source review. Use [] when
 there are no omitted cues; never fabricate an event to satisfy a cue.
-Do not provide uncertainty or a confidence label such as low/high. The application
-assembles concrete limits from the fact type, unknown dates, occurrence status,
-actor and exact passage scope. In hypotheses preserve an explicit unresolved
-source question, condition or possibility when it limits a proposed event;
-never answer it, turn it into an occurrence or invent one for completeness.
-For every moment, observations contains only statements explicitly supported by
-the selected citationCatalog IDs. Do not generate a summary: select up to three
-summaryCitationIds for complete source excerpts; an empty selection is valid.
-The application renders those excerpts without paraphrasing or assigning them
-to the container's author. Preserve negation, qualifications and quoted speakers.
-Never upgrade latest/revised/draft to final, delivered to approved, requested to
-completed, a correspondent's question to the owner's own declaration, or an
-unknown interval to a probable narrow date. This applies to every generated field.
-Never put an inference in observations, titles, dates or subject attribution.
-Omit unsupported inferences entirely. A citation alone does not
-prove that its paraphrase follows from it. A rationale is assembled locally from
-these two separate lists, not supplied as free-form reasoning.
-The hypotheses list contains ONLY uncertaintyCatalog IDs for unresolved source
-questions, conditions or possibilities relevant to the proposed event. Each ID
-already binds the source citation and admissible category. Never supply a basis,
-citationIds object, interpretation text or a fabricated reference. The
-catalog's condition gate requires a conditional clause, not an isolated si/if
-inside a name. These bounded reading aids can still miss or misclassify wording;
-select only references that actually qualify this event in their source context.
-The application quotes the whole selected line with an uncertainty label. If the
-source contains no such expression, return hypotheses: []. Only actual catalog
-IDs are evidence; internal labels or absence markers are never references.
+Select titleCitationId from this event's own observation excerpts. Do not write
+any title, description, observation text, rationale, ongoing flag, uncertainty
+or event-wide hypotheses. The application copies whole selected source lines,
+including their tense, relative-day wording, negations and reservations.
+Each observations item has exactly citationId and qualificationIds. Select one
+citationCatalog ID and at most one relevant uncertaintyCatalog reference belonging
+TO THAT SAME citation. Use [] when no local reservation is needed. A qualification
+cannot move to a different excerpt, qualify the event globally or cast doubt on
+other observations. A conditional offer of future help stays local to that offer;
+it does not make completed hours of work hypothetical. Select the offer as a
+separate observation/context only if useful; never claim it was realized.
+Select only useful observations for the proposed event, retaining enough source
+author and addressee context for attribution. A source quotation is not proof of
+truth or occurrence. The application labels these source excerpts for human review.
+Dates and fact types still follow their complete schema alternatives.
+Do not generate a summary: select up to three summaryCitationIds for complete
+source excerpts. Include decisive temporal/conditional wording for retained
+proposals when selecting those lines. Empty selections are valid. Whole spans
+remain in source order; no sentence is shortened into a stronger claim.
+uncertaintyCatalog IDs bind literal source wording and admissible categories.
+Only select one when its wording matters in the SAME observation excerpt.
+An isolated si/if in a name is not a condition. These bounded reading aids can
+still miss or misclassify wording; source review remains necessary.
+Never supply a basis, interpretation text, fabricated reference or global
+hypotheses array. Context-local reservations do not establish event uncertainty,
+answers, realization, independent corroboration or personal confirmation.
 No weak associations,
 conjugal/financial links from document exchanges, location from phone prefixes,
 job changes from generic greetings, or probable dates from an already-ended event.
@@ -132,9 +132,9 @@ who owns a tax return or attachment. A signature records self-presentation at
 that date, not independent certification, its acquisition date or continuation.
 Select citationIds from citationCatalog; never retype, repair or invent a quote.
 The application copies each selected exact span, including its original spacing.
-Each observation and hypothesis requires at least one selected span. Existing
+Each observation selects one exact span; its qualification IDs must belong to that span. Existing
 quotes, forwarded material and multiple spans are not independent corroboration.
-Make observations and hypotheses readable French. Do not assert causality,
+Preserve source wording even when it is informal or not French. Do not assert causality,
 identity, relationship or confirmation without an explicit supporting statement.
 Do not output classification: it is derived locally from the moments list.
 emptyAssessment is used ONLY when moments is empty: no-life-event or uncertain.
