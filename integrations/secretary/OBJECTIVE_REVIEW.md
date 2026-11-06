@@ -6,7 +6,7 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
-New objectives use `secretary.objective-grounding/v9` for model extraction.
+New objectives use `secretary.objective-grounding/v10` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
@@ -62,6 +62,28 @@ Aliases come from the immutable objective for schema generation, projection and
 receipt/disposition replay. `omissionPolicy` retains the chosen catalog entries.
 Source review still assesses their relevance; a valid reason reference is not
 semantic acceptance. No rejected output is rewritten or automatically retried.
+
+`declarationCatalog` identifies a conservative subset of complete first-person
+source declarations, with their exact speaker reading context. A sent container
+at offset zero or a preceding owner-alias header supplies a reading cue, never
+verified identity. Quotation boundaries, unknown/continuation speakers,
+questions, negations, reservations and promotional wording keep their omission
+paths. Unrelated or later headers never supply that context.
+
+For a complete declaration in owner reading context, blanket `ambiguous-actor`
+and `insufficient-event-context` omissions are unavailable. An absent absolute
+date does not erase a reported activity or completed event. The model must keep
+the useful exact observation, possibly within an existing event; local code
+never invents a proposal or identifies its actor. These conservative lexical
+guards remain subject to source review and do not cover every possible wording.
+
+Summaries have no independent global excerpt selector or observation flags. The
+application selects at most the first three distinct retained title excerpts,
+which belong to those facts’ own observations, and copies them whole in source
+order into the canonical summary. An omitted cue cannot reappear through
+a separate summary citation list. Empty extractions still display their cited
+abstention reason locally. `declarationSelection` and `retainedSummary` retain the
+reading cues and selection proof for native-result replay.
 
 The model selects a proposed `factType` and matching `factTypeCitationIds`
 from `factTypeCatalog`, among that moment's own observation citations. Neutral
@@ -161,7 +183,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7` and `/v8` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8` and `/v9` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.

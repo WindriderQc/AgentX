@@ -12,6 +12,7 @@ import objective_review as worker
 from evidence_store import load, save
 from objective_schema import normalize_representation, validate
 from review_receipts import hashed
+from unittest.mock import patch
 import test_objective_useful_selection as fixtures
 import test_objective_dispositions as disposition_fixtures
 import test_objective_source_language as worker_fixtures
@@ -39,7 +40,8 @@ def wire_v9(value, catalog):
     if value['abstention'] is not None:
         code = value['abstention']['reasonCode']
         options = [r for r in catalog if r['scope'] == 'passage']
-        selected = next((r for r in options if r['reasonCode'] == code), options[-1])
+        selected = next((r for r in options if r['reasonCode'] == code), options[-1] if options else
+                        {'id': 'no-whole-passage-option', 'reasonCode': 'insufficient-event-context'})
         value['abstention'] = {'reasonRef': selected['id']}
         value['emptyAssessment'] = 'uncertain' if selected['reasonCode'] in fixtures.selection.UNCERTAIN else 'no-life-event'
     return value
@@ -59,7 +61,7 @@ def negative(body, code='insufficient-event-context', *, cue_codes=None, context
 
 def project(value, body, context=CONTEXT):
     context = {'offset': 0, 'end': len(body), 'totalChars': len(body), **context}
-    result, changes = normalize_representation(value, body, grounding.CONTRACT, context)
+    result, changes = normalize_representation(value, body, grounding.OMISSION_CONTRACT, context)
     validate(result, body)
     return result, changes
 
@@ -158,7 +160,7 @@ class OmissionCoherenceTests(unittest.TestCase):
 
     def test_dynamic_schema_binds_reason_references_to_their_cue_and_assessment(self):
         body = 'Je débute la boxe.\nNotre brochure décrit un voyage promotionnel.'
-        schema = grounding.schema_for(body, source_context=CONTEXT)
+        schema = grounding.schema_for(body, grounding.OMISSION_CONTRACT, source_context=CONTEXT)
         self.assertEqual(len(schema['anyOf']), 2)
         choices = schema['anyOf'][0]['properties']['omittedCues']['items']['anyOf']
         for choice in choices:
@@ -176,7 +178,10 @@ class OmissionCoherenceTests(unittest.TestCase):
 
 
 class OmissionPolicyWorkerTests(unittest.TestCase):
-    setUp = worker_fixtures.SourceLanguageWorkerTests.setUp
+    def setUp(self):
+        worker_fixtures.SourceLanguageWorkerTests.setUp(self)
+        frozen = patch.object(worker, 'SCHEMA', grounding.SCHEMA_V9)
+        frozen.start(); self.addCleanup(frozen.stop)
     mail = worker_fixtures.SourceLanguageWorkerTests.mail
     prepare = worker_fixtures.SourceLanguageWorkerTests.prepare
     run_worker = worker_fixtures.SourceLanguageWorkerTests.run_worker
@@ -204,7 +209,7 @@ class OmissionPolicyWorkerTests(unittest.TestCase):
     def test_catalog_owner_context_and_exact_reason_proof_replay_without_another_call(self):
         body = 'Objet : copies PDF\nBonne soirée !';self.mail('message01', body)
         def output(prompt, reply):
-            self.assertEqual(prompt['groundingContract'], grounding.CONTRACT)
+            self.assertEqual(prompt['groundingContract'], grounding.OMISSION_CONTRACT)
             ref = next(r['id'] for r in prompt['omissionReasonCatalog'] if r['reasonCode'] == 'administrative-context')
             value = negative(body, 'administrative-context');value['abstention']['reasonRef'] = ref
             reply['response'] = json.dumps(value);return reply
