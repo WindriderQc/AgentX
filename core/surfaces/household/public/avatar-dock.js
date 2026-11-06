@@ -179,22 +179,23 @@
       applyView();
     }
     function applyView() {
+      // Personal content lives in the conversation's "Pages and images" zone,
+      // so the scene presents it full screen exactly as in Famille. Closing
+      // that content while it is presented returns to Nestor's full face.
       const pageActive = !!doc.querySelector?.('.page-presentation.is-active');
-      if (pagePresented && !pageActive) view = 'menu';
+      if (pagePresented && !pageActive && view === 'montre') view = 'plein';
       pagePresented = pageActive;
-      const scene = mode === 'scene' && !pageActive;
+      const scene = mode === 'scene';
       if (scene) { dock.dataset.view = view; doc.body.dataset.avatarView = view; }
       else { delete dock.dataset.view; delete doc.body.dataset.avatarView; }
       sceneBar.hidden = !scene || view === 'menu';
       sceneClose.hidden = view !== 'montre';
       sceneBar.querySelector('.avatar-scene-actions').hidden = !onSend && sceneClose.hidden;
       clock.hidden = !scene || view !== 'plein';
-      // On a phone, the open page keeps the face beside its heading. A fixed
-      // bottom corner would cover the composer and its Send button.
-      const heading = pageActive && root.matchMedia?.('(max-width: 1000px)').matches
-        ? doc.querySelector?.('.page-presentation-toolbar')
-        : scene && view === 'menu' && root.matchMedia?.('(max-width: 700px)').matches
-          ? doc.querySelector?.('.conversation-heading') : null;
+      // On a phone, the face sits beside the heading. A fixed bottom corner
+      // would cover the composer and its Send button.
+      const heading = scene && view === 'menu' && root.matchMedia?.('(max-width: 700px)').matches
+        ? doc.querySelector?.('.conversation-heading') : null;
       const parent = heading || doc.body;
       if (dock.parentElement !== parent) parent.append(dock);
     }

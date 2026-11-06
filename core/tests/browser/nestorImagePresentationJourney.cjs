@@ -107,12 +107,12 @@ const svg = shape => { const [w,h]=sizes[shape]; return `<svg xmlns="http://www.
         const card=page.locator('.display-block[data-kind=image]').first();const area=space==='family'?page.locator('#conversationVisual'):page.locator('.page-presentation');
         // Wait for the shipped avatar transition, then require that it leaves the image clear.
         await page.waitForFunction(()=>{
-          const img=document.querySelector('.display-block[data-kind=image]:not([hidden]) img'),dock=document.querySelector('.avatar-dock');
+          const img=document.querySelector('.display-block[data-kind=image]:not([hidden]):not([data-selected=false]) img'),dock=document.querySelector('.avatar-dock');
           if(!img||!dock||dock.dataset.mode==='cache')return true;
           const a=img.getBoundingClientRect(),b=dock.getBoundingClientRect();return a.right<=b.left||a.left>=b.right||a.bottom<=b.top||a.top>=b.bottom;
         });
         await page.waitForFunction(()=>{
-          const el=document.querySelector('.display-block[data-kind=image]:not([hidden]) img');
+          const el=document.querySelector('.display-block[data-kind=image]:not([hidden]):not([data-selected=false]) img');
           if(!el)return false;const r=el.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight+1;
         });
         const imageBox=await img.boundingBox(),cardBox=await card.boundingBox(),areaBox=await area.boundingBox();
@@ -141,8 +141,10 @@ const svg = shape => { const [w,h]=sizes[shape]; return `<svg xmlns="http://www.
       }
       const count=submissions.length,source=await page.locator('.display-block[data-kind=image] img').first().getAttribute('src');
       for(let cycle=0;cycle<3;cycle++){
+        // Famille presents a picture full screen; a tap on Nestor brings the page and its menus.
+        // This personal case hides the avatar, so the zone's own button closes the content.
         if(space==='family'){
-          await page.getByRole('button',{name:'Show the conversation, keyboard and settings',exact:true}).click();
+          await page.locator('.avatar-dock-stage').click({position:{x:10,y:10}});
           await page.waitForFunction(()=>document.body.dataset.avatarView==='menu');
         }else await page.locator('.page-presentation [data-action=toggle]').click();
         assert.equal(await page.locator('#conversationSettingsToggle').isVisible(),true);
@@ -158,7 +160,7 @@ const svg = shape => { const [w,h]=sizes[shape]; return `<svg xmlns="http://www.
       }
       const pictures=await page.locator('.display-block[data-kind=image]').count();await ask('search');
       assert.equal(await page.locator('.display-block[data-kind=image]').count(),pictures,'An ordinary search does not add or reopen an image');
-      if(space==='personal')assert.equal(await page.locator('.display-block[data-kind=image]:visible').count(),0);
+      if(space==='personal')assert.equal(await page.locator('.display-block[data-kind=image][data-selected=true]').count(),0);
       else assert.equal(await page.locator('.conversation-stage').getAttribute('data-shown'),'text');
       await context.close();
     }

@@ -5,7 +5,7 @@
     let generation = 0, timer, sequence = 0, previous = '', binding = null, detach = null;
     const manual = () => root.dispatchEvent(new CustomEvent('nestor-presentation-user-change'));
     function bindFrame() {
-      const frame = document.querySelector('.page-presentation .display-block:not([hidden]) iframe');
+      const frame = document.querySelector('.page-presentation .display-block[data-selected="true"] iframe');
       try {
         const doc = frame?.contentDocument;
         if (frame === bindFrame.current && doc === bindFrame.document && detach) return;

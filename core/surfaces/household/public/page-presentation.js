@@ -1,16 +1,20 @@
 'use strict';
 
-// All personal content shares one workspace. Keep frames in place when switching
-// layouts so their scroll position, forms and running interface survive.
+// All personal content shares one workspace. It sits where Famille's "Pages and
+// images" zone sits, at the top of the conversation, with every card stacked.
+// The selected card is the one Nestor reads and screen commands act on.
+// Keep frames in place when switching so their scroll position, forms and
+// running interface survive.
 (function exposePagePresentation(root) {
   function mount({ visual }) {
     const layout = visual.closest?.('.conversation-layout');
     if (!layout) return null;
     const region = document.createElement('section');
-    region.className = 'page-presentation';
+    region.className = 'page-presentation conversation-board conversation-visual';
     region.hidden = true;
-    region.setAttribute('aria-label', 'Contenu et conversation');
+    region.setAttribute('aria-label', 'Pages and images');
     region.innerHTML = `<header class="page-presentation-toolbar">
+      <h2 class="display-board-heading">Pages and images</h2>
       <label>Contenu <select aria-label="Contenu affiché"></select></label>
       <div class="page-presentation-actions">
         <button type="button" class="button" data-action="pin" aria-pressed="false">Épingler la vue</button>
@@ -19,7 +23,7 @@
       </div>
       <p class="page-presentation-feedback" role="status" aria-live="polite"></p>
     </header><section id="conversationPageBoard" class="page-presentation-board conversation-board"></section>`;
-    layout.prepend(region);
+    visual.before(region);
     const board = region.querySelector('.page-presentation-board');
     const picker = region.querySelector('select');
     const toggle = region.querySelector('[data-action="toggle"]');
@@ -74,12 +78,29 @@
       region.classList.toggle('is-expanded', expanded);
       expand.setAttribute('aria-pressed', String(expanded)); expand.textContent = expanded ? 'Réduire' : 'Agrandir';
     }
-    function select(card) {
+    // Every card stays visible, as in Famille. Selecting one marks it and scrolls
+    // the zone's own list to it; the page itself does not move.
+    function select(card, { scroll = true } = {}) {
       selected = card;
-      cards.forEach(item => { item.hidden = item !== card; });
+      cards.forEach(item => {
+        item.hidden = false;
+        item.dataset.selected = String(item === card);
+        if (item === card) item.setAttribute('aria-current', 'true'); else item.removeAttribute('aria-current');
+      });
       picker.value = String(cards.indexOf(card));
       notifyTaskFrames();
+      if (scroll) root.requestAnimationFrame?.(() => {
+        const list = card.parentElement;
+        if (selected !== card || !list || !card.isConnected) return;
+        list.scrollTop += card.getBoundingClientRect().top - list.getBoundingClientRect().top;
+      });
     }
+    // Touching a card makes it the one Nestor reads and commands act on.
+    board.addEventListener('pointerdown', event => {
+      const card = event.target.closest?.('.display-block');
+      if (!card || card === selected || !cards.includes(card)) return;
+      manual(); select(card, { scroll: false });
+    });
     toggle.addEventListener('click', () => { manual(); present(!region.classList.contains('is-active')); });
     picker.addEventListener('change', () => { manual(); select(cards[Number(picker.value)]); present(true); });
     pin.addEventListener('click', () => {
@@ -127,7 +148,7 @@
       else image.addEventListener('load', reveal, { once: true });
     }
 
-    return { board, command, revealImage, canFollow: () => pin.getAttribute('aria-pressed') !== 'true', active: () => region.classList.contains('is-active'), update(next) {
+    return { board, command, revealImage, selected: () => selected, canFollow: () => pin.getAttribute('aria-pressed') !== 'true', active: () => region.classList.contains('is-active'), update(next) {
       cards = next;
       region.hidden = !cards.length;
       picker.replaceChildren(...cards.map((card, index) => {
@@ -142,8 +163,9 @@
         latest = selected = null; pin.setAttribute('aria-pressed', 'false'); pin.textContent = 'Épingler la vue';
         present(false); return;
       }
+      picker.closest('label').hidden = cards.length < 2;
       const added = cards[0] !== latest;
-      select(added || !cards.includes(selected) ? cards[0] : selected);
+      select(added || !cards.includes(selected) ? cards[0] : selected, { scroll: added });
       latest = cards[0];
       if (added) present(true);
       else board.hidden = !region.classList.contains('is-active');

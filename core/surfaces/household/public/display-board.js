@@ -298,7 +298,9 @@
       has: key => Array.from(list.children).some(child => child.dataset?.key === key),
       context() {
         if (container.hidden) return [];
-        const visible = Array.from(list.children).filter(card => !card.hidden);
+        // A stacked workspace marks the card in focus; that card is what is "shown".
+        const focused = Array.from(list.children).find(card => card.dataset?.selected === 'true' && !card.hidden);
+        const visible = focused ? [focused] : Array.from(list.children).filter(card => !card.hidden);
         if (root.AgentXPresentationObservation) return visible.slice(0, 1).map(root.AgentXPresentationObservation.observe);
         return visible.filter(card => card._screenTarget).slice(0, 3).map(card => {
           const target = card._screenTarget, base = { page: target.page, status: 'unavailable' };
@@ -336,7 +338,7 @@
           const current = presentation.active() ? board.context()[0] : null;
           if (block.kind === 'page' && current?.kind === 'page' && current.page === block.body) return true;
           if (block.kind === 'page' && current?.kind === 'page') {
-            const card = presentation.board.querySelector('.display-block:not([hidden])');
+            const card = presentation.selected?.() || presentation.board.querySelector('.display-block:not([hidden])');
             if (root.NestorPresentationCollaboration?.focus(card, block)) return true;
           }
           return board.add(block);
