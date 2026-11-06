@@ -9,7 +9,7 @@ start without it. It declares image input and uses the following-model alias `ag
 selection. The isolated Coding Team worker also uses DSH, with its own task
 claim, frozen concrete model and native capacity receipts.
 
-Nerve Center's Routing section selects Standard or Abliterated, two models the
+Nerve Center's "Principal model and topology" section selects Standard or Abliterated, two models the
 operator names in the same card (a fresh install names none). Renaming the
 option in use loads the new model through the same switch. This replaces
 the existing principal pin, retaining its context, keep-alive and sibling pins,
