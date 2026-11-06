@@ -157,13 +157,18 @@
     function groupBlock(group) {
         const info = group.switch || {};
         const record = info.last || null;
+        // The receipt and mode tables fold away; they open while a switch runs.
+        const running = Boolean(info.inProgress || (record && !TERMINAL.includes(record.state)));
         return `<div class="nc-mb-16" data-topology-group="${esc(group.id)}">
             <h5 class="nc-title">${esc(group.label)}</h5>
             <p>Current mode: <strong>${esc(group.activeMode || 'none')}</strong>${info.intendedMode && info.intendedMode !== group.activeMode ? ` <span class="nc-muted">(intended: ${esc(info.intendedMode)})</span>` : ''}</p>
             ${GROUP_STATE[group.state] ? `<p class="nc-muted">${esc(GROUP_STATE[group.state])}</p>` : ''}
             ${controlBlock(group)}
-            <div class="nc-topology-progress-slot" id="ncTopologyProgress-${esc(group.id)}">${progressHtml(record)}</div>
-            ${group.modes.map(mode => modeBlock(mode, group.activeMode, info.intendedMode)).join('')}
+            <details class="nc-topology-details"${running ? ' open' : ''}>
+                <summary>Last switch and endpoints of each mode</summary>
+                <div class="nc-topology-progress-slot" id="ncTopologyProgress-${esc(group.id)}">${progressHtml(record)}</div>
+                ${group.modes.map(mode => modeBlock(mode, group.activeMode, info.intendedMode)).join('')}
+            </details>
         </div>`;
     }
 
