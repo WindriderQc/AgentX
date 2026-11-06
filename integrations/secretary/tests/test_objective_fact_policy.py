@@ -113,8 +113,8 @@ class FactPolicyTests(unittest.TestCase):
 
     def test_schema_disables_omissions_without_cues_and_advertises_actual_ids_only(self):
         before = copy.deepcopy(grounding.SCHEMA)
-        self.assertEqual(grounding.schema_for("Un simple message.")["properties"]["omittedCueIds"]["maxItems"], 0)
-        schema = grounding.schema_for("Bonjour.\nJe vous envoie mon CV.")
+        self.assertEqual(grounding.schema_for("Un simple message.", grounding.FACT_CONTRACT)["properties"]["omittedCueIds"]["maxItems"], 0)
+        schema = grounding.schema_for("Bonjour.\nJe vous envoie mon CV.", grounding.FACT_CONTRACT)
         self.assertEqual(schema["properties"]["omittedCueIds"]["items"]["enum"], ["q2"])
         moment = schema["properties"]["moments"]["items"]
         self.assertNotIn("uncertainty", moment["properties"])

@@ -69,7 +69,7 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v5.
+Use the source-span grounding contract secretary.objective-grounding/v6.
 Keep useful explicit steps, not only completed milestones. A personal career
 contact, referral, CV submission, application, interview or offer can be retained
 at its stated stage. Choose factType: life-event, career-contact, application,
@@ -81,6 +81,8 @@ or following up by email is work-correspondence, not employment-change.
 Select factTypeCitationIds among this event's observation IDs and the matching
 factTypeCatalog entry. life-event is neutral and uses []. Catalog entries are
 lexical cues, not proof that an event occurred or its classification is true.
+The response schema has a separate complete alternative for each available
+factType. Choose that type first and follow only its date/evidence choices.
 Select startDateRef/endDateRef from dateCatalog, or null when unknown. Never
 write date values, precisions or originalDate yourself. Communication dates are
 allowed only as a start date for career-contact, application or work-correspondence.
@@ -115,7 +117,10 @@ The hypotheses list contains ONLY uncertaintyCatalog IDs for unresolved source
 questions, conditions or possibilities relevant to the proposed event. Each ID
 already binds the source citation and admissible category. Never supply a basis,
 citationIds object, interpretation text or a fabricated reference. The
-application quotes the whole selected line with an uncertainty label. If the
+catalog's condition gate requires a conditional clause, not an isolated si/if
+inside a name. These bounded reading aids can still miss or misclassify wording;
+select only references that actually qualify this event in their source context.
+The application quotes the whole selected line with an uncertainty label. If the
 source contains no such expression, return hypotheses: []. Only actual catalog
 IDs are evidence; internal labels or absence markers are never references.
 No weak associations,

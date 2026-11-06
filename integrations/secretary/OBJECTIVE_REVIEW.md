@@ -6,7 +6,7 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
-New objectives use `secretary.objective-grounding/v5` for model extraction.
+New objectives use `secretary.objective-grounding/v6` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
@@ -30,6 +30,14 @@ from `factTypeCatalog`, among that moment's own observation citations. Neutral
 follow-up is not an employment transition. These lexical cues can contain
 questions, negation or third-party wording; they never certify a fact's type.
 Local labels say that the proposed nature requires review.
+
+Each available fact type has a complete, disjoint response-schema alternative.
+Professional alternatives require matching type-evidence IDs and category
+`work`; neutral `life-event` requires an empty type-evidence list. Communication
+date references appear only in the start choices of contact, application and
+work-correspondence alternatives. End dates and underlying activities cannot
+select them. Local validation retains these checks even if a backend ignores
+the schema. Event-date association within observations still needs review.
 
 Dates select `startDateRef` and `endDateRef` from `dateCatalog`, or null. The
 model cannot supply canonical date values, precision or `originalDate`. The
@@ -68,8 +76,13 @@ The canonical description uses observations only. New hypotheses have no
 generated interpretation text: each selects a reference from `uncertaintyCatalog`
 that already binds one complete source line to its `basis` (`question`,
 `condition` or `possibility`). The response cannot independently change the basis
-or supply citation objects. A conservative lexical gate and a 450-character
+or supply citation objects. A conservative wording gate and a 450-character
 limit restrict eligible lines in the response schema and local validation.
+For new references, an isolated `si`/`if` token in a name or list does not
+supply a condition: a bounded following clause is required, and recognized
+indirect questions are excluded from that category. This is a conservative
+French/English reading aid, not a complete parser; uncommon clauses may be
+missed and a selected reference still requires source review.
 The application quotes that line with its bound uncertainty label,
 without inferring an answer or realization. No eligible expression means an
 empty hypothesis list, enforced with `maxItems: 0`. No internal absence marker
@@ -102,7 +115,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3` and `/v4` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4` and `/v5` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.

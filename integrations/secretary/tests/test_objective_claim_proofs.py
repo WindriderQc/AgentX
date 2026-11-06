@@ -41,7 +41,7 @@ def context(body, **extra):
 
 
 def project(raw, body, ctx=None):
-    result, changes = normalize_representation(raw, body, grounding.CONTRACT, ctx)
+    result, changes = normalize_representation(raw, body, grounding.PROOF_CONTRACT, ctx)
     validate(result, body)
     return result, changes
 
@@ -137,7 +137,7 @@ class TypedFactTests(unittest.TestCase):
         self.assertEqual(changes[0]["factPolicy"]["facts"][0]["proposedFactType"], "work-correspondence")
         moment["factType"] = "employment-change"
         with self.assertRaisesRegex(ValueError, "matching evidence"):project(raw, body, context(body))
-        schema = grounding.schema_for(body)
+        schema = grounding.schema_for(body, grounding.PROOF_CONTRACT)
         self.assertNotIn("employment-change", schema["properties"]["moments"]["items"]["properties"]["factType"]["enum"])
 
     def test_post_contract_work_is_not_automatically_an_employment_transition(self):
@@ -184,7 +184,7 @@ class CategorizedUncertaintyTests(unittest.TestCase):
 
     def test_schema_and_catalog_have_no_selectable_absence_marker(self):
         for body, expected in [("Une simple signature.", []), ("Viendras-tu ?", ["u1"]), ("Peut-être demain.", ["u1"])]:
-            schema = grounding.schema_for(body);hyp=schema["properties"]["moments"]["items"]["properties"]["hypotheses"]
+            schema = grounding.schema_for(body, grounding.PROOF_CONTRACT);hyp=schema["properties"]["moments"]["items"]["properties"]["hypotheses"]
             if expected:self.assertEqual(hyp["items"]["enum"], expected)
             else:self.assertEqual(hyp["maxItems"], 0)
             self.assertNotIn("no-explicit-uncertainty", json.dumps(schema))
@@ -202,7 +202,10 @@ class CategorizedUncertaintyTests(unittest.TestCase):
 
 
 class ProofWorkerTests(unittest.TestCase):
-    setUp = fixtures.SourceLanguageWorkerTests.setUp
+    def setUp(self):
+        fixtures.SourceLanguageWorkerTests.setUp(self)
+        frozen = patch.object(worker, 'SCHEMA', grounding.SCHEMA_V5)
+        frozen.start(); self.addCleanup(frozen.stop)
     mail = fixtures.SourceLanguageWorkerTests.mail
     prepare = fixtures.SourceLanguageWorkerTests.prepare
     run_worker = fixtures.SourceLanguageWorkerTests.run_worker
