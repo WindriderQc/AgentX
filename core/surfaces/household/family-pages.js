@@ -4,25 +4,38 @@ const fold=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,
 const NAV=/\b(?:ouvr(?:e|es|ir|ez)|montr(?:e|es|er|ez)|affich(?:e|es|er|ez)|visite|visiter|open|show|display)\b/;
 const PHYSICAL=/\b(?:allume|allumer|eteins|eteindre|deverrouille|deverrouiller|unlock|porte|door|turn on|turn off)\b/;
 const CONTEXTUAL=/^(?:oui(?: s il te plait)?|yes(?: please)?|ok(?: vas y)?|d accord|vas y|pourquoi pas(?: tu peux me montrer ca)?|(?:montre|affiche|ouvre)(?: moi)? (?:ca|la|le)|show (?:it|that))(?: merci)?$/;
+// Words allowed before the opening verb: politeness, "que tu m'…" and "faire
+// une visite" ("Est-ce que tu me ferais une visite de l'écosystème?").
+const POLITE=new Set('est ce que qu tu vous peux pouvez pourrais pourriez pourrait veux veut je j m aimerais aimeriez voudrais voudriez me moi nous te s il plait svp stp hey nestor please can could would you i want to fais fasse fasses ferais ferait feriez faire une petite'.split(' '));
+// Spoken requests often follow unrelated words ("Ben non, au revoir, je veux
+// que tu m'ouvres la page…"). Only the comma or sentence segment that holds the
+// first opening verb must be a polite request; the destination is read from
+// that segment onward. Returns that folded text, or null.
+function requestTail(text){
+ const segments=String(text||'').split(/[,.!?;\n]+/).map(part=>fold(part).replace(/^(?:(?:non|stop)\s+)+/,'')).filter(Boolean);
+ const index=segments.findIndex(segment=>NAV.test(segment));if(index<0)return null;
+ const segment=segments[index],command=segment.match(NAV);
+ if(/^(?:(?:moi|nous|me|it|that)\s+)?(?:pas|jamais|not|never)\b/.test(segment.slice(command.index+command[0].length).trim()))return null;
+ if(segment.slice(0,command.index).trim().split(' ').filter(Boolean).some(word=>!POLITE.has(word)))return null;
+ return segments.slice(index).join(' ');
+}
 function direct(text){
- const value=fold(text).replace(/^(?:(?:non|stop)\s+)+/,'');const command=value.match(NAV);if(!command||/^(?:(?:moi|nous|me|it|that)\s+)?(?:pas|jamais|not|never)\b/.test(value.slice(command.index+command[0].length).trim()))return null;
- const prefix=new Set('est ce que tu vous peux pouvez pourrais pourriez pourrait veux veut je j aimerais aimeriez voudrais voudriez me nous te s il plait svp stp hey nestor please can could would you i want to'.split(' '));
- if(value.slice(0,command.index).trim().split(' ').filter(Boolean).some(word=>!prefix.has(word)))return null;
- let id=/\b(?:iss|station (?:spatiale )?internationale|station spatiale)\b/.test(value)?'iss':null;
- const kids=/\b(?:taches?|routines?|missions?|corvees?)\b/.test(value)&&/\b(?:enfants?|kids)\b/.test(value)||/\b(?:salle des enfants|kids room)\b/.test(value);
- const eco=/\b(?:ecosysteme|ecosystem|visite de la maison connectee)\b/.test(value);
- const earth=!id&&/\b(?:terre|earth)\b/.test(value);
+ const value=fold(text).replace(/^(?:(?:non|stop)\s+)+/,''),tail=requestTail(text);if(!tail)return null;
+ let id=/\b(?:iss|station (?:spatiale )?internationale|station spatiale)\b/.test(tail)?'iss':null;
+ const kids=/\b(?:taches?|routines?|missions?|corvees?)\b/.test(tail)&&/\b(?:enfants?|kids)\b/.test(tail)||/\b(?:salle des enfants|kids room)\b/.test(tail);
+ const eco=/\b(?:ecosysteme|ecosystem|visite de la maison connectee)\b/.test(tail);
+ const earth=!id&&/\b(?:terre|earth)\b/.test(tail);
  const ids=[id,kids?'kids-tasks':null,eco?'ecosystem':null,earth?'earth':null].filter(Boolean);
- const pageWords=/\b(?:page|site|vue|ecran)\b/.test(value);
+ const pageWords=/\b(?:page|site|vue|ecran)\b/.test(tail);
  if(!ids.length&&!pageWords)return null;
  const physical=PHYSICAL.test(value)||/\b(?:ouvre|ouvrir)\s+(?:(?:le|la|les|notre|un|une)\s+)?(?:garage|camera|portail|verrou)\b/.test(value);
  // Only a positive navigation grammar can bypass inference. Unknown content
  // stays with the model, including unrecognised second requests.
  const targetWords=ids[0]==='iss'?/\b(?:iss|station|spatiale|internationale|international|space|autour|table|terre)\b/g:ids[0]==='kids-tasks'?/\b(?:taches?|routines?|missions?|corvees?|enfants?|kids|room|salle)\b/g:ids[0]==='ecosystem'?/\b(?:ecosysteme|ecosystem)\b/g:/\b(?:terre|earth)\b/g;
- const allowed=new Set('est ce que tu vous peux pouvez pourrais pourriez pourrait veux veut je j aimerais aimeriez voudrais voudriez me moi nous te s il plait svp stp hey nestor please can could would you i want to ouvre ouvres ouvrir ouvrez montre montres montrer montrez affiche affiches afficher affichez visite visiter open show display la le les l un une du de des d au a pour page pages site vue ecran aujourd hui demain today tomorrow'.split(' '));
+ const allowed=new Set('est ce que tu vous peux pouvez pourrais pourriez pourrait veux veut je j aimerais aimeriez voudrais voudriez me moi nous te s il plait svp stp hey nestor please can could would you i want to ouvre ouvres ouvrir ouvrez montre montres montrer montrez affiche affiches afficher affichez visite visiter open show display la le les l un une du de des d au a pour page pages site vue ecran aujourd hui demain today tomorrow que qu m fais fasse fasses ferais ferait feriez faire petite guidee accompagnee notre nos'.split(' '));
  const remaining=value.replace(targetWords,' ');
  const standalone=ids.length===1&&!physical&&String(text).split(/[.!?;\n]/).filter(part=>part.trim()).length<=1&&remaining.trim().split(/\s+/).filter(Boolean).every(word=>allowed.has(word));
- return {id:ids.length===1?ids[0]:null,day:/\b(?:demain|tomorrow)\b/.test(value)?'tomorrow':'today',standalone,ambiguous:ids.length>1};
+ return {id:ids.length===1?ids[0]:null,day:/\b(?:demain|tomorrow)\b/.test(tail)?'tomorrow':'today',standalone,ambiguous:ids.length>1};
 }
 function resolve(text,catalog,rows=[],now=Date.now(),sessionId=null){
  let intent=direct(text),contextual=false;
@@ -49,8 +62,15 @@ async function forTurn(text,catalog,conversations,session){
  const rows=!direct(text)&&CONTEXTUAL.test(fold(text))?await conversations.listTurns({sessionId:session.sessionId,packId:session.packId,scopeId:session.scopeId},{sort:{createdAt:-1},limit:2}):[];
  return resolve(text,catalog,rows,Date.now(),session.sessionId);
 }
-function directive(intent){
- if(!intent)return 'No family page was requested on this turn. Do not open an unsolicited page.';
+// The family model cannot open a page itself (Core drops its page blocks), so it
+// must never promise one. A probable missed request gets a phrase that works.
+const PAGE_MENTION=/\b(?:ecosysteme|ecosystem|iss|station spatiale|station internationale|terre|earth|page|ecran)\b/;
+function directive(intent,text=''){
+ if(!intent){
+  const value=fold(text),missed=NAV.test(value)&&PAGE_MENTION.test(value)&&!/\b(?:pas|jamais|not|never)\b/.test(value);
+  return 'No family page opens on this turn. Do not open an unsolicited page, and never say that you open, are opening or will open a page.'
+   +(missed?' If the person asked to see a page, say in one short sentence that it did not open this time and that a short request such as "Montre-moi l’écosystème" or "Montre-moi l’ISS" opens it.':'');
+ }
  return intent.target?'The requested family destination is '+JSON.stringify(intent.target)+'. Its catalogue label is '+JSON.stringify(intent.title)+'. Present that destination only. Do not substitute an ecosystem tour, ask for another confirmation or describe a physical action. Answer any additional requested question normally. A page proposal is not proof of loading.':'No configured family destination matches this request. Say it is unavailable and open no other page. Never substitute the ecosystem tour.';
 }
 async function ensure(intent,display,visuals,event,language='fr'){

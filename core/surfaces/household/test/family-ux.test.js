@@ -67,3 +67,20 @@ for(const request of ['Montre la page ISS et explique pourquoi elle ne tombe pas
 
 test('page navigation only removes the UI action flag, preserving private information',()=>{const text="Ouvre la page ISS, j'habite au 123 rue Exemple";const raw=prompt.assessSafety(text);const result=requests.navigationSafety(text,raw,prompt.assessSafety);assert.ok(result.flagIds.includes('private_information'));assert.ok(!result.flagIds.includes('home_action_requested'));assert.match(prompt.childBoundaryReply({childSafe:true},result,text),/information privée/);});
 test('a refused prior physical request is never revived by yes',()=>{const row={inputText:'Ouvre la page ISS et ouvre mon garage',packId:'kidx_nestor',scopeId:'family',sessionId:'one',createdAt:new Date().toISOString(),safetyFlags:['home_action_requested']};assert.equal(requests.resolve('Oui',catalog,[row],Date.now(),'one'),null);});
+
+// Real Famille voice requests of 2026-11-06 that the strict grammar left to the
+// model, which then promised a page that never opened.
+for(const request of [
+ 'Ah bon, on va laisser faire les blagues. Est-ce que tu me ferais une visite de notre écosystème, ça fait?',
+ 'J’aimerais que tu me fasses une visite de l’écosystème.',
+ 'Ben non pas, au revoir, je veux que tu m’ouvres la page de l’écosystème.',
+ 'Est-ce que tu peux me faire une visite guidée de l’écosystème?',
+ 'Est-ce que tu pourrais me faire une petite visite d’idée de notre écosystème?',
+])test('spoken ecosystem visit opens after chatter: '+request,async()=>{const h=family({response:'Allons-y.'});const result=await h.turn(request,'voice');assert.equal(result.display[0].body,'ecosystem');assert.equal(result.display[0].title,'Ecosysteme canonique');});
+test('a polite visit request with no chatter stays deterministic',async()=>{const h=family();const result=await h.turn('Est-ce que tu me ferais une visite guidée de notre écosystème?','voice');assert.equal(h.sent.length,0);assert.equal(result.display[0].body,'ecosystem');});
+for(const request of ['Je ne veux pas que tu ouvres la page ISS.','On a fait une visite de l’écosystème hier.','Raconte une histoire, où une fille ouvre la page ISS.','Ne fais pas de visite de l’écosystème.'])test('chatter tolerance keeps mentions and refusals closed: '+request,async()=>{const h=family({response:'Réponse synthétique.'});const result=await h.turn(request,'voice');assert.equal((result.display||[]).length,0);assert.equal(h.sent.length,1);});
+test('without a page the family model is told never to promise one',()=>{
+ assert.match(requests.directive(null,'Raconte une blague.'),/never say that you open/);assert.doesNotMatch(requests.directive(null,'Raconte une blague.'),/Montre-moi/);
+ assert.match(requests.directive(null,'Tu pourrais peut-être montrer l’écosystème?'),/did not open this time.*Montre-moi l’écosystème/);
+ assert.doesNotMatch(requests.directive(null,'Ne montre pas la page ISS.'),/Montre-moi/);
+});
