@@ -18,6 +18,7 @@ import objective_date_evidence as dates
 import objective_conditional_schema as conditional
 import objective_uncertainty_context as contextual
 import objective_source_observations as source_observations
+import objective_useful_selection as useful_selection
 
 LEGACY_CONTRACT = "secretary.objective-grounding/v1"
 WORDING_CONTRACT = "secretary.objective-grounding/v2"
@@ -25,7 +26,8 @@ PROXIMITY_CONTRACT = "secretary.objective-grounding/v3"
 FACT_CONTRACT = "secretary.objective-grounding/v4"
 PROOF_CONTRACT = "secretary.objective-grounding/v5"
 CONDITIONAL_CONTRACT = "secretary.objective-grounding/v6"
-CONTRACT = "secretary.objective-grounding/v7"
+SOURCE_CONTRACT = "secretary.objective-grounding/v7"
+CONTRACT = "secretary.objective-grounding/v8"
 CLAIM = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -92,11 +94,13 @@ SCHEMA_V5 = SCHEMA
 SCHEMA = conditional.schema(SCHEMA_V5)
 SCHEMA_V6 = SCHEMA
 SCHEMA = source_observations.schema(SCHEMA_V6)
+SCHEMA_V7 = SCHEMA
+SCHEMA = useful_selection.schema(SCHEMA_V7)
 
 
 def contract_for(manifest):
     digest = manifest.get("responseSchemaSha256")
-    for contract, schema in ((CONTRACT, SCHEMA), (CONDITIONAL_CONTRACT, SCHEMA_V6), (PROOF_CONTRACT, SCHEMA_V5), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
+    for contract, schema in ((CONTRACT, SCHEMA), (SOURCE_CONTRACT, SCHEMA_V7), (CONDITIONAL_CONTRACT, SCHEMA_V6), (PROOF_CONTRACT, SCHEMA_V5), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
                              (WORDING_CONTRACT, SCHEMA_V2), (LEGACY_CONTRACT, SCHEMA_V1)):
         if digest == hashed(schema):
             return contract
@@ -115,6 +119,8 @@ def catalog(content):
 
 def schema_for(content, contract=CONTRACT, source_context=None):
     if contract == CONTRACT:
+        return useful_selection.schema(schema_for(content, SOURCE_CONTRACT, source_context), catalog(content))
+    if contract == SOURCE_CONTRACT:
         return source_observations.schema(schema_for(content, CONDITIONAL_CONTRACT, source_context), catalog(content))
     if contract == CONDITIONAL_CONTRACT:
         return conditional.schema(schema_for(content, PROOF_CONTRACT, source_context), catalog(content), source_context)
@@ -221,11 +227,15 @@ def _project_v1(value, content):
 
 def project(value, content, contract=None, source_context=None):
     items = value.get('moments') if isinstance(value, dict) else None
-    if contract == CONTRACT or not contract and isinstance(items, list) and any(
+    if contract == CONTRACT or not contract and isinstance(value, dict) and 'abstention' in value:
+        if not isinstance(content, str):
+            raise ValueError('Grounded extraction requires the exact supplied passage')
+        return useful_selection.project(value, content, {r['id']: r for r in catalog(content)}, source_context, SCHEMA_V7, CONTRACT)
+    if contract == SOURCE_CONTRACT or not contract and isinstance(items, list) and any(
             isinstance(m, dict) and 'titleCitationId' in m for m in items):
         if not isinstance(content, str):
             raise ValueError('Grounded extraction requires the exact supplied passage')
-        return source_observations.project(value, content, {r['id']: r for r in catalog(content)}, source_context, SCHEMA, CONTRACT)
+        return source_observations.project(value, content, {r['id']: r for r in catalog(content)}, source_context, SCHEMA_V7, SOURCE_CONTRACT)
     if contract == LEGACY_CONTRACT or not contract and isinstance(value, dict) and "summary" in value:
         return _project_v1(value, content)
     if not isinstance(content, str):

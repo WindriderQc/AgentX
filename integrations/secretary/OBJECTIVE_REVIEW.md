@@ -6,7 +6,7 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
-New objectives use `secretary.objective-grounding/v7` for model extraction.
+New objectives use `secretary.objective-grounding/v8` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
@@ -17,12 +17,33 @@ Useful facts include explicit personal career steps at their stated stage:
 `career-contact`, `application`, `interview`, `job-offer`, `employment-change`,
 `work-activity`, `work-correspondence`, or the generic `life-event`. Contacting a firm and sending a CV can be retained
 without implying hiring, a later interview or a new employment period.
-`selectionCues` points to source lines with personal wording and career terms.
-These lexical reminders are not facts, actor identification or proof of
-occurrence. A cue must appear in a cited observation or `omittedCueIds`.
-Omissions become exact quoted selection gaps for source review; they never
-create events automatically. No cue means an empty omission list. Routine
-administrative exchanges and advertisements still need no biographical event.
+`selectionCues` includes bounded lexical reminders for career steps and personal
+home, travel, leisure, study, family, health and planned-project wording. Personal
+pronouns do not identify the owner: quoted text, newsletters and other actors
+still need review. These cues are not events, proof of occurrence or an exhaustive
+inventory. No place-name dictionary or instance-specific example is required.
+Undated/relative-date travel and planned personal activities can remain useful;
+missing absolute dates alone do not justify omitting them.
+
+Every cue must be cited in an observation or have an `omittedCues` decision:
+`citationId`, a bounded `reasonCode`, and `contextCitationIds` including the cue
+itself. Unknown, duplicated, overlapping or silently ignored cue decisions fail
+closed. A lexical match can still be omitted with source-backed proposed reasons;
+it never automatically creates a fact. The canonical gaps retain the reason and
+complete source excerpts for review. Career cues retain their frozen legacy
+projection as well; prior results are neither rewritten nor reinterpreted.
+
+Every empty extraction also requires `abstention: {reasonCode, citationIds}` with
+actual source evidence, including administrative passages without cues. The
+response schema separates positive extractions (`abstention: null`) from cited
+negative and uncertain decisions. Ambiguous actor or insufficient event context
+requires `emptyAssessment: uncertain`, not a confident no-event classification.
+Only an actually empty passage permits `no-readable-source` and no citations;
+there is no selectable absence marker. A missing event date is not an allowed
+reason. Proposed reasons are not semantic proof: source review can still find
+an unjustified abstention. The canonical summary displays its reason and whole
+supporting excerpts, or refers to their complete gap text when they exceed the
+summary bound. `selectionReview` retains the exact source spans and cue decisions.
 
 The model selects a proposed `factType` and matching `factTypeCitationIds`
 from `factTypeCatalog`, among that moment's own observation citations. Neutral
@@ -122,7 +143,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5` and `/v6` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6` and `/v7` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.
