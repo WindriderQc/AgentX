@@ -16,7 +16,7 @@ app.use(express.json());
 app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas: [{ id: 'nestor', voice: { provider: 'voxcpm', source: 'instance', voices: { fr: 'fixture-voice' } } }] } }));
 app.get('/api/voix/player.js', (_req, res) => res.sendFile(path.join(root, 'integrations/voix/app/web/voice-audio.js')));
 app.post('/api/voix/synthesize/stream', (req, res) => {
-  const item = { body: req.body, res, closed: false }; requests.push(item);
+  const item = { body: req.body, requestId: req.headers['x-fixture-request'], res, closed: false }; requests.push(item);
   res.on('close', () => { item.closed = true; });
   res.type('application/x-ndjson');
   const samples = 800, pcm = Buffer.alloc(samples * 4);
@@ -58,20 +58,32 @@ app.get('/ambient-board', (_req,res)=>res.send('<!doctype html><html><iframe cla
       const fetchAudio = window.fetch.bind(window);
       window.fetch = (url, options) => {
         if (String(url).endsWith('/api/voix/synthesize/stream')) {
-          const row = { aborted: false }; window.speechRequests.push(row);
+          const row = { id: crypto.randomUUID(), aborted: false, scheduled: false }; window.speechRequests.push(row);
+          options.headers = { ...options.headers, 'x-fixture-request': row.id };
           options?.signal?.addEventListener('abort', () => { row.aborted = true; }, { once: true });
         }
         return fetchAudio(url, options);
       };
       for (const name of ['start', 'stop']) {
         const original = AudioBufferSourceNode.prototype[name];
-        AudioBufferSourceNode.prototype[name] = function (...args) { window.audioEvents.push(name); return original.apply(this, args); };
+        AudioBufferSourceNode.prototype[name] = function (...args) { const result = original.apply(this, args);
+          window.audioEvents.push(name);
+          if (name === 'start') { const row = window.speechRequests.find(row => !row.aborted && !row.scheduled); if (row) row.scheduled = true; }
+          return original.apply(this, args); };
       }
     });
     await page.goto(`http://127.0.0.1:${server.address().port}/diskx?app=ecosystem&play=overview,frank,summary`);
     await page.waitForFunction(() => document.querySelector('agentx-ecosystem').state()?.presentation);
     assert.equal(await page.getByRole('button', { name: '🔇 Couper la voix', exact: true }).getAttribute('aria-pressed'), 'true');
-    const count = async n => { for (let i = 0; i < 100 && requests.length < n; i++) await new Promise(resolve => setTimeout(resolve, 50)); assert.equal(requests.length, n); };
+    const count = async (n, sourcePage = page) => {
+      for (let i = 0; i < 100 && requests.length < n; i++) await new Promise(resolve => setTimeout(resolve, 50));
+      assert.equal(requests.length, n);
+      const id = requests[n - 1].requestId;
+      let owner;
+      for (const frame of sourcePage.frames()) if (await frame.evaluate(id => window.speechRequests?.some(row => row.id === id), id)) owner = frame;
+      assert.ok(owner, 'each synthesized stream belongs to the requesting frame');
+      await owner.waitForFunction(id => speechRequests.find(row => row.id === id)?.scheduled === true, id);
+    };
     await count(1);
     const first = await page.evaluate(() => document.querySelector('agentx-ecosystem').state().presentation);
     assert.equal(requests[0].body.text, first.narration);
@@ -142,11 +154,31 @@ app.get('/ambient-board', (_req,res)=>res.send('<!doctype html><html><iframe cla
     try {
       const locked = await lockedBrowser.newPage({ viewport: {width:800,height:700}, reducedMotion:'reduce' });
       locked.on('pageerror', error => errors.push(error.message));
+      await locked.addInitScript(() => {
+      window.audioEvents = [];
+      window.speechRequests = [];
+      const fetchAudio = window.fetch.bind(window);
+      window.fetch = (url, options) => {
+        if (String(url).endsWith('/api/voix/synthesize/stream')) {
+          const row = { id: crypto.randomUUID(), aborted: false, scheduled: false }; window.speechRequests.push(row);
+          options.headers = { ...options.headers, 'x-fixture-request': row.id };
+          options?.signal?.addEventListener('abort', () => { row.aborted = true; }, { once: true });
+        }
+        return fetchAudio(url, options);
+      };
+      for (const name of ['start', 'stop']) {
+        const original = AudioBufferSourceNode.prototype[name];
+        AudioBufferSourceNode.prototype[name] = function (...args) { const result = original.apply(this, args);
+          window.audioEvents.push(name);
+          if (name === 'start') { const row = window.speechRequests.find(row => !row.aborted && !row.scheduled); if (row) row.scheduled = true; }
+          return original.apply(this, args); };
+      }
+    });
       await locked.goto(`http://127.0.0.1:${server.address().port}/diskx?app=ecosystem&play=overview,frank`);
       await locked.getByText('La voix est prête. Touchez la visite pour autoriser le son.').waitFor();
       assert.equal(requests.length,10,'blocked autoplay does not invoke synthesis');
       assert.equal(await locked.getByRole('button',{name:'🔇 Couper la voix',exact:true}).getAttribute('aria-pressed'),'true');
-      await locked.getByRole('button',{name:'Lire',exact:true}).click(); await count(11);
+      await locked.getByRole('button',{name:'Lire',exact:true}).click(); await count(11, locked);
       await locked.getByRole('button',{name:'Quitter',exact:true}).click();
     } finally { await lockedBrowser.close(); }
     assert.deepEqual(errors, []);
