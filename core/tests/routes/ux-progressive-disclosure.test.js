@@ -245,10 +245,14 @@ describe('simple-to-expert UX contract', () => {
     for (const id of ['analytics-experience-title', 'ao-status', 'analyticsWindow', 'ao-calls', 'ao-success', 'ao-output', 'ao-latency', 'ao-trend-chart', 'ao-active', 'ao-gpus', 'ao-comparison', 'ao-mix-ring']) {
       expect(simpleDepth).toContain(`id="${id}"`);
     }
-    expect(simpleDepth).toContain('Playground conversations');
+    expect(simpleDepth).toContain('Nestor and Playground');
+    expect(simpleDepth).toContain('AgentX server performance');
+    expect(simpleDepth).toContain('Cloud outside Core');
+    expect(simpleDepth).not.toContain('data-ao-overlay');
     expect(simpleDepth).toContain('href="https://rag.example/"');
     expect(simpleDepth).not.toMatch(/Fallback Rate|Cost\/1K Tokens|Federated Cost|Model Activity/);
     expect(html).toContain('<strong>Explore the details</strong>');
+    expect(html).toContain('<details id="analytics-cockpit" class="analytics-cockpit" open>');
     expect(html).toContain('Activity workbench');
     expect(html).toContain('Operational Error Rate');
     expect(html).toContain('id="infCancellations"');
@@ -274,6 +278,7 @@ describe('simple-to-expert UX contract', () => {
     expect(overview).toContain('else clearSummary(state)');
     expect(demoOverview).not.toContain('id="ao-active"');
     expect(demoOverview).not.toContain('href="/nerve-center');
+    expect(demoOverview).not.toContain('Cloud outside Core');
     expect(source).toContain('parseCompactNumber');
     expect(source).toContain("of conversations used knowledge");
     expect(html).toContain("document.body.dataset.agentxProfile === 'demo'");

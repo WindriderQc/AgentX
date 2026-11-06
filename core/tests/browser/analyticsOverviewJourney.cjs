@@ -141,9 +141,14 @@ const server = http.createServer(async (req, res) => {
       return { calls: chart.data.datasets[0].data.reduce((a, b) => a + b, 0), current: chart.data.datasets[0].data };
     });
     assert.equal(plotted.calls, 1481, 'plotted volume reconciles with the headline');
-    assert.equal(await page.locator('#analytics-cockpit').getAttribute('open'), null);
-    const workbenchPaths = ['/api/analytics/costs', '/api/analytics/usage', '/api/analytics/feedback', '/api/analytics/rag-stats', '/api/analytics/effectiveness', '/api/analytics/federated', '/api/rag/'];
-    assert.deepEqual(requests.filter(p => workbenchPaths.some(prefix => p.startsWith(prefix))), [], 'the closed workbench loads nothing');
+    // The workbench is open by default and loads once the page-wide Period is known.
+    assert.notEqual(await page.locator('#analytics-cockpit').getAttribute('open'), null);
+    await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 24 hours'));
+    const workbenchPaths = ['/api/analytics/costs', '/api/analytics/usage', '/api/analytics/effectiveness', '/api/analytics/federated'];
+    for (const prefix of workbenchPaths) assert.ok(requests.some(p => p.startsWith(prefix)), `open workbench reads ${prefix}`);
+    assert.ok(requests.some(p => p.startsWith('/api/analytics/effectiveness?window=24h')), 'effectiveness follows the page Period');
+    assert.equal(await page.locator('#infDailyChart').count(), 0, 'the duplicate daily volume chart is gone');
+    assert.equal(await page.locator('#infDimensionBreakdowns .wb-dim').count(), 3, 'caller, contract and task type bar lists');
     assert.match(await page.locator('#ao-attribution').textContent(), /1,000 \/ 1,481.*481 missing.*400 proxy.*81 embedding/);
     const drilldown = new URL(await page.locator('#ao-attribution-logs').getAttribute('href'), 'http://test');
     assert.equal(drilldown.searchParams.get('consumerContractMissing'), 'true');
@@ -171,14 +176,18 @@ const server = http.createServer(async (req, res) => {
       if (width === 1440 || width === 390) await page.screenshot({ path: path.join(report, `overview-${width}.png`), fullPage: true });
     }
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.locator('[data-ao-overlay="latency"]').click();
-    assert.equal(await page.locator('[data-ao-overlay="latency"]').getAttribute('aria-pressed'), 'true');
-    assert.equal(await page.locator('#ao-overlay-label').textContent(), 'Mean latency (s)');
-    assert.deepEqual(await page.evaluate(() => Chart.getChart(document.getElementById('ao-trend-chart')).data.datasets[0].data), plotted.current, 'changing the overlay keeps the same calls');
-    assert.equal(await page.evaluate(() => Chart.getChart(document.getElementById('ao-trend-chart')).options.scales.rate.ticks.callback(2)), '2s');
+    // Calls, errors and latency share one chart: no overlay toggle.
+    assert.equal(await page.locator('[data-ao-overlay]').count(), 0);
+    const trendShape = await page.evaluate(() => {
+      const chart = Chart.getChart(document.getElementById('ao-trend-chart'));
+      return { axes: chart.data.datasets.map(d => d.yAxisID), rate: chart.options.scales.rate.ticks.callback(2), latency: chart.options.scales.latency.ticks.callback(2), calls: chart.data.datasets[0].data };
+    });
+    assert.deepEqual(trendShape.axes, ['calls', 'rate', 'latency']);
+    assert.equal(trendShape.rate, '2%');
+    assert.equal(trendShape.latency, '2s');
+    assert.deepEqual(trendShape.calls, plotted.current, 'the combined chart keeps the same calls');
+    assert.match(await page.locator('.ao-legend').textContent(), /Calls.*Errors %.*Mean latency/);
     await page.screenshot({ path: path.join(report, 'overview-latency-1440.png'), fullPage: true });
-    await page.locator('[data-ao-overlay="errors"]').click();
-    assert.equal(await page.evaluate(() => Chart.getChart(document.getElementById('ao-trend-chart')).options.scales.rate.ticks.callback(2)), '2%');
     await page.locator('#ao-error-focus').click();
     assert.equal(await page.locator('[data-ao-group="byErrors"]').getAttribute('aria-pressed'), 'true');
     assert.match(await page.locator('#ao-comparison').textContent(), /Workload reserved.*desktop-gateway-v1/s);
@@ -199,8 +208,7 @@ const server = http.createServer(async (req, res) => {
     assert.match(await page.locator('#ao-attribution').textContent(), /unavailable from this Core version/);
     assert.equal(await page.locator('#ao-attribution-logs').isVisible(), false);
     legacySummary = false;
-    // Opening the workbench loads it; the Playground lane follows the page-wide Period.
-    await page.locator('#analytics-cockpit > summary').click();
+    // The open workbench's conversation lane follows the page-wide Period.
     await page.waitForFunction(() => document.getElementById('chatLaneEmptyNote').textContent.includes('last 24 hours'));
     assert.equal(await page.locator('#periodSelect, #infWindow, #federatedWindowSelect').count(), 0, 'no competing period selectors');
     await page.locator('[data-ao-group="byConsumerContract"]').click();
@@ -271,16 +279,20 @@ const server = http.createServer(async (req, res) => {
     assert.match(await page.locator('#ao-status').textContent(), /3 admission refusals.*no other errors/);
     assert.match(await page.locator('#ao-outcomes').getAttribute('title'), /3 of 3 errors were admission refusals/);
     assert.equal(await page.evaluate(() => window.AgentXPresentedContent.filters.since), usageSince);
-    assert.equal(await page.locator('#analytics-secondary-period').evaluate(el => el.hidden), false);
+    // "Since daily use began" reaches every detail panel instead of falling back to 24 hours.
+    assert.equal(await page.locator('#analytics-period-badge').textContent(), 'Since daily use began');
+    await page.waitForFunction(() => document.getElementById('fedWindow').textContent.includes('last 24 h'));
+    assert.ok(requests.some(p => p.startsWith('/api/analytics/effectiveness?from=') && decodeURIComponent(p).includes(usageSince)), 'effectiveness reads from the usage boundary');
+    assert.ok(requests.some(p => p.startsWith('/api/analytics/costs?from=') && Math.abs(Date.parse(new URL(p, 'http://test').searchParams.get('from')) - Date.parse(usageSince)) < 120000), 'costs read from the usage boundary');
     await page.selectOption('#analyticsWindow', '7d');
     await page.waitForFunction(() => window.AgentXPresentedContent.filters.window === '7d' && window.AgentXPresentedContent.state === 'ready');
-    assert.equal(await page.locator('#analytics-secondary-period').evaluate(el => el.hidden), true);
+    assert.equal(await page.locator('#analytics-period-badge').textContent(), 'Last 7 days');
     await page.goto(`http://127.0.0.1:${server.address().port}/analytics?window=24h`);
     await page.waitForFunction(() => document.getElementById('ao-calls').textContent === '1,481');
     assert.equal(await page.locator('#analyticsWindow').inputValue(), '24h', 'explicit rolling history remains directly accessible');
     assert.deepEqual(errors, []);
     assert.ok(requests.some(p => p.includes('/summary?window=24h')));
     assert.ok(bucketFacet('24h', {})[0].$group._id.$dateToString.format.includes('%H'));
-    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'error causes and consumer shares', 'legacy cause availability', 'consumer attribution and window drilldown', 'volume/latency overlay', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'page-wide Period', 'lazy workbench', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
+    console.log(JSON.stringify({ ok: true, report, viewports: 7, scenarios: ['initial', 'comparison', 'error causes and consumer shares', 'legacy cause availability', 'consumer attribution and window drilldown', 'calls, errors and latency on one chart', 'visual evidence reset', 'window race', 'retention', 'failed read', 'empty', 'stale GPU', 'live failure', 'detail focus', 'demo profile', 'page-wide Period', 'open workbench waits for the Period', 'persistent Playground disclosure'], requests: requests.length }, null, 2));
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

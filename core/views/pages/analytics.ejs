@@ -3,332 +3,180 @@
 
         <%- include('../partials/analytics-overview') %>
 
-        <details id="analytics-cockpit" class="analytics-cockpit">
+        <details id="analytics-cockpit" class="analytics-cockpit" open>
           <summary>
             <span class="analytics-experience-icon" aria-hidden="true"><i class="fas fa-sliders"></i></span>
-            <span><strong>Explore the details</strong><small>Routing, full model comparison, Playground conversations and knowledge</small></span>
+            <span><strong>Explore the details</strong><small>Routing, model comparison, conversations, costs and knowledge</small></span>
             <span class="analytics-expert-badge">Expert analytics</span>
           </summary>
           <div class="analytics-cockpit-surface">
 
-        <!-- Header -->
-        <header class="analytics-header">
-            <div>
-                <div class="eyebrow">AgentX • Intelligence</div>
-                <h2><i class="fas fa-chart-line"></i><span class="title-separator"></span>Activity workbench</h2>
-                <p class="lede">Inference detail follows the selected period. Subscription quotas keep their native period.</p>
-                <p id="analytics-secondary-period" class="lede" hidden>Playground, provider and effectiveness details show the last 24 hours while the inference period is Since daily use began.</p>
-            </div>
-            <div class="header-controls">
-                <button type="button" id="refreshBtn"><i class="fas fa-sync-alt"></i> Refresh</button>
-            </div>
+        <!-- Header: one line; every section below follows the page-wide period. -->
+        <header class="wb-head">
+            <h2><i class="fas fa-chart-line" aria-hidden="true"></i> Activity workbench <span class="wb-period" id="analytics-period-badge" title="Every section below follows the period selected at the top of the page. Subscription quotas keep their native period.">selected period</span></h2>
+            <button type="button" id="refreshBtn" class="wb-button"><i class="fas fa-sync-alt"></i> Refresh</button>
         </header>
 
         <!-- ============================================================
              PLATFORM INFERENCE — sourced from `inferencelogs`.
-             This is every AgentX-routed call: chat, proxy, embedding,
-             classification, benchmark. The legacy sections further down
-             read `conversations`, which only the chat UI writes.
+             The overview already shows calls, tokens, success, latency and
+             local time; this strip keeps only the signals found nowhere else.
              ============================================================ -->
-        <div class="analytics-grid full" id="analytics-platform-inference">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-microchip"></i> Platform Inference</h2>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button type="button" id="infRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
+        <section class="wb-section" id="analytics-platform-inference" aria-labelledby="wb-inference-title">
+            <div class="wb-section-head">
+                <h3 id="wb-inference-title"><i class="fas fa-microchip" aria-hidden="true"></i> Platform inference</h3>
+                <span class="wb-hint" id="infScope" title="Recorded AgentX-routed inference attempts only; native calls bypassing Core are outside this view.">Recorded AgentX calls</span>
+                <button type="button" id="infRefreshBtn" class="wb-button wb-button-quiet" aria-label="Refresh platform inference"><i class="fas fa-sync-alt"></i></button>
+            </div>
+            <div class="wb-strip">
+                <a class="wb-chip" id="infErrorLink" href="/api/analytics/inference/logs?status=error%2Ctimeout" target="_blank" rel="noopener" title="Share of calls with an operational error or timeout, excluding caller cancellations. Opens the non-success log rows.">
+                    <span class="wb-chip-label">Operational Error Rate</span>
+                    <strong id="infErrorRate">—</strong>
+                    <small><span id="infErrors">—</span> errors · <span id="infCancellations">—</span> canceled · logs ↗</small>
+                </a>
+                <div class="wb-chip" title="Calls that fell back to a secondary model or host. A rising number means the primary route is unhealthy.">
+                    <span class="wb-chip-label">Fallback rate</span>
+                    <strong id="infFallbackRate">—</strong>
+                    <small><span id="infFallbacks">—</span> fallback calls</small>
                 </div>
-                <div class="section-body">
-                    <p class="lede" style="margin-top: 0;" id="infScope">Every AgentX-routed inference call.</p>
-
-                    <div class="stats-row">
-                        <div class="stat-card" data-tooltip="Every inference call recorded in inferencelogs for this window, across all callers and hosts.">
-                            <div class="label">Inference Calls</div>
-                            <div class="value" id="infCalls">—</div>
-                            <div class="sub"><span id="infCallsPerDay">—</span> / day</div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Completion tokens generated. Prompt tokens are shown separately because they are cheap to produce and dominate the raw total.">
-                            <div class="label">Tokens Generated</div>
-                            <div class="value" id="infTokensOut">—</div>
-                            <div class="sub"><span id="infTokensIn">—</span> prompt tokens in</div>
-                        </div>
-                        <a class="stat-card" id="infErrorLink" href="/api/analytics/inference/logs?status=error%2Ctimeout" target="_blank" rel="noopener" data-tooltip="Share of calls with an operational error or timeout, excluding caller cancellations. Open all non-success inference log rows.">
-                            <div class="label">Operational Error Rate</div>
-                            <div class="value" id="infErrorRate">—</div>
-                            <div class="sub"><span id="infErrors">—</span> errors · <span id="infCancellations">—</span> canceled · inspect</div>
-                        </a>
-                        <div class="stat-card" data-tooltip="Sum of end-to-end call durations, including routing and waits. Concurrent calls overlap; this is not GPU busy time or billed compute.">
-                            <div class="label">Elapsed Call Time</div>
-                            <div class="value" id="infHours">—</div>
-                            <div class="sub"><span id="infTokPerSec">—</span> output tok/s end to end</div>
-                        </div>
-                    </div>
-
-                    <div class="stats-row">
-                        <div class="stat-card" data-tooltip="Calls that fell back to a secondary model or host. A rising number means the primary route is unhealthy.">
-                            <div class="label">Fallback Rate</div>
-                            <div class="value" id="infFallbackRate">—</div>
-                            <div class="sub"><span id="infFallbacks">—</span> fallback calls</div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Mean call duration across every model. Embedding calls pull this down; large local models pull it up.">
-                            <div class="label">Avg Latency</div>
-                            <div class="value" id="infAvgLatency">—</div>
-                            <div class="sub">per call, all models</div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Sum of local call durations, including routing and waits. CPU and GPU calls are included; this is not GPU busy time.">
-                            <div class="label">Local Elapsed Time</div>
-                            <div class="value" id="infLocalHours">—</div>
-                            <div class="sub"><span id="infLocalCalls">—</span> calls, no $ price</div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Estimated spend on cloud-provider models only. Models with no configured price are excluded rather than guessed at.">
-                            <div class="label">Cloud Spend</div>
-                            <div class="value" id="infCloudSpend">—</div>
-                            <div class="sub" id="infCloudNote">—</div>
-                        </div>
-                    </div>
-                    <div class="stats-row">
-                        <div class="stat-card" data-tooltip="Mean classifier round-trip only among calls that actually invoked classification; zero-duration direct routes are excluded. With zero classified calls there is no average, so the tile reads Not observed rather than 0ms.">
-                            <div class="label">Avg Classifier Time</div>
-                            <div class="value" id="infAvgClassification">—</div>
-                            <div class="sub"><span id="infClassifiedCalls">—</span> classified calls<span id="infAvgClassificationNote"></span></div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Classifier time divided by end-to-end time for classified calls. Not observed when no call was classified.">
-                            <div class="label">Classifier Overhead</div>
-                            <div class="value" id="infClassificationPct">—</div>
-                            <div class="sub"><span id="infClassifiedTotal">—</span> avg total for same calls<span id="infClassificationPctNote"></span></div>
-                        </div>
-                    </div>
+                <div class="wb-chip" title="Calls served in a degraded mode, and their error rate.">
+                    <span class="wb-chip-label">Degraded calls</span>
+                    <strong id="infDegraded">—</strong>
+                    <small id="infDegradedNote">—</small>
+                </div>
+                <div class="wb-chip" title="Reported completion tokens divided by summed end-to-end call time, including routing and waits. Not native decoding speed.">
+                    <span class="wb-chip-label">Output throughput</span>
+                    <strong><span id="infTokPerSec">—</span> <small class="wb-unit">tok/s</small></strong>
+                    <small><span id="infTokensIn">—</span> prompt tokens in</small>
+                </div>
+                <div class="wb-chip" id="infClassifierChip" hidden title="Mean classifier round-trip among calls that invoked classification. Only Playground auto-routing classifies; explicit-model callers skip it. Hidden while no call is classified: with zero classified calls there is no average, so the tile reads Not observed rather than 0ms.">
+                    <span class="wb-chip-label">Classifier time</span>
+                    <strong id="infAvgClassification">—</strong>
+                    <small><span id="infClassifiedCalls">—</span> classified · <span id="infClassificationPct">—</span> of their time<span id="infAvgClassificationNote"></span><span id="infClassificationPctNote"></span></small>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <div class="analytics-grid full">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-layer-group"></i> Routing Dimensions</h2>
-                    <span style="font-size:12px;color:var(--muted);">caller · consumer contract · task type · fallback · degraded</span>
-                </div>
-                <div class="section-body" id="infDimensionBreakdowns">
-                    <div style="color:var(--muted);">Loading…</div>
-                </div>
+        <section class="wb-section" aria-labelledby="wb-routing-title">
+            <div class="wb-section-head">
+                <h3 id="wb-routing-title"><i class="fas fa-layer-group" aria-hidden="true"></i> Routing dimensions</h3>
+                <span class="wb-hint">caller · consumer contract · task type — top 5, share of calls</span>
             </div>
-        </div>
-
-        <!-- Daily volume, split by caller -->
-        <div class="analytics-grid full">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-column"></i> Daily Inference Volume</h2>
-                    <span style="font-size: 12px; color: var(--muted);">calls per day, by caller</span>
-                </div>
-                <div class="section-body">
-                    <div class="chart-container">
-                        <canvas id="infDailyChart" role="img" aria-label="Daily inference calls chart"></canvas>
-                    </div>
-                    <div class="chart-empty" id="infDailyEmpty" style="display: none;">No inference recorded in this window.</div>
-                </div>
-            </div>
-        </div>
+            <div id="infDimensionBreakdowns" class="wb-dims"><p class="wb-empty">Loading…</p></div>
+        </section>
 
         <div id="analytics-models"></div>
-        <!-- Full model comparison -->
-        <div class="analytics-grid full">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-table"></i> Model Activity</h2>
-                    <span style="font-size: 12px; color: var(--muted);">local call time is not GPU busy time</span>
-                </div>
-                <div class="section-body">
-                    <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                            <thead style="background: rgba(0,0,0,0.2);">
-                                <tr>
-                                    <th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--panel-border); font-weight: 600;">Model</th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600;">Calls</th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600;" data-tooltip="Operational errors and caller cancellations are shown separately">Outcomes</th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600;">Tokens Out</th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600;" data-tooltip="Mean call duration for this model">Avg Latency</th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600;" data-tooltip="Effective output throughput: reported completion tokens divided by end-to-end call time, including routing and waits. This is not native decoding speed.">Output tok/s</th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600;" data-tooltip="Dollar cost, cloud models only. Local models show 'local'.">Cost</th>
-                                </tr>
-                            </thead>
-                            <tbody id="infModelTableBody">
-                                <tr><td colspan="7" style="padding: 16px; text-align: center; color: var(--muted);">Loading…</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+        <section class="wb-section" aria-labelledby="wb-models-title">
+            <div class="wb-section-head">
+                <h3 id="wb-models-title"><i class="fas fa-table" aria-hidden="true"></i> Model Activity</h3>
+                <span class="wb-hint">call time includes waits; it is not GPU busy time</span>
             </div>
-        </div>
+            <div class="wb-table-wrap">
+                <table class="wb-table">
+                    <thead>
+                        <tr>
+                            <th>Model</th>
+                            <th>Calls</th>
+                            <th title="Operational errors · caller cancellations">Errors · canceled</th>
+                            <th>Tokens out</th>
+                            <th title="Mean call duration for this model">Avg latency</th>
+                            <th title="Effective output throughput, end to end. Embedding models produce no output tokens.">tok/s</th>
+                            <th title="Local models have no per-token price">Where</th>
+                        </tr>
+                    </thead>
+                    <tbody id="infModelTableBody">
+                        <tr><td colspan="7" class="wb-empty">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
 
-        <!-- Codex subscription entitlement — already computed server-side, previously never rendered -->
-        <div class="analytics-grid full" id="infCodexSection" style="display: none;">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-id-card"></i> Codex Subscription</h2>
-                    <span style="font-size: 12px; color: var(--muted);" id="infCodexPlan">—</span>
+        <!-- Codex subscription entitlement: native subscription period. -->
+        <section class="wb-section" id="infCodexSection" style="display: none;" aria-labelledby="wb-codex-title">
+            <div class="wb-section-head">
+                <h3 id="wb-codex-title"><i class="fas fa-id-card" aria-hidden="true"></i> Codex subscription</h3>
+                <span class="wb-hint" id="infCodexPlan">—</span>
+                <span class="wb-hint" id="infCodexMessage"></span>
+            </div>
+            <div class="wb-strip">
+                <div class="wb-chip" title="Share of the plan's rate-limit window consumed.">
+                    <span class="wb-chip-label">Quota used</span>
+                    <strong id="infCodexQuota">—</strong>
+                    <small id="infCodexReset">—</small>
                 </div>
-                <div class="section-body">
-                    <div class="stats-row">
-                        <div class="stat-card" data-tooltip="Share of the plan's rate-limit window consumed.">
-                            <div class="label">Quota Used</div>
-                            <div class="value" id="infCodexQuota">—</div>
-                            <div class="sub" id="infCodexReset">—</div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Tokens attributed to Codex sessions this calendar month.">
-                            <div class="label">Tokens This Month</div>
-                            <div class="value" id="infCodexTokens">—</div>
-                            <div class="sub"><span id="infCodexSessions">—</span> sessions</div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Share of prompt tokens served from cache rather than reprocessed.">
-                            <div class="label">Cached Input</div>
-                            <div class="value" id="infCodexCached">—</div>
-                            <div class="sub">of prompt tokens</div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Monthly subscription price divided by tokens actually used.">
-                            <div class="label">Effective Rate</div>
-                            <div class="value" id="infCodexRate">—</div>
-                            <div class="sub">per 1M tokens</div>
-                        </div>
-                    </div>
-                    <p class="lede" id="infCodexMessage" style="margin-bottom: 0;">—</p>
+                <div class="wb-chip" title="Tokens attributed to Codex sessions this calendar month.">
+                    <span class="wb-chip-label">Tokens this month</span>
+                    <strong id="infCodexTokens">—</strong>
+                    <small><span id="infCodexSessions">—</span> sessions</small>
+                </div>
+                <div class="wb-chip" title="Share of prompt tokens served from cache rather than reprocessed.">
+                    <span class="wb-chip-label">Cached input</span>
+                    <strong id="infCodexCached">—</strong>
+                    <small>of prompt tokens</small>
+                </div>
+                <div class="wb-chip" id="infCodexRateChip" hidden title="Monthly subscription price divided by tokens actually used.">
+                    <span class="wb-chip-label">Effective rate</span>
+                    <strong id="infCodexRate">—</strong>
+                    <small>per 1M tokens</small>
                 </div>
             </div>
+        </section>
+
+        <!-- Conversations: read the `conversations` collection (Nestor household
+             turns and the Playground chat UI). Platform traffic is above. -->
+        <section class="wb-section" aria-labelledby="wb-conversations-title">
+        <div class="wb-section-head" id="chatLaneHeading">
+            <h3 id="wb-conversations-title"><i class="fas fa-comments" aria-hidden="true"></i> Conversations</h3>
+            <span class="wb-hint">Nestor household and Playground conversations · a subset of platform traffic</span>
         </div>
+        <div id="chatLaneEmptyNote" class="wb-note" style="display:none;"></div>
 
-        <!-- Chat lane only: the widgets below read `conversations`, which is written
-             solely by POST /api/chat and /api/chat/stream. They describe the chat UI,
-             not the platform. Kept because they are correct for what they measure. -->
-        <h2 id="chatLaneHeading" style="margin: 28px 0 4px; font-size: 18px;"><i class="fas fa-comments"></i> Chat Lane <span style="font-size: 12px; color: var(--muted); font-weight: 400;">— conversations collection only, a subset of platform traffic</span></h2>
-        <div id="chatLaneEmptyNote" style="display:none; margin: 8px 0 20px; padding: 12px 14px; border: 1px dashed var(--panel-border); border-radius: 8px; color: var(--muted); font-size: 13px;"></div>
-
-        <!-- Quick Stats -->
-        <div class="stats-row chat-lane">
-            <div class="stat-card" data-tooltip="Conversations with at least one message observed in the selected time period">
-                <div class="label">Conversations</div>
-                <div class="value" id="totalConversations">—</div>
-                <div class="sub">Total in period</div>
+        <div class="wb-strip chat-lane">
+            <div class="wb-chip" title="Conversations with at least one message in the selected period">
+                <span class="wb-chip-label">Conversations</span>
+                <strong id="totalConversations">—</strong>
+                <small><span id="totalMessages">—</span> messages</small>
             </div>
-            <div class="stat-card" data-tooltip="Total number of messages exchanged across all conversations (user + AI responses)">
-                <div class="label">Messages</div>
-                <div class="value" id="totalMessages">—</div>
-                <div class="sub">Messages observed in this window</div>
+            <div class="wb-chip" title="Thumbs-up message votes and their share of all votes in this period.">
+                <span class="wb-chip-label">Positive feedback</span>
+                <strong><span id="positiveFeedback">—</span> <small id="positiveRate" class="wb-unit"></small></strong>
+                <small><span id="feedbackSampleSize">—</span></small>
             </div>
-            <div class="stat-card" data-tooltip="Thumbs-up message votes and their share of all message votes in this period. Sample size matters for confidence.">
-                <div class="label">Positive Feedback</div>
-                <div class="value"><span id="positiveFeedback">—</span> <small id="positiveRate" style="font-size: 14px; color: var(--muted);"></small></div>
-                <div class="sub"><span id="feedbackSampleSize">—</span> message votes</div>
-            </div>
-            <div class="stat-card" data-tooltip="Share of conversations that used RAG (Retrieval-Augmented Generation). Shown with its sample size; fewer than 5 conversations is flagged as a low sample, and no conversation means Not observed rather than 0%.">
-                <div class="label">RAG Adoption</div>
-                <div class="value" id="ragUsage">—</div>
-                <div class="sub" id="ragUsageNote">Using retrieval</div>
+            <div class="wb-chip" title="Share of conversations that recorded RAG retrieval, with its sample size; fewer than 5 conversations is flagged as a low sample, and no conversation means Not observed rather than 0%.">
+                <span class="wb-chip-label">RAG adoption</span>
+                <strong id="ragUsage">—</strong>
+                <small id="ragUsageNote">Using retrieval</small>
             </div>
         </div>
-
-        <!-- Cost Stats Cards -->
-        <div class="cost-stats-row stats-row chat-lane">
-            <div class="stat-card" data-tooltip="Total spending across all conversations in the selected period">
-                <div class="label">Total Cost</div>
-                <div class="value" id="totalCost">—</div>
-                <div class="sub"><span id="totalCostConvCount">—</span> conversations</div>
-            </div>
-            <div class="stat-card" data-tooltip="Average cost per conversation (total cost / conversations)">
-                <div class="label">Cost/Conversation</div>
-                <div class="value" id="costPerConversation">—</div>
-                <div class="sub"><span id="costPerConvMessages">—</span> msgs avg</div>
-            </div>
-            <div class="stat-card" data-tooltip="Cost per thousand tokens (total cost / total tokens x 1000)">
-                <div class="label">Cost/1K Tokens</div>
-                <div class="value" id="costPer1kTokens">—</div>
-                <div class="sub"><span id="costTotalTokens">—</span> tokens total</div>
-            </div>
-            <div class="stat-card" data-tooltip="Number of tokens generated per dollar spent (total tokens / total cost). Higher is better.">
-                <div class="label">Tokens/Dollar</div>
-                <div class="value" id="tokensPerDollar">—</div>
-                <div class="sub">Value metric</div>
-            </div>
-        </div>
+        <p id="chatLaneRecordingNote" class="wb-note" hidden></p>
 
         <!-- LLM Effectiveness: cross-runtime outcomes without merging source ledgers -->
-        <div class="analytics-grid full" id="llmEffectivenessSection">
-            <div class="section-card">
-                <div class="section-header">
-                    <div>
-                        <h2><i class="fas fa-bullseye"></i> LLM Effectiveness</h2>
-                        <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">
-                            Verified outcomes per unit of tokens, inference time, cost, and human intervention.
-                        </div>
-                    </div>
-                    <button type="button" id="effectivenessRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
-                        <i class="fas fa-sync-alt"></i> Refresh
-                    </button>
-                </div>
-                <div class="section-body">
-                    <div id="effectivenessSignal" style="padding: 12px 14px; margin-bottom: 14px; border: 1px solid var(--panel-border); border-radius: 8px; background: rgba(124,240,255,0.05); font-size: 13px;">
-                        Loading effectiveness telemetry…
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; margin-bottom: 16px;">
-                        <div class="stat-card" style="min-width: 0;">
-                            <div class="label">Productive Outcomes</div>
-                            <div class="value" id="effProductive">—</div>
-                            <div class="sub" id="effVerifiedSub">verified work</div>
-                        </div>
-                        <div class="stat-card" style="min-width: 0;">
-                            <div class="label">Usage Attribution</div>
-                            <div class="value" id="effAttribution">—</div>
-                            <div class="sub">outcomes linked to usage</div>
-                        </div>
-                        <div class="stat-card" style="min-width: 0;">
-                            <div class="label">First-Pass Success</div>
-                            <div class="value" id="effFirstPass">—</div>
-                            <div class="sub" id="effFirstPassSub">explicit attempts only</div>
-                        </div>
-                        <div class="stat-card" style="min-width: 0;">
-                            <div class="label">Tokens / Outcome</div>
-                            <div class="value" id="effTokensPerOutcome">—</div>
-                            <div class="sub" id="effTokensPerOutcomeSub">includes failed attributed work</div>
-                        </div>
-                        <div class="stat-card" style="min-width: 0;">
-                            <div class="label">Inference Min / Outcome</div>
-                            <div class="value" id="effComputePerOutcome">—</div>
-                            <div class="sub" id="effHumanPerOutcome">human intervention —</div>
-                        </div>
-                        <div class="stat-card" style="min-width: 0;">
-                            <div class="label">Rework Rate</div>
-                            <div class="value" id="effRework">—</div>
-                            <div class="sub" id="effCostPerOutcome">cost / outcome —</div>
-                        </div>
-                    </div>
-
-                    <div style="overflow-x: auto; margin-bottom: 12px;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                            <thead style="background: rgba(0,0,0,0.2);">
-                                <tr>
-                                    <th style="padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--panel-border);">Runtime</th>
-                                    <th style="padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Outcomes</th>
-                                    <th style="padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Productive</th>
-                                    <th style="padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Attributed</th>
-                                    <th style="padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Tokens</th>
-                                    <th style="padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Cost</th>
-                                    <th style="padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Rework</th>
-                                </tr>
-                            </thead>
-                            <tbody id="effectivenessRuntimeBody">
-                                <tr><td colspan="7" style="padding: 12px; text-align: center; color: var(--muted);">Loading…</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div id="effectivenessWaste" style="padding: 10px 12px; border-radius: 8px; background: rgba(251,191,36,0.08); color: var(--muted); font-size: 12px; line-height: 1.6;">—</div>
-                    <div id="effectivenessCoverage" style="margin-top: 9px; color: var(--muted); font-size: 11px; line-height: 1.5;">
-                        Source-owned usage is selected once per outcome; AgentX never adds mirrored ledger totals together.
-                    </div>
-                </div>
+        <div id="llmEffectivenessSection" class="wb-subsection">
+            <div class="wb-section-head">
+                <h3><i class="fas fa-bullseye" aria-hidden="true"></i> LLM effectiveness</h3>
+                <span class="wb-hint" id="effectivenessSignal">Loading effectiveness telemetry…</span>
+                <i class="fas fa-circle-info wb-info" id="effectivenessCoverage" tabindex="0" role="img" aria-label="How outcomes are counted" title="Verified outcomes per unit of tokens, inference time, cost and human intervention. Source-owned usage is selected once per outcome; AgentX never adds mirrored ledger totals together."></i>
+                <button type="button" id="effectivenessRefreshBtn" class="wb-button wb-button-quiet" aria-label="Refresh effectiveness"><i class="fas fa-sync-alt"></i></button>
             </div>
+            <div class="wb-strip">
+                <div class="wb-chip"><span class="wb-chip-label">Productive outcomes</span><strong id="effProductive">—</strong><small id="effVerifiedSub">verified work</small></div>
+                <div class="wb-chip"><span class="wb-chip-label">Usage attribution</span><strong id="effAttribution">—</strong><small>outcomes linked to usage</small></div>
+                <div class="wb-chip" data-hide-empty><span class="wb-chip-label">First-pass success</span><strong id="effFirstPass">—</strong><small id="effFirstPassSub">explicit attempts only</small></div>
+                <div class="wb-chip" data-hide-empty><span class="wb-chip-label">Tokens / outcome</span><strong id="effTokensPerOutcome">—</strong><small id="effTokensPerOutcomeSub">includes failed attributed work</small></div>
+                <div class="wb-chip" data-hide-empty><span class="wb-chip-label">Inference min / outcome</span><strong id="effComputePerOutcome">—</strong><small id="effHumanPerOutcome">human intervention —</small></div>
+                <div class="wb-chip" data-hide-empty><span class="wb-chip-label">Rework rate</span><strong id="effRework">—</strong><small id="effCostPerOutcome">cost / outcome —</small></div>
+            </div>
+            <div class="wb-table-wrap">
+                <table class="wb-table">
+                    <thead>
+                        <tr><th>Runtime</th><th>Outcomes</th><th>Productive</th><th>Attributed</th><th>Tokens</th><th>Cost</th><th>Rework</th></tr>
+                    </thead>
+                    <tbody id="effectivenessRuntimeBody">
+                        <tr><td colspan="7" class="wb-empty">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p id="effectivenessWaste" class="wb-note">—</p>
         </div>
 
         <script>
@@ -338,16 +186,26 @@
             function usd(value){ return value == null ? '—' : '$' + Number(value).toFixed(value < 0.01 ? 4 : 2); }
             function esc(value){ return String(value == null ? '' : value).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
             function label(value){ return esc(String(value || 'other').replace(/-/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); })); }
-            function effectivenessWindow(){
-                var key = document.getElementById('analyticsWindow')?.value || '24h';
-                return key === 'usage' ? '24h' : key;
+            // Same period as the rest of the page: "since daily use began" is sent as an explicit range.
+            function effectivenessQuery(){
+                var select = document.getElementById('analyticsWindow');
+                var key = select && select.value || '24h';
+                var since = select && select.dataset.usageSince;
+                if (key === 'usage' && since) return 'from=' + encodeURIComponent(since) + '&to=' + encodeURIComponent(new Date().toISOString());
+                return 'window=' + encodeURIComponent(key === 'usage' ? '24h' : key);
+            }
+            function hideEmptyChips(root){
+                root.querySelectorAll('[data-hide-empty]').forEach(function(chip){
+                    var value = (chip.querySelector('strong') || {}).textContent || '';
+                    chip.hidden = /^\s*(—|-|n\/a)?\s*$/i.test(value);
+                });
             }
             var effectivenessSeq = 0;
             async function loadEffectiveness(){
                 var signal = document.getElementById('effectivenessSignal');
                 var seq = ++effectivenessSeq;
                 try {
-                    var response = await fetch('/api/analytics/effectiveness?window=' + encodeURIComponent(effectivenessWindow()), { signal: AbortSignal.timeout(30000) });
+                    var response = await fetch('/api/analytics/effectiveness?' + effectivenessQuery(), { signal: AbortSignal.timeout(30000) });
                     var data = await response.json();
                     if (seq !== effectivenessSeq) return;
                     if (!response.ok || !data.ok) throw new Error(data.message || 'Effectiveness API unavailable');
@@ -361,8 +219,8 @@
                         'needs-attention': 'Needs attention'
                     };
                     signal.innerHTML = '<strong>' + (signalLabels[data.signal?.signal] || label(data.signal?.signal)) + '</strong>' +
-                        ' <span style="color:var(--muted);">(' + label(data.signal?.confidence) + ' confidence)</span> — ' +
-                        esc(data.signal?.message || '');
+                        ' (' + label(data.signal?.confidence) + ' confidence)';
+                    signal.title = data.signal?.message || '';
                     document.getElementById('effProductive').textContent = number(summary.productiveOutcomes);
                     document.getElementById('effVerifiedSub').textContent = number(summary.verifiedOutcomes) + ' verified / ' + number(summary.reportedOutcomes) + ' reported';
                     document.getElementById('effAttribution').textContent = pct(summary.attributionCoveragePct);
@@ -383,29 +241,30 @@
                     document.getElementById('effCostPerOutcome').textContent = summary.costSampleSize
                         ? 'cost / outcome ' + usd(summary.costPerProductiveOutcomeUsd) + ' (n=' + summary.costSampleSize + ')'
                         : 'cost / outcome not reported';
+                    hideEmptyChips(document.getElementById('llmEffectivenessSection'));
 
                     var body = document.getElementById('effectivenessRuntimeBody');
                     if (Array.isArray(data.byRuntime) && data.byRuntime.length) {
                         body.innerHTML = data.byRuntime.map(function(row){
                             return '<tr>' +
-                                '<td style="padding:7px 8px;border-bottom:1px solid var(--panel-border);"><strong>' + label(row.runtime) + '</strong></td>' +
-                                '<td style="padding:7px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + number(row.outcomes) + '</td>' +
-                                '<td style="padding:7px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + number(row.productiveOutcomes) + '</td>' +
-                                '<td style="padding:7px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + pct(row.attributionCoveragePct) + '</td>' +
-                                '<td style="padding:7px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + number(row.tokens) + '</td>' +
-                                '<td style="padding:7px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + usd(row.costUsd) + '</td>' +
-                                '<td style="padding:7px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + number(row.reworkCount) + '</td>' +
+                                '<td><strong>' + label(row.runtime) + '</strong></td>' +
+                                '<td>' + number(row.outcomes) + '</td>' +
+                                '<td>' + number(row.productiveOutcomes) + '</td>' +
+                                '<td>' + pct(row.attributionCoveragePct) + '</td>' +
+                                '<td>' + number(row.tokens) + '</td>' +
+                                '<td>' + usd(row.costUsd) + '</td>' +
+                                '<td>' + number(row.reworkCount) + '</td>' +
                                 '</tr>';
                         }).join('');
                     } else {
-                        body.innerHTML = '<tr><td colspan="7" style="padding:12px;text-align:center;color:var(--muted);">No LLM outcomes in this window.</td></tr>';
+                        body.innerHTML = '<tr><td colspan="7" class="wb-empty">No LLM outcomes in this window.</td></tr>';
                     }
                     document.getElementById('effectivenessWaste').innerHTML =
-                        '<strong>Waste signals:</strong> ' + number(waste.failedInferenceCalls) + ' failed inference calls (' + pct(waste.failedInferenceRatePct) + '), ' +
-                        number(waste.fallbackCalls) + ' fallbacks (' + pct(waste.fallbackRatePct) + '), ' +
-                        number(waste.reworkedOutcomes) + ' reworked outcomes, and ' + number(waste.unattributedTokens) +
-                        ' inference tokens not linked to an outcome (' + pct(waste.unattributedTokenPct) + ').';
-                    document.getElementById('effectivenessCoverage').textContent =
+                        '<strong>Waste signals:</strong> ' + number(waste.failedInferenceCalls) + ' failed calls (' + pct(waste.failedInferenceRatePct) + ') · ' +
+                        number(waste.fallbackCalls) + ' fallbacks (' + pct(waste.fallbackRatePct) + ') · ' +
+                        number(waste.reworkedOutcomes) + ' reworked · ' + number(waste.unattributedTokens) +
+                        ' tokens not linked to an outcome (' + pct(waste.unattributedTokenPct) + ')';
+                    document.getElementById('effectivenessCoverage').title =
                         number(coverage.explicitOutcomes) + ' explicit outcome reports + ' + number(coverage.pipelineDerivedOutcomes) +
                         ' operator-verified pipeline outcomes. Samples — first pass: ' + number(coverage.firstPassSampleSize) +
                         ', rework: ' + number(coverage.reworkSampleSize) + ', cost: ' + number(coverage.costSampleSize) +
@@ -413,7 +272,7 @@
                 } catch (error) {
                     if (seq !== effectivenessSeq) return;
                     signal.innerHTML = '<strong>Effectiveness unavailable</strong> — ' + esc(error.message);
-                    document.getElementById('effectivenessRuntimeBody').innerHTML = '<tr><td colspan="7" style="padding:12px;text-align:center;color:var(--muted);">Unable to load effectiveness telemetry.</td></tr>';
+                    document.getElementById('effectivenessRuntimeBody').innerHTML = '<tr><td colspan="7" class="wb-empty">Unable to load effectiveness telemetry.</td></tr>';
                 }
             }
             function loadEffectivenessWhenOpen(){
@@ -428,405 +287,264 @@
         })();
         </script>
 
-        <!-- Usage + Feedback Charts -->
-        <div class="analytics-grid chat-lane">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-line"></i> Usage Trends</h2>
-                    <select id="usageGroupSelect" aria-label="Usage grouping" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px;">
-                        <option value="day">By Day</option>
-                        <option value="model">By Model</option>
-                        <option value="promptVersion">By Prompt</option>
+        <!-- Usage trend + RAG adoption, side by side -->
+        <div class="analytics-split wb-pair chat-lane">
+            <div class="wb-subsection">
+                <div class="wb-section-head">
+                    <h3><i class="fas fa-chart-line" aria-hidden="true"></i> Usage trend</h3>
+                    <select id="usageGroupSelect" class="wb-select" aria-label="Usage grouping">
+                        <option value="day">By day</option>
+                        <option value="model">By model</option>
+                        <option value="promptVersion">By prompt</option>
                     </select>
                 </div>
-                <div class="section-body">
-                    <div class="chart-container">
-                        <canvas id="usageChart" role="img" aria-label="Usage chart"></canvas>
-                    </div>
-                    <div class="chart-empty" id="usageEmpty">No usage data for this period.</div>
+                <div class="chart-container wb-chart">
+                    <canvas id="usageChart" role="img" aria-label="Usage chart"></canvas>
                 </div>
+                <div class="chart-empty wb-empty" id="usageEmpty">No usage data for this period.</div>
             </div>
 
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-database"></i> RAG Adoption & Satisfaction</h2>
+            <div class="wb-subsection" id="ragAdoptionSection">
+                <div class="wb-section-head">
+                    <h3><i class="fas fa-database" aria-hidden="true"></i> RAG adoption &amp; satisfaction</h3>
                 </div>
-                <div class="section-body">
-                    <div class="rag-grid">
-                        <div class="rag-donut-wrap">
-                            <canvas id="ragDonut" role="img" aria-label="RAG adoption chart"></canvas>
-                            <div class="donut-center" id="ragDonutLabel">—</div>
+                <div class="rag-grid">
+                    <div class="rag-donut-wrap">
+                        <canvas id="ragDonut" role="img" aria-label="RAG adoption chart"></canvas>
+                        <div class="donut-center" id="ragDonutLabel">—</div>
+                    </div>
+                    <div class="rag-stats">
+                        <div class="rag-stat" title="Conversations that recorded retrieval (RAG) before answering, with their positive feedback rate.">
+                            <div class="label">RAG used</div>
+                            <div class="value" id="ragConversations">—</div>
+                            <div class="sub">Positive: <span id="ragPositiveRate">—</span></div>
                         </div>
-                        <div class="rag-stats">
-                            <div class="rag-stat" data-tooltip="Conversations that actually used retrieval (RAG) to pull relevant context before generating responses. Shows count and positive feedback rate.">
-                                <div class="label">RAG Used</div>
-                                <div class="value" id="ragConversations">—</div>
-                                <div class="sub">Positive: <span id="ragPositiveRate">—</span></div>
-                            </div>
-                            <div class="rag-stat" data-tooltip="Conversations where RAG was requested/enabled (e.g., RAG toggle on), regardless of whether retrieval was ultimately used.">
-                                <div class="label">RAG Requested</div>
-                                <div class="value" id="ragRequestedConversations">—</div>
-                                <div class="sub">Not used: <span id="ragRequestedNotUsed">—</span></div>
-                            </div>
-                            <div class="rag-stat" data-tooltip="Conversations without RAG retrieval (direct model responses). Shows count and positive feedback rate.">
-                                <div class="label">Non-RAG Conversations</div>
-                                <div class="value" id="noRagConversations">—</div>
-                                <div class="sub">Positive: <span id="noRagPositiveRate">—</span></div>
-                            </div>
-                            <div class="rag-stat" data-tooltip="Difference in positive feedback rates between RAG and non-RAG conversations. Positive delta means RAG performs better. Needs feedback in both cohorts; otherwise it is Not observed rather than +0.0.">
-                                <div class="label">RAG vs Non-RAG</div>
-                                <div class="value" id="ragDelta">—</div>
-                                <div class="sub" id="ragDeltaNote">Delta in positive rate</div>
-                            </div>
+                        <div class="rag-stat" title="Conversations where RAG was requested or enabled, whether or not retrieval was used.">
+                            <div class="label">RAG requested</div>
+                            <div class="value" id="ragRequestedConversations">—</div>
+                            <div class="sub">Not used: <span id="ragRequestedNotUsed">—</span></div>
+                        </div>
+                        <div class="rag-stat" title="Conversations without recorded retrieval, with their positive feedback rate.">
+                            <div class="label">Without RAG</div>
+                            <div class="value" id="noRagConversations">—</div>
+                            <div class="sub">Positive: <span id="noRagPositiveRate">—</span></div>
+                        </div>
+                        <div class="rag-stat" title="Difference in positive feedback rate between RAG and non-RAG conversations. Needs feedback in both cohorts.">
+                            <div class="label">RAG vs non-RAG</div>
+                            <div class="value" id="ragDelta">—</div>
+                            <div class="sub" id="ragDeltaNote">Delta in positive rate</div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Feedback Section -->
-        <div class="analytics-grid full chat-lane">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-smile"></i> Feedback Distribution</h2>
-                    <select id="feedbackGroupSelect" aria-label="Feedback grouping" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px;">
-                        <option value="model">By Model</option>
-                        <option value="promptVersion">By Prompt</option>
-                    </select>
-                </div>
-                <div class="section-body">
-                    <div class="chart-container">
-                        <canvas id="feedbackChart" role="img" aria-label="Feedback chart"></canvas>
-                    </div>
-                    <div class="chart-empty" id="feedbackEmpty">No feedback captured in this window.</div>
-                </div>
+        <!-- Feedback distribution: hidden while no vote is recorded -->
+        <div class="wb-subsection chat-lane" id="feedbackSection">
+            <div class="wb-section-head">
+                <h3><i class="fas fa-smile" aria-hidden="true"></i> Feedback distribution</h3>
+                <select id="feedbackGroupSelect" class="wb-select" aria-label="Feedback grouping">
+                    <option value="model">By model</option>
+                    <option value="promptVersion">By prompt</option>
+                </select>
+            </div>
+            <div class="chart-container wb-chart">
+                <canvas id="feedbackChart" role="img" aria-label="Feedback chart"></canvas>
+            </div>
+            <div class="chart-empty wb-empty" id="feedbackEmpty">No feedback captured in this window.</div>
+        </div>
+        </section>
+
+        <!-- Costs: collapsed to one line while nothing in the period carries a price. -->
+        <section class="wb-section chat-lane" aria-labelledby="wb-costs-title">
+        <div class="wb-section-head">
+            <h3 id="wb-costs-title"><i class="fas fa-coins" aria-hidden="true"></i> Costs</h3>
+            <span class="wb-hint">priced conversation turns in the selected period</span>
+        </div>
+        <p id="costLocalNote" class="wb-note" hidden></p>
+        <div id="costPanels">
+        <div class="wb-strip">
+            <div class="wb-chip" title="Total spending across conversations in the selected period">
+                <span class="wb-chip-label">Total cost</span>
+                <strong id="totalCost">—</strong>
+                <small><span id="totalCostConvCount">—</span> conversations</small>
+            </div>
+            <div class="wb-chip" title="Average cost per conversation">
+                <span class="wb-chip-label">Cost / conversation</span>
+                <strong id="costPerConversation">—</strong>
+                <small><span id="costPerConvMessages">—</span> msgs avg</small>
+            </div>
+            <div class="wb-chip" title="Cost per thousand tokens">
+                <span class="wb-chip-label">Cost / 1K tokens</span>
+                <strong id="costPer1kTokens">—</strong>
+                <small><span id="costTotalTokens">—</span> tokens total</small>
+            </div>
+            <div class="wb-chip" title="Tokens per dollar spent. Higher is better.">
+                <span class="wb-chip-label">Tokens / dollar</span>
+                <strong id="tokensPerDollar">—</strong>
+                <small>value metric</small>
             </div>
         </div>
 
-        <!-- Cost Trends Chart -->
-        <div class="analytics-grid full chat-lane">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-line"></i> Cost Trends</h2>
-                    <select id="costTrendGroupSelect" aria-label="Cost trend grouping" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 12px;">
-                        <option value="day">By Day</option>
-                        <option value="model">By Model</option>
-                        <option value="promptVersion">By Prompt</option>
-                    </select>
-                </div>
-                <div class="section-body">
-                    <div class="chart-container">
-                        <canvas id="costTrendChart" role="img" aria-label="Cost trend chart"></canvas>
-                    </div>
-                    <div class="chart-empty" id="costTrendEmpty" style="display: none;">No cost data for this period.</div>
-                </div>
+        <div class="wb-subsection">
+            <div class="wb-section-head">
+                <h3><i class="fas fa-chart-line" aria-hidden="true"></i> Cost trend</h3>
+                <select id="costTrendGroupSelect" class="wb-select" aria-label="Cost trend grouping">
+                    <option value="day">By day</option>
+                    <option value="model">By model</option>
+                    <option value="promptVersion">By prompt</option>
+                </select>
             </div>
+            <div class="chart-container wb-chart">
+                <canvas id="costTrendChart" role="img" aria-label="Cost trend chart"></canvas>
+            </div>
+            <div class="chart-empty wb-empty" id="costTrendEmpty" style="display: none;">No cost data for this period.</div>
         </div>
 
-        <!-- Cost Efficiency Table -->
-        <div class="analytics-grid full chat-lane">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-table"></i> Cost Efficiency by Model</h2>
-                    <div style="display: flex; gap: 8px;">
-                        <button type="button" id="efficiencyRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
-                </div>
-                <div class="section-body">
-                    <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                            <thead style="background: rgba(0,0,0,0.2); position: sticky; top: 0;">
-                                <tr>
-                                    <th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);">Model</th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Total USD spent on this model">
-                                        Total Cost
-                                    </th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Number of messages generated by this model">
-                                        Messages
-                                    </th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Total tokens (prompt + completion) used">
-                                        Tokens
-                                    </th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="USD per thousand tokens used">
-                                        $/1K Tokens
-                                    </th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Number of tokens per dollar spent">
-                                        Tokens/$
-                                    </th>
-                                    <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Average cost per conversation">
-                                        Avg Cost/Conv
-                                    </th>
-                                    <th style="padding: 8px; text-align: center; border-bottom: 1px solid var(--panel-border); font-weight: 600; color: var(--text);" data-tooltip="Rank by $/1K tokens among priced models (lower is better). Best ★ needs at least two priced models and no tie; local models have no price and are not ranked.">
-                                        Efficiency
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody id="efficiencyTableBody">
-                                <tr>
-                                    <td colspan="8" style="padding: 16px; text-align: center; color: var(--muted);">
-                                        Loading...
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div id="efficiencyRankingNote" style="margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.5;"></div>
-                    <div class="chart-empty" id="efficiencyEmpty" style="display: none;">
-                        No cost efficiency data available.
-                    </div>
-                </div>
+        <div class="wb-subsection">
+            <div class="wb-section-head">
+                <h3><i class="fas fa-table" aria-hidden="true"></i> Cost efficiency by model</h3>
+                <button type="button" id="efficiencyRefreshBtn" class="wb-button wb-button-quiet" aria-label="Refresh cost efficiency"><i class="fas fa-sync-alt"></i> Refresh</button>
             </div>
+            <div class="wb-table-wrap">
+                <table class="wb-table">
+                    <thead>
+                        <tr>
+                            <th>Model</th>
+                            <th title="Total USD spent on this model">Total cost</th>
+                            <th title="Messages generated by this model">Messages</th>
+                            <th title="Prompt + completion tokens">Tokens</th>
+                            <th title="USD per thousand tokens">$/1K tokens</th>
+                            <th title="Tokens per dollar">Tokens/$</th>
+                            <th title="Average cost per conversation">Avg cost/conv</th>
+                            <th title="Rank by $/1K tokens among priced models (lower is better). Best ★ needs at least two priced models and no tie; local models have no price and are not ranked.">Efficiency</th>
+                        </tr>
+                    </thead>
+                    <tbody id="efficiencyTableBody">
+                        <tr><td colspan="8" class="wb-empty">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div id="efficiencyRankingNote" class="wb-note"></div>
+            <div class="chart-empty wb-empty" id="efficiencyEmpty" style="display: none;">No cost efficiency data available.</div>
         </div>
 
-        <!-- Cost Breakdown Chart -->
-        <div class="analytics-grid full chat-lane">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-chart-pie"></i> Cost Distribution by Model</h2>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <label style="font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                            <input type="radio" name="costBreakdownType" id="costBreakdownPie" checked style="cursor: pointer;">
-                            Pie Chart
-                        </label>
-                        <label style="font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                            <input type="radio" name="costBreakdownType" id="costBreakdownDonut" style="cursor: pointer;">
-                            Donut
-                        </label>
-                    </div>
-                </div>
-                <div class="section-body">
-                    <div id="costBreakdownGrid" class="analytics-split" style="gap: 20px; align-items: start;">
-                        <div style="position: relative;">
-                            <div class="chart-container" style="position: relative; height: 300px;">
-                                <canvas id="costBreakdownChart" role="img" aria-label="Cost breakdown chart"></canvas>
-                            </div>
-                        </div>
-                        <div id="costBreakdownStats" style="display: flex; flex-direction: column; gap: 8px;">
-                            <!-- Stats populated by JS -->
-                        </div>
-                    </div>
-                    <div class="chart-empty" id="costBreakdownEmpty" style="display: none;">
-                        No cost breakdown data available.
-                    </div>
+        <div class="wb-subsection">
+            <div class="wb-section-head">
+                <h3><i class="fas fa-chart-pie" aria-hidden="true"></i> Cost distribution by model</h3>
+                <div class="wb-radio">
+                    <label><input type="radio" name="costBreakdownType" id="costBreakdownPie" checked> Pie</label>
+                    <label><input type="radio" name="costBreakdownType" id="costBreakdownDonut"> Donut</label>
                 </div>
             </div>
-        </div>
-
-        <!-- RAG Ingestion Metrics -->
-        <div class="analytics-grid full" id="analytics-rag-metrics">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-cubes"></i> RAG Vector Store Metrics</h2>
-                    <div style="display: flex; gap: 8px;">
-                        <button type="button" id="toggleRagHelp" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
-                            <i class="fas fa-question-circle"></i> Help
-                        </button>
-                        <button type="button" id="refreshRagBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
+            <div id="costBreakdownGrid" class="analytics-split" style="gap: 20px; align-items: start;">
+                <div style="position: relative;">
+                    <div class="chart-container" style="position: relative; height: 240px;">
+                        <canvas id="costBreakdownChart" role="img" aria-label="Cost breakdown chart"></canvas>
                     </div>
                 </div>
-                <div class="section-body">
-                    <!-- Help Panel -->
-                    <div id="ragHelpPanel" style="display: none; background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-                        <div style="display: flex; align-items: start; gap: 12px;">
-                            <i class="fas fa-info-circle" style="color: rgb(52, 211, 153); font-size: 20px; margin-top: 2px;"></i>
-                            <div style="flex: 1;">
-                                <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: rgb(52, 211, 153);">
-                                    Understanding RAG Metrics
-                                </h3>
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; font-size: 13px; line-height: 1.5;">
-                                    <div>
-                                        <strong style="color: var(--text);">Chunk Count</strong><br>
-                                        <span style="color: var(--muted);">Typical: 12-20 per doc (~800 chars/chunk)<br>More chunks = more granular search</span>
-                                    </div>
-                                    <div>
-                                        <strong style="color: var(--text);">Health Status</strong><br>
-                                        <span style="color: var(--muted);"><span style="color: #10b981;">&#10003;</span> = Qdrant connected<br><span style="color: #ef4444;">&#10007;</span> = Qdrant offline</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <button type="button" id="closeRagHelp" aria-label="Close RAG help" style="background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 0; width: 24px; height: 24px;"><span aria-hidden="true">&times;</span></button>
-                        </div>
-                    </div>
+                <div id="costBreakdownStats" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            </div>
+            <div class="chart-empty wb-empty" id="costBreakdownEmpty" style="display: none;">No cost breakdown data available.</div>
+        </div>
+        </div>
+        </section>
 
-                    <div class="rag-metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
-                        <div class="stat-card" data-tooltip="Total number of documents ingested into the RAG system">
-                            <div class="label">
-                                Total Documents
-                                <i class="fas fa-info-circle" style="font-size: 11px; color: var(--muted); margin-left: 4px;" title="Total unique documents across all sources"></i>
-                            </div>
-                            <div class="value" id="ragTotalDocs">—</div>
-                            <div class="sub">Across all sources</div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Total number of text chunks (vectors) stored. Typical: 12-20 chunks per document (~800 chars each)">
-                            <div class="label">
-                                Total Chunks
-                                <i class="fas fa-info-circle" style="font-size: 11px; color: var(--muted); margin-left: 4px;" title="Embedded vectors in Qdrant. More chunks = more granular search"></i>
-                            </div>
-                            <div class="value" id="ragTotalChunks">—</div>
-                            <div class="sub">Embedded vectors</div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Average number of chunks per document. Typical: 12-20 for standard docs">
-                            <div class="label">
-                                Avg Chunks/Doc
-                                <i class="fas fa-info-circle" style="font-size: 11px; color: var(--muted); margin-left: 4px;" title="Chunking efficiency metric"></i>
-                            </div>
-                            <div class="value" id="ragAvgChunks">—</div>
-                            <div class="sub">Chunking efficiency</div>
-                        </div>
-                        <div class="stat-card" data-tooltip="Two separate facts: query readiness of the RAG service (Healthy means every dependency answered), and corpus freshness from the recorded ingest history. A healthy service never implies a fresh corpus; no recorded ingest means freshness Unknown.">
-                            <div class="label">
-                                Store Health
-                                <i class="fas fa-info-circle" style="font-size: 11px; color: var(--muted); margin-left: 4px;" title="Readiness of the RAG service and freshness of its corpus, reported separately"></i>
-                            </div>
-                            <div class="value" id="ragHealth">—</div>
-                            <div class="sub">Readiness · corpus freshness</div>
-                        </div>
+        <!-- RAG vector store -->
+        <section class="wb-section" id="analytics-rag-metrics" aria-labelledby="wb-rag-title">
+            <div class="wb-section-head">
+                <h3 id="wb-rag-title"><i class="fas fa-cubes" aria-hidden="true"></i> RAG vector store</h3>
+                <span class="wb-hint"><i class="fas fa-clock" aria-hidden="true"></i> <span id="ragMetricsTimestamp">—</span> · last ingest <span id="ragLastIngest" title="From the RAG ingest job history; the corpus freshness rule is evaluated against this instant.">—</span></span>
+                <button type="button" id="toggleRagHelp" class="wb-button wb-button-quiet" aria-label="RAG metrics help"><i class="fas fa-question-circle"></i></button>
+                <button type="button" id="refreshRagBtn" class="wb-button wb-button-quiet"><i class="fas fa-sync-alt"></i> Refresh</button>
+            </div>
+            <div id="ragHelpPanel" class="wb-note" style="display: none;">
+                <h4 style="margin: 0 0 6px;">Understanding RAG Metrics</h4>
+                <strong>Chunk count</strong> — typical 12-20 per document (~800 chars per chunk); more chunks give more granular search.
+                <strong>Health</strong> — query readiness of the RAG service and corpus freshness, reported separately.
+                <button type="button" id="closeRagHelp" aria-label="Close RAG help" class="wb-button wb-button-quiet"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="wb-rag">
+                <div class="wb-strip rag-metrics-grid">
+                    <div class="wb-chip" title="Unique documents ingested across all sources">
+                        <span class="wb-chip-label">Documents</span>
+                        <strong id="ragTotalDocs">—</strong>
+                        <small>across all sources</small>
                     </div>
-                    <div style="text-align: right; font-size: 11px; color: var(--muted); margin-top: -8px; margin-bottom: 12px;">
-                        <i class="fas fa-clock"></i> <span id="ragMetricsTimestamp">—</span>
+                    <div class="wb-chip" title="Embedded vectors stored in Qdrant">
+                        <span class="wb-chip-label">Chunks</span>
+                        <strong id="ragTotalChunks">—</strong>
+                        <small>embedded vectors</small>
                     </div>
-
-                    <div style="margin-top: 20px;">
-                        <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text);">
-                            <i class="fas fa-layer-group"></i> Documents by Source
-                        </h3>
-                        <div id="ragSourcesTable" style="overflow-x: auto;">
-                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                                <thead style="background: rgba(0,0,0,0.2);">
-                                    <tr>
-                                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid var(--panel-border);">Source</th>
-                                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Documents</th>
-                                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Chunks</th>
-                                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Avg Chunks</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ragSourcesBody">
-                                    <tr>
-                                        <td colspan="4" style="padding: 16px; text-align: center; color: var(--muted);">
-                                            Loading...
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                    <div class="wb-chip" title="Average chunks per document">
+                        <span class="wb-chip-label">Chunks / doc</span>
+                        <strong id="ragAvgChunks">—</strong>
+                        <small>chunking</small>
                     </div>
-
-                    <div style="margin-top: 20px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 12px; color: var(--muted);">
-                        <div style="display: flex; justify-content: space-between;" title="From the RAG ingest job history; the corpus freshness rule is evaluated against this instant.">
-                            <span><i class="fas fa-file-import"></i> Last successful ingest:</span>
-                            <span id="ragLastIngest">—</span>
-                        </div>
+                    <div class="wb-chip" title="Two separate facts: query readiness of the RAG service, and corpus freshness from the recorded ingest history. A healthy service never implies a fresh corpus; no recorded ingest means freshness Unknown.">
+                        <span class="wb-chip-label">Store health</span>
+                        <strong id="ragHealth">—</strong>
+                        <small>readiness · freshness</small>
                     </div>
-
-                    <div class="chart-empty" id="ragEmpty" style="display: none;">No RAG data available.</div>
+                </div>
+                <div id="ragSourcesTable" class="wb-table-wrap">
+                    <table class="wb-table">
+                        <thead>
+                            <tr><th>Source</th><th>Documents</th><th>Chunks</th><th>Avg chunks</th></tr>
+                        </thead>
+                        <tbody id="ragSourcesBody">
+                            <tr><td colspan="4" class="wb-empty">Loading…</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
-        </div>
+            <div class="chart-empty wb-empty" id="ragEmpty" style="display: none;">No RAG data available.</div>
+        </section>
 
-        <!-- Federated Cost & Consumption -->
-        <!--
-          Side-by-side view of local Ollama inference (AgentX inferencelogs)
-          and cloud-provider inference routed through AgentX. The two stores
-          are NOT merged; provider-native billing remains authoritative for
-          plans, balances, and calls that bypass Agent X.
-        -->
-        <div class="analytics-grid full" id="federatedSection">
-            <div class="section-card">
-                <div class="section-header">
-                    <h2><i class="fas fa-network-wired"></i> Federated Cost &amp; Consumption</h2>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button type="button" id="federatedRefreshBtn" style="background: rgba(0,0,0,0.3); border: 1px solid var(--panel-border); border-radius: 6px; padding: 6px 12px; color: var(--text); font-size: 12px; cursor: pointer;">
-                            <i class="fas fa-sync-alt"></i> Refresh
-                        </button>
-                    </div>
+        <!-- Cloud usage. Local inference is in the overview and Model Activity;
+             this section keeps the cloud calls routed by AgentX and states
+             plainly what it cannot see. Provider-native billing remains
+             authoritative for plans, balances and calls that bypass AgentX. -->
+        <section class="wb-section" id="federatedSection" aria-labelledby="wb-cloud-title">
+            <div class="wb-section-head">
+                <h3 id="wb-cloud-title"><i class="fas fa-cloud" aria-hidden="true"></i> Cloud usage</h3>
+                <span class="wb-hint" id="fedWindow">routed by AgentX</span>
+                <button type="button" id="federatedRefreshBtn" class="wb-button wb-button-quiet" aria-label="Refresh cloud usage"><i class="fas fa-sync-alt"></i></button>
+            </div>
+            <div id="federatedMcBanner" class="wb-note wb-note-warn" style="display: none;">
+                <i class="fas fa-exclamation-triangle" aria-hidden="true"></i> <strong>Provider data unavailable</strong> — AgentX cloud-call aggregation failed.
+            </div>
+            <div class="wb-strip">
+                <div class="wb-chip">
+                    <span class="wb-chip-label">Cloud calls via Core</span>
+                    <strong id="fedMcSessions">—</strong>
+                    <small><span id="fedMcTokens">—</span> tokens</small>
                 </div>
-                <div class="section-body">
-                    <!-- Banner: shown when AgentX provider telemetry is unavailable -->
-                    <div id="federatedMcBanner" style="display: none; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; color: #fbbf24; font-size: 13px;">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <strong>Provider data unavailable</strong> —
-                        AgentX cloud-call aggregation failed. Showing local only.
-                    </div>
-
-                    <!-- Two columns: local (left) + providers (right) -->
-                    <div class="analytics-split" style="gap: 16px;">
-                        <!-- Local bucket -->
-                        <div style="border: 1px solid var(--panel-border); border-radius: 8px; padding: 14px; background: rgba(124, 240, 255, 0.04);">
-                            <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px;">
-                                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #7cf0ff;"></span>
-                                Local inference (AgentX → Ollama)
-                                <span style="font-size: 11px; color: var(--muted); font-weight: 400;">source: <code>local</code></span>
-                            </h3>
-                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px;">
-                                <div><div style="font-size: 11px; color: var(--muted);">Calls</div><div id="fedLocalConvs" style="font-size: 18px; font-weight: 600; color: var(--text);">—</div></div>
-                                <div><div style="font-size: 11px; color: var(--muted);">Models</div><div id="fedLocalMsgs" style="font-size: 18px; font-weight: 600; color: var(--text);">—</div></div>
-                                <div><div style="font-size: 11px; color: var(--muted);">Total Tokens</div><div id="fedLocalTokens" style="font-size: 18px; font-weight: 600; color: var(--text);">—</div></div>
-                                <div><div style="font-size: 11px; color: var(--muted);">Compute</div><div id="fedLocalCost" style="font-size: 18px; font-weight: 600; color: var(--text);">—</div></div>
-                            </div>
-                            <div style="overflow-x: auto;">
-                                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                                    <thead style="background: rgba(0,0,0,0.2);">
-                                        <tr>
-                                            <th style="padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--panel-border);">Model</th>
-                                            <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Calls</th>
-                                            <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Tokens</th>
-                                            <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Compute</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="fedLocalTableBody">
-                                        <tr><td colspan="4" style="padding: 12px; text-align: center; color: var(--muted);">Loading…</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <!-- Providers bucket -->
-                        <div style="border: 1px solid var(--panel-border); border-radius: 8px; padding: 14px; background: rgba(238, 176, 255, 0.04);">
-                            <h3 style="margin: 0 0 10px 0; font-size: 14px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px;">
-                                <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #eeb0ff;"></span>
-                                Cloud inference (routed by AgentX)
-                                <span style="font-size: 11px; color: var(--muted); font-weight: 400;">source: <code>agentx-cloud</code></span>
-                            </h3>
-                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px;">
-                                <div><div style="font-size: 11px; color: var(--muted);">Calls</div><div id="fedMcSessions" style="font-size: 18px; font-weight: 600; color: var(--text);">—</div></div>
-                                <div><div style="font-size: 11px; color: var(--muted);">Total Tokens</div><div id="fedMcTokens" style="font-size: 18px; font-weight: 600; color: var(--text);">—</div></div>
-                                <div><div style="font-size: 11px; color: var(--muted);">Spend (est.)</div><div id="fedMcSpend" style="font-size: 18px; font-weight: 600; color: var(--text);">—</div></div>
-                                <div><div style="font-size: 11px; color: var(--muted);">As of</div><div id="fedMcAsOf" style="font-size: 12px; color: var(--muted);">—</div></div>
-                            </div>
-                            <div style="overflow-x: auto;">
-                                <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                                    <thead style="background: rgba(0,0,0,0.2);">
-                                        <tr>
-                                            <th style="padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--panel-border);">Model</th>
-                                            <th style="padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--panel-border);">Provider</th>
-                                            <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Calls</th>
-                                            <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Tokens</th>
-                                            <th style="padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--panel-border);">Cost</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="fedMcTableBody">
-                                        <tr><td colspan="5" style="padding: 12px; text-align: center; color: var(--muted);">Loading…</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="margin-top: 10px; font-size: 11px; color: var(--muted);">
-                        <i class="fas fa-info-circle"></i>
-                        Agent X records only calls routed through its own inference path. Use the provider's billing console for plans, balances, and complete upstream usage.
-                    </div>
+                <div class="wb-chip">
+                    <span class="wb-chip-label">Spend (est.)</span>
+                    <strong id="fedMcSpend">—</strong>
+                    <small>as of <span id="fedMcAsOf">—</span></small>
+                </div>
+                <div class="wb-chip wb-chip-warn" title="Hermes text turns and OpenClaw requests to OpenRouter call their provider directly, so Core does not record them. Their spend appears only in the provider's billing console.">
+                    <span class="wb-chip-label">Cloud outside Core</span>
+                    <strong>Not measured</strong>
+                    <small>Hermes, OpenClaw → OpenRouter</small>
                 </div>
             </div>
-        </div>
+            <div class="wb-table-wrap" id="fedMcTableWrap">
+                <table class="wb-table">
+                    <thead>
+                        <tr><th>Model</th><th>Provider</th><th>Calls</th><th>Tokens</th><th>Cost</th></tr>
+                    </thead>
+                    <tbody id="fedMcTableBody">
+                        <tr><td colspan="5" class="wb-empty">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
 
         <script>
-        // Federated view loader.
-        // Inline to avoid touching the esbuild pipeline; the rest of the
-        // page loads a module bundle, but this section is self-contained.
+        // Cloud usage loader (inline, self-contained).
         (function(){
             if (document.body.dataset.agentxProfile === 'demo') {
                 const section = document.getElementById('federatedSection');
@@ -839,27 +557,34 @@
             }
             function esc(v){ return String(v).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
             function fmtNum(n){ if(n==null) return '—'; return Number(n).toLocaleString(); }
+            function fmtUsd(n){ if(n==null) return '—'; return '$' + Number(n).toFixed(4); }
             function fmtUsdOrUnpriced(v){ return Number.isFinite(v) ? fmtUsd(v) : 'unpriced'; }
-                function fmtUsd(n){ if(n==null) return '—'; return '$' + Number(n).toFixed(4); }
-            let federatedSeq = 0;
-            function errorRow(cols, text){
-                return '<tr><td colspan="' + cols + '" style="padding:12px;text-align:center;color:var(--danger);">' + text + '</td></tr>';
+            // The federated route accepts fixed windows; "since daily use began"
+            // uses the smallest one that covers it and says so.
+            function federatedWindow(){
+                const select = document.getElementById('analyticsWindow');
+                const chosen = select && select.value || '24h';
+                if (chosen !== 'usage') return { key: chosen, label: null };
+                const since = Date.parse(select.dataset.usageSince || '');
+                const days = Number.isFinite(since) ? (Date.now() - since) / 86400000 : 1;
+                const key = days <= 1 ? '24h' : days <= 7 ? '7d' : days <= 30 ? '30d' : 'all';
+                return { key, label: { '24h': 'last 24 h', '7d': 'last 7 days', '30d': 'last 30 days', all: 'all retained' }[key] };
             }
+            let federatedSeq = 0;
             function showFederatedError(){
-                ['fedLocalConvs', 'fedLocalMsgs', 'fedLocalTokens', 'fedLocalCost', 'fedMcSessions', 'fedMcTokens', 'fedMcSpend', 'fedMcAsOf'].forEach(function(id){
+                ['fedMcSessions', 'fedMcTokens', 'fedMcSpend', 'fedMcAsOf'].forEach(function(id){
                     const el = document.getElementById(id);
                     if (el) el.textContent = '—';
                 });
-                document.getElementById('fedLocalTableBody').innerHTML = errorRow(4, 'Could not load local inference. Try Refresh.');
-                document.getElementById('fedMcTableBody').innerHTML = errorRow(5, 'Could not load provider telemetry. Try Refresh.');
+                document.getElementById('fedMcTableBody').innerHTML = '<tr><td colspan="5" class="wb-empty">Could not load provider telemetry. Try Refresh.</td></tr>';
             }
             async function loadFederated(){
-                const chosen = document.getElementById('analyticsWindow')?.value || '24h';
-                const win = chosen === 'usage' ? '24h' : chosen;
+                const win = federatedWindow();
                 const seq = ++federatedSeq;
+                document.getElementById('fedWindow').textContent = 'routed by AgentX' + (win.label ? ' · ' + win.label : '');
                 let payload;
                 try {
-                    const r = await fetch('/api/analytics/federated?window=' + encodeURIComponent(win), { signal: AbortSignal.timeout(30000) });
+                    const r = await fetch('/api/analytics/federated?window=' + encodeURIComponent(win.key), { signal: AbortSignal.timeout(30000) });
                     if (!r.ok) throw new Error('Request failed: ' + r.status);
                     payload = await r.json();
                 } catch(err){
@@ -869,67 +594,31 @@
                     return;
                 }
                 if (seq !== federatedSeq) return;
-                const banner = document.getElementById('federatedMcBanner');
-                if (payload.provider_status !== 'ok') { banner.style.display = 'block'; }
-                else { banner.style.display = 'none'; }
+                document.getElementById('federatedMcBanner').style.display = payload.provider_status !== 'ok' ? 'block' : 'none';
 
-                // Local: a failed aggregation is unknown, not zero inference.
-                if (!payload.local && payload.local_error) {
-                    ['fedLocalConvs', 'fedLocalMsgs', 'fedLocalTokens', 'fedLocalCost'].forEach(function(id){
-                        document.getElementById(id).textContent = '—';
-                    });
-                    document.getElementById('fedLocalTableBody').innerHTML = errorRow(4, 'Local inference telemetry unavailable.');
-                }
-                const local = payload.local || { totals: {}, byModel: [] };
-                if (payload.local || !payload.local_error) {
-                const lt = local.totals || {};
-                document.getElementById('fedLocalConvs').textContent = fmtNum(lt.calls);
-                document.getElementById('fedLocalMsgs').textContent = fmtNum(lt.models);
-                document.getElementById('fedLocalTokens').textContent = fmtNum(lt.totalTokens);
-                // Local compute, not currency - owned hardware has no per-token price.
-                document.getElementById('fedLocalCost').textContent = (lt.inferenceHours || 0).toFixed(1) + 'h';
-                const lbody = document.getElementById('fedLocalTableBody');
-                if (Array.isArray(local.byModel) && local.byModel.length){
-                    lbody.innerHTML = local.byModel.slice(0, 20).map(function(r){
-                        return '<tr>' +
-                            '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + esc(r.model||'—') + '</td>' +
-                            '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.calls) + '</td>' +
-                            '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.totalTokens) + '</td>' +
-                            '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + ((r.inferenceSeconds || 0) / 3600).toFixed(2) + 'h</td>' +
-                            '</tr>';
-                    }).join('');
-                } else {
-                    lbody.innerHTML = '<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--muted);">No local inference in this window.</td></tr>';
-                }
-                }
-
-                // Providers routed through AgentX
                 const provider = payload.providers;
                 const mbody = document.getElementById('fedMcTableBody');
+                const wrap = document.getElementById('fedMcTableWrap');
                 if (provider && provider.totals){
                     document.getElementById('fedMcSessions').textContent = fmtNum(provider.totals.sessions);
                     document.getElementById('fedMcTokens').textContent = fmtNum(provider.totals.totalTokens);
-                    document.getElementById('fedMcSpend').textContent = fmtUsdOrUnpriced(provider.estimatedSpendUsd);
+                    document.getElementById('fedMcSpend').textContent = provider.totals.sessions ? fmtUsdOrUnpriced(provider.estimatedSpendUsd) : '$0';
                     document.getElementById('fedMcAsOf').textContent = provider.asOfMs ? new Date(provider.asOfMs).toLocaleString() : '—';
-                    if (Array.isArray(provider.byModel) && provider.byModel.length){
-                        mbody.innerHTML = provider.byModel.slice(0, 20).map(function(r){
-                            return '<tr>' +
-                                '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + esc(r.model||'—') + '</td>' +
-                                '<td style="padding:6px 8px;border-bottom:1px solid var(--panel-border);">' + esc(r.provider||'—') + '</td>' +
-                                '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.sessions) + '</td>' +
-                                '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtNum(r.totalTokens) + '</td>' +
-                                '<td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--panel-border);">' + fmtUsdOrUnpriced(r.estimatedSpendUsd) + '</td>' +
-                                '</tr>';
-                        }).join('');
-                    } else {
-                        mbody.innerHTML = '<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--muted);">No provider rows in this window.</td></tr>';
-                    }
+                    const rows = Array.isArray(provider.byModel) ? provider.byModel : [];
+                    wrap.hidden = rows.length === 0;
+                    mbody.innerHTML = rows.slice(0, 20).map(function(r){
+                        return '<tr>' +
+                            '<td>' + esc(r.model||'—') + '</td>' +
+                            '<td>' + esc(r.provider||'—') + '</td>' +
+                            '<td>' + fmtNum(r.sessions) + '</td>' +
+                            '<td>' + fmtNum(r.totalTokens) + '</td>' +
+                            '<td>' + fmtUsdOrUnpriced(r.estimatedSpendUsd) + '</td>' +
+                            '</tr>';
+                    }).join('');
                 } else {
-                    document.getElementById('fedMcSessions').textContent = '—';
-                    document.getElementById('fedMcTokens').textContent = '—';
-                    document.getElementById('fedMcSpend').textContent = '—';
-                    document.getElementById('fedMcAsOf').textContent = '—';
-                    mbody.innerHTML = '<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--muted);">Provider telemetry unavailable.</td></tr>';
+                    ['fedMcSessions', 'fedMcTokens', 'fedMcSpend', 'fedMcAsOf'].forEach(function(id){ document.getElementById(id).textContent = '—'; });
+                    wrap.hidden = false;
+                    mbody.innerHTML = '<tr><td colspan="5" class="wb-empty">Provider telemetry unavailable.</td></tr>';
                 }
             }
             function loadFederatedWhenOpen(){
@@ -938,7 +627,6 @@
             }
             document.getElementById('federatedRefreshBtn').addEventListener('click', loadFederated);
             document.getElementById('analyticsWindow')?.addEventListener('change', loadFederatedWhenOpen);
-            // Loads once the workbench is opened.
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', loadFederatedWhenOpen);
             } else {

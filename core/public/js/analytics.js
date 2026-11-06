@@ -151,36 +151,50 @@ function sampleNote(signal, noun, observedText) {
   return [counts, view.detail].filter(Boolean).join(' · ');
 }
 
-// The detail workbench ("Explore the details") loads only once opened. A
-// Period change while it is closed waits for the next open; the newest
+// The detail workbench ("Explore the details") is open by default. Its panels
+// load once it is open AND the page-wide Period is known, so a first read
+// never falls back to 24 hours while "Since daily use began" is resolving.
+// A Period change while it is closed waits for the next open; the newest
 // request per panel wins.
 const cockpit = document.getElementById('analytics-cockpit');
 const deferredLoads = new Map();
+let periodReady = Boolean(window.AgentXAnalyticsPeriodReady);
 function whenCockpitOpen(key, load) {
-  if (!cockpit || cockpit.open) return load();
+  if ((!cockpit || cockpit.open) && periodReady) return load();
   deferredLoads.set(key, load);
   return undefined;
 }
-cockpit?.addEventListener('toggle', () => {
-  if (!cockpit.open) return;
+function flushDeferredLoads() {
+  if ((cockpit && !cockpit.open) || !periodReady) return;
   const pending = [...deferredLoads.values()];
   deferredLoads.clear();
   pending.forEach((load) => load());
+}
+cockpit?.addEventListener('toggle', flushDeferredLoads);
+document.addEventListener('analytics:period-ready', () => {
+  periodReady = true;
+  flushDeferredLoads();
 });
 // Classic inline scripts on the page use the same gate.
 window.AgentXAnalyticsCockpit = { whenOpen: whenCockpitOpen };
 
 // One page-wide Period drives every panel (see the overview header).
 const WINDOW_DAYS = { '24h': 1, '7d': 7, '30d': 30 };
+const DAY_MS = 86400000;
 
+/** Days covered by the selected Period; "usage" spans back to its start. */
 function periodDays() {
-  return WINDOW_DAYS[elements.analyticsWindow?.value] || 1;
+  const select = elements.analyticsWindow;
+  if (select?.value === 'usage') {
+    const since = Date.parse(select.dataset.usageSince || '');
+    if (Number.isFinite(since)) return Math.max((Date.now() - since) / DAY_MS, 1 / 1440);
+  }
+  return WINDOW_DAYS[select?.value] || 1;
 }
 
 function periodRange(days) {
   const to = new Date();
-  const from = new Date();
-  from.setDate(to.getDate() - Number(days));
+  const from = new Date(to.getTime() - Number(days) * DAY_MS);
   return { from, to };
 }
 
@@ -426,19 +440,39 @@ function renderRagChart(data) {
 function updateProductSummary(usage = {}, feedback = {}, rag = {}) {
   if (elements.totalConversations) elements.totalConversations.textContent = formatNumber(usage.totalConversations);
   if (elements.totalMessages) elements.totalMessages.textContent = formatNumber(usage.totalMessages);
-  if (elements.positiveFeedback) elements.positiveFeedback.textContent = formatNumber(feedback.positive);
+  // No vote is "not observed", never a count of zero positive votes.
+  const votes = Number(feedback.totalFeedback) || 0;
+  if (elements.positiveFeedback) elements.positiveFeedback.textContent = votes > 0 ? formatNumber(feedback.positive) : '—';
   if (elements.positiveRate) {
-    elements.positiveRate.textContent =
-      feedback.totalFeedback > 0 ? `(${formatPercent(feedback.positiveRate)} positive)` : '(no feedback)';
+    elements.positiveRate.textContent = votes > 0 ? `${formatPercent(feedback.positiveRate)} positive` : '';
   }
   if (elements.feedbackSampleSize) {
-    const total = feedback.totalFeedback || 0;
-    elements.feedbackSampleSize.textContent = formatNumber(total);
+    elements.feedbackSampleSize.textContent = votes > 0 ? `${formatNumber(votes)} message votes` : 'No vote recorded';
   }
 
   const signals = ragSignals(rag);
   renderSignal(elements.ragUsage, signals.usage);
   if (elements.ragUsageNote) elements.ragUsageNote.textContent = sampleNote(signals.usage, 'conversations', 'using retrieval');
+
+  // Household (Nestor) turns do not yet record RAG use or votes. A 0 here is
+  // a recording gap, not proof that knowledge went unused, so say so plainly.
+  const conversations = Number(usage.totalConversations) || 0;
+  const ragUnrecorded = conversations > 0 && rag.ragConversations === 0 && rag.ragRequestedConversations === 0;
+  if (ragUnrecorded && elements.ragUsage) {
+    elements.ragUsage.textContent = 'Not recorded';
+    elements.ragUsage.dataset.signalState = 'missing';
+    if (elements.ragUsageNote) elements.ragUsageNote.textContent = `0 of ${formatNumber(conversations)} conversations carry a RAG flag`;
+  }
+  const ragSection = document.getElementById('ragAdoptionSection');
+  if (ragSection) ragSection.hidden = ragUnrecorded;
+  const recordingNote = document.getElementById('chatLaneRecordingNote');
+  if (recordingNote) {
+    const gaps = [ragUnrecorded ? 'RAG use' : null, conversations > 0 && votes === 0 ? 'message votes' : null].filter(Boolean);
+    recordingNote.hidden = gaps.length === 0;
+    recordingNote.textContent = gaps.length
+      ? `Not recorded yet: ${gaps.join(' and ')}. Nestor household turns do not store them, so empty values here do not mean the feature was unused.`
+      : '';
+  }
   if (elements.ragConversations) elements.ragConversations.textContent = formatNumber(rag.ragConversations);
   if (elements.ragRequestedConversations)
     elements.ragRequestedConversations.textContent = formatNumber(rag.ragRequestedConversations);
@@ -520,6 +554,9 @@ async function refreshProduct() {
       : 'No feedback captured in this window.';
     toggleEmptyState(document.getElementById('feedbackChart'), elements.feedbackEmpty, feedbackHasData);
     if (feedbackHasData) renderFeedbackChart(feedback, feedbackGroup);
+    // An empty distribution panel says nothing the feedback tile does not.
+    const feedbackSection = document.getElementById('feedbackSection');
+    if (feedbackSection) feedbackSection.hidden = !feedbackHasData && feedbackResult.status === 'fulfilled';
 
     const ragHasData = !!(rag && rag.totalConversations > 0);
     if (ragHasData) renderRagChart(rag);
