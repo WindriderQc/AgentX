@@ -6,7 +6,7 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
-New objectives use `secretary.objective-grounding/v6` for model extraction.
+New objectives use `secretary.objective-grounding/v7` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
@@ -71,25 +71,32 @@ only the extraction state and refers to the complete observations/citations;
 it never shortens a clause. The selected spans and fallback reason remain in
 the verified projection receipt.
 
-Each proposed event separates cited `observations` from source `hypotheses`.
-The canonical description uses observations only. New hypotheses have no
-generated interpretation text: each selects a reference from `uncertaintyCatalog`
-that already binds one complete source line to its `basis` (`question`,
-`condition` or `possibility`). The response cannot independently change the basis
-or supply citation objects. A conservative wording gate and a 450-character
-limit restrict eligible lines in the response schema and local validation.
-For new references, an isolated `si`/`if` token in a name or list does not
-supply a condition: a bounded following clause is required, and recognized
-indirect questions are excluded from that category. This is a conservative
-French/English reading aid, not a complete parser; uncommon clauses may be
-missed and a selected reference still requires source review.
-The application quotes that line with its bound uncertainty label,
-without inferring an answer or realization. No eligible expression means an
-empty hypothesis list, enforced with `maxItems: 0`. No internal absence marker
-is offered as evidence. An empty passage also has empty moments and summary
-selections. Local validation still rejects invented references even when a
-backend ignores the schema. Thus a signature, document exchange or already-ended
-event cannot become an invented location, intimate relationship or probable date.
+Each proposed event selects exact source observations, with no generated prose.
+An observation has one `citationId` and at most one `qualificationIds` reference
+from that same source line. Its title selects `titleCitationId` from its own
+observations. The application copies complete source wording, preserving relative
+days, future expectations and negation in both titles and descriptions. A title
+that would exceed its bound uses a neutral type/category label and refers to the
+complete excerpts; it never cuts a clause. Long rationales refer to the complete
+description instead of shortening an excerpt. The model supplies no `ongoing`:
+automatic historical readings do not assert continuation through today.
+
+`uncertaintyCatalog` binds a complete source line to its category (`question`,
+`condition` or `possibility`). Its conservative French/English clause gate excludes
+isolated `si`/`if` name tokens and recognized indirect questions; it is not a full
+parser and can miss unusual wording. Only real catalog references are selectable.
+The response schema separates observations by their available local references;
+local validation rejects a reference attached to another excerpt even if the
+backend ignores the schema. An empty catalog requires empty local selections.
+
+Canonical rationale and relation hints label each reservation with its exact
+excerpt and source-only scope. There is no model-generated event-wide hypothesis
+array. A condition on future help does not make other cited completed work
+hypothetical, and a possibility quoted in one observation does not become global
+uncertainty. The application neither answers the reservation nor certifies its
+realization. Its binding, source offsets and local rendering remain in the
+verified projection receipt. Human review still checks whether excerpts belong
+together and whether a local reservation is useful for the proposed event.
 
 Automatic subject attribution is limited to `owner`, `thirdparty` (another
 person) and `unknown`. The model cannot certify someone as a close person
@@ -102,8 +109,8 @@ old results are neither downgraded nor reinterpreted.
 The rationale is assembled locally from the separate observations and labelled
 source uncertainty. Instructions also exclude unsupported status, ownership,
 certification, completion and author-attribution claims in other fields. These
-controls do not prove semantic entailment: a model can still mislabel an
-inference as an observation or select a question answered elsewhere. Source
+controls do not prove semantic entailment: a model can still group unrelated
+excerpts, misclassify an actor/event, or select a question answered elsewhere. Source
 re-reading and owner review remain necessary before publication.
 
 The extraction response has no independently generated `classification`.
@@ -115,7 +122,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4` and `/v5` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5` and `/v6` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.

@@ -20,7 +20,7 @@ class AttributionContractTests(unittest.TestCase):
     def test_no_eligible_source_requires_empty_hypotheses_without_selectable_sentinel(self):
         body = "Objet : Copies annuelles\nDe : Alex\nBonne soirée !"
         template = copy.deepcopy(grounding.SCHEMA)
-        schema = grounding.schema_for(body)
+        schema = grounding.schema_for(body, grounding.CONDITIONAL_CONTRACT)
         for branch in schema["properties"]["moments"]["items"]["anyOf"]:
             self.assertEqual(branch["properties"]["hypotheses"]["maxItems"], 0)
         self.assertNotIn("no-explicit-uncertainty", json.dumps(schema))
