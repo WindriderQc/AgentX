@@ -324,13 +324,16 @@ function historyText(replyText, display = []) {
 
 // Math Lab (#1270), adult conversations only. Core validates the formula and
 // computes every point itself; Famille keeps its cube pictures.
-const MATH_CONTRACT = 'To draw a function y = f(x), write one formula per block, one statement per line: '
+const MATH_CONTRACT = 'To draw a function y = f(x), write a math block, one statement per line: '
   + '<show kind="math" title="short title">y = a*sin(b*x)\na = 1 in [-3, 3]\nb = 2 in [0.5, 4]\nx in [-2*pi, 2*pi]</show>. '
+  + 'To compare up to four functions on the same axes, name each one on its own line in the same block: '
+  + '<show kind="math" title="short title">f(x) = x^2\ng(x) = a*x + 1\na = 2 in [-3, 3]\nx in [-3, 3]</show>; '
+  + 'they share the parameters and the window, and a function cannot use another function\'s name. '
   + 'Use x as the variable; operators + - * / ^ and parentheses; functions sin cos tan exp log (natural) sqrt abs; constants pi and e. '
   + 'Every other letter is a single-letter parameter declared on its own line with its starting value and slider range; the user can move the sliders. '
   + 'The x line sets the window (default [-10, 10]); an optional "y in [min, max]" line fixes the vertical window. '
-  + 'Core checks the formula and draws every point from it: explain the curve and what each parameter changes aloud, never list computed points, and do not claim the picture loaded. '
-  + 'When a math card is the current presentation, its formula and current parameter values come from the screen observation. '
+  + 'Core checks the formulas and draws every point from them, in a 3D scene the user can turn when the screen supports it:explain the curves and what each parameter changes aloud, never list computed points, and do not claim the picture loaded. '
+  + 'When a math card is the current presentation, its formulas and current parameter values come from the screen observation. '
   + 'Counting and small additions get Core\'s cube picture automatically beside your answer.';
 
 function contract({ family = false, imageSources = [], pages = false, pageCatalog = screenPages } = {}) {

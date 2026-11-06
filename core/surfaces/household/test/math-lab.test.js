@@ -1,8 +1,9 @@
 'use strict';
 
-// Math Lab in Super Dad (#1270), phase 1: the shared formula grammar, the
-// `math` display kind, what Nestor reads from a selected math card, and the
-// cube pictures beside the model's own answer in the adult space.
+// Math Lab in Super Dad (#1270): the shared formula grammar (phase 1, and the
+// comparisons of phase 2), the `math` display kind, what Nestor reads from a
+// selected math card, and the cube pictures beside the model's own answer in
+// the adult space.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -21,6 +22,7 @@ const value = (source, scope = {}, names = Object.keys(scope)) => {
   return math.evaluate(parsed.tree, scope);
 };
 const WAVE = 'y = a*sin(b*x)\na = 1 in [-3, 3]\nb = 2 in [0.5, 4]\nx in [-2*pi, 2*pi]';
+const COMPARE = 'f(x) = x^2\ng(x) = a x + 1\na = 2 in [-3, 3]\nx in [-3, 3]';
 
 test('the grammar follows ordinary precedence, implicit products and the allowed functions', () => {
   assert.equal(value('1 + 2 * 3'), 7);
@@ -57,19 +59,21 @@ test('anything outside the grammar is refused, and nothing reaches eval', () => 
   assert.doesNotMatch(code, /\beval\s*\(|new\s+Function|Function\s*\(/);
 });
 
-test('a math block declares one function, its parameters with ranges and its windows', () => {
+test('a math block declares its function, its parameters with ranges and its windows', () => {
   const wave = math.parsePlot(WAVE);
   assert.ok(wave.ok);
   assert.deepEqual(wave.plot.parameters, [{ name: 'a', value: 1, min: -3, max: 3 }, { name: 'b', value: 2, min: 0.5, max: 4 }]);
-  assert.equal(wave.plot.expression, 'a * sin(b * x)');
+  assert.deepEqual(wave.plot.functions, [{ name: 'y', label: 'y', expression: 'a * sin(b * x)' }]);
+  assert.equal(wave.plot.schema, 'agentx.math-plot.v2');
   assert.ok(Math.abs(wave.plot.x[1] - 2 * Math.PI) < 1e-12);
   assert.equal(wave.text, 'y = a * sin(b * x)\na = 1 in [-3, 3]\nb = 2 in [0.5, 4]\nx in [-6.283185307, 6.283185307]');
   assert.ok(math.parsePlot(wave.text).ok, 'the canonical body is itself a valid block');
   const fenced = math.parsePlot('```\nf(x) = x^2 - 4\n- y in [-5, 5].\n```');
   assert.ok(fenced.ok);
   assert.deepEqual([fenced.plot.x, fenced.plot.y], [[-10, 10], [-5, 5]]);
+  assert.equal(fenced.text.split('\n')[0], 'f(x) = x^2 - 4', 'a named function keeps its name');
   const cases = {
-    'y = a*x': 'unknown_name', 'a = 1 in [0, 2]': 'no_function', 'y = x\ny = 2x': 'one_function', 'y = x*e\ne = 1 in [0, 3]': 'reserved',
+    'y = a*x': 'unknown_name', 'a = 1 in [0, 2]': 'no_function', 'y = x\ny = 2x': 'duplicate', 'y = x*e\ne = 1 in [0, 3]': 'reserved',
     'y = a*x\na = 1 in [0, 2]\na = 2 in [0, 3]': 'duplicate', 'y = a*x\na = 9 in [0, 5]': 'range', 'y = a*x\na = 1': 'range',
     'y = x\nx in [3, 1]': 'range', 'y = x\nLa parabole est jolie': 'line', 'y = x\nx in [0, 1e9]': 'number'
   };
@@ -78,20 +82,58 @@ test('a math block declares one function, its parameters with ranges and its win
   assert.equal(math.parsePlot(many).error.code, 'parameters');
 });
 
+test('a comparison draws up to four named functions sharing parameters and window', () => {
+  const compare = math.parsePlot(COMPARE);
+  assert.ok(compare.ok, compare.error?.message);
+  assert.deepEqual(compare.plot.functions.map(fn => [fn.label, fn.expression]), [['f(x)', 'x^2'], ['g(x)', 'a * x + 1']]);
+  assert.equal(compare.trees.length, 2);
+  assert.equal(compare.text, 'f(x) = x^2\ng(x) = a * x + 1\na = 2 in [-3, 3]\nx in [-3, 3]');
+  assert.ok(math.parsePlot(compare.text).ok, 'the canonical comparison is itself a valid block');
+  const described = math.describe(compare, { a: -1 }, 2);
+  assert.deepEqual(described.functions.map(fn => [fn.name, fn.points]), [['f', [[-3, 9], [0, 0], [3, 9]]], ['g', [[-3, 4], [0, 1], [3, -2]]]]);
+  assert.ok(described.y[0] < -2 && described.y[1] > 9, 'one vertical window fitted to both curves');
+  const five = ['f', 'g', 'h', 'k', 'p'].map(name => `${name}(x) = x`).join('\n');
+  const cases = {
+    'f(x) = x\ng(x) = f(x) + 1': 'unknown_name', 'f(x) = x\nf = 1 in [0, 2]': 'duplicate', 'e(x) = x': 'reserved', 't(x) = x': 'reserved',
+    'f(x) = x\nf(x) = 2x': 'duplicate', 'f(x) = x\ng(x) = q': 'unknown_name', [five]: 'functions'
+  };
+  for (const [body, code] of Object.entries(cases)) assert.equal(math.parsePlot(body).error?.code, code, body);
+  assert.match(math.parsePlot('f(x) = x\ng(x) = f(x) + 1').error.message, /cannot use another function/);
+  assert.match(math.parsePlot('f(x) = x\ng(x) = q').error.message, /^g\(x\): /, 'the refusal names the function at fault');
+});
+
+test('the grammar answers the shared vectors that GraphysX also runs', () => {
+  const vectors = require('../../../public/js/math-expression.vectors.json');
+  const close = (actual, expected, label) => (typeof expected === 'string' ? assert.equal(String(actual), expected, label)
+    : assert.ok(Math.abs(actual - expected) <= 1e-12 * Math.max(1, Math.abs(expected)), `${label}: ${actual} vs ${expected}`));
+  assert.ok(vectors.expressions.length >= 50);
+  for (const row of vectors.expressions) {
+    const parsed = math.parseExpression(row.source, row.names);
+    if (row.error) { assert.equal(parsed.error?.code, row.error, row.source.slice(0, 40)); continue; }
+    assert.equal(math.format(parsed.tree), row.format, row.source);
+    for (const { scope, value } of row.evaluations) close(math.evaluate(parsed.tree, scope), value, `${row.source} ${JSON.stringify(scope)}`);
+  }
+  for (const row of vectors.fits) {
+    const parsed = math.parseExpression(row.expression, ['x', ...row.parameters.map(p => p.name)]);
+    const plot = { parameters: row.parameters, x: row.x, ...(row.declared ? { y: row.declared } : {}) };
+    math.fitY(math.sample(parsed.tree, plot, {}, row.samples), plot).forEach((value, i) => close(value, row.fitted[i], row.expression));
+  }
+});
+
 test('the points come from the formula with the current slider values, gaps where it is undefined', () => {
   const wave = math.parsePlot(WAVE);
   const described = math.describe(wave, { a: 2.5 });
   assert.equal(described.parameters[0].value, 2.5);
-  assert.equal(described.points.length, 9);
-  assert.deepEqual(described.points[2], [Number(math.formatNumber(-Math.PI)), 0]);
-  const quarter = math.sample(wave.tree, { ...wave.plot, x: [Math.PI / 4, Math.PI / 4 + 1] }, { a: 2.5 }, 1)[0];
+  assert.equal(described.functions[0].points.length, 9);
+  assert.deepEqual(described.functions[0].points[2], [Number(math.formatNumber(-Math.PI)), 0]);
+  const quarter = math.sample(wave.trees[0], { ...wave.plot, x: [Math.PI / 4, Math.PI / 4 + 1] }, { a: 2.5 }, 1)[0];
   assert.ok(Math.abs(quarter[1] - 2.5) < 1e-12, 'a * sin(b * pi/4) with a = 2.5, b = 2');
   const root = math.parsePlot('y = sqrt(x)\nx in [-4, 4]');
-  const points = math.sample(root.tree, root.plot, {}, 8);
+  const points = math.sample(root.trees[0], root.plot, {}, 8);
   assert.deepEqual(points.slice(0, 4).map(point => point[1]), [null, null, null, null]);
   assert.equal(points[8][1], 2);
   const tangent = math.parsePlot('y = tan(x)\nx in [-3, 3]');
-  const window = math.fitY(math.sample(tangent.tree, tangent.plot), tangent.plot);
+  const window = math.fitY(math.sample(tangent.trees[0], tangent.plot), tangent.plot);
   assert.ok(window[1] - window[0] < 200, 'the fitted window does not chase the asymptotes');
 });
 
@@ -123,6 +165,9 @@ test('an invalid or disallowed math block stays readable as code and is never dr
   assert.equal(family.display[0].kind, 'code', 'Famille keeps its cube pictures; no math cards');
   assert.match(contract(), /kind="math"/);
   assert.match(contract(), /single-letter parameter/);
+  assert.match(contract(), /compare up to four functions/);
+  const example = contract().match(/<show kind="math" title="short title">(f\(x\)[^<]+)<\/show>/)[1];
+  assert.ok(math.parsePlot(example).ok, 'the contract example is valid');
   assert.doesNotMatch(contract({ family: true }), /kind="math"/);
 });
 
@@ -135,7 +180,10 @@ test('Nestor reads the selected math card as Core-validated formula, values and 
   assert.equal(selected.text, body);
   assert.equal(selected.math.computedBy, 'core');
   assert.deepEqual(selected.math.parameters.map(item => [item.name, item.value]), [['a', 2], ['b', 2]]);
-  assert.ok(!selected.math.points.some(([, y]) => y === 999), 'browser-supplied numbers are ignored');
+  assert.ok(!selected.math.functions[0].points.some(([, y]) => y === 999), 'browser-supplied numbers are ignored');
+  const compared = presentationEvidence([{ ...row, text: math.plotText(math.parsePlot(COMPARE).plot, { a: -1 }) }], screenPages);
+  assert.deepEqual(compared.math.functions.map(fn => fn.label), ['f(x)', 'g(x)']);
+  assert.deepEqual(compared.math.functions[1].points.at(-1), [3, -2], 'Core computes each compared curve itself');
   const tampered = presentationEvidence([{ ...row, text: 'y = fetch(x)' }], screenPages);
   assert.equal(tampered.status, 'unavailable');
   assert.equal(tampered.text, undefined);
