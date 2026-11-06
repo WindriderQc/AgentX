@@ -5,14 +5,17 @@
    numbers, so it stays right even when the explanation is wrong. */
 (function (root) {
   'use strict';
-  const SCHEMA = 'agentx.math-plot.v1';
+  // v2 (phase 2): one to four functions per block, compared on the same axes.
+  const SCHEMA = 'agentx.math-plot.v2';
   const LIMITS = Object.freeze({ body: 1200, expression: 240, tokens: 160, nodes: 200, depth: 24, parameters: 6,
-    magnitude: 1e6, samples: 480 });
+    functions: 4, magnitude: 1e6, samples: 480 });
   const FUNCTIONS = Object.freeze({ sin: Math.sin, cos: Math.cos, tan: Math.tan, exp: Math.exp, log: Math.log, ln: Math.log,
     sqrt: Math.sqrt, abs: Math.abs });
   const CONSTANTS = Object.freeze({ pi: Math.PI, e: Math.E });
-  // x is the variable of phase 1; y and t are reserved for surfaces and parametric curves.
+  // x is the variable; y and t are reserved for surfaces and parametric curves.
   const RESERVED = new Set(['x', 'y', 't', 'e']);
+  // A function is "y" or named by one letter: f(x), g(x)… never x, t or the constant e.
+  const FUNCTION_LINE = /^(?:(y)|([a-z])\s*\(\s*x\s*\))\s*=\s*(.+)$/i;
   const DEFAULT_X = Object.freeze([-10, 10]);
   const WORDS = Object.freeze([...Object.keys(FUNCTIONS), 'pi'].sort((a, b) => b.length - a.length));
 
@@ -207,7 +210,7 @@
 
   /**
    * A math block's body, one statement per line:
-   *   y = a*sin(b*x)        (or f(x) = …): the function, exactly one in phase 1
+   *   y = a*sin(b*x)        or f(x) = …, g(x) = …: one to four functions, compared on the same axes
    *   a = 1 in [-3, 3]      a parameter, its value and slider range
    *   x in [-2*pi, 2*pi]    optional horizontal window (default [-10, 10])
    *   y in [-4, 4]          optional vertical window (default: fitted to the curve)
@@ -217,8 +220,8 @@
     if (text.length > LIMITS.body) return failure('too_long', 'The math block is too long');
     const lines = text.split('\n').map(line => line.trim().replace(/^`+|`+$/g, '').replace(/^[-*•]\s+/, '').replace(/[.;]\s*$/, '').trim())
       .filter(line => line && !/^```/.test(line));
-    let fn = null, xWindow = null, yWindow = null;
-    const parameters = [];
+    let xWindow = null, yWindow = null;
+    const parameters = [], sources = [];
     for (const line of lines) {
       let match;
       if ((match = /^([xy])\s*(?:in\b|∈)\s*(.+)$/i.exec(line))) {
@@ -227,9 +230,12 @@
         const width = window.value[1] - window.value[0];
         if (width < 1e-6) return failure('range', 'The window is too narrow');
         if (match[1].toLowerCase() === 'x') xWindow = window.value; else yWindow = window.value;
-      } else if ((match = /^(?:y|f\s*\(\s*x\s*\))\s*=\s*(.+)$/i.exec(line))) {
-        if (fn !== null) return failure('one_function', 'Phase 1 draws one function per block');
-        fn = match[1];
+      } else if ((match = FUNCTION_LINE.exec(line))) {
+        const name = (match[1] || match[2]).toLowerCase();
+        if (['x', 't', 'e'].includes(name)) return failure('reserved', `"${name}" cannot name a function; use f(x), g(x)…`);
+        if (sources.some(row => row.name === name)) return failure('duplicate', `Function ${name} is declared twice`);
+        sources.push({ name, source: match[3] });
+        if (sources.length > LIMITS.functions) return failure('functions', `At most ${LIMITS.functions} functions per block`);
       } else if ((match = /^([a-z])\s*=\s*(.+?)\s*(?:in|∈)?\s*(\[[^\]]*\]|\S+\s*\.\.\s*\S+)$/i.exec(line))) {
         const name = match[1].toLowerCase();
         if (RESERVED.has(name)) return failure('reserved', `"${name}" is reserved and cannot be a parameter`);
@@ -245,17 +251,32 @@
         return failure('range', `Parameter ${match[1].toLowerCase()} needs a slider range, for example: ${match[1].toLowerCase()} = 1 in [-5, 5]`);
       } else return failure('line', `Unrecognised line "${line.slice(0, 60)}". Use y = …, a = 1 in [-5, 5], x in [-10, 10]`);
     }
-    if (fn === null) return failure('no_function', 'Write the function as y = …');
-    const parsed = parseExpression(fn, ['x', ...parameters.map(row => row.name)]);
-    if (!parsed.ok) return parsed;
-    const plot = { schema: SCHEMA, kind: 'function', variable: 'x', expression: format(parsed.tree), parameters,
+    if (!sources.length) return failure('no_function', 'Write the function as y = …');
+    const clash = sources.find(row => parameters.some(parameter => parameter.name === row.name));
+    if (clash) return failure('duplicate', `"${clash.name}" names both a function and a parameter`);
+    const names = ['x', ...parameters.map(row => row.name)], functions = [], trees = [];
+    for (const row of sources) {
+      const parsed = parseExpression(row.source, names);
+      if (!parsed.ok) {
+        // Functions do not call each other (yet): say so rather than asking for a parameter.
+        if (parsed.error.code === 'unknown_name' && sources.some(other => parsed.error.message.startsWith(`Unknown name "${other.name}"`))) {
+          return failure('unknown_name', 'A function cannot use another function yet; write its formula out');
+        }
+        return sources.length > 1 ? failure(parsed.error.code, `${label(row.name)}: ${parsed.error.message}`) : parsed;
+      }
+      functions.push({ name: row.name, label: label(row.name), expression: format(parsed.tree) });
+      trees.push(parsed.tree);
+    }
+    const plot = { schema: SCHEMA, kind: 'functions', variable: 'x', functions, parameters,
       x: xWindow || DEFAULT_X.slice(), ...(yWindow ? { y: yWindow } : {}) };
-    return { ok: true, plot, tree: parsed.tree, text: plotText(plot) };
+    return { ok: true, plot, trees, text: plotText(plot) };
   }
+
+  const label = name => (name === 'y' ? 'y' : `${name}(x)`);
 
   /** The canonical body for a plot, with `values` replacing the parameters' current values. */
   function plotText(plot, values = {}) {
-    const lines = [`y = ${plot.expression}`];
+    const lines = plot.functions.map(fn => `${fn.label} = ${fn.expression}`);
     for (const row of plot.parameters) {
       const value = Number.isFinite(values[row.name]) ? values[row.name] : row.value;
       lines.push(`${row.name} = ${formatNumber(value)} in [${formatNumber(row.min)}, ${formatNumber(row.max)}]`);
@@ -279,7 +300,7 @@
     return points;
   }
 
-  /** The vertical window: the declared one, else fitted to the curve without chasing asymptotes. */
+  /** The vertical window: the declared one, else fitted to the curves (all their points together) without chasing asymptotes. */
   function fitY(points, plot) {
     if (plot.y) return plot.y.slice();
     const ys = points.map(point => point[1]).filter(y => y !== null).sort((a, b) => a - b);
@@ -294,13 +315,14 @@
 
   /** What the reader of a plot is told: the formula, values, the window drawn and a few points, all computed here. */
   function describe(parsed, values = {}, count = 8) {
-    const { plot, tree } = parsed;
+    const { plot, trees } = parsed;
     const parameters = plot.parameters.map(row => ({ ...row, value: Number.isFinite(values[row.name]) ? values[row.name] : row.value }));
     const current = Object.fromEntries(parameters.map(row => [row.name, row.value]));
     // Floating-point residue such as sin(pi) = 1.2e-16 reads as 0.
     const round = value => (value === null ? null : Math.abs(value) < 1e-10 ? 0 : Number(formatNumber(value)));
-    return { schema: SCHEMA, expression: plot.expression, parameters, x: plot.x.slice(), y: fitY(sample(tree, plot, current), plot).map(round),
-      points: sample(tree, plot, current, count).map(([x, y]) => [round(x), round(y)]) };
+    const y = fitY(trees.flatMap(tree => sample(tree, plot, current)), plot).map(round);
+    return { schema: SCHEMA, functions: plot.functions.map((fn, index) => ({ ...fn,
+      points: sample(trees[index], plot, current, count).map(([px, py]) => [round(px), round(py)]) })), parameters, x: plot.x.slice(), y };
   }
 
   const api = Object.freeze({ SCHEMA, LIMITS, FUNCTIONS: Object.keys(FUNCTIONS), parseExpression, evaluate, format, formatNumber,

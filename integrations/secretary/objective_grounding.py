@@ -20,6 +20,7 @@ import objective_uncertainty_context as contextual
 import objective_source_observations as source_observations
 import objective_useful_selection as useful_selection
 import objective_omission_policy as omission_policy
+import objective_explicit_selection as explicit_selection
 
 LEGACY_CONTRACT = "secretary.objective-grounding/v1"
 WORDING_CONTRACT = "secretary.objective-grounding/v2"
@@ -29,7 +30,8 @@ PROOF_CONTRACT = "secretary.objective-grounding/v5"
 CONDITIONAL_CONTRACT = "secretary.objective-grounding/v6"
 SOURCE_CONTRACT = "secretary.objective-grounding/v7"
 SELECTION_CONTRACT = "secretary.objective-grounding/v8"
-CONTRACT = "secretary.objective-grounding/v9"
+OMISSION_CONTRACT = "secretary.objective-grounding/v9"
+CONTRACT = "secretary.objective-grounding/v10"
 CLAIM = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -100,11 +102,13 @@ SCHEMA_V7 = SCHEMA
 SCHEMA = useful_selection.schema(SCHEMA_V7)
 SCHEMA_V8 = SCHEMA
 SCHEMA = omission_policy.schema(SCHEMA_V8)
+SCHEMA_V9 = SCHEMA
+SCHEMA = explicit_selection.schema(SCHEMA_V9)
 
 
 def contract_for(manifest):
     digest = manifest.get("responseSchemaSha256")
-    for contract, schema in ((CONTRACT, SCHEMA), (SELECTION_CONTRACT, SCHEMA_V8), (SOURCE_CONTRACT, SCHEMA_V7), (CONDITIONAL_CONTRACT, SCHEMA_V6), (PROOF_CONTRACT, SCHEMA_V5), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
+    for contract, schema in ((CONTRACT, SCHEMA), (OMISSION_CONTRACT, SCHEMA_V9), (SELECTION_CONTRACT, SCHEMA_V8), (SOURCE_CONTRACT, SCHEMA_V7), (CONDITIONAL_CONTRACT, SCHEMA_V6), (PROOF_CONTRACT, SCHEMA_V5), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
                              (WORDING_CONTRACT, SCHEMA_V2), (LEGACY_CONTRACT, SCHEMA_V1)):
         if digest == hashed(schema):
             return contract
@@ -113,7 +117,9 @@ def contract_for(manifest):
 
 def extraction_context(record, manifest):
     context = proofs.context_for(record)
-    if contract_for(manifest) == CONTRACT:
+    if contract_for(manifest) == CONTRACT and isinstance(record, dict) and isinstance(record.get('source'), dict):
+        context = {**(context or {}), 'direction': record['source'].get('direction', 'unknown')}
+    if contract_for(manifest) in (OMISSION_CONTRACT, CONTRACT):
         return {**(context or {}), 'ownerAliases': manifest['config'].get('ownerAliases', [])}
     return context
 
@@ -130,6 +136,8 @@ def catalog(content):
 
 def schema_for(content, contract=CONTRACT, source_context=None):
     if contract == CONTRACT:
+        return explicit_selection.schema(schema_for(content, OMISSION_CONTRACT, source_context), catalog(content), source_context)
+    if contract == OMISSION_CONTRACT:
         return omission_policy.schema(schema_for(content, SELECTION_CONTRACT, source_context), catalog(content), source_context)
     if contract == SELECTION_CONTRACT:
         return useful_selection.schema(schema_for(content, SOURCE_CONTRACT, source_context), catalog(content))
@@ -240,12 +248,16 @@ def _project_v1(value, content):
 
 def project(value, content, contract=None, source_context=None):
     items = value.get('moments') if isinstance(value, dict) else None
-    if contract == CONTRACT or not contract and isinstance(value, dict) and (
+    if contract == CONTRACT or not contract and isinstance(value, dict) and 'omittedCues' in value and 'summaryCitationIds' not in value:
+        if not isinstance(content, str):
+            raise ValueError('Grounded extraction requires the exact supplied passage')
+        return explicit_selection.project(value, content, {r['id']: r for r in catalog(content)}, source_context, SCHEMA_V7, CONTRACT)
+    if contract == OMISSION_CONTRACT or not contract and isinstance(value, dict) and (
             isinstance(value.get('abstention'), dict) and 'reasonRef' in value['abstention'] or
             isinstance(value.get('omittedCues'), list) and any(isinstance(r, dict) and 'reasonRef' in r for r in value['omittedCues'])):
         if not isinstance(content, str):
             raise ValueError('Grounded extraction requires the exact supplied passage')
-        return omission_policy.project(value, content, {r['id']: r for r in catalog(content)}, source_context, SCHEMA_V7, CONTRACT)
+        return omission_policy.project(value, content, {r['id']: r for r in catalog(content)}, source_context, SCHEMA_V7, OMISSION_CONTRACT)
     if contract == SELECTION_CONTRACT or not contract and isinstance(value, dict) and 'abstention' in value:
         if not isinstance(content, str):
             raise ValueError('Grounded extraction requires the exact supplied passage')
