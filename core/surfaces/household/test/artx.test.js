@@ -74,6 +74,25 @@ test('an idle task starts after silence, reconciles duplicates and respects the 
   assert.equal(f.calls(), 2);
 });
 
+test('a hidden or weather-masked display retains independent outdoor positions', async () => {
+  const f = fixture();
+  const below = { id: 'saturn', name: 'Saturne', azDeg: 300, altDeg: -25, sunSeparationDeg: 100 };
+  f.data.sky.planetPositions = [below, ...f.data.sky.planets.filter(p => p.id !== 'saturn')];
+  f.data.sky.planets = f.data.sky.planets.filter(p => p.id !== 'saturn');
+  for (const [kind, visible] of [['clear', true], ['clear', false], ['fog', true]]) {
+    f.data.weather.kind = kind;
+    const snapshot = await f.service.snapshot(displayId);
+    const read = f.service.observe(f.observation(snapshot, { visible })).current;
+    const saturn = read.planets.find(planet => planet.id === 'saturn');
+    assert.equal(saturn.direction, 'nord-ouest');
+    assert.equal(saturn.altitudeDeg, -25);
+    assert.equal(saturn.aboveHorizon, false);
+    assert.equal(saturn.rendered, false);
+    assert.equal(saturn.screen, undefined);
+    if (visible && kind === 'clear') assert.equal(saturn.reason, 'below_horizon');
+  }
+});
+
 test('activity discards an in-flight choice and keeps its original result identity', async () => {
   let finish;
   const f = fixture({ decide: () => new Promise(resolve => { finish = resolve; }) });
@@ -152,6 +171,19 @@ for (const backend of ['agentx', 'openclaw']) test(`the actual ${backend} family
   assert.match(h.sent[0].request, /"side":"gauche"/);
   assert.equal(h.turns[0].presentationContext.artx.current.planets[0].rendered, true);
   if (backend === 'agentx') assert.ok(h.sent[0].tools.some(tool => tool.function.name === 'artx_read'));
+});
+
+for (const backend of ['agentx', 'openclaw']) test(`${backend} receives outdoor Saturn data while its display is hidden`, async () => {
+  const f = fixture(), snapshot = await f.service.snapshot(displayId);
+  const h = harness({ packId: 'kidx_nestor', backend, artx: f.service });
+  await h.turn('Où regarder dehors si ton écran est masqué ?', 'voice', { artx: f.observation(snapshot, { visible: false }) });
+  const planet = h.turns[0].presentationContext.artx.current.planets[0];
+  assert.equal(planet.rendered, false);
+  assert.equal(planet.direction, 'sud-est');
+  assert.equal(planet.aboveHorizon, true);
+  assert.equal(planet.altitudeDeg, 30);
+  assert.match(h.sent[0].request, /a hidden display.*does NOT prevent using a supplied direction and altitude/);
+  assert.match(h.sent[0].request, /Never say a planet must appear on screen before its outdoor position can be known/);
 });
 
 test('family ArtX tools bind the active display while MCP reuses the same reader', async () => {

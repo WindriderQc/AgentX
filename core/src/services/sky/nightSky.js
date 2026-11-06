@@ -134,7 +134,8 @@ function moonPhase(sun, moon) {
   return { illumination: Math.round(illumination * 100) / 100, waxing, age: Math.round(age * 1000) / 1000, name };
 }
 
-// What is above the horizon now. Angles only: the observer's place never leaves this function.
+// Drawing candidates plus independent planet positions, including below the horizon.
+// Angles only: the observer's place never leaves this function.
 function skyView(lat, lon, date = new Date(), { minAltDeg = -1 } = {}) {
   if (![lat, lon].every(Number.isFinite)) return null;
   const d = daysSinceJ2000(date);
@@ -142,16 +143,17 @@ function skyView(lat, lon, date = new Date(), { minAltDeg = -1 } = {}) {
   const sunHere = horizontal(sun.raDeg, sun.decDeg, lat, lon, d);
   const moonHere = horizontal(moon.raDeg, moon.decDeg, lat, lon, d);
   const moonAlt = refracted(moonHere.altDeg - moon.parallax * cos(moonHere.altDeg)); // seen from the surface
-  const planets = [];
+  const planets = [], planetPositions = [];
   for (const planet of PLANETS) {
     const position = planetPosition(planet.id, d);
     const here = horizontal(position.raDeg, position.decDeg, lat, lon, d);
     const altDeg = refracted(here.altDeg);
-    if (altDeg < minAltDeg) continue;
     const separation = Math.acos(Math.max(-1, Math.min(1, sin(sun.decDeg) * sin(position.decDeg)
       + cos(sun.decDeg) * cos(position.decDeg) * cos(sun.raDeg - position.raDeg)))) / RAD;
-    planets.push({ id: planet.id, name: planet.name, altDeg: round1(altDeg), azDeg: round1(here.azDeg),
-      mag: round1(planet.base + 5 * Math.log10(position.sunAu * position.distanceAu)), sunSeparationDeg: round1(separation) });
+    const body = { id: planet.id, name: planet.name, altDeg: round1(altDeg), azDeg: round1(here.azDeg),
+      mag: round1(planet.base + 5 * Math.log10(position.sunAu * position.distanceAu)), sunSeparationDeg: round1(separation) };
+    planetPositions.push(body);
+    if (altDeg >= minAltDeg) planets.push(body);
   }
   const stars = [];
   for (const [name, raHours, decDeg, mag] of STARS) {
@@ -165,7 +167,7 @@ function skyView(lat, lon, date = new Date(), { minAltDeg = -1 } = {}) {
   return {
     sun: { altDeg: round1(refracted(sunHere.altDeg)), azDeg: round1(sunHere.azDeg) },
     moon: { altDeg: round1(moonAlt), azDeg: round1(moonHere.azDeg), ...moonPhase(sun, moon) },
-    planets, stars, figures
+    planets, planetPositions, stars, figures
   };
 }
 
