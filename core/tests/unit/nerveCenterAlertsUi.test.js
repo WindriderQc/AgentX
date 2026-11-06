@@ -32,7 +32,7 @@ describe('Nerve Center alerts UI', () => {
   it('labels history and discloses grouped persisted rows in the health feed', () => {
     expect(healthSource).toContain('event.groupedCount');
     expect(healthSource).toContain('persisted rows grouped');
-    expect(healthSource).toContain('The feed below includes labelled history');
+    expect(healthSource).toContain('Completed receipts and history');
     expect(healthSource).toContain('feedMeta.activeAlertCount');
   });
 });

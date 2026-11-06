@@ -227,7 +227,31 @@ latency gain.
 
 ## Nerve Center
 
-Open `/nerve-center`. Each cluster host distinguishes **Ollama reachable** from
+Open `/nerve-center`. The page answers first what runs on each GPU and Ollama
+host, then where to change it:
+
+- **Status line**: machines up, and what to check in plain words (an
+  unreachable endpoint, a pin not loaded, stale GPU readings). A pin unloaded
+  while reserved heavy work or a Benchmark claim holds the machine is shown as
+  held, not as a problem.
+- **Machines right now**: one read-only card per machine, grouping the Ollama
+  endpoints that share its address (GPU engine, CPU engine, topology lanes).
+  Each card shows every GPU's utilization, VRAM, temperature and power, the
+  models each endpoint holds (pinned ones marked), endpoints the runtime
+  topology parks on purpose, VRAM used outside Ollama, the heavy-work
+  reservation or Benchmark claim holding the machine, and the next one. Below,
+  the heavy-work queue lists the next 24 hours. The view refreshes every 20 s.
+- **Principal model and topology**: the Standard/Abliterated choice, the only
+  place that changes the principal model, beside the **Runtime topology** card.
+- **Attention**: the operations watch report and the alert feed. The feed lists
+  alerts that need action first; completed-work receipts and history fold below.
+- **Host settings**, folded by default: **Pins and models** (the per-endpoint
+  pin controls; **Manage pins** on a machine card opens it at that host) and
+  **Inference endpoints**.
+- **Diagnostics**, behind **Show diagnostics**: platform signals, routing,
+  inference health, embeddings, alert rules, configuration, RAG and performance.
+
+In **Pins and models**, each endpoint distinguishes **Ollama reachable** from
 the residency of its configured pins:
 
 | Residency label | Meaning | Next action |
@@ -244,7 +268,7 @@ An existing active `pin-vram-spill` incident remains separate from the current
 read: silence or a stale sample cannot resolve it. See the [GPU contract and
 fallback policy](OPERATIONS.md#light-task-fallback-ladder).
 
-**Inference hosts** lists every Ollama endpoint with its residency (GPU or
+**Inference endpoints** lists every Ollama endpoint with its residency (GPU or
 CPU) and its concurrent-request limit, and registers a new one. A machine that
 runs a GPU instance and a CPU instance shows two rows.
 

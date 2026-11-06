@@ -3,11 +3,8 @@
 
     const shared = window.NerveCenterShared;
     let currentRoutingLogs = [];
-    let principalModel = null;
-    let runtimeTopology = null;
-
-    const principalCard = window.NerveCenterPrincipalModel;
-    const topologyCard = window.NerveCenterRuntimeTopology;
+    // The principal model and runtime topology cards live in their own section
+    // (nerve-center-model.js), near the top of the page.
 
     function getTaskTypes(config) {
         const known = new Set([
@@ -616,8 +613,6 @@
             </div>`;
 
         return `
-            ${principalCard.build(principalModel)}
-            ${topologyCard.build(runtimeTopology)}
             ${failoverBar}
             ${buildRoutingAnalyticsSection(analytics)}
             <div class="nc-collapsible nc-mb-16">
@@ -747,18 +742,13 @@
         shared.renderSectionLoading(body, 'Loading routing data...');
 
         try {
-            const [snapshot, logJson, analyticsJson, principalJson, topologyJson] = await Promise.all([
+            const [snapshot, logJson, analyticsJson] = await Promise.all([
                 shared.getEcosystemSnapshot(),
                 shared.fetchJson('/api/nerve-center/routing/log?limit=20'),
-                shared.fetchJson('/api/nerve-center/routing/analytics?hours=24'),
-                shared.fetchJson('/api/nerve-center/principal-model'),
-                // Read-only and optional: a failure leaves the card out, not the section.
-                shared.fetchJson('/api/nerve-center/runtime-topology').catch(() => null)
+                shared.fetchJson('/api/nerve-center/routing/analytics?hours=24')
             ]);
 
             const config = snapshot?.routingConfig;
-            principalModel = principalJson.status === 'success' ? principalJson.data : null;
-            runtimeTopology = topologyJson?.status === 'success' ? topologyJson.data : null;
             const logs = logJson.data || [];
             const analytics = analyticsJson.data || {};
             const failover = snapshot?.routing;
@@ -772,8 +762,6 @@
             body.innerHTML = buildRoutingSection(config, logs, analytics, failover);
             shared.attachCollapsibleHandlers(body);
             attachTaskRoutingHandlers(config);
-            principalCard.attach(principalModel, loadRouting);
-            topologyCard.attach?.(runtimeTopology, loadRouting);
             attachRoutingLogHandlers();
         } catch (err) {
             console.error('[NerveCenter] loadRouting failed', err);

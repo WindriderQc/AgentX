@@ -36,6 +36,16 @@
         return { critical, attention: Math.max(0, report.findingCount - critical) };
     }
 
+    // The model's report can repeat one line per finding; show each line once
+    // with its count so the report stays short.
+    function collapseRepeatedLines(text) {
+        const counts = new Map();
+        String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+            .forEach(line => counts.set(line, (counts.get(line) || 0) + 1));
+        return [...counts].map(([line, count]) => `<div class="nc-watch-line">${shared.escapeHtml(line)}${count > 1
+            ? ` <span class="nc-watch-repeat" title="Repeated ${count} times in the report">×${count}</span>` : ''}</div>`).join('');
+    }
+
     function reportView(report) {
         if (!report) {
             return { tone: 'idle', icon: 'fa-circle-question', headline: 'No check since Core started',
@@ -58,7 +68,7 @@
             chips: (counts.critical ? chip('danger', 'fa-circle-exclamation', `${counts.critical} critical`) : '')
                 + (counts.attention ? chip('warn', 'fa-eye', `${counts.attention} attention`) : ''),
             meta: `${checked} · ${source}`,
-            body: `<div class="nc-watch-report">${shared.escapeHtml(report.summary || '')}</div>`,
+            body: `<div class="nc-watch-report">${collapseRepeatedLines(report.summary)}</div>`,
             summary: count
         };
     }

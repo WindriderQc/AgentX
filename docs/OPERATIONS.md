@@ -576,7 +576,7 @@ variable is unset the file is never read. An unreadable or invalid file logs
 one warning naming the file and the problem, and Data runs with the built-in
 roles only. No sample with real folder names is shipped.
 
-Live GPU values (Nerve Center cluster cards, Profiler hardware evidence) come
+Live GPU values (Nerve Center machine and pin cards, Profiler hardware evidence) come
 from `integrations/data-collectors/gpu-agent.js`, a native process on the Core
 host: Data publishes only on loopback, so the collector runs beside it and
 reaches the GPU hosts itself. Each cycle runs
@@ -1643,7 +1643,7 @@ maintenance from reloading the runner merely to re-enable context shifting.
 Every Ollama endpoint Core may use is a host. `OLLAMA_HOST` (and the optional
 `OLLAMA_HOST_2`, `OLLAMA_HOST_3`) bootstrap the first hosts under the keys
 `primary`, `secondary` and `tertiary`. Every further endpoint is registered from
-the Nerve Center **Inference hosts** section, without a count limit, and is
+the Nerve Center **Inference endpoints** section, without a count limit, and is
 stored in Core's `inference_hosts` collection. Core loads the registry at
 startup, before routing, so a registered host is accepted wherever a
 configured host is: host allowlists, pins, task routing and the light-task
@@ -1707,7 +1707,7 @@ A CPU brain, from nothing to work:
    bandwidth divided by active weights, so prefer a mixture-of-experts model
    with few active parameters; a dense model of the same size is several times
    slower.
-2. Add the host in the Nerve Center, section "Inference hosts", with residency
+2. Add the host in the Nerve Center, section "Inference endpoints", with residency
    CPU.
 3. Pin the model on it with its context and **CPU threads** (at most the cores
    `CPUQuota` allows). The threads are not optional: every request and every
@@ -1956,7 +1956,7 @@ its value. A generic example:
   Labels default to ids.
 
 `GET /api/nerve-center/runtime-topology` and the **Runtime topology** card in
-the Nerve Center routing section show, for each declared mode:
+the Nerve Center section "Principal model and topology" show, for each declared mode:
 
 - each endpoint, with its role;
 - whether it is a registered host;
@@ -2375,7 +2375,7 @@ than that covers only the retained rows.
 
 ## Resident model pins
 
-The Nerve Center host cards show parallel requests **per model** separately from
+The Nerve Center pin cards show parallel requests **per model** separately from
 resident model slots. This is the last observed `OLLAMA_NUM_PARALLEL` process
 setting, with its observation date, not a measured throughput guarantee or a
 live reading from `/api/ps`. Unobserved hosts show Unknown. Extra requests queue;

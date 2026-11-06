@@ -11,8 +11,8 @@
     root.classList.toggle('nc-show-details', expanded);
     toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     toggle.innerHTML = expanded
-      ? '<i class="fas fa-compress-alt"></i> Show overview only'
-      : '<i class="fas fa-sliders"></i> Show operator details';
+      ? '<i class="fas fa-compress-alt"></i> Hide diagnostics'
+      : '<i class="fas fa-chart-column"></i> Show diagnostics';
     if (persist) {
       try { window.localStorage.setItem(storageKey, expanded ? '1' : '0'); } catch (_) { /* optional preference */ }
     }

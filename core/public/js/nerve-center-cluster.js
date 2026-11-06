@@ -554,7 +554,10 @@
           : '';
 
         const ollamaOk = host.ollamaStatus === 'online';
-        const ollamaIndicator = `<span class="nc-host-ollama ${ollamaOk ? 'ok' : 'down'}">
+        // An endpoint the runtime topology parks on purpose is not a failure.
+        const ollamaIndicator = !ollamaOk && host.parked
+            ? '<span class="nc-host-ollama" title="Stopped on purpose by the runtime topology"><i class="fas fa-circle-pause"></i> Parked by the runtime topology</span>'
+            : `<span class="nc-host-ollama ${ollamaOk ? 'ok' : 'down'}">
             ${svcDot}<i class="fas fa-${ollamaOk ? 'check-circle' : 'times-circle'}"></i>
             Ollama ${ollamaOk ? 'reachable' : 'unreachable'}${host.ollamaLatency != null && ollamaOk ? ` &middot; ${host.ollamaLatency}ms` : ''}${svcUptime}
         </span>`;
@@ -867,11 +870,13 @@
         startClusterRefresh();
 
         try {
-            const [ollamaJson, hostPrefsJson, gpuJson] = await Promise.all([
+            const [ollamaJson, hostPrefsJson, gpuJson, topologyJson] = await Promise.all([
                 shared.fetchJson('/api/ollama-hosts'),
                 shared.fetchJson('/api/nerve-center/host-preferences'),
-                shared.fetchJson('/api/nerve-center/inference/gpu-status').catch(() => ({ data: [] }))
+                shared.fetchJson('/api/nerve-center/inference/gpu-status').catch(() => ({ data: [] })),
+                Promise.resolve().then(() => shared.fetchJson('/api/nerve-center/runtime-topology')).catch(() => null)
             ]);
+            const parked = window.NerveCenterLive?.parkedUrls?.(topologyJson?.status === 'success' ? topologyJson.data : null) || new Set();
             if (load !== clusterLoad) return;
             const gpuByHost = new Map((gpuJson.data || []).map(row => [row.hostId, row]));
             const hostPrefs = hostPrefsJson.data || [];
@@ -879,7 +884,7 @@
 
             const ollamaData = ollamaJson.data || {};
             const configuredHosts = ollamaData.hosts || [];
-            const cards = configuredHosts.map((host) => mergeHostData({
+            const cards = configuredHosts.map((host) => ({ ...mergeHostData({
                 hostId: host.id,
                 hostname: host.name || host.id,
                 ollamaHostKey: host.id,
@@ -888,7 +893,8 @@
                 ollamaVersion: host.ollamaVersion || '',
                 ollamaModelCount: (host.installedModels || []).length,
                 ollamaModels: host.installedModels || host.models || []
-            }, telemetryDoc(gpuByHost.get(host.id)), host, {}, prefByUrl.get(host.url)));
+            }, telemetryDoc(gpuByHost.get(host.id)), host, {}, prefByUrl.get(host.url)),
+            parked: parked.has(String(host.url || '').replace(/\/+$/, '')) }));
 
             if (cards.length === 0) {
                 body.innerHTML = '<div class="nc-section-placeholder nc-muted"><i class="fas fa-server"></i> No cluster hosts found</div>';
