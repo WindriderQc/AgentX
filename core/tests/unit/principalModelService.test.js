@@ -6,7 +6,7 @@ jest.mock('../../src/services/modelRouterConfig', () => {
     embeddings: { model: 'embedding', host: 'primary' } };
   return { CLASSIFIABLE_TASKS: { general_chat: {}, code_generation: {} }, HOSTS: { primary: 'http://principal-host:11434' },
     ensureTaskModelOverridesLoaded: jest.fn(), getDefaultTaskModels: () => ({ daily_operator: { model: 'standard', host: 'primary' } }),
-    getEffectiveTaskModels: () => tasks, getHostPinFollowers: jest.fn(() => []), refreshPinCacheNow: jest.fn(async () => {}), tasks };
+    getEffectiveTaskModels: () => tasks, getHostPinFollowers: jest.fn(() => []), refreshPinCacheNow: jest.fn(async () => {}), resolvePrincipalTopology: jest.fn(async () => null), tasks };
 });
 const HostPreference = require('../../models/HostPreference');
 const RouterTaskConfig = require('../../models/RouterTaskConfig');
@@ -25,6 +25,7 @@ beforeEach(async () => {
     for (const doc of await RouterTaskConfig.find({}).lean()) config.tasks[doc.taskType] = { model: doc.model, host: doc.host };
   });
   config.getHostPinFollowers.mockReturnValue([]);
+  config.resolvePrincipalTopology.mockResolvedValue(null);
   config.refreshPinCacheNow.mockImplementation(async () => {});
   runRuntimeMutation.mockImplementation(async (_options, operation) => operation({
     signal: new AbortController().signal, assertActive() {}
@@ -186,4 +187,29 @@ describe('choices named in the Nerve Center (#901)', () => {
       process.env = saved;
     }
   });
+});
+
+describe('principal route as a topology role (#360)', () => {
+  const role = { model: null, host: null, role: 'conversation', group: 'gpu-group' };
+  test('a role resolving to the principal host follows the pin and the switch moves the host routes', async () => {
+    config.tasks.daily_operator = { ...role };
+    config.resolvePrincipalTopology.mockResolvedValue({ ok: true, role: 'pooled', requestedRole: 'conversation',
+      url: hostUrl + '/', host: 'primary', model: 'standard' });
+    const result = await select();
+    expect(result.selected).toBe('abliterated');
+    expect(config.tasks.general_chat.model).toBe(result.model);
+    expect(await RouterTaskConfig.findOne({ taskType: 'daily_operator' })).toBeNull();
+  });
+  test('a role resolving elsewhere or not resolving remains a dedicated override', async () => {
+    config.tasks.daily_operator = { ...role };
+    for (const resolution of [null, { ok: false, reason: 'topology_unavailable' },
+      { ok: true, url: 'http://lane-host:11437', host: 'lane', model: 'standard' },
+      { ok: true, url: hostUrl, host: 'primary', model: 'unpinned' }]) {
+      config.resolvePrincipalTopology.mockResolvedValue(resolution);
+      await expect(select()).rejects.toThrow('The principal route has a dedicated override');
+    }
+    expect((await service.getPrincipalModel()).model).toBe('standard');
+    expect(restore).not.toHaveBeenCalled();
+  });
+  afterEach(() => { config.tasks.daily_operator = { model: 'standard', host: 'primary' }; });
 });
