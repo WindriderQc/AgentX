@@ -20,16 +20,23 @@ const instant = value => {
 };
 
 function validateConfig(raw) {
-  if (!object(raw) || raw.version !== 1 || !Array.isArray(raw.nodes) || raw.nodes.length > 32
-    || Object.keys(raw).some(key => !['version', 'nodes'].includes(key))) throw fail('ECOSYSTEM_LIVE_CONFIG_INVALID');
+  if (!object(raw) || ![1, 2].includes(raw.version) || !Array.isArray(raw.nodes) || raw.nodes.length > (raw.version === 1 ? 32 : 64)
+    || Object.keys(raw).some(key => !['version', 'nodes', ...(raw.version === 2 ? ['observer'] : [])].includes(key))) throw fail('ECOSYSTEM_LIVE_CONFIG_INVALID');
   const ids = new Set(), sources = new Set();
-  return { version: 1, nodes: raw.nodes.map(row => {
+  if (raw.version === 2 && (!object(raw.observer) || Object.keys(raw.observer).length !== 2
+    || !require('./ecosystemObservations').validPath(raw.observer.script) || !require('./ecosystemObservations').validPath(raw.observer.config))) throw fail('ECOSYSTEM_LIVE_CONFIG_INVALID');
+  return { version: raw.version, ...(raw.version === 2 && { observer: { ...raw.observer } }), nodes: raw.nodes.map(row => {
     if (!object(row) || typeof row.id !== 'string' || !ID.test(row.id) || ids.has(row.id)
-      || Object.keys(row).some(key => !['id', 'hosts', 'services'].includes(key))) throw fail('ECOSYSTEM_LIVE_CONFIG_INVALID');
+      || Object.keys(row).some(key => !['id', 'hosts', 'services', ...(raw.version === 2 ? ['observations', 'unobserved'] : [])].includes(key))) throw fail('ECOSYSTEM_LIVE_CONFIG_INVALID');
     ids.add(row.id);
-    const hasHosts = Object.hasOwn(row, 'hosts'), hasServices = Object.hasOwn(row, 'services');
-    const key = hasHosts ? 'hosts' : 'services';
-    if (hasHosts === hasServices || !Array.isArray(row[key]) || !row[key].length || row[key].length > 8
+    const kinds = ['hosts', 'services', 'observations', 'unobserved'].filter(key => Object.hasOwn(row, key));
+    if (kinds.length !== 1) throw fail('ECOSYSTEM_LIVE_CONFIG_INVALID');
+    const key = kinds[0];
+    if (key === 'unobserved') {
+      if (row.unobserved !== true) throw fail('ECOSYSTEM_LIVE_CONFIG_INVALID');
+      return { id: row.id, unobserved: true };
+    }
+    if (!Array.isArray(row[key]) || !row[key].length || row[key].length > 8
       || row[key].some(id => typeof id !== 'string' || !ID.test(id) || sources.has(key + ':' + id))) throw fail('ECOSYSTEM_LIVE_CONFIG_INVALID');
     if (new Set(row[key]).size !== row[key].length) throw fail('ECOSYSTEM_LIVE_CONFIG_INVALID');
     row[key].forEach(id => sources.add(key + ':' + id));
@@ -48,11 +55,11 @@ function loadConfig(env = process.env) {
   }
 }
 
-function evidence(at, now) {
+function evidence(at, now, ttl = SOURCE_MS) {
   const time = instant(at);
   if (time === null || time > now) return { observedAt: null, expiresAt: null, freshness: 'unknown' };
-  return { observedAt: new Date(time).toISOString(), expiresAt: new Date(Math.min(now + LIVE_MS, time + SOURCE_MS)).toISOString(),
-    freshness: now - time > SOURCE_MS ? 'stale' : 'current' };
+  return { observedAt: new Date(time).toISOString(), expiresAt: new Date(Math.min(now + LIVE_MS, time + ttl)).toISOString(),
+    freshness: now - time >= ttl ? 'stale' : 'current' };
 }
 
 function combine(states) {
@@ -64,7 +71,7 @@ function combine(states) {
   return 'online';
 }
 
-function projectSnapshot(snapshot, rawConfig, now = Date.now()) {
+function projectSnapshot(snapshot, rawConfig, now = Date.now(), native = []) {
   const config = validateConfig(rawConfig);
   if (snapshot?.authority !== 'agentx-product' || snapshot.readOnly !== true || snapshot.schemaVersion !== 2
     || instant(snapshot.generatedAt) === null || !Array.isArray(snapshot.cluster) || !Array.isArray(snapshot.services)) {
@@ -73,17 +80,18 @@ function projectSnapshot(snapshot, rawConfig, now = Date.now()) {
   const generated = instant(snapshot.generatedAt);
   if (generated > now + 5000 || now - generated > LIVE_MS) throw fail('ECOSYSTEM_LIVE_SOURCE_STALE');
   const contradictory = ['contradictory', 'inconsistent'].includes(snapshot.evidenceTrust?.status);
-  const nodes = config.nodes.map(mapping => {
+  const sourceNow = config.version === 2 ? now : generated;
+  const nodes = config.nodes.filter(row => row.hosts || row.services).map(mapping => {
     const host = Boolean(mapping.hosts), keys = mapping.hosts || mapping.services;
     const rows = keys.map(key => (host ? snapshot.cluster.find(row => row.hostKey === key) : snapshot.services.find(row => row.id === key)));
     // A failed service probe has no running-service identity. Its source batch
     // still records when reachability was checked; final aggregation is not it.
     const observations = rows.map(row => evidence(host ? row?.checkedAt
-      : row ? row.identity?.ts ?? snapshot.evidence?.servicesObservedAt : null, generated));
+      : row ? row.identity?.ts ?? snapshot.evidence?.servicesObservedAt : null, sourceNow));
     const known = observations.map(row => instant(row.observedAt));
     const complete = rows.every(Boolean) && known.every(time => time !== null);
     const oldest = complete ? Math.min(...known) : null;
-    const observed = evidence(oldest === null ? null : new Date(oldest).toISOString(), generated);
+    const observed = evidence(oldest === null ? null : new Date(oldest).toISOString(), sourceNow);
     const state = combine(rows.map(row => {
       if (contradictory || !row) return 'unknown';
       if (!host) return ({ ok: 'online', down: 'offline', degraded: 'degraded' })[row.status] || 'unknown';
@@ -97,10 +105,25 @@ function projectSnapshot(snapshot, rawConfig, now = Date.now()) {
     return { id: mapping.id, source: host ? 'inference_endpoints' : 'product_service', state,
       ...observed, ...(contradictory && { freshness: 'unknown' }) };
   });
+  const generatedAt = config.version === 2 ? now : generated;
+  if (config.version === 2) {
+    for (const mapping of config.nodes.filter(row => row.observations || row.unobserved)) {
+      const rows = (mapping.observations || []).map(id => native.find(row => row.id === id));
+      const times = rows.map(row => instant(row?.observedAt));
+      const oldest = rows.length && times.every(time => time !== null && time <= now) ? Math.min(...times) : null;
+      const ttl = rows.length ? Math.min(...rows.map(row => row?.ttlMs || SOURCE_MS)) : SOURCE_MS;
+      const observed = evidence(oldest === null ? null : new Date(oldest).toISOString(), now, ttl);
+      const scopes = [...new Set(rows.map(row => row?.source).filter(Boolean))];
+      nodes.push({ id: mapping.id, source: mapping.unobserved ? 'unobserved' : scopes.length === 1 ? scopes[0] : 'observation',
+        state: rows.length ? combine(rows.map(row => row?.state || 'unknown')) : 'unknown', ...observed });
+    }
+    nodes.sort((a, b) => config.nodes.findIndex(row => row.id === a.id) - config.nodes.findIndex(row => row.id === b.id));
+  }
   return { contract: 'agentx.presentation-read/v1', source: SOURCE, page: 'ecosystem',
-    observedAt: new Date(generated).toISOString(), expiresAt: new Date(generated + LIVE_MS).toISOString(), nodes,
+    observedAt: new Date(generatedAt).toISOString(), expiresAt: new Date(generatedAt + LIVE_MS).toISOString(), nodes,
     limits: ['Inference endpoint availability does not establish physical host, voice or tool health.',
       'Product service health does not establish an accepted user journey. Unmapped nodes have no live evidence.',
+      'Native process, HTTP interface, collector, storage and network scopes are distinct; none establish a successful user task. Network absence is not physical shutdown. Unobserved means no reliable probe is configured.',
       'No model names, addresses, raw alerts, task payloads or execution authority are included.'] };
 }
 
@@ -112,7 +135,7 @@ function readFreshness(snapshot, now = Date.now()) {
       && now >= Date.parse(node.expiresAt) ? 'stale' : node.freshness })) };
 }
 
-function createLiveState({ buildSnapshot, config = loadConfig, composition = () => null, reader, now = Date.now } = {}) {
+function createLiveState({ buildSnapshot, config = loadConfig, composition = () => null, observations = require('./ecosystemObservations').createObservationReader(), reader, now = Date.now } = {}) {
   let cached = null, pending = null, epoch = 0;
   return async function read() {
     const settings = config(), inventory = composition(), key = JSON.stringify([settings, inventory?.contentRevision]);
@@ -120,10 +143,14 @@ function createLiveState({ buildSnapshot, config = loadConfig, composition = () 
     if (pending?.key === key) return pending.promise;
     const generation = ++epoch;
     const promise = (async () => {
-      const snapshot = projectSnapshot(await buildSnapshot(), settings, now());
+      const results = await Promise.allSettled([buildSnapshot(), settings.version === 2 ? observations(settings) : Promise.resolve([])]);
+      if (settings.version === 1 && results[0].status === 'rejected') throw results[0].reason;
+      const base = results[0].status === 'fulfilled' ? results[0].value : settings.version === 2
+        ? { authority: 'agentx-product', readOnly: true, schemaVersion: 2, generatedAt: new Date(now()).toISOString(), cluster: [], services: [] } : null;
+      const snapshot = projectSnapshot(base, settings, now(), results[1].status === 'fulfilled' ? results[1].value : []);
       const read = reader.publishEcosystemLive(snapshot);
       if (!read) throw fail('ECOSYSTEM_LIVE_NOT_RETAINED');
-      const value = { contract: CONTRACT, generatedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt, nodes: snapshot.nodes, read,
+      const value = { contract: settings.version === 2 ? 'agentx.ecosystem-live/v2' : CONTRACT, generatedAt: snapshot.observedAt, expiresAt: snapshot.expiresAt, nodes: snapshot.nodes, read,
         ...(inventory && { composition: { contentRevision: inventory.contentRevision, read: inventory.read } }) };
       if (generation === epoch) cached = { key, until: Math.min(now() + CACHE_MS, Date.parse(value.expiresAt)), value };
       return value;
