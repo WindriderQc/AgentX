@@ -44,6 +44,22 @@ test('strict graph validation refuses duplicate, dangling, cyclic hosting and ex
     v => v.nodes[0].specs = ['x'.repeat(241)], v => v.nodes[0].status = 'attention', v => v.secret = 'fixture'];
   for (const mutate of mutations) { const value = fixture(); mutate(value); assert.throws(() => validateComposition(value)); }
 });
+test('reviewed voice copy and pronunciation are bounded data, retained in the canonical revision', t => {
+  const inst = instance(t), value = fixture();
+  value.narration = { overview: 'Welcome to the workshop.' };
+  value.nodes[0].narration = 'The workshop concierge.';
+  value.workflows[0].narration = 'A question goes in, an answer comes back.';
+  value.pronunciations = [{ name: 'Host A', spoken: 'host alpha' }];
+  inst.write(value); const first = loadComposition(inst.env);
+  assert.deepEqual(first.data, value);
+  value.pronunciations[0].spoken = 'host ay'; inst.write(value);
+  assert.notEqual(loadComposition(inst.env).contentRevision, first.contentRevision);
+  const mutations = [v => v.narration.unknown = 'copy', v => v.narration.overview = 'x'.repeat(1001),
+    v => v.nodes[0].narration = 'x'.repeat(501), v => v.workflows[0].narration = 'x'.repeat(1001),
+    v => v.pronunciations.push({ name: 'HOST A', spoken: 'duplicate' }), v => v.pronunciations[0].spoken = 'line\nbreak',
+    v => v.pronunciations[0].url = 'https://example.invalid', v => v.pronunciations = Array(33).fill({ name: 'x', spoken: 'y' })];
+  for (const mutate of mutations) { const changed = structuredClone(value); mutate(changed); assert.throws(() => validateComposition(changed)); }
+});
 test('the rendered private composition reference resolves to Core data, and refresh keeps content identity', t => {
   const inst = instance(t); inst.write(fixture()); let now = NOW;
   const reader = createPresentationReader({ now: () => now });

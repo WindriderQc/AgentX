@@ -66,6 +66,16 @@ test('a rendered observation is a versioned browser receipt, not a Core inventor
   assert.equal(reader.read(read).status, 'unavailable');
   assert.equal(reader.observeEcosystem(observation(now - FRESH_MS - 1), ID).reason, 'stale_display_observation');
 });
+test('the companion reads the exact spoken copy separately from displayed spelling and technical details', () => {
+  const now = Date.now(), reader = createPresentationReader({ now: () => now });
+  const value = selected(now, { narration: 'Collector. The workshop concierge.', spokenNarration: 'collect or. The workshop concierge.' });
+  const read = reader.observeEcosystem(value, ID);
+  assert.equal(read.spokenNarration, value.spokenNarration);
+  assert.equal(reader.read(read).narration, value.narration);
+  assert.equal(reader.read(read).selection.description, value.selection.description);
+  const invalid = { ...value, sequence: 2, spokenNarration: 'x'.repeat(4001) };
+  assert.equal(reader.observeEcosystem(invalid, ID).reason, 'invalid_display_scope');
+});
 
 test('a newer selected component supersedes earlier frames; instance, version and sequence mismatches are refused', () => {
   let now = Date.now(); const reader = createPresentationReader({ now: () => now });

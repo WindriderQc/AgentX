@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const express = require('express');
 const { chromium } = require(process.env.AGENTX_PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(__dirname, '../../..');
@@ -12,6 +13,8 @@ const report = process.env.ECOSYSTEM_BROWSER_REPORT;
 if (!bundle || !report) throw new Error('DISKX_TEST_MODULE and ECOSYSTEM_BROWSER_REPORT required');
 fs.mkdirSync(report, { recursive: true });
 const app = express(), requests = [];
+const instance = fs.mkdtempSync(path.join(os.tmpdir(), 'ecosystem-voice-copy-'));
+fs.mkdirSync(path.join(instance, 'config'));
 app.use(express.json());
 app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas: [{ id: 'nestor', voice: { provider: 'voxcpm', source: 'instance', voices: { fr: 'fixture-voice' } } }] } }));
 app.get('/api/voix/player.js', (_req, res) => res.sendFile(path.join(root, 'integrations/voix/app/web/voice-audio.js')));
@@ -27,7 +30,7 @@ app.post('/api/voix/synthesize/stream', (req, res) => {
 });
 app.use('/js', express.static(path.join(root, 'core/public/js')));
 app.use('/assets/household', express.static(path.join(root, 'core/surfaces/household/public')));
-require('../../surfaces/diskx').register({ app, express, env: { DISKX_MODULE_URL: 'https://assets.example/embed/diskx.js' },
+require('../../surfaces/diskx').register({ app, express, env: { DISKX_MODULE_URL: 'https://assets.example/embed/diskx.js', AGENTX_INSTANCE_ROOT: instance },
   fetchData: () => assert.fail('No domain data required'),
   fetchWithTimeout: async () => ({ ok: true, headers: new Map([['content-type', 'text/javascript']]), text: async () => fs.readFileSync(bundle, 'utf8') }) });
 const catalog = require('../../public/js/screen-pages').createCatalog(require('../../../shared/screenDestinations').screenDestinations({ agentxProfile: 'full' }));
@@ -203,9 +206,35 @@ app.get('/ambient-board', (_req,res)=>res.send('<!doctype html><html><iframe cla
     assert.equal(await ambient.getByRole('button',{name:'🔊 Activer la voix',exact:true}).getAttribute('aria-pressed'),'false');
     assert.equal(requests.length,12,'a retained legacy standby parent remains silent after rollout');
     assert.equal(await ambient.evaluate(()=>document.querySelector('agentx-ecosystem').state().presentation.tour.playing),true);
+    const copy = { version: 1, reviewedAt: '2030-01-02', source: 'Synthetic voice copy',
+      nodes: [{ id: 'host-a', name: 'ComputeX', subtitle: 'Workshop', kind: 'host', status: 'installed',
+        specs: ['Synthetic technical detail'], roles: ['Synthetic role'], evidence: 'Synthetic dated receipt', narration: 'The workshop concierge.' }],
+      links: [], workflows: [], placements: { 'host-a': { x: 0, z: 0, width: 2, height: 3, depth: 2 } },
+      pronunciations: [{ name: 'ComputeX', spoken: 'compute ex' }] };
+    fs.writeFileSync(path.join(instance, 'config/ecosystem-composition.json'), JSON.stringify(copy));
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`http://127.0.0.1:${server.address().port}/diskx?app=ecosystem&play=node-host-a`);
+    await count(13);
+    const copied = await page.evaluate(() => document.querySelector('agentx-ecosystem').state().presentation);
+    assert.equal(copied.narration, 'ComputeX. The workshop concierge.');
+    assert.equal(copied.spokenNarration, 'compute ex. The workshop concierge.');
+    assert.equal(requests[12].body.text, copied.spokenNarration);
+    assert.doesNotMatch(requests[12].body.text, /Synthetic technical detail|Synthetic role|Synthetic dated receipt/);
+    await page.locator('[data-technical]').waitFor({ state: 'visible' });
+    assert.match(await page.locator('[data-technical-copy]').innerText(), /Synthetic technical detail/);
+    assert.equal(await page.locator('[data-technical-copy]').innerText(), copied.selection.description);
+    await page.screenshot({ path: path.join(report, 'ecosystem-voice-copy-desktop.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`http://127.0.0.1:${server.address().port}/diskx?app=ecosystem&play=node-host-a&voice=off`);
+    await page.locator('.gx-eco-nestor > details > summary').click();
+    await page.locator('[data-technical]').waitFor({ state: 'visible' });
+    await page.screenshot({ path: path.join(report, 'ecosystem-voice-copy-mobile.png'), fullPage: true });
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
     const result = { ok: true, nativeModelCalls: 0, syntheticSpeech: true, realWebAudio: true,
+      voiceCopy: { displayed: copied.narration, spoken: requests[12].body.text, technical: copied.selection.description },
       checks: ['voice enabled by default', 'explicit silent ambient playback retained', 'legacy ambient parent remains silent', 'simple family board conversation pause', 'blocked autoplay retains voice and retries on Play', 'separate female guide voice', 'full displayed narration', 'waits for speech completion', 'automatic next step', 'step replacement abort', 'pause abort', 'resume', 'last step stops', 'mobile controls', 'selected component pause/resume', 'typed question pause', 'spoken question pause', 'Nestor voice unchanged', 'resume blocked during answer', 'manual resume at same stop', 'hidden workspace stops speech', 'close abort'], errors, responses };
     fs.writeFileSync(path.join(report, 'result.json'), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));
-  } finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  } finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); fs.rmSync(instance, { recursive: true, force: true }); }
 })().catch(error => { console.error(error.stack); process.exitCode = 1; });

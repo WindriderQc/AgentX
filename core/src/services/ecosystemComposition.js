@@ -11,24 +11,35 @@ const ID = /^[a-z0-9][a-z0-9-]{1,23}$/;
 const object = v => v && typeof v === 'object' && !Array.isArray(v);
 const text = (v, max) => typeof v === 'string' && v.length > 0 && v.length <= max && !/[\u0000-\u001f\u007f]/.test(v);
 const keys = (v, allowed) => object(v) && Object.keys(v).every(key => allowed.includes(key));
+const SCENES = ['overview', 'frank', 'services', 'alien', 'brutal', 'network', 'edge', 'spare', 'watch', 'summary'];
 const fail = () => Object.assign(new Error('Reviewed ecosystem composition is unavailable.'), { status: 503, code: 'ECOSYSTEM_COMPOSITION_INVALID' });
 function validateComposition(raw) {
   const check = condition => { if (!condition) throw fail(); };
-  check(keys(raw, ['version', 'reviewedAt', 'source', 'nodes', 'links', 'workflows', 'placements']));
+  check(keys(raw, ['version', 'reviewedAt', 'source', 'nodes', 'links', 'workflows', 'placements', 'narration', 'pronunciations']));
   check(raw.version === 1 && text(raw.source, 240) && typeof raw.reviewedAt === 'string'
     && /^\d{4}-\d\d-\d\d$/.test(raw.reviewedAt) && Number.isFinite(Date.parse(raw.reviewedAt))
     && new Date(raw.reviewedAt).toISOString().slice(0, 10) === raw.reviewedAt);
+  check(raw.narration === undefined || (keys(raw.narration, SCENES) && Object.values(raw.narration).every(v => text(v, 1000))));
+  if (raw.pronunciations !== undefined) {
+    check(Array.isArray(raw.pronunciations) && raw.pronunciations.length <= 32);
+    const names = new Set();
+    for (const row of raw.pronunciations) {
+      check(keys(row, ['name', 'spoken']) && text(row.name, 100) && text(row.spoken, 120) && !names.has(row.name.toLowerCase()));
+      names.add(row.name.toLowerCase());
+    }
+  }
   check(Array.isArray(raw.nodes) && raw.nodes.length > 0 && raw.nodes.length <= 64
     && Array.isArray(raw.links) && raw.links.length <= 128 && Array.isArray(raw.workflows) && raw.workflows.length <= 16 && object(raw.placements));
   const ids = new Set();
   for (const node of raw.nodes) {
-    check(keys(node, ['id', 'name', 'subtitle', 'kind', 'status', 'host', 'specs', 'roles', 'attention', 'planned', 'evidence']));
+    check(keys(node, ['id', 'name', 'subtitle', 'kind', 'status', 'host', 'specs', 'roles', 'attention', 'planned', 'evidence', 'narration']));
     check(typeof node.id === 'string' && ID.test(node.id) && !ids.has(node.id) && text(node.name, 100) && text(node.subtitle, 180)
       && ['host', 'vm', 'service', 'storage', 'edge', 'network', 'spare', 'client', 'external'].includes(node.kind)
       && ['installed', 'planned', 'attention'].includes(node.status));
     check(node.host === undefined || (typeof node.host === 'string' && ID.test(node.host)));
     for (const key of ['specs', 'roles']) check(node[key] === undefined || (Array.isArray(node[key]) && node[key].length <= 12 && node[key].every(v => text(v, 240))));
     for (const key of ['attention', 'planned', 'evidence']) check(node[key] === undefined || text(node[key], 500));
+    check(node.narration === undefined || text(node.narration, 500));
     check(node.status !== 'attention' || Boolean(node.attention));
     check(JSON.stringify(node).length <= 3000);
     const place = raw.placements[node.id];
@@ -52,8 +63,9 @@ function validateComposition(raw) {
   }
   const flows = new Set();
   for (const flow of raw.workflows) {
-    check(keys(flow, ['id', 'title', 'stops', 'branches', 'note']) && typeof flow.id === 'string' && ID.test(flow.id) && !flows.has(flow.id)
+    check(keys(flow, ['id', 'title', 'stops', 'branches', 'note', 'narration']) && typeof flow.id === 'string' && ID.test(flow.id) && !flows.has(flow.id)
       && text(flow.title, 160) && (flow.note === undefined || text(flow.note, 1000))
+      && (flow.narration === undefined || text(flow.narration, 1000))
       && Array.isArray(flow.stops) && flow.stops.length >= 2 && flow.stops.length <= 12
       && (flow.branches === undefined || (Array.isArray(flow.branches) && flow.branches.length <= 4 && flow.branches.every(row => Array.isArray(row) && row.length >= 2 && row.length <= 12))));
     for (const stop of [...flow.stops, ...(flow.branches || []).flat()]) check(keys(stop, ['node', 'label', 'note']) && ids.has(stop.node) && text(stop.label, 160) && (stop.note === undefined || text(stop.note, 500)));
