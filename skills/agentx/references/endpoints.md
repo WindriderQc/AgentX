@@ -68,10 +68,15 @@ Answered 200 from the private network on 2026-10-08, without a token:
 
 `GET /api/memory-review/runs/<runId>/synthesis-input` answers only while the run is `synthesizing`. The `POST` routes (open, observations, finalize, candidates, fail) belong to the collectors.
 
-## Core tool bus
+## Tool buses
 
-`POST /mcp`, JSON-RPC 2.0. On 2026-10-07 it listed 21 tools and accepted `check_health` from the private network without a token:
-`add_email_action` · `add_idea` · `add_personal_task` · `benchmark_coverage` · `benchmark_request_measurement` · `benchmark_results` · `check_health` · `complete_personal_task` · `create_todo` · `ecosystem_snapshot` · `get_escalation_recommendation` · `get_sound` · `list_personal_tasks` · `memory_remember` · `memory_search` · `network_devices` · `personal_briefing` · `rag_search` · `shopping_list` · `update_personal_task` · `write_vault_note`
+Both answer JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) from the
+private network without a token. Call `tools/list` for the current catalogue
+rather than trusting a copied list.
+
+- `POST /mcp`: the general bus. `POST /mcp/memory` is a narrower view of it
+  (memory search/save and RAG search).
+- `POST /api/consumers/nestor/v1/mcp`: the owner bus. Never for family runtimes.
 
 ## Gone since the July notes
 

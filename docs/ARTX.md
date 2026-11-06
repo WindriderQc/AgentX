@@ -3,7 +3,8 @@
 ArtX is the shared capability behind Nestor’s animated family standby screen.
 Core owns the source snapshots, scene selections and display reader. The browser
 draws the scenes and reports visibility. The portable
-[ArtX skill](../skills/agentx-artx/SKILL.md) guides scene selection and explanation.
+[ArtX chapter](../skills/agentx/references/artx.md) of the agentx skill guides
+scene selection and explanation; it is also the idle task's system prompt.
 
 After two minutes of visible, quiet full-screen standby, the browser requests
 one silent Nestor task. Core offers only `artx_present` to the existing routed

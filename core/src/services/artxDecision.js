@@ -3,7 +3,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { ARTX_TOOLS } = require('./mcpArtxTools');
-const SKILL = fs.readFileSync(path.resolve(__dirname, '../../../skills/agentx-artx/SKILL.md'), 'utf8').replace(/^---\n[\s\S]*?\n---\n/, '');
+// The ArtX chapter of the agentx skill: copied into the image beside the other
+// product files, still at the repository root in a checkout.
+const SKILL_FILE = [
+  path.resolve(__dirname, '../../product-config/skills/agentx/references/artx.md'),
+  path.resolve(__dirname, '../../../skills/agentx/references/artx.md'),
+].find(file => fs.existsSync(file));
+const SKILL = fs.readFileSync(SKILL_FILE, 'utf8');
 
 function createArtxDecision({ inference, consumerContract, taskType = 'voice_persona_chat' } = {}) {
   return async ({ snapshot, signal }) => {

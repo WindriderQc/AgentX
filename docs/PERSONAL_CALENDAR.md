@@ -49,7 +49,7 @@ browser. Standalone hosts can configure `GOOGLE_GOG_PATH`, `GOOGLE_ACCOUNT` and
 gmail-secretary connection settings. Calendar write scope must be authorized.
 
 Expose `personal_calendar` in the personal runtime's Core MCP filter and tool
-policy, and install the reviewed `skills/agentx-core/SKILL.md`. Runtime copies
+policy, and install the reviewed `skills/agentx` skill (its assistant chapter). Runtime copies
 contain no domain logic. Keep family profiles and the memory-only endpoint
 unchanged. Allow a tool timeout of at least 70 seconds for native reconciliation.
 

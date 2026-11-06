@@ -112,7 +112,7 @@ Install the Core code and native `integrations/secretary` helper from the same
 revision. The native `super-dad-memory` plugin retains Core currentness and
 review references in its bounded task context; install that adapter revision
 as well. Enable the tool explicitly in the owner's native MCP tool selection
-and install the reviewed AgentX Core skill through that runtime's skill
+and install the reviewed agentx skill through that runtime's skill
 mechanism. Keep family profiles outside the owner bus. Do not replace a live
 configuration with a template or alter installed model/context contracts.
 

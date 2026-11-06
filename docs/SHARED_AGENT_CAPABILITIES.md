@@ -41,9 +41,11 @@ Selected context sent to a cloud model crosses that boundary even when the
 source service remains local. Expose the capability set intentionally and do
 not treat all private data as automatically needed for every conversation.
 
-Portable operating guidance lives in [the AgentX Core skill](../skills/agentx-core/SKILL.md).
-Install its reviewed content in each participating runtime through that
-runtime's native skill mechanism. A repository `AGENTS.md` guides development;
+Portable operating guidance lives in one skill, [agentx](../skills/agentx/SKILL.md):
+a short entry page and chapters for the assistant, operations, development
+and ArtX. Install it in each participating runtime through that runtime's
+native skill mechanism, from the instance (`/api/operator-skill/download`)
+or by reading the deployed checkout's `skills/` directory directly. A repository `AGENTS.md` guides development;
 it is not automatically loaded by deployed agents. The skill explains how to
 use capabilities and does not itself install tools or widen permissions.
 
@@ -95,8 +97,8 @@ Nestor’s [ArtX](ARTX.md) shares its scene selection and source-backed display
 reader through Core's `artx_present` and `artx_read` tools. The browser reports
 visibility; Core supplies sky geometry from the same snapshot used to draw it.
 Use the current display reference and preserve selected, hidden, expired and
-unavailable states. The [portable skill](../skills/agentx-artx/SKILL.md) also
-guides the silent idle task; it grants no additional runtime permissions.
+unavailable states. The skill's [ArtX chapter](../skills/agentx/references/artx.md)
+also guides the silent idle task; it grants no additional runtime permissions.
 
 ## Personal runtime parity
 
