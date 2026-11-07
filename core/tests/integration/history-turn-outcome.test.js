@@ -32,14 +32,14 @@ function outcome(overrides = {}) {
 
 test('a body userId is ignored and the server identity owns the new conversation', async () => {
   const response = await harness.request.post('/api/history/turn-outcome')
-    .send(outcome({ userId: 'surface:psyx:victim' })).expect(200);
+    .send(outcome({ userId: 'surface:private-example:victim' })).expect(200);
   const stored = await Conversation.findById(response.body.data.conversationId).lean();
   expect(stored.userId).toBe('outcome-owner');
-  expect(await Conversation.countDocuments({ userId: 'surface:psyx:victim' })).toBe(0);
+  expect(await Conversation.countDocuments({ userId: 'surface:private-example:victim' })).toBe(0);
 });
 
 test.each([
-  ['psyx', 'surface:psyx:victim'],
+  ['private-example', 'surface:private-example:victim'],
   ['household', 'surface:household:pack:child']
 ])('a %s surface conversation cannot be appended to, even with its userId in the body', async (surface, userId) => {
   const target = await Conversation.create({

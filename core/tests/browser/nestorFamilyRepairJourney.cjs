@@ -104,7 +104,6 @@ window.NestorConversation.openAudio=async()=>{
  app.post('/fixture/checkpoint',(req,res)=>{checkpoint=req.body;res.sendStatus(204);});
  app.post('/fixture/result',(req,res)=>{res.sendStatus(204);deliver(req.body);});
  app.get('/fixture/state',(_req,res)=>res.json({audioOpens,checkpoint,synthesis,sessions:[...sessions.values()].map(h=>({id:h.session.sessionId,turns:h.turns.slice().reverse().map(row=>({inputText:row.inputText,replyText:row.replyText,soundId:row.soundId,voiceTimings:row.voiceTimings,display:row.display})),modelCalls:h.sent.length,lastModelRequest:h.sent.at(-1)?.request||''}))}));
- app.use('/assets/household',express.static(publicDir));app.use('/js',express.static(path.join(core,'public/js')));app.use('/css',express.static(path.join(core,'public/css')));app.use('/psyx/assets',express.static(path.join(core,'surfaces/psyx/public')));
  app.get('/api/voix/player.js',(_req,res)=>res.type('js').send(''));
  app.post('/api/voix/synthesize/stream',(req,res)=>{synthesis.push(req.body.text);res.type('audio/wav').set({'X-Voix-Voice':'synthetic','X-Voix-Upstream':'primary'}).send(Buffer.from([0,1,2]));});
  app.post('/api/voix/warm',(_req,res)=>res.sendStatus(204));app.get('/api/voix/health',(_req,res)=>res.json({data:{status:'ok'}}));

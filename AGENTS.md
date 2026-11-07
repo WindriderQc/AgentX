@@ -16,6 +16,10 @@ and docs/OPERATIONS.md before changing architecture.
 - Distribute the same code through profiles/capabilities. No parallel product/ops repository:
   an instance may keep a private instance repository for its own configuration,
   runbooks and assets, never product code (ADR 0001).
+- Instance-specific specialist identities, instructions, questionnaires, scoring
+  interpretations, protocols, techniques and evaluation criteria belong in the
+  private instance layer. Keep only genuinely shared, reusable mechanics in Core;
+  do not expand a specialist domain merely because old code exists in the product.
 - Ask the owner, grouping questions, if an unknown affects keeping, deleting,
   merging a capability or changing product behavior. Preserve useful capabilities
   until their replacement has evidence.

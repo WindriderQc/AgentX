@@ -20,7 +20,7 @@ const CACHE_MS = 30 * 1000;
 
 const FAMILY_PAGES = new Set(['/panel', '/kids', '/kids/sounds', '/kids/plants', '/lecture', '/voice-lab/devices']);
 const STATIC_PATHS = [
-  /^\/(?:js|css|dist|vendor|img|assets\/household|psyx\/assets)\//,
+  /^\/(?:js|css|dist|vendor|img|assets\/household)\//,
   /^\/(?:favicon\.(?:ico|svg)|styles\.css)$/
 ];
 // Measured from the family pages (panel, kids, sounds, reading, family voice

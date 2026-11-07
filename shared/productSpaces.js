@@ -14,7 +14,6 @@ function productSpaces(link) {
         item('transcriptions', 'Transcriptions', '/transcriptions', 'fa-file-audio'),
         item('dad-history', 'Archives à revoir', '/dad/history', 'fa-clock-rotate-left'),
         item('finance', 'Finance', '/finance', 'fa-wallet'),
-        item('psyx', 'PsyX', '/psyx', 'fa-brain')
       ] },
     { id: 'family-group', label: 'Family', icon: 'fa-house', entry: '/panel',
       description: 'Talk, learn and share life at home.', children: [

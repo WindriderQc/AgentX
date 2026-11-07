@@ -150,7 +150,7 @@ Instance configuration, data and deployment receipts remain outside Git.
   does not establish deployment or device acceptance.
 
 - **Surfaces.** The full profile serves Nestor (`/dad`), Household (`/panel`),
-  Reader (`/lecture`), animal sounds (`/kids/sounds`), PsyX (`/psyx`) and the
+  Reader (`/lecture`), animal sounds (`/kids/sounds`) and the
   Data Toolbox (`/data-toolbox`), read-only except editing a network device's
   record, requesting a network scan from the active collector, publishing
   an MQTT message by hand, asking the storage collector for a scan,
@@ -176,19 +176,19 @@ Instance configuration, data and deployment receipts remain outside Git.
   it (accepted at which revision, discarded, stale, rejected). The `demo` profile keeps chat,
   model discovery, RAG and Benchmark. Core owns one common home at `/`,
   `/portal` and `/ecosystem`; full-profile navigation groups Personnel, Famille
-  and Atelier, with Système as the secondary menu. Household, PsyX and Data
+  and Atelier, with Système as the secondary menu. Household and Data
   use the same navigation catalogue as Core, Benchmark and RAG. Every served
   page is reachable from navigation or a contextual link; a shared test fails
   when a page has no link or a menu entry has no page.
 - **Core ownership.** Conversations, selected notes, tasks, attachments and
   memory reads have one owner each, in Core. Surfaces and native harnesses
   (OpenClaw, VoiX, Data collectors, usage and memory-review tasks) call those
-  capabilities. Core also owns user-confirmed conversation points; PsyX and
-  personal Nestor share their editor and continuation context. Optional local
+  capabilities. Core also owns user-confirmed conversation points; personal
+  Nestor uses their editor and continuation context. Optional local
   drafts disclose coverage and require confirmation; concurrent edits refuse
   rather than overwrite. Exports and erasure cover the saved point. Core also
   persists independent optional-context and performance preferences for
-  Playground, PsyX, personal Nestor and Famille. Their shared editor explains
+  Playground, personal Nestor and Famille. Their shared editor explains
   resource effects, offers presets and requires an explicit save; Famille
   controls live in the parental space.
 - **Screen capture.** Playground captures one screen, window or tab after a
@@ -267,7 +267,7 @@ Instance configuration, data and deployment receipts remain outside Git.
   originals independently of Gmail. Instance import, process qualification and
   evidence-gated mailbox cleanup are tracked in
   [#795](https://github.com/WindriderQc/AgentX/issues/795).
-- **Voice.** Household and PsyX share Core's browser conversation engine, VoiX
+- **Voice.** Household uses Core's browser conversation engine, VoiX
   transport, synthesis validation, stream relay and spoken-text cleanup. Native
   voice replies use the same speech boundary; physical device adapters retain
   their own capture and playback. The loop keeps one language per turn, prepares
@@ -280,7 +280,7 @@ Instance configuration, data and deployment receipts remain outside Git.
   and an output estimate including queued silence and reported device latency;
   these observations do not establish acoustic arrival.
   Household flushes its final clause before turn completion and persists browser
-  voice timings; PsyX keeps its protected speech route without a timing store.
+  voice timings.
   Timed holding phrases are off by default. Conversation and explanations stay
   fully spoken; documents use a useful spoken summary and complete screen text.
   Voice choices are request-scoped; Stop or disconnect cancels upstream speech
@@ -392,9 +392,6 @@ Instance configuration, data and deployment receipts remain outside Git.
   live: Nestor and family captures wait there until the parent reviews them.
   Coding workers receive bounded context from linked Planning objectives;
   private item content stays out, while omitted links appear by reference only.
-- **PsyX source coverage.** Dream portraits distinguish source items collected
-  from text supplied to the model. Collection limits, stalled pagination and
-  unknown task totals appear in the prompt and saved portrait coverage.
 - **Inference health.** Nerve Center shows per-host watchdog success counts and
   the last probe or skip reason. Unusable, skipped and control-plane-only probes
   leave resident worker health unknown; only a completed resident inference
@@ -415,20 +412,6 @@ Instance configuration, data and deployment receipts remain outside Git.
   configured team member by name. Family prompts place the child temperament
   after the selected adult personality on both native and Core inference paths;
   this is verified by composition tests, not installed-runtime conversation tests.
-- **PsyX.** Its welcome opens listening, the toolbox or the latest active
-  session; an optional editable point of the session supports finishing and
-  resuming. The conversation and composer fit the viewport while panels scroll.
-  Each reply receives the context enabled in its performance settings, with
-  memory fitted to its lane's budget. Review and dream availability, timing and
-  read-only sources are configurable there; crisis checks remain active. A user
-  may choose a frontier cloud agent
-  for deep turns or for all turns when the instance names one: it is never a
-  fallback, and Core keeps the conversation and its memory. Between sessions
-  PsyX can select context from its conversations and three read-only owner sources
-  and writes a portrait of the user; each such run is logged and can be undone.
-  Messages remain whole, omitted reply context is counted, and portraits report
-  the text coverage of the actual inference lane. New portrait quotations are
-  checked against supplied source text; older quotations remain unverified.
 - **Routing.** Light tasks may carry an instance-configured fallback ladder;
   every other task stays on its model. The OpenClaw conversation provider can
   borrow that ladder when the instance opts in; it is off by default. A bounded
@@ -541,16 +524,13 @@ Issues hold the current work and remaining acceptance:
 | Action-ready personal morning brief with a stable task focus | [#176](https://github.com/WindriderQc/AgentX/issues/176) |
 | Offline replay to qualify fast-lane delegation decisions | [#262](https://github.com/WindriderQc/AgentX/issues/262) |
 | Fast streaming voice lane with delegation to the native agent | [#263](https://github.com/WindriderQc/AgentX/issues/263) |
-| Shared voice loop follow-ups for Nestor and PsyX | [#280](https://github.com/WindriderQc/AgentX/issues/280) |
+| Shared voice loop follow-ups for Nestor | [#280](https://github.com/WindriderQc/AgentX/issues/280) |
 | Explain the load phase and prompt prefix reuse on first-token time | [#282](https://github.com/WindriderQc/AgentX/issues/282) |
 | Keep date-only personal task deadlines on the intended household day | [#287](https://github.com/WindriderQc/AgentX/issues/287) |
 | Team page: one place to see and configure an agent's identity and runtime | [#291](https://github.com/WindriderQc/AgentX/issues/291) |
 | Classify personal due-today lanes in the household timezone | [#292](https://github.com/WindriderQc/AgentX/issues/292) |
-| PsyX: supervisor critique of each reply | [#303](https://github.com/WindriderQc/AgentX/issues/303) |
-| PsyX: intake interview, standard questionnaires and technique cards | [#305](https://github.com/WindriderQc/AgentX/issues/305) |
 | Decide opt-in deployment after complete main CI | [#334](https://github.com/WindriderQc/AgentX/issues/334) |
 | Coordinate speech and images on shared physical GPUs | [#342](https://github.com/WindriderQc/AgentX/issues/342) |
-| Complete PsyX trust and longitudinal quality improvements | [#343](https://github.com/WindriderQc/AgentX/issues/343) |
 
 ## What a green result means
 

@@ -100,7 +100,7 @@ gatewayTest('private HTTPS gateway forwards every service without adult auth and
       await pause(100);
     }
     if (!ready) throw new Error('Local Caddy did not become ready: ' + logs.slice(-3000));
-    for (const [service, url] of [[0, '/'], [0, '/dad'], [0, '/panel'], [0, '/dad'], [0, '/psyx'], [0, '/api/psyx/state'],
+    for (const [service, url] of [[0, '/'], [0, '/dad'], [0, '/panel'], [0, '/dad'],
       [0, '/api/voice-personas/private/agents'], [0, '/assets/household/app.js'],
       [0, '/benchmark/leaderboard'], [0, '/benchmark/api/config/status'], [0, '/benchmark/css/leaderboard-v2.css'],
       [0, '/rag/'], [0, '/rag/api/rag/ingestion/policy'], [0, '/rag/js/api.js'],

@@ -24,7 +24,7 @@ const { resolveAdvisoryHost } = require('../../src/helpers/schedulerClient');
 
 const request = {
   model: 'pinned-model',
-  caller: 'psyx/eval',
+  caller: 'synthetic/eval',
   createSoftClaim: true,
   fallbackHostId: 'primary',
   fallbackHostUrl: 'http://primary:11434',

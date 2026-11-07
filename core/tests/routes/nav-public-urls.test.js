@@ -104,7 +104,7 @@ describe('shared navigation public URL contract', () => {
     expect(demo.spaces.map(space => space.label)).toEqual(['Workshop']);
     expect(demo.spaces[0].href).toBe('/playground');
     const destinations = demo.navItems.flatMap(group => group.children).map(item => item.href);
-    for (const route of ['/dad', '/panel', '/finance', '/psyx', '/pipeline', '/data-toolbox']) {
+    for (const route of ['/dad', '/panel', '/finance', '/pipeline', '/data-toolbox']) {
       expect(destinations).not.toContain(route);
     }
   });
@@ -136,7 +136,7 @@ describe('shared navigation public URL contract', () => {
   });
 
   test('composed surfaces stay reachable across services and remain excluded from demo', async () => {
-    const surfaces = { Nestor: '/dad', 'With Nestor': '/panel', PsyX: '/psyx', Finance: '/finance', 'Data Toolbox': '/data-toolbox' };
+    const surfaces = { Nestor: '/dad', 'With Nestor': '/panel', Finance: '/finance', 'Data Toolbox': '/data-toolbox' };
     for (const service of ['core', 'benchmark', 'rag']) {
       const full = await renderNav(service);
       const demo = await renderNav(service, 'demo', 'playground');

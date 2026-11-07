@@ -11,26 +11,6 @@
       "secret": false,
       "description": "Days Core keeps daily agent tool call counts (agenttoolusage collection, GET /api/agent-tools/usage). Read when the TTL index is built. Unset: 400."
     },
-    "AGENTX_ACCESS_CODE_FILE": {
-      "services": [
-        "core"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "other",
-      "secret": true,
-      "description": "Path of a file holding the access code, read by the PsyX scenario evaluation (core/surfaces/psyx/eval) on the operator's machine. Unset: ~/.agentx/access/parental-code."
-    },
-    "AGENTX_BASE_URL": {
-      "services": [
-        "core"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "network",
-      "secret": false,
-      "description": "Core URL the PsyX scenario evaluation (core/surfaces/psyx/eval) calls from the operator's machine. Unset: the runner requires --base."
-    },
     "AGENTX_BENCHMARK_HARNESS_URL": {
       "services": [
         "benchmark"
@@ -3169,96 +3149,6 @@
       "secret": false,
       "description": "Timeout of prompt analysis. Unset: 120000 ms."
     },
-    "PSYX_ACCESS_MODE": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "trusted-network",
-      "category": "household",
-      "secret": false,
-      "description": "PsyX access mode: token (access code required) or trusted-network (no locking, an operator decision); another value fails startup. Unset: token."
-    },
-    "PSYX_ACCESS_TOKEN": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "security",
-      "secret": true,
-      "description": "Private access code that unlocks PsyX in token mode. Unset: PsyX private APIs stay locked."
-    },
-    "PSYX_AUTO_REVIEW": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "true",
-      "category": "household",
-      "secret": false,
-      "description": "PsyX background review after each completed turn (digest and memory proposals the user approves). false disables it. Unset: true."
-    },
-    "PSYX_DREAM": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "true",
-      "category": "household",
-      "secret": false,
-      "description": "PsyX dream between sessions: rereads conversations, memory and the owner's notes, tasks and mail journal, then writes the portrait and memory changes the user can undo. false disables it. Unset: true."
-    },
-    "PSYX_FRONTIER_AGENT": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "OpenClaw agent PsyX uses as its frontier lane (a cloud model reached through OPENCLAW_GATEWAY_URL). Unset: PsyX stays on local routes and the setting is hidden."
-    },
-    "PSYX_FRONTIER_MODE": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "local",
-      "category": "household",
-      "secret": false,
-      "description": "Default frontier use for a PsyX user who has not chosen: local, deep (deep turns and the background review) or all. Another value fails startup. Unset: local."
-    },
-    "PSYX_FRONTIER_MODEL": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "frontier",
-      "category": "household",
-      "secret": false,
-      "description": "Label of the model behind the PsyX frontier agent, shown in the interface and saved with turns. Unset: frontier."
-    },
-    "PSYX_REVIEW_TASK": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "deep_reasoning",
-      "category": "household",
-      "secret": false,
-      "description": "Router task type of the PsyX background review. Unset: deep_reasoning."
-    },
-    "PSYX_VOICE_MODE": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "disabled",
-      "category": "household",
-      "secret": false,
-      "description": "PsyX voice mode: disabled or voix (requires a valid VOIX_BASE_URL); another value fails startup. Unset: disabled."
-    },
     "QDRANT_COLLECTION": {
       "services": [
         "rag"
@@ -3547,7 +3437,7 @@
       "default": null,
       "category": "household",
       "secret": false,
-      "description": "Base URL of the VoiX service for household player, transcription, synthesis and PsyX voice. Unset: VoiX routes answer 503 VOIX_NOT_CONFIGURED."
+      "description": "Base URL of the VoiX service for household player, transcription and synthesis. Unset: VoiX routes answer 503 VOIX_NOT_CONFIGURED."
     },
     "VOIX_FALLBACK_URL": {
       "services": [

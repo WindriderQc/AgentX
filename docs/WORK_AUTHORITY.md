@@ -16,7 +16,6 @@ domains. See [work lifecycle](WORK_LIFECYCLE.md).
 | Internal Nestor consumer token | The internal inference transport contract | Human identity, requester authority or a coding grant |
 | Core automation lease | Possession of the current task lease, with native expiry/fences | Person identity or permission to widen scope |
 | Native executor/request identity | The recorded runner and exact execution correlation | A human identity, new budget or proof of success |
-| PsyX bearer token | The existing specialized native integration access | A global login, adult cookie or engineering delegation |
 | DSH signed launch / native runtime grants | The installed integration's narrowly checked operation | All requester powers, publication/deployment consent or bypass of Core admission |
 
 No accounts, login replacement or new household access mechanism are introduced.

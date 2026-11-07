@@ -265,7 +265,6 @@ if (!isDemoProfile(agentxProfile)) {
   // GraphysX proposals: a sentence from the AgentX Center becomes validated world commands,
   // composed through the admitted router from GraphysX's published vocabulary. Nothing applies.
   require('../surfaces/graphysx').register({ app, express });
-  require('../surfaces/psyx').register({ app, mongoose, runtimeServices, conversationLifecycle, logger });
   // Optional host integrations use the same admitted Core runtime and models.
   // Instance configuration and native harness processes remain external.
   const integrationApi = { contractVersion: 2, app, express, mongoose, logger, standardJsonParser, runtimeServices };

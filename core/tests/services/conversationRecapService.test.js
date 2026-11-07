@@ -10,14 +10,14 @@ const { registerRecapRoutes } = require('../../src/services/conversations/recapR
 
 describe('Core user-confirmed conversation continuity', () => {
   const core = createConversationRecapService();
-  const scope = { userId: 'surface:psyx:synthetic-owner', promptName: 'psyx' };
+  const scope = { userId: 'surface:private-example:synthetic-owner', promptName: 'private-example' };
   const points = core.forOwner(scope);
   const content = { summary: 'Synthetic recap', takeaway: 'Synthetic takeaway', nextStep: '' };
   let row, id;
   beforeAll(async () => { await Conversation.createCollection(); await Conversation.createIndexes(); });
   beforeEach(async () => {
     await Conversation.deleteMany({});
-    row = await Conversation.create({ ...scope, surface: 'psyx', messages: [
+    row = await Conversation.create({ ...scope, surface: 'private-example', messages: [
       { role: 'user', content: 'Synthetic request' }, { role: 'assistant', content: 'Synthetic response' }
     ] });
     id = String(row._id);
@@ -149,9 +149,9 @@ describe('Core user-confirmed conversation continuity', () => {
   });
   test('the generator uses admitted Core inference, with the server-selected consumer contract', async () => {
     const execute = jest.fn(async () => ({ ok: true, body: { message: { content: JSON.stringify(content) } } }));
-    await points.draft(id, localRecapGenerator({ execute }, 'psyx'));
+    await points.draft(id, localRecapGenerator({ execute }, 'private-example'));
     expect(execute.mock.calls[0][0]).toMatchObject({ mode: 'chat', stream: false, taskType: 'analysis', think: false, format: 'json' });
-    expect(execute.mock.calls[0][1]).toEqual({ consumerContract: 'psyx' });
+    expect(execute.mock.calls[0][1]).toEqual({ consumerContract: 'private-example' });
     expect(recapContext({ ...content, stale: true })).toContain('des échanges ont suivi');
   });
   test('disabled model drafts remain disabled while manual points can be saved', async () => {

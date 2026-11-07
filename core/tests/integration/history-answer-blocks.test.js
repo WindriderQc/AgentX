@@ -93,7 +93,7 @@ test.each(HISTORICAL_BLOCKS)('paged public reads preserve unsupported block evid
 });
 
 test.each(HISTORICAL_BLOCKS)('historical unknown/malformed/null blocks cannot make a hidden surface look like plaintext: %p', async answerBlocks => {
-  const { row } = await historicalPage(answerBlocks, { surface: 'psyx' });
+  const { row } = await historicalPage(answerBlocks, { surface: 'private-example' });
   await harness.request.get(`/api/history/${row.id}`).expect(404);
   await harness.request.get(`/api/history/conversations/${row.id}`).expect(404);
   const latest = await harness.request.get('/api/history/logs').expect(200);
@@ -127,7 +127,7 @@ test('invalid blocks reject the entire batch before creation or append', async (
 });
 
 test.each([{ userId: 'other-owner' }, { lifecycle: { status: 'archived' } }, { tags: ['agentx:internal-probe'] },
-  { source: 'external', clientRef: 'benchmark-canary:fixture' }, { surface: 'psyx' }, { surfaceSession: { sessionId: 'fixture', packId: 'private', modeId: 'fixture', scopeId: 'fixture' } }])(
+  { source: 'external', clientRef: 'benchmark-canary:fixture' }, { surface: 'private-example' }, { surfaceSession: { sessionId: 'fixture', packId: 'private', modeId: 'fixture', scopeId: 'fixture' } }])(
   'new table append/read cannot cross an inaccessible target: %p', async hidden => {
     const row = await Conversation.create({ userId: OWNER, messages: [normalizeMessage(message())], ...hidden });
     const count = await Conversation.countDocuments({});
@@ -149,8 +149,8 @@ test('explicit bad target never forks; hidden-source block creation is refused a
 
 test('previews, latest, search counts and tags exclude native hidden tables before projection', async () => {
   const visible = await Conversation.create({ userId: OWNER, title: 'Visible table', tags: ['visible-table'], messages: [normalizeMessage(message())] });
-  const legacy = await Conversation.create({ userId: OWNER, title: 'Legacy surface text', surface: 'psyx', messages: [{ role: 'assistant', content: 'Legacy text.' }] });
-  const hidden = await Conversation.create({ userId: OWNER, title: 'Hidden native table', surface: 'psyx', tags: ['hidden-table'], messages: [normalizeMessage(message())] });
+  const legacy = await Conversation.create({ userId: OWNER, title: 'Legacy surface text', surface: 'private-example', messages: [{ role: 'assistant', content: 'Legacy text.' }] });
+  const hidden = await Conversation.create({ userId: OWNER, title: 'Hidden native table', surface: 'private-example', tags: ['hidden-table'], messages: [normalizeMessage(message())] });
   for (const path of ['/api/history', '/api/history/conversations']) {
     const response = await harness.request.get(path).expect(200);
     expect(response.body.data.map(row => row.id).sort()).toEqual([visible.id, legacy.id].sort());
@@ -183,7 +183,7 @@ test('a changed visibility predicate without a version change still refuses the 
   const find = Conversation.findOne.bind(Conversation);
   jest.spyOn(Conversation, 'findOne').mockImplementationOnce(async (...args) => {
     const result = await find(...args);
-    await Conversation.collection.updateOne({ _id: row._id }, { $set: { surface: 'psyx' } });
+    await Conversation.collection.updateOne({ _id: row._id }, { $set: { surface: 'private-example' } });
     return result;
   });
   const response = await harness.request.post('/api/history').send({ conversationId: row.id, messages: [message()] }).expect(404);

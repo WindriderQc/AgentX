@@ -18,7 +18,6 @@ fs.mkdirSync(output, { recursive: true });
   app.use('/assets/household', express.static(publicDir));
   app.use('/js', express.static(path.join(core, 'public/js')));
   app.use('/css', express.static(path.join(core, 'public/css')));
-  app.use('/psyx/assets', express.static(path.join(core, 'surfaces/psyx/public')));
   app.get('/api/voix/player.js', (_req, res) => res.type('js').send(''));
   app.get('/fixture', (_req, res) => {
     const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')

@@ -18,7 +18,7 @@
     function working(value) { busy = value; for (const control of form.querySelectorAll('input, select, button:not([data-close]):not([data-cancel])')) control.disabled = value; }
     function render() {
       groups.replaceChildren();
-      const labels = { playground: 'Playground', psyx: 'PsyX', nestor: 'Personal Nestor', family: 'Family · parental control' };
+      const labels = { playground: 'Playground', nestor: 'Personal Nestor', family: 'Family · parental control' };
       dialog.querySelector('[data-scope]').textContent = `Settings for ${labels[snapshot.surface] || snapshot.surface} · applied to upcoming messages.`;
       for (const group of [...new Set(snapshot.catalog.map(item => item.group))]) {
         const items = snapshot.catalog.filter(item => item.group === group), details = doc.createElement('details');

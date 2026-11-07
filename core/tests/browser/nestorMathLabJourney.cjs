@@ -40,7 +40,6 @@ let browser, server;
   app.use('/assets/household', express.static(publicDir));
   app.use('/js', express.static(path.join(core, 'public/js')));
   app.use('/css', express.static(path.join(core, 'public/css')));
-  app.use('/psyx/assets', express.static(path.join(core, 'surfaces/psyx/public')));
   app.get('/api/voix/player.js', (_req, res) => res.type('js').send(''));
   app.get('/api/household/avatar/llmx-face.js', (_req, res) => res.type('js').send(face));
   app.get('/fixture', (_req, res) => {

@@ -11,7 +11,6 @@ a design proposal, not a delivered capability.
 |---|---|---|---|
 | HTTPS LAN `/`, `/dad`, `/panel`, `/lecture` | Core on loopback 3180 | `parentalAccess`, gateway entry header, adult cookie | Core surface/pack binding, conversations, memory audience, task lanes |
 | HTTPS LAN `/llmx` | Existing GraphysX Forge module and bounded graphical assets relayed by Household | Same private-LAN boundary as Core | Existing LLMx personal/Family consumer and VoiX; Family-pinned devices may enter only `?profile=family` and its scoped consumer. No cross-site exception or new credential. |
-| HTTPS LAN `/psyx`, `/api/psyx/*` | PsyX in Core | Shared parental session; separate native token | PsyX owner namespace and explicit lifecycle/reset confirmations; native bearer remains independent |
 | HTTPS LAN `/benchmark`, `/benchmark/*` | Benchmark on loopback 3181 | Caddy forward auth to Core | Benchmark admission, leases, execution limits and qualification |
 | HTTPS LAN `/rag`, `/rag/*` | RAG on loopback 3182 | Caddy forward auth to Core | Retrieval classifications, ingestion policy and destructive confirmations |
 | HTTPS LAN `/data-toolbox` | Core projection → internal Data 3083 | Core adult gate | Toolbox allowlist: reads, network device record edit, network scan request, MQTT publish, storage scan request, Janitor review decisions (store, import, remove; no file is deleted), report generation and report deletion (in Data's own report store); Data owns mutations |
@@ -34,12 +33,12 @@ An example or passing local test does not establish deployed ingress.
   `faceRecognizerWorker.js`; `models/ParentalCode.js`, `FaceEnrollment.js`.
 - Browser: all `core/public/access` pages/assets; layout and Data Toolbox injection; Household
   access markers and unlock link; optional `AgentXAccess` calls in Household
-  browser modules; PsyX gate, lock controls, cookie auth and access epochs.
+  browser modules.
 - Configuration: `AGENTX_PARENTAL_CODE`, `AGENTX_PARENTAL_SESSION_MINUTES`,
   `AGENTX_FACE_UNLOCK_*`, `X-AgentX-Entry`, Compose/environment catalogue and
   Caddy examples; CI cookie/unlock smoke.
 - HTTP: `/api/access/*` retires; `/unlock` and `/access/code|face` become bounded
-  bookmark redirects. Existing `agentx_adult` and `psyx_session` cookies expire
+  bookmark redirects. Existing `agentx_adult` cookies expire
   when presented and never grant access. No adult session store remains.
 - Native telemetry consumers: remove the parental bearer/code-file transport in
   memory-review Python, Codex usage sync JavaScript and its PowerShell wrapper;
@@ -74,7 +73,7 @@ archived reports contradict this decision; they remain historical evidence,
 not deployment instructions.
 
 The product checkout has concurrent uncommitted changes in shared app,
-parental, Household, PsyX and documentation files. Implementation is isolated
+parental, Household and documentation files. Implementation is isolated
 from the committed baseline in a separate worktree. Integration into that
 checkout requires reviewing overlap; this branch does not include or overwrite
 the concurrent work. The instance checkout is isolated in the same way.
@@ -84,7 +83,7 @@ the concurrent work. The instance checkout is isolated in the same way.
 | References | Classification and reason |
 |---|---|
 | Old middleware, services, models, UI/assets, timers and env settings | Removed from executable product/configuration; face/TensorFlow dependencies removed from package and lockfile; `jpeg-js` retained for the independent image codec |
-| `/unlock`, `/access/code`, `/access/face`, `agentx_adult`, `psyx_session` in `legacyHumanAccess.js` | Deliberate migration only: bounded redirect/cookie expiry, no sessions or privilege |
+| `/unlock`, `/access/code`, `/access/face`, `agentx_adult` in `legacyHumanAccess.js` | Deliberate migration only: bounded redirect/cookie expiry, no sessions or privilege |
 | Retired routes and UI names in migration tests and CI | Negative assertions proving absence; never used to unlock a human request |
 | Collection names in preservation tests and retirement procedure | Required historical data identity; no production deletion performed |
 | Names in this inventory and `PARENTAL_ACCESS.md` | Explicit removal/migration history; filename retained for existing documentation links |

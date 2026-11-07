@@ -47,7 +47,7 @@ test('an exact visible session without a fence returns null while foreign namesp
   expect(await service.inspectionFence(session.sessionId)).toBeNull();
   const response = await harness.request.get(`/expert/sessions/${session.sessionId}/turns`).expect(200);
   expect(response.body).toEqual({ ok: true, turns: [], inspectionFence: null });
-  for (const [surface, packId, scopeId] of [['image-workshop', 'private', 'private'], ['psyx', 'atelier', 'workspace']]) {
+  for (const [surface, packId, scopeId] of [['image-workshop', 'private', 'private'], ['private-specialist', 'atelier', 'workspace']]) {
     const foreign = await forSurface(surface).createSession({ sessionId: randomUUID(), modeId: 'imagex', packId, scopeId });
     await expect(service.inspectionFence(foreign.sessionId)).rejects.toMatchObject({ statusCode: 404 });
     await harness.request.get(`/expert/sessions/${foreign.sessionId}/turns`).expect(404);
