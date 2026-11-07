@@ -83,6 +83,73 @@ beforeEach(async () => {
 });
 afterEach(() => { jest.restoreAllMocks(); autonomy.configureControl(null); });
 
+describe('frozen regression requirements', () => {
+  const first = 'integrations/coding/tests/test_first.py';
+  const second = 'integrations/coding/tests/test_second.py';
+  const third = 'integrations/coding/tests/test_third.py';
+  async function reviewRequirement(paths) {
+    const current = await task();
+    const { fingerprint, ...originalIntent } = current.automation;
+    const scope = [...current.automation.scope, first, second, third];
+    const automation = normalizePipelineAutomationIntent({ ...originalIntent, scope,
+      sourceFiles: scope, lockKeys: scope.map(path => `file:${path}`) });
+    const definition = require('../../src/services/pipelineCodingReadiness').definition({
+      ...grantBody().qualification, ...(paths && { requiredRegressionTests: paths }) });
+    await Task.updateOne({ pipelineId: '0001' }, { $set: { automation,
+      'codingAutonomy.basis': policy.basis({ ...current, automation }),
+      'codingAutonomy.qualification': {
+        taskBasis: require('../../src/services/pipelineCodingReadiness').taskBasis({ ...current, automation }), definition } } });
+  }
+  async function inputFor(mode) {
+    if (mode === 'recovered') return grantBody();
+    await nativeTerminal();
+    return mode === 'native' ? nativeBody() : reviewedBody();
+  }
+  describe.each(['recovered', 'native', 'reviewed'])('%s continuation', mode => {
+    test.each(['removed', 'omitted', 'added', 'replaced', 'introduced'])
+    ('refuses %s tests before any fence, credit, progress change or launch', async change => {
+      await reviewRequirement(change === 'introduced' ? undefined : [first]);
+      const input = await inputFor(mode);
+      if (change === 'removed') input.qualification.requiredRegressionTests = [];
+      if (change === 'added') input.qualification.requiredRegressionTests = [first, second];
+      if (change === 'replaced') input.qualification.requiredRegressionTests = [third];
+      if (change === 'introduced') input.qualification.requiredRegressionTests = [first];
+      const before = await task(), config = await settings();
+      const runtime = await Runtime.collection.findOne({ _id: 'runtime' });
+      control.status.mockClear(); queue.get.mockClear();
+      await expect(grant(input)).rejects.toMatchObject({ code: 'CODING_CONTINUATION_UNVERIFIED' });
+      expect(await task()).toEqual(before);
+      expect(await settings()).toEqual(config);
+      expect(await Runtime.collection.findOne({ _id: 'runtime' })).toEqual(runtime);
+      expect(control.status).not.toHaveBeenCalled(); expect(queue.get).not.toHaveBeenCalled();
+      expect(control.launch).not.toHaveBeenCalled(); expect(control.stop).not.toHaveBeenCalled();
+      expect(control.reconcile).not.toHaveBeenCalled();
+    });
+    test.each(['identical', 'reordered', 'inherited', 'legacy_absent', 'legacy_empty', 'stale_review'])
+    ('allows %s requirements while preserving original evidence', async kind => {
+      const tests = kind.startsWith('legacy_') ? undefined : [first, second];
+      await reviewRequirement(tests);
+      if (kind === 'stale_review') await Task.updateOne({ pipelineId: '0001' }, {
+        $set: { 'codingAutonomy.qualification.taskBasis': 'stale' } });
+      const input = await inputFor(mode);
+      if (kind === 'inherited') delete input.qualification;
+      else if (tests) input.qualification.requiredRegressionTests = kind === 'reordered' ? [second, first] : tests;
+      else if (kind === 'legacy_empty') input.qualification.requiredRegressionTests = [];
+      const before = await task();
+      const projected = autonomy.projection(before);
+      expect(projected.requiredRegressionTests).toEqual(tests || []);
+      if (kind === 'stale_review') expect(projected.readiness.definition).toBeNull();
+      const after = await grant(input);
+      expect(after.codingAutonomy.qualification.definition.requiredRegressionTests).toEqual(tests);
+      expect(after.codingAutonomy.budgetGrants).toHaveLength(1);
+      expect(after.codingAutonomy.runs).toEqual(before.codingAutonomy.runs);
+      expect(after.codingAutonomy.spent).toEqual(before.codingAutonomy.spent);
+      expect(after.automationAttempts).toEqual(before.automationAttempts);
+      expect(control.launch).not.toHaveBeenCalled();
+    });
+  });
+});
+
 
 const NEXT_QUEUE = '30000000-0000-4000-8000-000000000002';
 const HEAD = 'f'.repeat(40);

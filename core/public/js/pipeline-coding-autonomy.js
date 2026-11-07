@@ -83,8 +83,9 @@
     };
     lines('acceptanceCriteria', 'Observable acceptance criteria, one per line', (reviewed?.acceptanceCriteria || []).join('\n'));
     lines('requiredCapabilities', 'Required capabilities, one per line', (reviewed?.requiredCapabilities || ['source_read', 'source_write', 'cpu_tests']).join('\n'));
-    lines('requiredRegressionTests', 'Required regression test edits, exact paths (optional)', (reviewed?.requiredRegressionTests || []).join('\n'));
+    lines('requiredRegressionTests', 'Required regression test edits (fixed for this task)', (task.requiredRegressionTests || reviewed?.requiredRegressionTests || []).join('\n'));
     fields.requiredRegressionTests.required = false;
+    fields.requiredRegressionTests.readOnly = true;
     input('estimatedWorkMinutes', 'Estimated remaining work minutes', reviewed ? Math.ceil(reviewed.estimate.workSeconds / 60) : '');
     input('estimatedModelCalls', 'Estimated remaining model calls', reviewed?.estimate.modelCalls || '');
     const label = element('label', 'Correction based on the preserved checkpoint and test evidence');
@@ -132,8 +133,8 @@
         element('p', `Remaining: ${remaining(task.remaining.workSeconds)} work, ${remaining(task.remaining.testSeconds)} tests, ${remaining(task.remaining.modelSeconds)} model, ${task.remaining.modelCalls} calls, ${remaining(task.remaining.ciSeconds)} CI`),
         element('p', `Last useful progress: ${task.lastUsefulProgressAt || 'none recorded'} · manual interventions: ${task.manualInterventions.length}`));
       article.append(element('p', `Authorized files: ${task.scope.join(', ')} · campaign ${task.queueRequestId}`));
-      if (task.readiness?.definition?.requiredRegressionTests?.length) article.append(element('p',
-        `Required regression test edits: ${task.readiness.definition.requiredRegressionTests.join(', ')}. Content changes do not prove semantic coverage.`));
+      if (task.requiredRegressionTests?.length) article.append(element('p',
+        `Required regression test edits: ${task.requiredRegressionTests.join(', ')}. Content changes do not prove semantic coverage.`));
       if (task.readiness && !task.readiness.canAuthorize)
         for (const issue of task.readiness.issues) article.append(element('p', `${issue.message} ${issue.nextAction}`));
       appendCodeStepGraph(article, task.codeStepGraph);

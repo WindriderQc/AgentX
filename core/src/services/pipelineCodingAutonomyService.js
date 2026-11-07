@@ -149,6 +149,7 @@ function projection(task) {
     ciObservationActive: Boolean(state.pr && last?.finishedAt && !task.automationLease && !task.codingCapacity
       && ['review', 'blocked'].includes(task.status) && (state.state === 'waiting_ci' || failedCIWatch(state))),
     scope: task.automation.scope, verificationProfile: state.verificationProfile || task.automation.verificationProfile,
+    requiredRegressionTests: [...(state.qualification?.definition?.requiredRegressionTests || [])].sort(),
     readiness: readiness.assess(task, policy.totalLimits(state), state.qualification?.taskBasis === readiness.taskBasis(task) ? state.qualification.definition : null),
     queueRequestId: state.queueRequestId, limits: state.limits, totalLimits: policy.totalLimits(state), budgetGrants: state.budgetGrants || [],
     authorizationRevision: state.revision, authorized: state.authorized, state: state.state, reason: state.reason,

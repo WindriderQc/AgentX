@@ -57,6 +57,10 @@ function preparedTask(task, wanted) {
 function qualify(task, wanted) {
   const saved = task.codingAutonomy.qualification;
   const proposed = wanted.qualification ?? (saved?.taskBasis === readiness.taskBasis(task) ? saved.definition : null);
+  const required = [...(saved?.definition?.requiredRegressionTests || [])].sort();
+  const nextRequired = [...(proposed?.requiredRegressionTests || [])].sort();
+  if (policy.digest(required) !== policy.digest(nextRequired))
+    throw fail('Continuations must preserve the frozen required regression tests; no credit or worker was created');
   const prepared = preparedTask(task, wanted);
   return readiness.assertReady(prepared, policy.remaining(prepared), proposed);
 }
