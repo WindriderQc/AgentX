@@ -49,6 +49,10 @@ const CORE_OPERATIONS = Object.freeze({
   HEAVY_QUEUE_LIST: 'benchmark.core-api.heavy-queue-list',
   HEAVY_QUEUE_PLACE: 'benchmark.core-api.heavy-queue-place',
   HEAVY_QUEUE_REFUSED: 'benchmark.core-api.heavy-queue-refused',
+  HEAVY_QUEUE_GET: 'benchmark.core-api.heavy-queue-get',
+  HEAVY_QUEUE_RUN: 'benchmark.core-api.heavy-queue-run',
+  HEAVY_QUEUE_CANCEL: 'benchmark.core-api.heavy-queue-cancel',
+  HEAVY_QUEUE_ASSERT: 'benchmark.core-api.heavy-queue-assert',
   RUNTIME_CONFIG_EXPORT: 'benchmark.core-api.runtime-config-export',
   CELL_BUDGET_OPEN: 'benchmark.core-api.cell-budget-open',
   CELL_BUDGET_CLOSE: 'benchmark.core-api.cell-budget-close',
@@ -76,6 +80,18 @@ function operation(method, pathPattern, {
 const CORE_OPERATION_SPECS = Object.freeze({
   [CORE_OPERATIONS.HEAVY_QUEUE_REFUSED]: operation('POST', '^/api/cluster/schedule/work-queue/[a-f0-9-]{36}/refused$', {
     maxRequestBytes: 8 * 1024, maxResponseBytes: 256 * 1024,
+  }),
+  [CORE_OPERATIONS.HEAVY_QUEUE_GET]: operation('GET', '^/api/cluster/schedule/work-queue/[^/]+$', {
+    maxResponseBytes: 256 * 1024,
+  }),
+  [CORE_OPERATIONS.HEAVY_QUEUE_RUN]: operation('POST', '^/api/cluster/schedule/work-queue/[^/]+/run$', {
+    deadlineMs: 360000, maxRequestBytes: 1024, maxResponseBytes: 256 * 1024,
+  }),
+  [CORE_OPERATIONS.HEAVY_QUEUE_CANCEL]: operation('POST', '^/api/cluster/schedule/work-queue/[^/]+/cancel$', {
+    maxRequestBytes: 1024, maxResponseBytes: 256 * 1024,
+  }),
+  [CORE_OPERATIONS.HEAVY_QUEUE_ASSERT]: operation('POST', '^/api/cluster/schedule/work-queue/[^/]+/assert-dispatch$', {
+    maxRequestBytes: 1024, maxResponseBytes: 256 * 1024,
   }),
   [CORE_OPERATIONS.GPU_DRIVER_CACHE_INVALIDATION]: operation('POST', '^/api/inference/contract/gpu-driver-cache-invalidation$', {
     maxRequestBytes: 16 * 1024, maxResponseBytes: 64 * 1024,

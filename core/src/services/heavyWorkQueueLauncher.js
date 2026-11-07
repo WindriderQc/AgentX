@@ -29,12 +29,28 @@ async function startProfile(body) {
 // Each request Core launches: its native start and the receipt identity it
 // returns. `start` replaces the Profiler start only (tests, Run now).
 const STARTERS = {
+  coverage: {
+    start: begun => require('./heavyWorkQueueCoverage').start(begun),
+    operationId: result => result?.requestId,
+    name: 'Benchmark coverage'
+  },
   transcription: {
     start: job => require('./transcriptionExecutor').start(job),
     operationId: result => result?.id, name: 'local transcription'
   },
   profiler: {
-    start: (begun, start) => (start || startProfile)({ ...begun.executor, queueRequestId: begun.id, queueDispatchId: begun.dispatchId }),
+    start: async (begun, start) => {
+      const coverage = require('./heavyWorkQueueCoverage');
+      if (coverage.profileRequestId(begun)) {
+        try { await coverage.assertAdmission(begun); }
+        catch (error) {
+          // This was a read-only gate; no Profiler start has been sent.
+          throw Object.assign(error, { notStarted: true });
+        }
+        await queue.assertDispatch(begun.id, begun.dispatchId);
+      }
+      return (start || startProfile)({ ...begun.executor, queueRequestId: begun.id, queueDispatchId: begun.dispatchId });
+    },
     operationId: result => result?.queueId,
     name: 'Profiler'
   },
@@ -55,6 +71,7 @@ const STARTERS = {
   }
 };
 function starterFor(job) {
+  if (job.kind === 'benchmark' && job.executor?.mode === 'coverage') return STARTERS.coverage;
   return STARTERS[job.executor?.mode === 'pipeline-report' ? 'pipeline-report' : job.kind];
 }
 function startable(job) {

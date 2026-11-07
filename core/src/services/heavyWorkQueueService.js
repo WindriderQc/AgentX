@@ -287,7 +287,7 @@ async function settle(id, observation, actor) {
     const job = jobIn(state, id);
     if (TERMINAL.includes(job.state)) return { readOnly: true, value: job };
     if (!job.operation || observation.operationId !== job.operation.id || !TERMINAL.includes(observation.state)) throw fail('Exact terminal executor observation required', 409);
-    if (job.preparationRefusal || job.launchRefusal || job.preparationReceipt) {
+    if (job.preparationRefusal || job.launchRefusal || job.preparationReceipt || require('./heavyWorkQueueCoverage').requiresRelease(job)) {
       // Recheck on every CAS attempt, including a holder acquired since the
       // observer read the outcome. This transition releases no native owner.
       const runtime = await require('../../models/RuntimeCoordination').findById('runtime').lean();

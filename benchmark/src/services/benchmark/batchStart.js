@@ -34,6 +34,7 @@ const { resolveJudgeConfig } = require('../scoring/resolveJudgeConfig');
 const { freezeJudgeConfig } = require('./judgeExecutionContract');
 
 async function startBatch({
+    coverage_request_id,
     host,
     models,
     targets = null,
@@ -160,6 +161,7 @@ async function startBatch({
     });
     plan.batch_contract_fingerprint = batchContractFingerprint;
     const batch = new BenchmarkBatch({
+        ...(coverage_request_id && { coverage_request_id }),
         _id: plannedBatchId,
         host: defaultHost,
         models: displayModels,
@@ -182,6 +184,9 @@ async function startBatch({
         quality_cohort_fingerprint: qualityCohortFingerprint,
         batch_contract_fingerprint: batchContractFingerprint
     });
+
+    if (coverage_request_id) await require('../measurementCoverage/coverageQualification')
+        .assertFrozenBatch(coverage_request_id, judge_config, selectedPrompts);
 
     const spendGrant = await createSpendGrant({
         batchId: batch._id.toString(),

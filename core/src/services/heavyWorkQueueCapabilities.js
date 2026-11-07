@@ -4,7 +4,8 @@
 // an open reservation, runtime admission or evidence that a launch occurred.
 const AUTO_START_KINDS = ['profiler', 'embedding-reindex', 'topology', 'transcription'];
 function autoStartable(job) {
-  return Boolean(job.executor) && (AUTO_START_KINDS.includes(job.kind) || job.executor.mode === 'pipeline-report');
+  return Boolean(job.executor) && (AUTO_START_KINDS.includes(job.kind) || job.executor.mode === 'pipeline-report'
+    || (job.kind === 'benchmark' && job.executor.mode === 'coverage'));
 }
 
 module.exports = { AUTO_START_KINDS, autoStartable };

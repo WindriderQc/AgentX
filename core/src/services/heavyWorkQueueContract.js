@@ -63,7 +63,10 @@ function validateRequest(body) {
   let executor = body.executor || null;
   if (executor) {
     if (Buffer.byteLength(JSON.stringify(executor)) > 16000) throw fail('Executor request exceeds 16000 bytes; use existing artifact references');
-    if (kind === 'benchmark') {
+    if (kind === 'benchmark' && executor.mode === 'coverage') {
+      only(executor, ['mode', 'requestId'], 'coverage executor');
+      if (!/^[a-f0-9-]{36}$/.test(executor.requestId || '')) throw fail('Exact coverage request identity required');
+    } else if (kind === 'benchmark') {
       only(executor, ['plan', 'prepare', 'request'], 'benchmark executor');
       try {
         if (executor.prepare !== true) planId(executor.plan);

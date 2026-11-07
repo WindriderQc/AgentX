@@ -4,8 +4,8 @@
  * The coverage job: one small measurement at a time, in quiet periods, until
  * every host and model in scope is profiled and has answered the catalog.
  *
- * Rule-based on purpose. Each tick: settle the previous bite against the
- * matrix, check the quiet period, pick the next cell, launch one bite. A cell
+ * Rule-based on purpose. Each tick observes the original Core request; only a
+ * native terminal receipt permits settlement and another bite. A cell
  * whose bites keep failing is left alone for a day instead of being retried
  * every night.
  */
@@ -14,7 +14,8 @@ const logger = require('../../../config/logger');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const { buildCoverage } = require('./coverageState');
 const { checkIdle } = require('./coverageIdle');
-const { launchBite } = require('./coverageLauncher');
+const { prepareBite, followBite } = require('./coverageLauncher');
+const attemptsStore = require('./coverageAttempts');
 const settingsStore = require('./coverageSettings');
 const coreReads = require('../../clients/coreCoverageReads');
 const { hostKey, modelKey } = require('./coverageScope');
@@ -89,60 +90,89 @@ function settle(state, cells, now) {
   return true;
 }
 
-function createCoverageJob(deps = {}) {
-  const now = deps.now || (() => Date.now());
-  const idleDeps = deps.idleDeps || {
+function nativeIdleDeps() {
+  return {
     getRuntimeActive: coreReads.getRuntimeActive,
     getHouseholdIdle: coreReads.getHouseholdIdle,
     getActiveBatch: async () => (await BenchmarkBatch.getActive()).length > 0,
     getActiveProfiles: activeProfiles
   };
+}
+
+function createCoverageJob(deps = {}) {
+  const now = deps.now || (() => Date.now());
+  const idleDeps = deps.idleDeps || nativeIdleDeps();
   const store = deps.store || settingsStore;
+  const attempts = deps.attempts || attemptsStore;
   const build = deps.buildCoverage || buildCoverage;
-  const launch = deps.launchBite || launchBite;
+  const prepare = deps.prepareBite || prepareBite;
+  const follow = deps.followBite || followBite;
   let timer = null;
   let ticking = false;
   let lastCheck = null;
+
+  async function remember(attempt, result, state) {
+    const cell = attempt.intent.cell;
+    state.last = { cell: cellKey(cell), hostName: cell.hostName, model: cell.model, kind: attempt.intent.kind,
+      at: attempt.intent.at, progressBefore: progressOf(cell), ...result };
+    if (result.terminal) {
+      if (result.notStarted) {
+        const record = state.cells[cellKey(cell)] ||= { failures: 0 };
+        record.refusedAt = new Date(now()).toISOString();
+        record.lastError = result.error || 'Native request did not start';
+        Object.assign(state.last, { settledAt: new Date(now()).toISOString(), outcome: 'not_started' });
+      } else {
+        settle(state, (await build()).cells, now());
+        if (result.state === 'failed') state.last.outcome = 'failed';
+      }
+    }
+    // This is presentation/progress only; the independent durable intent still
+    // fences a lost state write, a process restart or concurrent job workers.
+    await store.saveState(state);
+    return state.last;
+  }
 
   async function tick() {
     if (ticking) return null;
     ticking = true;
     try {
-      const settings = await store.getSettings();
+      const [settings, state, pending] = await Promise.all([store.getSettings(), store.getState(), attempts.active()]);
+      // Reconcile even while switched off/busy/outside the window. Read-only
+      // observation never requires permission to start another measurement.
+      if (pending) {
+        const result = await follow(pending, { attempts, allowStart: false, now: () => new Date(now()) });
+        const last = await remember(pending, result, state);
+        if (result.terminal || !['requested', 'reserved'].includes(result.state)) {
+          return (lastCheck = { at: new Date(now()).toISOString(), idle: false,
+            reasons: [result.terminal ? 'measurement finished' : 'observing original measurement'], started: last });
+        }
+      }
       if (!settings.enabled) return (lastCheck = { at: new Date(now()).toISOString(), idle: false, reasons: ['switched off'] });
       const idle = await checkIdle(settings, { ...idleDeps, now: () => new Date(now()) });
       lastCheck = { at: new Date(now()).toISOString(), ...idle };
       if (!idle.idle) return lastCheck;
-
-      const [coverage, state] = await Promise.all([build(), store.getState()]);
-      const settled = [settle(state, coverage.cells, now()), clearServedRequests(state, coverage.cells)].some(Boolean);
-      const cell = orderCells(coverage.cells, state, now())[0];
-      if (!cell) {
-        if (settled) await store.saveState(state);
-        return (lastCheck = { ...lastCheck, reasons: ['nothing left to measure'] });
+      let attempt = pending;
+      if (!attempt) {
+        // Legacy pre-identity launches cannot be proven ended by an idle read.
+        // Retain them for operator inspection rather than inventing a retry.
+        if (state.last && !state.last.settledAt && !state.last.requestId) {
+          return (lastCheck = { ...lastCheck, idle: false, reasons: ['legacy measurement needs native reconciliation'] });
+        }
+        const coverage = await build();
+        const changed = clearServedRequests(state, coverage.cells);
+        const cell = orderCells(coverage.cells, state, now())[0];
+        if (!cell) {
+          if (changed) await store.saveState(state);
+          return (lastCheck = { ...lastCheck, reasons: ['nothing left to measure'] });
+        }
+        attempt = await prepare(cell, settings, { attempts, now: () => new Date(now()) });
       }
-      const attempt = { cell: cellKey(cell), hostName: cell.hostName, model: cell.model, kind: cell.next,
-        at: new Date(now()).toISOString(), progressBefore: progressOf(cell) };
-      const record = state.cells[attempt.cell] = state.cells[attempt.cell] || { failures: 0 };
-      try {
-        Object.assign(attempt, await launch(cell, settings));
-        record.refusedAt = null;
-        logger.info('[Coverage] Measurement started', attempt);
-      } catch (error) {
-        record.refusedAt = attempt.at;
-        record.lastError = error.message;
-        Object.assign(attempt, { settledAt: attempt.at, outcome: 'not_started', error: error.message });
-        logger.warn('[Coverage] Measurement not started', { cell: attempt.cell, error: error.message });
-      }
-      state.last = attempt;
-      await store.saveState(state);
-      return (lastCheck = { ...lastCheck, started: attempt });
+      const result = await follow(attempt, { attempts, allowStart: true, now: () => new Date(now()) });
+      return (lastCheck = { ...lastCheck, started: await remember(attempt, result, state) });
     } catch (error) {
       logger.warn('[Coverage] tick failed (non-fatal)', { error: error.message });
       return (lastCheck = { at: new Date(now()).toISOString(), idle: false, reasons: [`check failed: ${error.message}`] });
-    } finally {
-      ticking = false;
-    }
+    } finally { ticking = false; }
   }
 
   function start() {
@@ -166,4 +196,4 @@ function getCoverageJob() {
   return shared;
 }
 
-module.exports = { createCoverageJob, getCoverageJob, orderCells, settle, cellKey, MAX_FAILURES, REFUSAL_COOLDOWN_MS };
+module.exports = { createCoverageJob, getCoverageJob, orderCells, settle, cellKey, MAX_FAILURES, REFUSAL_COOLDOWN_MS, nativeIdleDeps };

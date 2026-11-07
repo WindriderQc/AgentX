@@ -23,6 +23,16 @@ const settingsStore = require('../../src/services/measurementCoverage/coverageSe
 const { getCoverageJob } = require('../../src/services/measurementCoverage/coverageJob');
 const requests = require('../../src/services/measurementCoverage/coverageRequests');
 const { carryOverStoredGrades } = require('../../src/services/measurementCoverage/gradeCarryOverPass');
+const nativeLaunch = require('../../src/services/measurementCoverage/coverageNativeLaunch');
+
+router.get('/coverage/attempts/:id/admission', (req, res) => nativeLaunch.admission(req.params.id)
+    .then(data => res.json({ status: 'success', data })).catch(err => fail(res, err)));
+
+router.get('/coverage/attempts/:id', (req, res) => nativeLaunch.observe(req.params.id)
+    .then(data => res.json({ status: 'success', data })).catch(err => fail(res, err)));
+
+router.post('/coverage/attempts/:id/launch', (req, res) => nativeLaunch.launch(req.params.id, req.body || {})
+    .then(data => res.json({ status: 'success', data })).catch(err => fail(res, err)));
 
 function fail(res, err) {
     res.status(err.statusCode || 500).json({ status: 'error', code: err.code || 'COVERAGE_FAILED', message: err.message });
