@@ -270,7 +270,7 @@ owner.download({'url': 'https://www.youtube.com/watch?v=abcdefghijk'}, directory
     def active(pid):
         try:
             return Path("/proc", str(pid), "stat").read_text().split()[2] != "Z"
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):  # The process may exit between open and read.
             return False
     try:
         for _ in range(100):
