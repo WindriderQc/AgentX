@@ -35,8 +35,8 @@ const ClaimReceiptSchema = new mongoose.Schema({
   claimedAt: { type: Date, default: null }
 }, { _id: false });
 
-// The runtime the evidence was measured on (#908). Not part of the
-// fingerprint: a version change is shown as drift, not invalidation.
+// Measured runtime metadata. Ollama upgrades are drift; an activated host's
+// GPU driver participates in its physical runtime identity.
 const MeasuredRuntimeSchema = new mongoose.Schema({
   ollamaVersion: { type: String, default: null },
   gpuDriver: { type: String, default: null },
@@ -52,6 +52,8 @@ const ToolCapabilityQualificationSchema = new mongoose.Schema({
   hostId: { type: String, required: true, immutable: true },
   artifactDigest: { type: String, required: true, immutable: true, index: true },
   runtimeFingerprint: { type: String, required: true, immutable: true },
+  driverPreparationId: { type: String, default: undefined, immutable: true },
+  measuredContext: { type: Number, default: undefined, immutable: true },
   // Absent on evidence written before #908, so its integrity digest is unchanged.
   measuredRuntime: { type: MeasuredRuntimeSchema, default: undefined, immutable: true },
   protocolVersion: { type: String, required: true, immutable: true },

@@ -61,3 +61,21 @@ test('Data freshness, unknown windows and failed observations cannot date an old
     assert.equal(measure('2026-11-07T12:00:01Z', { staleAfterMs }), null);
   }
 });
+
+
+test('the activated driver identity epoch separates all new proofs even from manually known historical drivers', () => {
+  const known = { ...host, gpus: inventory.map(gpu => ({ ...gpu, driver: '580.95.05' })) };
+  const activated = { ...known, gpuDriverIdentityVersion: 'agentx.gpu-driver-identity/v1' };
+  assert.notEqual(buildRuntimeFingerprint(known), buildRuntimeFingerprint(activated));
+  assert.notEqual(buildRuntimeFingerprint(activated), buildRuntimeFingerprint({ ...activated,
+    gpus: activated.gpus.map(gpu => ({ ...gpu, driver: '590.1' })) }));
+  assert.equal(buildRuntimeFingerprint({ ...known, gpuDriverIdentityVersion: undefined }), buildRuntimeFingerprint(known));
+});
+
+
+test('unknown driver identity epochs are refused rather than interpreted as a known policy', () => {
+  for (const gpuDriverIdentityVersion of ['agentx.gpu-driver-identity/v999', '', false, 1]) {
+    assert.throws(() => buildRuntimeFingerprint({ ...host, gpus: inventory, gpuDriverIdentityVersion }),
+      { code: 'GPU_DRIVER_IDENTITY_VERSION_UNSUPPORTED' });
+  }
+});

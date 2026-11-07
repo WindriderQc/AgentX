@@ -219,6 +219,8 @@ function finalizedDigest(row) {
     hostId: row.hostId,
     artifactDigest: row.artifactDigest,
     runtimeFingerprint: row.runtimeFingerprint,
+    driverPreparationId: row.driverPreparationId || undefined,
+    measuredContext: row.measuredContext || undefined,
     // Bound only when recorded, so evidence finalized before #908 keeps its digest.
     measuredRuntime: normalizeMeasuredRuntime(row.measuredRuntime) || undefined,
     protocolVersion: row.protocolVersion,
@@ -285,6 +287,9 @@ async function beginQualification(input, deps = {}) {
       'TOOL_QUALIFICATION_CONTRACT_DRIFT'
     );
   }
+  if (input.driverPreparationId && (!Number.isSafeInteger(input.measuredContext) || input.measuredContext <= 0)) {
+    throw new ToolQualificationError('Prepared tool evidence requires its exact measured context', 'TOOL_QUALIFICATION_CONTEXT_REQUIRED');
+  }
   const startedAt = input.startedAt ? new Date(input.startedAt) : new Date();
   if (!Number.isFinite(startedAt.getTime())) {
     throw new ToolQualificationError('startedAt must be a valid date');
@@ -296,6 +301,10 @@ async function beginQualification(input, deps = {}) {
       schemaVersion: contract.schemaVersion,
       ...identity,
       ...(normalizeMeasuredRuntime(input.measuredRuntime) && { measuredRuntime: normalizeMeasuredRuntime(input.measuredRuntime) }),
+      ...(input.driverPreparationId && {
+        driverPreparationId: cleanString(input.driverPreparationId, 'driverPreparationId'),
+        measuredContext: input.measuredContext
+      }),
       contractFingerprint,
       claim: {
         batchId,
@@ -439,6 +448,7 @@ function evidenceProjection(row) {
     artifactDigest: row.artifactDigest,
     runtimeFingerprint: row.runtimeFingerprint,
     measuredRuntime: normalizeMeasuredRuntime(row.measuredRuntime),
+    ...(row.driverPreparationId && { driverPreparationId: row.driverPreparationId, measuredContext: row.measuredContext }),
     protocolVersion: row.protocolVersion,
     fixtureVersion: row.fixtureVersion,
     fixtureFingerprint: row.fixtureFingerprint,

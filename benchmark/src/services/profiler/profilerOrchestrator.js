@@ -62,6 +62,7 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
   onProgress,
   assertClaimActive,
   claimIdentity,
+  driverPreparationId,
   signal,
   // Other endpoints of this machine that the Core reservation covers.
   siblingEndpoints = []
@@ -84,7 +85,7 @@ async function profile(modelName, hostId, hostUrl, depth = 'standard', {
     if (signal?.aborted) throw (signal.reason instanceof Error ? signal.reason : err);
     logger.debug(`Could not snapshot resident context for ${modelName}: ${err.message}`);
   }
-  const artifact = await resolveArtifactIdentity(modelName, hostId, hostUrl, { refresh: true });
+  const artifact = await resolveArtifactIdentity(modelName, hostId, hostUrl, { refresh: true, ...(driverPreparationId && { driverPreparationId }) });
   const settings = await settingsService.getAll();
   const hardwareSnapshots = [];
   const initialHardware = await _captureHardwareSnapshot(hostId, 'before_profile', settings);

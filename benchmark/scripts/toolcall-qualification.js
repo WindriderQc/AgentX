@@ -65,6 +65,15 @@ function parseArgs(argv) {
     else if (a === '--host') args.host = argv[++i];
     else if (a === '--out') args.out = argv[++i];
     else if (a === '--repetitions') args.repetitions = Number(argv[++i]);
+    else if (a === '--driver-preparation-id' || a.startsWith('--driver-preparation-id=')) {
+      const value = a === '--driver-preparation-id' ? argv[++i] : a.slice('--driver-preparation-id='.length);
+      if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$/.test(value)) {
+        throw Object.assign(new Error('--driver-preparation-id requires an exact preparation identity'), {
+          code: 'TOOL_CAMPAIGN_PREPARATION_ID_REQUIRED'
+        });
+      }
+      args.driverPreparationId = value;
+    }
     else if (a === '--campaign-id') args.campaignId = argv[++i];
     else if (a === '--scenario') (args.scenarios = args.scenarios || []).push(argv[++i]);
     else if (a === '--help' || a === '-h') args.help = true;
@@ -155,6 +164,7 @@ async function main() {
       repetitions: args.repetitions,
       confirmation: args.confirmCampaign,
       campaignId: args.campaignId,
+      ...(args.driverPreparationId !== undefined && { driverPreparationId: args.driverPreparationId }),
       scenarios: args.scenarios || undefined,
       transport
     });

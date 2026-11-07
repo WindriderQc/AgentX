@@ -328,7 +328,7 @@ async function probeModelContext(modelName, options = {}) {
       normalizedModel,
       hostProfile?.hostId || artifactIdentity.hostId,
       hostUrl,
-      { refresh: true }
+      { refresh: true, ...(artifactIdentity.driverPreparationId && { driverPreparationId: artifactIdentity.driverPreparationId }) }
     );
     if (!identitiesMatch(artifactIdentity, currentArtifact)) {
       throw new Error(`Artifact or runtime changed during context probe for ${normalizedModel} on ${hostUrl}`);
@@ -344,6 +344,7 @@ async function probeModelContext(modelName, options = {}) {
       hostId: currentArtifact.hostId,
       artifactDigest: currentArtifact.digest,
       runtimeFingerprint: currentArtifact.runtimeFingerprint,
+      ...(currentArtifact.driverPreparationId && { driverPreparationId: currentArtifact.driverPreparationId }),
       measuredRuntime: currentArtifact.runtime || null,
       profileDepth,
       candidateRepeats,

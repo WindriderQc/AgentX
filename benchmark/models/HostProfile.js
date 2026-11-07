@@ -31,6 +31,19 @@ const HostProfileSchema = new mongoose.Schema({
     status: String,
     source: String
   },
+  // A frozen operation manifest, not another qualification store. All proof
+  // authority remains in the existing profile/context/tool owners.
+  gpuDriverIdentityVersion: { type: String, enum: ['agentx.gpu-driver-identity/v1'], default: undefined },
+  gpuDriverPreparation: {
+    requestId: String,
+    state: { type: String, enum: ['prepared', 'activating', 'active'], default: undefined },
+    preparedAt: Date,
+    activeFingerprint: String,
+    targetFingerprint: String,
+    scopeFingerprint: String,
+    pins: mongoose.Schema.Types.Mixed,
+    manifest: { type: [mongoose.Schema.Types.Mixed], default: undefined }
+  },
   gpusObservedAt: Date,
   gpusSource: String,
   ollama: {

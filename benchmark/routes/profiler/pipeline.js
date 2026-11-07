@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const { normalizeModelTag } = require('../../../shared/modelNames');
 const router = express.Router();
 const orchestrator = require('../../src/services/profiler/profilerOrchestrator');
 const hostProfileService = require('../../src/services/profiler/hostProfileService');
@@ -78,12 +79,17 @@ router.post('/scout', async (req, res) => {
 
 router.post('/profile', async (req, res) => {
   try {
-    const { modelName, hostId, depth } = req.body;
+    const { modelName, hostId, depth, driverPreparationId } = req.body;
     if (!modelName || !hostId) return res.status(400).json({ status: 'error', error: 'modelName and hostId required' });
     const chosenDepth = depth || 'standard';
     if (!STEPS_BY_DEPTH[chosenDepth]) return res.status(400).json({ status: 'error', error: 'depth must be quick, standard, or full' });
     const host = await hostProfileService.getById(hostId);
     if (!host) return res.status(404).json({ status: 'error', error: 'Host not found' });
+    if (driverPreparationId && (host.gpuDriverPreparation?.requestId !== driverPreparationId
+      || host.gpuDriverPreparation.state !== 'prepared'
+      || !host.gpuDriverPreparation.manifest.some(entry => entry.modelName === normalizeModelTag(modelName)))) {
+      return res.status(409).json({ status: 'error', error: 'Exact prepared model scope required' });
+    }
 
     cleanupStaleProfiles();
 
@@ -162,6 +168,7 @@ router.post('/profile', async (req, res) => {
         cancellation.assertNotCancelled();
       },
       claimIdentity: lease.identityFor(host.hostUrl),
+      driverPreparationId,
       signal: cancellation.signal,
       onProgress: (step, data) => {
         const idx = steps.indexOf(step);
@@ -287,7 +294,7 @@ router.get('/profile/:profileId/progress', async (req, res) => {
  * tracker the per-model UI watches so existing frontend reattach logic works.
  * Returns the profile result (resolves on success, throws on failure).
  */
-async function _queueRunSingleProfile(modelName, hostId, hostUrl, depth, lease, siblingEndpoints = []) {
+async function _queueRunSingleProfile(modelName, hostId, hostUrl, depth, lease, siblingEndpoints = [], driverPreparationId) {
   const profileId = crypto.randomBytes(8).toString('hex');
   const steps = STEPS_BY_DEPTH[depth] || STEPS_BY_DEPTH.standard;
   lease.assertActive();
@@ -313,6 +320,7 @@ async function _queueRunSingleProfile(modelName, hostId, hostUrl, depth, lease, 
     const result = await runJournaledProfile(lease, { hostId, hostUrl, modelName }, () => orchestrator.profile(modelName, hostId, hostUrl, depth, {
       assertClaimActive: lease.assertActive,
       claimIdentity: lease.identityFor(hostUrl),
+      driverPreparationId,
       signal: lease.signal,
       siblingEndpoints,
       onProgress: (step, data) => {
@@ -356,12 +364,21 @@ async function startProfileHostQueue(body = {}) {
   if (body.queueRequestId !== undefined && !/^[a-f0-9-]{36}$/.test(body.queueRequestId)) {
     throw Object.assign(new Error('Invalid queueRequestId'), { statusCode: 400 });
   }
-  const { hostId, depth, skipRecentDays, modelNames } = body;
+  const { hostId, depth, skipRecentDays, driverPreparationId } = body;
+  let { modelNames } = body;
   if (!hostId) throw Object.assign(new Error('hostId is required'), { statusCode: 400 });
 
   const host = await hostProfileService.getById(hostId);
   if (!host) throw Object.assign(new Error('Host not found'), { statusCode: 404 });
 
+  if (driverPreparationId) {
+    if (host.gpuDriverPreparation?.requestId !== driverPreparationId || host.gpuDriverPreparation.state !== 'prepared') {
+      throw Object.assign(new Error('Exact driver preparation required'), { statusCode: 409 });
+    }
+    modelNames = (modelNames || host.gpuDriverPreparation.manifest.map(entry => entry.modelName)).map(normalizeModelTag);
+    const scope = new Set(host.gpuDriverPreparation.manifest.map(entry => entry.modelName));
+    if (modelNames.some(name => !scope.has(name))) throw Object.assign(new Error('Model outside prepared scope'), { statusCode: 409 });
+  }
   cleanupStaleProfiles();
   cleanupStaleProfileQueues();
 
@@ -382,7 +399,7 @@ async function startProfileHostQueue(body = {}) {
   // Validation failures delete the reservation.
   const queueId = crypto.randomBytes(8).toString('hex');
   const chosenDepth = STEPS_BY_DEPTH[depth] ? depth : 'standard';
-  const skipDays = Number.isFinite(Number(skipRecentDays)) ? Number(skipRecentDays) : 7;
+  const skipDays = driverPreparationId ? 0 : Number.isFinite(Number(skipRecentDays)) ? Number(skipRecentDays) : 7;
   const tracker = {
     queueId,
     queueRequestId: body.queueRequestId || null,
@@ -481,7 +498,7 @@ async function startProfileHostQueue(body = {}) {
       slot.startedAt = Date.now();
       try {
         lease.assertActive();
-        await _queueRunSingleProfile(slot.name, hostId, host.hostUrl, chosenDepth, lease, siblingEndpoints);
+        await _queueRunSingleProfile(slot.name, hostId, host.hostUrl, chosenDepth, lease, siblingEndpoints, driverPreparationId);
         slot.status = 'completed';
       } catch (err) {
         slot.status = 'failed';

@@ -418,3 +418,25 @@ describe('response budget of a launch that set none', () => {
         expect(normalizeExecutionConfig(normalizeExecutionConfig({})).response_budget_rule).toBe(RESPONSE_BUDGET_RULE);
     });
 });
+
+
+describe('prepared driver contract isolation', () => {
+  const prepared = () => snapshot({ snapshot: { fingerprint: 'a'.repeat(64),
+    driverPreparationId: 'prepare-synthetic', scope: 'prepared_gpu_driver_qualification' } });
+  const request = { hostGroups: [['http://exec:11434', ['model-a']]], executionConfig: { response_mode: 'final_only' } };
+  it('uses the qualification entrance with exact proof and refuses replay in an ordinary campaign', async () => {
+    const fetchImpl = jest.fn(async () => response(prepared()));
+    const proof = { driverPreparationId: 'prepare-synthetic', workloadId: 'tool-synthetic',
+      workloadAdmissionId: 'admission-synthetic', workloadGeneration: 'generation-synthetic',
+      claimBatchId: 'tool-synthetic', claimGeneration: 'claim-synthetic' };
+    await expect(resolveStandaloneCampaignInferenceContracts(request, { fetchImpl, coreUrl: 'http://core', preparedQualification: proof }))
+      .resolves.toMatchObject({ candidates: [expect.objectContaining({ contract: expect.objectContaining({ snapshot: expect.objectContaining({ driverPreparationId: proof.driverPreparationId }) }) })] });
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://core/api/inference/contract/resolve-prepared-driver');
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toMatchObject(proof);
+    await expect(resolveStandaloneCampaignInferenceContracts(request, { fetchImpl, coreUrl: 'http://core' })).rejects.toThrow(/ordinary campaign/);
+  });
+  it('rejects another prepared request identity', async () => {
+    await expect(resolveStandaloneCampaignInferenceContracts(request, { fetchImpl: async () => response(prepared()),
+      coreUrl: 'http://core', preparedQualification: { driverPreparationId: 'another-preparation' } })).rejects.toThrow(/ordinary campaign/);
+  });
+});

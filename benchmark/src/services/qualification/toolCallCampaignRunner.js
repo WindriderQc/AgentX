@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 const connectDB = require('../../../config/db');
 const {
+  getWorkloadAdmissionIdentity,
+  getBenchmarkClaimIdentity,
   claimHostForBenchmark,
   getBenchmarkClaims,
   getDedicationStatuses,
@@ -41,6 +43,11 @@ function requireCampaignInput(options = {}) {
       `live campaign requires --confirm-campaign ${CONFIRMATION_TOKEN}`,
       'TOOL_CAMPAIGN_CONFIRMATION_REQUIRED'
     );
+  }
+  if (Object.prototype.hasOwnProperty.call(options, 'driverPreparationId')
+    && (typeof options.driverPreparationId !== 'string'
+      || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$/.test(options.driverPreparationId))) {
+    throw new ToolCampaignError('An explicit preparation identity cannot be omitted or malformed', 'TOOL_CAMPAIGN_PREPARATION_ID_REQUIRED');
   }
   const model = normalizeModelTag(options.model);
   const host = normalizeHostUrl(options.host);
@@ -209,12 +216,12 @@ function exactIdentityFromCandidate(candidate) {
   return qualificationStore.normalizeIdentity(identity);
 }
 
-async function assertCurrentArtifactIdentity(identity, deps) {
+async function assertCurrentArtifactIdentity(identity, deps, driverPreparationId) {
   const current = await deps.resolveArtifactIdentity(
     identity.modelName,
     identity.hostId,
     identity.hostUrl,
-    { refresh: true }
+    { refresh: true, ...(driverPreparationId && { driverPreparationId }) }
   );
   const frozen = {
     model: identity.modelName,
@@ -235,6 +242,8 @@ async function assertCurrentArtifactIdentity(identity, deps) {
 function defaultDependencies(overrides = {}) {
   return {
     connectDB,
+    getWorkloadAdmissionIdentity,
+    getBenchmarkClaimIdentity,
     disconnectDB: () => mongoose.disconnect(),
     claimHostForBenchmark,
     getBenchmarkClaims,
@@ -301,6 +310,11 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
     await heartbeat.ready;
     heartbeat.assertActive();
 
+    const preparedQualification = options.driverPreparationId ? {
+      driverPreparationId: options.driverPreparationId, workloadId: campaignId,
+      ...deps.getWorkloadAdmissionIdentity(campaignId),
+      ...deps.getBenchmarkClaimIdentity(host, campaignId)
+    } : null;
     frozenCampaign = await deps.resolveStandaloneCampaignInferenceContracts({
       hostGroups: new Map([[host, [model]]]),
       executionConfig: {
@@ -309,11 +323,14 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
         sampling_profile: 'controlled',
         sampling_source: 'tool_capability_qualification'
       }
-    });
+    }, ...(preparedQualification ? [{ preparedQualification }] : []));
     if (!Array.isArray(frozenCampaign?.candidates) || frozenCampaign.candidates.length !== 1) {
       throw new ToolCampaignError('Core did not freeze exactly one artifact', 'TOOL_CAMPAIGN_FREEZE_INVALID');
     }
     const candidate = frozenCampaign.candidates[0];
+    if (options.driverPreparationId && candidate.contract?.snapshot?.driverPreparationId !== options.driverPreparationId) {
+      throw new ToolCampaignError('Core did not freeze the exact prepared request', 'TOOL_CAMPAIGN_PREPARATION_MISMATCH');
+    }
     identity = exactIdentityFromCandidate(candidate);
     const frozenExecution = {
       numCtx: candidate.execution?.num_ctx,
@@ -322,7 +339,7 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
       sampling: candidate.execution?.sampling || {}
     };
     await deps.assertFrozenArtifactDigest(frozenCampaign, model, host);
-    const measuredArtifact = await assertCurrentArtifactIdentity(identity, deps);
+    const measuredArtifact = await assertCurrentArtifactIdentity(identity, deps, options.driverPreparationId);
     await assertActiveClaim(claimReceipt, deps);
 
     await deps.beginQualification({
@@ -330,6 +347,9 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
       ...identity,
       // The Ollama version and driver this campaign runs on (#908).
       measuredRuntime: measuredArtifact?.runtime || null,
+      ...(options.driverPreparationId && {
+        driverPreparationId: options.driverPreparationId, measuredContext: frozenExecution.numCtx
+      }),
       repetitionsRequested: repetitions,
       contractFingerprint: candidate.contractFingerprint,
       claim: claimReceipt
@@ -375,7 +395,7 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
         heartbeat?.assertActive();
         await assertActiveClaim(claimReceipt, deps);
         await deps.assertFrozenArtifactDigest(frozenCampaign, model, host);
-        await assertCurrentArtifactIdentity(identity, deps);
+        await assertCurrentArtifactIdentity(identity, deps, options.driverPreparationId);
       } catch (error) {
         failure = failure || error;
       }

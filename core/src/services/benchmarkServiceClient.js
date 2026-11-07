@@ -83,6 +83,17 @@ class BenchmarkServiceClient {
     return json?.data?.capability || null;
   }
 
+  /** Prepared proof reads require the executor's exact Core admission/claim. */
+  async getPreparedDriverEvidence({ hostId, modelName, requestId, authority }) {
+    const json = await coreRequestJson({
+      baseUrl: getBaseUrl(),
+      path: `/api/profiler/hosts/gpu-driver/${encodeURIComponent(hostId)}/qualification-evidence`,
+      method: 'POST', body: { modelName, requestId, authority },
+      timeoutMs: 30_000, serviceName: 'benchmark', errorCode: 'GPU_DRIVER_PREPARED_EVIDENCE_UNAVAILABLE'
+    });
+    return json?.data || null;
+  }
+
   /** Resolve a Benchmark-owned host identity for exact-artifact qualification. */
   async getHostProfile(hostUrl) {
     if (!hostUrl) return null;

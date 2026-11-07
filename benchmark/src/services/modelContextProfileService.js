@@ -151,6 +151,7 @@ async function updateFromProbeSnapshot(snapshot, options = {}) {
   const snapshotId = snapshot._id ? String(snapshot._id) : null;
   const existingQuery = ModelContextProfile.findOne({
     ...identityFilter,
+    ...(snapshot.driverPreparationId && { driverPreparationId: snapshot.driverPreparationId }),
     authorityState: { $nin: ['pending_reconciliation', 'authority_invalidated'] }
   });
   if (options.signal && typeof existingQuery.setOptions === 'function') existingQuery.setOptions({ signal: options.signal });
@@ -228,6 +229,7 @@ async function updateFromProbeSnapshot(snapshot, options = {}) {
         hostId: snapshot.hostId || hostIdForUrl(hostUrl),
         artifactDigest,
         runtimeFingerprint,
+        ...(snapshot.driverPreparationId && { driverPreparationId: snapshot.driverPreparationId }),
         // The version is evidence metadata, not identity (#908). A retained
         // transport-bounded ceiling keeps this run's version: see #908 on
         // trusting a verified window across versions.

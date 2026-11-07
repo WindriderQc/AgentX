@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
-// The runtime the evidence was measured on (#908). Not part of the
-// fingerprint: a version change is shown as drift, not invalidation.
+// Measured runtime metadata. Ollama upgrades are drift; an activated host's
+// GPU driver participates in its physical runtime identity.
 const MeasuredRuntimeSchema = new mongoose.Schema({
   ollamaVersion: { type: String, default: null },
   gpuDriver: { type: String, default: null },
@@ -14,6 +14,7 @@ const ArtifactIdentitySchema = new mongoose.Schema({
   hostUrl: { type: String, required: true },
   digest: { type: String, required: true },
   runtimeFingerprint: { type: String, required: true },
+  driverPreparationId: { type: String, default: undefined },
   registryId: { type: String, default: null },
   registryDigest: { type: String, default: null },
   registryQualified: { type: Boolean, default: false },
@@ -133,6 +134,8 @@ const ModelProfileSchema = new mongoose.Schema({
   thinkingProfiles: { type: Map, of: ThinkingCapabilitySchema, default: () => new Map() },
   hosts: { type: Map, of: HostAvailabilitySchema, default: () => new Map() },
   readiness: { type: Map, of: ReadinessSchema, default: () => new Map() },
+  preparedReadiness: { type: Map, of: ReadinessSchema, default: undefined, select: false },
+  preparedThinkingProfiles: { type: Map, of: ThinkingCapabilitySchema, default: undefined, select: false },
   rejectedAuthorityWriteIds: { type: [String], default: [], select: false },
   tags: { type: [String], default: [] },
   categories: { type: [String], default: [] },

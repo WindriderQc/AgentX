@@ -5,6 +5,7 @@ const { normalizeModelTag } = require('./modelNames');
 const { normalizeRuntimeSettings } = require('./ollamaRuntimeSettings');
 const { normalizeGpuInventory } = require('./gpuInventory');
 
+const GPU_DRIVER_IDENTITY_VERSION = 'agentx.gpu-driver-identity/v1';
 const RUNTIME_ARTIFACT_IDENTITY_CONTRACT = 'agentx.runtime-artifact-identity/v1';
 const DEFAULT_RUNTIME_ARTIFACT_FRESHNESS_MS = 30_000;
 const RUNTIME_ARTIFACT_PROVENANCE = Object.freeze({
@@ -32,12 +33,18 @@ function stableSerialize(value) {
 }
 
 function runtimeIdentity(hostProfile = {}, fallbackHostUrl = null) {
+  if (hostProfile.gpuDriverIdentityVersion != null && hostProfile.gpuDriverIdentityVersion !== GPU_DRIVER_IDENTITY_VERSION) {
+    throw Object.assign(new Error('Unsupported GPU driver identity version'), { code: 'GPU_DRIVER_IDENTITY_VERSION_UNSUPPORTED' });
+  }
   // Observed server settings (#368) join the identity once a host has them;
   // a host never observed keeps the identity it had before.
   const settings = normalizeRuntimeSettings(hostProfile.ollama?.settings);
   const gpus = normalizeGpuInventory(hostProfile.gpus);
   return {
     hostId: hostProfile.hostId || null,
+    // Absent on historical identities. Prepared/activated hosts have a new
+    // identity epoch even when a driver was already recorded manually.
+    ...(hostProfile.gpuDriverIdentityVersion && { gpuDriverIdentityVersion: hostProfile.gpuDriverIdentityVersion }),
     hostUrl: normalizeHostUrl(hostProfile.hostUrl || fallbackHostUrl),
     gpu: {
       model: hostProfile.gpu?.model || null,
@@ -194,6 +201,7 @@ function exactModelNamesMatch(left, right) {
 }
 
 module.exports = {
+  GPU_DRIVER_IDENTITY_VERSION,
   DEFAULT_RUNTIME_ARTIFACT_FRESHNESS_MS,
   RUNTIME_ARTIFACT_IDENTITY_CONTRACT,
   RUNTIME_ARTIFACT_PROVENANCE,
