@@ -67,6 +67,12 @@ Supported executors:
 - **Image**: the existing image request with `actionKey`, `prompt`, profile,
   dimensions, seed and optional archived parent/recipe. Core checks configured
   GPU consumers. Use artifact references instead of large binary payloads.
+  A manual `run` stays bound to its reserved worker hosts. While acceptance
+  enrolls a still-queued image, receipt observation leaves the dispatch fence
+  untouched; only native dispatch ownership supplies a running receipt. A
+  concurrent dispatcher observing the same dispatch and operation yields to
+  its owner without relaunching or overwriting that image. Other identities
+  and expired unclaimed dispatches still refuse.
 - **Embedding reindex**: `{model, dimension}` rebuilds every RAG document into
   a new collection embedded with that model, then switches RAG to it (see
   [operations](OPERATIONS.md#switching-the-embedding-model)). The hosts are the
