@@ -128,7 +128,9 @@ def review_pages(archive, manifest, *, load, message_text, sha, json, page_chars
 
     Metadata is deliberately outside the page identity. Installing this reader
     neither invalidates reading receipts nor changes a byte of source content.
+    Mail pages use the depth-aware v2 context (quote_attribution, AgentX#754).
     """
+    from quote_attribution import page_context as attributed_context, segments as attributed_segments
     payload = load(archive.root / "threads" / manifest["threadId"] / "original.json")
     originals = {m["id"]: m for m in payload.get("thread", payload)["messages"]}
     messages = sorted(manifest["messages"], key=lambda m: int(m.get("internalDate") or 0), reverse=True)
@@ -138,7 +140,7 @@ def review_pages(archive, manifest, *, load, message_text, sha, json, page_chars
         body = message_text(originals[message["id"]])
         labels = set(originals[message["id"]].get("labelIds", []))
         direction = "draft" if "DRAFT" in labels else "sent" if "SENT" in labels else "received" if labels else "unknown"
-        spans = body_segments(body, h)
+        spans = attributed_segments(body, h)
         newer = sum(int(m.get("internalDate") or 0) > int(message.get("internalDate") or 0) for m in messages)
         units = [("body", body, None)]
         for attachment in message["attachments"]:
@@ -154,5 +156,6 @@ def review_pages(archive, manifest, *, load, message_text, sha, json, page_chars
                        "headers": h, "kind": kind, "offset": offset, "totalChars": len(text),
                        "moreOfThisSource": offset + page_chars < len(text), "attachment": attachment,
                        "externalUntrustedContent": content,
-                       "sourceContext": {**page_context(spans, offset, len(content), kind=kind, newer_messages=newer),
+                       "sourceContext": {**attributed_context(spans, offset, len(content), kind=kind,
+                                                               newer_messages=newer, text=text),
                                          "messageDirection": direction, "mimeOverview": mime_overview(originals[message["id"]])}}
