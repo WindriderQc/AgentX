@@ -1,4 +1,4 @@
-"""world-prepare.py against a loopback fake of the GraphysX world service. No UGFrank, no model."""
+"""world-prepare.py against a loopback fake of the GraphysX world service. No host-a, no model."""
 import json
 import os
 import subprocess

@@ -47,7 +47,7 @@ describe('model classification', () => {
     expect(billingModelName(model)).toBe('openrouter/vendor-synthetic/model-synthetic:free');
     expect(modelProvider(model)).toBe('openrouter');
     expect(isCloudModel(model)).toBe(true);
-    expect(isCloudCall({ model, hosts: ['http://192.168.2.99:18789'] })).toBe(true);
+    expect(isCloudCall({ model, hosts: ['http://192.168.50.10:18789'] })).toBe(true);
     // An OpenClaw agent or a local model it ran stays local.
     expect(isCloudModel('openclaw:agent:main')).toBe(false);
     expect(isCloudModel('openclaw:model:ollama/local-synthetic:8b')).toBe(false);

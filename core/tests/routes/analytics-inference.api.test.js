@@ -283,7 +283,7 @@ describe('inference analytics summary', () => {
     InferenceLog.aggregate.mockResolvedValue(facet({
       byModel: [{
         _id: 'openclaw:model:openrouter/vendor-synthetic/model-synthetic', calls: 1, errors: 0,
-        tokensIn: 1000000, tokensOut: 1000000, durationMs: 1000, fallbacks: 0, hosts: ['http://192.168.2.99:18789']
+        tokensIn: 1000000, tokensOut: 1000000, durationMs: 1000, fallbacks: 0, hosts: ['http://192.168.50.10:18789']
       }]
     }));
 

@@ -95,7 +95,7 @@ describe('agent tool usage', () => {
     app.post(['/mcp', '/mcp/memory'], (req, res) => res.json(req.body.method === 'tools/list'
       ? { jsonrpc: '2.0', id: req.body.id, result: { tools: [{ name: 'memory_search' }] } }
       : { jsonrpc: '2.0', id: req.body.id, result: { isError: true } }));
-    const post = (path, body) => request(app).post(path).set('x-service-caller', 'codex-devx').send({ jsonrpc: '2.0', id: 1, ...body }).expect(200);
+    const post = (path, body) => request(app).post(path).set('x-service-caller', 'codex-dev-host').send({ jsonrpc: '2.0', id: 1, ...body }).expect(200);
     await post('/mcp', { method: 'tools/list' });
     await post('/mcp', { method: 'tools/call', params: { name: 'shopping_list', arguments: {} } });
     await post('/mcp/memory', { method: 'tools/call', params: { name: 'memory_search', arguments: {} } });
@@ -103,8 +103,8 @@ describe('agent tool usage', () => {
     await new Promise(resolve => setImmediate(resolve));
     expect((await AgentToolCatalog.findById('general').lean()).names).toEqual(['memory_search', 'shopping_list']);
     expect(store.updateOne.mock.calls.map(([key, update]) => [key.bus, key.tool, key.caller, update.$inc.failures])).toEqual([
-      ['general', 'shopping_list', 'codex-devx', 0],
-      ['memory', 'memory_search', 'codex-devx', 1],
+      ['general', 'shopping_list', 'codex-dev-host', 0],
+      ['memory', 'memory_search', 'codex-dev-host', 1],
     ]);
     const report = await readToolUsage({ days: 30 }, { model: AgentToolUsage, catalog: AgentToolCatalog });
     expect(report.catalogSource.general).toBe('observed');

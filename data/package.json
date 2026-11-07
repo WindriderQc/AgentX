@@ -38,6 +38,11 @@
     "@istanbuljs/load-nyc-config": {
       "js-yaml": "^4.3.1"
     },
-    "qs": "^6.16.0"
+    "qs": "^6.16.1",
+    "minimatch": "^11.0.5",
+    "glob": "^14.0.2",
+    "body-parser": "^1.20.9",
+    "follow-redirects": "^1.16.2",
+    "ip-address": "^10.7.4"
   }
 }

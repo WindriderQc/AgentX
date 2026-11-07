@@ -25,7 +25,7 @@ function fixture({ lostLaunch = false, limit = budget() } = {}) {
     automationLease: { leaseId: 'root-lease' }, codingCapacity: { model: 'qwen3-coder:30b' } };
   const basis = policy.basis(taskRecord);
   memory.dag.authority = { taskBasis: basis, rootRequestId: ROOT, sourceCommit: SOURCE, runIndex: 0,
-    sourceField: 'sourceCommit', coordinator: { id: 'ugfrank', label: 'ugfrank', harness: 'opencode' } };
+    sourceField: 'sourceCommit', coordinator: { id: 'host-a', label: 'host-a', harness: 'opencode' } };
   memory.dag.coordination = { schema: 'agentx.pipeline-code-step-coordination/v1',
     assemblyRequestId: deterministicUuid(ROOT, 'assembly'), requestedAt: null };
   const transition = operation => async (_pipelineId, input) => {
@@ -47,7 +47,7 @@ function fixture({ lostLaunch = false, limit = budget() } = {}) {
   };
   Object.assign(taskRecord, { codeStepDag: memory.dag, codingAutonomy: { authorized: true, revision: 2, basis,
     queueRequestId: '99999999-9999-4999-8999-999999999999',
-    runs: [{ requestId: ROOT, sourceCommit: SOURCE, executorId: 'ugfrank', harness: 'opencode' }] } });
+    runs: [{ requestId: ROOT, sourceCommit: SOURCE, executorId: 'host-a', harness: 'opencode' }] } });
   const TaskModel = {
     findOne: jest.fn(() => ({ lean: async () => clone({ ...taskRecord, codeStepDag: memory.dag }) })),
     findOneAndUpdate: jest.fn((_filter, update) => {
@@ -69,9 +69,9 @@ function fixture({ lostLaunch = false, limit = budget() } = {}) {
   const launches = [];
   let lose = lostLaunch;
   const executors = [
-    { id: 'ugfrank', label: 'ugFrank', harness: 'opencode', profiles: ['autonomous'], available: true, busy: true, priority: 1 },
-    { id: 'ugalien', label: 'ugAlien', harness: 'opencode', profiles: ['autonomous'], available: true, busy: false, priority: 2 },
-    { id: 'ugbrutal', label: 'ugBrutal', harness: 'opencode', profiles: ['autonomous'], available: true, busy: false, priority: 3 },
+    { id: 'host-a', label: 'host-a', harness: 'opencode', profiles: ['autonomous'], available: true, busy: true, priority: 1 },
+    { id: 'host-b', label: 'host-b', harness: 'opencode', profiles: ['autonomous'], available: true, busy: false, priority: 2 },
+    { id: 'host-c', label: 'host-c', harness: 'opencode', profiles: ['autonomous'], available: true, busy: false, priority: 3 },
   ];
   const control = {
     status: jest.fn(async input => input.requestId
@@ -124,7 +124,7 @@ function submissionFixture(executors, initialDag = null, unavailableExecutors = 
   const basis = policy.basis(taskRecord);
   Object.assign(taskRecord, { codingAutonomy: { authorized: true, revision: 2, basis,
     limits: policy.limits(), spent: {}, runs: [{ requestId: ROOT, sourceCommit: SOURCE,
-      executorId: 'ugfrank', harness: 'opencode', startedAt: T0 }] } });
+      executorId: 'host-a', harness: 'opencode', startedAt: T0 }] } });
   let dag = clone(initialDag);
   const stateService = {
     read: jest.fn(async () => clone(dag)),
@@ -133,7 +133,7 @@ function submissionFixture(executors, initialDag = null, unavailableExecutors = 
         sourceCommit: input.sourceCommit, plan: input.plan, reviewedScope: input.reviewedScope,
         reviewedLockKeys: input.reviewedLockKeys, budget: input.budget, createdAt: input.createdAt });
       dag.authority = { taskBasis: basis, rootRequestId: ROOT, sourceCommit: SOURCE, runIndex: 0,
-        sourceField: 'sourceCommit', coordinator: { id: 'ugfrank', label: 'ugfrank', harness: 'opencode' } };
+        sourceField: 'sourceCommit', coordinator: { id: 'host-a', label: 'host-a', harness: 'opencode' } };
       return { dag: clone(dag), replayed: false };
     }),
     projection: jest.fn(async () => ({ graphId: dag?.rootRequestId })),
@@ -152,7 +152,7 @@ function submissionFixture(executors, initialDag = null, unavailableExecutors = 
 }
 
 test('refuses DAG creation when the configured fleet contains only the historical root', async () => {
-  const f = submissionFixture([{ id: 'ugfrank', profiles: ['autonomous'], available: true, busy: false }]);
+  const f = submissionFixture([{ id: 'host-a', profiles: ['autonomous'], available: true, busy: false }]);
   await expect(f.coordinator.submitPlan('0946', ROOT, f.input)).rejects.toMatchObject({
     code: 'CODING_DISTRIBUTION_UNAVAILABLE', statusCode: 409,
   });
@@ -170,8 +170,8 @@ test('reports distribution unavailable when dispatch control has no fleet snapsh
 
 test('accepts a configured non-root worker while it is temporarily busy', async () => {
   const f = submissionFixture([
-    { id: 'ugfrank', profiles: ['autonomous'], available: true, busy: true },
-    { id: 'ugalien', profiles: ['autonomous'], enabled: true, available: true, busy: true },
+    { id: 'host-a', profiles: ['autonomous'], available: true, busy: true },
+    { id: 'host-b', profiles: ['autonomous'], enabled: true, available: true, busy: true },
   ]);
   await expect(f.coordinator.submitPlan('0946', ROOT, f.input)).resolves.toMatchObject({
     graphId: ROOT, replayed: false,
@@ -181,9 +181,9 @@ test('accepts a configured non-root worker while it is temporarily busy', async 
 
 test('accepts an offline configured worker from the dispatch-control unavailable inventory', async () => {
   const f = submissionFixture(
-    [{ id: 'ugfrank', profiles: ['autonomous'], available: true, busy: true }],
+    [{ id: 'host-a', profiles: ['autonomous'], available: true, busy: true }],
     null,
-    [{ id: 'ugalien', profiles: ['autonomous'], harness: 'opencode', available: false }],
+    [{ id: 'host-b', profiles: ['autonomous'], harness: 'opencode', available: false }],
   );
   await expect(f.coordinator.submitPlan('0946', ROOT, f.input)).resolves.toMatchObject({
     graphId: ROOT, replayed: false,
@@ -201,8 +201,8 @@ test('delegates a terminal prior-run graph to the atomic correction replacement'
     stepId: null, finishedAt: T0,
   }).dag;
   const f = submissionFixture([
-    { id: 'ugfrank', profiles: ['autonomous'], busy: true },
-    { id: 'ugalien', profiles: ['autonomous'], available: false },
+    { id: 'host-a', profiles: ['autonomous'], busy: true },
+    { id: 'host-b', profiles: ['autonomous'], available: false },
   ], oldDag);
   await expect(f.coordinator.submitPlan('0946', ROOT, f.input)).resolves.toMatchObject({
     graphId: ROOT, replayed: false,
@@ -215,12 +215,12 @@ test('dispatches a maximal two-host wave and starts the dependency wave from the
   await coordinator.tick('0946');
   expect(f.launches).toHaveLength(2);
   expect(f.launches.map(item => [item.stepId, item.executorId])).toEqual([
-    ['step-01', 'ugalien'], ['step-02', 'ugbrutal'],
+    ['step-01', 'host-b'], ['step-02', 'host-c'],
   ]);
   expect(f.launches.every(item => item.distributedRole === 'step')).toBe(true);
-  expect(f.launches.every(item => item.executorId !== 'ugfrank')).toBe(true);
+  expect(f.launches.every(item => item.executorId !== 'host-a')).toBe(true);
   expect(f.memory.dag.executorProfiles).toMatchObject({
-    ugalien: { label: 'ugAlien', harness: 'opencode' }, ugbrutal: { label: 'ugBrutal', harness: 'opencode' },
+    'host-b': { label: 'host-b', harness: 'opencode' }, 'host-c': { label: 'host-c', harness: 'opencode' },
   });
   expect(f.memory.dag.budget.reserved.workSeconds).toBeGreaterThan(0);
 
@@ -230,7 +230,7 @@ test('dispatches a maximal two-host wave and starts the dependency wave from the
   expect(f.launches).toHaveLength(2);
   const assemblyId = deterministicUuid(ROOT, 'assembly');
   const first = await coordinator.manifest('0946', assemblyId);
-  expect(first).toMatchObject({ role: 'assembly', executorId: 'ugfrank', requestId: assemblyId,
+  expect(first).toMatchObject({ role: 'assembly', executorId: 'host-a', requestId: assemblyId,
     model: 'qwen3-coder:30b', rootLeaseId: 'root-lease', verificationProfile: 'agentx-core-runner-tests/v1',
     task: { title: 'Synthetic DAG', spec: 'Public fake work' },
     adoptionOrder: ['step-01', 'step-02', 'step-03'], adoptedSteps: [], finalReady: false,
@@ -448,7 +448,7 @@ test('stop fans out only exact unsettled child requests', async () => {
   expect(f.control.stop).toHaveBeenCalledTimes(2);
   expect(f.control.stop.mock.calls.map(([input]) => input.requestId).sort()).toEqual(
     f.memory.dag.steps.slice(0, 2).map(item => item.attempts[0].requestId).sort());
-  expect(f.control.stop.mock.calls.every(([input]) => input.confirm === true && input.executorId !== 'ugfrank')).toBe(true);
+  expect(f.control.stop.mock.calls.every(([input]) => input.confirm === true && input.executorId !== 'host-a')).toBe(true);
 });
 
 test('terminalizes a graph instead of dispatching a zero-dimension reservation', async () => {
@@ -470,7 +470,7 @@ test('terminalizes a settled failed step after its bounded attempts are exhauste
   for (let attempt = 1; attempt <= domain.MAX_ATTEMPTS; attempt += 1) {
     const requestId = `exhausted-${attempt}`;
     f.memory.dag = domain.startAttempt(f.memory.dag, { expectedRevision: f.memory.dag.revision,
-      stepId: 'step-01', executorId: 'ugalien', requestId, baseCommit: SOURCE,
+      stepId: 'step-01', executorId: 'host-b', requestId, baseCommit: SOURCE,
       budget: budget(10, 10, 10, 1), startedAt: T0 }).dag;
     f.memory.dag = domain.settleAttempt(f.memory.dag, { expectedRevision: f.memory.dag.revision,
       requestId, outcome: 'failed', actualUsage: budget(1, 1, 1, 1),

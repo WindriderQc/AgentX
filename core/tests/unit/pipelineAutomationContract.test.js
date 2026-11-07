@@ -47,7 +47,7 @@ function codeSteps(overrides = {}) {
 }
 
 function codeStepGraph(overrides = {}) {
-  const executor = { id: 'ugalien-open', label: 'UGAlien', harness: 'opencode' };
+  const executor = { id: 'host-b-open', label: 'host-b', harness: 'opencode' };
   return {
     schema: 'agentx.code-step-graph-summary/v1', graphId: 'graph-0703', planFingerprint: 'e'.repeat(64), state: 'running',
     activeSteps: ['step-2'], counts: { pending: 0, waiting: 0, running: 1, passed: 1, failed: 0, uncertain: 0, blocked: 0 },

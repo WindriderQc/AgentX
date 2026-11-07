@@ -37,7 +37,7 @@ app.set('view engine', 'ejs'); app.set('views', root + '/core/views');
 app.locals.buildProductNavigation = req('../shared/productNavigation').buildProductNavigation;
 req('../shared/localStyleVendorAssets').registerLocalStyleVendorAssets(app, path.join(root, 'core/node_modules'));
 app.use('/vendor/marked/18.0.11', express.static(path.join(root, 'core/node_modules/marked/lib')));
-app.use('/vendor/dompurify/3.4.16', express.static(path.join(root, 'core/node_modules/dompurify/dist')));
+app.use('/vendor/dompurify/3.4.17', express.static(path.join(root, 'core/node_modules/dompurify/dist')));
 app.use(express.static(root + '/core/public'));
 const source = fs.readFileSync(root + '/core/src/app.js', 'utf8');
 let pageHandler;

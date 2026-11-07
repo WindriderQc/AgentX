@@ -23,7 +23,7 @@ test('host, card and recipes come from the live configuration, never from the pa
   const view = read('views/pages/images-guide.ejs'), script = read('public/js/local-images-guide.js');
   for (const id of ['guide-host', 'guide-gpu', 'guide-vram', 'guide-recipes', 'guide-recipes-status']) expect(view).toContain(`id="${id}"`);
   expect(script).toContain("fetch('/api/images/workshop')");
-  expect(view).not.toMatch(/UGFrank|UGAlien|Brutal|RTX|\d+\.\d+\.\d+\.\d+|safetensors|qwen|klein/i);
+  expect(view).not.toMatch(/host-a|host-b|Brutal|RTX|\d+\.\d+\.\d+\.\d+|safetensors|qwen|klein/i);
 });
 test('the guide quotes the messages the service and the workshop really show', () => {
   const view = read('views/pages/images-guide.ejs'), client = read('public/js/local-images.js');

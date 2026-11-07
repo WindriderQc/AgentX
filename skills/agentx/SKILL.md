@@ -85,7 +85,7 @@ These apply to every chapter. They are the owner's rules, not tool limits.
 | Queue or follow heavy work | `work_queue`, `agentx-work-queue` | [ops](references/ops.md#heavy-work-queue) |
 | The nightly memory review | HTTP reads | [ops](references/ops.md#memory-review) |
 | File, follow or report on engineering work | `pipeline_tasks`, `create_todo`, `pipeline_feedback` | [dev](references/dev.md#pipeline-tasks) |
-| Code, test or deploy the AgentX product | repository, devX worktree | [dev](references/dev.md) |
+| Code, test or deploy the AgentX product | repository, dev-host worktree | [dev](references/dev.md) |
 | Write a task brief or report worker evidence | — | [coding-work](references/coding-work.md) |
 | Audit documentation against source | — | [documentation-review](references/documentation-review.md) |
 | A route no tool covers | — | [endpoints](references/endpoints.md) |

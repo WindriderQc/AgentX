@@ -39,7 +39,7 @@ from text.
 Benchmark's `/api/benchmark/host-names` gives the registry name of each host URL
 (Core's inference host registry, see Operations → Inference hosts).
 
-- A registered URL publishes its registry name, for example `UGFrank CPU`.
+- A registered URL publishes its registry name, for example `host-a CPU`.
 - An unregistered port on a registered machine publishes `<machine> (other instance)`.
 - An agent harness (`harness:<kind>:…`) publishes `<kind> agent`; a cloud target its provider.
 - Anything else publishes `unlisted host`. A registry name that looks like an address is not used.

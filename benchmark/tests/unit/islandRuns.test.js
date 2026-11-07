@@ -32,7 +32,7 @@ afterAll(async () => {
 afterEach(async () => { await IslandRun.deleteMany({}); });
 
 function report(extra = {}) {
-  return { queueRequestId: ID, dispatchId: DISPATCH, runner: 'devx', executor,
+  return { queueRequestId: ID, dispatchId: DISPATCH, runner: 'dev-host', executor,
     status: { phase: 'running', model: 'agentx-primary', startedAt: '2026-10-28T23:00:05-04:00', timeZone: 'America/Toronto',
       resumeCount: 2, events: [{ at: 'x', event: 'resumed', reason: 'memory-reminder', token: 'never-kept' }],
       liveView: { port: 18080, path: '/?viewport=1&spectator_token=abc' }, recording: `${ID}/recordings/20261029_030005.clawrec` },
@@ -116,7 +116,7 @@ describe('island run service', () => {
   it('keeps only typed report fields and refuses another dispatch of the same request', async () => {
     await islands.recordReport(ID, report());
     const saved = await IslandRun.findById(ID).lean();
-    expect(saved).toMatchObject({ agent: 'Eko', model: 'agentx-primary', runner: 'devx', resumeCount: 2, phase: 'running' });
+    expect(saved).toMatchObject({ agent: 'Eko', model: 'agentx-primary', runner: 'dev-host', resumeCount: 2, phase: 'running' });
     expect(saved.events[0]).not.toHaveProperty('token');
     await expect(islands.recordReport(ID, report({ dispatchId: '00000000-0000-4000-8000-0000000000d2' }))).rejects.toMatchObject({ statusCode: 409 });
     await expect(islands.recordReport(ID, report({ queueRequestId: 'other' }))).rejects.toMatchObject({ statusCode: 400 });

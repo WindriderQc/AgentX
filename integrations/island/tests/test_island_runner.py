@@ -264,7 +264,7 @@ class RelaySocketPath(Fixture):
     def test_the_planned_runner_layout_fits(self):
         self.assertIsNone(runner.relay_socket_problem({**self.config, "runsRoot": "/home/eko/island/runs"}, "Eko"))
         self.assertIsNotNone(runner.relay_socket_problem(
-            {**self.config, "runsRoot": "/home/yb/codes/clawblox-runs/agentx-v1/runs"}, "Eko"))
+            {**self.config, "runsRoot": "/home/operator/codes/clawblox-runs/agentx-v1/runs"}, "Eko"))
 
 
 class SafetyRegression(Fixture):

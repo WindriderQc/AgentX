@@ -40,7 +40,7 @@ test('terminal failure is observed before it can authorize GPU restoration', asy
   expect(terminal).toHaveBeenCalledTimes(1);
 });
 test('public endpoints, credentials and malformed local addresses are rejected', () => {
-  for (const value of ['https://example.com', 'http://user:pass@127.0.0.1', 'http://172.32.1.1', 'http://192.168.2.1/?key=a']) expect(() => localUrl(value)).toThrow();
+  for (const value of ['https://example.com', 'http://user:pass@127.0.0.1', 'http://172.32.1.1', 'http://192.168.50.1/?key=a']) expect(() => localUrl(value)).toThrow();
   expect(localUrl('http://172.27.0.1:8188')).toBe('http://172.27.0.1:8188');
 });
 test('full decode refuses truncated output and pixel bombs before allocating pixels', () => {

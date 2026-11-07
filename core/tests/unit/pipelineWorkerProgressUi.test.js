@@ -227,8 +227,8 @@ test('a status refresh preserves consent for the same candidate and changed iden
 test('multi-host candidates appear once per task and name their available worker count', () => {
   const task = { pipelineId: '0002', title: 'Synthetic task', expectedAttemptCount: 0 };
   const { elements } = setup(null, 'finished', { candidates: [
-    { ...task, executorId: 'ugfrank-dsh', executorProfiles: ['code', 'report'] },
-    { ...task, executorId: 'ugalien-open', executorProfiles: ['code'] },
+    { ...task, executorId: 'host-a-dsh', executorProfiles: ['code', 'report'] },
+    { ...task, executorId: 'host-b-open', executorProfiles: ['code'] },
   ] });
   expect(elements.pipelineTeamLaunchTask.innerHTML.match(/value="0002"/g)).toHaveLength(1);
   expect(elements.pipelineTeamLaunchTask.innerHTML).toContain('2 available workers');

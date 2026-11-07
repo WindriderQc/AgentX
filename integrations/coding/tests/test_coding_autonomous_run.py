@@ -248,7 +248,7 @@ class DistributedRootCoordinatorTest(unittest.TestCase):
             {'id': 'step-02', 'title': 'two', 'objective': 'second', 'paths': ['two.py'],
              'testTargets': ['test_two.py'], 'dependsOn': ['step-01']},
         ]}
-        task = {'codingAutonomy': {'runs': [{'requestId': KEY, 'executorId': 'ugfrank-open'}]}}
+        task = {'codingAutonomy': {'runs': [{'requestId': KEY, 'executorId': 'host-a-open'}]}}
         args = SimpleNamespace(task_id='0001', request_id=KEY)
         endpoint = f'{r.CORE}/api/pipeline/coding-autonomy/tasks/0001/runs/{KEY}/manifest'
         return r, progress, ledger, task, args, endpoint, submissions
@@ -294,11 +294,11 @@ class DistributedRootCoordinatorTest(unittest.TestCase):
                 'plan': distributed_root.source_plan(ledger),
                 'budget': {'workSeconds': 65, 'testSeconds': 24, 'modelSeconds': 50, 'modelCalls': 4}}
             self.assertEqual(submissions, [expected, expected])
-            self.assertEqual(observed, [(None, False, NEXT_KEY, 'ugfrank-open', 30),
-                ('step-01', False, NEXT_KEY, 'ugfrank-open', 30),
-                (None, False, NEXT_KEY, 'ugfrank-open', 30),
-                ('step-02', False, NEXT_KEY, 'ugfrank-open', 30),
-                (None, True, NEXT_KEY, 'ugfrank-open', 20)])
+            self.assertEqual(observed, [(None, False, NEXT_KEY, 'host-a-open', 30),
+                ('step-01', False, NEXT_KEY, 'host-a-open', 30),
+                (None, False, NEXT_KEY, 'host-a-open', 30),
+                ('step-02', False, NEXT_KEY, 'host-a-open', 30),
+                (None, True, NEXT_KEY, 'host-a-open', 20)])
             self.assertEqual(progress.usage(),
                 {'workSeconds': 28, 'testSeconds': 8, 'modelSeconds': 12, 'modelCalls': 3})
             self.assertEqual(sleep.call_count, 4)
@@ -357,7 +357,7 @@ class DistributedRootCoordinatorTest(unittest.TestCase):
                                    code_steps=None, code_step_graph={'schema': 'graph', 'state': 'published'})
         current = {'codingAutonomy': {'runs': [{'modelReceipts': [{'state': 'completed'}]}]},
                    'codingCapacity': {'model': 'synthetic'}}
-        r = SimpleNamespace(WORKER='ugfrank')
+        r = SimpleNamespace(WORKER='host-a')
         evidence = autonomous.native_verdict(r, '0001', KEY, {'leaseId': 'lease'}, current,
                                               progress, 'review', 'passed', None)['attemptEvidence']
         self.assertEqual(evidence['codeStepGraph'], {'schema': 'graph', 'state': 'published'})

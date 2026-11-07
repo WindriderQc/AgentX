@@ -89,7 +89,7 @@
         return null;
     }
 
-    // Short endpoint label inside its machine card: "UGAlien CPU" → "CPU".
+    // Short endpoint label inside its machine card: "host-b CPU" → "CPU".
     function endpointLabel(name, machineName, residency) {
         const text = String(name || '');
         if (text === machineName) return residency === 'cpu' ? 'CPU engine' : 'GPU engine';

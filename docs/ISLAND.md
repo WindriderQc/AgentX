@@ -25,7 +25,7 @@ et l'exécuteur de file `island`. Elle remplace les scripts du prototype
            │ iframe                                                        ssh │ (ou local)
            ▼                                                                    ▼
  ┌──────────────────────────────────────────────────────────────────────────────────────────┐
- │ hôte d'exécution (UGStation prévu)    island_runner.py                                   │
+ │ hôte d'exécution configuré           island_runner.py                                   │
  │   île Clawblox (vue en direct)   bac à sable : Codex ── relais ──► Core /api/llm/v1      │
  │   clawblox app (relectures)      mémoire de l'agent entre les parties                    │
  └──────────────────────────────────────────────────────────────────────────────────────────┘
@@ -129,21 +129,17 @@ Le résultat dans Core porte l'autorité `operator-attestation` (opération
 
 ## L'hôte d'exécution
 
-Décision du 2026-10-29 : l'île vivra sur **UGStation**, directement sous
-Linux, sans VM (Dell OptiPlex 7020, i3-4130, 8 Go, SSD 480 Go, toujours
-allumé ; aujourd'hui borne de la cuisine, jusqu'à ce qu'UGSmall la remplace).
-Mesuré : l'île seule prend environ 32 Mo et 6 % d'un cœur ; un agent Codex
-de 0,2 à 0,5 Go. Les deux premiers essais ont tourné sur devX.
-
-Le code ne dépend pas de ce choix : l'outil de file parle à
+L'instance choisit son hôte Linux et conserve son inventaire matériel,
+ses mesures de capacité et ses reçus de qualification hors du dépôt public.
+Le code ne dépend pas d'une machine particulière : l'outil de file parle à
 `integrations/island/island_runner.py` en local ou par SSH, avec une petite
 interface en JSON (`check`, `start`, `status`, `stop`, `memory`). L'adresse
-et l'accès SSH d'UGStation ne sont pas encore connus ; ils restent des
-réglages d'instance (`AGENTX_ISLAND_RUNNER=ssh:<cible>`).
+et l'accès SSH restent des réglages d'instance
+(`AGENTX_ISLAND_RUNNER=ssh:<cible>`).
 
-Préparation prévue sur UGStation (rien n'y est installé à ce jour) :
+Préparation de l'hôte d'exécution :
 
-- un compte Linux dédié aux agents, distinct du compte de la borne ;
+- un compte Linux dédié aux agents, distinct des autres usages de la machine ;
 - Clawblox avec les correctifs AgentX (bac à sable bubblewrap isolé) ;
 - un pare-feu sortant qui n'autorise que la porte de Core ;
 - `island_runner.py`, le venv Clawblox et la configuration ci-dessous sous ce
@@ -153,7 +149,7 @@ Réglages de l'outil de file (environnement de l'hôte d'opération) :
 
 | Variable | Rôle |
 |---|---|
-| `AGENTX_ISLAND_RUNNER` | `local`, ou `ssh:<cible>` (par exemple `ssh:devx`) |
+| `AGENTX_ISLAND_RUNNER` | `local`, ou `ssh:<cible>` (par exemple `ssh:dev-host`) |
 | `AGENTX_ISLAND_RUNNER_SCRIPT` | chemin absolu de `island_runner.py` sur l'hôte d'exécution |
 | `AGENTX_ISLAND_RUNNER_PYTHON` | interpréteur qui voit le module `clawblox` (le venv), `python3` par défaut |
 | `AGENTX_ISLAND_RUNNER_LABEL` | nom affiché dans l'onglet (sinon la cible SSH) |
@@ -490,8 +486,8 @@ Points à vérifier pendant la migration :
 - **Conteneur d'images.** Si la vue image (`/observe/image`) arrive, ses
   processus Node et Chromium entrent dans la propriété des processus et dans
   la preuve de nettoyage. GraphysX annonce environ 1 Go de mémoire pour le
-  navigateur et beaucoup de CPU par image sur devX : la capacité d'UGStation
-  (i3-4160, 16 Go, kiosque) est à revoir avant de l'activer.
+  navigateur et du CPU par image : l'instance mesure la capacité disponible
+  de son hôte avant de l'activer.
 - **Tests de non-régression.** On garde ceux du tableau, dont les routes
   Core interdites, l'agent mort, la relance ratée, le netcheck incomplet, le
   départ incertain, la course à la libération et le transfert de mémoire. Le
@@ -527,11 +523,11 @@ main = "README.md"
   passent ; pas de redirection ni de cookie ; HTTPS vérifié obligatoire hors boucle
   locale ; écoute sur la boucle locale seulement ; le journal ne contient jamais le jeton
   de session.
-- **Vérifié sur devX le 2026-10-29** : netcheck natif du runner (`start --netcheck`) sur un
-  monde GraphysX local relayé par `remote_world.py` : **23 vérifications sur 23**, dont le
-  monde joint par le relais de capacité, et deux accès directs ajoutés à `netcheckBlocked`
-  (le monde lui-même et l'adresse HTTPS distante) refusés depuis le bac à sable. Arrêt :
-  `stopped`, nettoyage local prouvé, processus du relais terminé avec le monde.
+- **Qualification de l'instance** : le netcheck natif du runner (`start --netcheck`)
+  vérifie le monde joint par le relais de capacité et le refus des accès directs
+  ajoutés à `netcheckBlocked`. L'opérateur conserve le reçu et la preuve de
+  nettoyage hors du dépôt public ; les tests de code ne valent pas qualification
+  de son installation.
 - **Ce que le monde distant garde pour lui** : l'enregistrement (le runner ne trouve pas de
   `.clawrec` : `recording` vaut `null`), la reprise, le spectateur et la vue image. Le
   runner ne donne pas encore de `liveView` pour un monde distant : l'onglet Île devra
