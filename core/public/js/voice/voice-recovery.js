@@ -73,6 +73,7 @@
     }
     failureMessage(error) {
       if (this.english()) return error?.message || 'Voice stopped. Press Resume when ready.';
+      if (error?.code === 'VOICE_SELECTED_DEVICE_UNAVAILABLE') return 'Le micro choisi est indisponible. Rebranchez-le, ou choisissez et enregistrez un autre micro dans les réglages de l’Atelier vocal, puis appuyez sur Reprendre.';
       if (error?.name === 'NotAllowedError') return 'Le navigateur refuse l’accès au micro ou au son. Vérifiez son autorisation, puis appuyez sur Reprendre.';
       if (error?.name === 'NotFoundError' || error?.code === 'VOICE_DEVICE_DISCONNECTED') return 'Micro introuvable ou déconnecté. Rebranchez-le, puis appuyez sur Reprendre.';
       if (['VOICE_CONTEXT_PAUSED', 'VOICE_AUTOPLAY_BLOCKED'].includes(error?.code)) return 'Le navigateur a suspendu le son. Appuyez sur Reprendre pour continuer.';

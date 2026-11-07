@@ -222,7 +222,17 @@
           const updated = await api('/api/voice-personas/catalog', { signal:life.signal }); state.personas = updated.personas || state.personas;
           describeShared(); role('sharedStatus').textContent = 'Voix de personnalité enregistrée dans Core. Les parcours déjà ouverts reliront leur catalogue après rechargement.';
         });
-        case 'devices': return exclusive(async () => { const devices = await S.microphones(life.signal, { requestPermission: !current().audio }); field('inputDeviceId').replaceChildren(new Option('Micro système par défaut',''), ...devices.map((d,i) => new Option(d.label || `Micro ${i+1}`, d.deviceId))); field('inputDeviceId').value = prefs.inputDeviceId; });
+        case 'devices': return exclusive(async () => {
+          const selected = field('inputDeviceId').value;
+          const devices = await S.microphones(life.signal, { requestPermission: !current().audio });
+          const select = field('inputDeviceId');
+          select.replaceChildren(new Option('Micro système par défaut',''), ...devices.map((d,i) => new Option(d.label || `Micro ${i+1}`, d.deviceId)));
+          if (selected && !devices.some(d => d.deviceId === selected)) {
+            select.add(new Option('Micro choisi · indisponible', selected));
+            notice('Le micro choisi est indisponible. Rebranchez-le ou choisissez un autre micro, puis enregistrez votre choix.');
+          } else notice('');
+          select.value = selected;
+        });
       }
     }, { signal: life.signal });
     role('settings').addEventListener('submit', event => { event.preventDefault(); void exclusive(async () => {
