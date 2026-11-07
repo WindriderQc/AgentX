@@ -47,3 +47,37 @@ test('authority inspection reuses Core and cannot add a caller identity or grant
   expect((await call('work_authority', { pipelineId: '0991', authenticated: 'operator' })).result.isError).toBe(true);
   expect(read).toHaveBeenCalledTimes(1);
 });
+
+test('Life history on the owner bus reuses the Nestor contract and cannot decide or edit (#24)', async () => {
+  const life_history = jest.fn(async input => ({ authority: 'agentx.core', operation: input.operation }));
+  expect(TOOLS.find(tool => tool.name === 'life_history').inputSchema.properties.operation.enum)
+    .toEqual(['search', 'get', 'propose', 'add', 'status']);
+  expect((await call('life_history', { operation: 'search', query: 'Synthetic lake' }, { life_history })).result.structuredContent)
+    .toEqual({ authority: 'agentx.core', operation: 'search' });
+  for (const refused of [{ operation: 'accept', entryId: 'a'.repeat(24) }, { operation: 'refuse' },
+    { operation: 'search', query: 'Synthetic', audience: 'family' }, { operation: 'get', entryId: 'not-an-id' }]) {
+    expect((await call('life_history', refused, { life_history })).result.isError).toBe(true);
+  }
+  expect(life_history).toHaveBeenCalledTimes(1);
+});
+test('Life history default handler routes to the existing proposal service (#24)', async () => {
+  const service = require('../../src/services/historyProposalService');
+  const operateForNestor = jest.fn(async () => ({ authority: 'agentx.core', pending: 0 }));
+  const create = jest.spyOn(service, 'createHistoryProposals').mockReturnValue({ operateForNestor });
+  try {
+    expect((await call('life_history', { operation: 'status' })).result.structuredContent.pending).toBe(0);
+    expect(operateForNestor).toHaveBeenCalledWith({ operation: 'status' });
+  } finally { create.mockRestore(); }
+});
+test('mail recall keeps its envelope and adds bounded links from the shared Core service (#24)', async () => {
+  const links = require('../../src/services/ownerContextLinks');
+  const recall = jest.spyOn(links, 'recall').mockResolvedValue({ authority: 'agentx.core', query: 'Synthetic', results: [],
+    linkStatus: { basis: 'exact_identifiers', complete: true, unavailable: [], truncated: false } });
+  try {
+    const response = await call('mail_recall', { query: 'Synthetic', limit: 4 });
+    expect(response.result.structuredContent.linkStatus.basis).toBe('exact_identifiers');
+    expect(recall).toHaveBeenCalledWith('Synthetic', { limit: 4 });
+    expect((await call('mail_recall', { query: 'Synthetic', limit: 21 })).result.isError).toBe(true);
+    expect(recall).toHaveBeenCalledTimes(1);
+  } finally { recall.mockRestore(); }
+});

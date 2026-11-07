@@ -100,6 +100,15 @@ describe('replaced RAG facts (#896)', () => {
     expect(JSON.parse(fetch.mock.calls[1][1].body).includeHistory).toBeUndefined();
   });
 
+  test('the owner private recall also drops replaced facts and cannot read history (#24)', async () => {
+    const own = { text: 'Synthetic archived mail', score: 0.5, documentId: 'mail:synthetic', kind: 'mail', source: { messageId: 'synthetic' } };
+    const recall = { search: jest.fn(async () => ({ results: [{ ...own, excerpt: own.text }] })) };
+    const found = await forAudience('owner-private', { recall }).search('Synthetic backup', { includeHistory: true });
+    expect(found.map(row => row.text)).toEqual(['Synthetic archived mail', 'Synthetic backup on host B', 'Synthetic lease until later']);
+    expect(found[0].metadata).toMatchObject({ source: 'owner-recall', scope: 'owner', sensitivity: 'private' });
+    expect(JSON.parse(fetch.mock.calls[0][1].body).includeHistory).toBeUndefined();
+  });
+
   test('rag_search forwards an explicit owner history read', async () => {
     const tool = await handleMcpMessage({ jsonrpc: '2.0', id: 7, method: 'tools/call',
       params: { name: 'rag_search', arguments: { query: 'Synthetic backup', includeHistory: true } } }, {});
