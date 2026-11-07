@@ -93,6 +93,7 @@ class RejectedCopyTests(unittest.TestCase):
         current, units, gaps = worker.materialize(self.root, source)
         plan = list(worker.pages(current, units, manifest["objectiveSha256"],
                                  manifest["config"]["pageChars"], manifest["config"]["overlap"]))
+        worker.attribution.bind_pages(self.root, objective, manifest, current, units, plan)
         save(objective / "sources" / (worker.source_key(source) + ".json"), {
             "source": current, "pageIds": [p["pageId"] for p in plan], "gaps": gaps,
             "representations": [worker.equivalent.unit_ref(u) for u in units]})
@@ -307,7 +308,7 @@ class RejectedCopyTests(unittest.TestCase):
         with self.assertRaisesRegex(copies.RejectedCopyIntegrityError, "complete current plan"):
             copies.defer(objective, manifest, source, unit, partial, partial[0])
         other = {**unit, "mimeType": "text/html"}
-        other_plan = copies._plan(source, other, manifest)
+        other_plan = copies._plan(objective, source, other, manifest)
         self.assertIsNone(copies.defer(objective, manifest, source, other, other_plan, other_plan[0]))
         self.assertIsNotNone(copies.defer(objective, manifest, source, unit, plan, plan[0]))
 
@@ -316,7 +317,7 @@ class RejectedCopyTests(unittest.TestCase):
         self.first_rejected()
         objective, manifest, source, unit, _ = self.target()
         different = {**manifest, "objectiveSha256": "f" * 64}
-        other_plan = copies._plan(source, unit, different)
+        other_plan = copies._plan(objective, source, unit, different)
         self.assertIsNone(copies.defer(objective, different, source, unit, other_plan, other_plan[0]))
 
     def test_an_empty_existing_index_cannot_be_treated_as_a_missing_cache(self):

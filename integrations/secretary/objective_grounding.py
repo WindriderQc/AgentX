@@ -120,8 +120,9 @@ def extraction_context(record, manifest):
     if contract_for(manifest) == CONTRACT and isinstance(record, dict) and isinstance(record.get('source'), dict):
         context = {**(context or {}), 'direction': record['source'].get('direction', 'unknown')}
     if contract_for(manifest) in (OMISSION_CONTRACT, CONTRACT):
-        return {**(context or {}), 'ownerAliases': manifest['config'].get('ownerAliases', [])}
-    return context
+        context = {**(context or {}), 'ownerAliases': manifest['config'].get('ownerAliases', [])}
+    from objective_attribution import extraction_context as attributed_context
+    return attributed_context(context, record, manifest)
 
 
 def catalog(content):

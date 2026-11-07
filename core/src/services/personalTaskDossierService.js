@@ -16,6 +16,15 @@ const list = (value, max = 12) => {
   return value;
 };
 
+function citationSpans(source, quote) {
+  const spans = [];
+  for (let at = source.text.indexOf(quote); at >= 0; at = source.text.indexOf(quote, at + 1)) {
+    const start = source.span.start + Array.from(source.text.slice(0, at)).length;
+    spans.push({ start, end: start + Array.from(quote).length });
+  }
+  return spans;
+}
+
 function normalizeProposal(input, snapshot) {
   const states = ['active', 'waiting', 'resolved', 'cancelled', 'superseded', 'uncertain'];
   const actions = ['keep', 'update', 'complete', 'cancel'];
@@ -24,10 +33,15 @@ function normalizeProposal(input, snapshot) {
     const source = snapshot.sources.find(source => source.id === citation.sourceId);
     const quote = text(citation.quote, 600);
     if (!source || !source.text.includes(quote)) throw bad('Cite an exact passage from the saved source.', 'PERSONAL_DOSSIER_EVIDENCE_REQUIRED');
-    return { sourceId: source.id, quote, date: source.date, url: source.url, direction: source.direction, relation: source.relation };
+    return { sourceId: source.id, quote, date: source.date, url: source.url, direction: source.direction, relation: source.relation,
+      ...(source.readerContract === 'secretary.dossier-sources/v2' && {
+        readerContract: source.readerContract, sourceContext: source.sourceContext, span: source.span,
+        attribution: source.attribution, citationSpans: citationSpans(source, quote) }) };
   });
   const supported = citations.some(cite => Number.isFinite(Date.parse(cite.date)) && !['draft', 'unknown'].includes(cite.direction)
-    && !['quoted', 'unknown'].includes(cite.relation) && !snapshot.sources.find(source => source.id === cite.sourceId).truncated);
+    && !['quoted', 'unknown'].includes(cite.relation) && !snapshot.sources.find(source => source.id === cite.sourceId).truncated
+    && (cite.readerContract !== 'secretary.dossier-sources/v2' || cite.relation === 'authored'
+      && cite.attribution?.state === 'container' && !cite.attribution?.laterMessageIds?.length));
   if (input.state !== 'uncertain' && !supported) throw bad('A dated source outside drafts and quotations is required.', 'PERSONAL_DOSSIER_EVIDENCE_REQUIRED');
   const remainingWork = list(input.remainingWork || []).map(value => text(value, 500));
   const openQuestions = list(input.openQuestions || []).map(value => text(value, 500));
@@ -101,7 +115,9 @@ async function decide(input, deps) {
   const row = await Dossier.findById(input.id).lean();
   if ((task.__v || 0) !== row.taskRevision) throw bad('The task changed; read the dossier again.', 'PERSONAL_DOSSIER_CONFLICT', 409);
   if (input.decision === 'apply') {
-    const fresh = await collect(current.selection, task, deps);
+    const readerContracts = Object.fromEntries(current.threadReads.map(read =>
+      [read.threadId, read.readerContract || 'secretary.dossier-sources/v1']));
+    const fresh = await collect(current.selection, task, deps, readerContracts);
     if (fingerprint(fresh) !== row.fingerprint) throw bad('Sources or tasks changed; read the dossier again.', 'PERSONAL_DOSSIER_SOURCES_CHANGED', 409);
   }
   const proposal = row.proposal;

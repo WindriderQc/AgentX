@@ -29,6 +29,7 @@ import objective_rtf_scope as rtf_scope
 import objective_equivalence as equivalent
 import objective_dispositions as dispositions
 import objective_rejected_copies as rejected_copies
+import objective_attribution as attribution
 from objective_annual import aggregate as annual_coverage
 from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled, blocked_phase, blocked_counts, result_file
 from review_response import ReviewInvalidOutput
@@ -71,11 +72,16 @@ def config_at(file):
 def prepare(root, config, *, create=True):
     root = Path(root)
     objective = root / "objective-reviews" / config["id"] / config["version"]
-    system = INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + config["instructions"]
-    objective_sha = hashed({"contract": CONTRACT, "config": config, "system": system, "schema": SCHEMA})
     file = objective / "manifest.json"
+    previous = load(file, {}) if file.exists() else None
+    contract = attribution.contract_for(previous) if previous is not None else attribution.CONTRACT
+    system = attribution.system(INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + config["instructions"], contract)
+    identity = {"contract": CONTRACT, "config": config, "system": system, "schema": SCHEMA}
+    if contract:
+        identity["attributionContract"] = contract
+    objective_sha = hashed(identity)
     if file.exists():
-        manifest = load(file, {})
+        manifest = previous
         if manifest.get("objectiveSha256") != objective_sha:
             raise ValueError("This objective version already has another intent; use a new version")
         return objective, manifest
@@ -84,6 +90,7 @@ def prepare(root, config, *, create=True):
     manifest = {"schema": CONTRACT, "createdAt": now(), "objectiveSha256": objective_sha,
                 "config": config, "sources": inventory(root, config["selection"]),
                 "systemSha256": hashed(system), "responseSchemaSha256": hashed(SCHEMA)}
+    manifest["attributionContract"] = contract
     try:
         durable(file, manifest, exclusive=True)
     except FileExistsError:
@@ -119,6 +126,7 @@ def read_receipt(file, manifest):
         expected = {"contract": "secretary.objective-representation/v1", "rawResultSha256": hashed(raw), "changes": changes}
         if not changes or row["resultProcessing"] != expected or normalized != row["result"]:
             raise ValueError("Objective representation receipt does not match the retained native result")
+    attribution.validate_receipt(file.parent.parent, row, manifest)
     return row
 
 
@@ -131,6 +139,9 @@ def usable_aliases(objective, manifest):
             raise rejected_copies.RejectedCopyIntegrityError("A deferred rejected copy also has an accepted alias")
         if not any(dispositions.read(objective, manifest, pid) for pid in
                    alias["coveredPageIds"] + alias["canonicalPageIds"]):
+            if attribution.contract_for(manifest):
+                attribution.project(objective, alias["sourceRecord"], {"moments": []},
+                                    expected_objective=manifest["objectiveSha256"])
             yield alias
 
 
@@ -218,6 +229,7 @@ def _source_record(page):
               "direction": source.get("direction", "unknown"),
               "readerContract": CONTRACT, "representation": page["representation"],
               "offset": page["offset"], "end": page["end"], "totalChars": page["totalChars"]}
+    attribution.record_context(page, native)
     return {"id": sid, "kind": "mail", "body": page["content"],
             "bodySha256": hashlib.sha256(page["content"].encode()).hexdigest(), "subject": source["headers"].get("subject", ""),
             "mailDate": source.get("mailDate"), "nativeRef": native,
@@ -243,6 +255,10 @@ def export(objective, manifest):
                 "objectiveId": manifest["config"]["id"], "objectiveVersion": manifest["config"]["version"],
                 "sourceIds": [record["id"]], "nativeSourceRefs": [record["nativeRef"]],
                 "claimsWithExactQuotes": [{"sourceId": record["id"], "quote": q} for q in moment["quotes"]]}
+            if "quoteAttribution" in row:
+                finding["quoteAttribution"] = {"schema": attribution.CONTRACT,
+                    "citations": row["quoteAttribution"]["moments"][index],
+                    "gaps": row["quoteAttribution"]["gaps"]}
             for alias in aliases_by_page.get(row["pageId"], []):
                 claims = [c for c in alias["mappedClaims"] if c["canonicalPageId"] == row["pageId"] and c["canonicalMomentIndex"] == index]
                 if not claims:
@@ -291,7 +307,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                   "newlyReviewedPages": 0, "inferenceCalls": 0, "elapsedSeconds": 0, **blocked_counts(held)}
         durable(objective / "status.json", status)
         return {**status, "coverage": coverage(objective, manifest)}
-    system = INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + manifest["config"]["instructions"]
+    system = attribution.system(INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + manifest["config"]["instructions"],
+                                attribution.contract_for(manifest))
     grounded = grounding.contract_for(manifest)
     started, made, rejected, deferred, inferences = clock(), 0, 0, 0, 0
     requested_stop = stop
@@ -352,6 +369,13 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
             if rtf_scope.known_rtf(previous) and rtf_scope.had_headers(previous):
                 retain_header_scope(current, units)
             plan = list(pages(current, units, manifest["objectiveSha256"], manifest["config"]["pageChars"], manifest["config"]["overlap"]))
+            attribution.bind_pages(root, objective, manifest, current, units, plan)
+            def equivalent_record(alias_page):
+                # Full-unit aliases retain their own offsets and attribution,
+                # while the canonical receipt remains the actual model read.
+                alias_unit = {**alias_page["representation"], "content": alias_page["content"]}
+                attribution.bind_pages(root, objective, manifest, current, [alias_unit], [alias_page])
+                return _source_record(alias_page)
             durable(plan_file, {"source": current, "pageIds": [p["pageId"] for p in plan], "gaps": gaps,
                                 "representations": [{k: v for k, v in u.items() if k != "content"} for u in units],
                                 "rtfReaderProfile": rtf_scope.materialized_profile(units, gaps)})
@@ -374,7 +398,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     continue  # Preserve the immutable alias already validated at run start.
                 canonical = equivalent.find(objective, current, unit, read_receipt, manifest)
                 if canonical:
-                    equivalent.alias(objective, current, unit, unit_pages, canonical, _source_record)
+                    equivalent.alias(objective, current, unit, unit_pages, canonical, equivalent_record)
                     reused.update(p["pageId"] for p in unit_pages)
         except (dispositions.DispositionIntegrityError, rejected_copies.RejectedCopyIntegrityError):
             raise
@@ -398,7 +422,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
             unit_deferred = retain_rejected_pages and rejected_copies.matches(objective, manifest, current, unit, unit_pages)
             canonical = None if unit_rejected or unit_deferred else equivalent.find(objective, current, unit, read_receipt, manifest)
             if canonical:
-                equivalent.alias(objective, current, unit, unit_pages, canonical, _source_record)
+                equivalent.alias(objective, current, unit, unit_pages, canonical, equivalent_record)
                 reused.update(p["pageId"] for p in unit_pages)
                 continue
             if made + rejected + deferred >= max_pages or stop():
@@ -460,6 +484,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     if changes:
                         receipt["resultProcessing"] = {"contract": "secretary.objective-representation/v1",
                             "rawResultSha256": hashed(raw), "changes": changes}
+                    if attribution.contract_for(manifest):
+                        receipt["quoteAttribution"] = attribution.project(objective, record, normalized)
                     durable(objective / "page-reviews" / (page["pageId"] + ".json"), receipt)
                     break
                 except Busy as error:

@@ -91,6 +91,50 @@ describe('personal dossier evidence and human decisions in Core', () => {
     await expect(decide(proposed)).rejects.toMatchObject({ code: 'PERSONAL_DOSSIER_SOURCES_CHANGED' });
   });
 
+  test('v2 citations retain Unicode spans and attribution through a saved read and proposal', async () => {
+    native.schema = 'secretary.dossier-sources/v2';
+    Object.assign(native.sources[0], { readerContract: native.schema,
+      text: '🙂 ' + source().text, span: { start: 40, end: 40 + Array.from('🙂 ' + source().text).length, offsetUnit: 'unicode-code-point' },
+      sourceContext: { schema: 'secretary.source-context/v2', segments: [{ relation: 'authored', author: 'Person A' }] },
+      attribution: { state: 'container', author: 'Person A', date: source().date, assertionKey: 'stable-assertion' } });
+    const review = await read();
+    const before = await Dossier.findById(review.id).lean();
+    const proposed = await propose(review);
+    expect(proposed.proposal.citations[0]).toMatchObject({ readerContract: native.schema,
+      sourceContext: native.sources[0].sourceContext, attribution: native.sources[0].attribution,
+      citationSpans: [{ start: 42, end: 42 + Array.from(update().citations[0].quote).length }] });
+    expect((await Dossier.findById(review.id).lean()).snapshot).toEqual(before.snapshot);
+    expect(deps.mail.dossier).toHaveBeenCalledTimes(1);
+    await decide(proposed);
+    expect(deps.mail.dossier).toHaveBeenLastCalledWith({ threadId, readerContract: native.schema });
+  });
+
+  test.each(['quoted', 'unresolved', 'later-reply'])('v2 %s evidence cannot alone establish a current obligation or resolution', async kind => {
+    native.schema = 'secretary.dossier-sources/v2';
+    Object.assign(native.sources[0], { readerContract: native.schema,
+      relation: kind === 'later-reply' ? 'authored' : kind,
+      span: { start: 0, end: Array.from(source().text).length }, sourceContext: { schema: 'secretary.source-context/v2' },
+      attribution: { state: kind === 'later-reply' ? 'container' : 'matched-original', author: 'Person A',
+        date: '2026-07-16', ...(kind === 'later-reply' && { laterMessageIds: ['reply-in-october'] }) } });
+    const review = await read();
+    await expect(propose(review)).rejects.toMatchObject({ code: 'PERSONAL_DOSSIER_EVIDENCE_REQUIRED' });
+    const uncertain = await propose(review, { state: 'uncertain', action: 'keep', summary: 'Réconcilier les sources.',
+      actor: '', citations: update().citations, uncertainties: ['Demande ancienne et réponse ultérieure à lire.'] });
+    expect(uncertain.proposal.citations[0].attribution).toEqual(native.sources[0].attribution);
+    expect((await Task.findOne({ pipelineId: task.id })).title).toBe(task.title);
+    expect(await Task.countDocuments({ service: 'personal' })).toBe(1);
+  });
+
+  test('legacy saved dossiers recheck the original source contract without rewriting the snapshot or proposal', async () => {
+    const proposed = await propose(await read());
+    const before = await Dossier.findById(proposed.id).lean();
+    const bytes = JSON.stringify([before.snapshot, before.proposal, before.fingerprint, before.proposalHash]);
+    await decide(proposed);
+    expect(deps.mail.dossier).toHaveBeenLastCalledWith({ threadId, readerContract: 'secretary.dossier-sources/v1' });
+    const after = await Dossier.findById(proposed.id).lean();
+    expect(JSON.stringify([after.snapshot, after.proposal, after.fingerprint, after.proposalHash])).toBe(bytes);
+  });
+
   test('a competing task edit rejects both stale proposals and stale decisions', async () => {
     const review = await read();
     const proposed = await propose(review);

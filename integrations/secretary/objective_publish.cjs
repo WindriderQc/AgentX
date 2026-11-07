@@ -128,6 +128,7 @@ function build(finding, indexed, { matches = [], dateReview = null } = {}) {
       sourceIds: records.map(r => r.id), claimsWithExactQuotes: bounded.claims,
       proposedRelations: [...(finding.relationHints || []), ...proposals],
       metadata: { objectiveId: finding.objectiveId, objectiveVersion: finding.objectiveVersion,
+        ...(finding.quoteAttribution && { quoteAttribution: finding.quoteAttribution }),
         subject: finding.subject, subjectName: finding.subjectName, userConfirmed: false,
         proofLimits: Object.fromEntries(Object.entries(bounded.limits).filter(([key]) => key !== 'omitted')) } },
     sourceRecords: records.map(sourceRecord),

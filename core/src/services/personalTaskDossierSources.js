@@ -22,7 +22,7 @@ function selection(input, task, now) {
   return { threadIds, calendarIds, timeMin, timeMax };
 }
 
-async function collect(request, task, deps = {}) {
+async function collect(request, task, deps = {}, readerContracts = null) {
   const now = deps.now || new Date();
   const selected = selection(request, task, now);
   const mail = deps.mail || new (require('../../integrations/runtime-bridges/secretary-mail-control').SecretaryMailControl)();
@@ -31,8 +31,8 @@ async function collect(request, task, deps = {}) {
   const gaps = [], threadReads = [], calendarReads = [];
   for (const threadId of selected.threadIds) {
     try {
-      const read = await mail.dossier({ threadId });
-      threadReads.push({ threadId, sourceHash: read.sourceHash });
+      const read = await mail.dossier({ threadId, ...(readerContracts && { readerContract: readerContracts[threadId] }) });
+      threadReads.push({ threadId, sourceHash: read.sourceHash, ...(read.schema && { readerContract: read.schema }) });
       if (!read.complete) { coverage.mail = 'partial'; gaps.push(`Correspondance partielle : ${threadId}`); }
       if (!read.documentsComplete) { coverage.documents = 'partial'; gaps.push(`Documents à lire dans le fil ${threadId}`); }
       sources.push(...read.sources);

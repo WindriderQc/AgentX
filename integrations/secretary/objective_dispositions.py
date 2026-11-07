@@ -145,6 +145,8 @@ def retain(objective, manifest, page, error):
            "offset": page["offset"], "end": page["end"], "totalChars": page["totalChars"],
            "disposition": "rejected-output", "failure": failure, "proof": proof,
            "textCovered": False, "semanticAcceptance": "not-established", "userConfirmed": False}
+    if manifest.get("attributionContract"):
+        row["sourceContext"] = page["sourceContext"]
     file = Path(objective) / "page-dispositions" / (page["pageId"] + ".json")
     durable(file, row, exclusive=True)
     return read(objective, manifest, page["pageId"], expected_identity=page["identity"])

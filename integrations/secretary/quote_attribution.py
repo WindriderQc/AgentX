@@ -6,10 +6,10 @@ only when the header splits without guessing, otherwise the claim stays
 unknown. A quoted passage gains a verified author/date only by matching the
 original message in the same archived thread.
 
-Version 2 of the mail page context. Objective campaigns and personal dossiers
-keep evidence_attribution.body_segments (v1): their receipts store that exact
-context. Nothing here changes an original message, a page identity, page text,
-a source hash or an existing receipt.
+Version 2 of the mail page context. New objective/dossier contracts reuse this
+engine through source_quote_context; historical contracts retain v1 boundaries.
+Nothing here changes an original message, a page identity, page text, a source
+hash or an existing receipt.
 """
 from __future__ import annotations
 
