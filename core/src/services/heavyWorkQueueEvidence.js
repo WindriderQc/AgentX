@@ -178,7 +178,7 @@ async function observe(job) {
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.
   const runtime = await Runtime.findById('runtime').lean();
-  if ((job.preparationRefusal || job.launchRefusal || job.preparationReceipt || job.executor?.mode === 'coverage')
+  if ((job.preparationRefusal || job.launchRefusal || job.preparationReceipt || require('./heavyWorkQueueCoverage').requiresRelease(job))
     && (!runtime || !Array.isArray(runtime.workloads) || !Array.isArray(runtime.inferences))) {
     throw fail('Native runtime release evidence unavailable', 503, 'HEAVY_QUEUE_RELEASE_UNAVAILABLE');
   }

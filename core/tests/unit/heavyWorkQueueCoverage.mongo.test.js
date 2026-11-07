@@ -169,6 +169,13 @@ it.each([true, false])('rechecks native coverage policy before a Profiler start 
   if (admitted) {
     expect(await launcher.launch(job.id, 'coverage', { expectedRevision: job.revision })).toMatchObject({ state: 'running', operation: { id: 'native-profile' } });
     expect(launches).toBe(1);
+    const previousRead = requestJson.getMockImplementation();
+    requestJson.mockImplementation(options => options.path === '/api/profiler/pipeline/profile-host/native-profile/progress'
+      ? { data: { queueRequestId: job.id, hostId: 'fixture-a', queueStatus: 'completed' } } : previousRead(options));
+    await Runtime.deleteMany({});
+    await expect(evidence.reconcile(job.id, 'observer')).rejects.toMatchObject({ code: 'HEAVY_QUEUE_RELEASE_UNAVAILABLE' });
+    await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+    expect((await evidence.reconcile(job.id, 'observer')).state).toBe('completed');
   } else {
     await expect(launcher.launch(job.id, 'coverage', { expectedRevision: job.revision })).rejects.toThrow('did not start');
     expect(await queue.get(job.id)).toMatchObject({ state: 'failed', launchRefusal: { reason: 'coverage quiet window closed' } });

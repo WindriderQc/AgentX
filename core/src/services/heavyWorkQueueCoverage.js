@@ -12,6 +12,7 @@ async function request(path, method = 'GET', body) {
   return result?.data ?? result;
 }
 const profileRequestId = job => job.kind === 'profiler' && /^benchmark-coverage:([a-f0-9-]{36})$/.exec(job.source?.ref || '')?.[1];
+const requiresRelease = job => (job.kind === 'benchmark' && job.executor?.mode === 'coverage') || Boolean(profileRequestId(job));
 const requestIdFor = job => job.executor.mode === 'coverage' ? job.executor.requestId : profileRequestId(job);
 const pathFor = job => `/api/benchmark/coverage/attempts/${encodeURIComponent(requestIdFor(job))}`;
 
@@ -82,4 +83,4 @@ async function unstartedRefusal(job, { read = request } = {}) {
   return receipt ? { dispatchId: job.dispatchId, code: receipt.code, reason: receipt.reason } : null;
 }
 
-module.exports = { preDispatch, start, observe, exactIntent, unstartedRefusal, profileRequestId, assertAdmission };
+module.exports = { preDispatch, start, observe, exactIntent, unstartedRefusal, profileRequestId, assertAdmission, requiresRelease };
