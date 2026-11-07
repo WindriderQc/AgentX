@@ -182,4 +182,25 @@ describe('unlock banner', () => {
     expect(html).toContain('/js/family-device-unlock.js');
     expect(await render({})).not.toContain('family-unlock-banner');
   });
+
+  test('a locked family device is offered only the pages its gate lets through', async () => {
+    const { allowedForFamilyDevice } = require('../../surfaces/household/family-device');
+    const navAllowedRoute = (route, query) => allowedForFamilyDevice({ method: 'GET', path: route, query });
+    const html = await render({ navAllowedRoute });
+    const hrefs = [...html.matchAll(/href="([^"]+)"/g)].map(match => match[1]);
+    expect(hrefs).toEqual(expect.arrayContaining(['/panel', '/kids', '/lecture', '/kids/sounds', '/kids/plants']));
+    for (const href of hrefs) {
+      if (href.startsWith('/') && !href.startsWith('/js/')) {
+        const url = new URL(href, 'http://agentx.invalid');
+        expect(navAllowedRoute(url.pathname, Object.fromEntries(url.searchParams))).toBe(true);
+      }
+    }
+    expect(hrefs).not.toContain('/dad');
+    expect(hrefs).not.toContain('/dad/family');
+    expect(html).not.toContain('nav-trigger-personal-group');
+    expect(html).toMatch(/<a href="\/panel" class="nav-brand"/);
+    const full = await render({});
+    expect(full).toContain('nav-trigger-personal-group');
+    expect(full).toMatch(/<a href="\/" class="nav-brand"/);
+  });
 });

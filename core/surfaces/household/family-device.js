@@ -113,6 +113,8 @@ function register({ app, mongoose, standardJsonParser, envelope, fail, logger, o
       res.locals.familyUnlock = { until: new Date(until).toISOString() };
       return next();
     }
+    // The navigation offers only what this gate allows; any other link would bounce to /panel.
+    res.locals.navAllowedRoute = (path, query) => allowedForFamilyDevice({ method: 'GET', path, query });
     if (allowedForFamilyDevice(req)) return next();
     if (req.method === 'GET' && !req.path.startsWith('/api/')) return res.redirect(302, '/panel');
     return fail(res, 403, 'This device is pinned to the family profile.', 'FAMILY_DEVICE_PINNED');
