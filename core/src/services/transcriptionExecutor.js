@@ -98,7 +98,8 @@ async function observeReceipt(job) {
     updates.state = receipt.state;
   }
   await Model.updateOne({ _id: row._id }, { $set: updates }, { writeConcern: WC });
-  return { operationId: job.id, terminal, state: receipt.state, authority: 'voix.long-transcription', stage: receipt.stage };
+  return { operationId: job.id, terminal, state: receipt.state, authority: 'voix.long-transcription', stage: receipt.stage,
+    runningConfirmed: ['queued', 'running'].includes(receipt.state) };
 }
 async function cancelNative(job) {
   const row = await record(job);

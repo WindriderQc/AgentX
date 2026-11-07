@@ -51,6 +51,13 @@ async function sweep() {
         // Missing evidence stays fenced. Do not turn it into an inferred
         // completion, and do not overwrite the launch owner's receipt.
         logger.debug('Heavy queue awaits executor evidence', { queueRequestId: job.id, code: error.code || 'EVIDENCE_UNAVAILABLE' });
+        // A previously attached native receipt that disappears must not hide
+        // behind a multi-hour execution estimate. External operator/island
+        // jobs have their own observer and terminal receipt protocol.
+        if (job.state === 'running' && !['operator', 'island'].includes(job.executor?.mode)) {
+          await queue.record(job.id, { dispatchId: job.dispatchId, state: 'uncertain',
+            reason: 'Native receipt is unavailable; reconcile this original operation before any replacement launch.' }, 'core-queue-observer').catch(() => {});
+        }
       }
     }
     await require('./heavyWorkQueueNotifications').publishJobs((await queue.list())?.jobs || []);

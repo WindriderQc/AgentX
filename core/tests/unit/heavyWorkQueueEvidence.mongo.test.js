@@ -226,3 +226,14 @@ it('rejects a no-start verdict after native operation bookkeeping already exists
     .rejects.toMatchObject({ statusCode: 409 });
   expect((await queue.get(job.id)).operation.id).toBe(operationId);
 });
+
+it('restores running observation from the same native receipt after an attached receipt outage, without relaunch', async () => {
+  const job = await dispatch({ key: 'native-receipt-returned', title: 'Synthetic recovering profiler', kind: 'profiler', hosts: [A],
+    estimatedMinutes: 480, executor: { hostId: 'primary' } });
+  await queue.record(job.id, { state: 'running', dispatchId: job.dispatchId, operationId: 'original-profile' }, 'test');
+  await queue.record(job.id, { state: 'uncertain', dispatchId: job.dispatchId, reason: 'Synthetic receipt read outage' }, 'observer');
+  requestJson.mockResolvedValue({ data: { queueRequestId: job.id, hostId: 'primary', queueStatus: 'running', launchConfirmed: true } });
+  expect(await evidence.reconcile(job.id, 'observer')).toMatchObject({ state: 'running', operation: { id: 'original-profile' } });
+  expect(requestJson.mock.calls).toHaveLength(1);
+  expect(requestJson.mock.calls[0][0]).toMatchObject({ method: 'GET', path: '/api/profiler/pipeline/profile-host/original-profile/progress' });
+});

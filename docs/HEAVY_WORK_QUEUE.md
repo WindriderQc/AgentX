@@ -354,6 +354,11 @@ duration plus five minutes from dispatch. Operator and island jobs remain
 notification names the original request, resources and receipt owner. Its stable
 ID preserves acknowledgment; a returned receipt resolves it. These deadlines
 request attention and never prove termination, clear quarantine or relaunch work.
+If an attached native receipt becomes unreadable, the regular observer marks the
+request uncertain and requests attention immediately rather than waiting for a
+possibly multi-hour duration estimate. A matching native receipt confirming execution
+restores running observation; missing evidence never starts replacement work.
+Operator/island jobs keep their external receipt owner and execution deadline.
 
 The observer reports an unstarted requested/reserved job when its `startBefore`
 or reservation end passes, including planning proposals without an executor.

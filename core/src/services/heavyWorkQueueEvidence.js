@@ -105,7 +105,7 @@ async function observe(job) {
     if (!/^[a-f0-9]{24}$/.test(operationId)) throw fail('Invalid batch receipt identity', 409);
     receipt = await benchmark(`/api/benchmark/batch/${operationId}?result_limit=1`);
     if (!receipt.tags?.includes(tag)) throw fail('Batch does not carry the queued plan identity', 409);
-    if (['running', 'judging'].includes(receipt.status) || receipt.judge_status === 'running') return { operationId, terminal: false };
+    if (['running', 'judging'].includes(receipt.status) || receipt.judge_status === 'running') return { operationId, terminal: false, runningConfirmed: true };
     if (!['completed', 'failed', 'cancelled', 'stopped'].includes(receipt.status)) throw fail('Batch outcome is not terminal', 409);
     receipt = { state: receipt.status === 'stopped' ? 'cancelled' : receipt.status, authority: 'benchmark.batch', operationId };
   } else if (job.kind === 'profiler') {
@@ -118,7 +118,7 @@ async function observe(job) {
     const result = await benchmark(`/api/profiler/pipeline/profile-host/${encodeURIComponent(operationId)}/progress`);
     if (result.queueRequestId !== job.id || result.hostId !== job.executor.hostId) throw fail('Profiler receipt belongs to another request', 409);
     if (result.launchConfirmed === false) return { operationId, terminal: false, awaitingDispatch: true };
-    if (result.queueStatus === 'running') return { operationId, terminal: false };
+    if (result.queueStatus === 'running') return { operationId, terminal: false, runningConfirmed: true };
     if (!['completed', 'failed', 'cancelled'].includes(result.queueStatus)) throw fail('Profiler outcome is not terminal', 409);
     receipt = { state: result.queueStatus, authority: 'profiler.host-queue', operationId };
   } else if (job.kind === 'image') {
@@ -128,7 +128,8 @@ async function observe(job) {
     // Acceptance persists the queued operation before its enrollment/dispatch
     // owner checks the fence. Discovering that row is not a launch receipt.
     if (result.state === 'queued') return { operationId, terminal: false, awaitingDispatch: true };
-    if (!['completed', 'failed', 'cancelled', 'archive_failed'].includes(result.state)) return { operationId, terminal: false, uncertain: result.state === 'unknown' };
+    if (!['completed', 'failed', 'cancelled', 'archive_failed'].includes(result.state)) return { operationId, terminal: false, uncertain: result.state === 'unknown',
+      runningConfirmed: ['accepted', 'reserving', 'generating', 'archiving', 'restoring'].includes(result.state) };
     receipt = { state: result.state === 'archive_failed' ? 'failed' : result.state, authority: 'core.image-operation', operationId,
       runtimeRestored: result.runtimeRestored, artifact: result.artifact || null };
   } else if (job.kind === 'embedding-reindex') {
@@ -143,7 +144,7 @@ async function observe(job) {
     if (build.id !== job.id || build.model !== job.executor.model || build.dimension !== job.executor.dimension) throw fail('RAG build belongs to another request', 409);
     operationId = build.id;
     const outcome = reindex.buildOutcome(build);
-    if (outcome === null) return { operationId, terminal: false, progress: build.progress || null, buildStatus: build.status };
+    if (outcome === null) return { operationId, terminal: false, runningConfirmed: true, progress: build.progress || null, buildStatus: build.status };
     if (!outcome) throw fail('RAG build outcome is not terminal', 409);
     receipt = outcome;
   } else if (job.kind === 'topology') {
@@ -162,7 +163,7 @@ async function observe(job) {
     receipt = { operationId, state: result.state, authority: result.authority };
   } else if (job.kind === 'other' && job.executor?.mode === 'pipeline-report') {
     const result = await require('./pipelineReportResume').observeCampaign(job);
-    if (!result.terminal) return { operationId: operationId || result.operationId, terminal: false };
+    if (!result.terminal) return { ...result, operationId: operationId || result.operationId };
     operationId = operationId || result.operationId;
     receipt = { state: result.state, authority: 'core.pipeline-report', operationId, outcome: result.outcome };
   } else throw fail('No executor evidence adapter on this request', 409);
@@ -194,9 +195,13 @@ async function reconcile(id, actor) {
   }
   const result = await observe(job);
   if (result.awaitingDispatch) return { ...job, observation: result };
-  if (!job.operation) job = await queue.record(id, { dispatchId: job.dispatchId, state: 'running', operationId: result.operationId }, actor);
+  if (!job.operation && result.operationId) job = await queue.record(id, { dispatchId: job.dispatchId, state: 'running', operationId: result.operationId }, actor);
   if (result.terminal) return queue.settle(id, result, actor);
   if (result.uncertain && job.state !== 'uncertain') return queue.record(id, { dispatchId: job.dispatchId, state: 'uncertain', reason: result.reason || 'Native executor reports an unknown outcome' }, actor);
+  if (job.state === 'uncertain' && result.runningConfirmed === true && !result.uncertain && !result.waitingForRelease
+    && !job.launchRefusal && !job.preparationReceipt && !job.preparationRefusal) {
+    job = await queue.record(id, { dispatchId: job.dispatchId, state: 'running', operationId: result.operationId }, actor);
+  }
   return { ...job, observation: result };
 }
 

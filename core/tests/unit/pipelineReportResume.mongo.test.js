@@ -139,12 +139,17 @@ it('at the slot, grants the campaign and launches the worker from the checkpoint
   await launcher.dispatchDue();
   expect(control.launch).toHaveBeenCalledTimes(1);
 
-  // Still running: the campaign stays open.
+  // A lost worker receipt cannot hide behind the campaign's duration estimate.
+  expect((await evidence.reconcile(view.campaign.id, 'test')).state).toBe('uncertain');
+  // The same native worker can confirm execution without a new launch/grant.
+  control.status.mockResolvedValue({ busy: true, run: { requestId, phase: 'running' } });
   expect((await evidence.reconcile(view.campaign.id, 'test')).state).toBe('running');
+  expect(control.launch).toHaveBeenCalledTimes(1);
   // New server receipts attest coverage, independently of administrative bytes.
   const outcome = stopped(requestId, 'model_call_limit');
   outcome.reportOutcome.progress = { verified: true, advanced: false };
   await Task.updateOne({ pipelineId: '0939' }, { $set: { status: 'blocked' }, $push: { feedback: outcome } });
+  control.status.mockResolvedValue({ busy: false, run: { requestId, phase: 'finished' } });
   const settled = await evidence.reconcile(view.campaign.id, 'test');
   expect(settled).toMatchObject({ state: 'failed', releaseReceipt: { authority: 'core.pipeline-report', outcome: { requestId, reason: 'model_call_limit' } } });
   expect((await Task.findOne({ pipelineId: '0939' }).lean()).reportResume).toMatchObject({ state: 'stopped', result: { decision: 'no_progress' } });

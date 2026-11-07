@@ -253,7 +253,8 @@ async function observeCampaign(job) {
   const task = await readTask(job.executor.pipelineId);
   const state = task.reportResume;
   const operationId = state?.launch?.requestId || null;
-  if (!state || state.queueRequestId !== job.id || !operationId) return { terminal: false, operationId };
+  if (!state || state.queueRequestId !== job.id || !operationId) return { terminal: false, operationId, uncertain: true,
+    reason: 'The report campaign has no matching native launch receipt.' };
   const active = await Run.exists({ taskId: String(task._id), state: 'active' });
   const host = control ? await control.status({ requestId: operationId,
     ...(state.launch.executorId && { executorId: state.launch.executorId }) }).catch(() => null) : null;
@@ -273,13 +274,18 @@ async function observeCampaign(job) {
       // race. Never clear coordination, replace the request or launch work.
       await control.reconcile({ pipelineId: task.pipelineId, requestId: operationId,
         ...(state.launch.executorId && { executorId: state.launch.executorId }) }).catch(() => null);
-      return { terminal: false, operationId };
+      return { terminal: false, operationId, uncertain: true, reason: 'The original report result still needs native receipt reconciliation.' };
     }
   }
-  if (active || host?.busy === true || task.automationLease?.leaseId) return { terminal: false, operationId };
+  if (active || host?.busy === true || task.automationLease?.leaseId) {
+    const runningConfirmed = host?.busy === true && host.run?.requestId === operationId && host.run.phase !== 'unknown';
+    return { terminal: false, operationId, uncertain: !runningConfirmed, runningConfirmed,
+      reason: 'Observe the original report worker receipt; no replacement launch is authorized.' };
+  }
   const ours = new Set([operationId, ...((task.reportContinuation?.runs || []).map(row => row.requestId))]);
   const outcome = latestOutcome(task);
-  if (!outcome || !ours.has(outcome.requestId)) return { terminal: false, operationId };
+  if (!outcome || !ours.has(outcome.requestId)) return { terminal: false, operationId, uncertain: true,
+    reason: 'The original report launch has no matching worker or result receipt.' };
   const continuation = require('./pipelineReportContinuationService');
   const decision = await continuation.decision(task);
   const pending = (task.reportContinuation?.runs || []).some(row => !row.finishedAt);
