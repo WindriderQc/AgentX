@@ -77,3 +77,37 @@ test('observations persist separately without rewriting existing performance evi
   expect(buildMeasuredRuntime({ hostProfile: changed }).gpuDriver).toBeNull();
   expect(await ModelPerformanceProfile.findById(historical._id).lean()).toEqual(proofBefore);
 });
+
+test('after explicit activation native host synchronization tracks known driver drift and retains missing telemetry', async () => {
+  const activated = { ...host, gpuDriverIdentityVersion: 'agentx.gpu-driver-identity/v1',
+    gpus: gpus.map(gpu => ({ ...gpu, driver: '580.95.05' })) };
+  await HostProfile.create(activated);
+  const fingerprint = buildRuntimeFingerprint(await HostProfile.findOne({ hostId: host.hostId }).lean());
+  const sync = rows => syncHostRuntimeSettings(host, { force: true, readHardware: async () => ({
+    status: 'observed', source: 'agentx-data', sampledAt: new Date().toISOString(), staleAfterMs: 90000, gpus: rows }) });
+  await sync(gpus);
+  expect(buildRuntimeFingerprint(await HostProfile.findOne({ hostId: host.hostId }).lean())).toBe(fingerprint);
+  await sync(gpus.map(gpu => ({ ...gpu, driver: '590.1' })));
+  const changed = await HostProfile.findOne({ hostId: host.hostId }).lean();
+  expect(changed.gpus.map(gpu => gpu.driver)).toEqual(['590.1', '590.1']);
+  expect(buildRuntimeFingerprint(changed)).not.toBe(fingerprint);
+});
+
+test('a sync opened before activation cannot write its legacy inventory over the activated identity', async () => {
+  await HostProfile.create({ ...host, gpus });
+  const update = HostProfile.updateOne.bind(HostProfile);
+  const write = jest.spyOn(HostProfile, 'updateOne').mockImplementationOnce(async (...args) => {
+    await update({ hostId: host.hostId }, { $set: { gpuDriverIdentityVersion: 'agentx.gpu-driver-identity/v1',
+      gpus: gpus.map(gpu => ({ ...gpu, driver: '580.95.05' })) } });
+    return update(...args);
+  });
+  try {
+    await syncHostRuntimeSettings(host, { force: true, readHardware: async () => ({
+      status: 'observed', source: 'agentx-data', sampledAt: new Date().toISOString(), staleAfterMs: 90000,
+      gpus: gpus.map(gpu => ({ ...gpu, driver: '590.1' })) }) });
+    const current = await HostProfile.findOne({ hostId: host.hostId }).lean();
+    expect(current.gpuDriverIdentityVersion).toBe('agentx.gpu-driver-identity/v1');
+    expect(current.gpus.map(gpu => gpu.driver)).toEqual(['590.1', '590.1']);
+    expect(write).toHaveBeenCalledTimes(2);
+  } finally { write.mockRestore(); }
+});

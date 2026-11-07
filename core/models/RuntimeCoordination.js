@@ -35,6 +35,7 @@ const WorkloadAdmissionSchema = new mongoose.Schema({
   requestId: { type: String, required: true },
   workloadId: { type: String, required: true },
   kind: { type: String, required: true },
+  gpuDriverCacheReceipt: { type: mongoose.Schema.Types.Mixed, default: undefined, select: false },
   batchId: { type: String, default: null },
   hosts: { type: [String], default: [] },
   // Hosts held for a role that tolerates other models, such as a separate

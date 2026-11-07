@@ -3,12 +3,14 @@
 jest.mock('../../../src/services/hostTestService', () => ({ testModelOnHost: jest.fn() }));
 jest.mock('../../../src/services/contextProbeService', () => ({ probeModelContext: jest.fn() }));
 jest.mock('../../../src/services/profiler/modelProfileService', () => ({
+  ...jest.requireActual('../../../src/services/profiler/modelProfileService'),
   updateReadiness: jest.fn(),
   updateThinkingCapability: jest.fn(),
   invalidateReadinessIfEvidence: jest.fn(),
   invalidateThinkingCapability: jest.fn()
 }));
 jest.mock('../../../src/services/profiler/modelPerformanceProfileService', () => ({
+  ...jest.requireActual('../../../src/services/profiler/modelPerformanceProfileService'),
   saveProfile: jest.fn(),
   retireSupersededProfiles: jest.fn(),
   invalidateProfile: jest.fn()

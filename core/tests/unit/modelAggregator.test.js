@@ -61,6 +61,26 @@ function ollamaModel(name, size = 100) {
 }
 
 describe('modelAggregator', () => {
+  test('invalidation refreshes an in-flight enriched catalog before returning or caching it', async () => {
+    modelAggregator.clearCache();
+    mockCustomFind.mockReturnValue(leanResult([]));
+    mockRegistryFind.mockReturnValue(leanResult([]));
+    let finish, started;
+    const gate = new Promise(resolve => { finish = resolve; });
+    const reading = new Promise(resolve => { started = resolve; });
+    const response = name => ({ ok: true, json: async () => ({ models: [ollamaModel(name)] }) });
+    mockFetch.mockImplementationOnce(() => { started(); return gate; })
+      .mockImplementation(async () => response('current-model:1b'));
+    const options = { resolveCapabilityContract: async () => ({}) };
+    const pending = modelAggregator.getAllModels(options);
+    await reading;
+    modelAggregator.clearCache();
+    finish(response('historical-model:1b'));
+    expect((await pending).map(model => model.name)).not.toContain('historical-model:1b');
+    const reads = mockFetch.mock.calls.length;
+    await modelAggregator.getAllModels(options);
+    expect(mockFetch).toHaveBeenCalledTimes(reads);
+  });
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsParkedHost.mockReturnValue(false);

@@ -70,6 +70,25 @@ describe('modelContextInfoService', () => {
     mockHostPreference(null);
   });
 
+  it('refreshes a context owner read invalidated before its response arrives', async () => {
+    svc._setFetch(makeFetch({ parameters: '', model_info: {} }));
+    let finish, started;
+    const gate = new Promise(resolve => { finish = resolve; });
+    const reading = new Promise(resolve => { started = resolve; });
+    const profile = maxVerifiedContext => ({ modelName: exactArtifact.model, maxVerifiedContext,
+      profileDepth: 'standard', recommendationStatus: 'unknown', revalidationRequired: true, stale: false });
+    const benchmarkClient = { getContextProfile: jest.fn().mockImplementationOnce(() => { started(); return gate; })
+      .mockResolvedValue(profile(16384)) };
+    const options = { artifactIdentity: exactArtifact, workload: 'capacity', deps: { benchmarkClient } };
+    const pending = svc.getContextInfo(exactArtifact.model, exactArtifact.hostUrl, options);
+    await reading;
+    svc._clearCache();
+    finish(profile(8192));
+    expect((await pending).num_ctx).toBe(16384);
+    expect((await svc.getContextInfo(exactArtifact.model, exactArtifact.hostUrl, options)).num_ctx).toBe(16384);
+    expect(benchmarkClient.getContextProfile).toHaveBeenCalledTimes(2);
+  });
+
   it('uses Modelfile PARAMETER num_ctx when Ollama returns it', async () => {
     svc._setFetch(makeFetch({
       parameters: 'num_ctx 131072\nstop <|im_end|>\ntemperature 0.7',

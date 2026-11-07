@@ -1,5 +1,7 @@
 'use strict';
 
+const { readCurrentModelProfile } = require('../profiler/modelProfileService');
+const { readCurrentPerformance } = require('../profiler/modelPerformanceProfileService');
 const { checkHost } = require('../hostTestService');
 const hostProfileService = require('../profiler/hostProfileService');
 const { identitiesMatch, resolveArtifactIdentity } = require('../profiler/artifactIdentityService');
@@ -193,12 +195,12 @@ async function loadCandidateEvidence(candidate, hostId, hostUrl, deps) {
         identityError = err.message;
     }
 
-    const profilePromise = deps.ModelProfile.findOne({ name: candidate.model }).select('readiness').lean();
+    const profilePromise = readCurrentModelProfile({ name: candidate.model }, 'readiness', deps.ModelProfile);
     if (!artifact) return { profile: await profilePromise, artifact, performance: null, context: null, identityError };
 
     const [profile, performance, context] = await Promise.all([
         profilePromise,
-        deps.ModelPerformanceProfile.findOne({
+        readCurrentPerformance({
             modelName: candidate.model,
             hostId,
             'artifact.digest': artifact.digest,
@@ -206,7 +208,7 @@ async function loadCandidateEvidence(candidate, hostId, hostUrl, deps) {
             active: true,
             stale: { $ne: true },
             authorityState: { $nin: ['pending_reconciliation', 'authority_invalidated'] }
-        }).lean(),
+        }, null, deps.ModelPerformanceProfile),
         deps.ModelContextProfile.findOne({
             modelName: candidate.model,
             hostId,

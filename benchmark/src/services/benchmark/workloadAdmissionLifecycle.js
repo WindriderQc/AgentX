@@ -20,6 +20,7 @@ async function beginManagedWorkload(workloadId, options = {}) {
         : DEFAULT_MANAGED_WORKLOAD_TTL_MS;
     await acquireWorkloadAdmission(id, {
         requestId: options.requestId || `benchmark:${id}`,
+        ...(options.recoveryRequestId && { recoveryRequestId: options.recoveryRequestId }),
         kind: options.kind || 'benchmark',
         batchId: options.batchId || null,
         hosts: Array.isArray(options.hosts) ? options.hosts.filter(Boolean) : [],

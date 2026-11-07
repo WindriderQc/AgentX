@@ -3,7 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const HostProfile = require('../../models/HostProfile');
-const ModelProfile = require('../../models/ModelProfile');
+const modelProfiles = require('../../src/services/profiler/modelProfileService');
 const performanceProfiles = require('../../src/services/profiler/modelPerformanceProfileService');
 const contextProfiles = require('../../src/services/modelContextProfileService');
 const { resolveRuntimeArtifactReceipt } = require('../../src/services/profiler/artifactIdentityService');
@@ -64,9 +64,7 @@ function missingToolEvidence() {
 
 router.get('/readiness', async (_req, res) => {
   try {
-    const profiles = await ModelProfile.find({})
-      .select({ name: 1, readiness: 1, _id: 0 })
-      .lean();
+    const profiles = (await modelProfiles.getAll()).map(profile => ({ name: profile.name, readiness: profile.readiness }));
     const projected = await projectReadinessProfiles(profiles);
     res.json({
       status: 'success',
@@ -86,7 +84,7 @@ router.get('/host', async (req, res) => {
       return res.status(400).json({ status: 'error', error: 'hostUrl is required' });
     }
     const hostProfile = await HostProfile.findOne({ hostUrl })
-      .select('hostId hostUrl displayName gpu gpus gpuDriverIdentityVersion ollama cpu')
+      .select('hostId hostUrl displayName gpu gpus gpuDriverIdentityVersion ollama cpu gpuDriverActivation.requestId gpuDriverActivation.preparationId gpuDriverActivation.targetFingerprint gpuDriverActivation.state')
       .lean();
     return res.json({ status: 'success', data: { hostProfile: hostProfile || null } });
   } catch (err) {
@@ -104,11 +102,9 @@ router.get('/inference/:modelName', async (req, res) => {
     const toolIdentity = toolIdentityFromQuery(modelName, hostUrl, req.query);
     const [hostProfile, modelProfile, toolQualification] = await Promise.all([
       HostProfile.findOne({ hostUrl })
-        .select('hostId hostUrl displayName gpu gpus gpuDriverIdentityVersion ollama cpu')
+        .select('hostId hostUrl displayName gpu gpus gpuDriverIdentityVersion ollama cpu gpuDriverActivation.requestId gpuDriverActivation.preparationId gpuDriverActivation.targetFingerprint gpuDriverActivation.state')
         .lean(),
-      ModelProfile.findOne({ name: modelName })
-        .select('name capabilities thinkingProfiles readiness updatedAt')
-        .lean(),
+      modelProfiles.getByName(modelName),
       toolIdentity
         ? toolQualifications.resolveQualification(toolIdentity)
         : missingToolEvidence()

@@ -136,6 +136,11 @@ const ModelProfileSchema = new mongoose.Schema({
   readiness: { type: Map, of: ReadinessSchema, default: () => new Map() },
   preparedReadiness: { type: Map, of: ReadinessSchema, default: undefined, select: false },
   preparedThinkingProfiles: { type: Map, of: ThinkingCapabilitySchema, default: undefined, select: false },
+  // Selection history from finalized ordinary native publication. It prevents
+  // a later invalidation from falling back to an earlier prepared candidate.
+  nativePublishedReadiness: { type: Map, of: new mongoose.Schema({
+    runtimeFingerprint: String, evidenceId: mongoose.Schema.Types.ObjectId, authorityWriteId: String
+  }, { _id: false }), default: undefined, select: false },
   rejectedAuthorityWriteIds: { type: [String], default: [], select: false },
   tags: { type: [String], default: [] },
   categories: { type: [String], default: [] },

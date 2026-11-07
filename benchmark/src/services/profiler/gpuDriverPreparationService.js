@@ -1,14 +1,16 @@
 'use strict';
 
 const HostProfile = require('../../../models/HostProfile');
+const Journal = require('../../../models/BenchmarkAuthorityReconciliation');
 const hostProfiles = require('./hostProfileService');
 const { syncHostRuntimeSettings } = require('./hostRuntimeSettingsService');
 const { captureScope, hash } = require('./gpuDriverPreparationScope');
 const { driverTarget, preparedTarget, refusal } = require('./gpuDriverPreparationIdentity');
 const { buildRuntimeFingerprint } = require('../../../../shared/artifactIdentity');
+const { operationWorkloadId } = require('../../../../shared/gpuDriverTransition');
 
 function dependencies(overrides = {}) {
-  return { model: HostProfile, getHost: hostProfiles.getById, sync: syncHostRuntimeSettings,
+  return { model: HostProfile, journal: Journal, getHost: id => hostProfiles.getById(id, { includeDriverHistory: true }), sync: syncHostRuntimeSettings,
     capture: captureScope, now: () => new Date(), ...overrides };
 }
 
@@ -21,11 +23,23 @@ async function prepare({ hostId, requestId, expectedFingerprint }, overrides = {
   let host = await d.getHost(hostId);
   if (!host) throw refusal('Host not found', 'GPU_DRIVER_HOST_REQUIRED');
   const existing = host.gpuDriverPreparation;
+  const prior = host.gpuDriverPreparationHistory?.find(item => item.requestId === requestId);
+  if (prior) {
+    if (prior.activeFingerprint !== expectedFingerprint) throw refusal('The requestId already binds another intent');
+    const { abandon: _receipt, ...archived } = prior;
+    return archived;
+  }
   if (existing?.requestId === requestId) {
     if (existing.activeFingerprint !== expectedFingerprint) throw refusal('The requestId already binds another intent');
     return existing;
   }
-  if (existing?.requestId) throw refusal('Another host preparation already exists; inspect that exact operation');
+  if (existing?.requestId && existing.state !== 'abandoned') throw refusal('Another host preparation already exists; inspect that exact operation');
+  if (existing?.state === 'abandoned') {
+    const abandon = host.gpuDriverPreparationHistory?.find(item => item.requestId === existing.requestId)?.abandon;
+    const guard = abandon && await d.journal.findOne({ resultId: `workload:${operationWorkloadId(hostId, abandon.requestId, 'abandon')}` }).lean();
+    if (guard?.state !== 'resolved') throw refusal('Reconcile the original abandon operation before preparing again', 'GPU_DRIVER_ABANDON_RECONCILIATION_PENDING');
+  }
+  if (['pending', 'published'].includes(host.gpuDriverActivation?.state)) throw refusal('The original activation still requires native reconciliation');
   await d.sync({ hostId, hostUrl: host.hostUrl }, { force: true });
   host = await d.getHost(hostId);
   if (buildRuntimeFingerprint(host) !== expectedFingerprint) throw refusal('The expected active fingerprint changed');
@@ -47,8 +61,9 @@ async function prepare({ hostId, requestId, expectedFingerprint }, overrides = {
     activeFingerprint: expectedFingerprint, targetFingerprint, ...first };
   const saved = await d.model.findOneAndUpdate({
     hostId, updatedAt: current.updatedAt,
-    'gpuDriverPreparation.requestId': { $exists: false }
-  }, { $set: { gpuDriverPreparation: preparation } }, { new: true, runValidators: true }).lean();
+    ...(existing?.requestId ? { 'gpuDriverPreparation.requestId': existing.requestId, 'gpuDriverPreparation.state': 'abandoned' }
+      : { 'gpuDriverPreparation.requestId': { $exists: false } })
+  }, { $set: { gpuDriverPreparation: preparation }, $unset: { gpuDriverActivation: '' } }, { new: true, runValidators: true }).lean();
   if (!saved) {
     const replay = await d.getHost(hostId);
     if (replay?.gpuDriverPreparation?.requestId === requestId
@@ -62,7 +77,8 @@ async function inspect(hostId, overrides = {}) {
   const d = dependencies(overrides);
   const host = await d.getHost(hostId);
   if (!host) throw refusal('Host not found', 'GPU_DRIVER_HOST_REQUIRED');
-  return { hostId, activeFingerprint: buildRuntimeFingerprint(host), preparation: host.gpuDriverPreparation || null };
+  return { hostId, activeFingerprint: buildRuntimeFingerprint(host), preparation: host.gpuDriverPreparation || null,
+    activation: host.gpuDriverActivation || null };
 }
 
 async function assertScopeUnchanged(host, requestId, overrides = {}) {

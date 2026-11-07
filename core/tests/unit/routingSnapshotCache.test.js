@@ -296,7 +296,7 @@ describe('routing snapshot cache', () => {
     expect(snapshot.tasks.general_chat.inferenceContract.artifact.digest).toBe('sha256:aaa');
   });
 
-  test('a write that lands during a build keeps its result away from later callers', async () => {
+  test('a write that lands during a build refreshes joined callers as well as the held cache', async () => {
     const { cache, counts, state, tagReads } = harness();
     state.gate = deferred();
     const pending = cache.get(LIGHT);
@@ -306,8 +306,19 @@ describe('routing snapshot cache', () => {
 
     const delivered = await pending;
     expect(delivered.tasks.general_chat.model).toBe('model-a');
-    expect(await cache.get(LIGHT)).not.toBe(delivered);
+    expect(await cache.get(LIGHT)).toBe(delivered);
     expect(counts.routerConfig).toBe(2);
+  });
+
+  test('disabled sharing still refreshes an in-flight read invalidated by a host write', async () => {
+    const first = deferred();
+    const build = jest.fn().mockReturnValueOnce(first.promise).mockResolvedValue({ runtime: 'current' });
+    const cache = createRoutingSnapshotCache({ build, ttlMs: () => 0 });
+    const pending = cache.get(EXACT);
+    invalidateRoutingSnapshots();
+    first.resolve({ runtime: 'historical' });
+    expect(await pending).toEqual({ runtime: 'current' });
+    expect(build).toHaveBeenCalledTimes(2);
   });
 
   test('a failed build is not kept', async () => {

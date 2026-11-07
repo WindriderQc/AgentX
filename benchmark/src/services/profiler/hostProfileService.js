@@ -101,8 +101,10 @@ async function getAll() {
   ];
 }
 
-async function getById(hostId) {
-  const profile = await HostProfile.findOne({ hostId }).lean();
+async function getById(hostId, options = {}) {
+  const query = HostProfile.findOne({ hostId });
+  if (options.includeDriverHistory) query.select('+gpuDriverPreparationHistory');
+  const profile = await query.lean();
   return applyConfiguredIdentity(profile, getConfiguredHost(hostId));
 }
 

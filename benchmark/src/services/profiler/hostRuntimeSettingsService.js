@@ -13,7 +13,7 @@
 const HostProfile = require('../../../models/HostProfile');
 const logger = require('../../../config/logger');
 const { readHostHardware } = require('./hardwareCollectorClient');
-const { preserveInventoryDrivers } = require('../../../../shared/gpuDriverObservation');
+const { inventoryForIdentity } = require('../../../../shared/gpuDriverObservation');
 const { normalizeGpuInventory } = require('../../../../shared/gpuInventory');
 const {
   normalizeRuntimeSettings,
@@ -25,7 +25,7 @@ const SYNC_INTERVAL_MS = 5 * 60_000;
 const lastSyncAt = new Map();
 
 async function syncHostRuntimeSettings({ hostId, hostUrl } = {}, {
-  readHardware = readHostHardware, model = HostProfile, now = Date.now, force = false
+  readHardware = readHostHardware, model = HostProfile, now = Date.now, force = false, attempt = 0
 } = {}) {
   if (!hostId || !hostUrl) return { synced: false, reason: 'host_required' };
   const at = now();
@@ -37,7 +37,7 @@ async function syncHostRuntimeSettings({ hostId, hostUrl } = {}, {
   const reloadPending = environment?.needDaemonReload === true;
   const observed = reloadPending ? null : runtimeSettingsFromObservation({ environment, gpuCount: hardware?.knownGpuCount });
   const gpus = hardware?.status === 'observed' ? normalizeGpuInventory(hardware.gpus) : null;
-  const current = await model.findOne({ hostId }).select('ollama.settings gpus gpuDriverObservation').lean();
+  const current = await model.findOne({ hostId }).select('ollama.settings gpus gpuDriverObservation gpuDriverIdentityVersion updatedAt').lean();
   if (!current) return { synced: false, reason: 'no_host_profile' };
   if (!observed && !gpus) {
     if (current.gpuDriverObservation?.gpus) {
@@ -50,7 +50,7 @@ async function syncHostRuntimeSettings({ hostId, hostUrl } = {}, {
   const settings = observed ? { ...observed, gpuCount: observed.gpuCount ?? previous?.gpuCount ?? null } : previous;
   const settingsChanged = observed && !sameRuntimeSettings(previous, settings);
   const previousGpus = normalizeGpuInventory(current.gpus);
-  const identityGpus = gpus && preserveInventoryDrivers(previousGpus, gpus);
+  const identityGpus = gpus && inventoryForIdentity(previousGpus, gpus, current.gpuDriverIdentityVersion);
   const gpusChanged = identityGpus && JSON.stringify(identityGpus) !== JSON.stringify(previousGpus);
   const driverObservation = gpus && {
     gpus, observedAt: new Date(hardware.sampledAt), staleAfterMs: hardware.staleAfterMs,
@@ -76,7 +76,16 @@ async function syncHostRuntimeSettings({ hostId, hostUrl } = {}, {
   else if (availabilityChanged) {
     update['gpuDriverObservation.status'] = unavailableStatus;
   }
-  await model.updateOne({ hostId }, { $set: update });
+  const saved = await model.updateOne({ hostId, updatedAt: current.updatedAt,
+    gpuDriverIdentityVersion: current.gpuDriverIdentityVersion || { $exists: false } }, { $set: update });
+  if (saved?.matchedCount === 0) {
+    // An activation may have changed the identity policy while Data was read.
+    // Recompute against that host with the same observation, never write a
+    // legacy inventory over a newly activated driver identity.
+    if (attempt < 2) return syncHostRuntimeSettings({ hostId, hostUrl }, {
+      readHardware: async () => hardware, model, now, force: true, attempt: attempt + 1 });
+    throw Object.assign(new Error('Host runtime synchronization lost its concurrency fence'), { code: 'HOST_RUNTIME_SYNC_CAS_FAILED' });
+  }
   logger.info('Host runtime settings and GPU observations recorded', {
     hostId, previous, settings, gpusChanged: Boolean(gpusChanged), driverObservationChanged: Boolean(observationChanged)
   });

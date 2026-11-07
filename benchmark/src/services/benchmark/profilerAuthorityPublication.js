@@ -19,6 +19,9 @@ async function publishProfilerResource(record, options = {}) {
   const details = record.details || {};
   const paths = projectionPaths(details.driverPreparationId);
   options.assertActive?.();
+  if (record.kind === 'gpu_driver_activation') {
+    return require('../profiler/gpuDriverActivationPublication').publishActivation(record, options);
+  }
   if (record.kind === 'profiler_evidence_write') {
     const evidenceId = details.evidenceId || null;
     const evidence = await ModelPerformanceProfile.updateOne(
@@ -39,6 +42,11 @@ async function publishProfilerResource(record, options = {}) {
     const readinessSet = {
       [`${paths.readiness}.${details.hostId}.authorityState`]: 'authoritative'
     };
+    if (!details.driverPreparationId) {
+      readinessSet[`nativePublishedReadiness.${details.hostId}`] = {
+        runtimeFingerprint: details.runtimeFingerprint, evidenceId: objectId(evidenceId), authorityWriteId: details.authorityWriteId
+      };
+    }
     if (details.thinking === true) {
       readinessSet[`${paths.thinking}.${details.hostId}.authorityState`] = 'authoritative';
     }
