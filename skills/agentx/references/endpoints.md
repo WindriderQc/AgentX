@@ -1,10 +1,10 @@
 # Read routes of an AgentX instance
 
-Checked on 2026-10-07 against Core revision `bfc824e7`, from the private network, without any access code. Only read routes were called. A route missing from this file is not known to exist: check it before relying on it. `references/served.md` gives the revision that served this copy; when it is newer, a route may have moved.
+This is a product route reference, not an instance health receipt. Resolve the address from the private instance sheet and check the served revision and enabled capabilities before calling a route. A missing route in this list proves nothing; check its exact contract in the product source. `references/served.md` identifies the revision serving this skill.
 
 Base: the Core entry given in `references/instance.md`.
 
-## Read routes that answer 200
+## Read routes
 
 **Health and operations**
 `/health` · `/api/operations/health` · `/api/operations/activity` · `/api/operations/events`
@@ -33,16 +33,15 @@ Base: the Core entry given in `references/instance.md`.
 ## Photo reads verified in source
 
 Defined in the product's `core/routes/photos.js` and tested against a mocked
-Immich; not part of the dated live observation above. `/api/photos/status`
-says whether the instance configured them.
+Immich. `/api/photos/status` says whether the instance configured them.
 
 `/api/photos/status` · `/api/photos/people` · `/api/photos/people/<id>/assets` · `/api/photos/places` · `/api/photos/tags` · `/api/photos/search/smart?q=` · `/api/photos/search` · `/api/photos/count` · `/api/photos/assets/<id>` · `/api/photos/assets/<id>/thumbnail`
 
 ## Pipeline reads verified in source
 
 These paths are defined in the product's Pipeline and optional runtime-bridge
-routes; they are separate from the dated live observations above. Read the served
-revision and instance capability configuration before relying on the optional
+routes. Read the served revision and instance capability configuration before
+relying on the optional
 bridge. No live model call is needed to inspect them.
 
 - `GET /api/pipeline/tasks?scope=engineering`: scoped counts, rows and coverage.
@@ -58,12 +57,13 @@ Brief and evidence guidance: [coding-work.md](coding-work.md).
 
 ## Routes that exist and need a body
 
-These answer 400 to an empty body, so the route is there; their payloads were not exercised.
+These POST routes require their documented request bodies; a transport response
+alone does not verify the requested capability.
 `POST /api/rag/search` · `POST /api/consumers/nestor/v1/memory/notes` · `POST /api/consumers/nestor/v1/mail-journal`
 
 ## Memory review
 
-Answered 200 from the private network on 2026-10-08, without a token:
+Read the memory-review state through:
 `GET /api/memory-review/digest` · `GET /api/memory-review/runs?limit=N&status=…` · `GET /api/memory-review/runs/<runId>` · `GET /api/memory-review/insights` · `GET /api/memory-review/config`
 
 `GET /api/memory-review/runs/<runId>/synthesis-input` answers only while the run is `synthesizing`. The `POST` routes (open, observations, finalize, candidates, fail) belong to the collectors.
@@ -78,9 +78,9 @@ rather than trusting a copied list.
   (memory search/save and RAG search).
 - `POST /api/consumers/nestor/v1/mcp`: the owner bus. Never for family runtimes.
 
-## Gone since the July notes
+## Earlier route names
 
-These paths answered 404 and were removed from the skill: `/api/hosts*`, `/api/host-monitor`, `/api/host-capacity`, `/api/cluster`, `/api/ollama-vram`, `/api/metrics`, `/api/telemetry`, `/api/performance`, `/api/todos`, `/api/prompt-templates`, `/api/reports`, `/api/docs-steward`, `/api/nestor/memory`, `/api/openclaw`, `/api/panel`, `/api/buddy`, `/api/custom-models`, `/api/hermes`, `/api/voice`, `/api/voice-personas`, `/api/nerve-center/routing/config`, `/api/models/registry/export/openclaw`, `/api/data-toolbox/live-data`. A 404 on a bare prefix does not prove every sub-route is gone.
+Earlier notes refer to these bare paths; check an exact current route before using one: `/api/hosts*`, `/api/host-monitor`, `/api/host-capacity`, `/api/cluster`, `/api/ollama-vram`, `/api/metrics`, `/api/telemetry`, `/api/performance`, `/api/todos`, `/api/prompt-templates`, `/api/reports`, `/api/docs-steward`, `/api/nestor/memory`, `/api/openclaw`, `/api/panel`, `/api/buddy`, `/api/custom-models`, `/api/hermes`, `/api/voice`, `/api/voice-personas`, `/api/nerve-center/routing/config`, `/api/models/registry/export/openclaw`, `/api/data-toolbox/live-data`. A 404 on a bare prefix does not prove every sub-route is gone.
 
 When commenting on Analytics, use the summary's exact window, `observedAt`,
 `ttlMs`, scope and attribution coverage. Missing consumer contracts do not prove
