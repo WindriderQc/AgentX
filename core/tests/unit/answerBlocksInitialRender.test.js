@@ -14,6 +14,8 @@ function harness(loadEnhancement) {
     get textContent() { return this.text ?? this.children.map(child => child.textContent).join(''); }
     set innerHTML(value) { htmlWrites.push({ node: this, value }); this.html = value; }
     appendChild(child) { this.children.push(child); return child; }
+    append(...children) { this.children.push(...children); }
+    prepend(...children) { this.children.unshift(...children); }
     addEventListener(name, listener) { this.listeners[name] = listener; }
     querySelectorAll() { return []; }
   }
@@ -23,13 +25,15 @@ function harness(loadEnhancement) {
   const clipboard = { writeText: jest.fn(async () => {}) };
   const context = vm.createContext({ document, marked, DOMPurify, loadEnhancement, appendRagDisplay() {}, console,
     navigator: { clipboard }, setTimeout() {} });
+  const attachmentSource = fs.readFileSync(path.resolve(__dirname, '../../public/js/chat/chat-attachments.js'), 'utf8')
+    .replace(/^import[^\n]+\n/gm, '').replace(/export function /g, 'function ');
   const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/chat/chat-message-render.js'), 'utf8')
-    .replace(/^import[^\n]+\n/m, '').replace(/^export \{[^\n]+\n/gm, '').replace(/export function /g, 'function ')
+    .replace(/^import[^\n]+\n/gm, '').replace(/^export \{[^\n]+\n/gm, '').replace(/export function /g, 'function ')
     .replace("import('./answer-blocks-render.js')", 'loadEnhancement()');
-  vm.runInContext(`${source}\nthis.render = renderMessage;`, context);
+  vm.runInContext(`${attachmentSource}\n${source}\nthis.render = renderMessage;`, context);
   const chatWindow = document.createElement('div');
   return { marked, DOMPurify, htmlWrites, clipboard, chatWindow,
-    render(message) { context.render(message, { history: [], showStats: false }, { chatWindow }); return chatWindow.children.at(-1); } };
+    render(message, conversationId) { context.render(message, { history: [], showStats: false, conversationId }, { chatWindow }); return chatWindow.children.at(-1); } };
 }
 const hostile = () => contract.normalizeMessage({ role: 'assistant', content: '<pre>', answerBlocks: {
   schema: contract.SCHEMA, blocks: [{ kind: 'table', title: 'Table', columns: ['Value'],
@@ -70,4 +74,21 @@ test('legacy messages without block data retain ordinary Markdown rendering', ()
   const body = bubble.children.find(child => child.className === 'message-body');
   expect(ui.marked.parse).toHaveBeenCalledWith('**Legacy text**');
   expect(body.html).toContain('<strong>Legacy text</strong>');
+});
+
+test('snapshot references render literal names through scoped same-origin links', () => {
+  const ui = harness(jest.fn());
+  const conversationId = '111111111111111111111111', attachmentId = '222222222222222222222222';
+  const name = '<img src="https://invalid.example/trap" onerror="attack()">';
+  const bubble = ui.render({ role: 'user', content: 'Synthetic screenshot', attachments: [
+    { id: attachmentId, name, kind: 'image' }, { id: 'https://invalid.example/leak', name: 'Invalid', kind: 'image' }
+  ] }, conversationId);
+  const rows = bubble.children.filter(child => child.className === 'chat-attachment');
+  expect(rows).toHaveLength(1);
+  const link = rows[0].children[0], image = link.children[0];
+  expect(link.href).toBe(`/api/history/${conversationId}/attachments/${attachmentId}`);
+  expect(image.src).toBe(link.href);
+  expect(image.alt).toBe(name);
+  expect(link.textContent).toBe(name);
+  expect(ui.htmlWrites.some(write => write.value.includes('invalid.example'))).toBe(false);
 });
