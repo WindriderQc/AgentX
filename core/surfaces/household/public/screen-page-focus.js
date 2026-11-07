@@ -28,6 +28,20 @@
       return { section, status: 'applied', heading: String(node.querySelector('h1,h2,h3')?.textContent || node.textContent || '').trim().slice(0, 160) };
     } catch { return unavailable; }
   }
+  function bind(card) {
+    card._screenFrame.addEventListener('load', () => {
+      const focus = () => { if (card.dataset.selected === 'true') apply(card); };
+      try {
+        const child = card._screenFrame.contentWindow;
+        if (['profiler', 'cluster-schedule'].includes(card._screenTarget?.page)
+          && child.AgentXPresentedContent?.state === 'loading') {
+          // Data arriving after load can move the anchor. Wait for this
+          // initial read, and never scroll an older, unselected card.
+          child.addEventListener('agentx-screen-read', focus, { once: true });
+        } else focus();
+      } catch { /* An unavailable frame has no focus capability. */ }
+    });
+  }
   function observe(card) {
     const target = card?._screenTarget, section = target?.focus?.section;
     const anchor = root.AgentXScreenPages?.SECTIONS?.[target?.page]?.[section];
@@ -57,5 +71,5 @@
     if (open) open.href = pages.url(target, { screen: false });
     return true;
   }
-  root.AgentXScreenPageFocus = Object.freeze({ apply, observe, present });
+  root.AgentXScreenPageFocus = Object.freeze({ apply, observe, present, bind });
 })(typeof window === 'undefined' ? globalThis : window);

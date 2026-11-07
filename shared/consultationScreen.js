@@ -10,7 +10,7 @@ function registerAssets(app) {
 function render(res, page, prefix = '') {
   if (!['profiler', 'cluster-schedule'].includes(page)) throw new Error('Unknown consultation page');
   res.setHeader('Cache-Control', 'private, no-store');
-  return res.render(path.resolve(__dirname, '../core/views/pages/consultation-screen.ejs'), {
+  return res.render(path.join(__dirname, 'browser/consultation-screen.ejs'), {
     page, title: page === 'profiler' ? 'Profiler' : 'Cluster Schedule', prefix
   });
 }

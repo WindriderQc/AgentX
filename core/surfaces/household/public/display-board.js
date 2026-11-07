@@ -266,7 +266,7 @@
     card._screenFrame = content._screenFrame;
     card._screenTarget = block.kind === 'page' ? target : null;
     if (space === 'personal' && card._screenFrame && target?.focus?.section) {
-      card._screenFrame.addEventListener('load', () => root.AgentXScreenPageFocus?.apply(card));
+      root.AgentXScreenPageFocus?.bind(card);
     }
     card._screenState = () => content.dataset.state;
     if (content._mathText) card._mathText = content._mathText;

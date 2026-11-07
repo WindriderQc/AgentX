@@ -79,12 +79,24 @@ const urls = () => ({ core: base, benchmark: base + '/benchmark', rag: base + '/
     page.on('pageerror', error => errors.push(error.message));
     page.setDefaultTimeout(10000); await page.goto(base + '/fixture');
     const observation = () => page.evaluate(() => board.context()[0]);
-    for (const body of ['profiler section=hosts', 'cluster-schedule section=queue', 'pipeline section=attention', 'analytics section=comparison']) {
+    for (const body of ['profiler section=models', 'cluster-schedule section=queue', 'pipeline section=attention', 'analytics section=comparison']) {
+      let finishInitial;
+      if (body.startsWith('profiler')) pendingRead = new Promise(resolve => { finishInitial = resolve; });
       assert.equal(await page.evaluate(body => show(body), body), true);
+      if (finishInitial) {
+        await page.waitForFunction(() => board.context()[0]?.status === 'loading');
+        finishInitial();
+      }
       await page.waitForFunction(() => board.context()[0]?.status === 'visible' && board.context()[0]?.focus?.status === 'applied');
       const frame = page.frameLocator('.display-block[data-selected="true"] iframe');
       assert.equal(await frame.locator('.agentx-section-focus').count(), 1);
       assert.equal((await observation()).page, body);
+      const focusedHeading = await frame.locator('.agentx-section-focus').evaluate(node => {
+        const heading = node.querySelector('h1,h2,h3') || node;
+        const rect = heading.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom, height: innerHeight };
+      });
+      assert.ok(focusedHeading.top >= 0 && focusedHeading.bottom <= focusedHeading.height, 'the focused heading is inside the frame after the read settles');
       if (/profiler|cluster-schedule/.test(body)) {
         assert.equal(await frame.locator('nav, form, a, [data-lane-action], [onclick]').count(), 0);
         assert.equal(await frame.locator('button').count(), 1, 'the sole control refreshes the read');
@@ -107,6 +119,9 @@ const urls = () => ({ core: base, benchmark: base + '/benchmark', rag: base + '/
     assert.equal(requests.filter(row => row.path === '/benchmark/api/profiler/dashboard').length, beforeFocus, 'section changes preserve the existing read and frame');
     assert.equal((await observation()).id, previous.id);
     assert.notEqual((await observation()).revision, previous.revision);
+    const scroll = await frame.locator('body').evaluate(() => scrollY);
+    await page.evaluate(() => { for (let n = 0; n < 5; n++) board.context(); });
+    assert.equal(await frame.locator('body').evaluate(() => scrollY), scroll, 'observing the focus has no scroll effect');
     failReads = true; await frame.getByRole('button', { name: 'Actualiser la lecture' }).click();
     await page.waitForFunction(() => board.context()[0]?.status === 'unavailable');
     assert.doesNotMatch(await frame.locator('main').innerText(), /Synthetic stale artifact|2026-01-02T03:04:05.000Z/, 'failed refresh clears old values');

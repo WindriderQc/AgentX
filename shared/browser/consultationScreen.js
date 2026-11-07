@@ -79,6 +79,7 @@
     root.AgentXPresentedContent = { contract: 'agentx.presentation/v1', state: unavailable ? 'unavailable' : 'ready' };
     status.dataset.state = unavailable ? 'unavailable' : 'ready';
     status.textContent = unavailable ? 'Lecture partielle ou indisponible.' : 'Lecture affichée. Les dates des sources restent distinctes de cette consultation.';
+    root.dispatchEvent(new Event('agentx-screen-read'));
   }
   document.getElementById('screen-refresh').addEventListener('click', refresh);
   refresh();

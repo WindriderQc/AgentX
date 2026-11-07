@@ -3,6 +3,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
 const request = require('supertest');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { createScreenServices } = require('../screen-services');
 const { presentationEvidence } = require('../screen-context');
 const { createReplyChannels, contract } = require('../reply-channels');
@@ -86,4 +89,25 @@ test('screen routes render consultation only and ordinary routes retain their po
   await request(app).get('/profiler').expect(200).expect('X-Frame-Options', 'DENY');
   await request(app).get('/profiler?view=Screen').expect(200).expect('X-Frame-Options', 'DENY');
   await request(appForScreens({ ...urls, benchmark: 'https://other.test/benchmark' })).get('/profiler?view=screen').expect(200).expect('X-Frame-Options', 'DENY');
+});
+
+test('Profiler renders using only the shared files and Core views packaged by Benchmark', async () => {
+  const root = path.resolve(__dirname, '../../../..');
+  const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'benchmark-screen-package-'));
+  try {
+    // Match Benchmark's image inputs: all shared files, its own route, and
+    // Core layouts/partials. Core pages are deliberately absent from the image.
+    fs.cpSync(path.join(root, 'shared'), path.join(stage, 'shared'), { recursive: true });
+    for (const directory of ['layouts', 'partials']) fs.cpSync(path.join(root, 'core/views', directory), path.join(stage, 'core/views', directory), { recursive: true });
+    fs.mkdirSync(path.join(stage, 'benchmark/routes'), { recursive: true });
+    fs.copyFileSync(path.join(root, 'benchmark/routes/profiler-screen-page.js'), path.join(stage, 'benchmark/routes/profiler-screen-page.js'));
+    assert.equal(fs.existsSync(path.join(stage, 'core/views/pages')), false);
+    const app = express(); app.set('view engine', 'ejs');
+    app.use((_req, res, next) => { res.locals.showNav = false; next(); });
+    app.get('/profiler', require(path.join(stage, 'benchmark/routes/profiler-screen-page')));
+    const response = await request(app).get('/profiler?view=screen').expect(200);
+    assert.match(response.text, /Baselines des hôtes/);
+    assert.match(response.text, /\/benchmark\/screen-read.js/);
+    assert.doesNotMatch(response.text, /<form|<nav|model-profiler\/index/);
+  } finally { fs.rmSync(stage, { recursive: true, force: true }); }
 });
