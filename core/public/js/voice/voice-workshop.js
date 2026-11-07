@@ -223,9 +223,9 @@
           describeShared(); role('sharedStatus').textContent = 'Voix de personnalité enregistrée dans Core. Les parcours déjà ouverts reliront leur catalogue après rechargement.';
         });
         case 'devices': return exclusive(async () => {
-          const selected = field('inputDeviceId').value;
           const devices = await S.microphones(life.signal, { requestPermission: !current().audio });
           const select = field('inputDeviceId');
+          const selected = select.value;
           select.replaceChildren(new Option('Micro système par défaut',''), ...devices.map((d,i) => new Option(d.label || `Micro ${i+1}`, d.deviceId)));
           if (selected && !devices.some(d => d.deviceId === selected)) {
             select.add(new Option('Micro choisi · indisponible', selected));

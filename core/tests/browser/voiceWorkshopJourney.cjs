@@ -95,6 +95,20 @@ assert.equal(await microphoneChoice.inputValue(),'saved-mic');
 assert.match(await microphoneChoice.locator('option:checked').textContent(),/indisponible/);
 await saveVoiceSettings.click();
 assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('agentx.voice.capture.v1.personal')).inputDeviceId),'saved-mic','saving after listing must not silently replace a missing microphone');
+await page.evaluate(() => {
+  navigator.mediaDevices.enumerateDevices = () => new Promise(resolve => {
+    window.finishDeviceDiscovery = () => resolve([{ kind:'audioinput',deviceId:'other-mic',label:'Other microphone' }]);
+  });
+});
+await discoverMicrophones.click();
+await page.waitForFunction(()=>typeof window.finishDeviceDiscovery==='function');
+await microphoneChoice.selectOption('');
+await page.evaluate(()=>window.finishDeviceDiscovery());
+await page.waitForFunction(()=>!document.querySelector('[data-action="devices"]').disabled);
+assert.equal(await microphoneChoice.inputValue(),'','a deliberate choice during discovery outranks the value at discovery start');
+await page.evaluate(() => {
+  navigator.mediaDevices.enumerateDevices = async () => [{ kind:'audioinput',deviceId:'other-mic',label:'Other microphone' }];
+});
 for (const chosen of ['other-mic','']) {
   await microphoneChoice.selectOption(chosen);
   await discoverMicrophones.click();
