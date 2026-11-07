@@ -35,7 +35,7 @@ beforeEach(async () => {
   rag = { getDocument: jest.fn(async id => { if (!docs.has(id)) throw notFound(); return docs.get(id); }),
     upsertDocumentWithChunks: jest.fn(async (text, metadata) => {
       docs.set(metadata.documentId, { documentId: metadata.documentId, source: metadata.source, chunkCount: 1,
-        metadata: { ...metadata, contentHash: sha256(Buffer.from(text)), mixedRevision: false, revisionFingerprint: 'synthetic-rag-revision' } });
+        metadata: { ...metadata, contentHash: sha256(Buffer.from(text)), mixedRevision: false, revisionFingerprint: 'a'.repeat(64) } });
       return { documentId: metadata.documentId, chunkCount: 1 };
     }) };
   service = createDocumentCandidates({ archive, rag, targetSource: () => target, now: () => now });
@@ -160,7 +160,18 @@ test('a lost response reconciles by identity and concurrent requests never repea
   expect(rag.upsertDocumentWithChunks).toHaveBeenCalledTimes(1);
 });
 
-test.each(['missing', 'partial', 'wrong-labels', 'wrong-content', 'wrong-source'])('an uncertain %s result retains the dispatch fence across service restart', async fault => {
+test('a promotion request identity cannot be reused for another candidate', async () => {
+  config.documents.push({ ...config.documents[0], id: 'another-export' }); await save();
+  const first = await select(await service.stage({ sourceId: 'manual' }));
+  const second = await select(await service.stage({ sourceId: 'another-export' }));
+  const requestId = randomUUID();
+  await promote(first, { requestId });
+  await expect(promote(second, { requestId })).rejects.toMatchObject({ statusCode: 409 });
+  expect((await service.get(second.id)).state).toBe('selected');
+  expect(rag.upsertDocumentWithChunks).toHaveBeenCalledTimes(1);
+});
+
+test.each(['missing', 'partial', 'wrong-labels', 'wrong-content', 'wrong-source', 'missing-count', 'missing-revision'])('an uncertain %s result retains the dispatch fence across service restart', async fault => {
   const row = await select(await service.stage({ sourceId: 'manual' }));
   const normal = rag.upsertDocumentWithChunks.getMockImplementation();
   rag.upsertDocumentWithChunks.mockImplementation(async (text, metadata) => {
@@ -171,6 +182,8 @@ test.each(['missing', 'partial', 'wrong-labels', 'wrong-content', 'wrong-source'
     if (fault === 'wrong-labels') doc.metadata.scope = 'owner';
     if (fault === 'wrong-content') doc.metadata.contentHash = '0'.repeat(64);
     if (fault === 'wrong-source') doc.source = 'other-source';
+    if (fault === 'missing-count') delete doc.chunkCount;
+    if (fault === 'missing-revision') delete doc.metadata.revisionFingerprint;
   });
   const requestId = randomUUID();
   expect((await promote(row, { requestId })).state).toBe('uncertain');

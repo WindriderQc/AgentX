@@ -54,7 +54,7 @@ function createDocumentCandidates({ archive = createDocumentArchive(), rag = get
       identityVerified: false, accessContract: 'private_lan_explicit_human_review' };
   }
   async function review(id, { expectedRevision, decision, reviewer } = {}) {
-    if (!/^[a-f0-9]{64}$/.test(expectedRevision || '') || !['select', 'dismiss'].includes(decision)
+    if (typeof expectedRevision !== 'string' || !/^[a-f0-9]{64}$/.test(expectedRevision) || !['select', 'dismiss'].includes(decision)
       || typeof reviewer !== 'string' || !reviewer.trim() || reviewer.length > 80) throw fail('Révision, décision et nom déclaré requis.');
     const row = await load(id, expectedRevision);
     let target = null;
@@ -65,7 +65,8 @@ function createDocumentCandidates({ archive = createDocumentArchive(), rag = get
     }
     const state = decision === 'select' ? 'selected' : 'dismissed';
     if (!['staged', 'selected', 'dismissed'].includes(row.state)) throw fail('La promotion est déjà engagée. Réconciliez son résultat.', 409);
-    const updated = await model.findOneAndUpdate({ _id: id, state: row.state }, { $set: { state,
+    const updated = await model.findOneAndUpdate({ _id: id, state: row.state,
+      selection: row.selection || { $exists: false } }, { $set: { state,
       selection: { reviewer: reviewer.trim(), identityVerified: false, decision, at: now().toISOString(), revision: row.revision, target }
     } }, { new: true, writeConcern: WC }).lean();
     if (!updated) throw fail('Décision concurrente. Actualisez le candidat.', 409);
@@ -77,7 +78,8 @@ function createDocumentCandidates({ archive = createDocumentArchive(), rag = get
     catch (error) { if (error.status === 404 || error.statusCode === 404) return null; throw error; }
     const m = doc?.metadata;
     if (!m || doc.documentId !== row.target.documentId || doc.source !== row.target.source
-      || m.contentHash !== sha256(Buffer.from(row.text)) || m.mixedRevision !== false || doc.chunkCount < 1
+      || m.contentHash !== sha256(Buffer.from(row.text)) || m.mixedRevision !== false
+      || !Number.isInteger(doc.chunkCount) || doc.chunkCount < 1 || !/^[a-f0-9]{64}$/.test(m.revisionFingerprint || '')
       || m.scope !== 'household' || m.sensitivity !== 'normal' || m.validFrom !== row.target.validFrom
       || m.invalidatedAt !== row.target.invalidatedAt || m.supersededBy
       || JSON.stringify(m.sourceRefs) !== JSON.stringify(row.target.sourceRefs)
@@ -98,7 +100,7 @@ function createDocumentCandidates({ archive = createDocumentArchive(), rag = get
     return projection(await load(row._id), true);
   }
   async function promote(id, { expectedRevision, requestId, confirmation } = {}) {
-    if (!UUID.test(requestId || '') || !/^[a-f0-9]{64}$/.test(expectedRevision || '')
+    if (typeof requestId !== 'string' || !UUID.test(requestId) || typeof expectedRevision !== 'string' || !/^[a-f0-9]{64}$/.test(expectedRevision)
       || confirmation !== `SHARE ${id}`) throw fail('Confirmez explicitement le partage du document entier avec la famille.');
     let row = await load(id, expectedRevision);
     if (row.requestId) {
@@ -123,7 +125,7 @@ function createDocumentCandidates({ archive = createDocumentArchive(), rag = get
     await ready();
     try {
       row = await model.findOneAndUpdate({ _id: id, state: 'selected', requestId: { $exists: false },
-        'selection.at': row.selection.at }, { $set: { requestId, target, state: 'dispatching' } }, { new: true, writeConcern: WC }).lean();
+        selection: row.selection }, { $set: { requestId, target, state: 'dispatching' } }, { new: true, writeConcern: WC }).lean();
     } catch (error) { if (error.code === 11000) throw fail('Identifiant de requête déjà utilisé.', 409); throw error; }
     if (!row) throw fail('La sélection a changé. Actualisez le candidat.', 409);
     // One outbound attempt for this durable identity. A timeout, crash or lost

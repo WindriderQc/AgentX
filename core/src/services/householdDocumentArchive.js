@@ -19,11 +19,12 @@ function relative(value) {
   return value;
 }
 function normalize(config) {
-  if (config?.schemaVersion !== 1 || !idPattern.test(config.archiveId || '') || !path.isAbsolute(config.root || '')
+  if (config?.schemaVersion !== 1 || typeof config.archiveId !== 'string' || !idPattern.test(config.archiveId)
+    || typeof config.root !== 'string' || !path.isAbsolute(config.root)
     || !Array.isArray(config.documents) || config.documents.length > 100) throw fail('Configuration des candidats invalide.');
   const seen = new Set();
   const documents = config.documents.map(entry => {
-    if (!idPattern.test(entry?.id || '') || seen.has(entry.id)) throw fail('Identifiant de document invalide ou dupliqué.');
+    if (typeof entry?.id !== 'string' || !idPattern.test(entry.id) || seen.has(entry.id)) throw fail('Identifiant de document invalide ou dupliqué.');
     seen.add(entry.id);
     const relativePath = relative(entry.relativePath);
     if (!['.md', '.txt'].includes(path.extname(relativePath).toLowerCase())) throw fail('Exports UTF-8 Markdown ou texte uniquement.');
@@ -70,7 +71,7 @@ function createDocumentArchive({ env = process.env, configPath } = {}) {
       nextOffset: page + 20 < config.documents.length ? page + 20 : null };
   }
   async function read(id) {
-    if (!idPattern.test(id || '')) throw fail('Identifiant invalide.');
+    if (typeof id !== 'string' || !idPattern.test(id)) throw fail('Identifiant invalide.');
     const config = await configuration();
     if (!config) throw fail('Aucune archive de candidats configurée.', 503, 'HOUSEHOLD_DOCUMENT_DISABLED');
     const entry = config.documents.find(doc => doc.id === id);
