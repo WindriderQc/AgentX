@@ -1,25 +1,33 @@
 const ModelProfile = require('../../../models/ModelProfile');
 const ModelPerformanceProfile = require('../../../models/ModelPerformanceProfile');
 const { projectionPaths } = require('./gpuDriverPreparationIdentity');
+const { effectiveModelProfiles } = require('./publishedGpuDriverProjection');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const { normalizeModelTag: normalizeModelName } = require('../../../../shared/modelNames');
 
 async function getAll(filter = {}) {
-  if (filter.stage) {
-    const docs = await ModelProfile.find().lean();
-    return docs.filter(doc => {
-      if (!doc.readiness) return false;
-      const readinessMap = doc.readiness instanceof Map
-        ? Object.fromEntries(doc.readiness)
-        : doc.readiness;
-      return Object.values(readinessMap).some(r => r.stage === filter.stage);
-    });
-  }
-  return ModelProfile.find().lean();
+  const profiles = await effectiveModelProfiles(await ModelProfile.find().lean());
+  if (!filter.stage) return profiles;
+  return profiles.filter(doc => Object.values(doc.readiness instanceof Map
+    ? Object.fromEntries(doc.readiness) : doc.readiness || {}).some(row => row.stage === filter.stage));
 }
 
 async function getByName(name) {
-  return ModelProfile.findOne({ name }).lean();
+  const profile = await ModelProfile.findOne({ name }).lean();
+  return profile ? (await effectiveModelProfiles([profile]))[0] : null;
+}
+
+async function readCurrentModelProfile(filter, projection, model = ModelProfile) {
+  let query = model.findOne(filter);
+  if (projection) query = query.select(typeof projection === 'string' ? `${projection} name` : { ...projection, name: 1 });
+  const profile = await query.lean();
+  return profile ? (await effectiveModelProfiles([profile]))[0] : null;
+}
+
+async function readCurrentModelProfiles(filter, projection, model = ModelProfile) {
+  let query = model.find(filter);
+  if (projection) query = query.select(typeof projection === 'string' ? `${projection} name` : { ...projection, name: 1 });
+  return effectiveModelProfiles(await query.lean());
 }
 
 async function upsert(data) {
@@ -166,7 +174,7 @@ async function getStalenessReport() {
 }
 
 async function getReadinessFunnel() {
-  const profiles = await ModelProfile.find().lean();
+  const profiles = await getAll();
   const counts = { available: 0, profiled: 0, benchmarked: 0 };
   for (const profile of profiles) {
     const readinessMap = profile.readiness instanceof Map
@@ -186,6 +194,8 @@ async function getBenchmarkedModelNames() {
 }
 
 module.exports = {
+  readCurrentModelProfile,
+  readCurrentModelProfiles,
   getAll,
   getByName,
   upsert,

@@ -60,7 +60,8 @@ async function reconcileOwnedRecord(ownership) {
   await ownershipHeartbeat.ready;
 
   if (record.state === 'verified' || record.state === 'releasing') {
-    if (record.state === 'verified' && record.resolutionMode === 'publish' && isProfilerAuthorityKind(record.kind)) {
+    if (record.state === 'verified' && record.resolutionMode === 'publish' && isProfilerAuthorityKind(record.kind)
+      && record.kind !== 'gpu_driver_activation') {
       const publicationReceipt = await publishProfilerResource(record, {
         signal: ownershipHeartbeat.signal,
         assertActive: ownershipHeartbeat.assertActive

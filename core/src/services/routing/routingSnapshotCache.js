@@ -26,12 +26,14 @@ const { buildEffectiveRoutingSnapshot } = require('./effectiveRoutingSnapshot');
 
 const DEFAULT_TTL_MS = 5000;
 const DEFAULT_STALE_MS = 300000;
+const UNREADABLE_VERSION = Symbol('unreadable-routing-version');
 
 let generation = 0;
 
 /** Called by host preference and pin writers: nothing held before is reused. */
 function invalidateRoutingSnapshots() {
   generation += 1;
+  return generation;
 }
 
 function windowMs(raw, fallback) {
@@ -65,13 +67,13 @@ function createRoutingSnapshotCache({
       return routingVersion ? routingVersion() : null;
     } catch {
       // A version that cannot be read matches nothing, so nothing is reused.
-      return {};
+      return UNREADABLE_VERSION;
     }
   }
 
   // Built under the router configuration and the writes that still stand.
   function current(entry, version) {
-    return entry.generation === generation && entry.version === version;
+    return version !== UNREADABLE_VERSION && entry.generation === generation && entry.version === version;
   }
 
   // One resolution per exact model and host, owned by the build that opened it.
@@ -145,7 +147,11 @@ function createRoutingSnapshotCache({
   async function get(options = {}) {
     const fresh = ttlMs();
     // A caller choosing router options gets its own build, as without cache.
-    if (fresh <= 0 || options.routerOptions) return build(options);
+    if (fresh <= 0 || options.routerOptions) {
+      const startedGeneration = generation;
+      const result = await build(options);
+      return startedGeneration === generation ? result : get(options);
+    }
     if (options.signal?.aborted) throw abortReason(options.signal);
     const exact = options.includeArtifactIdentity === true;
     const key = `${options.includeCatalog !== false}:${exact}`;
@@ -163,7 +169,13 @@ function createRoutingSnapshotCache({
       if (!underway) start(slot, options, version, fresh, true);
       return slot.held.snapshot;
     }
-    return join(underway || start(slot, options, version, fresh, false), options.signal);
+    const entry = underway || start(slot, options, version, fresh, false);
+    const result = await join(entry, options.signal);
+    // A caller joined before an identity change must rebuild as well; keeping
+    // the old result out of the held cache alone does not fence that caller.
+    if (entry.generation !== generation
+      || (version !== UNREADABLE_VERSION && currentVersion() !== version)) return get(options);
+    return result;
   }
 
   return Object.freeze({ get });

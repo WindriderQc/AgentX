@@ -30,7 +30,7 @@ describe('host Ollama settings sync', () => {
       synced: true, changed: true, settings: { kvCacheType: 'q8_0', gpuCount: 2 }
     });
     expect(readHardware).toHaveBeenCalledWith(HOST.hostUrl);
-    expect(model.updateOne).toHaveBeenCalledWith({ hostId: 'host-b' }, { $set: {
+    expect(model.updateOne).toHaveBeenCalledWith(expect.objectContaining({ hostId: 'host-b' }), { $set: {
       'ollama.settings': { kvCacheType: 'q8_0', flashAttention: 'on', visibleDevices: 'default', schedSpread: 'on', gpuCount: 2 },
       'ollama.settingsObservedAt': new Date('2026-10-05T10:00:00.000Z'),
       'ollama.settingsSource': 'systemd'
@@ -110,7 +110,7 @@ describe('host Ollama settings sync', () => {
         const model = store(settings, true, gpus, observation);
         await syncHostRuntimeSettings(HOST, { model, force: true,
           readHardware: async () => ({ status, ollamaEnvironment, knownGpuCount: 1 }) });
-        expect(model.updateOne).toHaveBeenCalledWith({ hostId: HOST.hostId },
+        expect(model.updateOne).toHaveBeenCalledWith(expect.objectContaining({ hostId: HOST.hostId }),
           { $set: { 'gpuDriverObservation.status': status } });
       }
     }

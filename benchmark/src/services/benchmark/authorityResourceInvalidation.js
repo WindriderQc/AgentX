@@ -27,6 +27,9 @@ const {
 } = require('./authorityReconciliationShared');
 
 async function invalidateResource(record, options = {}) {
+  if (record.kind === 'gpu_driver_activation') {
+    return require('../profiler/gpuDriverActivationPublication').compensateActivation(record, options);
+  }
   options.assertActive?.();
   if (record.kind === 'workload_invalidation') {
     const batchId = record.batchId || null;

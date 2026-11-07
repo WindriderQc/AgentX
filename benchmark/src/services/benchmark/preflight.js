@@ -14,7 +14,7 @@
 const logger = require('../../../config/logger');
 const BenchmarkPrompt = require('../../../models/BenchmarkPrompt');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
-const ModelPerformanceProfile = require('../../../models/ModelPerformanceProfile');
+const { readCurrentPerformance } = require('../profiler/modelPerformanceProfileService');
 const { BENCHMARK_CATEGORIES } = require('../../../config/categories');
 const { JUDGE_CONFIG } = require('../qualityScorer');
 const { probeJudgeCapability } = require('./judgeModelValidator');
@@ -188,7 +188,7 @@ async function checkBenchmarkTargetEligibility(model, hostUrl, executionConfig =
     // Exact artifact qualification is mandatory. Infrastructure or registry
     // failures block instead of silently downgrading the benchmark contract.
     try {
-        const ModelProfile = require('../../../models/ModelProfile');
+        const { readCurrentModelProfile } = require('../profiler/modelProfileService');
         const HostProfile = require('../../../models/HostProfile');
 
         // Resolve hostUrl → hostId (readiness is keyed by hostId, not URL).
@@ -212,9 +212,7 @@ async function checkBenchmarkTargetEligibility(model, hostUrl, executionConfig =
         }
 
         const artifact = await resolveArtifactIdentity(normalizedModel, hostId, hostUrl, { refresh: true });
-        const profile = await ModelProfile.findOne({ name: artifact.model })
-            .select('readiness benchmarkStats capabilities thinkingProfiles')
-            .lean();
+        const profile = await readCurrentModelProfile({ name: artifact.model }, 'readiness benchmarkStats capabilities thinkingProfiles');
 
         // readiness is a Map in schema; .lean() typically returns a plain object,
         // but guard against both shapes for safety.
@@ -222,14 +220,14 @@ async function checkBenchmarkTargetEligibility(model, hostUrl, executionConfig =
         const stage = readinessForHost?.stage;
         const hasQualifiedDepth = ['standard', 'full'].includes(readinessForHost?.profileDepth);
         const evidence = readinessForHost?.evidenceId
-            ? await ModelPerformanceProfile.findOne({
+            ? await readCurrentPerformance({
                 _id: readinessForHost.evidenceId,
                 modelName: artifact.model,
                 hostId,
                 active: true,
                 stale: { $ne: true },
                 authorityState: { $nin: ['pending_reconciliation', 'authority_invalidated'] }
-            }).lean()
+            })
             : null;
         const exactProfile = !!readinessForHost
             && hasQualifiedDepth

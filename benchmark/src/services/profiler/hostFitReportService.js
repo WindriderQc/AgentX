@@ -15,8 +15,8 @@
  * then composes the pure functions in ./fitEstimator into a report.
  */
 
-const ModelPerformanceProfile = require('../../../models/ModelPerformanceProfile');
-const ModelProfile = require('../../../models/ModelProfile');
+const { readCurrentPerformanceProfiles } = require('./modelPerformanceProfileService');
+const { readCurrentModelProfiles } = require('./modelProfileService');
 const hostProfileService = require('./hostProfileService');
 const liveProbeService = require('./liveProbeService');
 const { checkHost } = require('../hostTestService');
@@ -63,12 +63,12 @@ async function buildHostFitReport(hostId) {
   const { vramTotalMiB, source: vramSource } = est.resolveHostVram(host, telemetry);
 
   // Measured profiles for this host, keyed by normalized model name.
-  const evidenceRecords = await ModelPerformanceProfile.find({
+  const evidenceRecords = await readCurrentPerformanceProfiles({
     hostId,
     active: true,
     stale: { $ne: true },
     authorityState: { $nin: ['pending_reconciliation', 'authority_invalidated'] }
-  }).lean();
+  });
   const profileByModel = new Map();
   const liveArtifactByModel = new Map();
   for (const evidence of evidenceRecords) {
@@ -94,8 +94,7 @@ async function buildHostFitReport(hostId) {
   // Registry metadata (params/quant/family/benchmark scores) for installed models.
   const installedNorm = [...new Set(installedModels.map(normalizeModelName))];
   const registry = installedNorm.length
-    ? await ModelProfile.find({ name: { $in: installedNorm } })
-      .select('name parameters quantization family benchmarkStats categories readiness').lean()
+    ? await readCurrentModelProfiles({ name: { $in: installedNorm } }, 'name parameters quantization family benchmarkStats categories readiness')
     : [];
   const metaByModel = new Map(registry.map(r => [normalizeModelName(r.name), r]));
 

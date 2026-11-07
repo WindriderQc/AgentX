@@ -25,6 +25,7 @@ const { resolveArtifactIdentity } = require('./artifactIdentityService');
 const { getBenchmarkServiceClient } = require('./benchmarkServiceClient');
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
+let cacheGeneration = 0;
 const { RECOMMENDATION_EVIDENCE_VERSION } = require('../../../shared/contextEvidence');
 const { normalizeMeasuredRuntime } = require('../../../shared/measuredRuntime');
 const cache = new Map(); // key `${host}::${model}` → { value, expiresAt }
@@ -168,6 +169,7 @@ async function fromContextProfile(model, hostUrl, artifact, deps = {}, workload 
  */
 async function getContextInfo(model, hostUrlRaw, options = {}) {
   if (!model) throw new Error('model is required');
+  const generation = cacheGeneration;
   const hostUrl = hostUrlRaw ? resolveTarget(hostUrlRaw) : null;
   const signal = options.signal || null;
   const artifact = options.artifactIdentity || (hostUrl
@@ -177,6 +179,7 @@ async function getContextInfo(model, hostUrlRaw, options = {}) {
     ? options.workload
     : 'interactive';
   const key = cacheKey(hostUrl, model, artifact || {}, workload);
+  if (generation !== cacheGeneration) return getContextInfo(model, hostUrlRaw, options);
   const cached = cache.get(key);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value;
@@ -252,12 +255,15 @@ async function getContextInfo(model, hostUrlRaw, options = {}) {
   // Preparation can publish a first profile without changing artifact identity.
   // Do not keep an unresolved context for five minutes after that publication.
   // A read cut short by its caller is not evidence worth keeping.
+  if (generation !== cacheGeneration) return getContextInfo(model, hostUrlRaw, options);
   if (num_ctx && !signal?.aborted) cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
   return value;
 }
 
 function _clearCache() {
+  cacheGeneration += 1;
   cache.clear();
+  return cacheGeneration;
 }
 
 module.exports = { getContextInfo, _clearCache, _setFetch };

@@ -1,6 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
+const { activatedHosts } = require('./publishedGpuDriverProjection');
+const { buildRuntimeFingerprint } = require('../../../../shared/artifactIdentity');
 const ModelPerformanceProfile = require('../../../models/ModelPerformanceProfile');
 
 async function saveProfile({ modelName, hostId, artifact, profile }, options = {}) {
@@ -81,6 +83,17 @@ async function retireSupersededProfiles({
 }
 
 async function getActiveProfile(modelName, hostId) {
+  const [activated] = await activatedHosts(hostId);
+  if (activated) {
+    const profile = await require('./modelProfileService').getByName(modelName);
+    const readiness = profile?.readiness?.[hostId];
+    if (!readiness?.evidenceId) return null;
+    const selected = await ModelPerformanceProfile.findOne({ _id: readiness.evidenceId, modelName, hostId,
+      'artifact.runtimeFingerprint': buildRuntimeFingerprint(activated), stale: { $ne: true },
+      authorityState: { $nin: ['pending_reconciliation', 'authority_invalidated'] } }).lean();
+    return selected ? { ...selected, active: true, publication: { source: 'gpu_driver_identity_selector',
+      requestId: activated.gpuDriverActivation.requestId } } : null;
+  }
   return ModelPerformanceProfile.findOne({
     modelName,
     hostId,
@@ -102,7 +115,60 @@ async function getRoster(filter = {}) {
   };
   if (filter.hostId) query.hostId = filter.hostId;
   if (filter.modelName) query.modelName = filter.modelName;
-  return ModelPerformanceProfile.find(query).sort({ updatedAt: -1 }).lean();
+  const rows = await ModelPerformanceProfile.find(query).sort({ updatedAt: -1 }).lean();
+  const activated = await activatedHosts(filter.hostId);
+  if (!activated.length) return rows;
+  const hostIds = new Set(activated.map(host => host.hostId));
+  const result = rows.filter(row => !hostIds.has(row.hostId));
+  const profiles = await require('./modelProfileService').getAll();
+  for (const host of activated) {
+    for (const profile of profiles) {
+      if (filter.modelName && profile.name !== filter.modelName) continue;
+      const selected = await getActiveProfile(profile.name, host.hostId);
+      if (selected) result.push(selected);
+    }
+  }
+  return result.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+}
+
+async function readCurrentPerformance(filter, projection = null, model = ModelPerformanceProfile) {
+  const [host] = await activatedHosts(filter.hostId);
+  let queryFilter = filter;
+  if (host) {
+    if (filter['artifact.runtimeFingerprint'] && filter['artifact.runtimeFingerprint'] !== buildRuntimeFingerprint(host)) return null;
+    const profile = await require('./modelProfileService').getByName(filter.modelName);
+    const readiness = profile?.readiness?.[filter.hostId];
+    if (!readiness?.evidenceId || (filter._id && String(filter._id) !== String(readiness.evidenceId))) return null;
+    queryFilter = { ...filter, _id: readiness.evidenceId, 'artifact.runtimeFingerprint': buildRuntimeFingerprint(host) };
+    delete queryFilter.active;
+  }
+  let query = model.findOne(queryFilter);
+  if (projection) query = query.select(projection);
+  const row = await query.lean();
+  return row && host ? { ...row, active: true, publication: { source: 'gpu_driver_identity_selector', requestId: host.gpuDriverActivation.requestId } } : row;
+}
+
+async function projectPerformanceRows(rows) {
+  const hosts = await activatedHosts();
+  if (!hosts.length) return rows;
+  const profiles = await require('./modelProfileService').getAll();
+  const selected = new Set();
+  for (const profile of profiles) {
+    for (const host of hosts) {
+      const readiness = profile.readiness?.[host.hostId];
+      if (readiness?.artifact?.runtimeFingerprint === buildRuntimeFingerprint(host) && readiness.evidenceId) selected.add(String(readiness.evidenceId));
+    }
+  }
+  const ids = new Set(hosts.map(host => host.hostId));
+  return rows.map(row => ids.has(row.hostId) ? { ...row, active: selected.has(String(row._id)) } : row);
+}
+
+async function readCurrentPerformanceProfiles(filter) {
+  const [host] = await activatedHosts(filter.hostId);
+  // Reuse the current roster when there is a published host selector. The
+  // legacy query remains unchanged for callers without one.
+  if (host) return getRoster({ hostId: filter.hostId, modelName: filter.modelName });
+  return ModelPerformanceProfile.find(filter).lean();
 }
 
 async function invalidateProfile(evidenceId, reason = 'authority_write_failed') {
@@ -114,6 +180,9 @@ async function invalidateProfile(evidenceId, reason = 'authority_write_failed') 
 }
 
 module.exports = {
+  readCurrentPerformance,
+  readCurrentPerformanceProfiles,
+  projectPerformanceRows,
   getActiveProfile,
   getRoster,
   invalidateProfile,

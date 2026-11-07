@@ -678,7 +678,7 @@ performance profile and tool qualification records the version (from
 the collector reports one. The native GPU collector queries `driver_version`;
 Data keeps it on the latest snapshot and history, and `readHostHardware` carries
 it to `HostProfile.gpuDriverObservation` with the collector sample time, source, availability and Data freshness window.
-This is an observation phase: collector driver values do not overwrite drivers
+Before explicit host activation, collector driver values do not overwrite drivers
 in the identity inventory (`gpus`) or legacy `gpu` field, so first discovery and
 subsequent driver observations keep existing fingerprints. Physical inventory
 and Ollama settings still change identity normally. New measurements use the
@@ -687,10 +687,14 @@ freshness window still covers the measurement time and the latest read is observ
 A stale/unavailable read keeps the inventory for inspection but makes the driver
 unknown on new measurements. An unknown or
 partial set records `null`, without substituting historical drivers. Existing
-proofs are neither rewritten nor re-keyed. There is no driver activation action
-in this phase. The [prepared-proof transition](GPU_DRIVER_TRANSITION.md) freezes
+proofs are neither rewritten nor re-keyed. The [GPU driver transition](GPU_DRIVER_TRANSITION.md) freezes
 the complete native qualified scope and collects new evidence without replacing
-current readiness; its preparation capability exposes no activation action.
+current readiness. Its explicit atomic activation requires new compatible proof
+for that complete scope, a native journal and confirmed Core cache invalidation
+before reservation release. After activation, a known changed driver updates
+identity normally; missing telemetry retains identity without inventing fresh
+measurement metadata. Native abandonment permits a new preparation only after
+the original operation is resolved; uncertain activations require native recovery.
 When the installed version differs, the evidence
 stays in use and the drift is shown: `qualification.runtimeDrift`
 (`{measured, installed}`) in the inference contract, a badge on the Profiler

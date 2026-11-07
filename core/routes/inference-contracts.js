@@ -5,6 +5,7 @@ const logger = require('../config/logger');
 const { validateHostUrl } = require('../src/helpers/ollamaHostConfig');
 const { resolveInferenceContractSnapshot } = require('../src/services/inferenceContractService');
 const { requestPrincipal } = require('../src/helpers/requestCaller');
+const { invalidateDriverCaches } = require('../src/services/gpuDriverCacheInvalidation');
 const { resolvePreparedDriverContract } = require('../src/services/gpuDriverQualificationContract');
 
 /**
@@ -80,6 +81,18 @@ router.post('/inference/contract/resolve-prepared-driver', async (req, res) => {
       requestedNumCtx: options.num_ctx ?? null, requestedMaxOutputTokens: options.num_predict ?? null
     });
     return res.json(data);
+  } catch (error) {
+    return res.status(error.statusCode || error.status || 503).json({ status: 'error', code: error.code, message: error.message });
+  }
+});
+
+router.post('/inference/contract/gpu-driver-cache-invalidation', async (req, res) => {
+  const body = req.body || {};
+  const checked = validateHostUrl(body.host);
+  if (!checked.valid) return res.status(400).json({ status: 'error', message: checked.message });
+  try {
+    const data = await invalidateDriverCaches({ ...body, host: checked.host, principal: requestPrincipal(req) });
+    return res.json({ status: 'success', data });
   } catch (error) {
     return res.status(error.statusCode || error.status || 503).json({ status: 'error', code: error.code, message: error.message });
   }

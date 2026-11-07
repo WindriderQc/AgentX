@@ -152,6 +152,24 @@ describe('a batch that crashes when its runtime dies', () => {
 });
 
 describe('a quarantine Core holds with no journal record', () => {
+    test.each([
+        ['gpu-driver-activation', 'gpu-driver-activation'],
+        ['gpu-driver-preparation-abandon', 'gpu-driver-abandon']
+    ])('recovers a %s admission lost before its first journal without launching another action', async (kind, prefix) => {
+        const workloadId = `${prefix}:${'a'.repeat(64)}`;
+        await acquireWorkloadAdmission(workloadId, { requestId: 'synthetic-unique-acquire-attempt',
+            recoveryRequestId: `recovery:${workloadId}`, kind, hosts: [HOST] });
+        mockCore.expireOwner(workloadId);
+        restartBenchmark();
+        await expect(recoverRecordlessQuarantines()).resolves.toMatchObject({ journaled: [workloadId] });
+        await expect(recoverRecordlessQuarantines()).resolves.toMatchObject({ journaled: [] });
+        expect(await BenchmarkAuthorityReconciliation.findOne({ workloadId }).lean()).toMatchObject({
+            kind: 'workload_invalidation', resultId: `workload:${workloadId}`,
+            recoveryRequestId: `recovery:${workloadId}` });
+        await expect(reconcilePendingResultInvalidations()).resolves.toMatchObject({ resolved: 1 });
+        expect(mockCore.workloads()).toEqual([]);
+    });
+
     test('is journaled from Core\'s proof once its batch is terminal, then lifted', async () => {
         const batchId = await recordlessQuarantine('failed');
         const core = mockCore.workload(batchId);

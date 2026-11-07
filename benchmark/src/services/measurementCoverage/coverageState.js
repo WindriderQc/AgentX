@@ -16,7 +16,7 @@
  */
 
 const BenchmarkResult = require('../../../models/BenchmarkResult');
-const ModelProfile = require('../../../models/ModelProfile');
+const { readCurrentModelProfiles } = require('../profiler/modelProfileService');
 const HostProfile = require('../../../models/HostProfile');
 const { loadCatalogPrompts } = require('../benchmark/promptComparison');
 const { SCORER_VERSION } = require('../scoring/scorerVersion');
@@ -100,7 +100,7 @@ function modelNames(scope) {
 
 async function loadReadiness(scope) {
   const readiness = new Map();
-  for (const profile of await ModelProfile.find({ name: { $in: modelNames(scope) } }).select('name readiness').lean()) {
+  for (const profile of await readCurrentModelProfiles({ name: { $in: modelNames(scope) } }, 'name readiness')) {
     for (const [hostId, entry] of Object.entries(profile.readiness || {})) {
       readiness.set(`${hostId}::${modelKey(profile.name)}`, entry);
     }

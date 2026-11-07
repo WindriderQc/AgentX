@@ -201,8 +201,21 @@ test('thinking requalification retains the native visible-final and enabled-mode
     const status = await preparedEvidence.inspectPrepared(hostId, requestId, deps);
     expect(status.models.every(row => row.reasons.includes('thinking_required'))).toBe(true);
   }
-  for (const name of names) await ModelProfile.updateOne({ name }, { $set: { [`preparedThinkingProfiles.${hostId}`]: thinking } });
+  for (const name of names) {
+    const evidence = await Performance.findOne({ modelName: name, 'artifact.driverPreparationId': requestId }).lean();
+    const writeId = randomUUID();
+    const profile = { ...evidence.profile, thinking };
+    await Performance.updateOne({ _id: evidence._id }, { $set: { profile, authorityWriteId: writeId } });
+    await ModelProfile.updateOne({ name }, { $set: {
+      [`preparedThinkingProfiles.${hostId}`]: { ...thinking, authorityWriteId: writeId },
+      [`preparedReadiness.${hostId}.authorityWriteId`]: writeId,
+      [`preparedReadiness.${hostId}.authorityReceipt`]: createProfilerAuthorityReceipt({
+        modelName: name, hostId, artifact: evidence.artifact, profile, evidenceId: evidence._id })
+    } });
+  }
   expect((await preparedEvidence.inspectPrepared(hostId, requestId, deps)).ready).toBe(true);
+  await ModelProfile.updateOne({ name: names[0] }, { $set: { [`preparedThinkingProfiles.${hostId}.authorityWriteId`]: 'unrelated-write' } });
+  expect((await preparedEvidence.inspectPrepared(hostId, requestId, deps)).models[0].reasons).toContain('thinking_required');
 });
 
 test('concurrent preparations commit exactly one immutable manifest', async () => {

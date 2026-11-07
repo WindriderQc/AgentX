@@ -80,6 +80,7 @@ function applyThinkingCapability(model, capabilityContract, fallbackSupported) {
 // Cache for aggregated models (5 min TTL)
 let modelCache = null;
 let cacheTimestamp = null;
+let cacheGeneration = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
@@ -94,6 +95,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
  * @returns {Promise<Array>} Array of unified model objects
  */
 async function getAllModels(options = {}) {
+  const generation = cacheGeneration;
   const {
     includeOllama = true,
     includeCustom = true,
@@ -369,6 +371,7 @@ async function getAllModels(options = {}) {
   }
 
   // Only cache full-source results to avoid stale data for partial callers
+  if (generation !== cacheGeneration) return getAllModels({ ...options, useCache: false });
   if (cacheEligible) {
     modelCache = models;
     cacheTimestamp = Date.now();
@@ -588,8 +591,7 @@ async function getModelByName(name, provider = null) {
  */
 async function refreshModelCache() {
   logger.info('Refreshing model cache (forced)');
-  modelCache = null;
-  cacheTimestamp = null;
+  clearCache();
 
   const models = await getAllModels({ useCache: false });
   // Use the freshly-populated cache instead of re-fetching everything
@@ -606,9 +608,11 @@ async function refreshModelCache() {
  * Clear model cache
  */
 function clearCache() {
+  cacheGeneration += 1;
   modelCache = null;
   cacheTimestamp = null;
   logger.debug('Model cache cleared');
+  return cacheGeneration;
 }
 
 module.exports = {

@@ -16,8 +16,8 @@
 const logger = require('../../../config/logger');
 const crypto = require('crypto');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
-const ModelPerformanceProfile = require('../../../models/ModelPerformanceProfile');
-const ModelProfile = require('../../../models/ModelProfile');
+const { readCurrentPerformance } = require('../profiler/modelPerformanceProfileService');
+const { readCurrentModelProfile } = require('../profiler/modelProfileService');
 const { getConfiguredHosts, normalizeHostUrl } = require('../../helpers/ollamaHostConfig');
 const { identitiesMatch, resolveArtifactIdentity } = require('../profiler/artifactIdentityService');
 const { verifyProfilerAuthorityReceipt } = require('../profiler/profilerAuthorityReceipt');
@@ -35,9 +35,7 @@ async function getProfilePerformanceBaseline(model, hostUrl) {
     if (!hostId) return null;
 
     const artifact = await resolveArtifactIdentity(model, hostId, hostUrl);
-    const modelProfile = await ModelProfile.findOne({ name: artifact.model })
-        .select('readiness')
-        .lean()
+    const modelProfile = await readCurrentModelProfile({ name: artifact.model }, 'readiness')
         .catch(() => null);
     const readiness = modelProfile?.readiness instanceof Map
         ? modelProfile.readiness.get(hostId)
@@ -57,7 +55,7 @@ async function getProfilePerformanceBaseline(model, hostUrl) {
         return null;
     }
 
-    const evidence = await ModelPerformanceProfile.findOne({
+    const evidence = await readCurrentPerformance({
         _id: readiness.evidenceId,
         modelName: artifact.model,
         hostId,
@@ -66,9 +64,7 @@ async function getProfilePerformanceBaseline(model, hostUrl) {
         active: true,
         stale: { $ne: true },
         authorityState: { $nin: ['pending_reconciliation', 'authority_invalidated'] }
-    })
-        .select('profile artifact updatedAt')
-        .lean()
+    }, 'profile artifact updatedAt')
         .catch(() => null);
 
     if (!evidence?.profile

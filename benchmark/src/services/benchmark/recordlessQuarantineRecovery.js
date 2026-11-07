@@ -28,6 +28,17 @@ async function journalIfRecordless(workload) {
   const workloadId = String(workload.workloadId);
   const covered = await BenchmarkAuthorityReconciliation.exists({ workloadId, state: { $ne: 'resolved' } });
   if (covered) return false;
+  if (['gpu-driver-activation', 'gpu-driver-preparation-abandon'].includes(workload.kind)) {
+    // These metadata actions cannot mutate a host until the managed guard is
+    // durable. A lost acquire response leaves no product write to undo. Read
+    // Core's original quarantine by the stable action recovery identity even
+    // though each exclusive acquire attempt has its own requestId.
+    const recovery = await lookupWorkloadRecovery({ workloadId, recoveryRequestId: `recovery:${workloadId}` });
+    if (!recovery || recovery.kind !== workload.kind) return false;
+    await enqueueAuthorityInvalidation({ kind: 'workload_invalidation', resultId: `workload:${workloadId}`,
+      workloadId, phase: workload.kind, reason: 'native driver action admission ended before its durable guard', recovery });
+    return true;
+  }
   const batch = await BenchmarkBatch.findById(workloadId).select('status').lean();
   if (!batch || !TERMINAL_BATCH_STATUSES.has(batch.status)) return false;
   // Batch admissions are requested as `benchmark:<batchId>`.
@@ -56,8 +67,9 @@ async function recoverRecordlessQuarantines() {
     return { fetched: false, journaled };
   }
   const expired = (active.workloads || []).filter(workload => workload.recoveryRequired === true
-    && workload.kind === 'benchmark'
-    && OBJECT_ID_PATTERN.test(String(workload.workloadId || ''))
+    && ((workload.kind === 'benchmark' && OBJECT_ID_PATTERN.test(String(workload.workloadId || '')))
+      || (workload.kind === 'gpu-driver-activation' && /^gpu-driver-activation:[a-f0-9]{64}$/.test(workload.workloadId || ''))
+      || (workload.kind === 'gpu-driver-preparation-abandon' && /^gpu-driver-abandon:[a-f0-9]{64}$/.test(workload.workloadId || '')))
     && new Date(workload.expiresAt).getTime() <= Date.now());
   for (const workload of expired) {
     try {

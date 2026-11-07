@@ -29,7 +29,7 @@ async function acquireWorkloadAdmission(workloadId, options = {}) {
   const expectedKind = options.kind || 'benchmark';
   const expectedBatchId = options.batchId || null;
   const requestId = options.requestId || `benchmark:${key}`;
-  const recoveryRequestId = `recovery:${requestId}`;
+  const recoveryRequestId = options.recoveryRequestId || `recovery:${requestId}`;
   // Core stores canonical host identities in coordination receipts. Use the
   // same shared key so IPv4/IPv6 loopback aliases and default ports agree.
   const expectedHosts = [...new Set((Array.isArray(options.hosts) ? options.hosts : [])
@@ -43,6 +43,7 @@ async function acquireWorkloadAdmission(workloadId, options = {}) {
   const existing = workloadAdmissionById.get(key);
   if (existing) {
     if (existing.requestId !== requestId
+      || existing.recoveryRequestId !== recoveryRequestId
       || existing.kind !== expectedKind
       || (existing.batchId || null) !== expectedBatchId
       || JSON.stringify(existing.hosts || []) !== JSON.stringify(expectedHosts)) {

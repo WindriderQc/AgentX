@@ -36,13 +36,26 @@ const HostProfileSchema = new mongoose.Schema({
   gpuDriverIdentityVersion: { type: String, enum: ['agentx.gpu-driver-identity/v1'], default: undefined },
   gpuDriverPreparation: {
     requestId: String,
-    state: { type: String, enum: ['prepared', 'activating', 'active'], default: undefined },
+    state: { type: String, enum: ['prepared', 'activating', 'active', 'abandoned'], default: undefined },
     preparedAt: Date,
     activeFingerprint: String,
     targetFingerprint: String,
     scopeFingerprint: String,
     pins: mongoose.Schema.Types.Mixed,
     manifest: { type: [mongoose.Schema.Types.Mixed], default: undefined }
+  },
+  gpuDriverPreparationHistory: { type: [mongoose.Schema.Types.Mixed], default: [], select: false },
+  gpuDriverActivation: {
+    requestId: String,
+    preparationId: String,
+    state: { type: String, enum: ['pending', 'published', 'complete', 'compensated'], default: undefined },
+    targetFingerprint: String,
+    scopeFingerprint: String,
+    journalId: String,
+    proofs: { type: [mongoose.Schema.Types.Mixed], default: undefined },
+    publishedAt: Date,
+    completedAt: Date,
+    cacheReceipt: mongoose.Schema.Types.Mixed
   },
   gpusObservedAt: Date,
   gpusSource: String,
