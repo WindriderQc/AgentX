@@ -138,3 +138,28 @@ test('upgrades an existing active uncertain notice to Telegram without reopening
   expect(alert.status).toBe('acknowledged');
   expect(alert.channels).toEqual([]);
 });
+
+test('a new receipt outage gets its own relay identity without redelivering the same outage', async () => {
+  const uncertain = job({ state: 'uncertain', dispatchedAt: past() });
+  await notices.publishJobs([uncertain]);
+  let alert = await Alert.findOne().lean();
+  await notices.acknowledge(String(alert._id), 'fixture');
+  await Alert.updateOne({ _id: alert._id }, { $set: { 'delivery.telegram.sent': true } });
+  await notices.publishJobs([{ ...uncertain, state: 'running', estimatedMinutes: 60 }]);
+  const resolved = await Alert.findById(alert._id).lean();
+  expect(resolved.status).toBe('resolved');
+  // A stale observer still carrying the old uncertainty cannot resurrect it.
+  await notices.publishJobs([uncertain]);
+  expect((await Alert.findById(alert._id).lean()).status).toBe('resolved');
+  const next = { ...uncertain, uncertaintyId: 'next-incident', updatedAt: new Date().toISOString() };
+  await notices.publishJobs([next]);
+  alert = await Alert.findOne({ status: 'active' }).lean();
+  expect(String(alert._id)).not.toBe(String(resolved._id));
+  expect(alert.status).toBe('active');
+  expect(alert.acknowledgment?.acknowledged).not.toBe(true);
+  expect(relay.selectDue([alert])).toHaveLength(1);
+  expect(await Alert.countDocuments()).toBe(2);
+  await Alert.updateOne({ _id: alert._id }, { $set: { 'delivery.telegram.sent': true } });
+  await notices.publishJobs([next]);
+  expect(relay.selectDue([await Alert.findById(alert._id).lean()])).toHaveLength(0);
+});

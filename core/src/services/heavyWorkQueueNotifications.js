@@ -25,19 +25,16 @@ async function publishJobs(jobs) {
     const outcome = expiry ? 'expired' : stall ? 'stalled' : job.state;
     const urgent = outcome === 'uncertain' || outcome === 'stalled';
     const attention = urgent || outcome === 'failed' || outcome === 'expired';
-    // A recovered native receipt can resolve uncertainty before completion.
-    if (job.state !== 'uncertain') {
-      await Alert.updateMany({ ruleId: RULE, fingerprint: `heavy-work:${job.id}:uncertain`, status: { $in: ['active', 'acknowledged'] } },
-        { $set: { status: 'resolved', resolution: { resolved: true, resolvedBy: 'core-queue-receipt',
-          resolvedAt: new Date(), resolutionMethod: 'receipt-observed' } } }, { writeConcern: WC });
-    }
-    for (const code of ['launch_receipt_overdue', 'completion_receipt_overdue']) {
-      if (stall?.code === code) continue;
-      await Alert.updateMany({ ruleId: RULE, fingerprint: `heavy-work:${job.id}:stalled:${code}`, status: { $in: ['active', 'acknowledged'] } },
-        { $set: { status: 'resolved', resolution: { resolved: true, resolvedBy: 'core-queue-receipt', resolvedAt: new Date(), resolutionMethod: 'receipt-observed' } } }, { writeConcern: WC });
-    }
+    const episode = urgent && job.uncertaintyId ? `:${job.uncertaintyId}` : '';
+    const fingerprint = `heavy-work:${job.id}:${outcome}${expiry ? `:${expiry.at}` : stall ? `:${stall.code}` : ''}${episode}`;
+    // Stable per incident, including across restart/acknowledgment. A later
+    // outage has a new identity, so the relay's no-duplicate cache cannot hide it.
+    await Alert.updateMany({ ruleId: RULE, 'context.additionalData.queueRequestId': job.id,
+      'context.additionalData.state': { $in: ['uncertain', 'stalled'] }, fingerprint: { $ne: fingerprint },
+      status: { $in: ['active', 'acknowledged'] } }, { $set: { status: 'resolved', resolution: {
+      resolved: true, resolvedBy: 'core-queue-receipt', resolvedAt: new Date(), resolutionMethod: 'receipt-observed'
+    } } }, { writeConcern: WC });
     if (!attention && ((!job.dispatchedAt && job.executor?.mode !== 'image-operation') || !labels[outcome])) continue;
-    const fingerprint = `heavy-work:${job.id}:${outcome}${expiry ? `:${expiry.at}` : stall ? `:${stall.code}` : ''}`;
     const id = crypto.createHash('sha256').update(fingerprint).digest('hex').slice(0, 24);
     const changes = { ruleId: RULE, ruleName: 'Heavy work queue', fingerprint,
       severity: urgent ? 'critical' : outcome === 'completed' || outcome === 'cancelled' ? 'info' : 'warning',

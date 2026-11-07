@@ -232,8 +232,13 @@ it('restores running observation from the same native receipt after an attached 
     estimatedMinutes: 480, executor: { hostId: 'primary' } });
   await queue.record(job.id, { state: 'running', dispatchId: job.dispatchId, operationId: 'original-profile' }, 'test');
   await queue.record(job.id, { state: 'uncertain', dispatchId: job.dispatchId, reason: 'Synthetic receipt read outage' }, 'observer');
+  const incident = (await queue.get(job.id)).uncertaintyId;
+  await queue.record(job.id, { state: 'uncertain', dispatchId: job.dispatchId, reason: 'Same outage, more detail' }, 'observer');
+  expect((await queue.get(job.id)).uncertaintyId).toBe(incident);
   requestJson.mockResolvedValue({ data: { queueRequestId: job.id, hostId: 'primary', queueStatus: 'running', launchConfirmed: true } });
   expect(await evidence.reconcile(job.id, 'observer')).toMatchObject({ state: 'running', operation: { id: 'original-profile' } });
   expect(requestJson.mock.calls).toHaveLength(1);
   expect(requestJson.mock.calls[0][0]).toMatchObject({ method: 'GET', path: '/api/profiler/pipeline/profile-host/original-profile/progress' });
+  await queue.record(job.id, { state: 'uncertain', dispatchId: job.dispatchId, reason: 'Another outage' }, 'observer');
+  expect((await queue.get(job.id)).uncertaintyId).not.toBe(incident);
 });

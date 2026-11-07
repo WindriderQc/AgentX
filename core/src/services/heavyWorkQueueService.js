@@ -252,6 +252,7 @@ async function record(id, body, actor) {
       job.state = 'running';
     } else if (body.state === 'uncertain') {
       if (job.state === 'uncertain' && job.reason === body.reason) return { readOnly: true, value: job };
+      if (job.state !== 'uncertain') job.uncertaintyId = crypto.randomUUID();
       job.state = 'uncertain'; job.reason = text(body.reason, 'reason', 1000);
     } else throw fail('Record running or uncertain only; completion requires reconciliation');
     return event(job, actor, job.state, job.operation || job.reason);

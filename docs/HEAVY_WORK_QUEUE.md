@@ -359,6 +359,9 @@ request uncertain and requests attention immediately rather than waiting for a
 possibly multi-hour duration estimate. A matching native receipt confirming execution
 restores running observation; missing evidence never starts replacement work.
 Operator/island jobs keep their external receipt owner and execution deadline.
+Each new uncertainty after recovery has its own durable incident ID. Repeated
+reads preserve acknowledgment and delivery; a later outage receives a new relay
+identity, so delivery deduplication does not suppress a new incident.
 
 The observer reports an unstarted requested/reserved job when its `startBefore`
 or reservation end passes, including planning proposals without an executor.
