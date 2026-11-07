@@ -63,6 +63,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         </div>
         <p class="ss-note"><span id="personaDescription"></span> <span id="conversationAgentDescription"></span></p>
       </div>
+      ${family ? '<div id="conversationCameraSettings" class="ss-group" aria-labelledby="ssCamera"><h2 id="ssCamera" class="ss-title">Regard caméra</h2></div>' : ''}
       <nav class="ss-links" aria-label="Related settings">
         <button id="conversationWorkshop" class="ss-link" type="button">Voice workshop<small>mic, voices, diagnostics</small></button>
         ${family ? '' : `<button id="conversationPerformance" class="ss-link" type="button">Context and performance<small>what Core adds</small></button>

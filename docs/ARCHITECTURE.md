@@ -902,20 +902,23 @@ pages and APIs retain the parental gateway guard.
   Famille conversations dock Nestor's GraphysX voxel face (`avatar-dock.js`),
   driven by observable conversation state: phase, microphone and speech
   level, token rate, tool calls and a busy inference host. In Famille, an explicit
-  camera button optionally directs the existing pointer gaze toward local movement
-  (`avatar-motion.js`). Capture requests no audio, at most 320 × 240 and 5 fps;
+  camera button in conversation Settings → Regard caméra optionally directs the
+  existing pointer gaze toward local movement (`avatar-motion.js`). Capture
+  requests no audio, at most 320 × 240 and 5 fps;
   analysis uses 80 × 60 luminance differences, with exposure rejection, bounded
   smoothing and a calm return to center. This is movement attention, not human eye
   tracking, identification or emotion recognition. Frames stay transient in browser
-  memory: no recording, upload or persistence. Stop remains visible above the face
-  and idle photos. Hiding the document/face, opening idle photos, leaving the page,
+  memory: no recording, upload or persistence. Camera setup and Stop live in the
+  conversation settings; neither overlays the face or idle photos. Hiding the
+  document/face, opening idle photos, leaving the page,
   disconnecting the camera or disposing the dock stops tracks; a late permission
   result is also released. Photos and hidden documents pause capture while keeping
   the explicit session choice. Returning to the visible avatar resumes only after
   a successful earlier capture and a fresh native `camera` permission query reports
   `granted`. A new prompt, denied/unsupported permission, or capture failure clears
   the choice without automatic retries. Stop, navigation and a new visit also clear
-  it. Paused status explicitly says the camera is off; Stop stays available.
+  it. Paused status in settings explicitly says the camera is off; returning from
+  photos restores access to Settings and Stop.
   Refusal or
   missing media support leaves the normal avatar and voice available. The embed's
   existing non-bubbling window pointer input carries only synthetic screen

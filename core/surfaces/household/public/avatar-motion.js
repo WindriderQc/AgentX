@@ -59,7 +59,8 @@
     }));
   }
 
-  function mount({ documentRef = root.document, face = () => null, available = () => true } = {}) {
+  function mount({ documentRef = root.document, container, face = () => null, available = () => true } = {}) {
+    if (!container) return null;
     const doc = documentRef;
     const panel = doc.createElement('section'); panel.className = 'avatar-camera';
     panel.setAttribute('aria-label', 'Regard de Nestor avec la caméra');
@@ -69,7 +70,7 @@
     button.setAttribute('aria-pressed', 'false');
     const help = doc.createElement('p'); help.className = 'avatar-camera-help';
     help.textContent = 'Mouvements seulement, traités sur cet écran. Aucune vidéo enregistrée ou envoyée.';
-    panel.append(status, button, help); doc.body.append(panel);
+    panel.append(status, button, help); container.append(panel);
     const video = doc.createElement('video');
     video.muted = true; video.autoplay = true; video.playsInline = true;
     const canvas = doc.createElement('canvas'); canvas.width = WIDTH; canvas.height = HEIGHT;
