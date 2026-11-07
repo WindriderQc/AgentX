@@ -126,6 +126,17 @@ clients remain unavailable. The tests use the public native auth resolver with
 synthetic configuration and intercept the real model transport, including when
 synthetic ADC environment settings are present; they perform no credential setup.
 
+Azure Responses and Mistral additionally bind their actual native client and
+installed runtime/peer dependency code through `client-sdk-fingerprint.mjs`.
+Resolution shadows, changed package code and changed optional-peer presence
+cannot inherit qualification. The native catalogue publishes the client digest
+as `nativeTransportFingerprint` and binds it into target identity.
+Azure admits only model-configured routing, with no native environment override
+for its endpoint, resource, API version or deployment map; final native route
+drift refuses before HTTP. Mistral admits only models declared non-reasoning.
+These client qualifications use the existing native SDK, with no production
+dependency change or provider credential map in AgentX.
+
 | Native API | Applied | Refused before dispatch |
 | --- | --- | --- |
 | `openai-completions` | output limit, temperature, seed, topP, JSON, thinking | numeric reasoning budget when unapplied |
@@ -133,6 +144,8 @@ synthetic ADC environment settings are present; they perform no credential setup
 | `openai-responses` | output limit, thinking on/off and level, temperature where the model accepts it | seed, topP, JSON, numeric reasoning budget |
 | `google-generative-ai` (pinned SDK code) | output limit, temperature, thinking on/off, level and numeric budget | seed, topP, JSON; thinking off where the native model cannot disable it |
 | `google-vertex` (pinned SDK code, explicit API-key mode) | output limit, temperature, thinking on/off, level and numeric budget | seed, topP, JSON; unqualified auth/client modes; thinking off where the native model cannot disable it |
+| `azure-openai-responses` (pinned client code, model-configured route) | output limit, temperature, thinking settings where natively applied | seed, topP, JSON, numeric reasoning budget, unsupported thinking off, environment route overrides |
+| `mistral-conversations` (pinned client code, non-reasoning model) | output limit and temperature through native Chat streaming | seed, topP, JSON, reasoning models and requests |
 
 A target without JSON and seed cannot be a judge. `openai-chatgpt-responses`
 (subscription) stays unavailable in model mode: its native payload carries no
@@ -258,6 +271,11 @@ rejects provider-held cached context, retry overrides and hidden message parts,
 and retains partial output on broken streams and cancellation. Native request
 identity, served model revision, invoices and live provider acceptance remain
 unverified by the synthetic Google tests.
+Azure/Mistral qualification additionally runs in a Linux network namespace with
+only loopback, using the actual SDK model-fetch port and socket guards. Native
+payload construction, retry decisions and response parsing remain unchanged.
+The module README gives the required isolated command. Bedrock's declared API
+has no provider registered in this SDK's stream entry and remains closed.
 Deployment acceptance additionally checks container credential names and
 observed Core/Benchmark/Broker destinations. Do not merge synthetic tests with
 live model qualification or claim deployment from a successful source build.
