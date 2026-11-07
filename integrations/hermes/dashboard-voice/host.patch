@@ -1,0 +1,121 @@
+--- a/web/src/plugins/slots.ts
++++ b/web/src/plugins/slots.ts
+@@ -166,6 +166,7 @@
+ interface PluginSlotProps {
+   /** Slot identifier (e.g. `"sidebar"`, `"header-left"`). */
+   name: string;
++  context?: Record<string, unknown>;
+   /** Optional content rendered when no plugins have claimed the slot.
+    *  Useful for built-in defaults the plugin would replace. */
+   fallback?: React.ReactNode;
+@@ -175,7 +176,7 @@
+  *
+  *  Component re-renders when the slot registry changes so plugins that
+  *  arrive after initial mount show up without a manual refresh. */
+-export function PluginSlot({ name, fallback }: PluginSlotProps) {
++export function PluginSlot({ name, fallback, context }: PluginSlotProps) {
+   const [entries, setEntries] = useState<SlotEntry[]>(() => getSlotEntries(name));
+ 
+   useEffect(() => {
+@@ -194,7 +195,7 @@
+     Fragment,
+     null,
+     ...entries.map((entry) =>
+-      React.createElement(entry.component, { key: entry.plugin }),
++      React.createElement(entry.component, { ...context, key: entry.plugin }),
+     ),
+   );
+ }
+--- a/web/src/pages/ChatPage.tsx
++++ b/web/src/pages/ChatPage.tsx
+@@ -115,6 +115,7 @@
+   terminalTierWidthPx,
+ } from "@/lib/terminal-appearance";
+ import { PluginSlot } from "@/plugins";
++import { createChatPluginContext } from "@/lib/chat-plugin-context";
+ import { useTheme } from "@/themes";
+ import { useProfileScope } from "@/contexts/useProfileScope";
+ import { errorMessage } from "@/lib/api-error";
+@@ -328,14 +329,7 @@
+   // treat the current resume target as part of the PTY identity and rebuild the
+   // terminal session when it changes.
+   const resumeParam = searchParams.get("resume");
+-  // Profile-scoped chat: spawn the PTY under the globally selected
+-  // management profile. Changing it remounts the terminal (key below /
+-  // effect dep) so the user explicitly starts a fresh scoped session.
+   const { profile: scopedProfile } = useProfileScope();
+-  // Workspace a FRESH chat starts in (`/api/pty?cwd=`), persisted per
+-  // management profile (a phone remembers the repo it drives). The connect
+-  // effect reads storage directly, so changing the picker never respawns the
+-  // live PTY: it applies on the next "New chat".
+   const [workspaceCwd, setWorkspaceCwdState] = useState(() =>
+     readStoredWorkspace(scopedProfile),
+   );
+@@ -346,8 +340,6 @@
+     },
+     [scopedProfile],
+   );
+-  // Profile switch: show that profile's remembered workspace (state, not an
+-  // effect, so no cascading render).
+   const [workspaceProfile, setWorkspaceProfile] = useState(scopedProfile);
+   if (workspaceProfile !== scopedProfile) {
+     setWorkspaceProfile(scopedProfile);
+@@ -358,6 +350,13 @@
+     [resumeParam, scopedProfile],
+   );
+   const titleScope = `${channel}\0${reconnectNonce}`;
++  const pluginScopeRef = useRef(titleScope);
++  pluginScopeRef.current = `${titleScope}\0${isActive}`;
++  const chatPluginContext = useMemo(() => createChatPluginContext({
++    channel, profile: scopedProfile, scope: `${titleScope}\0${isActive}`, active: isActive,
++    ready: ptyState === "open", getSocket: () => wsRef.current,
++    getScope: () => pluginScopeRef.current,
++  }), [channel, scopedProfile, titleScope, isActive, ptyState]);
+   const sessionTitle =
+     sessionTitleState.scope === titleScope ? sessionTitleState.title : null;
+   const handleSessionTitleChange = useCallback(
+@@ -1869,7 +1868,7 @@
+ 
+   return (
+     <div className="flex min-h-0 flex-1 flex-col gap-2">
+-      <PluginSlot name="chat:top" />
++      <PluginSlot name="chat:top" context={{ chat: chatPluginContext }} />
+       {mobileModelToolsPortal}
+ 
+       {visibleBanner && (
+@@ -2060,7 +2059,7 @@
+           </div>
+         )}
+       </div>
+-      <PluginSlot name="chat:bottom" />
++      <PluginSlot name="chat:bottom" context={{ chat: chatPluginContext }} />
+     </div>
+   );
+ }
+--- a/hermes_cli/profiles.py
++++ b/hermes_cli/profiles.py
+@@ -2096,20 +2096,11 @@
+ 
+ 
+ def get_active_profile_name() -> str:
+-    """Profile name inferred from HERMES_HOME: ``"default"`` when unset or ``~/.hermes``, the
+-    name under ``~/.hermes/profiles/<name>``, ``"custom"`` for any other path."""
++    """Name the selected home, retaining an explicit symlinked profile alias."""
+     from hermes_constants import get_hermes_home
+-    resolved = get_hermes_home().resolve()
+-    if resolved == _get_default_hermes_home().resolve():
+-        return "default"
+-    profiles_root = _get_profiles_root().resolve()
+-    try:
+-        parts = resolved.relative_to(profiles_root).parts
+-        if len(parts) == 1 and _PROFILE_ID_RE.match(parts[0]):
+-            return parts[0]
+-    except ValueError:
+-        pass
+-    return "custom"
++    from hermes_cli.profile_alias import resolve_active_profile_name
++    return resolve_active_profile_name(
++        get_hermes_home(), _get_default_hermes_home(), _get_profiles_root())
+ 
+ 
+ def current_profile_name(default: str | None = None) -> str | None:

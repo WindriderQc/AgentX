@@ -1,0 +1,6 @@
+.agentx-voice { display:flex; flex-wrap:wrap; align-items:center; gap:.7rem; padding:.65rem 1rem; border-bottom:1px solid currentColor; font:14px/1.4 sans-serif; }
+.agentx-voice button { padding:.4rem .8rem; border:1px solid currentColor; background:transparent; color:inherit; cursor:pointer; }
+.agentx-voice button:disabled { opacity:.5; cursor:wait; }
+.agentx-voice a { margin-left:auto; color:inherit; text-decoration:underline; }
+.agentx-voice label { display:flex; align-items:center; }
+.agentx-voice-error { flex-basis:100%; color:var(--text-error,#f99); }
