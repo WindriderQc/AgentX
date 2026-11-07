@@ -7,13 +7,43 @@
  */
 
 import { renderLaneCard, renderLaneSummary, buildMeasureRequest, campaignTargets, campaignText,
-  renderCampaignPlan, campaignResultText, clock, setCoreBase } from './components/lane-capability.js?v=lane-auto-start-20261019';
+  renderCampaignPlan, campaignResultText, clock, setCoreBase } from './components/lane-capability.js?v=pinned-fit-1130';
 
 const LANES_API = '/benchmark/api/profiler/evidence/lanes';
 const MEASURE_API = '/benchmark/api/profiler/evidence/lanes/measure';
 const CAMPAIGN_API = '/benchmark/api/profiler/evidence/lanes/campaign';
 
 let current = [];
+const fitRequests = new Map();
+
+async function requestFit(lane, button, status, root) {
+  const key = `${lane.capability.hostId}:${lane.pinIndex}`;
+  // Retain the same intent across clicks, refresh and a lost HTTP reply.
+  const storageKey = `profiler-pinned-fit:${key}`;
+  let requestId = fitRequests.get(key) || sessionStorage.getItem(storageKey);
+  if (requestId && lane.pinnedFit?.id === requestId && lane.pinnedFit.runtimeReleased === true
+    && ['completed', 'failed', 'cancelled'].includes(lane.pinnedFit.state)) requestId = null;
+  if (!requestId) {
+    requestId = crypto.randomUUID();
+    sessionStorage.setItem(storageKey, requestId);
+    fitRequests.set(key, requestId);
+  }
+  button.disabled = true;
+  status.textContent = 'Recording a manual fit request…';
+  try {
+    const response = await fetch('/benchmark/api/profiler/fit-checks/request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId, hostId: lane.capability.hostId, pinIndex: lane.pinIndex })
+    });
+    const answer = await response.json();
+    if (!response.ok || answer.status !== 'success') throw new Error(answer.error || `Benchmark answered ${response.status}`);
+    status.textContent = 'Manual request recorded. Plan its slot and use Run now in Automations → Calendar.';
+    await renderLanes(root);
+  } catch (error) {
+    status.textContent = `Receipt unavailable: ${error.message}. Retry this same request; inspect Calendar before starting anything.`;
+    button.disabled = false;
+  }
+}
 
 function setBusy(grid, busy) {
   grid.setAttribute('aria-busy', busy ? 'true' : 'false');
@@ -133,6 +163,13 @@ export function initLanes() {
   if (!root) return;
   setCoreBase(root.dataset.corePublicUrl);
   root.addEventListener('click', event => {
+    const fitButton = event.target.closest('[data-lane-action="fit"]');
+    if (fitButton) {
+      const lane = current[Number(fitButton.dataset.laneIndex)];
+      const status = fitButton.parentElement.querySelector('.lc-action-status');
+      if (lane && status) requestFit(lane, fitButton, status, root);
+      return;
+    }
     const button = event.target.closest('[data-lane-action="measure"]');
     if (!button) return;
     const lane = current[Number(button.dataset.laneIndex)];

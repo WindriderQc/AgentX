@@ -30,6 +30,11 @@ async function preDispatch(job) {
     const request = batchRequest(job.executor.request, { judgeRequired: true });
     if (job.executor.prepare !== true && planRef(planId(job.executor.plan), request) !== job.executor.plan) throw fail('Benchmark plan reference differs from its request', 409);
     exactHosts(job, [request.host, request.judgeHost]);
+  } else if (job.kind === 'profiler' && job.executor.mode === 'pinned-fit') {
+    const fit = await benchmark(`/api/profiler/fit-checks/${encodeURIComponent(job.executor.fitCheckId)}`);
+    if (fit.hostId !== job.executor.hostId || fit.queueRequestId !== job.id || fit.state !== 'requested') throw fail('Pinned fit request changed', 409);
+    const host = await benchmark(`/api/profiler/hosts/${encodeURIComponent(job.executor.hostId)}`);
+    exactHosts(job, [host.hostUrl]);
   } else if (job.kind === 'profiler') {
     const host = await benchmark(`/api/profiler/hosts/${encodeURIComponent(job.executor.hostId)}`);
     // A Full profile may also cover the other endpoints of the same machine
@@ -116,6 +121,18 @@ async function observe(job) {
     if (['running', 'judging'].includes(receipt.status) || receipt.judge_status === 'running') return { operationId, terminal: false, runningConfirmed: true };
     if (!['completed', 'failed', 'cancelled', 'stopped'].includes(receipt.status)) throw fail('Batch outcome is not terminal', 409);
     receipt = { state: receipt.status === 'stopped' ? 'cancelled' : receipt.status, authority: 'benchmark.batch', operationId };
+  } else if (job.kind === 'profiler' && job.executor.mode === 'pinned-fit') {
+    const result = await benchmark(`/api/profiler/fit-checks/${encodeURIComponent(job.executor.fitCheckId)}`);
+    if (result.queueRequestId !== job.id || result.hostId !== job.executor.hostId
+      || result.state !== 'requested' && result.queueDispatchId !== job.dispatchId
+      || result.id !== job.executor.fitCheckId || operationId && operationId !== result.id) throw fail('Fit receipt belongs to another request', 409);
+    operationId = result.id;
+    if (result.state === 'requested') return { operationId, terminal: false, awaitingDispatch: true };
+    if (result.state === 'dispatching') return { operationId, terminal: false, runningConfirmed: true };
+    if (result.runtimeReleased !== true || !['completed', 'failed', 'cancelled'].includes(result.state)) {
+      return { operationId, terminal: false, uncertain: true };
+    }
+    receipt = { state: result.state, authority: 'profiler.pinned-context-fit', operationId, fit: result };
   } else if (job.kind === 'profiler') {
     if (!operationId) {
       const active = await benchmark(`/api/profiler/pipeline/profile-host/active?queueRequestId=${encodeURIComponent(job.id)}`);
@@ -178,7 +195,8 @@ async function observe(job) {
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.
   const runtime = await Runtime.findById('runtime').lean();
-  if ((job.preparationRefusal || job.launchRefusal || job.preparationReceipt || require('./heavyWorkQueueCoverage').requiresRelease(job))
+  if ((job.preparationRefusal || job.launchRefusal || job.preparationReceipt || job.executor?.mode === 'pinned-fit'
+    || require('./heavyWorkQueueCoverage').requiresRelease(job))
     && (!runtime || !Array.isArray(runtime.workloads) || !Array.isArray(runtime.inferences))) {
     throw fail('Native runtime release evidence unavailable', 503, 'HEAVY_QUEUE_RELEASE_UNAVAILABLE');
   }

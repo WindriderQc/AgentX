@@ -452,7 +452,9 @@ Instance configuration, data and deployment receipts remain outside Git.
   each row says which prompts it shares with the board and the leader. Each
   result carries a qualification card. The Profiler shows runtime continuity and, after a
   profile, a pin context proposal that Core applies with a speed check and
-  rollback. It profiles and benchmarks CPU-resident hosts too, and leaderboard
+  rollback. A manual pinned-context fit request uses Core's queue and native
+  Profiler restoration, keeps its bounded residency receipt separate from
+  qualification and preserves the pin on failure. It profiles and benchmarks CPU-resident hosts too, and leaderboard
   rows show their host's residency. `./agentx action` and the OpenClaw
   maintenance plugin prepare, start and read a bounded batch (one model, one
   registered local host, chosen categories): a start names a prepared plan,

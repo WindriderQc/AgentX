@@ -1,6 +1,6 @@
 import * as api from './api.js';
 
-const MODULE_VERSION = 'lane-auto-start-20261019';
+const MODULE_VERSION = 'pinned-fit-1130';
 const state = { data: {} };
 
 function normalizeModelName(name) {

@@ -76,6 +76,10 @@ function validateRequest(body) {
     } else if (kind === 'transcription') {
       only(executor, ['transcriptionId'], 'transcription executor');
       if (!require('./transcriptionContract').UUID.test(executor.transcriptionId || '')) throw fail('Exact transcription identity required');
+    } else if (kind === 'profiler' && executor.mode === 'pinned-fit') {
+      only(executor, ['mode', 'hostId', 'fitCheckId'], 'pinned fit executor');
+      if (!/^[a-zA-Z0-9_.:-]{1,100}$/.test(executor.hostId || '')
+        || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(executor.fitCheckId || '')) throw fail('Exact fitCheckId and hostId required');
     } else if (kind === 'profiler') {
       only(executor, ['hostId', 'depth', 'skipRecentDays', 'modelNames', 'driverPreparationId'], 'profiler executor');
       if (executor.driverPreparationId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$/.test(executor.driverPreparationId)) throw fail('Exact driverPreparationId required');

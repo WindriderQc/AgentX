@@ -52,7 +52,7 @@ function siblingEndpointsFor(hosts, hostUrl) {
  * that already holds the exact identity (Core's routing snapshot); otherwise
  * it is resolved from the host without requiring the model to be resident.
  */
-async function capabilityFor({ model, hostUrl, artifact = null }, deps = {}) {
+async function capabilityFor({ model, hostUrl, artifact = null, pinContext = null }, deps = {}) {
   const d = defaults(deps);
   const host = normalizeHostUrl(hostUrl);
   const hostId = hostIdFor(d.hosts(), host);
@@ -64,11 +64,15 @@ async function capabilityFor({ model, hostUrl, artifact = null }, deps = {}) {
     identity ? d.contextProfile(model, host, { digest: identity.digest, runtimeFingerprint: identity.runtimeFingerprint }).catch(() => null) : null,
     hostId ? d.performanceProfile(model, hostId).catch(() => null) : null
   ]);
-  return buildLaneCapability({
+  const capability = buildLaneCapability({
     model, hostUrl: host, hostId,
     artifact: identity ? { digest: identity.digest, runtimeFingerprint: identity.runtimeFingerprint, runtime: identity.runtime || null } : null,
     contextProfile, performanceProfile, now: d.now()
   });
+  if (pinContext > 0 && hostId) capability.pinnedFit = await (deps.fit || require('./pinnedContextFitService').latest)({
+    model, hostId, pinContext, artifact: identity
+  }).catch(() => ({ status: 'unknown', state: 'unknown', reason: 'Fit receipt unavailable', revalidationRequired: true }));
+  return capability;
 }
 
 async function mapLimited(items, limit, fn) {
@@ -111,12 +115,15 @@ async function listLaneCapabilities(deps = {}) {
   const [cells, queue] = await Promise.all([d.scope(), d.queue().catch(() => null)]);
   const now = d.now();
   const lanes = await mapLimited(cells, CONCURRENCY, async cell => {
-    const capability = await capabilityFor({ model: cell.model, hostUrl: cell.hostUrl }, deps);
+    const capability = await capabilityFor({ model: cell.model, hostUrl: cell.hostUrl,
+      pinContext: cell.pinned ? cell.pinContext : null }, deps);
     return {
       hostName: cell.hostName,
       residency: cell.residency,
       pinned: cell.pinned === true,
       pinContext: Number(cell.pinContext) > 0 ? Number(cell.pinContext) : null,
+      pinIndex: Number.isInteger(cell.pinIndex) ? cell.pinIndex : null,
+      pinnedFit: capability.pinnedFit || null,
       tasks: Array.isArray(cell.tasks) ? cell.tasks : [],
       capability,
       measurement: queue && capability.hostId ? measurementFor(capability, queue.jobs, now.getTime()) : null

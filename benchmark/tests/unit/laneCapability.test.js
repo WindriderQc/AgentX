@@ -1,4 +1,5 @@
 'use strict';
+jest.mock('../../src/services/profiler/pinnedContextFitService', () => ({ latest: jest.fn(async () => null) }));
 
 const { buildLaneCapability } = require('../../src/services/profiler/laneCapability');
 const { capabilityFor, listLaneCapabilities, requestLaneMeasurement, requestLaneCampaign, previewLaneCampaign } = require('../../src/services/profiler/laneCapabilityService');

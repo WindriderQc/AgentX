@@ -234,6 +234,17 @@ request.
 
 ### Automatic start and Run now
 
+The Profiler `pinned-fit` executor is manual only. Its native request freezes
+an exact pin/artifact/runtime/context and submits `{ kind: "profiler",
+executor: { mode: "pinned-fit", hostId, fitCheckId } }`. Plan its slot through
+the existing Calendar controls, then choose **Run now**; `autoStart: true` is
+refused. Core re-attests the same dispatch's remaining execution window before
+the one native allocation, including after its durable fit receipt is recorded
+as running. Reads discover that original receipt after ACK loss or restart;
+they never launch or release it. Fit completion and queue settlement require
+native restoration/release. See [pinned context fit](PROFILER_CONTEXT.md#pinned-context-fit-after-ollama-drift)
+for its bounded evidence and native cancellation/recovery.
+
 Reserving a Profiler, embedding reindex or topology request
 (`POST /:id/reserve`) accepts `autoStart: true`. It is the owner's consent for that slot only and is refused
 for every other kind; changing the slot replaces it. When the slot opens, the
