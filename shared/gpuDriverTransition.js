@@ -1,10 +1,14 @@
 'use strict';
 
 const crypto = require('crypto');
+const { stableSerialize } = require('./artifactIdentity');
 const validRequestId = id => typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$/.test(id);
 function operationWorkloadId(hostId, requestId, action = 'activation') {
   return `gpu-driver-${action}:${crypto.createHash('sha256').update(JSON.stringify([hostId, requestId])).digest('hex')}`;
 }
+
+const projectionDigest = value => crypto.createHash('sha256')
+  .update(stableSerialize(JSON.parse(JSON.stringify(value || null)))).digest('hex');
 
 function confirmedCacheReceipt(receipt, intent) {
   return receipt?.contract === 'agentx.gpu-driver-cache-invalidation/v1' && receipt.cleared === true
@@ -13,4 +17,4 @@ function confirmedCacheReceipt(receipt, intent) {
     && Number.isFinite(Date.parse(receipt.clearedAt));
 }
 
-module.exports = { validRequestId, operationWorkloadId, confirmedCacheReceipt };
+module.exports = { validRequestId, operationWorkloadId, confirmedCacheReceipt, projectionDigest };

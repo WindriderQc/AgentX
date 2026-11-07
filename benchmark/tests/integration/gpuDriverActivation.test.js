@@ -149,9 +149,22 @@ async function seedCandidates({ omit } = {}) {
 const nativePublish = publication.publishActivation;
 const prepare = () => preparation.prepare({ hostId, requestId, expectedFingerprint: buildRuntimeFingerprint(initial) }, deps);
 
-async function harness() {
+async function harness({ thinking = null } = {}) {
+  if (thinking) for (const name of names) await ModelProfile.updateOne({ name }, { $set: { [`thinkingProfiles.${hostId}`]: thinking } });
   const prepared = await prepare();
   await seedCandidates();
+  if (thinking) for (const name of names) {
+    const evidence = await Performance.findOne({ modelName: name, 'artifact.driverPreparationId': requestId }).lean();
+    const authorityWriteId = randomUUID();
+    const profile = { ...evidence.profile, thinking };
+    await Performance.updateOne({ _id: evidence._id }, { $set: { profile, authorityWriteId } });
+    await ModelProfile.updateOne({ name }, { $set: {
+      [`preparedThinkingProfiles.${hostId}`]: { ...thinking, authorityWriteId },
+      [`preparedReadiness.${hostId}.authorityWriteId`]: authorityWriteId,
+      [`preparedReadiness.${hostId}.authorityReceipt`]: createProfilerAuthorityReceipt({
+        modelName: name, hostId, artifact: evidence.artifact, profile, evidenceId: evidence._id })
+    } });
+  }
   const original = await ModelProfile.find({}).lean();
   const works = [];
   const begin = jest.fn(async workloadId => {
@@ -348,6 +361,15 @@ test('first pending ordinary write keeps the selector; a finalized ordinary writ
   await ModelProfile.updateOne({ name: names[0] }, { $set: { [`readiness.${hostId}.stale`]: true } });
   expect((await modelProfiles.getByName(names[0])).readiness[hostId].evidenceId).toEqual(ordinary._id);
   expect(await performanceProfiles.getActiveProfile(names[0], hostId)).toBeNull();
+});
+
+test('the selected thinking projection remains bound to the exact newly published proof', async () => {
+  const h = await harness({ thinking: { supported: true, recommendedPolicy: 'on',
+    visibleFinalAnswerOk: true, finalAnswerContractOk: true, thinkingOnlyResponse: false } });
+  await h.activate();
+  expect((await modelProfiles.getByName(names[0])).thinkingProfiles[hostId]).toMatchObject({ supported: true, recommendedPolicy: 'on' });
+  await ModelProfile.updateOne({ name: names[0] }, { $set: { [`preparedThinkingProfiles.${hostId}.recommendedPolicy`]: 'off' } });
+  expect((await modelProfiles.getByName(names[0])).thinkingProfiles[hostId]).toBeUndefined();
 });
 
 test('abandon archives the exact operation and permits a new preparation without changing active evidence', async () => {

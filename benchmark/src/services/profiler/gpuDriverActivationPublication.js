@@ -10,7 +10,7 @@ const { preparedTarget, refusal } = require('./gpuDriverPreparationIdentity');
 const { hash } = require('./gpuDriverPreparationScope');
 const { assertWorkloadRecovery } = require('../../clients/coreWorkloadRecoveries');
 const { invalidateDriverCaches } = require('../../clients/coreGpuDriverCaches');
-const { confirmedCacheReceipt } = require('../../../../shared/gpuDriverTransition');
+const { confirmedCacheReceipt, projectionDigest } = require('../../../../shared/gpuDriverTransition');
 
 function freezeProofs(models) {
   return models.map(model => {
@@ -21,6 +21,7 @@ function freezeProofs(models) {
       performanceEvidenceId: model.performanceEvidence ? String(model.performanceEvidence._id) : null,
       performanceReceiptDigest: readiness?.authorityReceipt?.digest || null,
       performanceWriteId: model.performanceEvidence?.authorityWriteId || null,
+      thinkingProjectionDigest: projectionDigest(model.modelProfile.thinkingProfiles?.[model.artifact.hostId]),
       contextEvidenceId: model.contextProfile ? String(model.contextProfile._id) : null,
       contextWriteId: model.contextProfile?.authorityWriteId || null,
       contextSnapshotId: model.contextProfile?.latestEvidence?.snapshotId || null,

@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const HostProfile = require('../../../models/HostProfile');
 const ModelProfile = require('../../../models/ModelProfile');
 const { buildRuntimeFingerprint, GPU_DRIVER_IDENTITY_VERSION } = require('../../../../shared/artifactIdentity');
+const { projectionDigest } = require('../../../../shared/gpuDriverTransition');
 
 const map = value => value instanceof Map ? Object.fromEntries(value) : value || {};
 
@@ -36,10 +37,12 @@ function selectProfile(profile, hosts) {
       || String(prepared.evidenceId) !== String(proof.performanceEvidenceId)
       || prepared.artifact?.driverPreparationId !== host.gpuDriverPreparation.requestId
       || prepared.artifact.runtimeFingerprint !== fingerprint
+      || (prepared.authorityWriteId || null) !== proof.performanceWriteId
       || prepared.authorityReceipt?.digest !== proof.performanceReceiptDigest) continue;
     readiness[host.hostId] = prepared;
     const preparedThinking = map(profile.preparedThinkingProfiles)[host.hostId];
-    if (preparedThinking?.authorityWriteId && preparedThinking.authorityWriteId === prepared.authorityWriteId) thinking[host.hostId] = preparedThinking;
+    if (preparedThinking?.authorityWriteId && preparedThinking.authorityWriteId === prepared.authorityWriteId
+      && projectionDigest(preparedThinking) === proof.thinkingProjectionDigest) thinking[host.hostId] = preparedThinking;
     else delete thinking[host.hostId];
   }
   return { ...safe, readiness, thinkingProfiles: thinking };
