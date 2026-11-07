@@ -227,6 +227,7 @@ function register(api) {
     conversations, memory: ownerMemory, inference: runtimeServices.inference, catalog: screenPages, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT,
     env: conversationEnv, envelope, fail });
   require('./calendar-routes').registerCalendarRoutes({ app, env: conversationEnv });
+  require('./document-candidate-routes').registerDocumentCandidateRoutes({ app, jsonParser: standardJsonParser, knowledgeState });
   // Resolved once at registration: the pack is read-only in the container, and
   // a clip that is not on disk is never advertised nor selected.
   const sounds = soundLibrary.createSoundLibrary({ soundsDir: path.join(publicRoot, 'sounds'), logger }), visuals = createVisuals({ logger }), brain = createBrain({ inference: runtimeServices.inference, conversations, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, logger,

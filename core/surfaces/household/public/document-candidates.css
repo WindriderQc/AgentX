@@ -1,0 +1,13 @@
+body { margin: 0; font-family: system-ui, sans-serif; background: #f5f7fb; color: #182d43; }
+.document-review { max-width: 960px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+.document-review section { margin: 2rem 0; padding: 1rem; background: #fff; border: 1px solid #64748b; border-radius: .5rem; }
+.document-review button, .document-review input { font: inherit; margin: .4rem; }
+.document-review button { padding: .5rem .8rem; cursor: pointer; border: 1px solid #526981; border-radius: .35rem; }
+.document-review button:not(:disabled):hover { background: #e5edf7; }
+.document-review input[type=text], .document-review input:not([type]) { max-width: 90%; }
+.document-review button:disabled { cursor: default; }
+.document-review label { display: block; }
+.document-review pre { max-height: 60vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 1rem; border: 1px solid #64748b; }
+.document-review dt { font-weight: bold; }
+.document-review dd { margin: 0 0 .8rem; overflow-wrap: anywhere; }
+.document-review [role=status] { min-height: 1.6em; }

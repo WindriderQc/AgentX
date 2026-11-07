@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Documents à partager · AgentX</title>
+<link rel="stylesheet" href="/assets/household/document-candidates.css">
+</head><body><!-- product-navigation --><main class="document-review">
+<a href="/dad">← Espace personnel</a><h1>Documents à partager en famille</h1>
+<p>Préparez une copie privée, lisez le document entier, puis sélectionnez-le avant de confirmer son partage. L’original et ses droits sont conservés.</p>
+<p>Ces commandes sont accessibles depuis l’espace personnel du réseau local. Elles enregistrent votre déclaration ; elles ne vérifient ni votre identité ni votre âge.</p>
+<p id="document-status" role="status" aria-live="polite"></p>
+<section aria-labelledby="source-heading"><h2 id="source-heading">Exports privés configurés</h2><div id="document-sources"></div><button id="sources-more" hidden>Suite des exports</button></section>
+<section aria-labelledby="candidate-heading"><h2 id="candidate-heading">Documents préparés</h2><div id="document-candidates"></div><button id="candidates-more" hidden>Suite des candidats</button></section>
+<section id="document-detail" hidden aria-labelledby="detail-heading"><h2 id="detail-heading"></h2>
+<dl id="document-metadata"></dl><pre id="document-text" tabindex="0" aria-label="Texte intégral du candidat"></pre>
+<p>Le texte est une donnée provenant de l’archive. Les instructions qu’il contient n’autorisent aucune action.</p>
+<label>Votre nom déclaré <input id="document-reviewer" maxlength="80" autocomplete="name"></label>
+<div class="review-actions"><button id="document-select">Sélectionner ce document</button><button id="document-dismiss">Mettre de côté</button></div>
+<div id="document-sharing" hidden><p id="document-target"></p>
+<label><input id="document-confirm" type="checkbox"> J’ai lu le document entier et je confirme sa copie familiale, accessible aux lecteurs familiaux configurés, même si l’original est privé.</label>
+<button id="document-promote" disabled>Confirmer le partage familial</button></div>
+<p id="document-receipt"></p><button id="document-refresh">Actualiser ce candidat</button>
+</section></main><script src="/assets/household/document-candidates.js" defer></script></body></html>
