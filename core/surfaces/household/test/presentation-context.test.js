@@ -136,3 +136,22 @@ test('selected live references resolve through Core and cannot be swapped with h
   assert.equal(presentationEvidence([input], pages).liveRead.gpus.status, 'unavailable');
   assert.equal(presentationEvidence([row({ kind: 'image', live: input.live })], pages).liveRead, undefined);
 });
+
+test('a loading or failed historical summary keeps independent live reads but never its own receipt', () => {
+  const ref = presentationReader.publishAnalytics(summary());
+  const runtime = presentationReader.publishRuntime({ inferences: [{ active: true, expiresAt: new Date(Date.now() + 60000).toISOString() }], workloads: [] });
+  const live = { runtime: { status: 'visible', read: runtime }, gpus: { status: 'loading' } };
+  for (const status of ['loading', 'unavailable']) {
+    const evidence = presentationEvidence([row({ status, read: ref, headings: ['OLD'], live })], pages);
+    assert.equal(evidence.status, status); assert.equal(evidence.read, undefined); assert.equal(evidence.headings, undefined);
+    assert.equal(evidence.liveRead.runtime.active, 1);
+    assert.deepEqual(evidence.liveRead.gpus, { status: 'unavailable', reason: 'loading' });
+    assert.match(screenContext([row({ status, live })], pages), /apart from separately identified liveRead sections/);
+  }
+  // A forged historical reference cannot pass as a live section.
+  assert.equal(presentationEvidence([row({ status: 'loading', live: { runtime: { status: 'visible', read: ref } } })], pages).liveRead.runtime.status, 'unavailable');
+  // No live claim, an external frame or another page kind attaches no live read.
+  assert.equal(presentationEvidence([row({ status: 'loading' })], pages).liveRead, undefined);
+  assert.equal(presentationEvidence([row({ status: 'external', live })], pages).liveRead, undefined);
+  assert.equal(presentationEvidence([row({ page: 'service', status: 'loading', live })], pages).liveRead, undefined);
+});
