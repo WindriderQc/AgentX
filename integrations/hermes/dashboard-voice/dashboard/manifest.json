@@ -1,0 +1,11 @@
+{
+  "name": "agentx-voice",
+  "label": "Voix",
+  "description": "Browser microphone and speakers in the native Hermes chat, using AgentX speech.",
+  "icon": "Mic",
+  "version": "1.0.0",
+  "tab": { "path": "/agentx-voice", "hidden": true },
+  "slots": ["chat:top"],
+  "entry": "index.js",
+  "css": "style.css"
+}

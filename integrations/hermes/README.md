@@ -144,3 +144,9 @@ status. `visualInspection: false` still means Hermes receives text evidence.
 Source tests and read-only inventory do not attest a live Main analysis; any
 native acceptance uses a separately authorized queued synthetic-reference
 campaign and retains its original request and native result identity.
+
+The optional [dashboard voice plugin](dashboard-voice/README.md) adds browser
+microphone and speaker controls to Hermes's existing terminal chat using the
+same AgentX speech stack and personal voice settings as `/dad`. It does not
+create a second chat, provider or data store. Its reviewed generic host patch
+supplies the native chat slot context and retains explicit named-profile aliases.

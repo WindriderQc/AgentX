@@ -3,6 +3,8 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const tests = [
+  [process.execPath, ['--test', 'integrations/hermes/dashboard-voice/test/bridge.test.cjs', 'integrations/hermes/dashboard-voice/test/context.test.cjs', 'integrations/hermes/dashboard-voice/test/adapter.test.cjs']],
+  [process.env.AGENTX_PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3'), ['-m', 'unittest', 'discover', '-s', 'integrations/hermes/dashboard-voice/test', '-p', 'test_*.py']],
   [process.execPath, ['--test', 'integrations/dsh/coding-team/test/client.test.mjs', 'integrations/dsh/coding-team/test/workspaces.test.mjs']],
   [process.execPath, ['--test', 'integrations/operations/tests/heavy-work-queue.test.cjs', 'integrations/operations/tests/island-executor.test.cjs', 'scripts/maintenance-benchmark.test.cjs']],
   [process.execPath, ['--test', ...['codex-usage-sync', 'runtime-usage-sync', 'alert-governance-sweep', 'sync-openclaw-schedule', 'native-data-collectors-verifier', 'alert-telegram-relay', 'council-telegram-relay'].map(name => `integrations/operations/tests/${name}.test.js`)]],
