@@ -27,7 +27,7 @@ async function saveProfile({ modelName, hostId, artifact, profile }, options = {
         authorityWriteId,
         authorityReconciliationId: options.authorityReconciliationId || null,
         authorityState: options.authorityState || 'authoritative',
-        active: true,
+        active: !artifact.driverPreparationId,
         stale: false,
         staleReason: null,
         supersededByAuthorityWriteId: null

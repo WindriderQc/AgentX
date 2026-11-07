@@ -206,6 +206,36 @@ describe('toolCallCampaignRunner', () => {
     expect(deps.beginQualification).toHaveBeenCalledWith(expect.objectContaining({ measuredRuntime: runtime }));
   });
 
+  it('keeps prepared identity and context through the owned Core freeze and final tool evidence', async () => {
+    const campaign = frozenCampaign();
+    campaign.candidates[0].contract.snapshot = { driverPreparationId: 'prepare-synthetic', scope: 'prepared_gpu_driver_qualification' };
+    const deps = dependencies({
+      getWorkloadAdmissionIdentity: jest.fn(() => ({ workloadAdmissionId: 'admission', workloadGeneration: 'generation' })),
+      getBenchmarkClaimIdentity: jest.fn(() => ({ claimBatchId: 'toolcall-campaign-a', claimGeneration: 'claim-generation' })),
+      resolveStandaloneCampaignInferenceContracts: jest.fn(async () => campaign)
+    });
+    const result = await runToolCapabilityCampaign(options({ driverPreparationId: 'prepare-synthetic' }), deps);
+    expect(result.qualification.outcome).toBe('supported');
+    expect(deps.resolveStandaloneCampaignInferenceContracts).toHaveBeenCalledWith(expect.any(Object), {
+      preparedQualification: expect.objectContaining({ driverPreparationId: 'prepare-synthetic', workloadId: 'toolcall-campaign-a',
+        workloadAdmissionId: 'admission', workloadGeneration: 'generation', claimGeneration: 'claim-generation' })
+    });
+    expect(deps.resolveArtifactIdentity).toHaveBeenCalledTimes(2);
+    for (const call of deps.resolveArtifactIdentity.mock.calls) expect(call[3]).toMatchObject({ driverPreparationId: 'prepare-synthetic' });
+    expect(deps.beginQualification).toHaveBeenCalledWith(expect.objectContaining({ driverPreparationId: 'prepare-synthetic', measuredContext: 32768 }));
+  });
+
+  it('refuses an ordinary snapshot for a prepared campaign before any harness or evidence write', async () => {
+    const deps = dependencies({
+      getWorkloadAdmissionIdentity: jest.fn(() => ({ workloadAdmissionId: 'admission', workloadGeneration: 'generation' })),
+      getBenchmarkClaimIdentity: jest.fn(() => ({ claimBatchId: 'toolcall-campaign-a', claimGeneration: 'claim-generation' }))
+    });
+    await expect(runToolCapabilityCampaign(options({ driverPreparationId: 'prepare-synthetic' }), deps))
+      .rejects.toMatchObject({ code: 'TOOL_CAMPAIGN_PREPARATION_MISMATCH' });
+    expect(deps.runHarness).not.toHaveBeenCalled();
+    expect(deps.beginQualification).not.toHaveBeenCalled();
+  });
+
   it('marks a started campaign interrupted and releases its exact claim after a run error', async () => {
     const failure = Object.assign(new Error('transport stopped'), { code: 'TRANSPORT_STOPPED' });
     const deps = dependencies({ runHarness: jest.fn(async () => { throw failure; }) });

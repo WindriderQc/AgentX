@@ -122,6 +122,12 @@ function buildResolutionRequest(model, host, executionConfig = {}) {
 }
 
 function validateSnapshot(snapshot, requested) {
+    const prepared = snapshot?.snapshot?.driverPreparationId;
+    if (prepared || requested.driverPreparationId) {
+        if (prepared !== requested.driverPreparationId || snapshot?.snapshot?.scope !== 'prepared_gpu_driver_qualification') {
+            throw new Error('A prepared qualification snapshot cannot be used as an ordinary campaign contract');
+        }
+    }
     if (!snapshot || snapshot.version !== CONTRACT_VERSION) {
         throw new Error(`Core returned an unsupported inference contract for ${requested.model} on ${requested.host}`);
     }
@@ -183,17 +189,19 @@ function validateJudgeContext(snapshot, requested) {
 async function fetchSnapshot(request, deps = {}) {
     const coreUrl = deps.coreUrl || CORE_URL;
     const fetchImpl = deps.fetchImpl || benchmarkFetch;
-    const url = `${coreUrl}/api/inference/contract/resolve`;
+    const prepared = deps.preparedQualification;
+    const url = `${coreUrl}/api/inference/contract/${prepared ? 'resolve-prepared-driver' : 'resolve'}`;
+    const requestBody = prepared ? { ...request, ...prepared } : request;
     const response = await fetchImpl(url, getFetchOptions(url, {
         method: 'POST',
         headers: withBenchmarkServiceAuth({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(request)
+        body: JSON.stringify(requestBody)
     }));
     const payload = await response.json();
     if (!response.ok) {
         throw new Error(payload?.message || payload?.error || `Core contract resolution failed with HTTP ${response.status}`);
     }
-    (deps.validate || validateSnapshot)(payload, request);
+    (deps.validate || validateSnapshot)(payload, requestBody);
     return payload;
 }
 

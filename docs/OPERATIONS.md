@@ -689,7 +689,9 @@ A stale/unavailable read keeps the inventory for inspection but makes the driver
 unknown on new measurements. An unknown or
 partial set records `null`, without substituting historical drivers. Existing
 proofs are neither rewritten nor re-keyed. There is no driver activation action
-in this phase; activation requires the separate prepared-proof transition.
+in this phase. The [prepared-proof transition](GPU_DRIVER_TRANSITION.md) freezes
+the complete native qualified scope and collects new evidence without replacing
+current readiness; its preparation capability exposes no activation action.
 When the installed version differs, the evidence
 stays in use and the drift is shown: `qualification.runtimeDrift`
 (`{measured, installed}`) in the inference contract, a badge on the Profiler

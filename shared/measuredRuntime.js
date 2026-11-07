@@ -8,7 +8,7 @@
  * The Ollama version stays out of the runtime fingerprint. A version change does not
  * void evidence; it is shown as drift so an operator can re-measure. What
  * physically changes a result (GPU set, VRAM, KV cache type, flash attention,
- * visible devices) remains in the fingerprint (shared/artifactIdentity.js).
+ * visible devices, activated GPU driver) remains in the fingerprint (shared/artifactIdentity.js).
  */
 
 function text(value) {

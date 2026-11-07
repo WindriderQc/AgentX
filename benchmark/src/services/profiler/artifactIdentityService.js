@@ -14,6 +14,7 @@ const {
   normalizeHostUrl,
   verifyRuntimeArtifactReceipt
 } = require('../../../../shared/artifactIdentity');
+const { preparedTarget } = require('./gpuDriverPreparationIdentity');
 const { buildMeasuredRuntime } = require('../../../../shared/measuredRuntime');
 
 // The installed Ollama version, read at most every 30 seconds per host for
@@ -69,7 +70,8 @@ async function resolveArtifactIdentity(modelName, hostId, hostUrl, options = {})
   }
   // The observed Ollama settings join the fingerprint (#368); refreshed at
   // most every few minutes, never fatal to an identity read.
-  await (options.syncRuntimeSettings || syncHostRuntimeSettings)({ hostId, hostUrl: normalizedHost })
+  await (options.syncRuntimeSettings || syncHostRuntimeSettings)({ hostId, hostUrl: normalizedHost },
+    { force: Boolean(options.driverPreparationId) })
     .catch(() => null);
 
   const [digest, hostProfile, registry, ollamaVersion] = await Promise.all([
@@ -96,18 +98,22 @@ async function resolveArtifactIdentity(modelName, hostId, hostUrl, options = {})
     );
   }
 
+  const prepared = options.driverPreparationId
+    ? preparedTarget(hostProfile, options.driverPreparationId, model) : null;
+  if (prepared && prepared.entry.digest !== digest) throw new Error('Prepared artifact digest changed');
   return {
     model,
     hostId,
     hostUrl: normalizedHost,
     digest,
-    runtimeFingerprint: buildRuntimeFingerprint(hostProfile || { hostId, hostUrl: normalizedHost }, normalizedHost),
+    ...(prepared && { driverPreparationId: options.driverPreparationId }),
+    runtimeFingerprint: buildRuntimeFingerprint(prepared?.target || hostProfile || { hostId, hostUrl: normalizedHost }, normalizedHost),
     registryId: registry?._id ? String(registry._id) : null,
     registryDigest,
     registryQualified,
-    // The runtime installed now. Evidence written from this identity keeps it
-    // as the runtime it was measured on (#908); it is not part of the
-    // fingerprint, so a version change alone never voids that evidence.
+    // Measurement metadata keeps the installed Ollama version and fresh Data
+    // driver observation. Ollama upgrades remain drift; the prepared/active
+    // GPU driver identity is represented by the physical fingerprint above.
     runtime: buildMeasuredRuntime({ ollamaVersion, hostProfile })
   };
 }

@@ -6,6 +6,7 @@
  * Moved out of benchmarkAuthorityReconciliation.js.
  */
 
+const { projectionPaths } = require('../profiler/gpuDriverPreparationIdentity');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const JudgeAccuracyMatrix = require('../../../models/JudgeAccuracyMatrix');
@@ -79,6 +80,7 @@ async function invalidateResource(record, options = {}) {
   }
   if (record.kind === 'profiler_evidence_write') {
     const details = record.details || {};
+    const paths = projectionPaths(details.driverPreparationId);
     let invalidated = await ModelPerformanceProfile.findOneAndUpdate(
       {
         modelName: details.modelName,
@@ -153,9 +155,9 @@ async function invalidateResource(record, options = {}) {
       {
         $addToSet: { rejectedAuthorityWriteIds: details.authorityWriteId },
         $set: {
-          [`readiness.${details.hostId}`]: details.priorReadiness || null,
+          [`${paths.readiness}.${details.hostId}`]: details.priorReadiness || null,
           ...(details.thinking === true
-            ? { [`thinkingProfiles.${details.hostId}`]: details.priorThinking || null }
+            ? { [`${paths.thinking}.${details.hostId}`]: details.priorThinking || null }
             : {})
         }
       },

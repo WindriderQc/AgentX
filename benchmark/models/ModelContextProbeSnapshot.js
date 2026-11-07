@@ -92,6 +92,7 @@ const ModelContextProbeSnapshotSchema = new mongoose.Schema({
   hostId:                 { type: String, required: true, index: true },
   artifactDigest:         { type: String, required: true, index: true },
   runtimeFingerprint:     { type: String, required: true },
+  driverPreparationId: { type: String, default: undefined },
   measuredRuntime:        { type: MeasuredRuntimeSchema, default: null },
   profileDepth:           { type: String, enum: ['quick', 'standard', 'full'], default: 'standard' },
   candidateRepeats:       { type: Number, default: 2 },

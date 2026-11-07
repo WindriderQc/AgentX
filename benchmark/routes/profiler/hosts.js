@@ -44,6 +44,7 @@ router.post('/discover', async (req, res) => {
 
 // Sub-routers keep the original registration order: static /test/* routes,
 // then POST /:hostId/release, then the /:hostId param routes below.
+router.use('/gpu-driver', require('./gpuDriverPreparation'));
 router.use(require('./hostsTestRun'));
 router.use(require('./hostsFleet'));
 router.use(require('./hostsProbe'));

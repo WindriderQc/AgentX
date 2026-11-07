@@ -6,6 +6,7 @@
  * Moved out of benchmarkAuthorityReconciliation.js.
  */
 
+const { projectionPaths } = require('../profiler/gpuDriverPreparationIdentity');
 const HostPerformanceSnapshot = require('../../../models/HostPerformanceSnapshot');
 const HostProfile = require('../../../models/HostProfile');
 const ModelPerformanceProfile = require('../../../models/ModelPerformanceProfile');
@@ -16,6 +17,7 @@ const { objectId, matchedExactlyOne } = require('./authorityReconciliationShared
 
 async function publishProfilerResource(record, options = {}) {
   const details = record.details || {};
+  const paths = projectionPaths(details.driverPreparationId);
   options.assertActive?.();
   if (record.kind === 'profiler_evidence_write') {
     const evidenceId = details.evidenceId || null;
@@ -35,16 +37,16 @@ async function publishProfilerResource(record, options = {}) {
     );
     if (!matchedExactlyOne(evidence)) throw new Error('Profiler evidence publication CAS did not match its pending write');
     const readinessSet = {
-      [`readiness.${details.hostId}.authorityState`]: 'authoritative'
+      [`${paths.readiness}.${details.hostId}.authorityState`]: 'authoritative'
     };
     if (details.thinking === true) {
-      readinessSet[`thinkingProfiles.${details.hostId}.authorityState`] = 'authoritative';
+      readinessSet[`${paths.thinking}.${details.hostId}.authorityState`] = 'authoritative';
     }
     const projection = await ModelProfile.updateOne(
       {
         name: details.modelName,
-        [`readiness.${details.hostId}.evidenceId`]: objectId(evidenceId),
-        [`readiness.${details.hostId}.authorityWriteId`]: details.authorityWriteId,
+        [`${paths.readiness}.${details.hostId}.evidenceId`]: objectId(evidenceId),
+        [`${paths.readiness}.${details.hostId}.authorityWriteId`]: details.authorityWriteId,
         rejectedAuthorityWriteIds: { $ne: details.authorityWriteId }
       },
       { $set: readinessSet },

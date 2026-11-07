@@ -65,6 +65,7 @@ function parseArgs(argv) {
     else if (a === '--host') args.host = argv[++i];
     else if (a === '--out') args.out = argv[++i];
     else if (a === '--repetitions') args.repetitions = Number(argv[++i]);
+    else if (a === '--driver-preparation-id') args.driverPreparationId = argv[++i];
     else if (a === '--campaign-id') args.campaignId = argv[++i];
     else if (a === '--scenario') (args.scenarios = args.scenarios || []).push(argv[++i]);
     else if (a === '--help' || a === '-h') args.help = true;
@@ -155,6 +156,7 @@ async function main() {
       repetitions: args.repetitions,
       confirmation: args.confirmCampaign,
       campaignId: args.campaignId,
+      driverPreparationId: args.driverPreparationId,
       scenarios: args.scenarios || undefined,
       transport
     });

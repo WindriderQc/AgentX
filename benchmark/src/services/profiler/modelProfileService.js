@@ -1,5 +1,6 @@
 const ModelProfile = require('../../../models/ModelProfile');
 const ModelPerformanceProfile = require('../../../models/ModelPerformanceProfile');
+const { projectionPaths } = require('./gpuDriverPreparationIdentity');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const { normalizeModelTag: normalizeModelName } = require('../../../../shared/modelNames');
 
@@ -46,11 +47,12 @@ async function updateReadiness(modelName, hostId, stage, extraFields = {}, optio
   if (!['available', 'profiled', 'benchmarked'].includes(stage)) {
     throw new RangeError(`Unsupported readiness stage: ${stage}`);
   }
-  const setFields = { [`readiness.${hostId}.stage`]: stage };
-  if (stage === 'profiled') setFields[`readiness.${hostId}.profiledAt`] = new Date();
-  if (stage === 'benchmarked') setFields[`readiness.${hostId}.benchmarkedAt`] = new Date();
+  const paths = projectionPaths(options.driverPreparationId);
+  const setFields = { [`${paths.readiness}.${hostId}.stage`]: stage };
+  if (stage === 'profiled') setFields[`${paths.readiness}.${hostId}.profiledAt`] = new Date();
+  if (stage === 'benchmarked') setFields[`${paths.readiness}.${hostId}.benchmarkedAt`] = new Date();
   Object.assign(setFields, extraFields);
-  const authorityWriteId = extraFields[`readiness.${hostId}.authorityWriteId`] || null;
+  const authorityWriteId = extraFields[`${paths.readiness}.${hostId}.authorityWriteId`] || null;
   return ModelProfile.findOneAndUpdate(
     {
       name: modelName,
@@ -62,6 +64,7 @@ async function updateReadiness(modelName, hostId, stage, extraFields = {}, optio
 }
 
 async function updateThinkingCapability(modelName, hostId, thinkingProfile = {}, options = {}) {
+  const paths = projectionPaths(options.driverPreparationId);
   const policy = thinkingProfile.recommendedPolicy || 'unknown';
   const supported = !!thinkingProfile.supported;
   const profiledAt = thinkingProfile.profiledAt || new Date();
@@ -103,9 +106,8 @@ async function updateThinkingCapability(modelName, hostId, thinkingProfile = {},
     },
     {
       $set: {
-        'capabilities.thinking': supported,
-        'capabilities.thinkingPolicy': policy,
-        [`thinkingProfiles.${hostId}`]: capability
+        ...(!options.driverPreparationId && { 'capabilities.thinking': supported, 'capabilities.thinkingPolicy': policy }),
+        [`${paths.thinking}.${hostId}`]: capability
       }
     },
     { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true, ...(options.signal ? { signal: options.signal } : {}) }

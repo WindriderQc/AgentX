@@ -1,5 +1,6 @@
 'use strict';
 
+const { projectionPaths } = require('./gpuDriverPreparationIdentity');
 const crypto = require('crypto');
 const {
   canonicalValue,
@@ -24,6 +25,8 @@ async function persistProfileEvidence({
   assertClaimActive,
   signal
 }) {
+  const driverPreparationId = artifact.driverPreparationId;
+  const paths = projectionPaths(driverPreparationId);
   const checkpoint = () => {
     if (signal?.aborted) {
       const error = signal.reason instanceof Error ? signal.reason : new Error('Profiler authority write aborted');
@@ -36,7 +39,7 @@ async function persistProfileEvidence({
   let authorityJournal = null;
   try {
     checkpoint();
-    const currentArtifact = await resolveArtifactIdentity(modelName, hostId, hostUrl, { refresh: true });
+    const currentArtifact = await resolveArtifactIdentity(modelName, hostId, hostUrl, { refresh: true, ...(driverPreparationId && { driverPreparationId }) });
     checkpoint();
     if (!identitiesMatch(artifact, currentArtifact)) {
       throw new Error(`Artifact or runtime changed while profiling ${modelName} on ${hostUrl}; discard this run and retry`);
@@ -56,7 +59,7 @@ async function persistProfileEvidence({
     const authorityWriteId = crypto.randomUUID();
     const [priorProfile, priorEvidence] = await Promise.all([
       ModelProfile.findOne({ name: modelName })
-        .select('readiness thinkingProfiles')
+        .select(driverPreparationId ? '+preparedReadiness +preparedThinkingProfiles' : 'readiness thinkingProfiles')
         .lean(),
       ModelPerformanceProfile.findOne({
         modelName,
@@ -67,18 +70,19 @@ async function persistProfileEvidence({
       }).lean()
     ]);
     checkpoint();
-    const priorReadinessMap = priorProfile?.readiness instanceof Map
-      ? Object.fromEntries(priorProfile.readiness)
-      : (priorProfile?.readiness || {});
-    const priorThinkingMap = priorProfile?.thinkingProfiles instanceof Map
-      ? Object.fromEntries(priorProfile.thinkingProfiles)
-      : (priorProfile?.thinkingProfiles || {});
+    const priorReadinessMap = priorProfile?.[paths.readiness] instanceof Map
+      ? Object.fromEntries(priorProfile[paths.readiness])
+      : (priorProfile?.[paths.readiness] || {});
+    const priorThinkingMap = priorProfile?.[paths.thinking] instanceof Map
+      ? Object.fromEntries(priorProfile[paths.thinking])
+      : (priorProfile?.[paths.thinking] || {});
     // BSON turns undefined object fields into null. Normalize once so the
     // journal, saved evidence and receipt bind the same persisted payload.
     const evidenceProfile = canonicalValue({ ...profileData, artifact: currentArtifact });
     const journalDetails = {
       modelName,
       hostId,
+      ...(driverPreparationId && { driverPreparationId }),
       artifactDigest: currentArtifact.digest,
       runtimeFingerprint: currentArtifact.runtimeFingerprint,
       artifact: currentArtifact,
@@ -125,28 +129,29 @@ async function persistProfileEvidence({
     });
     checkpoint();
     await modelProfileService.updateReadiness(modelName, hostId, 'profiled', {
-      [`readiness.${hostId}.artifact`]: currentArtifact,
-      [`readiness.${hostId}.evidenceId`]: evidence?._id || null,
-      [`readiness.${hostId}.profileDepth`]: profileData.profileDepth,
-      [`readiness.${hostId}.benchmarkQualified`]: benchmarkQualified,
-      [`readiness.${hostId}.qualificationReason`]: benchmarkQualified ? null : qualificationFailures.join(','),
-      [`readiness.${hostId}.measurementReliability`]: quality.reliability || 'unknown',
-      [`readiness.${hostId}.authorityReceipt`]: authorityReceipt,
-      [`readiness.${hostId}.authorityState`]: 'pending_reconciliation',
-      [`readiness.${hostId}.authorityWriteId`]: authorityWriteId,
-      [`readiness.${hostId}.stale`]: false,
-      [`readiness.${hostId}.staleReason`]: null
-    }, { signal });
+      [`${paths.readiness}.${hostId}.artifact`]: currentArtifact,
+      [`${paths.readiness}.${hostId}.evidenceId`]: evidence?._id || null,
+      [`${paths.readiness}.${hostId}.profileDepth`]: profileData.profileDepth,
+      [`${paths.readiness}.${hostId}.benchmarkQualified`]: benchmarkQualified,
+      [`${paths.readiness}.${hostId}.qualificationReason`]: benchmarkQualified ? null : qualificationFailures.join(','),
+      [`${paths.readiness}.${hostId}.measurementReliability`]: quality.reliability || 'unknown',
+      [`${paths.readiness}.${hostId}.authorityReceipt`]: authorityReceipt,
+      [`${paths.readiness}.${hostId}.authorityState`]: 'pending_reconciliation',
+      [`${paths.readiness}.${hostId}.authorityWriteId`]: authorityWriteId,
+      [`${paths.readiness}.${hostId}.stale`]: false,
+      [`${paths.readiness}.${hostId}.staleReason`]: null
+    }, { signal, ...(driverPreparationId && { driverPreparationId }) });
     checkpoint();
     if (profileData.thinking) {
       await modelProfileService.updateThinkingCapability(modelName, hostId, profileData.thinking, {
         signal,
+        ...(driverPreparationId && { driverPreparationId }),
         authorityWriteId,
         authorityState: 'pending_reconciliation'
       });
       checkpoint();
     }
-    await modelPerformanceProfileService.retireSupersededProfiles({
+    if (!driverPreparationId) await modelPerformanceProfileService.retireSupersededProfiles({
       modelName,
       hostId,
       evidenceId: evidence?._id,

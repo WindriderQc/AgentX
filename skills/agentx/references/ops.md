@@ -56,6 +56,13 @@ scope, or asked first). Exact routes: [endpoints](endpoints.md).
 - A Benchmark or Profiler run is heavy work: queue it, one batch at a time, and
   wait for `/benchmark/api/benchmark/batches/active` to be empty before the next.
 
+GPU driver rollout is host-specific. `docs/GPU_DRIVER_TRANSITION.md` describes
+observation and the prepared-proof operation. Preparation freezes every native
+qualified capability; new target proofs stay separate from current readiness.
+It starts no measurement and exposes no activation. Prepared Profiler and tool
+campaigns retain the heavy-work queue and their exact native claims. Never
+rewrite or re-key historical proof to make it valid with a newly known driver.
+
 ## Heavy-work queue
 
 Core's heavy-work queue is the only planning authority for shared compute. A
