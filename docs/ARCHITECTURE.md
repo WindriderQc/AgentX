@@ -263,6 +263,9 @@ both interval fields.
   in three steps: choose the species, apply or edit the care card (toxicity
   confirmation, care actions assignable only to children old enough), then
   publish with a preview of what the children will see.
+  [Folder import](PLANT_IMPORT.md) creates grouped drafts from bounded read-only
+  photos, claims original hashes atomically and serializes identification through
+  the Core heavy-work queue.
 
 Google Calendar owns personal events, recurring series and standard reminders.
 Core's shared `personal_calendar` tool uses one native credential-host transport;

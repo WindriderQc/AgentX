@@ -19,6 +19,7 @@ async function preDispatch(job) {
   if (!job.executor) throw fail('No supported executor on this request', 409);
   // Inside a topology window: wait until the window has reached its mode.
   if (job.withinWindow) await require('./runtimeTopologyWindow').assertWindowReady(job);
+  if (job.kind === 'other' && job.executor.mode === 'plant-identify') return require('./householdPlantImportQueue').preDispatch(job);
   if (job.kind === 'transcription') {
     return require('./transcriptionExecutor').preDispatch(job);
   }
@@ -124,6 +125,11 @@ async function observe(job) {
       return { ...progress, operationId, terminal: false };
     }
     receipt = { ...result.receipt, operationId };
+  } else if (job.kind === 'other' && job.executor?.mode === 'plant-identify') {
+    const result = await require('./householdPlantImportQueue').observe(job);
+    operationId = result.operationId;
+    if (!result.terminal) return result;
+    receipt = { operationId, state: result.state, authority: result.authority };
   } else if (job.kind === 'other' && job.executor?.mode === 'pipeline-report') {
     const result = await require('./pipelineReportResume').observeCampaign(job);
     if (!result.terminal) return { operationId: operationId || result.operationId, terminal: false };

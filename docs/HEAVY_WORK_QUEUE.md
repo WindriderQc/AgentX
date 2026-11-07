@@ -85,6 +85,11 @@ Supported executors:
   workload admission and starts the same speech service under the queue identity.
   The service's SQLite receipt proves completion and cancellation; no lost
   HTTP response authorizes a replacement. See [local transcriptions](LOCAL_TRANSCRIPTIONS.md).
+- **Imported plant identification**: `other` with `{mode: "plant-identify", importId}`
+  names a parent-created photo group. The native import observer reserves and
+  dispatches one plant at a time; lost outcomes remain fenced. Routing and
+  native runtime admission retain their existing owners. See
+  [plant folder import](PLANT_IMPORT.md).
 - **Diagnostic/other** requests may be planned without an executor or may use
   `{mode: "operator", receiptRef: "<out-of-Git receipt reference>"}` for custom
   coding checks. The explicit operator protocol below starts no command.

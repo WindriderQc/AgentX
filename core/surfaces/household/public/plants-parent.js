@@ -66,10 +66,11 @@
       const drafts = plants.filter(entry => entry.status === 'draft'), published = plants.filter(entry => entry.status === 'published');
       host.innerHTML = `<header class="plants-head"><div><p class="eyebrow">Family</p><h1>Plants</h1>
           <p class="muted">Photograph a plant: Nestor proposes the species and a care card, you check and publish. The kids see only published plants.</p></div>
-          ${addButton()}</header><p class="muted" data-plant-status role="status" aria-live="polite"></p>
+          <div class="row wrap">${addButton()}<button type="button" data-plant-folder>Importer depuis le dossier</button></div></header><p class="muted" data-plant-status role="status" aria-live="polite"></p>
         ${drafts.length ? `<section class="card plants-section"><h2>To review</h2>${drafts.map(entry => view().listRowHtml(entry, esc, profiles)).join('')}</section>` : ''}
         <section class="card plants-section"><h2>All plants</h2>${published.length ? published.map(entry => view().listRowHtml(entry, esc, profiles)).join('')
           : '<div class="empty">No published plant yet. Start with the one you see most often.</div>'}</section>`;
+      host.querySelector('[data-plant-folder]').onclick = () => window.PlantImport.mount({ host, api, esc, onDone: () => list(host) });
       const input = host.querySelector('[data-plant-photo]'), status = host.querySelector('[data-plant-status]');
       input.onchange = async () => {
         const [file] = input.files; input.value = '';
@@ -116,8 +117,9 @@
         return `<p class="plant-chosen"><strong>${esc(chosen.commonName)}</strong>${chosen.latinName ? ` <em>${esc(chosen.latinName)}</em>` : ''}</p>
           <button type="button" class="compact" data-plant-change-species>Change the species</button>`;
       }
-      const running = step?.state === 'running';
-      return `${running ? '<p class="plant-working" role="status">Nestor is looking at the plant…</p>' : ''}
+      const running = ['queued', 'running'].includes(step?.state);
+      return `${running ? `<p class="plant-working" role="status">${step.state === 'queued' ? 'Identification en attente dans la file Core…' : 'Nestor is looking at the plant…'}</p>` : ''}
+        ${step?.state === 'queued' && step.error ? '<p class="plant-note" role="status">Le brouillon est enregistré. La file Core attend sa configuration ou une vérification par le parent.</p>' : ''}
         ${step?.state === 'failed' ? `<p class="plant-note" role="alert">${esc(/VISION_UNAVAILABLE/.test(step.error || '') ? 'The model chosen for plant identification cannot read photos. Choose a vision model for plant_identify in routing, or type the species.' : 'Nestor could not identify this photo. Try again or type the species.')}</p>` : ''}
         ${step?.state === 'completed' ? view().candidatesHtml(step.candidates, esc) : ''}
         <details class="family-disclosure plant-other"${step?.state === 'completed' && step.candidates?.length ? '' : ' open'}><summary>Other species</summary>
@@ -170,7 +172,7 @@
     }
 
     function render(host) {
-      const running = ['identify', 'care'].some(step => plant.assistant?.[step]?.state === 'running');
+      const running = ['identify', 'care'].some(step => ['queued', 'running'].includes(plant.assistant?.[step]?.state));
       host.innerHTML = `<header class="plants-head"><div><a href="/dad/family/plants" data-plant-back>← Plants</a>
           <h1>${esc(plant.nickname)}</h1><span class="pill ${plant.status === 'published' ? 'ok' : 'waiting'}">${view().statusLabel(plant.status)}</span></div></header>
         <div class="plant-photos">${plant.photos.map(photo => `<figure><img src="${esc(photo.url)}?view=manage" alt="${esc(plant.nickname)}">

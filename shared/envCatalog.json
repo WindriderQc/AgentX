@@ -1853,6 +1853,16 @@
       "secret": false,
       "description": "JSON mapping of Household image sources to canonical Data indexed roots. Unset: no local source roots."
     },
+    "HOUSEHOLD_PLANT_IMPORT_DIR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional plant import folder relative to the read-only photos mount. Core lists bounded direct files without the Data index; parent import creates drafts and queues serial identification. Unset: import disabled."
+    },
     "HOUSEHOLD_OWNER_UNLOCK_MINUTES": {
       "services": [
         "core"

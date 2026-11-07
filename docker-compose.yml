@@ -40,6 +40,7 @@ services:
       - "127.0.0.1:${CORE_PORT:-3180}:3080"
     environment:
       # Host folders behind the photos and documents mounts, so Core can open a path a history context recorded.
+      HOUSEHOLD_PLANT_IMPORT_DIR: ${HOUSEHOLD_PLANT_IMPORT_DIR:-}
       OWNER_PHOTOS_HOST_DIR: ${HOUSEHOLD_PHOTOS_DIR:-}
       ATLAS_DISPLAY_PREFERENCES_PATH: ${ATLAS_DISPLAY_PREFERENCES_PATH:-}
       OWNER_DOCUMENTS_HOST_DIR: ${OWNER_DOCUMENTS_DIR:-}

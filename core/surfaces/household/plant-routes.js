@@ -6,7 +6,8 @@
 // page's view. Like the rest of /api/family, a pinned family device keeps the
 // parent actions (owner decision, #865).
 
-function registerPlantRoutes({ app, express, plants, assistant = null, standardJsonParser }) {
+function registerPlantRoutes({ app, express, plants, assistant = null, importer = require('../../src/services/householdPlantImport').createPlantImport(), standardJsonParser }) {
+  if (assistant) require('../../src/services/householdPlantImportQueue').configure(assistant);
   const router = express.Router();
   const reply = async (res, status, operation) => {
     try { return res.status(status).json({ ok: true, status: 'success', data: await operation() }); }
@@ -18,6 +19,7 @@ function registerPlantRoutes({ app, express, plants, assistant = null, standardJ
   router.use(standardJsonParser);
   router.get('/', (req, res) => reply(res, 200, () => plants.list({ view: req.query.view, includeRetired: req.query.includeRetired })));
   router.post('/', (req, res) => reply(res, 201, () => plants.create(req.body || {})));
+  require('./plant-import-routes').registerPlantImportRoutes({ router, importer, reply });
   router.get('/:id', (req, res) => reply(res, 200, () => plants.get({ id: req.params.id, view: req.query.view })));
   const actions = [['update', 'update', 200], ['photos', 'addPhoto', 201], ['publish', 'publish', 200], ['retire', 'retire', 200],
     ['export-vault', 'exportToVault', 201]];
