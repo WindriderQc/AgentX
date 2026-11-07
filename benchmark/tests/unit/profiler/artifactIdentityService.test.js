@@ -1,5 +1,7 @@
 'use strict';
 
+jest.mock('../../../src/services/profiler/hostRuntimeSettingsService', () => ({ syncHostRuntimeSettings: jest.fn(async () => ({ synced: false })) }));
+
 jest.mock('../../../src/clients/coreApiClient', () => ({ getModelRegistryByName: jest.fn() }));
 jest.mock('../../../src/services/benchmark/modelDigestService', () => ({ getModelDigest: jest.fn() }));
 jest.mock('../../../src/services/profiler/hostProfileService', () => ({ getById: jest.fn() }));
@@ -69,6 +71,20 @@ describe('profiler artifact identity service', () => {
     expect(before.runtime).toMatchObject({ ollamaVersion: '0.34.4', gpuDriver: null });
     expect(after.runtime).toMatchObject({ ollamaVersion: '0.40.8' });
     expect(after.runtimeFingerprint).toBe(before.runtimeFingerprint);
+  });
+
+  it('records observed drivers on new measurement artifacts without re-keying historical identities', async () => {
+    const profile = { hostId: 'host-a', hostUrl: HOST_URL,
+      gpus: [{ index: 0, uuid: 'GPU-A', model: 'Synthetic GPU', vramTotalMiB: 24576, driver: null }] };
+    hostProfiles.getById.mockResolvedValue(profile);
+    const before = await resolveArtifactIdentity('synthetic-artifact', 'host-a', HOST_URL, { requireRegistry: false });
+    hostProfiles.getById.mockResolvedValue({ ...profile, gpuDriverObservation: {
+      gpus: [{ ...profile.gpus[0], driver: '580.95.05' }], observedAt: new Date(Date.now() - 1000), staleAfterMs: 90000, status: 'observed', source: 'agentx-data'
+    } });
+    const after = await resolveArtifactIdentity('synthetic-artifact', 'host-a', HOST_URL, { requireRegistry: false });
+    expect(after.runtime.gpuDriver).toBe('580.95.05');
+    expect(after.runtimeFingerprint).toBe(before.runtimeFingerprint);
+    expect(before.runtime.gpuDriver).toBeNull();
   });
 
   it('reads the version from a short cache for dashboards and live for measurements', async () => {

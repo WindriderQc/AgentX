@@ -19,7 +19,7 @@ const { _compactHardwareSnapshot } = require('../../../src/services/profiler/pro
 
 const ENV = { DATAAPI_BASE_URL: 'http://data.test:3083/' };
 const gpu = (index, overrides = {}) => ({
-  index, name: 'Synthetic GPU', uuid: `GPU-${index}`, busId: `00000000:0${index + 1}:00.0`,
+  index, driver: '580.95.05', name: 'Synthetic GPU', uuid: `GPU-${index}`, busId: `00000000:0${index + 1}:00.0`,
   utilizationPct: 80, memoryUtilizationPct: 30, memoryUsedMiB: 20000, memoryTotalMiB: 24576,
   temperatureC: 70, powerDrawW: 300, powerLimitW: 350, smClockMHz: 1900, smClockMaxMHz: 2100,
   pcieGen: 4, pcieGenMax: 4, pcieWidth: 16, pcieWidthMax: 16,
@@ -48,6 +48,7 @@ describe('hardware collector client (Data)', () => {
     expect(fetchImpl).toHaveBeenCalledWith('http://data.test:3083/api/v1/hardware/latest', expect.any(Object));
     expect(result).toMatchObject({ status: 'observed', hostId: 'gpu-a', collectorId: 'gpu-agent', ageMs: 12000 });
     expect(result.gpus).toHaveLength(2);
+    expect(result.gpus.map(gpu => gpu.driver)).toEqual(['580.95.05', '580.95.05']);
     expect(ollamaOrigin('HTTP://GPU-A.example:11434/api')).toBe('http://gpu-a.example:11434');
   });
 

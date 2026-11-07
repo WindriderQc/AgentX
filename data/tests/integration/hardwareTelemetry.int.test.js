@@ -21,6 +21,7 @@ const TEST_DB = `${BASE_DB}_hw`;
 
 const gpu = (index, overrides = {}) => ({
   index,
+  driver: '580.95.05',
   name: 'Synthetic GPU',
   uuid: `GPU-synthetic-${index}`,
   busId: `00000000:0${index + 1}:00.0`,
@@ -119,7 +120,7 @@ describe('hardware telemetry (integration, real Mongo)', () => {
       hostId: 'gpu-a', name: 'GPU A', ollamaUrl: 'http://gpu-a.example:11434',
       status: 'ok', freshness: 'fresh', stale: false, gpuCount: 2, consecutiveFailures: 0
     });
-    expect(a.gpus[1]).toMatchObject({ index: 1, utilizationPct: 41, pcieWidth: 16 });
+    expect(a.gpus[1]).toMatchObject({ index: 1, driver: '580.95.05', utilizationPct: 41, pcieWidth: 16 });
     expect(b).toMatchObject({
       hostId: 'gpu-b', status: 'error', freshness: 'no_data', stale: true,
       lastError: 'ssh: connect timed out', consecutiveFailures: 1, gpus: []
@@ -137,7 +138,7 @@ describe('hardware telemetry (integration, real Mongo)', () => {
 
     const history = await request(app).get('/api/v1/hardware/history?hostId=gpu-a&gpuIndex=1&limit=5').expect(200);
     expect(history.body.data.samples).toHaveLength(1);
-    expect(history.body.data.samples[0]).toMatchObject({ hostId: 'gpu-a', index: 1, utilizationPct: 41 });
+    expect(history.body.data.samples[0]).toMatchObject({ hostId: 'gpu-a', index: 1, driver: '580.95.05', utilizationPct: 41 });
 
     const collectors = await request(app).get('/api/v1/hardware/collectors').expect(200);
     expect(collectors.body.data).toMatchObject({ active: 1 });

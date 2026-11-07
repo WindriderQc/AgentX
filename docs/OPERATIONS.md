@@ -676,7 +676,21 @@ a successful observation changes them, and none while the unit waits for
 The Ollama version is not part of the fingerprint. Each context profile,
 performance profile and tool qualification records the version (from
 `/api/version`) and the GPU driver it was measured on, the driver only when
-the collector reports one. When the installed version differs, the evidence
+the collector reports one. The native GPU collector queries `driver_version`;
+Data keeps it on the latest snapshot and history, and `readHostHardware` carries
+it to `HostProfile.gpuDriverObservation` with the collector sample time, source, availability and Data freshness window.
+This is an observation phase: collector driver values do not overwrite drivers
+in the identity inventory (`gpus`) or legacy `gpu` field, so first discovery and
+subsequent driver observations keep existing fingerprints. Physical inventory
+and Ollama settings still change identity normally. New measurements use the
+observed complete driver set in `measuredRuntime.gpuDriver` only while Data's
+freshness window still covers the measurement time and the latest read is observed.
+A stale/unavailable read keeps the inventory for inspection but makes the driver
+unknown on new measurements. An unknown or
+partial set records `null`, without substituting historical drivers. Existing
+proofs are neither rewritten nor re-keyed. There is no driver activation action
+in this phase; activation requires the separate prepared-proof transition.
+When the installed version differs, the evidence
 stays in use and the drift is shown: `qualification.runtimeDrift`
 (`{measured, installed}`) in the inference contract, a badge on the Profiler
 model, and a warning on the lane card, whose "Measure tonight" queues a Full

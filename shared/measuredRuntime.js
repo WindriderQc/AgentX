@@ -5,7 +5,7 @@
  * from /api/version and the GPU driver, recorded on each context profile,
  * performance profile and tool qualification at measurement time.
  *
- * These values stay out of the runtime fingerprint. A version change does not
+ * The Ollama version stays out of the runtime fingerprint. A version change does not
  * void evidence; it is shown as drift so an operator can re-measure. What
  * physically changes a result (GPU set, VRAM, KV cache type, flash attention,
  * visible devices) remains in the fingerprint (shared/artifactIdentity.js).
@@ -16,7 +16,19 @@ function text(value) {
 }
 
 /** The host's GPU driver(s) as the collector reported them, or null. */
-function gpuDriverOf(hostProfile = {}) {
+function gpuDriverOf(hostProfile = {}, { observedAt = new Date() } = {}) {
+  const observation = hostProfile?.gpuDriverObservation;
+  if (Array.isArray(observation?.gpus)) {
+    const ageMs = new Date(observedAt).getTime() - new Date(observation.observedAt).getTime();
+    // Data owns the freshness window. A cached inventory does not attest the
+    // driver of a later measurement after that window, or after a failed read.
+    if (observation.status !== 'observed' || !Number.isFinite(Number(observation.staleAfterMs))
+      || !(Number(observation.staleAfterMs) > 0)
+      || !Number.isFinite(ageMs) || ageMs < 0 || ageMs > Number(observation.staleAfterMs)) return null;
+    const drivers = observation.gpus.map(gpu => text(gpu?.driver));
+    // Partial inventories cannot attest the complete host driver set.
+    return drivers.length && drivers.every(Boolean) ? [...new Set(drivers)].sort().join(', ') : null;
+  }
   const drivers = new Set();
   for (const gpu of Array.isArray(hostProfile?.gpus) ? hostProfile.gpus : []) {
     const driver = text(gpu?.driver);
@@ -35,7 +47,7 @@ function buildMeasuredRuntime({ ollamaVersion = null, hostProfile = null, observ
   const at = new Date(observedAt);
   return {
     ollamaVersion: text(ollamaVersion),
-    gpuDriver: gpuDriverOf(hostProfile || {}),
+    gpuDriver: gpuDriverOf(hostProfile || {}, { observedAt: Number.isFinite(at.getTime()) ? at : new Date() }),
     observedAt: Number.isFinite(at.getTime()) ? at.toISOString() : new Date().toISOString()
   };
 }

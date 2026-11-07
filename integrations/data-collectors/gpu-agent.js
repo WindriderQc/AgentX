@@ -40,7 +40,7 @@ const {
   systemdShowArgs
 } = require('../../shared/ollamaServiceEnvironment');
 
-const VERSION = 'gpu-1.1.0';
+const VERSION = 'gpu-1.2.0';
 const MAX_HOSTS = 32;
 const MAX_GPUS = 16;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
@@ -52,7 +52,7 @@ const QUERY_FIELDS = [
   'index', 'name', 'uuid', 'pci.bus_id', 'utilization.gpu', 'utilization.memory',
   'memory.used', 'memory.total', 'temperature.gpu', 'power.draw', 'power.limit',
   'clocks.sm', 'clocks.max.sm', 'pcie.link.gen.current', 'pcie.link.gen.max',
-  'pcie.link.width.current', 'pcie.link.width.max', 'clocks_throttle_reasons.active'
+  'pcie.link.width.current', 'pcie.link.width.max', 'clocks_throttle_reasons.active', 'driver_version'
 ];
 const QUERY_ARGS = [`--query-gpu=${QUERY_FIELDS.join(',')}`, '--format=csv,noheader,nounits'];
 
@@ -187,7 +187,7 @@ function parseNvidiaSmiCsv(stdout) {
       throw new Error(`nvidia-smi row ${position + 1}: expected ${QUERY_FIELDS.length} fields, got ${cells.length}`);
     }
     const [index, name, uuid, busId, util, memUtil, memUsed, memTotal, temp, power, powerLimit,
-      sm, smMax, gen, genMax, width, widthMax, throttle] = cells;
+      sm, smMax, gen, genMax, width, widthMax, throttle, driver] = cells;
     const throttleState = decodeThrottleReasons(throttle);
     const parsedIndex = number(index);
     return {
@@ -195,6 +195,7 @@ function parseNvidiaSmiCsv(stdout) {
       name: nullable(name) || '',
       uuid: nullable(uuid) || '',
       busId: nullable(busId) || '',
+      driver: nullable(driver),
       utilizationPct: number(util),
       memoryUtilizationPct: number(memUtil),
       memoryUsedMiB: number(memUsed),
