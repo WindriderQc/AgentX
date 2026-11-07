@@ -26,6 +26,17 @@ test('empty /free acknowledgement is followed by measured memory release', async
   expect(fetcher.mock.calls.map(x => x[0])).toEqual(['http://127.0.0.1:8188/queue', 'http://127.0.0.1:8188/free', 'http://127.0.0.1:8188/system_stats']);
   expect(assertOwned).toHaveBeenCalledTimes(2);
 });
+test('the worker release answer reaches the caller without changing or blocking the measured release', async () => {
+  const answer = { resources: { contract: 'agentx.image-worker-resources/v1' } };
+  const fetcher = jest.fn(async url => ({ ok: true, text: async () => JSON.stringify(url.endsWith('/free') ? answer
+    : url.endsWith('/queue') ? { queue_running: [], queue_pending: [] } : { devices: [{ vram_total: 12e9, vram_free: 11e9, torch_vram_total: 0, torch_vram_free: 0 }] }) }));
+  const client = createComfyClient('http://127.0.0.1:8188', fetcher);
+  const seen = jest.fn();
+  await expect(client.free(jest.fn(), true, 0.85, seen)).resolves.toMatchObject({ devices: [expect.any(Object)] });
+  expect(seen).toHaveBeenCalledWith(answer);
+  await expect(client.free(jest.fn(), true, 0.85, () => { throw new Error('bad receipt'); })).resolves.toMatchObject({ devices: [expect.any(Object)] });
+  expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/system_stats'))).toHaveLength(2);
+});
 test('submission has an exact identity and never retries a lost response', async () => {
   const fetcher = jest.fn().mockRejectedValue(new Error('lost'));
   await expect(createComfyClient('http://127.0.0.1:8188', fetcher).submit('id', {})).rejects.toThrow('lost');

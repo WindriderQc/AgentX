@@ -360,8 +360,9 @@ The current worker's optional external `presentation` object provides
 `hostLabel`, `gpuLabel` and `vramGiB`; these are configured inventory, not live
 telemetry. Profiles may provide `presentation.description`. No speed or quality
 ranking is inferred from a label or a step count. The operation's total time
-includes preparation, computation, archiving and restoration; its receipt does
-not measure these phases separately. The library currently reads the latest
+includes preparation, computation, archiving and restoration; new receipts also
+split it into Core phases and carry the worker's resource receipt (see
+[Resource receipts](#resource-receipts)). The library currently reads the latest
 30 operations, rather than the complete external photo archive.
 
 ## Configure a worker
@@ -393,6 +394,9 @@ releasing the CUDA context as well as model allocations. This matters when a
 small remaining CUDA reservation changes Ollama's full-GPU placement decision.
 Terminal execution receipts survive child recreation; the adapter never replays
 a submitted identity. Core still owns operation state, recovery and archiving.
+`--vram-sample-ms` (default 1000, 0 disables, otherwise 200–60 000) sets how
+often the supervisor samples its child's own device memory for the
+[resource receipt](#resource-receipts).
 
 Set `LOCAL_IMAGES_CONFIG` to the manifest path **inside Core**, and mount that
 file read-only through the instance Compose override. Set `IMAGE_ARCHIVE_DIR`
@@ -724,12 +728,69 @@ evidence from the declared source files; the envelope, peak and timing numbers
 in this section are not. Qualify every estimate on the actual host before
 relying on it.
 
+## Resource receipts
+
+Each new operation receipt (`GET /api/images/operations/:id`) records what was
+measured for that request, with the scope of each figure. Nothing in it is
+estimated, completed or extrapolated, and no figure in it guarantees that a
+host or GPU fits a profile.
+
+| Field | What it is | Scope | Kind |
+|---|---|---|---|
+| `timings.totalMs` | Core's time from the start of execution to the final state | Core clock, whole operation | measured |
+| `timings.phasesMs.reserving` | GPU admission, Ollama snapshot and unload, worker checks, reference upload | Core clock | measured |
+| `timings.phasesMs.generating` | dispatch to terminal result, including the CUDA child's start and ComfyUI execution | Core clock | measured |
+| `timings.phasesMs.archiving` | output read, decode and archive | Core clock | measured |
+| `timings.phasesMs.restoring` | CUDA child release, memory release check and verified Ollama restoration | Core clock | measured |
+| `resources.child.startupMs`, `lifetimeMs` | CUDA child spawn to ready, spawn to release | worker clock, one child process | measured |
+| `resources.executionMs` | ComfyUI's own start-to-terminal time for this prompt (model loading included, since the child keeps no cache) | ComfyUI, this prompt | measured |
+| `resources.ram.peakKiB` | kernel high-water mark of resident memory (Linux `VmHWM`), read just before release | the CUDA child process only, over its whole lifetime | measured |
+| `resources.vram.observedMaxMiB` | largest device memory the NVIDIA driver listed for the child's PID among the samples | the CUDA child process only, on the worker's GPU | sampled **lower bound** |
+
+A phase lasts until the next phase starts or the operation ends, so an
+interrupted phase includes the quarantine that follows it. A phase that was
+never reached is absent.
+
+Scope rules:
+
+- RAM and VRAM figures belong to the CUDA child alone. The supervisor, Core,
+  Ollama, the desktop and any other GPU client are never counted. RSS includes
+  model files the child maps into memory; it excludes the operating system's
+  page cache outside the process and memory the driver holds outside it.
+- The VRAM figure comes from periodic samples (`intervalMs`, with counts of
+  `matched`, `absent`, `failed` and `invalid` samples). A short allocation
+  between two samples is missed, so it is never a peak. ComfyUI's internal
+  allocator peak is not exposed without custom nodes and stays unknown. On a
+  driver that does not list per-process memory (`[N/A]`) or a container whose
+  PIDs differ from the host's, the figure is `unavailable` rather than borrowed
+  from the whole card.
+- Figures describe a child lifetime. `attribution` is `exclusive` when that
+  child ran only this prompt, and `shared-child` when it also ran other prompts
+  (their consumption is then included). A receipt that does not list this
+  prompt is `stale` and keeps no figure; a receipt whose timestamps fall
+  outside its own child lifetime, whose counts disagree or whose values are out
+  of range keeps no figure (`invalid`). Worker and Core clocks are never
+  compared.
+- A worker that reports nothing, an older worker, a dispatch whose outcome is
+  uncertain (no release) and every receipt made before this contract have
+  `resources: null` or `status: unavailable`. Older receipts keep their fields
+  unchanged.
+
+The worker also keeps its receipt next to each prompt's terminal record in its
+state directory. Collecting a receipt changes neither the release, the
+restoration, cancellation, archiving nor outputs: a missing or malformed
+receipt never blocks them. Core's GPU telemetry and the Nerve Center remain
+host-wide readings and are not used for these figures. Measurement campaigns
+on real hosts belong to the instance and go through its heavy-work queue.
+
 ## Qualification
 
 Measure cold and repeated generation, editing, multiple references, actual
 RAM/VRAM peaks, cancellation, offline refusal, storage recovery and restored
 Nestor inference. The estimated hardware envelopes above are unmeasured inputs
-to this qualification, not receipts. Compare the same graph and seed across
+to this qualification, not receipts. Operation [resource receipts](#resource-receipts)
+record per-case RAM, a VRAM lower bound and phase times; a VRAM figure read
+from them is a lower bound, never a guarantee that a smaller card fits. Compare the same graph and seed across
 hosts before changing placement. A file's byte size is not its pipeline's
 minimum VRAM. Passing code tests is separate from container, GPU and
 real-device acceptance.

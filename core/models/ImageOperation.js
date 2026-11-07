@@ -52,6 +52,7 @@ const schema = new mongoose.Schema({
   runtimeRestored: { type: Boolean, default: false },
   error: { type: String },
   timings: { type: mongoose.Schema.Types.Mixed },
+  resources: { type: mongoose.Schema.Types.Mixed },
 }, { timestamps: true, collection: 'image_operations', versionKey: false, autoCreate: false, autoIndex: false });
 schema.index({ workerSlot: 1 }, { unique: true, sparse: true });
 schema.index({ createdAt: -1 });
