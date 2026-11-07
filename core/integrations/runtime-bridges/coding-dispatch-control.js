@@ -282,6 +282,7 @@ function registerCodingDispatchControlRoutes({ express, control, preparation, lo
     try { return res.status(202).json({ status: 'success', data: await control.stop({ ...req.body, requestId: req.params.requestId }) }); }
     catch (error) { return sendError(res, error, logger); }
   });
+  require('./coding-sessions-control').registerCodingSessionsRoutes({ router, control, logger });
   return router;
 }
 module.exports = { CodingDispatchControl, CodingDispatchControlError, exactPipelineId, exactRequestId, launchCommand, registerCodingDispatchControlRoutes, remoteRoot, transientUnitName };

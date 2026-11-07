@@ -1,7 +1,7 @@
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./pipeline-code-steps'));
-  else root.PipelineWorkerMonitor = factory(root.PipelineCodeSteps);
-})(typeof window === 'undefined' ? globalThis : window, function (codeSteps) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./pipeline-code-steps'), require('./pipeline-worker-sessions'));
+  else root.PipelineWorkerMonitor = factory(root.PipelineCodeSteps, root.PipelineWorkerSessions);
+})(typeof window === 'undefined' ? globalThis : window, function (codeSteps, sessions) {
   'use strict';
   // Presentation of the existing launch controller only. The native owner keeps
   // request reconciliation, stop execution and resource-release receipts.
@@ -175,6 +175,7 @@
     stop.hidden = !view.showStop; stop.disabled = !view.canStop;
     stop.textContent = view.run?.phase === 'stopping' ? 'Stop requested · awaiting checkpoint' : `Stop worker #${view.taskId || ''}`;
     stop.onclick = () => controller?.stop();
+    sessions?.render({ $, run: view.run });
     const refresh = $('pipelineTeamLaunchRefresh');
     if (refresh) refresh.disabled = Boolean(controller?.checking);
   }

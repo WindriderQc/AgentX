@@ -1,5 +1,6 @@
 """Carry worker prompts through a private read-only file, never an exec argument."""
 from pathlib import Path
+import importlib.util
 import tempfile
 
 SANDBOX_PROMPT = '/tmp/agentx-worker-prompt.txt'
@@ -24,7 +25,22 @@ def run(r, workspace, home, prompt, seconds, progress, *, read_only, on_stop,
                                    '/opt/coding/guard.patch.yml', '--'],
                        'environment': {}, 'binds': []})
         command = list(adapter['command'])
-        return r.supervise(r.sandbox(workspace, home, command, network=False, timeout_seconds=seconds,
-            read_only=read_only, role_request_id=progress.request_id if read_only else '', prompt_file=path,
-            environment=adapter['environment'], extra_binds=adapter['binds']),
-            progress, home, workspace, on_stop=on_stop)
+        capture = None
+        if harness == 'opencode' and progress and getattr(progress, 'path', None):
+            spec = importlib.util.spec_from_file_location('coding_opencode_history', Path(__file__).with_name('coding_opencode_history.py'))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            capture = module.Capture(progress, home, workspace)
+        try:
+            sandboxed = r.sandbox(workspace, home, command, network=False, timeout_seconds=seconds,
+                read_only=read_only, role_request_id=progress.request_id if read_only else '', prompt_file=path,
+                environment=adapter['environment'], extra_binds=adapter['binds'])
+            result = r.supervise(sandboxed, progress, home, workspace, on_stop=on_stop,
+                **({'output_observer': capture.scan} if capture else {}))
+            if capture:
+                capture.finish(result.returncode)
+            return result
+        except BaseException:
+            if capture:
+                capture.finish(None)
+            raise

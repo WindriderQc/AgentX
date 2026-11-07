@@ -8,3 +8,8 @@
 .pipeline-worker-actions [hidden] { display: none; }
 @media (max-width: 900px) { .pipeline-worker-evidence dl { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .pipeline-worker-evidence dl { grid-template-columns: minmax(0, 1fr); } }
+.pipeline-native-session { box-sizing: border-box; width: min(960px, calc(100vw - 32px)); max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; border: 1px solid var(--border, #334155); border-radius: 12px; background: var(--panel-bg, #121726); color: var(--text, #e8edf5); }
+.pipeline-native-session::backdrop { background: rgba(0, 0, 0, .55); }
+.pipeline-native-session pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+.pipeline-native-session article { border-top: 1px solid var(--border); padding: 12px 0; }
+.pipeline-native-session select { max-width: 100%; }

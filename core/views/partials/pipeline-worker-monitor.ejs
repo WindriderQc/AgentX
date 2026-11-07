@@ -3,4 +3,20 @@
 <div class="pipeline-worker-actions">
   <a id="pipelineWorkerMonitorDossier" class="pipeline-btn compact" hidden>Open task dossier</a>
   <button id="pipelineTeamLaunchStop" class="pipeline-btn compact" type="button" hidden disabled>Stop this exact worker</button>
+  <button id="pipelineNativeSessionButton" class="pipeline-btn compact" type="button" hidden>Voir la conversation OpenCode</button>
 </div>
+<dialog id="pipelineNativeSessionDialog" class="pipeline-native-session" aria-labelledby="pipelineNativeSessionTitle">
+  <div class="pipeline-worker-actions">
+    <h3 id="pipelineNativeSessionTitle">Conversation OpenCode</h3>
+    <button id="pipelineNativeSessionClose" class="pipeline-btn compact" type="button">Fermer</button>
+  </div>
+  <p>Lecture du journal natif du worker. Observer ne lance aucun modèle. La reprise crée un dépôt et une conversation indépendants après la fin de cette invocation.</p>
+  <label>Invocation <select id="pipelineNativeSessionSelect"></select></label>
+  <p id="pipelineNativeSessionStatus" role="status"></p>
+  <div class="pipeline-worker-actions">
+    <button id="pipelineNativeSessionHandoff" class="pipeline-btn compact" type="button" disabled>Reprendre dans une copie indépendante</button>
+    <a id="pipelineNativeSessionOpen" class="pipeline-btn compact" target="_blank" rel="noopener noreferrer" hidden>Ouvrir la copie dans OpenCode ↗</a>
+  </div>
+  <div id="pipelineNativeSessionMessages"></div>
+  <button id="pipelineNativeSessionMore" class="pipeline-btn compact" type="button" hidden>Messages suivants</button>
+</dialog>

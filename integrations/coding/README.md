@@ -8,6 +8,18 @@ Optional third-party UI packages use the reviewed
 The worker also has a replaceable OpenCode adapter; Core and the host runner,
 not either harness, retain task and delivery authority. See the
 [multi-harness architecture](../../docs/CODING_TEAM_ARCHITECTURE.md).
+The [OpenCode migration procedure](../../docs/OPENCODE_MIGRATION.md) supplies
+read-only archive inventories, native history checks and a synthetic runtime
+qualification. It retains worker visibility and independent continuations as
+replacement gates; these tools never switch the installed executor.
+For OpenCode runs with native request receipts, the runner records an exact
+request/invocation/session binding outside the worker home. Pipeline's monitor
+opens the actual native messages and tool results through the read-only host
+transport. **Reprendre dans une copie indépendante** imports that history into
+a separate human OpenCode home and an independent repository after the original
+invocation exits. Neither observation nor handoff invokes a model or changes
+Core's original task. See the migration procedure for opt-in configuration,
+limits and synthetic native/browser qualification.
 
 Core Pipeline is the task queue. One local worker takes one task, writes the
 change and opens a draft pull request. Reviewing that pull request, with its

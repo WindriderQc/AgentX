@@ -113,7 +113,7 @@ def terminate(process, grace_seconds=30):
 
 
 def supervise(command: list[str], progress=None, home=None, workspace=None, on_stop=None,
-              deadline=None) -> subprocess.CompletedProcess:
+              deadline=None, output_observer=None) -> subprocess.CompletedProcess:
     """Poll a child within its deadline while retaining raw output outside Git."""
     if progress and progress.path:
         output_root = progress.path.parent / f"{progress.request_id}.output"
@@ -127,6 +127,8 @@ def supervise(command: list[str], progress=None, home=None, workspace=None, on_s
         deadline_exhausted = False
         try:
             while process.poll() is None:
+                if output_observer:
+                    output_observer(stdout)
                 if deadline is not None and time.monotonic() >= deadline:
                     deadline_exhausted = True
                     terminate(process, grace_seconds=0)
@@ -144,6 +146,8 @@ def supervise(command: list[str], progress=None, home=None, workspace=None, on_s
                 if on_stop:
                     on_stop()
                 terminate(process)
+    if output_observer:
+        output_observer(stdout)
     if deadline_exhausted:
         raise CodingDeadlineExceeded("Supervised command exhausted its runner-owned deadline")
     if progress and home and workspace:
