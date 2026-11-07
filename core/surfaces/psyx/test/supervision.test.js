@@ -11,7 +11,7 @@ const { NOTE_LIMIT, CRITERIA, replyTarget, sameTarget, supervisionNote, summariz
 function turns(id = 'r1', ordinal = 2, content = 'Ça semble pesant. Que ressens-tu?') {
   return [{ role: 'user', content: 'Une journée difficile.' }, {
     role: 'assistant', id, ordinal, content, createdAt: '2026-01-01T12:00:00.000Z',
-    control: { mode: 'talk', voice: false }
+    control: { mode: 'talk', voice: false, reviewRequested: true }
   }];
 }
 function critique(target, status = 'uncertain') {
@@ -30,25 +30,20 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 async function settled(reviewer, id = 'c') {
   for (let i = 0; i < 200; i++) {
     const status = reviewer.status('u', id);
-    if (['done', 'failed'].includes(status.status)) return status;
+    if (['done', 'failed', 'uncertain'].includes(status.status)) return status;
     await tick();
   }
   assert.fail('review did not settle');
 }
 function harness(complete) {
   let messages = turns();
-  const state = emptyState('u');
-  const calls = [];
-  const recorded = [];
-  const stateRepository = {
-    read: async () => structuredClone(state),
-    async recordReview(_user, review) {
-      if (!await review.stillWanted()) return { added: 0, skipped: 'gone' };
-      recorded.push(review);
-      if (review.supervision) state.supervisionNotes.push(review.supervision);
-      return { added: review.proposals?.length || 0, digest: review.digest };
-    }
-  };
+  const { repository } = require('./support/state').createHarness();
+  const calls = [], recorded = [];
+  const stateRepository = { ...repository, async recordReview(user, review) {
+    const result = await repository.recordReview(user, review);
+    if (!result.skipped) recorded.push(review);
+    return result;
+  } };
   const conversationRepository = { async context(_u, _c, limit, options) {
     if (!messages) return null;
     const selected = messages.slice(-limit);
@@ -65,7 +60,7 @@ function harness(complete) {
     };
   } };
   const options = { config: { review: { delayMs: 0 } }, provider, stateRepository, conversationRepository, logger: {} };
-  return { options, state, calls, recorded, setMessages: value => { messages = value; } };
+  return { options, stateRepository, calls, recorded, setMessages: value => { messages = value; } };
 }
 
 test('identity and code measurements describe the complete exact canonical reply', () => {
@@ -112,7 +107,7 @@ test('retained-window counters keep model uncertainty, non-applicability and cod
   assert.equal(counts.scope, 'retained_supervision_notes');
   assert.equal(counts.limit, NOTE_LIMIT);
   assert.equal(counts.replies, 6);
-  assert.deepEqual(counts.modelObservations.reviews, { available: 4, missing: 1, invalid: 1 });
+  assert.deepEqual(counts.modelObservations.reviews, { available: 4, missing: 1, invalid: 1, discarded: 0 });
   assert.deepEqual(counts.modelObservations.criteria.length, { met: 1, missed: 1, uncertain: 1, not_applicable: 1 });
   assert.equal(counts.measurements.belowUsualWordRange, 6);
   assert.equal(counts.modelObservations.independent, false);
@@ -165,11 +160,11 @@ test('one existing routed review stores the note; restart and duplicate schedule
   reviewer.schedule('u', 'c');
   await settled(reviewer);
   assert.equal(h.calls.length, 1);
-  assert.equal(h.state.supervisionNotes.length, 1);
+  assert.equal((await h.stateRepository.read('u')).supervisionNotes.length, 1);
   reviewer.forgetUser('u');
 });
 
-test('late responses are discarded and rapid completions coalesce to the exact latest reply', async () => {
+test('every response during an admitted review retains its critique in canonical order', async () => {
   let release;
   const gate = new Promise(resolve => { release = resolve; });
   const h = harness(async (context, call) => {
@@ -179,14 +174,14 @@ test('late responses are discarded and rapid completions coalesce to the exact l
   const reviewer = createReviewer(h.options);
   reviewer.schedule('u', 'c');
   while (!h.calls.length) await tick();
-  h.setMessages(turns('r2', 4));
+  h.setMessages([...turns(), ...turns('r2', 4)]);
   reviewer.schedule('u', 'c');
-  h.setMessages(turns('r3', 6));
+  h.setMessages([...turns(), ...turns('r2', 4), ...turns('r3', 6)]);
   reviewer.schedule('u', 'c');
   release();
   await settled(reviewer);
-  assert.equal(h.calls.length, 2);
-  assert.deepEqual(h.recorded.map(item => item.supervision.replyId), ['r3']);
+  assert.equal(h.calls.length, 3);
+  assert.deepEqual(h.recorded.map(item => item.supervision.replyId), ['r1', 'r2', 'r3']);
   reviewer.forgetUser('u');
 });
 
@@ -219,15 +214,16 @@ test('unusable or missing supervision is retained explicitly without inventing m
   }
 });
 
-test('oversized complete replies fail before inference rather than receiving a critique of a prefix', async () => {
+test('long complete replies reach the same reviewer whole rather than receiving a critique of a prefix', async () => {
   const h = harness();
   h.setMessages(turns('large', 2, 'x'.repeat(24001)));
   const reviewer = createReviewer(h.options);
   reviewer.schedule('u', 'c');
   const status = await settled(reviewer);
-  assert.equal(status.error, 'PSYX_REVIEW_TARGET_TOO_LARGE');
-  assert.equal(h.calls.length, 0);
-  assert.equal(h.recorded.length, 0);
+  assert.equal(status.status, 'done');
+  assert.equal(h.calls.length, 1);
+  assert.ok(h.calls[0].messages[1].content.includes('x'.repeat(24001)));
+  assert.equal(h.recorded.length, 1);
   reviewer.forgetUser('u');
 });
 
@@ -252,7 +248,7 @@ test('existing background-review and history preferences each exclude supervisio
   const noteForConversation = note();
   const id = '507f1f77bcf86cd799439011';
   noteForConversation.conversationId = id;
-  h.state.supervisionNotes = [noteForConversation];
+  await h.stateRepository.recordReview('default', { conversationId: id, supervision: noteForConversation });
   const defaults = defaultsFor('psyx', {});
   let values = defaults;
   const submitted = [];

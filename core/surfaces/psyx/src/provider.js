@@ -76,7 +76,15 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
     // Background work (the review, the dream): one JSON answer, no stream, no
     // thinking, no cancellation once admitted.
     async complete(request) {
-      if (request.location !== 'frontier' || !frontierReady()) return localComplete(request);
+      if (request.location !== 'frontier' || !frontierReady()) {
+        try { return await localComplete(request); }
+        catch (error) {
+          // Reuse Core's pre-dispatch proof. A code from a failed cloud attempt
+          // followed by local fallback is not proof about the whole request.
+          if (require('../../../src/services/routing/taskFallbackLadder').refusedBeforeDispatch(error)) error.reviewNotDispatched = true;
+          throw error;
+        }
+      }
       try {
         const [system, ...rest] = request.messages;
         const result = await frontier.run({ agentId: frontierConfig.agent, instructions: system.content, messages: rest, timeoutMs: request.timeoutMs,

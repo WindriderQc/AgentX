@@ -172,6 +172,45 @@ describe('PsyX built into Core with private scope', () => {
     }
   });
 
+  test('two canonical replies survive the delay and competing review workers without duplicate inference', async () => {
+    const { createStateRepository } = require('../../src/domains/psyx/stateRepository');
+    const { createConversationLifecycleService } = require('../../src/services/conversationLifecycleService');
+    const { createConversationAdapter } = require('../../surfaces/psyx/src/conversations');
+    const { createReviewer } = require('../../surfaces/psyx/src/reviewer');
+    const { CRITERIA } = require('../../src/domains/psyx/supervision');
+    const repository = createStateRepository({ collection: mongoose.connection.collection('psyxstates') });
+    const first = done(await request(app).post('/api/psyx/chat/stream').send({ message: 'Premier tour synthétique.' }).expect(200));
+    await request(app).post('/api/psyx/chat/stream').send({
+      conversationId: first.conversationId, message: 'Second tour synthétique.'
+    }).expect(200);
+    const canonical = await Conversation.findById(first.conversationId).lean();
+    expect(canonical.messages[1].metadata.routing.psyxControl.reviewRequested).toBe(true);
+    expect(canonical.messages[3].metadata.routing.psyxControl.reviewRequested).toBe(true);
+    const targets = [];
+    const options = { config: { review: { delayMs: 0 } }, stateRepository: repository,
+      conversationRepository: createConversationAdapter({ conversationLifecycle: createConversationLifecycleService() }),
+      provider: { complete: async ({ messages }) => {
+        const target = JSON.parse(messages[1].content.split('\n')[1]).supervisionTarget;
+        targets.push(target);
+        return { content: JSON.stringify({ supervision: { replyId: target.replyId, replyHash: target.replyHash,
+          observations: Object.fromEntries(CRITERIA.map(key => [key, { status: 'uncertain', reason: 'Source synthétique.' }])) } }) };
+      } }
+    };
+    const workers = [createReviewer(options), createReviewer(options)];
+    try {
+      for (const worker of workers) worker.schedule('default', first.conversationId);
+      for (let i = 0; i < 400 && (await repository.read('default')).reviewProgress[first.conversationId]?.throughOrdinal !== 4; i++) {
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      const state = await repository.read('default');
+      expect(targets.map(target => target.replyId)).toEqual([String(canonical.messages[1]._id), String(canonical.messages[3]._id)]);
+      expect(state.supervisionNotes).toHaveLength(2);
+      expect(state.reviewProgress[first.conversationId]).toEqual({ throughOrdinal: 4, active: null });
+      const coverage = (await workers[0].inspect('default', first.conversationId)).coverage;
+      expect(coverage).toMatchObject({ eligibleReplies: 2, settledReviewAttempts: 2, pendingReplies: 0, retainedModelCritiques: 2 });
+    } finally { workers.forEach(worker => worker.stop()); }
+  });
+
   test('accepted review observations remain correctable with atomic revision and original provenance', async () => {
     const { createStateRepository } = require('../../src/domains/psyx/stateRepository');
     const { readReview } = require('../../src/domains/psyx/review');

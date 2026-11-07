@@ -14,7 +14,7 @@ const assessments = require('../../../src/domains/psyx/assessments');
 const { TECHNIQUES } = require('../../../src/domains/psyx/techniques');
 const { defaultsFor, selectPsyxState } = require('../../../src/services/conversationPreferences/catalog');
 
-const VERSION = '2.12.1';
+const VERSION = '2.13.0';
 const PROMPT_VERSION = domain.PROMPT_VERSION;
 const PUBLIC_ROOT = path.join(__dirname, '..', 'public');
 const asyncRoute = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -142,6 +142,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
     preferencesFor: database.preferencesForUser ? readPreferences : null,
     isBusy: userId => (streaming.get(userId) || 0) > 0,
     locationFor: state => frontierMode(state) === 'local' ? 'local' : 'frontier' });
+  app.locals.reviewer = review;
   const dream = dreamer || createDreamer({ config, provider, stateRepository, conversationRepository, sources, logger,
     preferencesFor: database.preferencesForUser ? readPreferences : null,
     isBusy: userId => (streaming.get(userId) || 0) > 0,
@@ -230,7 +231,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.post('/state/proposals/:id/accept', asyncRoute(async (req, res) => responseData(res, await stateRepository.acceptProposal(res.locals.psyxUserId, cleanText(req.params.id, 80), req.body || {}))));
   api.post('/state/proposals/:id/reject', asyncRoute(async (req, res) => responseData(res, await stateRepository.rejectProposal(res.locals.psyxUserId, cleanText(req.params.id, 80)))));
   api.get('/review/status', asyncRoute(async (req, res) => responseData(res, (await readPreferences(res.locals.psyxUserId)).values.backgroundReview
-    ? review.status(res.locals.psyxUserId, cleanText(req.query.conversationId, 80)) : { enabled: false, status: 'disabled' })));
+    ? await (review.inspect || review.status)(res.locals.psyxUserId, cleanText(req.query.conversationId, 80)) : { enabled: false, status: 'disabled' })));
   api.get('/dream/status', asyncRoute(async (_req, res) => responseData(res, (await readPreferences(res.locals.psyxUserId)).values.dreamEnabled
     ? dream.status(res.locals.psyxUserId) : { enabled: false, status: 'disabled' })));
   api.post('/dream/run', asyncRoute(async (_req, res) => {
@@ -421,18 +422,19 @@ function createApp({ config, database, provider, voice = null, logger = console,
       if (abortController.signal.aborted) return;
       const assistant = String(result.content || handlers.content() || '').trim();
       if (!assistant) throw new Error('Inference provider returned an empty response');
+      const currentPreferences = (await readPreferences(userId)).values;
       const session = await conversationRepository.saveCompletedTurn({
         userId,
         conversationId,
         userMessage: input,
         assistantMessage: assistant,
         action: control.action,
-        control: { mode: control.mode, depth: control.depth, voice: voiceTurn },
+        control: { mode: control.mode, depth: control.depth, voice: voiceTurn,
+          reviewRequested: currentPreferences.backgroundReview, reviewEpoch: longitudinal.reviewEpoch || longitudinal.resetAt || null },
         model: result.model,
         provider: provider.id,
         routing: result.routing
       });
-      const currentPreferences = (await readPreferences(userId)).values;
       const reviewScheduled = currentPreferences.backgroundReview ? review.schedule(userId, session.id) : false;
       if (currentPreferences.dreamEnabled && currentPreferences.automaticDream) dream.touch(userId);
       handlers.send('done', {

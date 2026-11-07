@@ -18,18 +18,27 @@ function fakes({ complete } = {}) {
     id: 'agentx',
     async complete(request) { calls.complete.push(request); return complete ? complete(request) : { content: REVIEW, model: 'deep:model' }; }
   };
-  const stateRepository = {
-    read: async () => emptyState(),
-    async recordReview(userId, review) { calls.recorded.push({ userId, ...review }); return { added: review.proposals.length }; }
+  const { repository } = require('./support/state').createHarness();
+  const stateRepository = { ...repository,
+    async recordReview(userId, review) { calls.recorded.push({ userId, ...review }); return repository.recordReview(userId, review); }
   };
-  const conversationRepository = { context: async () => [{ role: 'user', content: 'hello' }, { role: 'assistant', content: 'hi' }] };
-  return { calls, provider, stateRepository, conversationRepository };
+  const messages = [];
+  const append = () => {
+    const ordinal = messages.length + 2;
+    messages.push({ role: 'user', content: 'hello', ordinal: ordinal - 1 },
+      { role: 'assistant', id: 'r' + ordinal, ordinal, content: 'hi',
+        control: { mode: 'talk', voice: false, reviewRequested: true } });
+  };
+  append();
+  const conversationRepository = { context: async (_u, _c, limit) => messages.slice(-limit) };
+  return { calls, provider, stateRepository, conversationRepository, append };
+
 }
 
-test('turns completing during a review coalesce into one follow-up review', async () => {
+test('turns completing during a review each receive a separate ordered review', async () => {
   let release;
   const gate = new Promise(resolve => { release = resolve; });
-  const { calls, provider, stateRepository, conversationRepository } = fakes({ complete: async () => { await gate; return { content: REVIEW }; } });
+  const { calls, provider, stateRepository, conversationRepository, append } = fakes({ complete: async () => { await gate; return { content: REVIEW }; } });
   const reviewer = createReviewer({ config: { review: { delayMs: 0 } }, provider, stateRepository, conversationRepository, logger: {} });
 
   assert.equal(reviewer.status('u', 'c').status, 'idle');
@@ -37,14 +46,15 @@ test('turns completing during a review coalesce into one follow-up review', asyn
   assert.equal(reviewer.status('u', 'c').status, 'queued');
   await tick(5);
   assert.equal(reviewer.status('u', 'c').status, 'running');
-  reviewer.schedule('u', 'c');
-  reviewer.schedule('u', 'c');
+  append(); reviewer.schedule('u', 'c');
+  append(); reviewer.schedule('u', 'c');
   release();
   await tick(20);
-  assert.equal(calls.complete.length, 2, 'one review, then a single follow-up for the turns that arrived meanwhile');
+  assert.equal(calls.complete.length, 3, 'one review per canonical reply, including both later replies');
   const status = reviewer.status('u', 'c');
   assert.equal(status.status, 'done');
-  assert.equal(status.lastAdded, 1);
+  assert.equal(status.lastAdded, 1, 'only the latest review adds its pending proposal');
+  assert.equal((await stateRepository.read('u')).proposals.length, 1);
   assert.equal(calls.recorded[0].conversationId, 'c');
   assert.equal(calls.complete[0].taskType, 'deep_reasoning');
   assert.equal(calls.complete[0].messages[0].role, 'system');
@@ -56,7 +66,8 @@ test('an unusable review fails visibly without writing memory', async () => {
   reviewer.schedule('u', 'c');
   await tick(10);
   assert.deepEqual([reviewer.status('u', 'c').status, reviewer.status('u', 'c').error], ['failed', 'PSYX_REVIEW_UNUSABLE']);
-  assert.equal(calls.recorded.length, 0);
+  assert.equal(calls.recorded.length, 1);
+  assert.deepEqual((await stateRepository.read('u')).notes, []);
   assert.equal(calls.complete[0].taskType, 'frontier');
 });
 
@@ -193,7 +204,7 @@ test('a review waits while the user is being answered and drops results for a co
   const gate = new Promise(resolve => { release = resolve; });
   let exists = true;
   const { calls, provider, stateRepository } = fakes({ complete: async () => { await gate; return { content: REVIEW }; } });
-  const conversationRepository = { context: async () => exists ? [{ role: 'user', content: 'hello' }] : null };
+  const conversationRepository = { context: async () => exists ? [{ role: 'user', content: 'hello' }, { role: 'assistant', id: 'r', ordinal: 2, content: 'hi', control: { mode: 'talk', voice: false, reviewRequested: true } }] : null };
   const reviewer = createReviewer({ config: { review: { delayMs: 5 } }, provider, stateRepository, conversationRepository, logger: {}, isBusy: () => busy });
   reviewer.schedule('u', 'c');
   await tick(30);

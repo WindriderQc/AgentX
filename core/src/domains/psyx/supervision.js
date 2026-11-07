@@ -79,7 +79,7 @@ function normalizeNotes(value) {
   for (const note of value) {
     if (!note || typeof note.conversationId !== 'string' || typeof note.replyId !== 'string'
       || !Number.isSafeInteger(note.replyOrdinal) || note.replyOrdinal < 1 || !/^[a-f0-9]{64}$/.test(note.replyHash)
-      || !['available', 'missing', 'invalid'].includes(note.modelReview?.status)) continue;
+      || !['available', 'missing', 'invalid', 'discarded'].includes(note.modelReview?.status)) continue;
     // Only server-written notes enter this field; it is never an import/input API.
     unique.set(`${note.conversationId}:${note.replyId}`, note);
   }
@@ -91,7 +91,7 @@ function normalizeNotes(value) {
 function summarizeNotes(notes = []) {
   const retained = normalizeNotes(notes);
   const criteria = Object.fromEntries(CRITERIA.map(key => [key, Object.fromEntries(STATUSES.map(status => [status, 0]))]));
-  const modelReviews = { available: 0, missing: 0, invalid: 0 };
+  const modelReviews = { available: 0, missing: 0, invalid: 0, discarded: 0 };
   const code = { source: 'code', repliesWithMultipleQuestionMarks: 0, belowUsualWordRange: 0, aboveUsualWordRange: 0, unknownWordRange: 0 };
   for (const note of retained) {
     modelReviews[note.modelReview.status] += 1;

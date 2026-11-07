@@ -10,6 +10,7 @@ const dream = require('./dream');
 const assessments = require('./assessments');
 const { createDreamStore } = require('./dreamStore');
 const { createReviewStore } = require('./reviewStore');
+const { normalizeProgress, createReviewProgress } = require('./reviewProgress');
 const { normalizeNotes, summarizeNotes } = require('./supervision');
 const { normalizeEvidenceRefs } = require('./dreamEvidence');
 
@@ -168,6 +169,8 @@ function emptyState(userId = 'default') {
     settledProposals: [],
     sessionDigests: [],
     supervisionNotes: [],
+    reviewProgress: {},
+    reviewEpoch: null,
     supervisionSummary: summarizeNotes([]),
     checkIns: [],
     settings: { frontierMode: null },
@@ -191,6 +194,8 @@ function normalizeState(doc, userId = 'default') {
     settledProposals: proposals.normalizeSettled(doc.settledProposals),
     sessionDigests: proposals.normalizeDigests(doc.sessionDigests),
     supervisionNotes: normalizeNotes(doc.supervisionNotes),
+    reviewProgress: normalizeProgress(doc.reviewProgress),
+    reviewEpoch: cleanText(doc.reviewEpoch, 80) || null,
     supervisionSummary: summarizeNotes(doc.supervisionNotes),
     checkIns: followUp.normalizeCheckIns(doc.checkIns),
     resetAt: normalizeDate(doc.resetAt),
@@ -501,7 +506,7 @@ function createStateRepository({ collection, logger }) {
       { userId },
       {
         // resetAt lets a review that started before the reset discard its result.
-        $set: { ...cleared, portrait: null, portraitPrevious: null, portraitRejected: [], dreamLog: [], version: PSYX_STATE_VERSION, updatedAt: now, resetAt: now },
+        $set: { ...cleared, reviewProgress: {}, reviewEpoch: crypto.randomUUID(), portrait: null, portraitPrevious: null, portraitRejected: [], dreamLog: [], version: PSYX_STATE_VERSION, updatedAt: now, resetAt: now },
         $inc: { revision: 1 }
       }
     );
@@ -635,6 +640,7 @@ function createStateRepository({ collection, logger }) {
     addExperiment,
     updateExperiment,
     reset,
+    ...createReviewProgress({ collection, read, ensureDocument }),
     ...createReviewStore({ collection, read, ensureDocument, stateItemKeys: STATE_ITEM_KEYS, version: PSYX_STATE_VERSION }),
     acceptProposal,
     rejectProposal

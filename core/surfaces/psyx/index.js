@@ -16,7 +16,7 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
   // Never run the legacy duplicate-merge/delete helper during application startup.
   // Imported conflicts must be reviewed before a unique owner index can be built.
   const stateRepository = Object.fromEntries(['read', 'addItem', 'updateItem', 'deleteItem', 'addExperiment', 'updateExperiment', 'reset',
-    'recordReview', 'forgetConversation', 'acceptProposal', 'rejectProposal', 'addCheckIn', 'addAssessment', 'updateSettings', 'updateProfile',
+    'recordReview', 'claimReview', 'saveReviewResult', 'forgetConversation', 'acceptProposal', 'rejectProposal', 'addCheckIn', 'addAssessment', 'updateSettings', 'updateProfile',
     'recordDream', 'undoDream', 'rejectPortraitStatement', 'clearPortrait', 'dreamUserIds']
     .map(name => [name, async (...args) => { await ensureStateIndex(); return domain[name](...args); }]));
   const database = {
@@ -35,6 +35,7 @@ function register({ app, mongoose, runtimeServices, conversationLifecycle, logge
   const sources = createSources({ runtimeServices, mailJournal: require('../../src/services/mailJournalService'), logger });
   const psyx = createApp({ config, database, provider: createCoreProvider(runtimeServices, { frontier: createOpenClawAgentClient(), config, logger }), logger, sources, productApp: app });
   psyx.locals.dreamer.start();
+  psyx.locals.reviewer.start();
   app.use((req, res, next) => /^\/(?:psyx(?:\/|$)|api\/psyx(?:\/|$))/i.test(req.path)
     ? psyx(req, res, next) : next());
 }
