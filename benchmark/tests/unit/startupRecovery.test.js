@@ -87,11 +87,12 @@ describe('startup recovery', () => {
 const FULL_ONLY_OPERATIONS = ['PIN_CONTEXT_APPLY', 'ROUTING_CONFIG', 'RUNTIME_ACTIVE', 'HOUSEHOLD_IDLE',
   'WORKLOAD_RECOVERY_LOOKUP', 'HEAVY_QUEUE_SUBMIT', 'HEAVY_QUEUE_RESERVE', 'HEAVY_QUEUE_LIST',
   // The Île tab (full profile only) places island requests and reads the principal endpoint.
-  'HEAVY_QUEUE_PLACE', 'RUNTIME_CONFIG_EXPORT'];
+  'HEAVY_QUEUE_PLACE', 'HEAVY_QUEUE_REFUSED', 'RUNTIME_CONFIG_EXPORT'];
 const DEMO_OPERATIONS = Object.keys(CORE_OPERATIONS).filter(name => !FULL_ONLY_OPERATIONS.includes(name));
 
 function samplePath(pattern) {
-  const target = pattern.replace(/^\^|\$$/g, '').replace(/\[\^\/\]\+/g, encodeURIComponent('http://127.0.0.1:11434'));
+  const target = pattern.replace(/^\^|\$$/g, '').replace(/\[\^\/\]\+/g, encodeURIComponent('http://127.0.0.1:11434'))
+    .replace(/\[a-f0-9-\]\{36\}/g, '00000000-0000-4000-8000-000000000001');
   expect(new RegExp(pattern).test(target)).toBe(true);
   return target;
 }
