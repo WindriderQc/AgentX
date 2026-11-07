@@ -1,6 +1,7 @@
 'use strict';
 
 const MAX_ITEMS = 8;
+const { projectAdvice } = require('./storageAdviceProjection');
 const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const label = value => typeof value === 'string' ? value.slice(0, 64) : null;
 
@@ -38,16 +39,18 @@ function projectAssessment(body) {
     observedCapacityFit: ['fits', 'insufficient'].includes(pair.observedCapacityFit) ? pair.observedCapacityFit : 'unknown',
     suitability: 'unknown'
   }));
+  const advice = projectAdvice(body);
   return {
     status: 'observations_only', generatedAt: typeof body.generatedAt === 'string' ? body.generatedAt.slice(0, 32) : null,
-    summary: 'Observations datées des sources configurées seulement; fraîcheur acceptable et couverture de sauvegarde indépendante inconnues. Comparaison de capacité pour une copie logique entière, sans réserve: aucune destination recommandée.',
+    summary: 'Observations datées des sources configurées seulement; couverture de sauvegarde indépendante inconnue. Comparaison brute de capacité pour une copie logique entière, sans réserve: aucune destination recommandée.' + (advice ? ` ${advice.summary}` : ''),
     scope: 'configured_storage_sources_only', sources, volumes,
     omittedSources: Math.max(0, body.sources.length - sources.length) + (count(body.coverage?.omittedSources) || 0),
     omittedVolumes: Math.max(0, body.volumes.length - volumes.length) + (count(body.coverage?.omittedVolumes) || 0),
     compatibility, hypothesis: 'additional_full_logical_copy_each_pair_independent_no_reserve_or_growth',
     recommendation: null, recommendationStatus: 'withheld',
     missingEvidence: Array.isArray(body.placement?.missingEvidence) ? body.placement.missingEvidence.slice(0, 8).map(label) : [],
-    wholeInstanceCoverage: 'unknown', filesystemMutationAllowed: false
+    wholeInstanceCoverage: 'unknown', filesystemMutationAllowed: false,
+    ...(advice ? { advice } : {})
   };
 }
 

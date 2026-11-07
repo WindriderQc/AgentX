@@ -58,6 +58,18 @@ test('the real catalog loads and covers core', () => {
   assert.ok(status.variables.every((v) => ['custom', 'default', 'off'].includes(v.state)));
 });
 
+test('the real storage advice policy stays private in configuration status', () => {
+  const raw = JSON.stringify({ version: 1, sources: { 'private-source': { failureDomain: 'private-domain' } } });
+  const status = buildEnvStatus({ service: 'data', env: { STORAGE_ADVICE_POLICY_JSON: raw } });
+  const policy = status.variables.find(variable => variable.name === 'STORAGE_ADVICE_POLICY_JSON');
+  assert.equal(policy.forwarded, true);
+  assert.equal(policy.set, true);
+  assert.equal(policy.secret, true);
+  assert.equal(policy.value, null);
+  assert.ok(!JSON.stringify(status).includes('private-source'));
+  assert.ok(!JSON.stringify(status).includes('private-domain'));
+});
+
 test('a documented code fallback counts as default, not as an off switch', () => {
   const catalog = { version: 1, variables: {
     UI_MODE: { services: ['core'], forwarded: true, default: null, category: 'bridges', secret: false, description: 'x', fallback: 'direct' },

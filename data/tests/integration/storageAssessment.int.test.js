@@ -15,6 +15,7 @@ const HASH = 'a'.repeat(64);
 describe('stored storage assessment (synthetic Mongo evidence)', () => {
   let client, db, app;
   const original = process.env.STORAGE_AGENT_SOURCES;
+  const originalAdvice = process.env.STORAGE_ADVICE_POLICY_JSON;
   const file = (path, scan_id, extra = {}) => ({ path, scan_id, size: 100, mtime: 10,
     sha256: HASH, hash_fingerprint: '100:10', ...extra });
   const assess = () => readStorageAssessment(db, { now: NOW });
@@ -32,8 +33,11 @@ describe('stored storage assessment (synthetic Mongo evidence)', () => {
     await client?.close();
     if (original === undefined) delete process.env.STORAGE_AGENT_SOURCES;
     else process.env.STORAGE_AGENT_SOURCES = original;
+    if (originalAdvice === undefined) delete process.env.STORAGE_ADVICE_POLICY_JSON;
+    else process.env.STORAGE_ADVICE_POLICY_JSON = originalAdvice;
   });
   beforeEach(async () => {
+    delete process.env.STORAGE_ADVICE_POLICY_JSON;
     process.env.STORAGE_AGENT_SOURCES = JSON.stringify({
       photos: { canonicalRoot: '/mnt/photos', executionCapable: false },
       archive: { canonicalRoot: '/mnt/archive', executionCapable: false },
@@ -50,6 +54,27 @@ describe('stored storage assessment (synthetic Mongo evidence)', () => {
         { source: 'archive', root: '/mnt/archive', device: '8:2', capacityBytes: 1000, freeBytes: 400, measuredAt: AT },
         { source: 'removed', root: '/mnt/removed', device: '8:3', capacityBytes: 99999, freeBytes: 99999, measuredAt: AT }
       ] });
+  });
+
+  test('HTTP assessment interprets private policy against the same native evidence and writes nothing', async () => {
+    await db.collection('nas_files').insertMany([file('/mnt/photos/a', 'photos'), file('/mnt/photos/b', 'photos')]);
+    const unconfigured = await assess();
+    const target = unconfigured.volumes.find(volume => volume.freeBytes === 400);
+    process.env.STORAGE_ADVICE_POLICY_JSON = JSON.stringify({ version: 1, maxScanAgeMs: 126000000, maxVolumeAgeMs: 126000000,
+      sources: { photos: { growthBytes: 50, requiredIndependentCopies: 1, retentionDays: 7,
+        allowedVolumeIds: [target.id], failureDomain: 'primary' } },
+      volumes: { [target.id]: { reserveBytes: 100, failureDomain: 'secondary' } } });
+    const before = await Promise.all(['nas_files', 'nas_scans', 'storage_scanners'].map(name => db.collection(name).find({}).toArray()));
+    const result = await assess();
+    expect(result.advice.placement.find(row => row.source === 'photos')).toMatchObject({ status: 'candidate_for_review',
+      evidence: { requiredFreeBytes: 350, freeBytes: 400 } });
+    expect(result.advice.copyCoverage.find(row => row.source === 'photos').evidence.independentBackupCoverage).toBe('unknown');
+    const response = await request(app).get('/storage/assessment').expect(200);
+    expect(response.body.data.advice.policyStatus).toBe('configured');
+    expect(response.body.data.advice.executionAuthorized).toBe(false);
+    await request(app).get('/storage/assessment?policy=anything').expect(400);
+    expect(await Promise.all(['nas_files', 'nas_scans', 'storage_scanners'].map(name => db.collection(name).find({}).toArray()))).toEqual(before);
+    expect(await db.listCollections().toArray()).toHaveLength(3);
   });
 
   test('counts matches across sources, never same-source duplicates or unverified rows; makes no recommendation', async () => {

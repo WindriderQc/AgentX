@@ -473,10 +473,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   Center and the Profiler label stale or missing samples as such.
   A read-only storage assessment projects existing configured-source capacity
   and SHA-256 copy observations, with dated evidence, incomplete coverage and
-  arithmetic placement compatibility. Acceptable freshness, independent backup
-  coverage and destination suitability remain unknown; recommendations are
-  withheld without the necessary evidence and policies. Core's existing storage
-  summary carries a bounded view. No scan or filesystem action runs on this read.
+  arithmetic placement compatibility. Optional explicit policy adds explained
+  reserve deficits, backup-evidence verification advice and conditional copy
+  candidates with reserve/growth, freshness, allowed-volume and declared-domain
+  checks. Missing inputs remain visible; independent backup coverage and final
+  destination suitability remain unknown. Core's existing storage summary
+  carries a bounded view. No scan or filesystem action runs on this read.
   Advisory storage triage records the metadata sample it receives, including
   action and file-entry coverage. Maintenance JSON reports retain all received
   proposals; their Markdown overview names the displayed subset.

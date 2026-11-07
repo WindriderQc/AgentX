@@ -305,6 +305,92 @@ coverage remain unknown. Core relays this read at
 `/api/data-toolbox/storage/assessment` and projects a smaller view through
 `storage_summary`; neither interface authorizes a filesystem action.
 
+### Configured storage advice
+
+The same assessment includes `advice`, a deterministic read of those observations
+against optional `STORAGE_ADVICE_POLICY_JSON`. Set it in Data's external process
+environment or the external instance env file used by Compose. The endpoint
+accepts no caller-supplied policy and saves no settings. Missing policy reports
+`policyStatus: "missing"`; malformed, oversized or unknown fields report
+`invalid` and supply no defaults. An otherwise valid partial policy stays
+usable, with each missing input named on the affected advice.
+
+This synthetic policy illustrates the shape; the values are examples, not
+recommended thresholds. Source keys match configured source IDs; volume keys
+and `allowedVolumeIds` match exact IDs returned by the assessment. Keep real
+IDs and failure-domain names outside public Git.
+Configuration status reports whether this policy is set and hides its value.
+
+```json
+{
+  "version": 1,
+  "maxScanAgeMs": 86400000,
+  "maxVolumeAgeMs": 3600000,
+  "sources": {
+    "example-source": {
+      "growthBytes": 100000000,
+      "requiredIndependentCopies": 1,
+      "retentionDays": 30,
+      "failureDomain": "example-primary",
+      "allowedVolumeIds": ["example-host:example-disk"]
+    }
+  },
+  "volumes": {
+    "example-host:example-disk": {
+      "reserveBytes": 200000000,
+      "failureDomain": "example-secondary"
+    }
+  }
+}
+```
+
+All numeric inputs are nonnegative safe integers, including explicit zero.
+`requiredIndependentCopies` excludes the original source; zero explicitly
+requires no independent copy and still certifies no backup coverage.
+`retentionDays` is the declared retention requirement; no retention is inferred
+when it is absent. `growthBytes` is the explicitly chosen growth allowance for
+this comparison, not a predicted rate or a hidden planning horizon.
+`reserveBytes` is free space to leave on the destination, not a percentage.
+Age equal to the configured maximum is acceptable by policy. These declarations
+do not certify the measurements or the physical failure domains.
+
+- `capacity` compares a sufficiently fresh volume with its configured reserve.
+  `below_reserve` advises reviewing the exact `deficitBytes`; `reserve_met`
+  indicates no capacity change on this criterion alone. Missing or stale
+  measurements withhold the conclusion and name the input to verify.
+- `copyCoverage` advises verifying independent-copy receipts, restoration and
+  retention evidence against the configured requirement. This inventory has no
+  backup-receipt consumer: even full observed hash coverage leaves independent
+  backup coverage `unknown`. Missing requirements are also explicit.
+- `placement` evaluates only explicitly allowed destinations. A
+  `candidate_for_review` advises examining an additional full logical copy
+  when the source scan is complete and fresh, the target measurement is fresh,
+  declared failure domains differ and `indexedBytes + growthBytes + reserveBytes`
+  fits the measured free space. Each candidate carries that arithmetic and both
+  observation dates. Same/overlapping source roots, equal declared failure
+  domains and insufficient space block the pair. Missing, ambiguous, omitted
+  or stale evidence stays unknown. An empty destination list explicitly allows
+  no destination. No ranking, joint allocation, deduplication or compression
+  savings are inferred. Destination access and restorable backup coverage still
+  need verification before any decision to copy.
+
+The policy is limited to 65,536 characters, 32 source rules, 64 volume rules and
+64 allowed destinations per source. Advice returns at most 64 capacity rows,
+32 copy rows and 64 placement rows in source/configuration order, with exact
+omitted-pair counts; this order is not a priority. Core's existing
+`storage_summary` projects 8 sources, 8 volumes and at most 64 advice pairs,
+removing volume IDs, mount paths and configured failure-domain names. It carries
+the reasons, missing inputs, arithmetic, dates and omitted count. Older Data
+without advice keeps the existing observation view.
+An unmeasured configured destination retains its diagnostic with `volume: null`,
+without its private ID. Known volumes beyond Core's eight-volume projection
+remain omitted and counted.
+
+Advice is conditional and `executionAuthorized` remains false. The original
+unreserved placement matrix and its withheld definitive recommendation remain
+separate observations. Reading advice never scans, copies, moves, deletes,
+changes a mount or grants cleanup permission.
+
 A scan target is an IPv4 address or an IPv4 CIDR from `/16` to `/32`; Data
 refuses anything else, and the network collector checks a queued target again
 before it runs `nmap` (its own `SCAN_CIDR` may be wider). Posted scan results
