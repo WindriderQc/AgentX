@@ -40,7 +40,8 @@ function diagnose({ surface, enabled, targets, receipts = {}, hostObservations =
   const result = (status, reason, extra = {}) => ({ surface, status, reason, ...extra });
   if (enabled === false) return result('inactive', 'review_disabled');
   if (enabled !== true || !configVersion || !targets.voice || !targets.review) return result('unknown', 'configuration_unresolved');
-  if (!same(targets.voice, targets.review)) return result('separate', 'configured_targets_differ');
+  // Different static routes do not prove where active native consumers run.
+  if (!same(targets.voice, targets.review)) return result('unknown', 'configured_targets_differ');
   const validReceipt = (row, target, task, detail) => row?.source === 'core-observed' && row.status === 'success'
     && row.consumerContract === CONTRACT && row.taskType === task && detail(row.callerDetail)
     && row.routeDecision?.configVersion === configVersion

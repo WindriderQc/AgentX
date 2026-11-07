@@ -292,8 +292,9 @@ and a fresh online host observation. Receipts and the operator's recorded
 `process-environment` or `startup-log` slot observation must be within fifteen
 minutes; the UI shows their times and window. The architecture-derived slot
 hint alone, including `no_completion`, does not qualify that warning. Missing,
-stale or native-channel evidence stays unknown, without an absence-of-contention
-claim. This diagnoses possible shared use, not measured latency or prompt-cache
+stale or native-channel evidence stays unknown. Different static targets alone
+also leave runtime sharing unverified, without an absence-of-contention claim.
+This diagnoses possible shared use, not measured latency or prompt-cache
 loss; acoustic and native-runtime qualification remain separate.
 
 ## Shared speech behavior

@@ -39,8 +39,8 @@ test.each([
   ['disabled reviewer', f => { f.enabled = false; }, 'inactive'],
   ['missing preference', f => { delete f.enabled; }, 'unknown'],
   ['unknown voice target', f => { f.targets.voice = null; }, 'unknown'],
-  ['different configured model', f => { f.targets.review = { ...target, model: 'another:1b' }; }, 'separate'],
-  ['different configured host', f => { f.targets.review = { ...target, host: 'http://other:11434' }; }, 'separate'],
+  ['different configured model', f => { f.targets.review = { ...target, model: 'another:1b' }; }, 'unknown'],
+  ['different configured host', f => { f.targets.review = { ...target, host: 'http://other:11434' }; }, 'unknown'],
   ['no receipts', f => { f.receipts = {}; }, 'unknown'],
   ['old voice receipt', f => { f.receipts.voice.timestamp = at(-WINDOW_MS - 1); }, 'unknown'],
   ['future review receipt', f => { f.receipts.review.timestamp = at(1); }, 'unknown'],
@@ -133,4 +133,16 @@ test('failed reads and concurrently changed routing stay unknown without affecti
   const result = await readVoiceReviewContention([], f);
   expect(result.surfaces.every(row => row.status === 'unknown')).toBe(true);
   expect(JSON.stringify(result)).not.toContain('private failure detail');
+});
+
+test('different configured routes without consumer receipts do not attest runtime separation', async () => {
+  const f = fixture();
+  f.targets.review = { ...target, host: 'http://another:11434' };
+  f.receipts = {}; f.hostObservations = [];
+  expect(diagnose(f)).toEqual({ surface: 'nestor', status: 'unknown', reason: 'configured_targets_differ' });
+  const reader = readerFixture();
+  reader.routing.getEffectiveTaskModels = () => ({ voice_persona_chat: { model, host: 'voice' }, household_review: { model: 'another:1b', host: 'voice' } });
+  const view = await readVoiceReviewContention([], reader);
+  expect(view.surfaces.every(row => row.status === 'unknown' && row.reason === 'configured_targets_differ')).toBe(true);
+  expect(reader.Log.findOne).not.toHaveBeenCalled();
 });
