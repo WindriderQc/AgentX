@@ -96,9 +96,9 @@ code. Missing or invalid configuration returns 2; a launch failure returns 1.
 
 The alert example is disabled and uses local logging. Preserve the live instance's
 rule IDs, delivery channels and cadence when copying its private configuration.
-Legacy `aiops-operator` authority and drift-event identity remain accepted to avoid
-duplicating existing alerts. Mongo container/database must be explicitly updated
-for the selected canonical project; the defaults match `agentx` / `agentx_product`.
+The alert protocol accepts the `aiops-operator` authority and its matching
+drift-event identity; preserving that identity avoids duplicate alerts. Mongo
+container/database must be explicitly updated for the selected canonical project; the defaults match `agentx` / `agentx_product`.
 
 For native backups, set `BACKUP_ROOT` to an external absolute directory and
 `CRITICAL_BACKUP_VOLUMES` to the existing space-separated volume list in the unit's

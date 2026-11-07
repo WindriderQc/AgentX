@@ -313,17 +313,18 @@ report. One batch is active at a time. The route has no request identity: a
 caller that loses the answer must not post again, and finds its batch through
 a tag it set.
 
-### Moving an instance to a fresh source history
+### Replacing the source checkout
 
-When a source repository starts a new history, do not merge the previous Git
-history into it. Clone the new source into a separate clean checkout, select the
-same external env/override and project name, and rebuild through the launcher.
-Coordinate the deployment with the instance owner and preserve verified backups.
-The existing Docker volumes and external configuration remain instance-owned.
+Use a separate clean checkout when replacing an instance's source checkout.
+Select the same external env/override and project name, and rebuild through the
+launcher. Coordinate the deployment with the instance owner and preserve
+verified backups. Docker volumes and external configuration remain
+instance-owned; replacing source does not copy or reset application data.
 Keep private sound packs in the external read-only mount described in
-[installation](INSTALLATION.md#private-sound-packs). Old issue/PR references
-belong to the prior private archive; reconcile active delivery references in
-instance configuration before resuming an automated worker.
+[installation](INSTALLATION.md#private-sound-packs). Validate active delivery
+references in instance configuration before resuming an automated worker.
+When the source Git lineage differs, keep the checkouts separate rather than
+merging their histories.
 
 ### Updating a running instance
 

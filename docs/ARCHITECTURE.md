@@ -1,6 +1,6 @@
 # Architecture
 
-See [private LAN access and migration](PARENTAL_ACCESS.md) and the illustrated
+See [private LAN access](PARENTAL_ACCESS.md) and the illustrated
 [local voice ID proposal](VOICE_ID.md). Human access has no account or code;
 voice identity is not implemented.
 

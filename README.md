@@ -1,55 +1,23 @@
 # AgentX
 
-AgentX is a local AI platform that brings conversation, memory, documents,
-tools, tasks and model evaluation together. Chat with Ollama models, search
-your documents and compare model quality in one place.
+AgentX is a local AI platform for conversation, memory, document search, tools,
+tasks and model evaluation. **Nestor** is the personal assistant;
+**Household** is the family interface. Both use Core's shared capabilities.
 
-**Nestor is the personal assistant; Household is the family interface.** Both
-use Core's shared capabilities. Other deployments use the same repository with
-the capabilities they enable.
-
-The common home at `/` offers Personnel, Famille and Atelier in the full profile.
-The same navigation connects surfaces and services, with system tools behind
-Système. The demo profile shows only its enabled capabilities.
-
-One repository contains several Node.js/Express services, each with its own
-dependencies and tests. Docker Compose runs them together through one launcher.
-
-| Directory | Role | When to work here |
-| --- | --- | --- |
-| [`core/`](core/) | APIs, interfaces, conversations, model routing, tasks, memory and attachments | Shared capabilities and user-facing behavior |
-| [`benchmark/`](benchmark/) | Evaluation, scoring, leaderboards and model profiling | Measuring model quality and performance |
-| [`rag/`](rag/) | Document ingestion, chunking, embeddings and retrieval | Finding knowledge useful to an answer |
-| [`data/`](data/) | Optional inventory and telemetry service | Collectors and system observations |
-| [`shared/`](shared/) | Contracts, utilities and shared test infrastructure | Code used by multiple services |
-| [`integrations/`](integrations/) | Adapters for OpenClaw, voice, operations and external tools | Connecting an external system |
-| [`skills/`](skills/) | Portable content authoring and validation capabilities, and the `agentx` skill agents install, served by Core at `/api/operator-skill/download` | Capabilities consumers invoke explicitly |
-
-**Core owns the canonical application data and shared capabilities.** Interfaces
-compose them; external integrations call them. A new interface uses Core's
-conversation and task storage rather than creating its own.
-
-MongoDB stores application data, Qdrant provides vector search, and Ollama serves
-the configured models. AgentX runs locally or on a private network. See
-[status](docs/STATUS.md) for available features and outstanding acceptance.
-The [agents, personalities and voice reference](docs/AGENTS_AND_VOICE.md)
-explains selection, execution attribution, speech fallback and qualification.
-
-[Local long transcriptions](docs/LOCAL_TRANSCRIPTIONS.md) adds URL intake, scheduled
-resource-aware execution and a searchable timestamped library in the full profile.
-It reuses the existing local speech service and is opt-in.
+Node.js/Express services run through Docker Compose, with MongoDB for application
+data, Qdrant for vector search and Ollama for local models. AgentX runs on your
+computer or private network.
 
 ## Start locally
 
-You need Git and Docker with Compose v2. Start Docker, then clone the repository:
+Install Git and Docker with Compose v2, then start Docker and clone AgentX:
 
 ```bash
 git clone https://github.com/WindriderQc/AgentX.git
 cd AgentX
 ```
 
-On Linux, start AgentX and its isolated Docker Ollama, then download one small
-chat model explicitly:
+On Linux:
 
 ```bash
 ./agentx doctor
@@ -68,41 +36,54 @@ On Windows, use PowerShell:
 ```
 
 Open http://127.0.0.1:3180/, select the downloaded model in the Playground,
-and send your first message. This Docker Ollama setup runs on CPU by default;
-GPU acceleration is optional. Node.js 24 or newer is needed for development,
-not for this Docker installation.
+and send a message. Docker Ollama runs on CPU by default; GPU acceleration is
+optional. No model is downloaded automatically.
 
-**[Installation guide](docs/INSTALLATION.md)** covers native Ollama, GPU setup,
-document retrieval, Windows and troubleshooting. Already have an Ollama server?
-Configure `AGENTX_OLLAMA_HOST` and use `up --build` instead of `ollama-up`.
-You can also start with `up --build` to explore the interface before installing
-any model. No model is downloaded automatically.
+The [installation guide](docs/INSTALLATION.md) covers native Ollama, GPU setup,
+document retrieval, Windows and troubleshooting. To use an existing Ollama
+server, configure `AGENTX_OLLAMA_HOST` and start with `up --build` instead of
+`ollama-up`. You can also use `up --build` to explore before installing a model.
 
-The default `demo` profile includes chat, Ollama discovery, RAG and Benchmark.
-The `full` profile adds Nestor, Household and operational surfaces; Data is
-optional. Neither profile imports personal data or installs a private integration.
-See the guide before enabling family access or private content.
-[Personalization and private data](docs/INSTALLATION.md#personalize-your-instance-and-manage-private-data)
-explains instance settings, storage, backups and cleanup.
+## Choose your capabilities
 
-## Explore the code
+| Profile | Included capabilities |
+| --- | --- |
+| `demo` (default) | Chat, Ollama discovery, RAG and Benchmark |
+| `full` | Adds Nestor, Household and operational surfaces |
 
-Start with these entry points:
+Data is an optional inventory and telemetry service. Profiles enable capabilities
+without importing personal data or installing private integrations. The full
+profile groups navigation into Personnel, Famille and Atelier, with system tools
+under Système. See [available features and acceptance](docs/STATUS.md).
 
-- [`core/server.js`](core/server.js): startup, MongoDB connection, initialization and shutdown.
-- [`core/src/app.js`](core/src/app.js): Express application and middleware assembly.
-- [`core/routes/chat.js`](core/routes/chat.js) and [`chatService.js`](core/src/services/chatService.js): chat API and orchestration.
-- [`core/models/`](core/models/) and [`core/src/services/`](core/src/services/): persisted models and application logic.
-- [`core/surfaces/`](core/surfaces/): specialized interfaces, including Household and PsyX.
-- [`core/public/`](core/public/) and each surface's `public/` directory: browser JavaScript and styles.
+Keep instance settings and personal content outside Git. Configure the
+[private LAN HTTPS gateway](docs/PARENTAL_ACCESS.md) before access from other
+devices. Human pages and APIs have no account or adult code: anyone reaching an
+entry can use its human capabilities. Native integration credentials and family
+memory/tool boundaries remain separate. See [personalization, storage and
+backups](docs/INSTALLATION.md#personalize-your-instance-and-manage-private-data)
+and [security](SECURITY.md).
 
-Follow **interface → HTTP route → service → storage or external service**, then
-read the corresponding tests. For surface conversations, see
-[`surfaceConversationService.js`](core/src/services/surfaceConversationService.js);
-for attachments, see
-[`conversationAttachmentService.js`](core/src/services/conversationAttachmentService.js).
+## Project layout
+
+| Directory | Responsibility |
+| --- | --- |
+| [`core/`](core/) | Shared APIs, interfaces, conversations, routing, tasks, memory and attachments |
+| [`benchmark/`](benchmark/) | Model evaluation, scoring, comparisons and profiling |
+| [`rag/`](rag/) | Document ingestion, chunking, embeddings and retrieval |
+| [`data/`](data/) | Optional inventory, collectors and telemetry |
+| [`shared/`](shared/) | Cross-service contracts, utilities and test infrastructure |
+| [`integrations/`](integrations/) | Adapters for external runtimes, voice and operations |
+| [`skills/`](skills/) | Portable capabilities and the installable `agentx` skill |
+
+Core owns canonical application data and shared capabilities. Interfaces compose
+them; external runtimes call them. Follow **interface → route → service → storage**
+when exploring the code. Start at [`core/src/app.js`](core/src/app.js),
+[`core/routes/`](core/routes/) and [`core/src/services/`](core/src/services/).
 
 ## Develop and verify
+
+Development requires Node.js 24 or newer. From the repository root:
 
 ```bash
 npm run setup
@@ -114,40 +95,17 @@ npm run build
 npm run check:compose
 ```
 
-Tests use disposable local MongoDB, never a production database. Mongo preparation
-may download its test binary. `npm run test:nodb` is a useful pure subset, not a
-replacement for the full suites. Passing tests validate code; they do not prove
-a successful deployment or real-phone behavior. Details:
-[operations](docs/OPERATIONS.md).
+Tests use disposable local MongoDB; preparation may download its test binary.
+`npm run test:nodb` runs a pure subset and does not replace the full suites.
+Passing code tests, container checks, deployment and real-device acceptance are
+separate results.
 
-Before contributing, read this README, [Status](docs/STATUS.md),
-[Architecture](docs/ARCHITECTURE.md) and [Operations](docs/OPERATIONS.md), in that
-order. Preserve personal, family and child access boundaries and the existing
-stack. Record modernization proposals in [MODERNIZATION.md](MODERNIZATION.md).
+Before contributing, read [Contributing](CONTRIBUTING.md), [Status](docs/STATUS.md),
+[Architecture](docs/ARCHITECTURE.md), [Operations](docs/OPERATIONS.md) and
+[AGENTS.md](AGENTS.md). The [architecture decisions](docs/adr/0001-one-repository.md)
+define shared ownership and instance boundaries. Track modernization proposals in
+[MODERNIZATION.md](MODERNIZATION.md).
 
-Human pages and APIs use [private LAN HTTPS](docs/PARENTAL_ACCESS.md) without
-an account or adult code; anyone reaching an entry can use human capabilities.
-Native integration tokens and family memory/tool boundaries remain separate.
-[Local voice identification](docs/VOICE_ID.md) is a proposed next step, not delivered.
-
-See [execution sources](docs/EXECUTION_SOURCES.md) for local direct and OpenClaw model/agent execution.
-
-AgentX runs locally or on your LAN. Keep runtime secrets, instance configuration
-and personal content outside Git. The code is [MIT licensed](LICENSE); bundled
-animal sounds retain their [individual licences](core/surfaces/household/public/sounds/CREDITS.md),
-and the Data Toolbox world map geometry [its own](core/surfaces/data-toolbox/public/geo/CREDITS.md).
-
-[Status](docs/STATUS.md) · [Architecture](docs/ARCHITECTURE.md) ·
-[Operations](docs/OPERATIONS.md) · [Decisions](docs/adr/0001-one-repository.md) ·
-[Modernization candidates](MODERNIZATION.md)
-
-[Analytics](docs/ANALYTICS.md) explains recorded activity, comparisons and live GPU evidence.
-[Operational screens](docs/OPERATOR_UI.md) explains Pipeline admission conditions,
-Nerve Center GPU residency and Profiler runtime continuity, with links to their
-operator procedures.
-[Work lifecycle](docs/WORK_LIFECYCLE.md) explains when to use personal tasks,
-Pipeline, GitHub issues and resource requests, and how to interpret their outcomes.
-
-The existing information levels are reused across Core and RAG. Personal Nestor
-is intended to consult the owner's full information; family/child surfaces keep
-their existing restrictions. [Decision and implementation limits](docs/adr/0002-memory-access.md).
+The code is [MIT licensed](LICENSE). Bundled animal sounds retain their
+[individual licences](core/surfaces/household/public/sounds/CREDITS.md), and the
+Data Toolbox map geometry [its own](core/surfaces/data-toolbox/public/geo/CREDITS.md).

@@ -41,8 +41,8 @@ and docs/OPERATIONS.md before changing architecture.
   Ordinary isolated CPU unit tests/checks/builds stay direct.
 - Keep commits in English and responses to the owner in French. One clear change
   per commit. Never rewrite ax/ Modelfiles or benchmarked num_ctx values.
-- aiOPs and AgentX-Ecosystem are archived references. Do not edit them to implement
-  new AgentX functionality. Historical governance is not imported here.
+- Implement product changes in this repository. Instance repositories contain
+  configuration, runbooks and private assets, not product code or governance.
 - Describe the system in the present tense. docs/STATUS.md is rewritten, never
   appended to; dated receipts and evidence stay outside Git. Track open work as
   issues, not as prose in documents.

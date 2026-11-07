@@ -1,35 +1,32 @@
 # ADR 0001: one canonical AgentX repository
 
-Accepted by the owner on 2026-09-16.
+## Product source
 
-AgentX receives a new Git history. aiOPs and AgentX-Ecosystem remain archived
-references; their former product/operations split is superseded.
-Reusable capabilities and environment integrations live in the same codebase;
-distribution is configured through profiles/capabilities. Personal content,
-secrets and concrete machine configuration remain outside Git.
+AgentX keeps reusable capabilities and environment integrations in one codebase.
+Profiles and capabilities configure which services and surfaces an instance uses.
+Core owns shared business capabilities and canonical application data; surfaces
+and external runtimes compose or call them.
 
-Preserve the current functional stack. Remove obsolete compatibility only when
-consumer absence or a tested replacement is established. Unknown product or
-capability decisions go to the owner, in grouped questions.
+The stack is Node.js/Express, MongoDB, Qdrant, Ollama and Docker. Modernization
+proposals belong in `MODERNIZATION.md`. Remove compatibility only when consumer
+absence or a tested replacement is established. Ask the owner about unknowns
+that affect keeping, deleting or merging a capability or changing behavior.
 
-The former aiOPs, AgentX-Ecosystem and standalone Core/RAG/Benchmark/Data
-repositories were archived on 2026-09-21, not deleted. Complete verified bundles
-of their refs are kept outside Git. Archiving does not mean every old proposal
-shipped; selected ones are tracked as AgentX issues.
+Source publication requires checking the source tree, reachable Git objects and
+repository metadata. Public source visibility does not expose a runtime: the
+application is intended for local or private-LAN use.
 
-Source publication requires an audit of current files, history and repository
-metadata. Public source visibility does not expose a runtime.
+## Private instance configuration
 
-## Amendment: private instance repository
+An instance owner may keep a private instance repository beside the product
+checkout. It holds configuration templates without secret values, external
+harness settings, operating runbooks, service units, private assets and private
+work tracking. Personal content, transcripts, memory stores, machine inventories,
+generated reports, backups and runtime data stay outside the product repository.
+Secret values stay outside Git entirely.
 
-Accepted by the owner on 2026-10-02.
-
-An instance owner may keep a private instance repository beside this one. It
-holds that instance's configuration templates without secret values, external
-harness configuration, operating runbooks, service units, private assets (for
-example a licensed sound pack) and the private tracking of personal work. It
-holds no product code and is not a fork: a capability the instance needs is
-added here behind a profile or capability, and the instance deploys a chosen
-revision of this repository. Secret values stay on the host. External harnesses
-may read the instance repository and act through Core's bounded actions; they
-do not own it.
+An instance repository holds no product code and is not a product fork. A
+capability an instance needs is implemented in AgentX behind a profile or
+capability, and the instance deploys a chosen product revision. External
+harnesses may read instance settings and act through Core's bounded capabilities;
+they do not own the product or its canonical data.
