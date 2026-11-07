@@ -27,6 +27,7 @@
 const {
   FIXTURE_VERSION,
   HARNESS_VERSION,
+  TOOL_USE_INSTRUCTIONS,
   TOOLBOX_V1,
   SCENARIOS_V1,
   fixtureFingerprint,
@@ -54,7 +55,10 @@ function toolsForScenario(scenario) {
  */
 async function runScenario(transport, scenario) {
   const executor = createMockToolExecutor(scenario);
-  const messages = [{ role: 'user', content: scenario.prompt }];
+  const messages = [
+    { role: 'system', content: TOOL_USE_INSTRUCTIONS },
+    { role: 'user', content: scenario.prompt }
+  ];
   const calls = [];
   let finalText = null;
   let toolSupport = true;
