@@ -54,3 +54,18 @@ test('replacement validity and history requests cross the Core-to-RAG boundary u
   await client.searchSimilarChunks('Synthetic', {});
   expect(JSON.parse(fetch.mock.calls[2][1].body).includeHistory).toBeUndefined();
 });
+
+test('replacement creation and removal carry the original key to the RAG owner primitive', async () => {
+  fetch.mockResolvedValue({ ok: true, text: async () => JSON.stringify({ ok: true, data: { status: 'unchanged' } }) });
+  const client = new RagServiceClient();
+  const body = { key: 'memory-review:synthetic:one', text: 'Synthetic fact', source: 'nestor-memory',
+    scope: 'owner', sensitivity: 'private', validFrom: null, sourceRefs: [] };
+  await client.createReplacementDocument('successor/one', body);
+  expect(fetch.mock.calls[0][0]).toMatch(/\/documents\/successor%2Fone\/replacement$/);
+  expect(fetch.mock.calls[0][1].method).toBe('POST');
+  expect(JSON.parse(fetch.mock.calls[0][1].body)).toEqual(body);
+  await client.deleteReplacementDocument('successor/one', body.key);
+  expect(fetch.mock.calls[1][0]).toBe(fetch.mock.calls[0][0]);
+  expect(fetch.mock.calls[1][1].method).toBe('DELETE');
+  expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ key: body.key });
+});

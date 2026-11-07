@@ -105,7 +105,17 @@ the unchanged successor; a successor that was itself replaced refuses restore.
 Unlike notes, the successor is visible from its write until the link a moment
 later, so both can briefly appear current. When another write changes the
 predecessor before the link, the apply removes its own unlinked successor and
-fails; a retry finishes an interrupted removal.
+fails; a retry finishes an interrupted removal. RAG's create/resume primitive
+stores the initial write key, exact payload fingerprint and native revision in
+that first write, before acknowledging it. An existing successor is never
+rewritten by a retry. Cleanup and restore use RAG's conditional removal primitive;
+Qdrant deletes only points matching the initial proof and native revision in one
+storage predicate. A content, label, provenance, validity or other metadata edit
+retires this proof. Changed, re-ingested, mixed-revision or legacy successors
+without proof remain stored and require reconciliation under the original review
+key. A restore interrupted after clearing predecessor validity can therefore
+leave both documents current when the successor was edited; its failed result
+remains visible for reconciliation. The proof adds no review or run authority.
 
 The synthetic tests cover filtering of owner versus harness/tool content,
 secret sanitation, bounded/resumable collection, API retries, idempotent watermarks,

@@ -40,3 +40,30 @@ test('the document read reports an incomplete native revision instead of confirm
   const read = await request(app).get('/api/rag/documents/fact-a').expect(200);
   expect(read.body.data.metadata.mixedRevision).toBe(true);
 });
+
+test('the replacement routes resume the initial write and refuse removal after an edit', async () => {
+  const body = { key: 'memory-review:synthetic:one', text: 'Synthetic successor', source: 'nestor-memory',
+    scope: 'owner', sensitivity: 'private', validFrom: null, sourceRefs: [] };
+  const path = '/api/rag/documents/fact-b/replacement';
+  await request(app).post(path).send(body).expect(200);
+  const read = await request(app).get('/api/rag/documents/fact-b').expect(200);
+  expect(read.body.data.metadata).toMatchObject({ replacementWrite: { key: body.key,
+    fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/), revision: expect.any(String) }, replacementUnchanged: true });
+  expect((await request(app).post(path).send(body).expect(200)).body.data.status).toBe('unchanged');
+  await request(app).delete(path).send({ key: 'wrong' }).expect(409);
+  await mockState.store.upsertDocumentWithChunks('Synthetic edited successor', { documentId: 'fact-b', source: 'nestor-memory' });
+  await request(app).post(path).send(body).expect(409);
+  await request(app).delete(path).send({ key: body.key }).expect(409);
+  expect((await request(app).get('/api/rag/documents/fact-b').expect(200)).body.data.metadata.replacementUnchanged).toBe(false);
+  await request(app).delete(path).send({}).expect(400);
+  await request(app).post(path).send({ ...body, scope: 'household' }).expect(400);
+});
+
+test('conditional removal is idempotent after an absent result', async () => {
+  const body = { key: 'memory-review:synthetic:two', text: 'Synthetic successor', source: 'nestor-memory',
+    scope: 'owner', sensitivity: 'private', validFrom: null, sourceRefs: [] };
+  const path = '/api/rag/documents/fact-b/replacement';
+  await request(app).post(path).send(body).expect(200);
+  expect((await request(app).delete(path).send({ key: body.key }).expect(200)).body.data.status).toBe('removed');
+  expect((await request(app).delete(path).send({ key: body.key }).expect(200)).body.data.status).toBe('absent');
+});

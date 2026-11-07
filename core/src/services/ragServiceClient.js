@@ -104,6 +104,16 @@ class RagServiceClient {
     return payload?.data || payload;
   }
 
+  async createReplacementDocument(documentId, input) {
+    const payload = await callRagService('POST', `/api/rag/documents/${encodeURIComponent(documentId)}/replacement`, { body: input });
+    return payload?.data || payload;
+  }
+
+  async deleteReplacementDocument(documentId, key) {
+    const payload = await callRagService('DELETE', `/api/rag/documents/${encodeURIComponent(documentId)}/replacement`, { body: { key } });
+    return payload?.data || payload;
+  }
+
   async setDocumentValidity(documentId, { invalidatedAt, supersededBy, expectedFingerprint }) {
     const payload = await callRagService('POST', `/api/rag/documents/${encodeURIComponent(documentId)}/validity`, {
       body: { invalidatedAt, supersededBy, expectedFingerprint }

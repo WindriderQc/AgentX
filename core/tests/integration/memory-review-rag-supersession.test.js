@@ -1,38 +1,6 @@
 'use strict';
 
-const { createHash: hashOf } = require('node:crypto');
-// A faithful in-memory RAG boundary: reads expose a revision fingerprint, and
-// validity writes refuse a changed document exactly like the RAG service.
-function fakeRag(hits = []) {
-  const docs = new Map(), calls = [];
-  const notFound = () => Object.assign(new Error('RAG returned 404: Document not found'), { status: 404 });
-  const fingerprint = doc => hashOf('sha256').update(JSON.stringify(doc)).digest('hex');
-  const view = doc => ({ documentId: doc.documentId, source: doc.source,
-    metadata: { ...doc.metadata, revisionFingerprint: fingerprint(doc) } });
-  return { docs, calls,
-    seed(documentId, text, metadata, source = 'nestor-memory') {
-      docs.set(documentId, { documentId, source, text, metadata: { scope: 'owner', sensitivity: 'private', validFrom: null,
-        sourceRefs: [], invalidatedAt: null, supersededBy: null, ...metadata } });
-    },
-    async getDocument(id) { calls.push(['get', id]); const doc = docs.get(id); if (!doc) throw notFound(); return view(doc); },
-    async getDocumentChunks(id) { const doc = docs.get(id); if (!doc) throw notFound(); return { documentId: id, chunks: [{ chunkIndex: 0, text: doc.text }] }; },
-    async upsertDocumentWithChunks(text, m) {
-      calls.push(['upsert', m.documentId]);
-      docs.set(m.documentId, { documentId: m.documentId, source: m.source, text, metadata: { scope: m.scope, sensitivity: m.sensitivity,
-        validFrom: m.validFrom || null, sourceRefs: m.sourceRefs || [], invalidatedAt: null, supersededBy: null } });
-      return { documentId: m.documentId, status: 'created' };
-    },
-    async setDocumentValidity(id, { invalidatedAt, supersededBy, expectedFingerprint }) {
-      calls.push(['validity', id, supersededBy]);
-      const doc = docs.get(id); if (!doc) throw notFound();
-      if (fingerprint(doc) !== expectedFingerprint) throw Object.assign(new Error('RAG returned 409: The document changed after review'), { status: 409 });
-      doc.metadata = { ...doc.metadata, invalidatedAt, supersededBy };
-      return { documentId: id };
-    },
-    async deleteDocument(id) { calls.push(['delete', id]); if (!docs.delete(id)) throw notFound(); return { documentId: id }; },
-    async searchSimilarChunks() { return hits; },
-  };
-}
+const { fakeRag } = require('../helpers/fakeReplacementRag');
 
 const mockRag = fakeRag([{ text: 'Synthetic backup runs on host A', score: 0.99, metadata: { documentId: 'rag-backup-a', source: 'nestor-memory' } }]);
 jest.mock('../../src/services/ragServiceClient', () => ({ getRagServiceClient: () => mockRag }));
@@ -118,4 +86,18 @@ test('a RAG source edited after review fails application without a successor', a
   await request(app).post(path + '/apply').send({}).expect(502);
   expect((await Run.findOne({ runId: 'synthetic-rag-replacement-run' }).lean()).candidates[0].status).toBe('apply_failed');
   expect(mockRag.calls.some(([op]) => op === 'upsert')).toBe(false);
+});
+
+test('restore reports reconciliation and preserves an edited successor under the original candidate', async () => {
+  const { path } = await reviewed();
+  const applied = await request(app).post(path + '/apply').send({}).expect(200);
+  const successor = ragReplacementSuccessorFor(`memory-review:synthetic-rag-replacement-run:${applied.body.data.candidateId}`);
+  mockRag.docs.get(successor).text = 'Synthetic independently edited successor';
+  const result = await request(app).post(path + '/rollback').send({}).expect(200);
+  expect(result.body.data).toMatchObject({ status: 'rollback_failed', result: expect.stringMatching(/reconcile/) });
+  expect((await Run.findOne({ runId: 'synthetic-rag-replacement-run' }).lean()).candidates[0]).toMatchObject({
+    status: 'rollback_failed', rollback: { result: expect.stringMatching(/reconcile/) }
+  });
+  expect(mockRag.docs.get(successor).text).toBe('Synthetic independently edited successor');
+  expect(mockRag.docs.get('rag-backup-a').metadata.supersededBy).toBe(successor);
 });

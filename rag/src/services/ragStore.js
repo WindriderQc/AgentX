@@ -25,6 +25,7 @@ const { keywordSearch } = require('./keywordSearch');
 const { rerankResults } = require('./reranker');
 const { getCompressionService } = require('./ragCompression');
 const { revisionFingerprint } = require('./documentRevision');
+const { createReplacement, deleteReplacement, writeReceipt } = require('./replacementDocument');
 const {
   MARKDOWN_FORMAT,
   chunkMarkdownNote,
@@ -188,7 +189,7 @@ class RagStore {
     }
   }
 
-  async _upsertDocumentWithIdentity(text, metadata, identity) {
+  async _upsertDocumentWithIdentity(text, metadata, identity, replacementKey = null) {
     const documentId = metadata.documentId || identity.documentId;
     const chunkSize = metadata.chunkSize ?? this.defaultChunkSize;
     const chunkOverlap = metadata.chunkOverlap ?? this.defaultChunkOverlap;
@@ -227,7 +228,13 @@ class RagStore {
     // A document stored before it was read as Markdown keeps its old flat
     // chunks until it is re-chunked, even when its content hash is unchanged.
     const sameFormat = !existing || (existing.format || null) === (metadata.format || null);
-    if (existing && sameClassification && sameFormat && sameFact && metadata.forceReindex !== true) {
+    // Receipt-bearing writes cover these fields too. A requested metadata
+    // edit must not take the content-dedup shortcut and retain ownership.
+    const sameReplacementMetadata = !existing?.replacementWrite || (existing.source === identity.source
+      && JSON.stringify(existing.tags || []) === JSON.stringify(metadata.tags || [])
+      && existing.chunkSize === chunkSize && existing.chunkOverlap === chunkOverlap
+      && (existing.hash || null) === (metadata.hash || null));
+    if (existing && sameClassification && sameFormat && sameFact && sameReplacementMetadata && metadata.forceReindex !== true) {
       await this._backfillOriginalTextIfMissing(existing, identity, text);
       const result = await this._unchangedResult(existing, documentId);
       logger.info(`Document "${documentId}" unchanged (canonical source/content match) — skipping ingestion`, {
@@ -257,7 +264,7 @@ class RagStore {
       chunkIndex: i
     }));
 
-    const result = await this.vectorStore.upsertDocument(documentId, {
+    const payload = {
       source: identity.source,
       ...classification,
       ...fact,
@@ -280,7 +287,12 @@ class RagStore {
       identityVersion: identity.identityVersion,
       chunkSize,
       chunkOverlap
-    }, chunks);
+    };
+    // Only the create/resume primitive may stamp ownership. Normal edits and
+    // validity rewrites drop it, even if they reproduce the original content.
+    if (replacementKey) payload.replacementWrite = writeReceipt(documentId, payload, replacementKey);
+    const result = await this.vectorStore.upsertDocument(documentId, payload, chunks,
+      replacementKey ? { initialReplacementRevision: payload.replacementWrite.revision } : {});
 
     // Persist original (pre-chunking) text so reindex can re-chunk from
     // source-of-truth instead of joining overlapping chunks (which would
@@ -513,6 +525,16 @@ class RagStore {
   async deleteDocument(documentId) {
     if (!this.writeGuard) return this.vectorStore.deleteDocument(documentId);
     return this.writeGuard.run(this, () => this.vectorStore.deleteDocument(documentId));
+  }
+
+  async createReplacementDocument(documentId, input) {
+    const write = () => createReplacement(this, documentId, input);
+    return this.writeGuard ? this.writeGuard.run(this, write) : write();
+  }
+
+  async deleteReplacementDocument(documentId, input) {
+    const write = () => deleteReplacement(this, documentId, input);
+    return this.writeGuard ? this.writeGuard.run(this, write) : write();
   }
 
   /**
