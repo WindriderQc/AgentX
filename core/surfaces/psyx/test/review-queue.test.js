@@ -90,10 +90,15 @@ test('startup excludes legacy and disabled replies, then resumes only explicitly
   const h = setup();
   for (let i = 0; i < 80; i++) h.append('legacy-' + i, { enrolled: null });
   h.append('disabled', { enrolled: false });
+  const oldTarget = replyTarget('c', h.messages.slice(0, 2));
+  await h.repository.recordReview('u', { conversationId: 'c', supervision: supervisionNote(
+    JSON.parse(syntheticReply(oldTarget).content).supervision,
+    { target: oldTarget, reply: h.messages[1].content, promptVersion: 3 }) });
   const reviewer = createReviewer(h.options);
   h.repository.dreamUserIds = async () => ['u'];
   await reviewer.scan();
   assert.equal(h.calls.length, 0);
+  assert.equal((await reviewer.inspect('u', 'c')).coverage.retainedModelCritiques, 0);
   h.append('current');
   await reviewer.scan();
   await drain(reviewer);
@@ -105,6 +110,8 @@ test('startup excludes legacy and disabled replies, then resumes only explicitly
   const report = await reviewer.inspect('u', 'c');
   assert.equal(report.coverage.eligibleReplies, 1);
   assert.equal(report.coverage.excludedReplies, 81);
+  assert.equal(report.coverage.retainedModelCritiques, 1);
+  assert.equal((await h.repository.read('u')).supervisionSummary.replies, 2, 'the retained note window stays distinct from enrollment coverage');
   reviewer.stop();
   const restarted = createReviewer(h.options);
   await restarted.scan();
@@ -228,6 +235,7 @@ test('a proven pre-dispatch refusal defers the same target and identity without 
   const resumedIds = [];
   h.repository.claimReview = async (...args) => { const result = await claim(...args); if (result.work) resumedIds.push(result.work.requestId); return result; };
   assert.equal((await reviewer.inspect('u', 'c')).status, 'queued');
+  assert.equal((await reviewer.inspect('u', 'c')).error, 'RUNTIME_INFERENCE_ADMISSION_DENIED');
   reviewer.stop();
   const restarted = createReviewer(h.options);
   restarted.schedule('u', 'c');
@@ -235,6 +243,9 @@ test('a proven pre-dispatch refusal defers the same target and identity without 
   assert.deepEqual(h.calls.map(call => call.target.replyId), ['a', 'a', 'b']);
   assert.equal((await h.repository.read('u')).reviewProgress.c.active, null);
   assert.equal((await h.repository.read('u')).supervisionNotes.length, 2);
+  assert.equal(h.calls[0].request.requestId, requestId);
+  assert.equal(h.calls[1].request.requestId, requestId);
+  assert.notEqual(h.calls[2].request.requestId, requestId);
   assert.equal(resumedIds[0], requestId);
   assert.notEqual(resumedIds[1], requestId);
   restarted.stop();

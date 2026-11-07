@@ -52,7 +52,7 @@ test('turns completing during a review each receive a separate ordered review', 
   await tick(20);
   assert.equal(calls.complete.length, 3, 'one review per canonical reply, including both later replies');
   const status = reviewer.status('u', 'c');
-  assert.equal(status.status, 'done');
+  assert.equal(status.status, 'failed', 'a digest without supervision does not pretend to be a successful critique');
   assert.equal(status.lastAdded, 1, 'only the latest review adds its pending proposal');
   assert.equal((await stateRepository.read('u')).proposals.length, 1);
   assert.equal(calls.recorded[0].conversationId, 'c');

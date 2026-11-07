@@ -28,7 +28,9 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
   }
 
   function coverage(current) {
-    const notes = (current.state.supervisionNotes || []).filter(note => note.conversationId === current.targets[0]?.conversationId);
+    const enrolledIds = new Set(current.targets.map(target => target.replyId));
+    const notes = (current.state.supervisionNotes || []).filter(note => note.conversationId === current.targets[0]?.conversationId
+      && enrolledIds.has(note.replyId));
     return { scope: 'explicitly_enrolled_replies_in_current_reset_epoch', eligibleReplies: current.targets.length,
       settledReviewAttempts: current.targets.length - current.pending.length, pendingReplies: current.pending.length,
       retainedNotes: notes.length, retainedModelCritiques: notes.filter(note => note.modelReview.status === 'available').length,
@@ -90,16 +92,18 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
     runningRequests.add(work.requestId);
     try {
       const result = await provider.complete({
+        requestId: work.requestId,
         messages: reviewMessages({ state: settings ? require('../../../src/services/conversationPreferences/catalog').selectPsyxState(current.state, settings.values) : current.state,
           turns: selected, target, coverage: included, maxCharacters: Math.max(24000, prefix.at(-1).content.length) }),
         taskType: config.review?.taskType || 'deep_reasoning', timeoutMs: config.requestTimeoutMs, location: locationFor(current.state)
       });
       const review = readReview(result?.content, { conversationId, settled: current.state.settledProposals,
         openExperimentIds: current.state.experiments.filter(item => ['planned', 'active'].includes(item.status)).map(item => item.id) });
-      const output = { digest: review?.digest || null, proposals: review?.proposals || [],
-        supervision: supervisionNote(review ? review.supervision : {}, { target, reply: prefix.at(-1).content,
-          model: result?.model, promptVersion: REVIEW_PROMPT_VERSION, coverage: included }),
-        error: review ? null : 'PSYX_REVIEW_UNUSABLE' };
+      const note = supervisionNote(review ? review.supervision : {}, { target, reply: prefix.at(-1).content,
+        model: result?.model, promptVersion: REVIEW_PROMPT_VERSION, coverage: included });
+      const output = { digest: review?.digest || null, proposals: review?.proposals || [], supervision: note,
+        error: !review ? 'PSYX_REVIEW_UNUSABLE' : note.modelReview.status === 'available'
+          ? null : 'PSYX_SUPERVISION_' + note.modelReview.status.toUpperCase() };
       const saved = await stateRepository.saveReviewResult(userId, { work, output });
       if (saved.skipped && saved.skipped !== 'duplicate') return { skipped: saved.skipped };
       return project(userId, conversationId, saved.work);
@@ -191,6 +195,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
     return { ...report,
       ...(!work && !current.pending.length && report.status === 'uncertain' ? { status: 'done', error: null } : {}),
       ...((work?.phase === 'waiting' || work?.phase === 'result_ready') ? { status: 'queued' } : {}),
+      ...(work?.phase === 'waiting' ? { error: work.error, retryAt: work.retryAt } : {}),
       ...(work && !runningRequests.has(work.requestId) && !['result_ready', 'waiting'].includes(work.phase)
       ? { status: 'uncertain', error: work.error || 'PSYX_REVIEW_EXECUTION_UNKNOWN' } : {}), coverage: coverage(current),
       ...(work ? { requestId: work.requestId, target: work.target, execution: work.phase } : {}) };

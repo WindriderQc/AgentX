@@ -209,7 +209,7 @@ test('unusable or missing supervision is retained explicitly without inventing m
     const status = await settled(reviewer);
     assert.equal(h.recorded.length, 1);
     assert.equal(h.recorded[0].supervision.modelReview.status, content.includes('Digest only') ? 'missing' : 'invalid');
-    assert.equal(status.status, content === 'not json' ? 'failed' : 'done');
+    assert.equal(status.status, 'failed');
     reviewer.forgetUser('u');
   }
 });

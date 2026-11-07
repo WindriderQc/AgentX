@@ -241,3 +241,14 @@ test('only a proven local pre-dispatch refusal permits the review scheduler to d
   await assert.rejects(cloud.complete({ messages: [{ role: 'system', content: 'Synthetic' }], location: 'frontier' }),
     error => error.reviewNotDispatched !== true, 'a local refusal does not prove the earlier cloud call was never dispatched');
 });
+
+test('the existing local transport attributes a review to its durable request identity', async () => {
+  let received;
+  const provider = createCoreProvider({ inference: { execute: async (_request, options) => {
+    received = options;
+    return { ok: true, body: { message: { content: '{}' } } };
+  } } });
+  const requestId = '00000000-0000-4000-8000-000000000001';
+  await provider.complete({ requestId, messages: [], taskType: 'deep_reasoning' });
+  assert.deepEqual(received, { consumerContract: 'psyx', attribution: { correlationId: requestId, runtime: 'agentx' } });
+});
