@@ -12,7 +12,9 @@ const core = path.join(root, 'core');
 const report = process.env.AGENTX_ANALYTICS_BROWSER_REPORT || fs.mkdtempSync(path.join(os.tmpdir(), 'agentx-analytics-'));
 const { buildProductNavigation } = require(path.join(root, 'shared/productNavigation'));
 const { bucketFacet, summaryCoverage, attributionCoverage } = require(path.join(core, 'src/services/inferenceSummaryMetrics'));
-const errors = [], requests = [];
+// requestPages[i] is the Referer of requests[i]: a late request from the page
+// a test navigated away from must not count against the next page.
+const errors = [], requests = [], requestPages = [];
 let failSummary = false, empty = false, staleGPU = false, failLive = false;
 let delayWindow = null;
 let legacySummary = false;
@@ -75,6 +77,7 @@ const server = http.createServer(async (req, res) => {
     if (p.startsWith('/api/')) {
       assert.equal(req.method, 'GET', 'analytics must never mutate or invoke inference');
       requests.push(p + url.search);
+      requestPages.push(req.headers.referer || '');
       res.setHeader('Content-Type', 'application/json');
       const json = data => res.end(JSON.stringify({ ok: true, data }));
       if (p === '/api/analytics/inference/usage-period') return json(usageSince ? { since: usageSince } : null);
@@ -270,7 +273,9 @@ const server = http.createServer(async (req, res) => {
     await page.waitForFunction(() => document.getElementById('ao-calls').textContent === '1,481');
     assert.equal(await page.locator('.ao-live').count(), 0);
     assert.equal(await page.locator('a[href^="/nerve-center"]').count(), 0);
-    assert.equal(requests.slice(requestStart).some(p => p.startsWith('/api/nerve-center') || p.startsWith('/api/analytics/federated')), false, 'demo must not probe disabled operational capabilities');
+    const demoRequests = requests.filter((p, index) => index >= requestStart && requestPages[index].includes('profile=demo'));
+    assert.ok(demoRequests.some(p => p.startsWith('/api/analytics/inference/summary')), 'demo requests are attributed to the demo page');
+    assert.equal(demoRequests.some(p => p.startsWith('/api/nerve-center') || p.startsWith('/api/analytics/federated')), false, 'demo must not probe disabled operational capabilities');
     usageSince = new Date(Date.now() - 20 * 60000).toISOString();
     await page.goto(`http://127.0.0.1:${server.address().port}/analytics`);
     await page.waitForFunction(() => document.getElementById('ao-calls').textContent === '1,481');
