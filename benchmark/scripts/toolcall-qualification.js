@@ -115,10 +115,10 @@ function buildLiveTransport({ model, host, generateImpl, timeoutMs = DEFAULT_LIV
         messages: messages.map(({ name, ...message }) => ({
           ...message,
           ...(message.role === 'tool' && name && { tool_name: name }),
-          ...(Array.isArray(message.tool_calls) && { tool_calls: message.tool_calls.map(call => ({
-            type: 'function',
-            function: call.function || { name: call.name, arguments: call.args || {} }
-          })) })
+          ...(Array.isArray(message.tool_calls) && { tool_calls: message.tool_calls.map(call => call.function
+            ? call
+            : { ...(call.id && { id: call.id }), type: 'function',
+              function: { name: call.name, arguments: call.args || {} } }) })
         })),
         tools,
         stream: false,
@@ -140,15 +140,20 @@ function buildLiveTransport({ model, host, generateImpl, timeoutMs = DEFAULT_LIV
       throw error;
     }
     const msg = data.message || {};
+    // Ollama's follow-up includes the assistant message, not only its calls.
+    // Keep content, thinking and native call metadata for the next model turn.
+    const assistantMessage = { ...msg, role: 'assistant', content: msg.content || '' };
     if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
       return {
+        assistantMessage,
         toolCalls: msg.tool_calls.map((c) => ({
           name: c.function && c.function.name,
-          args: (c.function && c.function.arguments) || {}
+          args: (c.function && c.function.arguments) || {},
+          ...(typeof c.id === 'string' && c.id && { id: c.id })
         }))
       };
     }
-    return { content: msg.content || '' };
+    return { content: msg.content || '', assistantMessage };
   };
 }
 

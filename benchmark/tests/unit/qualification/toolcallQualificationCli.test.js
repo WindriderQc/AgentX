@@ -49,6 +49,9 @@ describe('toolcall qualification live transport bounds', () => {
         sampling: { temperature: 0.2, top_p: 0.9, top_k: 40, repeat_penalty: 1.1, seed: 43 }
       }
     })).resolves.toEqual({
+      assistantMessage: { role: 'assistant', content: '', tool_calls: [
+        { function: { name: 'lookup', arguments: { id: 7 } } }
+      ] },
       toolCalls: [{ name: 'lookup', args: { id: 7 } }]
     });
     expect(generateImpl).toHaveBeenCalledWith('campaign-a', expect.objectContaining({

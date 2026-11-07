@@ -8,7 +8,8 @@
  *
  *   transport({ scenario, messages, tools }) -> {
  *     toolCalls?: [{ name, args }],   // model wants tool executions
- *     content?: string,               // model's visible final answer
+ *     content?: string,               // visible text; final only without calls
+ *     assistantMessage?: Object,      // native assistant history, not a final grade
  *     toolSupport?: boolean           // false => artifact has no tool surface
  *   }
  *
@@ -73,20 +74,27 @@ async function runScenario(transport, scenario) {
       break;
     }
     if (reply && Array.isArray(reply.toolCalls) && reply.toolCalls.length > 0) {
-      messages.push({ role: 'assistant', content: '', tool_calls: reply.toolCalls });
+      messages.push(reply.assistantMessage
+        ? { ...structuredClone(reply.assistantMessage), role: 'assistant' }
+        : { role: 'assistant', content: reply.content || '', tool_calls: reply.toolCalls,
+          ...(typeof reply.thinking === 'string' && { thinking: reply.thinking }) });
       for (const call of reply.toolCalls) {
         calls.push({ name: call.name, args: call.args || {} });
         const result = executor.execute({ name: call.name, args: call.args || {} });
-        messages.push({ role: 'tool', name: call.name, content: JSON.stringify(result) });
+        messages.push({ role: 'tool', name: call.name, content: JSON.stringify(result),
+          ...(typeof call.id === 'string' && call.id && { tool_call_id: call.id }) });
       }
       continue;
     }
     finalText = (reply && reply.content) || '';
-    messages.push({ role: 'assistant', content: finalText });
+    messages.push(reply?.assistantMessage
+      ? { ...structuredClone(reply.assistantMessage), role: 'assistant' }
+      : { role: 'assistant', content: finalText,
+        ...(typeof reply?.thinking === 'string' && { thinking: reply.thinking }) });
     break;
   }
 
-  const transcript = { calls, executions: executor.getTrace(), finalText, toolSupport };
+  const transcript = { calls, executions: executor.getTrace(), finalText, toolSupport, messages };
   const grade = gradeScenario(transcript, scenario);
   return {
     scenarioId: scenario.id,

@@ -204,6 +204,13 @@ The freeze must echo every control, including the seed policy, before inference.
 Each repetition uses the frozen base seed plus its zero-based index and records
 its actual settings. A `controlled` label with omitted numeric controls refuses;
 the model's production sampling defaults do not qualify that contract.
+The v4 harness replays the native assistant message between tool turns,
+including visible text, hidden reasoning and native call metadata. Tool results
+carry the corresponding native call ID when one is reported; no ID is invented.
+It retains that history in the private report. Only a separate visible final answer is
+graded; intermediate text and hidden reasoning cannot satisfy the final-answer
+or recovery checks. This changes the evidence fingerprint without changing the
+fixture prompts, sampling values, scripted errors or success criteria.
 Instance acceptance also exercises a real native tool error and continuation
 in an independent workspace through Core's heavy-work queue.
 
