@@ -218,6 +218,8 @@ function showHistoryContextMenu(btn, item, state, elements) {
  */
 export function detachActiveReply(state, elements) {
   state.viewEpoch = (state.viewEpoch || 0) + 1;
+  state.screenCapture?.reset();
+  state.preparingAttachments = null;
   if (!state.streamAbortController && !state.sending) return;
   state.streamAbortController = null;
   state.streamStopRequestedController = null;
@@ -265,6 +267,7 @@ export async function loadConversation(id, state, elements, helpers, preserveMod
         role: msg.role,
         content: msg.content,
         answerBlocks: msg.answerBlocks,
+        attachments: msg.attachments,
         createdAt: msg.createdAt,
         id: msg._id,
         feedback: msg.feedback,

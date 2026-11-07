@@ -25,9 +25,13 @@ async function handleOpenClawChat(request, client = createOpenClawExecutionClien
     ragOptions: request.options, enableWebSearch: request.enableWebSearch,
     onWebSearchStart: request.onWebSearchStart, onWebSearchDone: request.onWebSearchDone });
   const effectiveSystemPrompt = buildSystemPrompt(activePrompt.systemPrompt, profile, context.ragContext);
-  const messages = [{ role: 'system', content: effectiveSystemPrompt }, ...(request.messages || [])];
+  const contextMessages = await require('./conversationHistory').resolveContextMessages({ ...request,
+    historyContext: request.conversationFeatures?.historyContext });
+  let messages = [{ role: 'system', content: effectiveSystemPrompt }, ...contextMessages];
   if (context.webSearchContext) messages.push({ role: 'user', content: `Reference web results:\n\n${context.webSearchContext}` });
-  messages.push({ role: 'user', content: request.message });
+  const attachments = await require('./playgroundAttachments').references(request);
+  messages.push({ role: 'user', content: request.message, ...(attachments.length ? { attachments } : {}) });
+  messages = await require('./playgroundAttachments').prepare(messages, request, 'openclaw');
   const streaming = typeof request.onToken === 'function';
   let result, failure;
   try {
@@ -48,7 +52,7 @@ async function handleOpenClawChat(request, client = createOpenClawExecutionClien
     toolExecution: { status: selection.mode === 'agent' ? 'native' : 'not_supported', receipts: [],
       coverage: selection.mode === 'agent' ? 'not-observed-by-responses-api' : 'no-runtime-tools' } };
   const saved = request.persist === false ? { persistence: { saved: false } } : await persistConversation({
-    userId: request.userId, conversationId: request.conversationId, clientTurnId: request.clientTurnId, model, effectiveSystemPrompt,
+    userId: request.userId, conversationId: request.conversationId, clientTurnId: request.clientTurnId, attachmentIds: request.attachmentIds, model, effectiveSystemPrompt,
     message: request.message, assistantContent: result.text, activePrompt, metadata,
     stats: body.stats, ragUsed: context.ragUsed, useRag: ragRequested, ragSources: context.ragSources });
   if (failure) { request.onError?.(failure); if (!streaming) throw failure; return; }

@@ -40,7 +40,7 @@ function resolveAllowlistedTarget(target) {
 
 function sendChatInputError(res, error) {
   const isContractError = error instanceof TurnActionProvenanceError
-    || ['CHAT_REQUEST_INVALID', 'EXECUTION_SOURCE_INVALID', 'CONVERSATION_NOT_FOUND'].includes(error.code);
+    || ['CHAT_REQUEST_INVALID', 'EXECUTION_SOURCE_INVALID', 'CONVERSATION_NOT_FOUND', 'CONVERSATION_ATTACHMENT_INVALID'].includes(error.code);
   const statusCode = isContractError ? error.statusCode : 500;
   if (!isContractError) {
     logger.error('Turn action provenance validation failed', {
@@ -132,9 +132,13 @@ async function resolveChatRequest(payload, userId) {
     throw conversationNotFound();
   }
 
+  const attachmentIds = require('../src/services/conversationAttachmentService').ids(payload.attachmentIds);
+  await require('../src/services/chat/playgroundAttachments').validateScope(messages, { conversationId, userId });
+  await require('../src/services/chat/playgroundAttachments').references({ attachmentIds, conversationId, userId });
+
   return {
     execution, parameters, budget, reasoningMaxTokens, model, message, messages, system, persona, promptVersion, conversationId,
-    clientTurnId: clientTurnId || null,
+    clientTurnId: clientTurnId || null, attachmentIds,
     useRag, ragEnabled, ragTopK, ragFilters, autoRoute, taskType, enableWebSearch, think,
     options: { ...options, ...(ragCompress !== undefined ? { ragCompress: ragCompress === true } : {}) },
     target: allowlistedTarget.target,

@@ -96,6 +96,27 @@ const { buildOllamaPayload, buildOllamaStats } = require('../../src/helpers/olla
 const { beginInferenceAdmission } = require('../../src/services/inferenceAdmissionService');
 
 describe('chatServiceStream', () => {
+  it('streams screenshot bytes only to the exact vision model and persists references', async () => {
+    const image = require('../helpers/playgroundAttachmentFixture')();
+    mockFetch.mockImplementation(async url => String(url).endsWith('/api/show')
+      ? { ok: true, text: async () => JSON.stringify({ capabilities: ['vision'] }) }
+      : { ok: true, body: (async function* () {
+        yield Buffer.from(JSON.stringify({ message: { content: 'Synthetic answer' }, done: false }) + '\n');
+        yield Buffer.from(JSON.stringify({ done: true, eval_count: 1, prompt_eval_count: 1 }) + '\n');
+      })() });
+    const onComplete = jest.fn(), onError = jest.fn();
+    try {
+      await handleChatRequestStream({ userId: 'user-1', model: 'fixture-vision', message: 'Explain the screenshot',
+        conversationId: '507f1f77bcf86cd799439011', attachmentIds: [image.reference.id],
+        target: 'http://192.0.2.66:11434', onToken: jest.fn(), onComplete, onError });
+      expect(onError).not.toHaveBeenCalled(); expect(onComplete).toHaveBeenCalled();
+      expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({ messages: expect.arrayContaining([
+        { role: 'user', content: 'Explain the screenshot', images: [image.png] }
+      ]) }));
+      expect(mockPersistConversation).toHaveBeenCalledWith(expect.objectContaining({ attachmentIds: [image.reference.id] }));
+    } finally { image.restore(); }
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetActivePrompt.mockResolvedValue({

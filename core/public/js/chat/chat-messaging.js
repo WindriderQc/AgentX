@@ -113,6 +113,7 @@ function buildPayload(
     // while preserving intentional earlier prompts with identical text.
     messages: historyBeforeCurrentTurn(state.history, currentUserMessageId),
     conversationId: state.conversationId,
+    attachmentIds: state.history.find(turn => messageIdOf(turn) === currentUserMessageId)?.attachments?.map(file => file.id) || [],
     ...(turnAction ? { turnAction } : {})
   };
 }
@@ -416,7 +417,8 @@ export async function sendMessageStreamFetch(
             userMessage: message,
             assistantContent: stoppedContent,
             outcome: 'stopped',
-            model: payload.model
+            model: payload.model,
+            attachmentIds: payload.attachmentIds
           });
           helpers.setFeedback('Response stopped and saved. The model may still be finishing in the background.', 'warning');
         } catch (persistError) {
@@ -445,7 +447,8 @@ export async function sendMessageStreamFetch(
       sourceUserMessageId: turnAction?.kind === 'retry' ? turnAction.sourceUserMessageId : null,
       userMessage: message,
       assistantContent: failedContent,
-      model: payload.model
+      model: payload.model,
+      attachmentIds: payload.attachmentIds
     });
   } finally {
     if (state.streamAbortController === requestAbortController) {
@@ -463,7 +466,7 @@ export async function sendMessageStreamFetch(
 
 export async function sendMessage(ctx, turnAction = null) {
   const { elements, state, defaults, helpers } = ctx;
-  if (state.sending) return;
+  if (state.sending || state.preparingAttachments) return;
   if (state.warming) {
     helpers.setFeedback('Model is still loading, please wait…', 'warning');
     return;
@@ -525,12 +528,28 @@ export async function sendMessage(ctx, turnAction = null) {
     return;
   }
 
+  let attachments = sourceUserMessage?.attachments || [];
+  if (!actionKind && state.screenCapture) {
+    const preparation = {};
+    const epoch = state.viewEpoch || 0;
+    state.preparingAttachments = preparation;
+    try { attachments = await state.screenCapture.upload(); }
+    catch (error) {
+      if ((state.viewEpoch || 0) === epoch) helpers.setFeedback(error.message, 'error');
+      return;
+    } finally {
+      if (state.preparingAttachments === preparation) state.preparingAttachments = null;
+    }
+    if ((state.viewEpoch || 0) !== epoch) return;
+  }
+
   // Retry reuses the visible, unpersisted user turn. Ask again intentionally
   // creates a new user turn because the current API does not replace a
   // completed response; this keeps the UI aligned with durable history.
   const userMessage = isRetry
     ? sourceUserMessage
-    : { role: 'user', content: message, id: `u-${Date.now()}`, createdAt: new Date().toISOString() };
+    : { role: 'user', content: message, id: `u-${Date.now()}`, createdAt: new Date().toISOString(),
+      ...(attachments.length ? { attachments } : {}) };
   const currentUserMessageId = messageIdOf(userMessage);
   if (!currentUserMessageId) {
     helpers.setFeedback('The selected turn has no stable message identity. Reload the conversation and try again.', 'error');
@@ -538,6 +557,7 @@ export async function sendMessage(ctx, turnAction = null) {
   }
   const terminalAttemptId = outcomeAttemptId(currentUserMessageId);
   if (!isRetry) helpers.appendMessage(userMessage);
+  if (!actionKind) state.screenCapture?.clearDraft();
   if (!actionKind) {
     elements.messageInput.value = '';
     elements.messageInput.style.height = 'auto'; // Reset auto-resize
@@ -643,7 +663,8 @@ export async function sendMessage(ctx, turnAction = null) {
       sourceUserMessageId: requestTurnAction?.kind === 'retry' ? requestTurnAction.sourceUserMessageId : null,
       userMessage: message,
       assistantContent: failedContent,
-      model: payload?.model
+      model: payload?.model,
+      attachmentIds: attachments.map(file => file.id)
     });
   } finally {
     if (!viewChanged()) {

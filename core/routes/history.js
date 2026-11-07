@@ -9,6 +9,7 @@ const logger = require('../config/logger');
 const { requireTypedConfirmation } = require('../src/helpers/typedConfirmation');
 const exchanges = require('../src/services/conversations/exchangeReceipts');
 const blocks = require('../src/services/conversations/historyAnswerBlocks');
+require('./playground-attachments').register(router);
 const {
     TurnOutcomeError,
     persistTurnOutcome

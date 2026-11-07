@@ -10,6 +10,19 @@ const { prepareChatOrchestration } = require('../../src/services/chat/chatOrches
 const request = () => ({ model: 'openclaw:model:fixture/model', message: 'Current turn', messages: [{ role: 'user', content: 'Canonical earlier turn' }], conversationId: 'core-conversation', clientTurnId: 'core-turn', userId: 'owner', options: { num_predict: 64 } });
 beforeEach(() => jest.clearAllMocks());
 
+test('native execution receives canonical screenshot parts and history keeps only their ids', async () => {
+    const image = require('../helpers/playgroundAttachmentFixture')();
+    const client = { execute: jest.fn(async () => ({ text: 'Synthetic screen answer', receipt: {}, partial: false })) };
+    try {
+        await handleOpenClawChat({ ...request(), attachmentIds: [image.reference.id] }, client);
+        expect(client.execute.mock.calls[0][0].messages.at(-1).content).toEqual([
+            { type: 'input_text', text: 'Current turn' },
+            { type: 'input_image', source: { type: 'base64', media_type: 'image/png', data: image.png } }
+        ]);
+        expect(persistConversation).toHaveBeenCalledWith(expect.objectContaining({ attachmentIds: [image.reference.id] }));
+    } finally { image.restore(); }
+});
+
 test('Core supplies and persists canonical context while OpenClaw executes only the selected source', async () => {
     const receipt = { source: 'openclaw', mode: 'model', usage: { input: 7, output: 2, cacheRead: 3, cacheWrite: 0, total: 12 }, cost: { nanodollars: 100, source: 'runtime-estimate' } };
     const client = { execute: jest.fn(async () => ({ text: 'answer', finishReason: 'stop', partial: false, receipt })) };

@@ -3,6 +3,7 @@
  * Entry point for the chat page module system.
  */
 import { DEFAULTS } from './chat-constants.js';
+import { initScreenCapture } from './chat-attachments.js';
 import {
   loadSettings, hydrateForm, persistSettings as _persistSettings,
   updateRangeDisplays, updateConfigSummary, toggleRagOptions,
@@ -155,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Store helpers reference so history module can call back
   state._helpers = helpers;
+  state.screenCapture = initScreenCapture(state);
 
   function refreshMessages() {
     elements.chatWindow.innerHTML = state.history.length === 0 ? welcomeMarkup : '';

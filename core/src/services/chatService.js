@@ -63,6 +63,7 @@ const handleChatRequest = async ({
     promptVersion,
     conversationId,
     clientTurnId = null,
+    attachmentIds = [],
     useRag,
     ragEnabled,
     ragTopK,
@@ -148,11 +149,16 @@ const handleChatRequest = async ({
         messages, conversationId, userId,
         historyContext: conversationFeatures.historyContext
     });
-    const formattedMessages = [
+    const currentAttachments = await require('./chat/playgroundAttachments').references({ attachmentIds, conversationId, userId });
+    let formattedMessages = [
         { role: 'system', content: effectiveSystemPrompt },
         ...contextMessages,
-        { role: 'user', content: message.trim() }
+        { role: 'user', content: message.trim(), ...(currentAttachments.length ? { attachments: currentAttachments } : {}) }
     ];
+
+    formattedMessages = await require('./chat/playgroundAttachments').prepare(formattedMessages, { conversationId, userId });
+    await require('./inferenceImageSupport').requireImageSupport({ messages: formattedMessages, model: effectiveModel,
+        hostUrl: resolvedHost, signal: abortSignal, fetch: require('node-fetch') });
 
     // Inject web search context before the last user message
     if (webSearchContext && formattedMessages.length > 1) {
@@ -331,7 +337,7 @@ const handleChatRequest = async ({
     // Persist conversation
     const routingPayload = buildRoutingPayload(routingInfo, effectiveModel, effectiveTarget, autoRoute);
     const { conversation, assistantMessageId } = await persistConversation({
-        userId, conversationId, clientTurnId, model: effectiveModel,
+        userId, conversationId, clientTurnId, attachmentIds, model: effectiveModel,
         effectiveSystemPrompt, message, assistantContent: assistantMessageContent,
         activePrompt,
         metadata: { thinking, options, webSearchResults, routingInfo: routingPayload, ragStatus },

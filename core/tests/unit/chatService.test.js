@@ -161,6 +161,33 @@ describe('chatService', () => {
     });
 
     describe('Standard Chat Flow', () => {
+        it.each([true, false])('screenshots reach the selected local model only with confirmed vision=%s', async vision => {
+            const image = require('../helpers/playgroundAttachmentFixture')();
+            const originalFetch = mockFetch.getMockImplementation();
+            const saved = new Conversation({ _id: '507f1f77bcf86cd799439011', userId: 'user123', messages: [] });
+            Conversation.findOne.mockResolvedValue(saved);
+            mockFetch.mockImplementation((url, options) => String(url).endsWith('/api/show')
+                ? Promise.resolve({ ok: true, text: async () => JSON.stringify({ capabilities: vision ? ['vision'] : ['completion'] }) })
+                : originalFetch(url, options));
+            const request = { userId: 'user123', model: 'fixture-vision', message: 'Explain the synthetic screenshot',
+                conversationId: saved._id, attachmentIds: [image.reference.id] };
+            try {
+                if (vision) {
+                    await handleChatRequest(request);
+                    expect(buildOllamaPayload).toHaveBeenCalledWith(expect.objectContaining({
+                        messages: expect.arrayContaining([{ role: 'user', content: request.message, images: [image.png] }]) }));
+                    expect(saved.messages[0].attachments).toEqual([image.reference]);
+                } else {
+                    await expect(handleChatRequest(request)).rejects.toMatchObject({ code: 'INFERENCE_VISION_REQUIRED' });
+                    expect(buildOllamaPayload).not.toHaveBeenCalled();
+                    expect(saved.save).not.toHaveBeenCalled();
+                }
+                const showCall = mockFetch.mock.calls.find(([url]) => url.endsWith('/api/show'));
+                expect(showCall[0]).toBe('http://localhost:11434/api/show');
+                expect(JSON.parse(showCall[1].body)).toEqual({ model: 'fixture-vision' });
+            } finally { image.restore(); }
+        });
+
         it('should handle a basic chat request from a user', async () => {
             const request = {
                 userId: 'user123',
