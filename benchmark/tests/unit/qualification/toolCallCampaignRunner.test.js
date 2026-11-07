@@ -4,6 +4,7 @@ const {
   CONFIRMATION_TOKEN,
   runToolCapabilityCampaign
 } = require('../../../src/services/qualification/toolCallCampaignRunner');
+const { TOOL_QUALIFICATION_SAMPLING } = require('../../../src/services/qualification/toolCallFixtures');
 
 function report(classification = 'ok', pass = classification === 'ok') {
   const fixtures = require('../../../src/services/qualification/toolCallFixtures');
@@ -30,7 +31,7 @@ function frozenCampaign() {
       execution: {
         num_ctx: 32768,
         num_predict: 1024,
-        sampling: { temperature: 0, seed: 42 }
+        sampling: { ...TOOL_QUALIFICATION_SAMPLING }
       },
       contract: {
         artifact: {
@@ -174,10 +175,16 @@ describe('toolCallCampaignRunner', () => {
         numCtx: 32768,
         numPredict: 1024,
         think: false,
-        sampling: { temperature: 0, seed: 42 }
+        sampling: { ...TOOL_QUALIFICATION_SAMPLING, seed: 42 }
       }
     }));
     expect(deps.recordRepetition).toHaveBeenCalledTimes(3);
+    expect(deps.resolveStandaloneCampaignInferenceContracts.mock.calls[0][0].executionConfig)
+      .toMatchObject({ ...TOOL_QUALIFICATION_SAMPLING, sampling_profile: 'controlled' });
+    expect(campaignOptions.transport.mock.calls.map(([input]) => input.execution.sampling.seed))
+      .toEqual([42, 43, 44]);
+    expect(deps.runHarness.mock.calls.map(([, input]) => input.execution.sampling.seed))
+      .toEqual([42, 43, 44]);
     expect(deps.assertFrozenArtifactDigest).toHaveBeenCalledTimes(2);
     expect(deps.resolveArtifactIdentity).toHaveBeenCalledTimes(2);
     expect(deps.getBenchmarkClaims).not.toHaveBeenCalled();
@@ -198,6 +205,22 @@ describe('toolCallCampaignRunner', () => {
     const workload = await deps.beginManagedWorkload.mock.results[0].value;
     expect(deps.finalizeQualification.mock.invocationCallOrder[0])
       .toBeLessThan(workload.complete.mock.invocationCallOrder[0]);
+    expect(workload.complete).toHaveBeenCalledTimes(1);
+    expect(workload.retainForRecovery).not.toHaveBeenCalled();
+  });
+
+  it('refuses missing frozen sampling controls before inference and releases native ownership', async () => {
+    const campaign = frozenCampaign();
+    campaign.candidates[0].execution.sampling.seed = null;
+    const deps = dependencies({
+      resolveStandaloneCampaignInferenceContracts: jest.fn(async () => campaign)
+    });
+    await expect(runToolCapabilityCampaign(options(), deps))
+      .rejects.toMatchObject({ code: 'TOOL_CAMPAIGN_SAMPLING_CONTRACT_DRIFT' });
+    expect(deps.runHarness).not.toHaveBeenCalled();
+    expect(deps.beginQualification).not.toHaveBeenCalled();
+    expect(deps.releaseBenchmarkClaim).toHaveBeenCalledTimes(1);
+    const workload = await deps.beginManagedWorkload.mock.results[0].value;
     expect(workload.complete).toHaveBeenCalledTimes(1);
     expect(workload.retainForRecovery).not.toHaveBeenCalled();
   });

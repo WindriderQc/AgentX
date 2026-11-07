@@ -23,8 +23,8 @@ describe('golden dry-run (acceptance criterion 4)', () => {
       artifact: { model: 'golden-reference', digest: 'sha256:abc', host: 'http://mock' },
       contractSnapshot: { capabilities: { tools: { supported: true } } }
     });
-    expect(report.harnessVersion).toBe('toolcall-harness.v2');
-    expect(report.fixtureVersion).toBe('toolcall-fixtures.v2');
+    expect(report.harnessVersion).toBe('toolcall-harness.v3');
+    expect(report.fixtureVersion).toBe('toolcall-fixtures.v3');
     expect(report.fixtureFingerprint).toBe(fixtureFingerprint());
     expect(report.fixtureFingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(report.artifact.model).toBe('golden-reference');

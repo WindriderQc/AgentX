@@ -46,7 +46,7 @@ describe('toolcall qualification live transport bounds', () => {
         numCtx: 32768,
         numPredict: 1024,
         think: false,
-        sampling: { temperature: 0, seed: 42 }
+        sampling: { temperature: 0.2, top_p: 0.9, top_k: 40, repeat_penalty: 1.1, seed: 43 }
       }
     })).resolves.toEqual({
       toolCalls: [{ name: 'lookup', args: { id: 7 } }]
@@ -58,7 +58,8 @@ describe('toolcall qualification live transport bounds', () => {
       stream: false,
       rawResponse: true,
       think: false,
-      options: { num_ctx: 32768, num_predict: 1024, temperature: 0, seed: 42 }
+      options: { num_ctx: 32768, num_predict: 1024,
+        temperature: 0.2, top_p: 0.9, top_k: 40, repeat_penalty: 1.1, seed: 43 }
     }), { signal: expect.any(AbortSignal) });
     const { resolveCallerPolicy } = require('../../../../core/src/services/routing/callerPolicy');
     expect(resolveCallerPolicy(generateImpl.mock.calls[0][1].callerDetail).lane).toBe('direct');
