@@ -7,12 +7,16 @@ const { LIMITS: WORK_LIMITS } = require('../../src/services/conversationWorks/co
 // reviews the canonical conversation in the background and proposes:
 // follow-up questions (shown as suggestions), revisions of what was shown,
 // corrections for the next turn, and at most one short remark Nestor may say
-// at the next natural pause. It has no tools, saves nothing, never alters the
-// transcript, and yields to the voice: a new turn cancels a running review.
-// Results are advisory and kept in memory only, per conversation.
+// at the next natural pause. It has no tools, never alters the transcript, and
+// yields to the voice: a new turn cancels a running review. Results are
+// advisory. The latest result and the latest refusal of each conversation are
+// also kept on its canonical conversation record (one of each, replaced every
+// time), so the next turn's advice survives a restart. A review whose
+// conversation gained a newer turn is never stored.
 
 const LIMITS = Object.freeze({ turns: 6, turnChars: 1500, blockChars: 6000, suggestions: 3, suggestion: 140, corrections: 3, correction: 300,
-  revisions: 2, revisionTitle: 80, revisionBody: 2000, interjection: 220, waitMs: 45000, reviewMs: 120000, reviews: 200, delayMs: 800 });
+  revisions: 2, revisionTitle: 80, revisionBody: 2000, interjection: 220, waitMs: 45000, reviewMs: 120000, reviews: 200, delayMs: 800,
+  reviewTokens: 700, deepReviewTokens: 4000, deepReviewMs: 300000 });
 
 const SPACES = Object.freeze({ private: { packId: 'personal_operator', scopeId: 'personal' }, family: { packId: 'kidx_nestor', scopeId: 'family' } });
 
@@ -42,7 +46,7 @@ function readReview(raw) {
   };
 }
 
-function reviewerPrompt({ family }) {
+function reviewerPrompt({ family, deep = false }) {
   return [
     'You are the background reviewer of a live household voice conversation between a person and Nestor.',
     'You never speak to the person directly and have no tools. Read the conversation and return only one JSON object:',
@@ -59,10 +63,11 @@ function reviewerPrompt({ family }) {
     'Never praise, grade or comment on Nestor\'s answer, and never apologise for it: the interjection is Nestor adding something new, not a critic.',
     'Text marked as shortened for this review was shown complete: never claim or suggest that Nestor was cut off or should finish it.',
     'A revision must change something; do not restate what was already shown.',
+    deep ? 'This is a deeper review: check facts, arithmetic, dates and consistency across the whole conversation before answering.' : '',
     family
       ? 'This is a child\'s family conversation: follow child safety, keep language simple, no private or adult information, and send the child to a trusted adult for anything risky.'
       : 'This is the owner\'s private conversation.'
-  ].join(' ');
+  ].filter(Boolean).join(' ');
 }
 
 // A reviewer that sees a silently shortened list believes Nestor was cut off.
@@ -122,11 +127,70 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     if (!reviews.has(sessionId) && !refusals.has(sessionId)) scopes.delete(sessionId);
   }
 
+  // Durable storage needs the canonical conversation service; without it results stay in memory.
+  const durable = typeof conversations?.getSession === 'function' && typeof conversations?.updateSession === 'function';
+  const spaceOf = session => ({ sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId });
+
+  // The conversation's turn count when the review starts. A deleted conversation or one
+  // in another space is never reviewed, so a review cannot recreate erased content.
+  async function anchorFor(session, preferences) {
+    if (!durable) return null;
+    const current = await conversations.getSession({ sessionId: session.sessionId });
+    if (!current || current.deletedAt || current.packId !== session.packId || current.scopeId !== session.scopeId) return false;
+    return { turnCount: Number(current.turnCount) || 0, revision: preferences ? preferences.revision : null };
+  }
+
+  // One stored result and one stored refusal per conversation, replaced each time. The write
+  // matches only while no newer turn was recorded (null otherwise): a stale review is dropped.
+  async function persist(session, family, record, anchor) {
+    if (!anchor) return true;
+    const kind = record.status === 'context_required' ? 'refusal' : 'review';
+    const update = { $set: { [`backgroundReview.${kind}`]: { ...record, space: family ? 'family' : 'private', preferencesRevision: anchor.revision } } };
+    if (kind === 'review') update.$unset = { 'backgroundReview.refusal': '' };
+    try {
+      return Boolean(await conversations.updateSession({ ...spaceOf(session), turnCount: anchor.turnCount }, update));
+    } catch (error) {
+      // Storage trouble leaves the advisory result in this process only, and says so.
+      logger?.warn?.('Household brain review was not stored', { error: error.message, code: error.code });
+      return true;
+    }
+  }
+
+  // Delivery is the last step. A superseded, reconfigured or outdated review is dropped, and a
+  // review that a newer recorded turn made stale is neither stored nor delivered.
+  async function deliver(session, family, record, { anchor, signal, generation, preferences }) {
+    const current = async () => !signal.aborted && generation === epochFor(family)
+      && (!preferencesFor || (await preferencesFor(family)).revision === preferences.revision);
+    if (!(await current()) || !(await persist(session, family, record, anchor))) return;
+    if (!signal.aborted && generation === epochFor(family)) settle(session.sessionId, record);
+  }
+
+  // The stored record answers only when this process holds nothing for the conversation
+  // (after a restart, or once evicted from memory). A settings change since it was stored
+  // voids it, as reconfigure() voids results in memory. It is read from the session the
+  // caller already loaded, so a turn costs no extra read.
+  async function stored(session) {
+    const record = session?.backgroundReview;
+    if (!record || typeof record !== 'object' || reviews.has(session.sessionId) || refusals.has(session.sessionId)) return null;
+    const revisions = {};
+    const valid = async item => {
+      if (!item || typeof item !== 'object' || !['family', 'private'].includes(item.space)) return null;
+      if (preferencesFor) revisions[item.space] ??= (await preferencesFor(item.space === 'family')).revision;
+      if (preferencesFor ? item.preferencesRevision !== revisions[item.space] : item.preferencesRevision != null) return null;
+      const { space: _space, preferencesRevision: _revision, ...kept } = item;
+      return kept;
+    };
+    const review = await valid(record.review), refusal = await valid(record.refusal);
+    return review || refusal ? { review, refusal } : null;
+  }
+
   async function review({ session, family, traceId, signal }) {
     const generation = epochFor(family), preferences = preferencesFor ? await preferencesFor(family) : null;
     if (preferences && !preferences.values.backgroundReview) return;
     await new Promise(resolve => setTimeout(resolve, preferences ? preferences.values.reviewDelaySeconds * 1000 : delayMs));
     if (signal.aborted) return;
+    const anchor = await anchorFor(session, preferences);
+    if (anchor === false || signal.aborted) return;
     const loaded = await loadTurns(session);
     const turns = family ? loaded.slice(-LIMITS.turns) : loaded;
     if (signal.aborted || !turns.length) return;
@@ -140,25 +204,36 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     // discarded without aborting admitted GPU or CPU work.
     const routedReview = env.HOUSEHOLD_BRAIN_TASK === 'household_review';
     const dedicatedHost = !routedReview && Boolean(env.HOUSEHOLD_BRAIN_HOST_URL);
-    const prompt = reviewerPrompt({ family }), context = transcript(turns, { complete: !family });
-    if (!family) assertContextSize(prompt + context, WORK_LIMITS.context);
+    // A deeper review is an explicit private opt-in: it thinks and may write more, on the same
+    // review lane and admission. Famille always gets the standard review.
+    const deep = !family && preferences?.values.deepReview === true;
+    const prompt = reviewerPrompt({ family, deep }), context = transcript(turns, { complete: !family });
+    const delivery = { anchor, signal, generation, preferences };
+    if (!family) {
+      try { assertContextSize(prompt + context, WORK_LIMITS.context); } catch (error) {
+        if (error.code !== 'CONVERSATION_CONTEXT_REQUIRED') throw error;
+        logger?.warn?.('Household brain review failed', { error: error.message, code: error.code });
+        return deliver(session, family, { traceId, status: 'context_required', requiredChars: error.requiredChars, maxChars: error.maxChars,
+          suggestions: [], corrections: [], revisions: [], interjection: null }, delivery);
+      }
+    }
     const result = await inference.execute({
       mode: 'chat', taskType: env.HOUSEHOLD_BRAIN_TASK || 'master_brain',
       ...(!routedReview && env.HOUSEHOLD_BRAIN_MODEL ? { model: String(env.HOUSEHOLD_BRAIN_MODEL).replace(/^ollama\//, '') } : {}),
       ...(dedicatedHost && env.HOUSEHOLD_BRAIN_EXCLUSIVE === 'true' ? { exclusiveHost: true } : {}),
       messages: [{ role: 'system', content: prompt }, { role: 'user', content: context }],
-      stream: false, think: false, temperature: 0.2, max_tokens: 700,
-      callerDetail: `agentx-household/brain/${family ? 'family' : 'private'}`, timeoutMs: LIMITS.reviewMs
+      stream: false, think: deep, temperature: 0.2, max_tokens: deep ? LIMITS.deepReviewTokens : LIMITS.reviewTokens,
+      callerDetail: `agentx-household/brain/${family ? 'family' : 'private'}${deep ? '/deep' : ''}`, timeoutMs: deep ? LIMITS.deepReviewMs : LIMITS.reviewMs
     }, { ...(dedicatedHost ? { hostUrl: String(env.HOUSEHOLD_BRAIN_HOST_URL) } : routedReview ? {} : { signal }), consumerContract });
     if (signal.aborted) return;
     if (generation !== epochFor(family) || (preferencesFor && (await preferencesFor(family)).revision !== preferences.revision)) return;
     if (!result?.ok) throw new Error('Reviewer inference failed');
     const parsed = readReview(result.body?.message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '');
     if (!parsed) throw new Error('Reviewer returned no usable review');
-    settle(session.sessionId, { adviceId: randomUUID(), version: 1, traceId, reviewedAt: new Date().toISOString(),
+    await deliver(session, family, { adviceId: randomUUID(), version: 1, traceId, reviewedAt: new Date().toISOString(), depth: deep ? 'deep' : 'standard',
       conversationCoverage: { complete: !family, turnCount: turns.length, firstTurnId: turns[0]?.traceId || null, lastTurnId: turns.at(-1)?.traceId || null },
       model: result.metadata?.model || '',
-      ...(result.metadata?.routing && { routing: result.metadata.routing }), ...parsed });
+      ...(result.metadata?.routing && { routing: result.metadata.routing }), ...parsed }, delivery);
   }
 
   // At most one review per conversation; a newer turn supersedes an older review.
@@ -172,9 +247,6 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     review({ session, family, traceId, signal: controller.signal })
       .catch(error => {
         if (controller.signal.aborted) return;
-        if (error.code === 'CONVERSATION_CONTEXT_REQUIRED') settle(session.sessionId, { traceId,
-          status: 'context_required', requiredChars: error.requiredChars, maxChars: error.maxChars,
-          suggestions: [], corrections: [], revisions: [], interjection: null });
         logger?.warn?.('Household brain review failed', { error: error.message, code: error.code });
       })
       .finally(() => { if (running.get(session.sessionId) === controller) {
@@ -186,31 +258,35 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     return true;
   }
 
-  function latest(sessionId, after = '') {
-    const refusal = refusals.get(sessionId);
-    if (refusal && (!after || refusal.traceId === after)) return refusal;
-    const found = reviews.get(sessionId);
-    return found && (!after || found.traceId === after) ? found : null;
-  }
+  const choose = (found, refusal, after) => (refusal && (!after || refusal.traceId === after) ? refusal
+    : found && (!after || found.traceId === after) ? found : null);
+  const latest = (sessionId, after = '') => choose(reviews.get(sessionId), refusals.get(sessionId), after);
+  const sameSession = (sessionId, session) => (session?.sessionId === sessionId ? session : null);
 
   // Advisory notes for the next turn, so Nestor can acknowledge a correction himself.
-  function contextWithRefs(sessionId) {
-    const found = reviews.get(sessionId);
-    if (!found || (!found.corrections.length && !found.interjection)) return { text: '', refs: [] };
+  // `session` is the conversation the turn already loaded; its stored record is used
+  // only when this process holds nothing for it.
+  async function contextWithRefs(sessionId, session = null) {
+    const fallback = await stored(sameSession(sessionId, session));
+    const found = fallback ? fallback.review : reviews.get(sessionId);
+    const refused = fallback ? Boolean(fallback.refusal) : refusals.has(sessionId);
+    if (!found || (!found.corrections?.length && !found.interjection)) return { text: '', refs: [] };
+    const corrections = found.corrections || [];
     const text = '\n\nBackground review of this conversation (advisory; it may be wrong, so verify before relying on it):'
-      + (found.corrections.length ? ' Possible corrections: ' + found.corrections.join(' | ') + '.' : '')
+      + (corrections.length ? ' Possible corrections: ' + corrections.join(' | ') + '.' : '')
       + (found.interjection ? ` It suggested adding: "${found.interjection.text}" (it may already have been said at a pause).` : '')
       + ' If a correction is right, acknowledge it briefly and naturally in this turn; do not mention the review itself.'
-      + (refusals.has(sessionId) ? ' The latest complete review was refused for lack of context capacity; this earlier feedback does not validate newer turns.' : '');
+      + (refused ? ' The latest complete review was refused for lack of context capacity; this earlier feedback does not validate newer turns.' : '');
     return { text, refs: found.adviceId ? [{ source: 'brain', adviceId: found.adviceId, version: found.version,
-      sourceTurnId: found.traceId, coverage: [found.corrections.length ? 'corrections' : '', found.interjection ? 'interjection' : ''].filter(Boolean) }] : [] };
+      sourceTurnId: found.traceId, coverage: [corrections.length ? 'corrections' : '', found.interjection ? 'interjection' : ''].filter(Boolean) }] : [] };
   }
-  const contextFor = sessionId => contextWithRefs(sessionId).text;
+  const contextFor = async (sessionId, session) => (await contextWithRefs(sessionId, session)).text;
 
-  function wait(sessionId, after, { signal, timeoutMs = LIMITS.waitMs } = {}) {
-    const ready = latest(sessionId, after);
-    if (ready) return Promise.resolve(ready);
-    if (!running.has(sessionId)) return Promise.resolve(null);
+  async function wait(sessionId, after, { signal, timeoutMs = LIMITS.waitMs, session = null } = {}) {
+    const fallback = await stored(sameSession(sessionId, session));
+    const ready = latest(sessionId, after) || (fallback && choose(fallback.review, fallback.refusal, after));
+    if (ready) return ready;
+    if (!running.has(sessionId)) return null;
     return new Promise(resolve => {
       let done = false;
       const finish = value => { if (done) return; done = true; clearTimeout(timer); signal?.removeEventListener?.('abort', abort); resolve(value); };
@@ -232,7 +308,7 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
         if (preferencesFor && !(await preferencesFor(space === 'family')).values.backgroundReview) return res.json({ ok: true, status: 'success', data: { review: null, enabled: false } });
         const controller = new AbortController();
         res.on('close', () => controller.abort());
-        const found = await wait(session.sessionId, String(req.query.after || ''), { signal: controller.signal });
+        const found = await wait(session.sessionId, String(req.query.after || ''), { signal: controller.signal, session });
         if (res.writableEnded || res.destroyed) return undefined;
         return res.json({ ok: true, status: 'success', data: { review: found } });
       });

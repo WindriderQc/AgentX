@@ -356,7 +356,7 @@ function createPersonaTurnHandler({
         // members, knowledge, chores, saves, the sound note, the reply language, a team
         // member's last exchange and the reviewer's advice) goes last, beside the request.
         const brainAdvice = entry.ephemeral || isLlmX || features.reviewContext === false ? { text: '', refs: [] }
-          : brain.contextWithRefs ? brain.contextWithRefs(session.sessionId) : { text: brain.contextFor(session.sessionId), refs: [] };
+          : brain.contextWithRefs ? await brain.contextWithRefs(session.sessionId, session) : { text: await brain.contextFor(session.sessionId, session), refs: [] };
         const workAdvice = !entry.ephemeral && !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
           ? conversationWorks?.guardianContextWithRefs
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)

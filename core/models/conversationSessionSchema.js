@@ -38,6 +38,9 @@ module.exports = new Schema({
     // Durable Atelier native-analysis dispatch fence; unknown work requires native-owner reconciliation.
     imageInspection: { type: Object, default: undefined },
     llmx: { type: Object, default: null },
+    // Household background reviewer: the latest bounded result and latest refusal, each
+    // replaced by the next one and erased with the conversation. Advisory, never transcript.
+    backgroundReview: { type: Object, default: undefined },
     // Historical Household proposal evidence. Retained on import/export only;
     // the current runtime does not execute or resume this retired action field.
     toolAction: { type: Object, default: undefined },

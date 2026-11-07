@@ -14,6 +14,14 @@ test('environment is a bootstrap default, not a persisted preference', async () 
   const first = await own().read(); expect(first.revision).toBe(0); expect(first.values.recapContext).toBe(true);
   expect(await Model.countDocuments()).toBe(0);
 });
+test('the deeper review is a personal opt-in, off by default and absent from Famille', async () => {
+  expect(defaultsFor('nestor', { HOUSEHOLD_BRAIN_ENABLED: 'true' })).toMatchObject({ backgroundReview: true, deepReview: false });
+  expect(catalogFor('nestor', {}).find(item => item.key === 'deepReview')).toMatchObject({ group: 'background' });
+  expect(catalogFor('family', {}).some(item => item.key === 'deepReview')).toBe(false);
+  expect(defaultsFor('family', {})).not.toHaveProperty('deepReview');
+  expect((await own().save({ revision: 0, values: { deepReview: true } })).values.deepReview).toBe(true);
+  await expect(own('family').save({ revision: 0, values: { deepReview: true } })).rejects.toMatchObject({ statusCode: 400 });
+});
 test('saves, reloads and resets without changing another owner or surface', async () => {
   const saved = await own().save({ revision: 0, values: { backgroundReview: false, recapContext: false } });
   expect(saved.values.backgroundReview).toBe(false); expect(saved.revision).toBe(1);
