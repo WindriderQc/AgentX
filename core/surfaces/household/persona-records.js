@@ -107,6 +107,7 @@ function publicAudit(doc) {
     interruptionState: doc?.interruptionState || '',
     applicationEvent: doc?.applicationEvent || null,
     ...(doc?.sceneProposal ? { sceneProposal: doc.sceneProposal, sceneReceipt: doc.sceneReceipt || null } : doc?.sceneReceipt ? { sceneReceipt: doc.sceneReceipt } : {}), ...(doc?.display?.length ? { display: doc.display } : {}),
+    ...(doc?.mathValues && Object.keys(doc.mathValues).length ? { mathValues: doc.mathValues } : {}),
     inputText: fullInput,
     ...(doc?.attachments?.length ? { attachments: doc.attachments } : {}),
     replyText: fullReply,

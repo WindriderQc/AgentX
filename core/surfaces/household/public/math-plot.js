@@ -76,7 +76,9 @@
     holder.dataset.state = 'visible';
     holder.dataset.view = '2d';
     const { plot, trees } = parsed;
-    const values = Object.fromEntries(plot.parameters.map(row => [row.name, row.value]));
+    // Positions saved in Core for this card start where they were left; invalid ones are ignored.
+    const saved = block.values ? math.checkValues(plot, block.values) : null;
+    const values = saved?.ok ? { ...saved.values } : Object.fromEntries(plot.parameters.map(row => [row.name, row.value]));
     const colors = plot.functions.map((_, index) => COLORS[index]);
 
     const formula = el('div', 'math-plot-formula');
@@ -219,9 +221,9 @@
       const line = el('label', 'math-plot-slider');
       const input = el('input');
       input.type = 'range'; input.min = String(row.min); input.max = String(row.max);
-      input.step = String(sliderStep(row.max - row.min)); input.value = String(row.value);
+      input.step = String(sliderStep(row.max - row.min)); input.value = String(values[row.name]);
       input.setAttribute('aria-label', 'Paramètre ' + row.name);
-      const output = el('output', 'math-plot-output', math.formatNumber(row.value));
+      const output = el('output', 'math-plot-output', math.formatNumber(values[row.name]));
       input.addEventListener('input', () => {
         // Keep values on the slider grid but readable: 1.25, not 1.2500000001.
         values[row.name] = Number(math.formatNumber(Number(input.value)));
@@ -231,6 +233,8 @@
         if (holder.dataset.view !== '3d') draw();
         holder.dispatchEvent(new CustomEvent('math-plot-change', { bubbles: true, detail: { name: row.name, value: values[row.name] } }));
       });
+      // Released: the page may keep these positions with the conversation.
+      input.addEventListener('change', () => holder.dispatchEvent(new CustomEvent('math-plot-commit', { bubbles: true, detail: { values: { ...values } } })));
       line.append(el('span', 'math-plot-name', row.name), input, output);
       controls.append(line);
     }

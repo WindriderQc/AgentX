@@ -118,6 +118,30 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationVisual').closest('.conversation-stage').dataset.shown = ['page', 'image', 'scene', 'math'].includes(block.kind) ? 'visual' : 'text';
     activity('show');
   };
+  // A math card remembers which saved turn showed it, so its released sliders are kept
+  // with that turn in Core (#1270) and come back when the conversation is reopened anywhere.
+  const mathCard = (block, session, turnId) => (block?.kind === 'math' && block.id && turnId && session?.sessionId && !session.ephemeral
+    ? { ...block, saved: { sessionId: session.sessionId, turnId } } : block);
+  const saveMathValues = async (saved, blockId, values) => {
+    const url = `${sessionBase}/${encodeURIComponent(saved.sessionId)}/math-values`;
+    // The turn is recorded just before its reply ends: a slider released earlier waits for it.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const response = await fetch(url, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ turnId: saved.turnId, blockId, values }) }).catch(() => null);
+      if (response?.status !== 409) return;
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+  };
+  const mathSaves = new WeakMap();
+  // On this mount's layout, so a page entered again never sends the same release twice.
+  app.querySelector('.conversation-layout').addEventListener('math-plot-commit', event => {
+    const card = event.target.closest?.('.display-block'), block = card?._displayBlock;
+    if (!block?.saved || !event.detail?.values) return;
+    // A card's releases are sent in order, one save at a time.
+    const queued = mathSaves.get(card);
+    const next = (queued || Promise.resolve()).then(() => saveMathValues(block.saved, block.id, event.detail.values));
+    mathSaves.set(card, next.catch(() => {}));
+  });
   const pagePicker = family ? null : window.NestorScreenPicker.mount({ host: app.querySelector('.conversation-toolbar'), onShow: show });
   window.addEventListener('nestor-review-destination', event => { if (!family && event.detail) show(event.detail); });
   const clearBoard = () => { companion?.reset(); board.clear(); activity('clear'); };
@@ -406,7 +430,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (event.type === 'speaker') { turnSpeaker = event.speaker || null; if (turnSpeaker) el('conversationStatus').textContent = `${turnSpeaker.name} is replying.`; }
       if (event.type === 'tools') { showTools(event.evidence); activity('tools', { count: event.evidence?.receipts?.length || 1 }); }
       if (event.type === 'scene' && !interruptedTurns.has(turnId)) activity('scene', { scene: event.scene });
-      if (event.type === 'show' && !interruptedTurns.has(turnId)) show(event.block);
+      if (event.type === 'show' && !interruptedTurns.has(turnId)) show(mathCard(event.block, session, turnId));
       if (event.type === 'status' && event.phase === 'activity') voiceHealth.activity();
       if (!interruptedTurns.has(turnId) && event.type === 'status' && event.phase === 'activity') {
         // Nestor says what it is doing (tools, another agent) once per line.
@@ -966,7 +990,10 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       (data.turns || []).forEach(turn => {
         if (turn.inputText) { const asked = message('user', turn.inputText, false, null, turn.attachments); const id = turn.clientTurnId || turn.traceId; if (id && !family) asked.dataset.turn = id; }
         if (turn.replyText) message('assistant', turn.replyText, turn.interrupted, null, [], turn.speakerAgentId ? ConversationTeam.memberName(team, agents, turn.speakerAgentId) : '');
-        board.restore(turn.display);
+        board.restore((turn.display || []).map(block => {
+          const card = mathCard(block, data.session, turn.clientTurnId);
+          return card !== block && turn.mathValues?.[block.id] ? { ...card, values: turn.mathValues[block.id] } : card;
+        }));
       });
       workflow?.restore(data.session.sessionId, data.turns || []);
       if (data.turns?.length >= data.policy?.maximumDisplayedTurns && saved.turnCount > data.turns.length) {
