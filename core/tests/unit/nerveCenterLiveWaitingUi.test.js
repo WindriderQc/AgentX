@@ -58,7 +58,7 @@ describe('Nerve Center heavy-queue waiting list', () => {
   test('lists every request without a usable slot, with what it needs and why it waits', () => {
     const html = live.renderQueueCard(jobs, [], machines, NOW, true);
     expect(html).toContain('<details class="nc-live-waiting">');
-    expect(html).toContain('1 waiting for a slot · 1 with an expired slot');
+    expect(html).toContain('1 needs a slot planned · 1 window expired, to review · none starts on its own');
     expect((html.match(/class="nc-live-waiting-item/g) || []).length).toBe(2);
     // Higher priority first.
     expect(html.indexOf('Old reservation')).toBeLessThan(html.indexOf('Parity run'));
@@ -104,6 +104,21 @@ describe('Nerve Center heavy-queue waiting list', () => {
   test('machine card counts waiting and expired requests and links to the list', () => {
     const work = live.machineWork({ address: '10.0.0.20', endpoints: [] }, jobs, [], NOW);
     expect(work.waiting).toBe(2);
+    expect(work.waitingManual).toBe(2);
+  });
+
+  test('says which requests start on their own, from Core next action', () => {
+    const auto = { id: 'j5', title: 'Auto run', state: 'requested', hosts: ['http://10.0.0.20:11434'],
+      presentation: { startMode: 'automatic', nextAction: { code: 'await_native_admission' } } };
+    const html = live.renderQueueCard([jobs[0], auto], [], machines, NOW, true);
+    expect(html).toContain('1 needs a slot planned · 1 will start on its own');
+    expect(html).not.toContain('none starts on its own');
+    expect(html).toContain('Starts automatically once Core admits it');
+    const work = live.machineWork({ address: '10.0.0.20', endpoints: [] }, [jobs[0], auto], [], NOW);
+    expect([work.waiting, work.waitingManual]).toEqual([2, 1]);
+    const card = live.renderMachineCard({ name: 'SmallBox', address: '10.0.0.20', endpoints: [], gpus: [] },
+      { current: [], next: null, waiting: 2, waitingManual: 1, claims: [] }, NOW);
+    expect(card).toContain('2 queued, 1 needs someone · show which');
   });
 
   test('the machine link opens the list, and the open state survives a refresh', async () => {
@@ -132,7 +147,7 @@ describe('Nerve Center heavy-queue waiting list', () => {
     };
     const liveDom = load({ fetchJson, document });
     await liveDom.loadLive({ quiet: true });
-    expect(body.innerHTML).toContain('2 waiting in the queue · show which');
+    expect(body.innerHTML).toContain('2 queued, none starts on its own · show which');
     expect(body.innerHTML).toContain('<details class="nc-live-waiting">');
 
     listeners.show();

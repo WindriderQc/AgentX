@@ -8,6 +8,9 @@
  *   bound to a heavy-work or Benchmark workload is counted, not listed.
  * - recent: completed inference rows per minute and per caller.
  * - power: the gpu-agent samples kept by Data (one every ~30 s per GPU).
+ * - one minute's requests (readMinuteRequests): caller, machine, duration,
+ *   status and a stable failure reason. Never the error text, prompts or
+ *   replies.
  *
  * Read-only. Each part fails on its own and reports its error.
  */
@@ -15,6 +18,8 @@
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
 const InferenceLog = require('../../models/InferenceLog');
 const { fetchData } = require('./dataServiceClient');
+const { failureReasonExpression } = require('./inferenceFailureAnalytics');
+const { FAILURE_REASONS } = require('./routing/inferenceFailureReasons');
 
 const MIN_MINUTES = 5;
 const MAX_MINUTES = 60;
@@ -22,6 +27,8 @@ const DEFAULT_MINUTES = 15;
 const MAX_ACTIVE = 50;
 const TOP_CALLERS = 6;
 const DATA_TIMEOUT_MS = 5000;
+const MINUTE_ROWS = 60;
+const MINUTE_MAX_AGE_MS = 24 * 3600_000;
 
 // Core's own internal callers, named in plain words when no caller label exists.
 const PRINCIPAL_LABELS = Object.freeze({
@@ -109,6 +116,61 @@ async function readRecentActivity({ minutes, now = Date.now(), model = Inference
   };
 }
 
+function clean(value, max) {
+  if (typeof value !== 'string') return null;
+  const text = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  return text ? text.slice(0, max) : null;
+}
+
+function originOf(value) {
+  try { return new URL(value).origin; } catch (_) { return null; }
+}
+
+// The minute that contains `at`, if it lies in the last 24 hours.
+function minuteBounds(at, now) {
+  const t = Date.parse(at);
+  if (!Number.isFinite(t) || t > now + 60_000 || t < now - MINUTE_MAX_AGE_MS) return null;
+  const start = Math.floor(t / 60_000) * 60_000;
+  return { start: new Date(start), end: new Date(start + 60_000) };
+}
+
+async function readMinuteRequests({ at, now = Date.now(), model = InferenceLog } = {}) {
+  const bounds = minuteBounds(at, now);
+  if (!bounds) {
+    const error = new Error('at must be a time in the last 24 hours');
+    error.statusCode = 400;
+    throw error;
+  }
+  const match = { timestamp: { $gte: bounds.start, $lt: bounds.end } };
+  const [rows, total] = await Promise.all([
+    model.aggregate([
+      { $match: match },
+      { $sort: { timestamp: 1, _id: 1 } },
+      { $limit: MINUTE_ROWS },
+      { $project: {
+        _id: 0, timestamp: 1, status: 1, durationMs: 1, host: 1, model: 1,
+        label: { $ifNull: ['$callerDetail', { $ifNull: ['$consumerContract', '$caller'] }] },
+        reason: { $cond: [{ $eq: ['$status', 'success'] }, null, failureReasonExpression()] },
+      } },
+    ]),
+    model.countDocuments(match),
+  ]);
+  return {
+    minute: bounds.start.toISOString(),
+    total,
+    truncated: total > rows.length,
+    requests: rows.map(row => ({
+      at: row.timestamp ? new Date(row.timestamp).toISOString() : null,
+      caller: (row.label !== 'unknown' && clean(row.label, 96)) || 'Unknown caller',
+      host: originOf(row.host),
+      model: clean(row.model, 120),
+      durationMs: numberOrNull(row.durationMs),
+      status: ['success', 'error', 'timeout'].includes(row.status) ? row.status : 'error',
+      reason: row.status === 'success' ? null : (FAILURE_REASONS.includes(row.reason) ? row.reason : 'unclassified_error'),
+    })),
+  };
+}
+
 function numberOrNull(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -163,6 +225,6 @@ async function getLiveActivity({ minutes: rawMinutes } = {}, deps = {}) {
 }
 
 module.exports = {
-  getLiveActivity, readActiveRequests, readRecentActivity, readPowerHistory,
-  boundedMinutes, requestLabel, projectRequest, PRINCIPAL_LABELS,
+  getLiveActivity, readActiveRequests, readRecentActivity, readPowerHistory, readMinuteRequests,
+  minuteBounds, boundedMinutes, requestLabel, projectRequest, PRINCIPAL_LABELS,
 };

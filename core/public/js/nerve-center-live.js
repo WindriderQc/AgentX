@@ -195,6 +195,8 @@
             next,
             // Without a usable slot: never planned, or its slot has passed.
             waiting: withPhase.filter(entry => entry.phase === 'waiting' || entry.phase === 'expired').length,
+            waitingManual: withPhase.filter(entry => (entry.phase === 'waiting' || entry.phase === 'expired')
+                && waitGroup(entry.job, entry.phase) !== 'automatic').length,
             claims: allClaims
         };
     }
@@ -297,7 +299,13 @@
         if (work.next) {
             lines.push(`<div class="nc-live-work"><span class="nc-live-chip muted">${esc(dayAndTime(work.next.job.reservation.start, now))}</span> ${esc(work.next.job.title)}</div>`);
         }
-        if (work.waiting > 0) lines.push(`<button type="button" class="nc-link-btn nc-live-small nc-live-show-waiting">${work.waiting} waiting in the queue · show which</button>`);
+        if (work.waiting > 0) {
+            const manual = work.waitingManual ?? work.waiting;
+            const how = manual === work.waiting ? 'none starts on its own'
+                : manual === 0 ? (work.waiting === 1 ? 'starts on its own' : 'all start on their own')
+                    : `${manual} need${manual === 1 ? 's' : ''} someone`;
+            lines.push(`<button type="button" class="nc-link-btn nc-live-small nc-live-show-waiting">${work.waiting} queued, ${how} · show which</button>`);
+        }
         if (lines.length === 0) lines.push('<div class="nc-muted nc-live-small">No reservation</div>');
         return `<div class="nc-live-work-list">${lines.join('')}</div>`;
     }
@@ -401,7 +409,7 @@
         const extra = [later > 0 ? `${later} later` : '', claimLine].filter(Boolean).join(' · ');
         return `<section class="nc-live-queue" aria-labelledby="ncLiveQueueTitle">
             <div class="nc-live-queue-head">
-                <h3 id="ncLiveQueueTitle">Heavy-work queue · next 24 h</h3>
+                <h3 id="ncLiveQueueTitle">Heavy-work queue</h3>
                 <a class="nc-link-btn" href="/automations?view=calendar">Open calendar <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
             </div>
             ${rows ? `<ul class="nc-live-queue-list">${rows}</ul>` : '<div class="nc-muted nc-live-small">Nothing reserved in the next 24 hours.</div>'}
@@ -422,6 +430,39 @@
         run_in_slot: 'Waits for the operator to run it during its slot',
         use_native_executor: 'Started by its own executor after its approval protocol'
     });
+
+    // What each request needs next, grouped for the summary line. Only the
+    // automatic codes start without someone acting.
+    const WAIT_GROUPS = Object.freeze({
+        plan_slot: ['needs a slot planned', 'need a slot planned'],
+        review_window: ['window expired, to review', 'windows expired, to review'],
+        review_schedule: ['window to fix', 'windows to fix'],
+        prepare_executor: ['needs an executor', 'need an executor'],
+        run_in_slot: ['to run in its slot', 'to run in their slot'],
+        automatic: ['will start on its own', 'will start on their own'],
+        unknown: ['without a known next step', 'without a known next step']
+    });
+    const AUTOMATIC_CODES = new Set(['wait_not_before', 'wait_slot', 'await_native_admission', 'use_native_executor']);
+
+    function waitGroup(job, phase) {
+        const code = job.presentation?.nextAction?.code;
+        if (AUTOMATIC_CODES.has(code)) return 'automatic';
+        if (code && WAIT_GROUPS[code]) return code;
+        if (phase === 'expired') return 'review_window';
+        return job.presentation?.startMode === 'automatic' ? 'automatic' : 'unknown';
+    }
+
+    function waitingSummary(entries) {
+        const counts = new Map();
+        entries.forEach(({ job, phase }) => {
+            const group = waitGroup(job, phase);
+            counts.set(group, (counts.get(group) || 0) + 1);
+        });
+        const parts = Object.keys(WAIT_GROUPS).filter(group => counts.has(group))
+            .map(group => `${counts.get(group)} ${WAIT_GROUPS[group][counts.get(group) === 1 ? 0 : 1]}`);
+        const manual = entries.length - (counts.get('automatic') || 0);
+        return { text: parts.join(' · '), manual, noneAutomatic: !counts.has('automatic') };
+    }
 
     function waitReason(job, phase) {
         const action = job.presentation?.nextAction || null;
@@ -465,9 +506,8 @@
 
     function waitingList(entries, machines, now) {
         if (!entries.length) return '';
-        const expired = entries.filter(e => e.phase === 'expired').length;
-        const waiting = entries.length - expired;
-        const summary = [waiting ? `${waiting} waiting for a slot` : '', expired ? `${expired} with an expired slot` : ''].filter(Boolean).join(' · ');
+        const counts = waitingSummary(entries);
+        const summary = `${counts.text}${counts.noneAutomatic ? ' · none starts on its own' : ''}`;
         const items = entries
             .sort((a, b) => (Number(b.job.priority) || 0) - (Number(a.job.priority) || 0)
                 || (Date.parse(a.job.createdAt) || 0) - (Date.parse(b.job.createdAt) || 0))
