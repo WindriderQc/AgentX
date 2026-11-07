@@ -15,7 +15,7 @@ request again. `GET /api/history/receipts/:receiptId` and the corresponding
 `DELETE` stay in the server-resolved Playground owner scope and use no-store
 responses. Erasing a recovery copy leaves an already saved conversation intact;
 erasing that conversation purges its associated copies and rejects late writes.
-Household, PsyX and external consumer routes keep their existing contracts.
+Household and external consumer routes keep their existing contracts.
 
 `Conversation` keeps an atomic reference to immutable transcript pages and
 complete payload chunks. Existing embedded histories remain readable and move
@@ -129,7 +129,6 @@ interface has an independent persisted preference scope:
 | Interface | Entry | Optional work |
 | --- | --- | --- |
 | Playground | Conversation header | Profile and model history; its existing precision controls hold RAG, web search, thinking and model parameters. |
-| PsyX | Conversation header | Context sources, automatic recommendations, deep replies, recap drafts, review and dream availability, timing and dream sources. |
 | Nestor | Private conversation settings | Core history, selected notes, confirmed point, approved documents, family context, review advice, recap drafts and background review with its delay. |
 | Famille | Performance settings in Nestor's private parental space | Separate Core history, notes, approved documents, routines, review advice and background review with its delay. |
 
@@ -139,7 +138,7 @@ editors receive a conflict and can reload. Current instance environment values
 supply initial defaults; stored overrides survive restarts. A disabled context
 source stays stored, but is omitted from subsequent model context. A disabled
 background feature stops scheduling new inference and invalidates obsolete
-results; an already admitted PsyX inference settles normally. Access checks,
+results. Access checks,
 transcript integrity and deterministic crisis protections stay active. A recap
 can still be written manually with its model-generated proposal disabled.
 Native OpenClaw history, memory and tools are configured in OpenClaw; the panel
@@ -407,7 +406,7 @@ Core or Benchmark on a running instance only through the launcher
 (`./agentx rebuild --no-deps core` or `./agentx up --build --no-deps core`): a
 direct `docker compose up` bypasses the lease. Still coordinate with other
 operators of the instance. A new setting (for example
-`PSYX_VOICE_MODE`) is added to the external env file by hand; code
+`HOUSEHOLD_BRAIN_ENABLED`) is added to the external env file by hand; code
 deployment never changes instance configuration. The service `/health`
 responses report the deployed `revision`.
 
@@ -930,7 +929,7 @@ reported in an authorized delivery workflow. These bounded Core writes grant
 no financial transaction, workbook edit or general filesystem permission.
 
 Full profile serves the Voice workshop at `/voice-lab` in Workshop. It owns the
-advanced voice test/configuration UI; Nestor, Reading and PsyX retain their daily
+advanced voice test/configuration UI; Nestor and Reading retain their daily
 controls and contextual access. Its STT-only mode never dispatches Main or writes
 a conversation. The service settings view is read-only. Browser capture settings
 apply to new microphone openings and keep their scope; saving does not edit the
@@ -998,10 +997,7 @@ A partially scheduled clause is terminal and requires explicit replay. Invalid
 requests and access refusals do not advance the ladder. Interruption never starts
 that retry. The reply can remain unspoken if every
 voice fails. Server replies
-do not use browser `speechSynthesis`. PsyX uses its
-protected chosen-voice route. Explicit English can fall back only to a system
-voice Chrome declares local and English; no matching local voice leaves speech
-unavailable and the complete text visible. French stays on its protected route.
+do not use browser `speechSynthesis`.
 Conversation, jokes, stories and explanations are spoken completely, without
 a sentence or character cutoff. Long documents and lists have a useful spoken
 summary plus their complete screen content. Explicit reading and Listen replay
@@ -1059,7 +1055,7 @@ VoiX requires `VOIX_BASE_URL` for speech and native devices. `DATAAPI_BASE_URL` 
 `LEANTIME_EMAIL_ACTION_USER_ID`; no owner project/user IDs are shipped.
 Provide these through external runtime configuration/Compose overrides.
 `VOIX_FALLBACK_URL` optionally names a backup VoiX for the shared Core stateless
-voice routes used by Household and PsyX (when PsyX uses the same primary):
+voice routes used by Household:
 transcription, synthesis (whole and streamed), the voice catalog and the player
 script. Core probes `VOIX_BASE_URL/health` every 15 s with a 1.5 s timeout and
 uses the backup while the probe fails. A primary network error or 502/503/504 is retried
@@ -1076,7 +1072,7 @@ The default remains true for speech installations without a backup; an explicitl
 configured CPU host retains its CPU decoder.
 The optional [spoken-controls adapter](../integrations/voix/README.md) adds local
 Stop/silence recognition on the same VoiX process before Whisper transcription.
-`VOIX_SPOKEN_CONTROLS_ENABLED=true` selects that shared upload endpoint for Household and PsyX only after the
+`VOIX_SPOKEN_CONTROLS_ENABLED=true` selects that shared upload endpoint for Household only after the
 instance installs and qualifies its model. False preserves ordinary transcription.
 Recognized controls never launch Whisper. Interrupt candidates also skip the
 browser's GPU warm-up; normal conversation capture retains it.
@@ -1583,7 +1579,7 @@ worker failure leaves the original untouched. The response header
 
 The runtime bridges (OpenClaw model discovery, inspection and every model call;
 Hermes model discovery and chat completions), the runtime configuration export,
-PsyX and `GET /api/consumers/v1/routing` read one effective routing snapshot:
+`GET /api/consumers/v1/routing` reads one effective routing snapshot:
 configured task routes, host preferences and per-task context and contract
 evidence. Building it reads each routed host's `/api/tags`, its Benchmark host
 profile and the registry entry, so Core shares one snapshot per option set.

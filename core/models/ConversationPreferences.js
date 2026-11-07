@@ -2,7 +2,7 @@
 const mongoose = require('mongoose');
 const schema = new mongoose.Schema({
   ownerId: { type: String, required: true, maxlength: 200 },
-  surface: { type: String, required: true, enum: ['playground', 'psyx', 'nestor', 'family'] },
+  surface: { type: String, required: true, enum: ['playground', 'nestor', 'family'] },
   revision: { type: Number, required: true, min: 1 },
   values: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} }
 }, { collection: 'conversation_preferences', timestamps: true });

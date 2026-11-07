@@ -54,7 +54,7 @@ it can repeat it. Speaker identification remains the open part of
 ```mermaid
 flowchart LR
     Human[Browser on private LAN] -->|Private HTTPS, no account or code| Gateway[Caddy: private bind and peer IP restriction]
-    Gateway -->|Loopback 3180| Core[Core: home, Nestor, Household, PsyX, Toolbox]
+    Gateway -->|Loopback 3180| Core[Core: home, Nestor, Household, Toolbox]
     Gateway -->|"/benchmark → loopback 3181"| Benchmark[Benchmark]
     Gateway -->|"/rag → loopback 3182"| RAG[RAG]
     Gateway -->|Optional loopback 3183| Data[Data APIs]
@@ -84,7 +84,7 @@ MongoDB/Qdrant remain internal. No WAN listener, NAT/UPnP mapping, public tunnel
 or Internet entry belongs to this model. A publicly resolvable hostname alone
 neither authorizes nor proves Internet exposure.
 
-Core serves `/`, `/dad`, `/panel`, `/psyx` and `/data-toolbox` directly in the
+Core serves `/`, `/dad`, `/panel` and `/data-toolbox` directly in the
 full profile. Benchmark and RAG retain their separate LAN HTTPS origins. Data
 has its own API service; the Toolbox retains its bounded projection, its network device record
 editor and scan request, the MQTT publish form, the storage scan request and the Janitor's stored duplicate-review decisions. The demo profile continues to exclude personal and household
@@ -98,7 +98,6 @@ capabilities, regardless of the browser entry.
 | Famille | Tool-free family agent, bounded household context and explicitly approved household/normal retrieval; no Main private tools |
 | Personal and engineering tasks | Core lane rules; private/family tasks remain excluded from worker selection and planning context |
 | Family review | Explicit check-in → review → approval/reopen/cancel and transition receipts; no authenticated human identity |
-| PsyX | `surface:psyx:default` conversation owner, longitudinal state and explicit reset/delete confirmation; no automatic RAG publication |
 | Benchmark | Admission, claims/leases, execution limits, judge qualifications and receipts |
 | RAG | Classification, ingestion roots, source retirement and destructive confirmations |
 | Data | Preview, evidence, confirmations and bounded approved file mutations at its own service |
@@ -116,10 +115,6 @@ present. Guardian-consent checkboxes in the opt-in audio vault are likewise
 human declarations; they are not verified identity. Existing receipt data is
 not rewritten. Real children's voice use requires a separate explicit decision.
 
-`PSYX_ACCESS_TOKEN` remains an independent native bearer credential. Core
-human requests without Authorization use LAN access; explicitly supplied invalid
-credentials are refused. Native-only embeddings may select token mode through
-`PSYX_ACCESS_MODE`; the built-in Core human surface always uses LAN access.
 There is no cookie exchange, expiry timer or human token entry page. External
 consumer, OpenClaw, roundtable, DSH Studio and other independent grants remain.
 DSH Studio's own signed launch cookie and forward-auth route must not be removed.
@@ -131,9 +126,9 @@ validated `next` path/explicitly configured service origin. External origins,
 credential-bearing URLs, invalid encoding, control characters and recursive
 retired destinations fall back to `/dad`. The redirect never requires a code.
 
-All `/api/access/*` routes and PsyX `/api/psyx/auth/*` routes are gone and return
-404. The deleted `access-assets` files are not served. Old `agentx_adult` and
-`psyx_session` cookies are ignored and expired when presented to Core. Independent
+All `/api/access/*` routes are gone and return
+404. The deleted `access-assets` files are not served. Old `agentx_adult`
+cookies are ignored and expired when presented to Core. Independent
 integration cookies remain intact. Fresh human requests create no adult cookie.
 Old pages cached in already-open tabs may still run old scripts: reload every
 human tab once the coordinated update is complete.
@@ -160,7 +155,7 @@ this example or from local test results.
    now follow the chosen LAN model. Reload Caddy and check service pages/APIs.
 4. Apply the reviewed env/Compose patch and activate the new Core image. Remove
    the obsolete entry marker from the final gateway config. Check `/`, `/dad`,
-   `/panel` → `/dad`, `/psyx`, Benchmark, RAG and Toolbox/Data, both HTML and API.
+   `/panel` → `/dad`, Benchmark, RAG and Toolbox/Data, both HTML and API.
    Verify absent code routes (404), no unlock redirects/cookies and unchanged
    native token refusals and domain confirmations. Reload browser tabs.
 5. Check listener/firewall/router/tunnel state again, including IPv6. From an
@@ -194,8 +189,7 @@ After **separate explicit approval**:
 3. With the owner-approved database selected, execute only
    `db.getCollection('access_face_enrollments').deleteMany({})`; separately
    approve `db.getCollection('access_parental_code').deleteMany({})` and obsolete
-   host-only code/env cleanup. Do not drop a database, delete PsyX state or
-   touch the audio evidence vault.
+   host-only code/env cleanup. Do not drop a database or touch the audio evidence vault.
 4. Verify zero documents in each approved collection and normal human journeys.
    Record counts and deletion receipts only. Decide backup expiry separately;
    live deletion does not erase old backup generations. Restore only from the

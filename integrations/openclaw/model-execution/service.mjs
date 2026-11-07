@@ -72,18 +72,20 @@ function findParameter(payload, keys) {
 }
 
 // Where each qualified native API carries the submitted context on the wire.
+const googleWireContext = payload => {
+  if (!Array.isArray(payload.contents)) return null;
+  const system = payload.config?.systemInstruction;
+  return [...(system != null ? [{ role: 'system', content: system }] : []), ...payload.contents.map(message => ({
+    role: message.role === 'model' ? 'assistant' : message.role,
+    content: Array.isArray(message.parts) ? message.parts.map(part => {
+      if (Object.keys(part).length !== 1 || typeof part.text !== 'string') reject('OPENCLAW_CONTEXT_UNVERIFIED', 502);
+      return { type: 'text', text: part.text };
+    }) : null
+  }))];
+};
 const wireContext = {
-  'google-generative-ai': payload => {
-    if (!Array.isArray(payload.contents)) return null;
-    const system = payload.config?.systemInstruction;
-    return [...(system != null ? [{ role: 'system', content: system }] : []), ...payload.contents.map(message => ({
-      role: message.role === 'model' ? 'assistant' : message.role,
-      content: Array.isArray(message.parts) ? message.parts.map(part => {
-        if (Object.keys(part).length !== 1 || typeof part.text !== 'string') reject('OPENCLAW_CONTEXT_UNVERIFIED', 502);
-        return { type: 'text', text: part.text };
-      }) : null
-    }))];
-  },
+  'google-generative-ai': googleWireContext,
+  'google-vertex': googleWireContext,
   'openai-completions': payload => payload.messages,
   'anthropic-messages': payload => Array.isArray(payload.messages) ? [...(payload.system != null ? [{ role: 'system', content: payload.system }] : []), ...payload.messages] : null,
   'openai-responses': payload => Array.isArray(payload.input) ? [...(payload.instructions != null ? [{ role: 'system', content: payload.instructions }] : []), ...payload.input] : null
@@ -94,7 +96,7 @@ const nativeStateKeys = ['previous_response_id', 'conversation', 'prompt', 'back
 function verifyWireContext(payload, context, model) {
   if (!wireContext[model.api]) reject('OPENCLAW_CONTEXT_TRANSPORT_UNQUALIFIED', 502);
   if (nativeStateKeys.some(key => payload[key] != null) || payload.store === true) reject('OPENCLAW_NATIVE_STATE_FORBIDDEN', 502);
-  if (model.api === 'google-generative-ai' && (payload.config?.cachedContent != null || payload.config?.httpOptions != null)) reject('OPENCLAW_NATIVE_STATE_FORBIDDEN', 502);
+  if (['google-generative-ai', 'google-vertex'].includes(model.api) && (payload.config?.cachedContent != null || payload.config?.httpOptions != null)) reject('OPENCLAW_NATIVE_STATE_FORBIDDEN', 502);
   const textOf = content => {
     if (typeof content === 'string') return content;
     if (!Array.isArray(content) || content.some(block => !['text', 'input_text', 'output_text'].includes(block.type) || typeof block.text !== 'string')) reject('OPENCLAW_CONTEXT_UNVERIFIED', 502);

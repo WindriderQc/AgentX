@@ -184,7 +184,7 @@ ConversationSchema.index({ surface: 1, 'surfaceSession.sessionId': 1 }, {
 });
 // Both members of a surface turn already carry turnId. Indexing the optional
 // assistant-only receipt also indexed each user message as null, making separate
-// conversations collide. PsyX/plain chat do not use surfaceSession pairs.
+// conversations collide. Ordinary chat conversations do not use surfaceSession pairs.
 ConversationSchema.index({ surface: 1, 'messages.turnId': 1 }, {
   name: 'surface_turn_identity_unique', unique: true,
   partialFilterExpression: { 'surfaceSession.sessionId': { $type: 'string' }, 'messages.turnId': { $type: 'string' } }

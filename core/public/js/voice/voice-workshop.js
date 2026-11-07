@@ -40,7 +40,7 @@
     const capture = () => S.normalize(Object.fromEntries([...host.querySelectorAll('[data-capture]')].map(el => [el.dataset.capture, el.value === '' ? NaN : Number(el.value)])), true);
     const draft = () => ({ ...prefs, language: field('language').value, voice: field('voice').value,
       wakeWord: field('wakeWord').checked, interruption: field('interruption').checked, linksClickable: field('linksClickable').checked,
-      spokenReplies: field('spokenReplies').checked, autoSend: field('autoSend').checked, inputDeviceId: field('inputDeviceId').value });
+      inputDeviceId: field('inputDeviceId').value });
     function voiceOptions(select, lang, selected = '') {
       select.replaceChildren(new Option('Voix effective du parcours', ''));
       for (const voice of state.catalog?.voices || []) {
@@ -63,12 +63,6 @@
     }
     function renderPrefs() {
       prefs = S.read(scope, state.personas);
-      if (scope === 'psyx') try {
-        if (!root.localStorage.getItem(root.PsyXVoicePreferences.STORAGE_KEY)) {
-          const candidate = root.PsyXVoicePreferences.preferredFemaleVoice(state.catalog, prefs.language);
-          if (candidate) prefs.voice = candidate.provider + '|' + candidate.id;
-        }
-      } catch {}
       const selectedId = embedded ? selection().personaId : null;
       if (selectedId && ['personal','family'].includes(scope) && state.personas.some(p => p.id === selectedId)) {
         const profile = root.PersonaPresentation.read((() => { try { return root.localStorage; } catch { return null; } })(), state.personas).profiles[selectedId];
@@ -78,12 +72,12 @@
       updateExample(prefs.language);
       if (field('compareLanguage')) field('compareLanguage').value = prefs.language === 'fr' ? 'en' : 'fr';
       voiceOptions(field('voice'), prefs.language, prefs.voice); voiceOptions(field('testVoice'), prefs.language, prefs.voice);
-      for (const key of ['wakeWord','interruption','linksClickable','spokenReplies','autoSend']) field(key).checked = prefs[key] === true;
+      for (const key of ['wakeWord','interruption','linksClickable']) field(key).checked = prefs[key] === true;
       if (prefs.inputDeviceId) field('inputDeviceId').add(new Option('Micro enregistré', prefs.inputDeviceId));
       field('inputDeviceId').value = prefs.inputDeviceId;
       for (const [key, value] of Object.entries(prefs.capture)) find(`[data-capture="${key}"]`).value = value;
       role('owner').textContent = prefs.owner;
-      role('psyx').hidden = scope !== 'psyx'; const space = ['personal','family'].includes(scope);
+      const space = ['personal','family'].includes(scope);
       // Opened from a conversation, listening and interruption live in its Settings panel.
       role('wake').hidden = !space || embedded; role('links').hidden = scope !== 'family'; role('interrupt').hidden = !space || embedded; role('spaceSettings').hidden = !space || !embedded;
     }
@@ -135,18 +129,11 @@
     notice('Chargement des informations vocales…');
     // Load only the selected surface's authorized voice metadata. No warming or synthesis.
     try {
-      if (scope === 'psyx') {
-        const status = await api('/api/psyx/voice/status', { signal: life.signal });
-        if (status.enabled === false) throw new Error('La voix PsyX n’est pas configurée.');
-        state.catalog = await api('/api/psyx/voice/catalog', { signal: life.signal });
-        setRows(role('service'), [['Source', 'Service protégé PsyX'], ['Modèle', status.config?.whisperModel], ['Moteur', status.config?.ttsProvider]]);
-      } else {
-        const results = await Promise.allSettled([api('/api/voice-personas/catalog', { signal: life.signal }), api('/api/voix/catalog', { signal: life.signal }), api('/api/voix/settings', { signal: life.signal })]);
-        if (results[0].status === 'fulfilled') state.personas = results[0].value.personas || [];
-        if (results[1].status === 'fulfilled') state.catalog = results[1].value;
-        if (results[2].status === 'fulfilled') { const s = results[2].value; setRows(role('service'), [['Source', 'Service principal · démarrage'], ['Modèle', s.model], ['Appareil', s.device], ['Calcul', s.computeType], ['Seuil VAD', s.vadThreshold], ['Attente maximale', number(s.queueTimeoutSeconds, ' s')]]); }
-        const failed = results.filter(r => r.status === 'rejected'); if (failed.length) notice(failed.map(r => r.reason.message).join(' '));
-      }
+      const results = await Promise.allSettled([api('/api/voice-personas/catalog', { signal: life.signal }), api('/api/voix/catalog', { signal: life.signal }), api('/api/voix/settings', { signal: life.signal })]);
+      if (results[0].status === 'fulfilled') state.personas = results[0].value.personas || [];
+      if (results[1].status === 'fulfilled') state.catalog = results[1].value;
+      if (results[2].status === 'fulfilled') { const s = results[2].value; setRows(role('service'), [['Source', 'Service principal · démarrage'], ['Modèle', s.model], ['Appareil', s.device], ['Calcul', s.computeType], ['Seuil VAD', s.vadThreshold], ['Attente maximale', number(s.queueTimeoutSeconds, ' s')]]); }
+      const failed = results.filter(r => r.status === 'rejected'); if (failed.length) notice(failed.map(r => r.reason.message).join(' '));
     } catch (error) { notice(error.message); }
     if (life.signal.aborted) return { destroy() {} };
     if (role('notice').textContent === 'Chargement des informations vocales…') notice('');

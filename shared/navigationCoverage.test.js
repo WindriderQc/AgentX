@@ -48,7 +48,7 @@ const CONTEXTUAL = {
 };
 
 const SKIPPED_DIRS = new Set(['node_modules', 'public', 'test', 'tests', 'eval', 'fixtures']);
-const NOT_A_PAGE = /^\/(?:api|assets|vendor|public|access-assets|psyx\/assets|healthz?|readyz|favicon|mcp)(?:[/.]|$)/;
+const NOT_A_PAGE = /^\/(?:api|assets|vendor|public|access-assets|healthz?|readyz|favicon|mcp)(?:[/.]|$)/;
 
 function sourceFiles(entry) {
   const absolute = path.join(root, entry);

@@ -66,7 +66,7 @@ erasure barrier. Browser presentation ownership prevents automatic duplicate
 speech and does not grant business execution. See
 [the conversation work contract](NESTOR_CONVERSATION_WORK.md).
 
-Surfaces (Nestor, Household, PsyX, the model workbench) compose personas, domain
+Surfaces (Nestor, Household, the model workbench) compose personas, domain
 policies and reusable Core capabilities. Core owns canonical conversation,
 inference/routing, memory/RAG access, tools/tasks, files/images, events/jobs and
 observable execution. OpenClaw, Telegram and other external harnesses use those
@@ -153,10 +153,7 @@ is strict and never changes model
 ### Fallback matrix
 
 Four mechanisms may retry or substitute a model call. None escalates to cloud.
-A cloud model is only ever reached by an explicit lane a surface owner chose:
-PsyX's frontier lane sends a turn to an OpenClaw agent
-(`core/src/services/frontier/openclawAgentClient.js`) when its user setting asks
-for it, and falls back to the local route, visibly, when that agent fails.
+Cloud execution requires an explicitly configured and selected consumer lane.
 
 | Mechanism | Applies to | Trigger | Requested vs used | Replay of an executed request | Control |
 | --- | --- | --- | --- | --- | --- |
@@ -527,7 +524,7 @@ Drafts include actual whole-message coverage and write nothing. Saved edits
 require the previous recap revision and canonical transcript fingerprint; the
 atomic root version refuses concurrent turns or editors. Canonical transcript
 references support metadata-only continuity reads. Existing exports and erasure
-include the embedded point. PsyX and personal Nestor share its routes and browser
+include the embedded point. Personal Nestor uses its routes and browser
 editor, clear private drafts on locking/navigation, and carry confirmed points
 as reference context. Family conversations do not receive personal points.
 
@@ -535,18 +532,17 @@ Core's `runtimeServices.conversationPreferences.forOwner` binds an exact server-
 owner and surface. The `agentx.conversation-preferences/v1` contract reads an
 applicable catalog and environment defaults without writing. Explicit overrides
 live in `ConversationPreferences`; a unique owner/surface index and revision compare
-refuse concurrent editors. Playground, PsyX, personal Nestor and Famille are
+refuse concurrent editors. Playground, personal Nestor and Famille are
 independent. A shared browser editor applies presets only after confirmation.
 Surfaces use the selected optional context, inference and background-work switches;
 saved content remains available for manual reading and export. Settings changes
-invalidate obsolete background results without cancelling admitted PsyX inference.
+invalidate obsolete background results.
 Famille preferences are editable through the private parental space. Access,
 transcript integrity and deterministic safety checks remain mandatory. Native
 OpenClaw memory, history and tools retain their own configuration authority.
 
 Surface records use a distinct internal user namespace and are not exposed by
-the default Playground history API. PsyX transcripts are namespaced away from
-ordinary chat.
+the default Playground history API.
 
 Personal Nestor's background review and isolated native work receive the full
 canonical conversation, independently of the guardian's history policy and
@@ -622,11 +618,11 @@ See [agents, personalities and voice](AGENTS_AND_VOICE.md) for the selection
 boundaries and the evidence required to qualify conversation and speech paths.
 
 Core's `core/public/js/voice` owns browser microphone capture, speech endpoint
-detection, echo rejection and cancellable playback. Household and PsyX compose
-its conversation loop with their protected session and turn adapters.
+detection, echo rejection and cancellable playback. Household composes
+its conversation loop with its scoped session and turn adapters.
 `core/src/services/voice` owns the VoiX transport, primary/backup selection,
 request-scoped synthesis validation, deadlines through body consumption and
-stream forwarding. Both surfaces use these capabilities. Engine error events
+stream forwarding. Household uses these capabilities. Engine error events
 are rejected before audio headers are committed, and a disconnected caller
 cancels its upstream request without starting a backup request.
 
@@ -634,7 +630,7 @@ The Voice workshop (`/voice-lab`) composes that same loop for explicit STT-only
 tests, without a business turn adapter, and the same speech ladder for previews.
 Its attached diagnostic view observes the existing surface conversation and
 replays its bounded RAM excerpt without opening another microphone. Browser
-capture settings keep per-surface storage; presentation, PsyX and personality
+capture settings keep per-surface storage; presentation and personality
 voices retain their existing owners. A read-only settings projection exposes no
 prompts, lexicon, model paths or shared-config write route. Device acceptance
 moves under the workshop while keeping its historical receipt contract.
@@ -655,8 +651,7 @@ re-score a clause.
 A clause is spoken when text follows its end, so a reply's last clause waits
 for a signal that nothing follows. A surface that streams its reply gives that
 signal as soon as the spoken text is complete (`onSayEnd`), ahead of the turn's
-closing work; the completed turn remains the fallback. PsyX speaks a reply only
-once its turn is confirmed, so it has nothing to flush early.
+closing work; the completed turn remains the fallback.
 
 A voice can fail at two moments. Before its stream starts, the synthesis proxy
 refuses it and the surface's ladder (`speech-ladder.js`) steps to its next
@@ -666,8 +661,7 @@ failed, at most once per turn and never after an interruption. The ladder
 restarts below the voice that failed and that voice is left for the rest of the
 turn; a clause prepared ahead with it is prepared again before it is heard.
 Household's ladder is the chosen voice, the personality's voice, its catalog
-voice, then the device's own voice. PsyX has one chosen voice and no device
-voice: its retry is the same request on its protected route.
+voice, then the device's own voice.
 
 For a surface that keeps it, the loop measures each voice turn
 (`voice-timeline.js`): milliseconds from the moment the end of the person's
@@ -685,7 +679,6 @@ has ended. `core/src/services/voice/timeline.js` keeps only the known marks and 
 as bounded whole numbers. Household stores them as `voiceTimings` on the recorded
 turn (`POST …/sessions/:sessionId/voice-timings`, by the browser's turn id,
 within the session's own space) and the parent journal shows the main delays.
-PsyX provides no store, so nothing is measured or sent there.
 
 The server side of a Household turn is kept the same way (`serverTimings`,
 `turn-phases.js`): how long the turn took to prepare its context and to get
@@ -697,7 +690,7 @@ the agent path costs outside the model.
 Speech recognition is slower on its first request after a pause. When a
 conversation starts and whenever someone starts speaking after such a pause,
 the loop asks its surface to wake recognition (`POST /api/voix/warm` for
-Household, `POST /api/psyx/voice/warm` for PsyX), so the model runs once
+Household), so the model runs once
 while the person is still talking. It is best effort, sent at most once per
 warm period, to the primary speech service only, and an unreachable or older
 speech service is not an error.
@@ -721,9 +714,8 @@ Spoken conversation has one lane: the page captures the microphone and plays
 the reply, and the speech service only transcribes and synthesizes (#478). Its
 own microphone loop is not used by Core: there is no native session route,
 voice-memory consumer or media vault proxy. Stateless transcription and
-synthesis may use the configured backup. PsyX uses
-only its protected routes; choosing a voice never changes shared VoiX settings.
-Its initial female Canadian voice preference preserves explicit browser choices.
+synthesis may use the configured backup. Choosing a voice never changes shared
+VoiX settings.
 The browser buffers audio transiently and stops capture when the session closes
 or the page is hidden. Native device capture and playback still require their
 own device acceptance.
@@ -827,8 +819,7 @@ private evidence. Recording the same thread again replaces its entry, and Mongo
 removes entries `MAIL_JOURNAL_RETENTION_DAYS` (default 365) after the mail's
 date. The mail assistant and owner Nestor reach it with the OpenClaw
 `mail_journal` tool through `/api/consumers/nestor/v1/mail-journal`; a lasting
-fact drawn from mail is still saved as one note. There is no household reader;
-PsyX's dream reads recent entries in-process as context about the owner's life.
+fact drawn from mail is still saved as one note. There is no household reader.
 
 Sensitive identifiers (NIQ, NAS, REEE, account numbers named as such, and card
 numbers that pass the Luhn check) never stay in a note or journal text when
@@ -851,7 +842,7 @@ request can reach; none of them replaces another.
 |---|---|---|
 | Runtime profile (`demo`/`full`, `shared/agentxRuntimeProfile.js`) | Which surfaces and APIs this installation serves | Authenticate anyone or restrict who reaches a served route |
 | [Parental access](PARENTAL_ACCESS.md) | Whether a browser session, or a bearer carrying the configured code, reaches adult pages and private data through the gateway | Identify a person; it is one shared-device boundary |
-| Specialized tokens (for example PsyX native access, runtime bridges, external consumers) | Whether one integration's own routes accept a caller | Grant anything beyond those routes |
+| Specialized tokens (for example runtime bridges and external consumers) | Whether one integration's own routes accept a caller | Grant anything beyond those routes |
 | Memory audiences (`memoryReadService.forAudience`, Memory Policy V2 labels) | Which memory an already-admitted caller's request reads, owner or household | Admit the caller; it is an information filter |
 | Browser origin guard (`shared/browserOriginGuard.js`) | CORS for AgentX's own origins; refusal of state-changing requests a browser marks cross-site | Stop non-browser clients, or act as adult access or a firewall |
 | User identity (`core/src/helpers/userHelpers.js`) | Nothing yet: every request runs as user `default` | Separate people's conversations, profiles or memory |
@@ -1010,18 +1001,6 @@ pages and APIs retain the parental gateway guard.
   Famille, and read replies through the same voice ladder
   (`persona-presentation.js`): the reading voice chosen on that browser, then
   Nestor's voice with its instance override, then his catalog voice.
-- `core/surfaces/psyx`: uses the Core conversation lifecycle and admitted
-  inference. `core/src/domains/psyx` owns longitudinal state and reflection
-  rules. After each completed turn a background review (router task
-  `PSYX_REVIEW_TASK`, default `deep_reasoning`) writes a conversation digest and
-  memory proposals into PsyX state; proposals enter memory only when the user
-  accepts them. Between sessions a dream reads selected context, with the owner's
-  notes, open tasks and mail journal read in-process and read-only, and writes a
-  portrait and memory changes directly into PsyX state, each one logged and
-  undoable. Coverage and verified quotation references describe the material
-  supplied to that inference; quotation matching does not validate hypotheses.
-  Human access uses the [private LAN](PARENTAL_ACCESS.md) without a code;
-  native consumers keep a separate access token.
 - `core/surfaces/data-toolbox`: UI served by Core, consuming the optional
   Data process over HTTP. It is read-only except for editing a network device's
   record, requesting a network scan, publishing one MQTT message by hand,

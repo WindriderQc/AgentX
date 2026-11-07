@@ -111,6 +111,9 @@ async function observe(job) {
     if (!operationId) operationId = (await Images.findOne({ actionKey: job.executor.actionKey }).select('_id').lean())?._id;
     if (!operationId) throw fail('Image receipt is unavailable; no new generation is authorized', 409);
     const result = await require('./images/imageService').getForAction(operationId, job.executor.actionKey);
+    // Acceptance persists the queued operation before its enrollment/dispatch
+    // owner checks the fence. Discovering that row is not a launch receipt.
+    if (result.state === 'queued') return { operationId, terminal: false, awaitingDispatch: true };
     if (!['completed', 'failed', 'cancelled', 'archive_failed'].includes(result.state)) return { operationId, terminal: false, uncertain: result.state === 'unknown' };
     receipt = { state: result.state === 'archive_failed' ? 'failed' : result.state, authority: 'core.image-operation', operationId,
       runtimeRestored: result.runtimeRestored, artifact: result.artifact || null };
@@ -172,6 +175,7 @@ async function reconcile(id, actor) {
   let job = await queue.get(id);
   if (!['dispatching', 'running', 'uncertain'].includes(job.state)) return job;
   const result = await observe(job);
+  if (result.awaitingDispatch) return { ...job, observation: result };
   if (!job.operation) job = await queue.record(id, { dispatchId: job.dispatchId, state: 'running', operationId: result.operationId }, actor);
   if (result.terminal) return queue.settle(id, result, actor);
   if (result.uncertain && job.state !== 'uncertain') return queue.record(id, { dispatchId: job.dispatchId, state: 'uncertain', reason: result.reason || 'Native executor reports an unknown outcome' }, actor);

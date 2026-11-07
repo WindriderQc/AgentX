@@ -42,7 +42,6 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/api/platform-events',
   '/api/profile',
   '/api/printer-vision',
-  '/api/psyx',
   '/api/reports',
   '/api/runtime-bridges',
   '/api/secretary',
@@ -71,7 +70,6 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/panel',
   '/pipeline',
   '/planning',
-  '/psyx',
   '/voice-lab',
   '/voice',
   '/voice-personas'

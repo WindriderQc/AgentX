@@ -24,7 +24,7 @@ function screenDestinations(options = {}) {
           const url = new URL(href); href = url.pathname + url.search + url.hash; sameOrigin = true;
         }
       } catch { /* Unreachable or separate-origin service: link only. */ }
-      const conversation = ['dad', 'panel', 'kids', 'lecture', 'psyx', 'playground', 'voice-lab'].includes(item.id);
+      const conversation = ['dad', 'panel', 'kids', 'lecture', 'playground', 'voice-lab'].includes(item.id);
       return { id: item.id, label: item.label, href, ...(conversation && { conversation: true }),
         // Another conversation must not duplicate the microphone and greeting.
         mode: sameOrigin && !item.external && !conversation ? 'frame' : 'link' };

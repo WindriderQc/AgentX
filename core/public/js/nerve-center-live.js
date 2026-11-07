@@ -193,7 +193,10 @@
         return {
             current,
             next,
-            waiting: withPhase.filter(entry => entry.phase === 'waiting').length,
+            // Without a usable slot: never planned, or its slot has passed.
+            waiting: withPhase.filter(entry => entry.phase === 'waiting' || entry.phase === 'expired').length,
+            waitingManual: withPhase.filter(entry => (entry.phase === 'waiting' || entry.phase === 'expired')
+                && waitGroup(entry.job, entry.phase) !== 'automatic').length,
             claims: allClaims
         };
     }
@@ -296,7 +299,13 @@
         if (work.next) {
             lines.push(`<div class="nc-live-work"><span class="nc-live-chip muted">${esc(dayAndTime(work.next.job.reservation.start, now))}</span> ${esc(work.next.job.title)}</div>`);
         }
-        if (work.waiting > 0) lines.push(`<div class="nc-muted nc-live-small">${work.waiting} waiting for a slot</div>`);
+        if (work.waiting > 0) {
+            const manual = work.waitingManual ?? work.waiting;
+            const how = manual === work.waiting ? 'none starts on its own'
+                : manual === 0 ? (work.waiting === 1 ? 'starts on its own' : 'all start on their own')
+                    : `${manual} need${manual === 1 ? 's' : ''} someone`;
+            lines.push(`<button type="button" class="nc-link-btn nc-live-small nc-live-show-waiting">${work.waiting} queued, ${how} · show which</button>`);
+        }
         if (lines.length === 0) lines.push('<div class="nc-muted nc-live-small">No reservation</div>');
         return `<div class="nc-live-work-list">${lines.join('')}</div>`;
     }
@@ -380,7 +389,7 @@
         const timed = open.filter(e => ['running', 'uncertain', 'open'].includes(e.phase)
             || (e.phase === 'upcoming' && Date.parse(e.job.reservation.start) - now < DAY_MS))
             .sort((a, b) => (Date.parse(a.job.reservation?.start) || 0) - (Date.parse(b.job.reservation?.start) || 0));
-        const waiting = open.filter(e => e.phase === 'waiting').length;
+        const waitingJobs = open.filter(e => e.phase === 'waiting' || e.phase === 'expired');
         const later = open.filter(e => e.phase === 'upcoming').length - timed.filter(e => e.phase === 'upcoming').length;
         const rows = timed.map(({ job, phase }) => {
             const hostNames = [...new Set((job.hosts || []).map(url => machineNameFor(url, machines)))].join(', ');
@@ -397,15 +406,140 @@
         const claimLine = Array.isArray(claims) && claims.length > 0
             ? `${claims.length} Benchmark claim${claims.length === 1 ? '' : 's'} active`
             : 'No Benchmark claim';
-        const extra = [waiting ? `${waiting} waiting for a slot` : '', later > 0 ? `${later} later` : '', claimLine].filter(Boolean).join(' · ');
+        const extra = [later > 0 ? `${later} later` : '', claimLine].filter(Boolean).join(' · ');
         return `<section class="nc-live-queue" aria-labelledby="ncLiveQueueTitle">
             <div class="nc-live-queue-head">
-                <h3 id="ncLiveQueueTitle">Heavy-work queue · next 24 h</h3>
+                <h3 id="ncLiveQueueTitle">Heavy-work queue</h3>
                 <a class="nc-link-btn" href="/automations?view=calendar">Open calendar <i class="fas fa-arrow-right" aria-hidden="true"></i></a>
             </div>
             ${rows ? `<ul class="nc-live-queue-list">${rows}</ul>` : '<div class="nc-muted nc-live-small">Nothing reserved in the next 24 hours.</div>'}
+            ${waitingList(waitingJobs, machines, now)}
             <div class="nc-muted nc-live-small">${esc(extra)}</div>
         </section>`;
+    }
+
+    // Why a request waits, in plain words, from Core's own queue presentation.
+    const WAIT_REASONS = Object.freeze({
+        plan_slot: 'No slot planned yet: the operator plans one; free resources alone do not start it',
+        review_window: 'Its start window or slot has expired: it will not start on its own',
+        review_schedule: 'Its start window is missing or invalid',
+        prepare_executor: 'No executor prepared yet: the request cannot start as it is',
+        wait_not_before: 'Starts automatically, not before its earliest time',
+        wait_slot: 'Starts automatically at its reserved slot',
+        await_native_admission: 'Starts automatically once Core admits it on free resources',
+        run_in_slot: 'Waits for the operator to run it during its slot',
+        use_native_executor: 'Started by its own executor after its approval protocol'
+    });
+
+    // What each request needs next, grouped for the summary line. Only the
+    // automatic codes start without someone acting.
+    const WAIT_GROUPS = Object.freeze({
+        plan_slot: ['needs a slot planned', 'need a slot planned'],
+        review_window: ['window expired, to review', 'windows expired, to review'],
+        review_schedule: ['window to fix', 'windows to fix'],
+        prepare_executor: ['needs an executor', 'need an executor'],
+        run_in_slot: ['to run in its slot', 'to run in their slot'],
+        automatic: ['will start on its own', 'will start on their own'],
+        unknown: ['without a known next step', 'without a known next step']
+    });
+    const AUTOMATIC_CODES = new Set(['wait_not_before', 'wait_slot', 'await_native_admission', 'use_native_executor']);
+
+    function waitGroup(job, phase) {
+        const code = job.presentation?.nextAction?.code;
+        if (AUTOMATIC_CODES.has(code)) return 'automatic';
+        if (code && WAIT_GROUPS[code]) return code;
+        if (phase === 'expired') return 'review_window';
+        return job.presentation?.startMode === 'automatic' ? 'automatic' : 'unknown';
+    }
+
+    function waitingSummary(entries) {
+        const counts = new Map();
+        entries.forEach(({ job, phase }) => {
+            const group = waitGroup(job, phase);
+            counts.set(group, (counts.get(group) || 0) + 1);
+        });
+        const parts = Object.keys(WAIT_GROUPS).filter(group => counts.has(group))
+            .map(group => `${counts.get(group)} ${WAIT_GROUPS[group][counts.get(group) === 1 ? 0 : 1]}`);
+        const manual = entries.length - (counts.get('automatic') || 0);
+        return { text: parts.join(' · '), manual, noneAutomatic: !counts.has('automatic') };
+    }
+
+    function waitReason(job, phase) {
+        const action = job.presentation?.nextAction || null;
+        if (action?.code && WAIT_REASONS[action.code]) return WAIT_REASONS[action.code];
+        if (action?.detail) return action.detail;
+        return phase === 'expired' ? WAIT_REASONS.review_window : 'Waiting for a slot';
+    }
+
+    function durationText(minutes) {
+        const m = Math.round(Number(minutes));
+        if (!Number.isFinite(m) || m <= 0) return 'unknown';
+        if (m < 60) return `${m} min`;
+        return `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
+    }
+
+    function windowText(job, now) {
+        const from = Date.parse(job.notBefore);
+        const until = Date.parse(job.startBefore);
+        const parts = [];
+        if (Number.isFinite(from)) parts.push(from > now ? `not before ${dayAndTime(job.notBefore, now)}` : `since ${dayAndTime(job.notBefore, now)}`);
+        if (Number.isFinite(until)) parts.push(until < now ? `start window closed ${dayAndTime(job.startBefore, now)}` : `start before ${dayAndTime(job.startBefore, now)}`);
+        const slotEnd = Date.parse(job.reservation?.end);
+        if (Number.isFinite(slotEnd) && slotEnd <= now) parts.push(`slot passed ${dayAndTime(job.reservation.start, now)}–${clockTime(job.reservation.end)}`);
+        return parts.length ? parts.join(' · ') : 'any time';
+    }
+
+    function submitter(job) {
+        const source = job.source || {};
+        const actor = (Array.isArray(job.events) ? job.events : []).find(e => e.action === 'requested')?.actor || null;
+        const issue = typeof source.issueUrl === 'string' ? source.issueUrl.match(/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)/) : null;
+        const parts = [];
+        if (actor) parts.push(esc(actor));
+        else if (source.type) parts.push(esc(source.type));
+        if (source.taskId) parts.push(`task ${esc(source.taskId)}`);
+        if (issue) parts.push(`<a href="${esc(source.issueUrl)}" target="_blank" rel="noopener">${esc(issue[1].split('/')[1])}#${esc(issue[2])}</a>`);
+        return parts.length ? parts.join(' · ') : 'unknown';
+    }
+
+    // Read-only: no reorder, plan or cancel here. The queue's owner does that.
+    let waitingOpen = false;
+
+    function waitingList(entries, machines, now) {
+        if (!entries.length) return '';
+        const counts = waitingSummary(entries);
+        const summary = `${counts.text}${counts.noneAutomatic ? ' · none starts on its own' : ''}`;
+        const items = entries
+            .sort((a, b) => (Number(b.job.priority) || 0) - (Number(a.job.priority) || 0)
+                || (Date.parse(a.job.createdAt) || 0) - (Date.parse(b.job.createdAt) || 0))
+            .map(({ job, phase }) => {
+                const hostNames = [...new Set((job.hosts || []).map(url => machineNameFor(url, machines)))].join(', ') || 'no host named';
+                const purpose = job.source?.ref ? `<div class="nc-live-waiting-ref nc-muted" title="${esc(job.source.ref)}">${esc(String(job.source.ref).slice(0, 180))}${String(job.source.ref).length > 180 ? '…' : ''}</div>` : '';
+                return `<li class="nc-live-waiting-item${phase === 'expired' ? ' expired' : ''}">
+                    <div class="nc-live-waiting-title">${esc(job.title || job.key || job.id)}</div>
+                    <div class="nc-live-waiting-reason"><i class="fas fa-hourglass-half" aria-hidden="true"></i> ${esc(waitReason(job, phase))}</div>
+                    <dl class="nc-live-waiting-facts">
+                        <div><dt>Hosts</dt><dd>${esc(hostNames)}</dd></div>
+                        <div><dt>Duration</dt><dd>${esc(durationText(job.estimatedMinutes))}</dd></div>
+                        <div><dt>Window</dt><dd>${esc(windowText(job, now))}</dd></div>
+                        <div><dt>Submitted by</dt><dd>${submitter(job)}${job.createdAt ? ` <span class="nc-muted">· ${esc(dayAndTime(job.createdAt, now))}</span>` : ''}</dd></div>
+                    </dl>
+                    ${purpose}
+                </li>`;
+            }).join('');
+        return `<details class="nc-live-waiting"${waitingOpen ? ' open' : ''}>
+            <summary>${esc(summary)} <span class="nc-muted">· show which</span></summary>
+            <ol class="nc-live-waiting-list">${items}</ol>
+            <div class="nc-muted nc-live-small">Read-only. Plan, reorder or cancel from the queue's owner (calendar view).</div>
+        </details>`;
+    }
+
+    function openWaitingList() {
+        const details = document.querySelector('.nc-live-waiting');
+        if (!details) return;
+        details.open = true;
+        waitingOpen = true;
+        details.querySelector('summary')?.focus?.();
+        details.scrollIntoView({ behavior: shared.motionSafeScrollBehavior(), block: 'start' });
     }
 
     function renderStatusLine(summary, observedAt) {
@@ -479,6 +613,7 @@
             const model = window.NerveCenterModel;
             if (model?.holdsFocus?.()) return;
             model?.detach?.();
+            const summaryFocused = Boolean(document.activeElement?.matches?.('.nc-live-waiting > summary'));
             body.innerHTML = `<div class="nc-live-grid">${machines.map((m, index) => machineCard(m, works[index], now)).join('')}</div>
                 <div class="nc-live-pair">
                     ${queueCard(jobs, claims, machines, now, Boolean(queue) && queue.available !== false)}
@@ -487,6 +622,14 @@
             body.querySelectorAll('.nc-live-manage').forEach(button => {
                 button.addEventListener('click', () => openHostSettings(button.dataset.host));
             });
+            body.querySelectorAll('.nc-live-show-waiting').forEach(button => {
+                button.addEventListener('click', openWaitingList);
+            });
+            const waitingDetails = body.querySelector?.('.nc-live-waiting');
+            if (waitingDetails) {
+                waitingDetails.addEventListener('toggle', () => { waitingOpen = waitingDetails.open; });
+                if (summaryFocused) waitingDetails.querySelector('summary')?.focus?.({ preventScroll: true });
+            }
             model?.place?.();
             charts?.attach?.({ machines, jobs, machineNameFor });
             renderStatusLine(statusSummary(machines, works), now);
@@ -517,6 +660,6 @@
 
     window.NerveCenterLive = {
         loadLive, startLive, groupMachines, parkedUrls, machineWork, machineIssues, statusSummary, jobPhase, endpointLabel, vramOutsideOllamaMiB,
-        renderMachineCard: machineCard, mainPinLine
+        renderMachineCard: machineCard, mainPinLine, renderQueueCard: queueCard, waitReason, durationText
     };
 })();

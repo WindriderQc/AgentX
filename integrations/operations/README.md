@@ -106,7 +106,7 @@ external environment file. MySQL is optional; when selected its existing
 `MYSQL_DATABASE` and `MYSQL_ROOT_PASSWORD` environment are used inside the container.
 No live MySQL data directory is archived. New archive manifests include checksums;
 restore drills also accept the old version-1 manifest and logical SQL filename.
-Mongo's canonical backup includes integrated PsyX data. Off-host receipts live at
+Off-host receipts live at
 `<SourceRoot>/latest-offhost-receipt.json` and are not restore acceptance.
 
 Before updating a native task/unit, snapshot its executable, arguments, environment

@@ -11,7 +11,6 @@ const { normalizeSynthesisRequest } = require('../../../src/services/voice/reque
 const { relaySynthesisStream } = require('../../../src/services/voice/stream');
 const { registerTranscriptionProxy } = require('../../../src/services/voice/voix-transcription');
 const { createSynthesisHandler } = require('../../../src/services/voice/voix-synthesis');
-const { createVoiceClient } = require('../../psyx/src/voice');
 
 const config = { voice: { mode: 'voix', baseUrl: 'http://voice.test', timeoutMs: 1000, longTimeoutMs: 1000 } };
 const sample = '**Bonjour.** [Une piste](https://example.test)\n```js\nprivate_code();\n```\n| Nom | Valeur |\n| --- | --- |\n| clé | secret |\n<img src="private">\n911, 9-8-8, 1 866 APPELLE et 811.';
@@ -39,7 +38,7 @@ test('Core speech cleanup removes screen markup and preserves crisis resources a
   assert.equal(speechText('Avant.\n~~~sh\nsecret\n~~~\nAprès.'), 'Avant.\n\nAprès.');
 });
 
-test('Household and PsyX send the same Core-cleaned text and installed Canadian voice', async t => {
+test('Household sends Core-cleaned text and installed Canadian voice', async t => {
   const calls = [];
   const fetchImpl = async (_url, options) => { calls.push(JSON.parse(options.body)); return new Response('RIFF'); };
   const original = global.fetch;
@@ -48,9 +47,7 @@ test('Household and PsyX send the same Core-cleaned text and installed Canadian 
   const handler = createSynthesisHandler({ upstream: { send: async (_path, attempt) => ({ response: await attempt('http://voice.test/api/tts'), upstream: 'primary' }) },
     timeoutMs: () => 1000, cleanText: value => String(value || '').trim(), fail: () => assert.fail('unexpected failure') });
   await handler({ body: { text: sample, language: 'fr', voice: 'Microsoft Caroline', tts_provider: 'windows_sapi' }, path: '/synthesize' }, sink());
-  await createVoiceClient(config, fetchImpl).synthesize({ text: sample, language: 'fr', voice: 'Microsoft Caroline', ttsProvider: 'windows_sapi' });
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0].text, calls[1].text);
+  assert.equal(calls.length, 1);
   for (const payload of calls) {
     assert.equal(payload.voice, 'Microsoft Caroline'); assert.equal(payload.save, false);
     assert.equal(payload.language, 'fr'); assert.equal(payload.tts_provider, 'windows_sapi');

@@ -1,13 +1,8 @@
 # Memory classification and surface access
 
-Super Dad / personal Nestor can consult all of the owner's information,
-including PsyX information.
-Family and child surfaces retain their information restrictions. PsyX may keep
-its conversation/domain structure without becoming inaccessible to the owner.
+Super Dad / personal Nestor can consult the owner's information.
+Family and child surfaces retain their information restrictions.
 Persona presentation does not grant access to another information scope.
-The reverse holds for PsyX's dream: it may read the owner's notes, open tasks and
-mail journal, read-only, to understand his life; what it derives stays in PsyX
-state and is never written back to those stores.
 
 Reuse the implemented Memory Policy V2 vocabulary (`scope`, `sensitivity`) and
 Household's existing personal/family session boundaries. Do not create another
@@ -73,8 +68,8 @@ eligible for family recall; no stored document is silently relabelled.
 
 Selected notes share one Core capability across the browser, voice and the native
 `personal_memory` tool. Family note reads require household/normal labels and a
-matching space. Household and PsyX sessions use canonical Core conversations, so
-the owner can recall PsyX history without a second index or a copied memory.
+matching space. Household sessions use canonical Core conversations, so
+the owner can recall their history without a second index or a copied memory.
 
 Human browser entry uses the [private LAN](../PARENTAL_ACCESS.md) without an
 account or code. Scope binding is not proof of human identity.

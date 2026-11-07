@@ -97,7 +97,7 @@ describe('Nerve Center live charts', () => {
       jobs: [{ state: 'running', title: 'Night batch', reservation: { start: iso(600000), end: new Date(NOW + 600000).toISOString() } }],
       now: NOW
     });
-    expect(html).toContain('1 now · 41 in 15 min');
+    expect(html).toContain('1 now · 5 in 15 min');
     expect(html).toContain('&lt;b&gt;eko&lt;/b&gt;');
     expect(html).not.toContain('<b>eko</b>');
     expect(html).toContain('→ BigBox');
@@ -135,6 +135,83 @@ describe('Nerve Center live charts', () => {
     expect(body.innerHTML).toContain('data-power-chart="10.0.0.10"');
     expect(body.innerHTML).toContain('class="nc-gauge idle"');
     expect(body.innerHTML).toMatch(/nc-live-pair[\s\S]*Heavy-work queue[\s\S]*id="ncLiveRequests"/);
+  });
+
+  test('requests per minute: stacked ok and failed segments, legend, scale, time ticks', () => {
+    const t = msAgo => new Date(Math.floor((NOW - msAgo) / 60000) * 60000).toISOString();
+    const html = charts.activityChart({ windowMinutes: 15, total: 25, perMinute: [
+      { t: t(120000), n: 20, failed: 1 },
+      { t: t(60000), n: 5, failed: 0 }
+    ] }, [], NOW);
+    expect((html.match(/class="nc-activity-bar"/g) || []).length).toBe(2);
+    expect((html.match(/class="nc-activity-bar failed"/g) || []).length).toBe(1);
+    expect(html).toContain('ok 24');
+    expect(html).toContain('failed 1');
+    expect(html).not.toContain('heavy work running');
+    expect(html).toMatch(/nc-activity-scale[^>]*><span>20<\/span><span>0<\/span>/);
+    expect((html.match(/nc-activity-ticks[\s\S]*?<\/div>/)[0].match(/<span/g) || []).length).toBe(3);
+    expect((html.match(/data-minute="/g) || []).length).toBe(15);
+    expect(html).toContain('20 requests, 1 failed');
+    expect(html).toContain('Tap a bar');
+
+    const overlapping = charts.activityChart({ windowMinutes: 15, total: 0, perMinute: [] }, [
+      { start: NOW - 3600000, end: NOW, title: 'Long run' },
+      { start: NOW - 300000, end: NOW, title: 'Short run' }
+    ], NOW);
+    expect((overlapping.match(/class="nc-activity-heavy"/g) || []).length).toBe(1);
+    expect(overlapping).toContain('Heavy work: Long run · Short run');
+  });
+
+  test('a tapped minute lists its requests with plain reasons, survives a repaint, and closes', async () => {
+    const listeners = [];
+    const card = {
+      innerHTML: '',
+      querySelectorAll: () => [],
+      querySelector: () => null
+    };
+    const document = { getElementById: id => (id === 'ncLiveRequests' ? card : null), querySelector: () => null, activeElement: null, hidden: false };
+    // paint() draws against the real clock: pick a minute inside its window.
+    const minute = Math.floor((Date.now() - 60000) / 60000) * 60000;
+    const urls = [];
+    const window = { NerveCenterShared: { ...shared, fetchJson: async (url) => {
+      urls.push(url);
+      if (url.startsWith('/api/nerve-center/live-activity/minute')) {
+        return { data: { minute: new Date(minute).toISOString(), total: 2, truncated: false, requests: [
+          { caller: 'llm-gateway/eko', host: 'http://10.0.0.10:11434', model: 'm', durationMs: 850, status: 'success', reason: null },
+          { caller: 'rag-<i>x</i>', host: 'http://10.0.0.10:11434', model: 'm', durationMs: 120000, status: 'timeout', reason: 'upstream_timeout' }
+        ] } };
+      }
+      return { data: { requests: { ok: true, data: { active: [], heavyWorkInFlight: 0 } },
+        recent: { ok: true, data: { windowMinutes: 15, total: 2, perMinute: [{ t: new Date(minute).toISOString(), n: 2, failed: 1 }], byCaller: [] } } } };
+    } } };
+    const context = { window, document, console, URL, Map, Set, Date, CSS: { escape: v => v } };
+    vm.runInNewContext(chartsSource, context);
+    const c = window.NerveCenterLiveCharts;
+    c.attach({ machines: [{ address: '10.0.0.10', name: 'BigBox' }], jobs: [], machineNameFor: () => 'BigBox' });
+    await c.refresh();
+    expect(card.innerHTML).toContain('Full history');
+    expect(card.innerHTML).toContain('href="/analytics"');
+    expect(card.innerHTML).toContain('<h3 id="ncLiveRequestsTitle">Live requests</h3>');
+
+    await c.selectMinute(minute);
+    expect(urls.some(u => u.includes(`at=${encodeURIComponent(new Date(minute).toISOString())}`))).toBe(true);
+    expect(card.innerHTML).toContain('2 requests · 1 failed');
+    expect(card.innerHTML).toContain('eko');
+    expect(card.innerHTML).toContain('→ BigBox');
+    expect(card.innerHTML).toContain('850 ms');
+    expect(card.innerHTML).toContain('timed out');
+    expect(card.innerHTML).toContain('rag-&lt;i&gt;x&lt;/i&gt;');
+    expect(card.innerHTML).toContain('nc-activity-minute selected');
+
+    await c.refresh();
+    expect(card.innerHTML).toContain('2 requests · 1 failed');
+
+    await c.selectMinute(minute);
+    expect(card.innerHTML).not.toContain('nc-minute-head');
+    expect(card.innerHTML).toContain('Tap a bar');
+    expect(c.reasonText('workload_reserved')).toBe('machine reserved for heavy work');
+    expect(c.reasonText('some_new_code')).toBe('some new code');
+    expect(listeners).toEqual([]);
   });
 
   test('without the charts script the live view still renders', () => {

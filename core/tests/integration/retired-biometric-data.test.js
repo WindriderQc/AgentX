@@ -10,7 +10,7 @@ test('human journeys leave existing face descriptors and code hashes untouched',
   const face = { subject: 'default', descriptors };
   const code = { subject: 'default', salt: 'synthetic-salt', hash: 'synthetic-hash' };
   await faces.insertOne(face); await codes.insertOne(code);
-  for (const path of ['/dad', '/panel', '/psyx']) await request(app).get(path).expect(200);
+  for (const path of ['/dad', '/panel']) await request(app).get(path).expect(200);
   await request(app).get('/unlock').expect(302);
   await request(app).delete('/api/access/face/enrollment').expect(404);
   expect(await faces.findOne({ subject: 'default' })).toEqual(face);

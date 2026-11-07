@@ -9,12 +9,12 @@ const { buildRagContext } = require('../../src/services/chat/ragContextBuilder')
 
 afterEach(() => jest.resetAllMocks());
 
-test('Core grants owner recall across scopes and excludes private, PsyX and unclassified data from family recall', async () => {
+test('Core grants owner recall across scopes and excludes private, specialist and unclassified data from family recall', async () => {
   const rows = [
     { text: 'Synthetic family fact', metadata: { scope: 'household', sensitivity: 'normal' } },
     { text: 'Synthetic private household fact', metadata: { scope: 'household', sensitivity: 'private' } },
     { text: 'Synthetic owner fact', metadata: { scope: 'owner', sensitivity: 'private' } },
-    { text: 'Synthetic PsyX fact', metadata: { source: 'psyx', scope: 'private_domain', sensitivity: 'highly_private' } },
+    { text: 'Synthetic specialist fact', metadata: { source: 'specialist', scope: 'private_domain', sensitivity: 'highly_private' } },
     { text: 'Synthetic historical unclassified fact', metadata: {} }
   ];
   fetch.mockResolvedValue({ ok: true, text: async () => JSON.stringify({ ok: true, data: { results: rows } }) });
@@ -33,7 +33,7 @@ test('Core grants owner recall across scopes and excludes private, PsyX and uncl
   expect(tool.result.structuredContent.results).toEqual([rows[0]]);
   const context = await buildRagContext('Synthetic fact', {}, { memory: family });
   expect(context.ragContext).toContain('Synthetic family fact');
-  expect(context.ragContext).not.toMatch(/private|PsyX|unclassified/);
+  expect(context.ragContext).not.toMatch(/private|specialist|unclassified/);
   expect(() => forAudience('unknown')).toThrow('server-selected');
 });
 

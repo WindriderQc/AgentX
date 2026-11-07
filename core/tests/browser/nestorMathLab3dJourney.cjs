@@ -50,7 +50,6 @@ let browser, server;
   app.use('/assets/household', express.static(publicDir));
   app.use('/js', express.static(path.join(core, 'public/js')));
   app.use('/css', express.static(path.join(core, 'public/css')));
-  app.use('/psyx/assets', express.static(path.join(core, 'surfaces/psyx/public')));
   // The page's two vendor scripts, from Core's own dependencies as src/app.js serves them.
   app.get('/vendor/marked/18.0.11/marked.umd.js', (_req, res) => res.type('js').sendFile(path.join(core, 'node_modules/marked/lib/marked.umd.js')));
   app.get('/vendor/dompurify/3.4.17/purify.min.js', (_req, res) => res.type('js').sendFile(path.join(core, 'node_modules/dompurify/dist/purify.min.js')));
