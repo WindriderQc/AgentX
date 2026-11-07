@@ -59,9 +59,10 @@
 .nc-live-small { font-size: 0.76rem; }
 .nc-live-warn { color: #fbbf24; font-size: 0.78rem; }
 
+/* One machine per row: power | GPUs and models | work. */
 .nc-live-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 14px;
 }
 
@@ -173,3 +174,84 @@
 .nc-model-cell > .nc-host-card:hover { transform: none; box-shadow: none; }
 
 #sectionClusterBody .nc-host-card { scroll-margin-top: 90px; }
+
+/* Full-width machine card body and live charts. */
+.nc-live-card-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
+.nc-live-card-body {
+    display: grid;
+    grid-template-columns: minmax(260px, 1.1fr) minmax(0, 1.3fr) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+}
+.nc-live-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.nc-live-col-title { color: var(--muted); font-size: 0.74rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.nc-live-card-body .nc-live-card-foot { margin-top: 0; padding-top: 0; border-top: 0; padding-left: 18px; border-left: 1px solid var(--panel-border); }
+
+.nc-live-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; align-items: stretch; }
+.nc-live-pair > .nc-live-queue { margin-top: 0; }
+.nc-live-requests .nc-live-queue-list li { grid-template-columns: 56px minmax(0, 1fr) auto; }
+.nc-live-idle { padding: 4px 0 8px; }
+
+.nc-gauges { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.nc-gauge { margin: 0; width: 116px; text-align: center; }
+.nc-gauge svg { display: block; width: 104px; height: 61px; margin: 0 auto; overflow: visible; }
+.nc-gauge path { fill: none; stroke-width: 9; stroke-linecap: round; }
+.nc-gauge-track { stroke: rgba(148, 163, 184, 0.22); }
+.nc-gauge-fill.idle { stroke: #94a3b8; }
+.nc-gauge-fill.working { stroke: #2dd4bf; }
+.nc-gauge-fill.hard { stroke: #f59e0b; }
+.nc-gauge-needle { stroke: var(--text-bright); stroke-width: 2; stroke-linecap: round; transition: all 0.6s ease; }
+.nc-gauge-hub { fill: var(--text-bright); }
+.nc-gauge figcaption { display: flex; flex-direction: column; gap: 1px; margin-top: -4px; }
+.nc-gauge-value { font-size: 1.15rem; font-weight: 800; color: var(--text-bright); font-variant-numeric: tabular-nums; }
+.nc-gauge.unknown .nc-gauge-value { color: var(--muted); }
+.nc-gauge-watts { font-size: 0.74rem; color: var(--text-bright); font-variant-numeric: tabular-nums; }
+.nc-gauge.unknown .nc-gauge-watts { color: var(--muted); font-style: italic; }
+.nc-gauge-label { font-size: 0.7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.nc-power-chart, .nc-activity { display: flex; flex-direction: column; gap: 3px; }
+.nc-power-chart svg, .nc-activity svg { display: block; width: 100%; height: 70px; border-radius: 6px; background: rgba(148, 163, 184, 0.06); }
+.nc-activity svg { height: 64px; }
+.nc-power-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; color: var(--muted); font-size: 0.72rem; }
+.nc-power-axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 0.68rem; }
+.nc-power-grid { stroke: rgba(148, 163, 184, 0.25); stroke-width: 1; stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
+.nc-power-line { fill: none; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.nc-power-line.s0, .nc-power-dot.s0 { stroke: #2dd4bf; fill: #2dd4bf; }
+.nc-power-line.s1, .nc-power-dot.s1 { stroke: #a78bfa; fill: #a78bfa; }
+.nc-power-line.s2, .nc-power-dot.s2 { stroke: #f472b6; fill: #f472b6; }
+.nc-power-line.s3, .nc-power-dot.s3 { stroke: #fbbf24; fill: #fbbf24; }
+.nc-power-line { fill: none !important; }
+.nc-power-legend { display: flex; gap: 10px; }
+.nc-power-legend span::before { content: ""; display: inline-block; width: 10px; height: 3px; margin-right: 4px; vertical-align: middle; border-radius: 2px; background: currentColor; }
+.nc-power-legend .s0 { color: #2dd4bf; }
+.nc-power-legend .s1 { color: #a78bfa; }
+.nc-power-legend .s2 { color: #f472b6; }
+.nc-power-legend .s3 { color: #fbbf24; }
+.nc-power-chart.empty { padding: 10px 0; }
+
+.nc-activity { margin-top: 8px; }
+.nc-activity-bar { fill: var(--accent); }
+.nc-activity-bar.failed { fill: #f87171; }
+.nc-activity-heavy { fill: rgba(245, 158, 11, 0.16); }
+.nc-activity-key { display: inline-flex; align-items: center; gap: 4px; }
+.nc-activity-key .heavy { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: rgba(245, 158, 11, 0.45); }
+.nc-activity-callers { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 6px; }
+.nc-activity-callers strong { color: var(--text-bright); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 1100px) {
+    .nc-live-card-body { grid-template-columns: minmax(240px, 1fr) minmax(0, 1.3fr); }
+    .nc-live-card-body .nc-live-card-foot { grid-column: 1 / -1; padding-left: 0; border-left: 0; padding-top: 10px; border-top: 1px solid var(--panel-border); }
+}
+@media (max-width: 760px) {
+    .nc-live-card-body, .nc-live-pair { grid-template-columns: minmax(0, 1fr); }
+    .nc-gauges { justify-content: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .nc-gauge-needle { transition: none; }
+}
+
+/* The principal model and topology panel, inside the machine that hosts the principal model. */
+.nc-live-model-slot { margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--panel-border); }
+.nc-live-model-slot:empty { display: none; }
+.nc-live-principal { color: #c4b5fd; font-weight: 600; }
+.nc-live-principal i { margin-right: 2px; }
