@@ -82,6 +82,24 @@ describe('host Ollama settings sync', () => {
     expect(update['ollama.settings']).toBeUndefined();
   });
 
+  test('driver-only observations reach measured runtime without changing the stored fingerprint', async () => {
+    const { buildRuntimeFingerprint } = require('../../../../shared/artifactIdentity');
+    const { buildMeasuredRuntime } = require('../../../../shared/measuredRuntime');
+    const gpus = [{ index: 0, uuid: 'GPU-A', model: 'Synthetic GPU', vramTotalMiB: 24576, driver: null }];
+    const model = store(null, true, gpus);
+    const hardware = { status: 'observed', source: 'agentx-data', sampledAt: '2026-11-07T12:00:00Z',
+      gpus: [{ ...gpus[0], driver: '580.95.05' }] };
+    await expect(syncHostRuntimeSettings(HOST, { model, readHardware: async () => hardware }))
+      .resolves.toMatchObject({ synced: true, changed: false });
+    const update = model.updateOne.mock.calls[0][1].$set;
+    expect(update.gpus).toBeUndefined();
+    expect(update.gpuDriverObservation.gpus[0].driver).toBe('580.95.05');
+    const before = { ...HOST, gpus };
+    const after = { ...before, ...update };
+    expect(buildRuntimeFingerprint(after)).toBe(buildRuntimeFingerprint(before));
+    expect(buildMeasuredRuntime({ hostProfile: after }).gpuDriver).toBe('580.95.05');
+  });
+
   test('a stale, failed or absent inventory never erases the last observed GPUs', async () => {
     const gpus = [{ index: 0, uuid: 'GPU-A', model: 'Synthetic GPU', vramTotalMiB: 24576 }];
     for (const status of ['stale', 'unavailable', 'no_data']) {

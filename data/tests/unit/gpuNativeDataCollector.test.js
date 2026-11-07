@@ -17,8 +17,8 @@ const {
 } = require('../../../integrations/data-collectors/gpu-agent');
 
 const AGENT = path.resolve(__dirname, '../../../integrations/data-collectors/gpu-agent.js');
-const ROW = '0, NVIDIA Synthetic 24GB, GPU-11111111-2222-3333-4444-555555555555, 00000000:01:00.0, 87, 40, 20000, 24576, 71, 301.25, 350.00, 1905, 2100, 4, 4, 16, 16, 0x0000000000000004';
-const ROW_NA = '1, NVIDIA Synthetic 24GB, GPU-66666666-7777-8888-9999-000000000000, 00000000:02:00.0, [N/A], [Not Supported], 512, 24576, 45, [N/A], [N/A], 210, 2100, 1, 4, 8, 16, [Not Supported]';
+const ROW = '0, NVIDIA Synthetic 24GB, GPU-11111111-2222-3333-4444-555555555555, 00000000:01:00.0, 87, 40, 20000, 24576, 71, 301.25, 350.00, 1905, 2100, 4, 4, 16, 16, 0x0000000000000004, 580.95.05';
+const ROW_NA = '1, NVIDIA Synthetic 24GB, GPU-66666666-7777-8888-9999-000000000000, 00000000:02:00.0, [N/A], [Not Supported], 512, 24576, 45, [N/A], [N/A], 210, 2100, 1, 4, 8, 16, [Not Supported], [N/A]';
 
 const settings = { ...readSettings({}), hostTimeoutMs: 10_000, dataUrl: 'http://data.test' };
 
@@ -30,6 +30,7 @@ describe('gpu-agent parsing', () => {
       name: 'NVIDIA Synthetic 24GB',
       uuid: 'GPU-11111111-2222-3333-4444-555555555555',
       busId: '00000000:01:00.0',
+      driver: '580.95.05',
       utilizationPct: 87,
       memoryUtilizationPct: 40,
       memoryUsedMiB: 20000,
@@ -51,7 +52,7 @@ describe('gpu-agent parsing', () => {
   test('[N/A] and [Not Supported] become null, never zero', () => {
     const [, gpu] = parseNvidiaSmiCsv(`${ROW}\r\n${ROW_NA}\r\n`);
     expect(gpu).toMatchObject({
-      index: 1, utilizationPct: null, memoryUtilizationPct: null, powerDrawW: null,
+      index: 1, driver: null, utilizationPct: null, memoryUtilizationPct: null, powerDrawW: null,
       powerLimitW: null, memoryUsedMiB: 512, pcieGen: 1, pcieWidth: 8,
       throttleReasonsActive: null, throttleReasons: []
     });
@@ -170,7 +171,7 @@ describe('gpu-agent sampling', () => {
   test('unparseable output is reported as a host error', async () => {
     const result = await sampleHost(hosts[0], settings, fakeExec({ 'user@gpu-a.example': 'garbage\n' }));
     expect(result).toMatchObject({ ok: false, hostId: 'gpu-a' });
-    expect(result.error).toMatch(/expected 18 fields/);
+    expect(result.error).toContain(`expected ${QUERY_FIELDS.length} fields`);
   });
 
   test('an unavailable Data service is reported without throwing', async () => {

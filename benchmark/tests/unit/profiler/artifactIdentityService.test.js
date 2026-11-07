@@ -71,6 +71,20 @@ describe('profiler artifact identity service', () => {
     expect(after.runtimeFingerprint).toBe(before.runtimeFingerprint);
   });
 
+  it('records observed drivers on new measurement artifacts without re-keying historical identities', async () => {
+    const profile = { hostId: 'host-a', hostUrl: HOST_URL,
+      gpus: [{ index: 0, uuid: 'GPU-A', model: 'Synthetic GPU', vramTotalMiB: 24576, driver: null }] };
+    hostProfiles.getById.mockResolvedValue(profile);
+    const before = await resolveArtifactIdentity('synthetic-artifact', 'host-a', HOST_URL, { requireRegistry: false });
+    hostProfiles.getById.mockResolvedValue({ ...profile, gpuDriverObservation: {
+      gpus: [{ ...profile.gpus[0], driver: '580.95.05' }], observedAt: new Date('2026-11-07T12:00:00Z'), source: 'agentx-data'
+    } });
+    const after = await resolveArtifactIdentity('synthetic-artifact', 'host-a', HOST_URL, { requireRegistry: false });
+    expect(after.runtime.gpuDriver).toBe('580.95.05');
+    expect(after.runtimeFingerprint).toBe(before.runtimeFingerprint);
+    expect(before.runtime.gpuDriver).toBeNull();
+  });
+
   it('reads the version from a short cache for dashboards and live for measurements', async () => {
     const service = require('../../../src/services/profiler/artifactIdentityService');
     service._resetVersionCacheForTests();

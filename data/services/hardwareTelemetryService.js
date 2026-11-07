@@ -69,6 +69,7 @@ function normalizeGpu(raw, position) {
     name: text(raw?.name),
     uuid: text(raw?.uuid, 80),
     busId: text(raw?.busId, 40),
+    driver: text(raw?.driver, 80) || null,
     throttleReasonsActive: text(raw?.throttleReasonsActive, 40) || null,
     throttleReasons: Array.isArray(raw?.throttleReasons)
       ? raw.throttleReasons.map(value => text(value, 40)).filter(Boolean).slice(0, 16)

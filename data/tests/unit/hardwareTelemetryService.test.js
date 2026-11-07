@@ -18,10 +18,10 @@ describe('hardwareTelemetryService', () => {
 
   test('GPU rows keep unknown values null instead of inventing zeros', () => {
     const gpu = hardware.normalizeGpu({
-      index: '1', name: 'GPU', utilizationPct: null, temperatureC: 'N/A', powerDrawW: '120.5',
+      index: '1', name: 'GPU', driver: ' 580.95.05 ', utilizationPct: null, temperatureC: 'N/A', powerDrawW: '120.5',
       throttleReasons: ['sw_power_cap', 7, ''], extra: 'ignored'
     }, 0);
-    expect(gpu).toMatchObject({ index: 1, name: 'GPU', utilizationPct: null, temperatureC: null, powerDrawW: 120.5 });
+    expect(gpu).toMatchObject({ index: 1, name: 'GPU', driver: '580.95.05', utilizationPct: null, temperatureC: null, powerDrawW: 120.5 });
     expect(gpu.throttleReasons).toEqual(['sw_power_cap']);
     expect(gpu.extra).toBeUndefined();
   });

@@ -1,5 +1,15 @@
 const mongoose = require('mongoose');
 
+const GpuIdentitySchema = new mongoose.Schema({
+  index: Number,
+  uuid: String,
+  busId: String,
+  model: String,
+  vramTotalMiB: Number,
+  computeCapability: String,
+  driver: String
+}, { _id: false });
+
 const HostProfileSchema = new mongoose.Schema({
   hostId: { type: String, required: true, unique: true, index: true },
   hostUrl: { type: String, required: true },
@@ -12,15 +22,13 @@ const HostProfileSchema = new mongoose.Schema({
   },
   // Complete collector inventory, separate from the legacy aggregate gpu.
   // Ollama settings.visibleDevices describes the endpoint's selection.
-  gpus: { type: [new mongoose.Schema({
-    index: Number,
-    uuid: String,
-    busId: String,
-    model: String,
-    vramTotalMiB: Number,
-    computeCapability: String,
-    driver: String
-  }, { _id: false })], default: undefined },
+  gpus: { type: [GpuIdentitySchema], default: undefined },
+  // Observation is separate from identity until explicit host activation.
+  gpuDriverObservation: {
+    gpus: { type: [GpuIdentitySchema], default: undefined },
+    observedAt: Date,
+    source: String
+  },
   gpusObservedAt: Date,
   gpusSource: String,
   ollama: {
