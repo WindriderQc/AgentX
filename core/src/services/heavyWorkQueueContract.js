@@ -91,6 +91,9 @@ function validateRequest(body) {
       if (!Number.isSafeInteger(executor.dimension) || executor.dimension < 1 || executor.dimension > 8192) throw fail('embedding reindex dimension needs 1 to 8192');
     } else if (kind === 'topology') {
       require('./runtimeTopologyWindow').validateExecutor(executor);
+    } else if (kind === 'other' && executor.mode === 'plant-identify') {
+      only(executor, ['mode', 'importId'], 'plant identification executor');
+      if (!/^[a-f0-9]{64}$/.test(executor.importId || '')) throw fail('Exact plant import identity required');
     } else if (kind === 'other' && executor.mode === 'pipeline-report') {
       // A report campaign Core starts and settles itself (#878).
       only(executor, ['mode', 'pipelineId'], 'report campaign executor');

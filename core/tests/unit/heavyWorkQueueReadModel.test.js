@@ -81,3 +81,9 @@ test('projection is deterministic, preserves native records and includes no runt
   expect(JSON.stringify(input)).toBe(original);
   expect(input.presentation).toBeUndefined();
 });
+
+test('imported plant requests advertise their native automatic lane without manual launch capabilities', () => {
+  const { presentation } = require('../../src/services/heavyWorkQueueReadModel');
+  const view = presentation({ kind: 'other', state: 'requested', executor: { mode: 'plant-identify', importId: 'a'.repeat(64) } });
+  expect(view).toMatchObject({ startMode: 'automatic', phase: 'automatic_queue', capabilities: { configureAutoStart: false, runNow: false } });
+});

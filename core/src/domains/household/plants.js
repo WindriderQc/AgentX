@@ -151,7 +151,7 @@ const photoUrl = (plant, photo) => `/api/family/plants/${encodeURIComponent(Stri
 const photoView = plant => (plant.photos || []).map(photo => ({ id: String(photo._id || photo.id), mimeType: photo.mimeType,
   size: photo.size, url: photoUrl(plant, photo) }));
 
-const step = entry => entry?.state ? { state: entry.state, error: entry.error || null, model: entry.model || null,
+const step = entry => entry?.state ? { ...(entry.queueId ? { queueId: entry.queueId } : {}), state: entry.state, error: entry.error || null, model: entry.model || null,
   startedAt: entry.startedAt || null, finishedAt: entry.finishedAt || null } : null;
 function assistantView(assistant = {}) {
   const identify = step(assistant?.identify), care = step(assistant?.care);

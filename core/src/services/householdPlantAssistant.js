@@ -46,14 +46,19 @@ function createPlantAssistant({ inference, consumerContract, searchWeb = require
   if (!inference?.execute) throw new Error('Plant assistant requires routed inference');
 
   // Claims one step for one plant. A step left running by a stopped process is stale after ten minutes.
-  async function claim(id, step) {
+  async function claim(id, step, queueId) {
     const { plant } = await plants.get({ id, view: 'manage' });
     if (plant.status === 'retired') throw failure(409, 'PLANT_RETIRED', 'This plant is retired.');
+    const pending = plant.assistant?.[step];
+    if (pending?.queueId && ['queued', 'running'].includes(pending.state) && pending.queueId !== queueId) {
+      throw failure(409, 'PLANT_ASSIST_QUEUED', 'This identification belongs to the Core queue.');
+    }
     const startedAt = now();
-    const claimed = await Plant.findOneAndUpdate({ _id: plant.id, status: { $ne: 'retired' }, $or: [
+    const claimed = await Plant.findOneAndUpdate({ _id: plant.id, status: { $ne: 'retired' },
+      [`assistant.${step}.queueId`]: pending?.queueId || { $exists: false }, $or: [
       { [`assistant.${step}.state`]: { $ne: 'running' } },
       { [`assistant.${step}.startedAt`]: { $lt: new Date(startedAt.getTime() - STALE_MS) } }
-    ] }, { $set: { [`assistant.${step}`]: { state: 'running', startedAt } } }, { new: true }).lean();
+    ] }, { $set: { [`assistant.${step}`]: { state: 'running', startedAt, ...(queueId ? { queueId } : {}) } } }, { new: true }).lean();
     if (!claimed) throw failure(409, 'PLANT_ASSIST_RUNNING', 'This step is already running for this plant.');
     return claimed;
   }
@@ -74,17 +79,17 @@ function createPlantAssistant({ inference, consumerContract, searchWeb = require
     return { plant: managedPlant(await Plant.findById(id).lean()) };
   }
 
-  async function chat(taskType, messages, format, callerDetail) {
-    const result = await inference.execute({ mode: 'chat', stream: false, think: false, taskType, format, messages,
+  async function chat(taskType, messages, format, callerDetail, executionTarget) {
+    const result = await inference.execute({ ...(executionTarget ? { model: executionTarget.model } : {}), mode: 'chat', stream: false, think: false, taskType, format, messages,
       options: { temperature: 0.2, num_predict: taskType === 'plant_identify' ? 800 : 2500 }, timeoutMs: 180000, callerDetail },
-    { consumerContract });
+    { consumerContract, ...(executionTarget ? { hostUrl: executionTarget.host, sourcePolicy: 'local-only' } : {}) });
     if (!result?.ok) throw failure(502, 'PLANT_ASSIST_FAILED', 'The model did not answer.');
     return { content: result.body?.message?.content || result.body?.response || '', model: result.metadata?.model || null };
   }
 
   /** Proposes up to three species from a photo (the first one unless photoId names another). */
   async function identify(input = {}) {
-    const claimed = await claim(input.id, 'identify');
+    const claimed = await claim(input.id, 'identify', input.queueId);
     const id = String(claimed._id);
     return run(id, 'identify', async () => {
       const photoId = input.photoId || claimed.photos?.[0]?._id;
@@ -93,7 +98,7 @@ function createPlantAssistant({ inference, consumerContract, searchWeb = require
       const answer = await chat('plant_identify', [
         { role: 'system', content: IDENTIFY_PROMPT },
         { role: 'user', content: 'Identifie cette plante d’intérieur.', images: [photo.data.toString('base64')] }
-      ], IDENTIFY_SCHEMA, 'agentx-household/plants/identify');
+      ], IDENTIFY_SCHEMA, 'agentx-household/plants/identify', input.executionTarget);
       return { candidates: identificationCandidates(answer.content), model: answer.model };
     }, input.wait === true);
   }

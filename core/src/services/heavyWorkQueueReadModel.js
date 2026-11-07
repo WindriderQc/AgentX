@@ -21,7 +21,8 @@ function presentation(job, { now = Date.now() } = {}) {
   const slot = schedule(job, now);
   const supported = autoStartable(job);
   const nativeImage = job.kind === 'image' && job.executor?.mode === 'image-operation';
-  const automatic = nativeImage || (supported && job.reservation?.autoStart === true);
+  const nativePlant = job.kind === 'other' && job.executor?.mode === 'plant-identify';
+  const automatic = nativeImage || nativePlant || (supported && job.reservation?.autoStart === true);
   const editable = ['requested', 'reserved'].includes(job.state);
   const base = {
     schema: 'agentx.heavy-work-presentation/v1', observedAt: new Date(now).toISOString(),
