@@ -216,6 +216,20 @@ class RelayStopTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             relay.with_request_policy(json.dumps(body).encode(), policy)
 
+    def test_bounded_read_preserves_the_native_opencode_argument_name(self):
+        body = {'tools': [{'type': 'function', 'function': {'name': 'read', 'parameters': {
+            'type': 'object', 'properties': {'filePath': {'type': 'string'}, 'offset': {'type': 'integer'}}}}},
+            {'type': 'function', 'function': {'name': 'edit'}}]}
+        policy = {'max_tokens': 4096, 'reasoning_effort': 'none', 'tools': 'edit_only',
+            'read_paths': ['/workspace/source.py']}
+        value = json.loads(relay.with_request_policy(json.dumps(body).encode(), policy))
+        schema = value['tools'][0]['function']['parameters']
+        self.assertEqual(schema['properties'], {'filePath': {'type': 'string', 'enum': policy['read_paths']}})
+        self.assertEqual(schema['required'], ['filePath'])
+        for properties in ({'filePath': {}, 'file_path': {}}, {'otherPath': {}}):
+            body['tools'][0]['function']['parameters']['properties'] = properties
+            with self.assertRaises(ValueError): relay.with_request_policy(json.dumps(body).encode(), policy)
+
     def test_invalid_runner_policy_preserves_an_existing_socket_path(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'model.sock'; path.write_bytes(b'existing owner')

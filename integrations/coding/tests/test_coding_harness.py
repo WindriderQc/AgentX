@@ -67,6 +67,14 @@ class HarnessAdapterTest(unittest.TestCase):
         self.assertEqual(config['permission']['task'], 'deny')
         self.assertEqual(config['permission']['shell'], 'allow')
 
+    def test_readonly_opencode_reads_source_mount_but_edits_only_its_output_area(self):
+        config = json.loads(harness.opencode_config('agentx-primary', 65536, read_only=True))
+        self.assertEqual(config['permission']['external_directory'],
+            {'*': 'deny', '/workspace': 'allow', '/workspace/**': 'allow'})
+        self.assertEqual(config['permission']['edit'], {'*': 'allow', '/workspace': 'deny', '/workspace/**': 'deny'})
+        ordinary = json.loads(harness.opencode_config('agentx-primary', 65536))
+        self.assertEqual(ordinary['permission']['external_directory'], 'deny')
+
     def test_unknown_harness_and_escaping_entry_refuse(self):
         with mock.patch.dict(os.environ, {'AGENTX_CODING_HARNESS': 'unknown'}):
             with self.assertRaisesRegex(RuntimeError, 'Unsupported'):

@@ -550,7 +550,7 @@ class Progress:
             pending = self.pending_tests.pop((session, call_id), None)
             if pending:
                 content, errored, valid = tool_message(message)
-                outcome = test_outcome(content, errored, pending[2], pending[3]) if valid else "unknown"
+                outcome = test_outcome(content, errored, pending[2] and message.get('exitVerified', True), pending[3]) if valid else "unknown"
                 signature = hashlib.sha256(json.dumps([pending[1], outcome, self.source_signature]).encode()).hexdigest()
                 if outcome != "unknown" and signature not in self.seen_tests:
                     self.seen_tests.add(signature)
@@ -570,6 +570,10 @@ class Progress:
         if self.source_signature not in self.seen_states:
             self.seen_states.add(self.source_signature)
             self.useful()
+        native = getattr(self, 'native_history', None)
+        if native:
+            native.scan(self)
+            return
         for path in session_logs(home):
             offset = self.offsets.get(path, 0)
             with path.open("rb") as stream:

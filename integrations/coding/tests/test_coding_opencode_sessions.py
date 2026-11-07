@@ -226,7 +226,7 @@ class NativeSessionsTest(unittest.TestCase):
 
     def test_launch_preparation_failure_retains_an_uncertain_binding(self):
         prompt = load('coding_worker_prompt')
-        runtime = SimpleNamespace(harness=SimpleNamespace(invocation=lambda *args: {'command': ['fixture'], 'environment': {}, 'binds': []}),
+        runtime = SimpleNamespace(harness=SimpleNamespace(invocation=lambda *args, **kwargs: {'command': ['fixture'], 'environment': {}, 'binds': []}),
             relay_port=8377, sandbox=mock.Mock(side_effect=RuntimeError('synthetic preparation failure')))
         with self.assertRaisesRegex(RuntimeError, 'preparation failure'):
             prompt.run(runtime, self.workspace, self.home, 'Fixture prompt', 10, self.progress,
