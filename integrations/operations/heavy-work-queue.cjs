@@ -158,7 +158,13 @@ async function main(argv = process.argv.slice(2), deps = {}) {
       islandDeps(core, { actor: options.actor, benchmark, ...deps }));
   }
   const job = await client(`/${options.id}`);
-  if (job.revision !== revision()) throw new Error('Request changed; read its current revision');
+  const expectedRevision = revision();
+  // Core permits an exact terminal load-test receipt to be redelivered with
+  // its original revision after a lost finish response. Active writes still
+  // require the current revision; the server verifies the complete receipt.
+  const terminalLoadTest = action === 'finish-operator' && job.releaseReceipt?.loadTestHash
+    && ['completed', 'failed', 'cancelled'].includes(job.state);
+  if (job.revision !== expectedRevision && !terminalLoadTest) throw new Error('Request changed; read its current revision');
   if (['begin-operator', 'finish-operator'].includes(action)) {
     if (job.executor?.mode !== 'operator' || !['diagnostic', 'other'].includes(job.kind)) throw new Error('This request has no operator executor');
     if (action === 'begin-operator') return client(`/${job.id}/begin`, { expectedRevision: job.revision });
@@ -170,7 +176,8 @@ async function main(argv = process.argv.slice(2), deps = {}) {
       || receipt.dispatchId !== job.dispatchId || receipt.receiptRef !== job.executor.receiptRef
       || receipt.actor !== options.actor || receipt.runtimeReleased !== true
       || !['completed', 'failed', 'cancelled'].includes(receipt.state)) throw new Error('Receipt differs from this operator dispatch or lacks terminal/release evidence');
-    return client(`/${job.id}/operator-finish`, { expectedRevision: job.revision, dispatchId: job.dispatchId,
+    if (job.revision !== expectedRevision && receipt.loadTest === undefined) throw new Error('Request changed; read its current revision');
+    return client(`/${job.id}/operator-finish`, { expectedRevision, dispatchId: job.dispatchId,
       state: receipt.state, receiptRef: receipt.receiptRef,
       ...(receipt.loadTest !== undefined && { loadTest: receipt.loadTest }),
       receiptSha256: require('node:crypto').createHash('sha256').update(bytes).digest('hex'),
