@@ -42,7 +42,7 @@ let browser, server;
   app.use('/psyx/assets', express.static(path.join(core, 'surfaces/psyx/public')));
   // The page's two vendor scripts, from Core's own dependencies as src/app.js serves them.
   app.get('/vendor/marked/18.0.11/marked.umd.js', (_req, res) => res.type('js').sendFile(path.join(core, 'node_modules/marked/lib/marked.umd.js')));
-  app.get('/vendor/dompurify/3.4.16/purify.min.js', (_req, res) => res.type('js').sendFile(path.join(core, 'node_modules/dompurify/dist/purify.min.js')));
+  app.get('/vendor/dompurify/3.4.17/purify.min.js', (_req, res) => res.type('js').sendFile(path.join(core, 'node_modules/dompurify/dist/purify.min.js')));
   app.get('/api/voix/player.js', (_req, res) => res.type('js').send(''));
   app.get('/api/household/avatar/llmx-face.js', (_req, res) => res.type('js').sendFile(path.resolve(stageModule)));
   app.get('/fixture', (_req, res) => {

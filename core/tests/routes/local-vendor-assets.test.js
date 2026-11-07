@@ -36,7 +36,7 @@ describe('Core local browser vendors', () => {
   test.each([
     ['/playground', [
       '/vendor/marked/18.0.11/marked.umd.js',
-      '/vendor/dompurify/3.4.16/purify.min.js'
+      '/vendor/dompurify/3.4.17/purify.min.js'
     ]],
     ['/nerve-center', ['/vendor/chart.js/4.5.1/chart.umd.js']],
     ['/analytics', ['/vendor/chart.js/4.4.4/chart.umd.js']],
@@ -63,7 +63,7 @@ describe('Core local browser vendors', () => {
     ['/vendor/chart.js/4.4.4/chart.umd.js', 'Chart.js v4.4.4', 'Chart', '4.4.4'],
     ['/vendor/chart.js/4.5.1/chart.umd.js', 'Chart.js v4.5.1', 'Chart', '4.5.1'],
     ['/vendor/marked/18.0.11/marked.umd.js', 'marked v18.0.11', 'marked', null],
-    ['/vendor/dompurify/3.4.16/purify.min.js', 'DOMPurify 3.4.16', 'DOMPurify', '3.4.16']
+    ['/vendor/dompurify/3.4.17/purify.min.js', 'DOMPurify 3.4.17', 'DOMPurify', '3.4.17']
   ])('serves pinned asset %s from the explicit allowlist', async (asset, signature, globalName, version) => {
     const response = await request(app)
       .get(asset)
@@ -137,7 +137,7 @@ describe('Core local browser vendors', () => {
       '@fortawesome/fontawesome-free': '6.4.0',
       'chart.js': '4.4.4',
       'chartjs-4-5-1': 'npm:chart.js@4.5.1',
-      dompurify: '3.4.16',
+      dompurify: '3.4.17',
       marked: '18.0.11'
     });
   });

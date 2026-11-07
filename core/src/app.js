@@ -466,7 +466,7 @@ app.set('views', path.join(__dirname, '..', 'views'));
 const coreVendorAssets = Object.freeze({
   '/vendor/chart.js/4.4.4/chart.umd.js': path.join(__dirname, '..', 'node_modules', 'chart.js', 'dist', 'chart.umd.js'),
   '/vendor/chart.js/4.5.1/chart.umd.js': path.join(__dirname, '..', 'node_modules', 'chartjs-4-5-1', 'dist', 'chart.umd.js'),
-  '/vendor/dompurify/3.4.16/purify.min.js': path.join(__dirname, '..', 'node_modules', 'dompurify', 'dist', 'purify.min.js'),
+  '/vendor/dompurify/3.4.17/purify.min.js': path.join(__dirname, '..', 'node_modules', 'dompurify', 'dist', 'purify.min.js'),
   '/vendor/marked/18.0.11/marked.umd.js': path.join(__dirname, '..', 'node_modules', 'marked', 'lib', 'marked.umd.js')
 });
 
@@ -550,7 +550,7 @@ app.get('/playground', (req, res) => {
     ].join('\n'),
     footerJs: [
       '<script src="/vendor/marked/18.0.11/marked.umd.js"></script>',
-      '<script src="/vendor/dompurify/3.4.16/purify.min.js"></script>',
+      '<script src="/vendor/dompurify/3.4.17/purify.min.js"></script>',
       '<script src="/js/persona-selector.js"></script>',
       demo ? '' : '<script src="/js/components/chat-intelligence.js"></script>',
       '<script src="/js/chat/chat-context-indicator.js"></script>',
