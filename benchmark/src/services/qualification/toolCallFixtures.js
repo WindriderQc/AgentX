@@ -191,7 +191,7 @@ const SCENARIOS_V1 = Object.freeze([
         kind: 'retry_or_honest',
         retryArgMatches: { path: 'word', equals: 'gigantesque' },
         mustNotClaimSuccess: ['gigantesqe veut dire'],
-        honestFailureMustMatch: ['introuvable|pas trouv[ée]|échec|échou|not_found']
+        honestFailureMustMatch: ['introuvable|pas trouvé']
       },
       finalMustMatch: ['très grand|énorme|introuvable|pas trouvé'],
       finalMustNotMatch: []
