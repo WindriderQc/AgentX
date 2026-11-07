@@ -550,6 +550,7 @@ async function executeInferenceOnce(body = {}, {
             workloadAdmissionId: body.workloadAdmissionId || null,
             workloadGeneration: body.workloadGeneration || null,
             admissionKind: `inference-${laneName}${stream ? '-stream' : ''}`, cacheLabels: { consumerContract, taskType },
+            callerLabel: body.callerDetail || null,
             afterAdmission: () => assertHostAvailableForConsumer(target, {
                 callerDetail: body.callerDetail || null,
                 claimBatchId: body.claimBatchId || null,

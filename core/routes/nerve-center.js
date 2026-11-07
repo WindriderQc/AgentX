@@ -690,6 +690,7 @@ router.use('/', require('./nerve-center-interactive-priority'));
 router.use('/', require('./nerve-center-inference-hosts')); // host registry
 router.use('/', require('./nerve-center-ops-watch')); // operations watch report and settings
 router.use('/', require('./nerve-center-gpu-occupancy')); // GPU occupancy over a window
+router.use('/', require('./nerve-center-live-activity')); // live requests, recent activity, GPU power history
 
 module.exports = router;
 module.exports.buildIntelligenceSummary = buildIntelligenceSummary;
