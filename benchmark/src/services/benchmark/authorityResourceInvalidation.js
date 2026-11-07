@@ -7,6 +7,7 @@
  */
 
 const { projectionPaths } = require('../profiler/gpuDriverPreparationIdentity');
+const { isValidObjectId } = require('mongoose');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 const BenchmarkResult = require('../../../models/BenchmarkResult');
 const JudgeAccuracyMatrix = require('../../../models/JudgeAccuracyMatrix');
@@ -34,7 +35,7 @@ async function invalidateResource(record, options = {}) {
   if (record.kind === 'workload_invalidation') {
     const batchId = record.batchId || null;
     const [batch, results, matrices, governance, groundTruth] = await Promise.all([
-      batchId
+      batchId && isValidObjectId(batchId)
         ? BenchmarkBatch.findOneAndUpdate(
           { _id: objectId(batchId) },
           batchInvalidationUpdate(record),

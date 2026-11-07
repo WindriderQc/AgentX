@@ -7,7 +7,6 @@ const {
   getWorkloadAdmissionIdentity,
   getBenchmarkClaimIdentity,
   claimHostForBenchmark,
-  getBenchmarkClaims,
   getDedicationStatuses,
   heartbeatBenchmarkClaim,
   releaseBenchmarkClaim
@@ -135,12 +134,11 @@ function normalizeClaimReceipt(result, batchId, host) {
 }
 
 async function assertActiveClaim(receipt, deps) {
-  const claims = await deps.getBenchmarkClaims();
-  const active = (claims || []).find((entry) =>
-    normalizeHostUrl(entry?.hostUrl || entry?.host) === receipt.hostUrl
-    && entry?.batchId === receipt.batchId
-  );
-  if (!active || active.claimGeneration !== receipt.claimGeneration) {
+  // The public status list intentionally omits bearer generations. Only the
+  // native owner heartbeat can attest this exact live claim and workload.
+  const active = await deps.heartbeatBenchmarkClaim(receipt.hostUrl, receipt.batchId);
+  if (active?.heartbeat !== true || active.batchId !== receipt.batchId
+    || active.claimGeneration !== receipt.claimGeneration) {
     throw new ToolCampaignError(
       'the exact Benchmark claim is not active or no longer belongs to this campaign',
       'TOOL_CAMPAIGN_CLAIM_LOST'
@@ -246,8 +244,7 @@ function defaultDependencies(overrides = {}) {
     getBenchmarkClaimIdentity,
     disconnectDB: () => mongoose.disconnect(),
     claimHostForBenchmark,
-    getBenchmarkClaims,
-    getDedicationStatuses,
+      getDedicationStatuses,
     heartbeatBenchmarkClaim,
     releaseBenchmarkClaim,
     resolveStandaloneCampaignInferenceContracts,
@@ -291,7 +288,6 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
     workload = await deps.beginManagedWorkload(campaignId, {
       requestId: `tool-capability:${campaignId}`,
       kind: 'tool-capability-qualification',
-      batchId: campaignId,
       hosts: [host],
       ttlMs: estimatedDurationMs
     });
