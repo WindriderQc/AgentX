@@ -202,6 +202,7 @@ def step_prompt(manifest: dict) -> str:
         f"Objective: {step.get('objective', '')}\n"
         f"Exact writable paths: {json.dumps(manifest['allowedPaths'])}\n"
         f"Runner-owned focused tests: {json.dumps(manifest['testTargets'])}\n"
+        f"Operator-required regression test edits: {json.dumps((manifest.get('qualification') or {}).get('requiredRegressionTests', []))}\n"
     )
 
 

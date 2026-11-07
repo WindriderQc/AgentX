@@ -24,7 +24,7 @@ function invalid(message) {
 function definition(value) {
   if (value == null) return null;
   if (typeof value !== 'object' || Array.isArray(value)
-    || Object.keys(value).some(key => !['acceptanceCriteria', 'requiredCapabilities', 'estimate'].includes(key)))
+    || Object.keys(value).some(key => !['acceptanceCriteria', 'requiredCapabilities', 'estimate', 'requiredRegressionTests'].includes(key)))
     throw invalid('Describe acceptance criteria, required capabilities and the estimated work.');
   const criteria = value.acceptanceCriteria;
   const capabilities = value.requiredCapabilities;
@@ -39,7 +39,13 @@ function definition(value) {
     || Object.keys(estimate).some(key => !['workSeconds', 'modelCalls'].includes(key))
     || !['workSeconds', 'modelCalls'].every(key => Number.isSafeInteger(estimate[key]) && estimate[key] > 0))
     throw invalid('Supply positive whole-number estimates for work seconds and model calls.');
+  const tests = value.requiredRegressionTests;
+  if (tests !== undefined && (!Array.isArray(tests) || tests.length > 20 || new Set(tests).size !== tests.length
+    || tests.some(path => typeof path !== 'string' || !path || path.length > 240 || path !== path.trim()
+      || /[\\\x00-\x20\x7f]/.test(path) || path.split('/').some(part => ['', '.', '..'].includes(part)))))
+    throw invalid('Required regression tests must be distinct exact repository-relative file paths (at most twenty).');
   return { acceptanceCriteria: criteria.map(text => text.trim()), requiredCapabilities: [...capabilities].sort(),
+    ...(tests?.length && { requiredRegressionTests: [...tests].sort() }),
     estimate: { workSeconds: estimate.workSeconds, modelCalls: estimate.modelCalls } };
 }
 
@@ -69,6 +75,13 @@ function assess(task, limits, proposed) {
     add('verification_scope_mismatch', 'missing_prerequisite',
       'The verification profile does not cover every selected code area.',
       'Split the task by verified area or provide a matching runner-owned verification profile.');
+  if (declared?.requiredRegressionTests?.some(path => !Array.isArray(scope) || !scope.includes(path) || !covered?.(path)
+    || !(profile === scheduleUi.id ? scheduleUi.testFiles.includes(path)
+      : profile === 'agentx-dispatcher-tests/v1' ? /^integrations\/coding\/tests\/test_[^/]+\.py$/.test(path)
+        : /\/tests\/.*\.test\.js$/.test(path))))
+    add('regression_tests_unverifiable', 'missing_prerequisite',
+      'Every required regression test must be writable in the reviewed scope and covered by the native verifier.',
+      'Select exact test files in that scope; a test edit is not proof of semantic coverage.');
   for (const capability of declared?.requiredCapabilities || []) if (!SUPPORTED.has(capability))
     add(`capability_${capability}`, 'unsupported_by_worker',
       `This isolated coding worker cannot supply ${capability}.`,

@@ -37,6 +37,7 @@ REASONS = {"model_budget_reserve", "hard_budget", "soft_budget_no_progress", "no
            "model_wait_inactive", "model_generation_inactive", "tool_inactive", "test_inactive"}
 REASONS.update({"continuation_checkpoint_changed", "github_token_missing", "git_reconciliation", "git_conflict_remaining", "verification_profile_unknown", "progress_history_limit", "model_termination_unverified", "authorization_removed", "queue_window_closed"})
 REASONS.update({"coding_model_mismatch", "code_step_blocked", "code_step_scope_changed"})
+REASONS.update({"regression_edits_missing", "regression_requirement_unverified"})
 RESULTS = {"blocked", "review", "local_only"}
 TEST_NAMES = {"pytest", "unittest", "jest", "npm_test", "node_test"}
 TEST_OUTCOMES = {"passed", "failed", "unknown"}

@@ -5,6 +5,29 @@ const task = () => ({ title: 'Bounded source fix', spec: 'Preserve the caller wh
 const definition = () => ({ acceptanceCriteria: ['Invalid input is rejected and valid input still succeeds.'],
   requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { modelCalls: 20, workSeconds: 600 } });
 const limits = { modelCalls: 32, workSeconds: 900 };
+test('regression edits are optional and operator-declared, with no semantic quality claim', () => {
+  expect(readiness.definition(definition())).not.toHaveProperty('requiredRegressionTests');
+  expect(readiness.definition({ ...definition(), requiredRegressionTests: [] })).not.toHaveProperty('requiredRegressionTests');
+  const input = task(), path = 'core/tests/unit/inferenceRuntimePolicy.test.js';
+  input.automation.scope.push(path);
+  const proposed = { ...definition(), requiredRegressionTests: [path] };
+  expect(readiness.assess(input, limits, proposed)).toMatchObject({ canAuthorize: true,
+    definition: { requiredRegressionTests: [path] } });
+  expect(proposed.requiredRegressionTests).toEqual([path]);
+});
+test.each(['../test.py', '/test.py', 'test//one.py', './test.py', 'test/../one.py', 'test\\one.py', 'test\none.py', ''])
+('required regression paths reject malformed input %j', path => {
+  expect(() => readiness.definition({ ...definition(), requiredRegressionTests: [path] })).toThrow('repository-relative');
+});
+test('duplicate regression paths and non-array declarations are invalid', () => {
+  for (const paths of [['test.py', 'test.py'], 'test.py', [null], Array.from({ length: 21 }, (_, i) => `test${i}.py`)])
+    expect(() => readiness.definition({ ...definition(), requiredRegressionTests: paths })).toThrow('repository-relative');
+});
+test.each(['core/src/services/inferenceRuntimePolicy.js', 'core/tests/unit/unrelated.test.js', 'test.py'])
+('regression target %s must be a native test in the exact writable scope', path => {
+  expect(readiness.assess(task(), limits, { ...definition(), requiredRegressionTests: [path] })).toMatchObject({
+    canAuthorize: false, issues: [expect.objectContaining({ code: 'regression_tests_unverifiable' })] });
+});
 test('feasibility is a read-only contract assessment with no claim of model competence', () => {
   const input = task(), before = structuredClone(input);
   expect(readiness.assess(input, limits, definition())).toMatchObject({ status: 'ready', canAuthorize: true });

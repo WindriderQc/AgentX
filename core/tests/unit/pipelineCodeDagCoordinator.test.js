@@ -212,6 +212,8 @@ test('delegates a terminal prior-run graph to the atomic correction replacement'
 
 test('dispatches a maximal two-host wave and starts the dependency wave from the adopted head', async () => {
   const f = fixture(); const coordinator = f.create();
+  const qualification = { requiredRegressionTests: ['tests/regression.test.js'] };
+  f.taskRecord.codingAutonomy.qualification = { definition: qualification };
   await coordinator.tick('0946');
   expect(f.launches).toHaveLength(2);
   expect(f.launches.map(item => [item.stepId, item.executorId])).toEqual([
@@ -230,6 +232,7 @@ test('dispatches a maximal two-host wave and starts the dependency wave from the
   expect(f.launches).toHaveLength(2);
   const assemblyId = deterministicUuid(ROOT, 'assembly');
   const first = await coordinator.manifest('0946', assemblyId);
+  expect(first.qualification).toEqual(qualification);
   expect(first).toMatchObject({ role: 'assembly', executorId: 'host-a', requestId: assemblyId,
     model: 'qwen3-coder:30b', rootLeaseId: 'root-lease', verificationProfile: 'agentx-core-runner-tests/v1',
     task: { title: 'Synthetic DAG', spec: 'Public fake work' },

@@ -115,6 +115,7 @@ test('reviewed continuation sends the original checkpoint and intent with explic
   const field = title => descendants(form).find(n => n.textContent === title).children[0];
   field('New approved coding campaign').value = KEY;
   field('Observable acceptance criteria, one per line').value = 'The exact preserved failure is corrected.';
+  field('Required regression test edits, exact paths (optional)').value = 'core/tests/unit/inferenceRuntimePolicy.test.js';
   field('Estimated remaining work minutes').value = '10';
   field('Estimated remaining model calls').value = '8';
   descendants(form).find(n => n.textContent.startsWith('Correction based')).children[0].value = 'Fix the exact preserved test failure.';
@@ -124,6 +125,7 @@ test('reviewed continuation sends the original checkpoint and intent with explic
   expect(JSON.parse(mutation.options.body)).toMatchObject({ expectedRevision: 12, expectedNativeAttemptLimit: 3,
     nativeAttemptLimit: 4, expectedAutomationFingerprint: 'b'.repeat(64), head: 'a'.repeat(40), additionalRuns: 1,
     qualification: { acceptanceCriteria: ['The exact preserved failure is corrected.'],
+      requiredRegressionTests: ['core/tests/unit/inferenceRuntimePolicy.test.js'],
       requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { workSeconds: 600, modelCalls: 8 } },
     budget: { workSeconds: 3600, testSeconds: 900, modelSeconds: 1800, modelCalls: 32, ciSeconds: 900 } });
 });
