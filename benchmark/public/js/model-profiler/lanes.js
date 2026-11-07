@@ -21,23 +21,43 @@ async function requestFit(lane, button, status, root) {
   // Retain the same intent across clicks, refresh and a lost HTTP reply.
   const storageKey = `profiler-pinned-fit:${key}`;
   let requestId = fitRequests.get(key) || sessionStorage.getItem(storageKey);
-  if (requestId && lane.pinnedFit?.id === requestId && lane.pinnedFit.runtimeReleased === true
-    && ['completed', 'failed', 'cancelled'].includes(lane.pinnedFit.state)) requestId = null;
-  if (!requestId) {
-    requestId = crypto.randomUUID();
-    sessionStorage.setItem(storageKey, requestId);
-    fitRequests.set(key, requestId);
-  }
   button.disabled = true;
   status.textContent = 'Recording a manual fit request…';
   try {
+    if (requestId) {
+      let original = lane.pinnedFit?.id === requestId ? lane.pinnedFit : null;
+      if (!original) {
+        // Another tab may have completed a newer request. Its receipt says
+        // nothing about this tab's original, potentially uncertain intent.
+        const response = await fetch(`/benchmark/api/profiler/fit-checks/${encodeURIComponent(requestId)}`, { cache: 'no-store' });
+        if (response.ok) {
+          const answer = await response.json();
+          if (answer.status !== 'success' || answer.data?.id !== requestId) throw new Error('Original fit receipt is incomplete');
+          original = answer.data;
+        } else if (response.status !== 404) throw new Error('Original fit receipt is unavailable');
+        // A missing record does not establish termination. Retry the same UUID.
+      }
+      if (original?.runtimeReleased === true && ['completed', 'failed', 'cancelled'].includes(original.state)) requestId = null;
+      else if (original && !['requested'].includes(original.state)) {
+        status.textContent = `Original fit ${requestId} is ${original.state || 'unknown'}; inspect its native receipt in Calendar. No new request was recorded.`;
+        button.disabled = false;
+        return;
+      }
+    }
+    if (!requestId) {
+      requestId = crypto.randomUUID();
+      sessionStorage.setItem(storageKey, requestId);
+      fitRequests.set(key, requestId);
+    }
     const response = await fetch('/benchmark/api/profiler/fit-checks/request', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestId, hostId: lane.capability.hostId, pinIndex: lane.pinIndex })
     });
     const answer = await response.json();
     if (!response.ok || answer.status !== 'success') throw new Error(answer.error || `Benchmark answered ${response.status}`);
-    status.textContent = 'Manual request recorded. Plan its slot and use Run now in Automations → Calendar.';
+    status.textContent = answer.data?.state === 'requested'
+      ? 'Manual request recorded. Plan its slot and use Run now in Automations → Calendar.'
+      : `Original fit receipt: ${answer.data?.state || 'unknown'}. Inspect it in Calendar; no new request was recorded.`;
     await renderLanes(root);
   } catch (error) {
     status.textContent = `Receipt unavailable: ${error.message}. Retry this same request; inspect Calendar before starting anything.`;
