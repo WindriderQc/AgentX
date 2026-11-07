@@ -36,11 +36,16 @@ describe('allowedForFamilyDevice', () => {
     expect(allowed('POST', '/api/voice-personas/family/sessions')).toBe(true);
     expect(allowed('POST', '/api/voix/synthesize/stream')).toBe(true);
     expect(allowed('GET', '/assets/household/app.js')).toBe(true);
+    // Ma jungle on the kid tablet proposes a plant (#876).
+    expect(allowed('GET', '/kids/plants')).toBe(true);
+    expect(allowed('POST', '/api/family/plant-proposals')).toBe(true);
+    expect(allowed('GET', '/assets/household/plant-proposal-kids.js')).toBe(true);
   });
 
   test('refuses personal pages, owner memory and parent tools', () => {
     expect(allowed('GET', '/dad')).toBe(false);
     expect(allowed('GET', '/dad/family')).toBe(false);
+    expect(allowed('GET', '/dad/family/plants')).toBe(false);
     expect(allowed('GET', '/voice-lab', { scope: 'personal' })).toBe(false);
     expect(allowed('POST', '/api/voice-personas/private/sessions')).toBe(false);
     expect(allowed('POST', '/api/voice-personas/memory/search')).toBe(false);

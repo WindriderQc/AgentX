@@ -576,7 +576,9 @@ function register(api) {
 
   registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, conversations, ambient, artx });
   if (runtimeServices.household?.plants) {
-    require('./plant-routes').registerPlantRoutes({ app, express, plants: runtimeServices.household.plants, assistant: plantAssistant, standardJsonParser });
+    const proposals = runtimeServices.household.plantProposals || null;
+    require('./plant-routes').registerPlantRoutes({ app, express, plants: runtimeServices.household.plants, assistant: plantAssistant, proposals, standardJsonParser });
+    if (proposals) require('./plant-proposal-routes').registerPlantProposalRoutes({ app, express, proposals, standardJsonParser });
   }
   registerDeviceAcceptanceRoutes(app, {
     express, standardJsonParser, models, envelope, fail, cleanText

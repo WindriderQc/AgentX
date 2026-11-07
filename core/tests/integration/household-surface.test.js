@@ -1434,6 +1434,48 @@ describe('built-in Household surface on Core', () => {
     expect((await request(app).get('/api/family/plants/not-an-id').expect(400)).body.code).toBe('PLANT_BAD_ID');
   });
 
+  test('a child proposes a plant over HTTP; only the parent opens, publishes or declines it (#876)', async () => {
+    const HouseholdProfile = require('../../models/HouseholdProfile');
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+    const photo = bytes => `data:image/png;base64,${bytes.toString('base64')}`;
+    const child = 'synthetic-proposal-child';
+    await HouseholdProfile.create({ profileId: child, displayName: 'Synthetic Proposer', ageBand: 'school' });
+    try {
+      expect((await request(app).get(`/api/family/plant-proposals?profileId=${child}`).expect(200)).body.data).toMatchObject({ proposal: null, rooms: expect.arrayContaining(['Salon']) });
+      const big = Buffer.concat([png, Buffer.alloc(2 * 1024 * 1024)]);
+      expect((await request(app).post('/api/family/plant-proposals').send({ profileId: child, dataUrl: photo(big) }).expect(413)).body.code).toBe('PLANT_PHOTO_TOO_LARGE');
+      expect((await request(app).post('/api/family/plant-proposals').send({ profileId: child, dataUrl: photo(png), nickname: 'Free text' }).expect(400)).body.code).toBe('PLANT_PROPOSAL_INVALID');
+      const proposal = (await request(app).post('/api/family/plant-proposals').send({ profileId: child, room: 'Cuisine', dataUrl: photo(png) }).expect(201)).body.data.proposal;
+      expect(proposal).toMatchObject({ state: 'pending', room: 'Cuisine' });
+      expect((await request(app).post('/api/family/plant-proposals').send({ profileId: child, dataUrl: photo(png) }).expect(409)).body.code).toBe('PLANT_PROPOSAL_PENDING');
+      const own = await request(app).get(proposal.photoUrl).expect(200);
+      expect(own.headers['content-type']).toBe('image/png');
+      expect(own.headers['cache-control']).toBe('private, no-store');
+      await request(app).get(`/api/family/plant-proposals/${proposal.id}/photo?profileId=someone-else`).expect(404);
+      expect((await request(app).get('/api/family/plants').expect(200)).body.data.plants.map(plant => plant.id)).not.toContain(proposal.id);
+
+      // Identification waits for the parent to open the draft; opening starts it once.
+      expect((await request(app).post(`/api/family/plants/${proposal.id}/identify`).send({}).expect(409)).body.code).toBe('PLANT_PROPOSAL_UNOPENED');
+      const listed = (await request(app).get('/api/family/plants?view=manage').expect(200)).body.data.plants;
+      expect(listed[0]).toMatchObject({ id: proposal.id, proposal: { proposedBy: child, state: 'pending', open: true } });
+      const opened = (await request(app).post(`/api/family/plants/${proposal.id}/proposal/open`).send({}).expect(200)).body.data;
+      expect(opened).toMatchObject({ opened: true, plant: { proposal: { state: 'opened' } } });
+      expect(['running', 'completed', 'failed']).toContain(opened.plant.assistant.identify?.state);
+      expect((await request(app).post(`/api/family/plants/${proposal.id}/proposal/open`).send({}).expect(200)).body.data.opened).toBe(false);
+      expect((await request(app).get(`/api/family/plant-proposals?profileId=${child}`).expect(200)).body.data.proposal.state).toBe('opened');
+
+      const current = (await request(app).get(`/api/family/plants/${proposal.id}?view=manage`).expect(200)).body.data.plant;
+      const declined = (await request(app).post(`/api/family/plants/${proposal.id}/decline`)
+        .send({ expectedRevision: current.revision, reply: 'Papa a vu ta plante. Merci !' }).expect(200)).body.data.plant;
+      expect(declined).toMatchObject({ status: 'retired', proposal: { state: 'declined' } });
+      const answer = (await request(app).get(`/api/family/plant-proposals?profileId=${child}`).expect(200)).body.data.proposal;
+      expect(answer).toMatchObject({ state: 'declined', reply: 'Papa a vu ta plante. Merci !' });
+      expect((await request(app).post(`/api/family/plant-proposals/${proposal.id}/seen`).send({ profileId: child }).expect(200)).body.data.proposal).toBeNull();
+    } finally {
+      await HouseholdProfile.deleteMany({ profileId: child });
+    }
+  });
+
   test('plant model help starts over HTTP and Nestor is offered draft_plant_card (#867)', async () => {
     const created = (await request(app).post('/api/family/plants').send({ nickname: 'Synthetic assisted plant' }).expect(201)).body.data.plant;
     expect((await request(app).post(`/api/family/plants/${created.id}/care-draft`).send({}).expect(409)).body.code).toBe('PLANT_SPECIES_REQUIRED');

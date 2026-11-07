@@ -5,6 +5,7 @@
 // the children, through a projection without sources, candidates or review state.
 
 const { AGE_BANDS, FamilyInputError, familyChoreProposal } = require('./family');
+const { proposalView } = require('./plantProposals');
 
 const PLANT_STATUSES = Object.freeze(['draft', 'published', 'retired']);
 const CARE_FIELDS = Object.freeze(['light', 'water', 'humidity', 'soil', 'repotting', 'fertilizer', 'mistakes']);
@@ -177,6 +178,7 @@ function managedPlant(plant = {}, chores = null) {
     photos: photoView(plant),
     assistant: assistantView(plant.assistant),
     problems: publishProblems(plant),
+    proposal: proposalView(plant.proposal),
     ...(chores ? { mood: plantMood(chores), care: careView(chores) } : {}),
     revision: Number.isInteger(plant.__v) ? plant.__v : 0,
     publishedAt: plant.publishedAt || null,

@@ -6,7 +6,8 @@
 // page's view. Like the rest of /api/family, a pinned family device keeps the
 // parent actions (owner decision, #865).
 
-function registerPlantRoutes({ app, express, plants, assistant = null, importer = require('../../src/services/householdPlantImport').createPlantImport(), standardJsonParser }) {
+function registerPlantRoutes({ app, express, plants, assistant = null, proposals = null,
+  importer = require('../../src/services/householdPlantImport').createPlantImport(), standardJsonParser }) {
   if (assistant) require('../../src/services/householdPlantImportQueue').configure(assistant);
   const router = express.Router();
   const reply = async (res, status, operation) => {
@@ -30,6 +31,17 @@ function registerPlantRoutes({ app, express, plants, assistant = null, importer 
   if (assistant) {
     router.post('/:id/identify', (req, res) => reply(res, 202, () => assistant.identify({ id: req.params.id, photoId: req.body?.photoId })));
     router.post('/:id/care-draft', (req, res) => reply(res, 202, () => assistant.draftCare({ id: req.params.id })));
+  }
+  // A child's proposal (#876): opening it lets identification start, once; declining answers the child.
+  if (proposals) {
+    router.post('/:id/proposal/open', (req, res) => reply(res, 200, async () => {
+      const result = await proposals.open({ id: req.params.id });
+      if (!result.opened || !assistant) return result;
+      try { return { ...(await assistant.identify({ id: req.params.id })), opened: true }; }
+      catch (error) { return { ...result, identifyError: error.code || 'PLANT_ASSIST_FAILED' }; }
+    }));
+    router.post('/:id/decline', (req, res) => reply(res, 200,
+      () => proposals.decline({ id: req.params.id, expectedRevision: req.body?.expectedRevision, reply: req.body?.reply })));
   }
   router.post('/:id/photos/:photoId/remove', (req, res) => reply(res, 200,
     () => plants.removePhoto({ ...(req.body || {}), id: req.params.id, photoId: req.params.photoId })));
