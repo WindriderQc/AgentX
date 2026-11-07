@@ -27,6 +27,10 @@ const PerformanceLoadTestSchema = new mongoose.Schema({
     index: true,
     description: 'Artillery scenario name (e.g., "basic-load", "stress-test")'
   },
+  queueJobId: {
+    type: String,
+    description: 'Core heavy-work request identity; absent for manual imports'
+  },
 
   // Test configuration
   config: {
@@ -129,6 +133,7 @@ const PerformanceLoadTestSchema = new mongoose.Schema({
 PerformanceLoadTestSchema.index({ scenario: 1, timestamp: -1 });
 PerformanceLoadTestSchema.index({ timestamp: -1 });
 PerformanceLoadTestSchema.index({ 'summary.error_rate': 1 });
+PerformanceLoadTestSchema.index({ queueJobId: 1 }, { unique: true, sparse: true });
 
 /**
  * Static method: Find recent tests by scenario

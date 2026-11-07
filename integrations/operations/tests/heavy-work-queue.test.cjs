@@ -21,7 +21,9 @@ test('custom operator completion hashes the exact local receipt and cannot finis
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'queue-receipt-'));
   const file = path.join(dir, 'synthetic.json'); const current = { ...job, kind: 'diagnostic', state: 'dispatching', dispatchId: 'synthetic-dispatch', executor: { mode: 'operator', receiptRef: 'synthetic.json' } };
   const receipt = { contract: 'agentx.operator-heavy-work/v1', queueRequestId: job.id, dispatchId: current.dispatchId,
-    actor: 'fixture', state: 'completed', runtimeReleased: true, receiptRef: 'synthetic.json' };
+    actor: 'fixture', state: 'completed', runtimeReleased: true, receiptRef: 'synthetic.json',
+    loadTest: { name: 'Synthetic load', scenario: 'synthetic', timestamp: '2026-01-02T03:04:05Z',
+      raw_report: { aggregate: { counters: {}, summaries: {} } } } };
   const writes = [];
   const deps = { fetchImpl: async (_url, options) => {
     if (options.body) writes.push(JSON.parse(options.body));
@@ -32,8 +34,14 @@ test('custom operator completion hashes the exact local receipt and cannot finis
     const bytes = JSON.stringify(receipt); fs.writeFileSync(file, bytes);
     await main(args, deps);
     assert.equal(writes[0].receiptSha256, crypto.createHash('sha256').update(bytes).digest('hex'));
+    assert.deepEqual(writes[0].loadTest, receipt.loadTest);
+    current.state = 'completed'; current.revision++;
+    const retryArgs = args.map((arg, index) => args[index - 1] === '--revision' ? String(current.revision) : arg);
+    await main(retryArgs, deps);
+    assert.equal(writes[1].receiptSha256, writes[0].receiptSha256);
+    assert.deepEqual(writes[1].loadTest, writes[0].loadTest);
     fs.writeFileSync(file, JSON.stringify({ ...receipt, dispatchId: 'different' }));
-    await assert.rejects(main(args, deps), /differs/); assert.equal(writes.length, 1);
+    await assert.rejects(main(retryArgs, deps), /differs/); assert.equal(writes.length, 2);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 test('marks dispatch before the native launch and saves its exact operation', async () => {

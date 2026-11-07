@@ -341,7 +341,7 @@ async function operatorRelease(id, dispatchId) {
 }
 // Custom coding checks and island runs retain operator attestation.
 
-async function operatorFinish(id, body, actor) {
+async function operatorFinishTransition(id, body, actor, loadTestHash) {
   revision(body);
   if (body.confirmation !== 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED'
     || !['completed', 'failed', 'cancelled'].includes(body.state)
@@ -362,9 +362,13 @@ async function operatorFinish(id, body, actor) {
     job.operation = { kind: job.executor.mode === 'island' ? 'island' : 'operator', id: job.dispatchId, authority: 'operator-attestation' };
     job.releaseReceipt = { authority: 'operator-attestation', operationId: job.dispatchId, state: body.state,
       receiptRef: body.receiptRef, receiptSha256: body.receiptSha256, confirmation: body.confirmation,
+      ...(loadTestHash && { loadTestHash }),
       actor, observedAt: job.finishedAt };
     return event(job, actor, 'operator-finished', job.releaseReceipt);
   });
+}
+function operatorFinish(id, body, actor) {
+  return require('./heavyWorkLoadTest').finish(id, body, actor, { get, complete: operatorFinishTransition });
 }
 async function archived(offset = 0, limit = 50) {
   if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100) throw fail('Archive offset/limit invalid');
