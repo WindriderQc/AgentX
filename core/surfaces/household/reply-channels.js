@@ -322,8 +322,9 @@ function historyText(replyText, display = []) {
   return [String(replyText || ''), ...blocks].filter(Boolean).join('\n');
 }
 
-// Math Lab (#1270), adult conversations only. Core validates the formula and
-// computes every point itself; Famille keeps its cube pictures.
+// Math Lab (#1270): one math tool for both spaces. Core validates the formula and
+// computes every point itself. Super Dad gets the full contract below; Famille gets
+// a short one (FAMILY_MATH_CONTRACT) for the same grammar and card, starting simple.
 const MATH_CONTRACT = 'To draw a function y = f(x), write a math block, one statement per line: '
   + '<show kind="math" title="short title">y = a*sin(b*x)\na = 1 in [-3, 3]\nb = 2 in [0.5, 4]\nx in [-2*pi, 2*pi]</show>. '
   + 'To compare up to four functions on the same axes, name each one on its own line in the same block: '
@@ -345,7 +346,21 @@ const MATH_CONTRACT = 'To draw a function y = f(x), write a math block, one stat
   + 'When a math card is the current presentation, its formulas, current parameter values and the derivatives, slopes and areas Core computed come from the screen observation. '
   + 'Counting and small additions get Core\'s cube picture automatically beside your answer.';
 
-function contract({ family = false, imageSources = [], pages = false, pageCatalog = screenPages } = {}) {
+// Famille (#1270): the same grammar and card as Super Dad, in a short, child-appropriate
+// form. Counting and small additions keep Core's immediate cube answer (#131).
+const FAMILY_MATH_CONTRACT = 'Counting and additions up to 20 get Core\'s cube picture by themselves. '
+  + 'For a line, a curve or a shape, write one math block, one statement per line: '
+  + '<show kind="math" title="short title">y = a*x + 1\na = 2 in [-3, 3]\nx in [-5, 5]</show>. '
+  + 'Start simple for a child: one curve and one slider; go further only when asked. '
+  + 'Up to four functions f(x) = …, g(x) = … share the sliders and the window and may use each other, such as g(x) = f(x) + 1. '
+  + 'In the same block, f\'(x) draws the derivative (never write its formula), "tangent f at p" a tangent and "area f from a to b" a shaded area, inside the x window: '
+  + '<show kind="math" title="short title">f(x) = x^2\nf\'(x)\ntangent f at p\np = 1 in [-2, 2]\nx in [-3, 3]</show>. '
+  + 'A curve c(t) = (x(t), y(t)) uses t, with "t in [0, 2*pi]"; a surface z = … in x and y goes alone in its block, with "x in" and "y in" windows. '
+  + 'Use x, + - * / ^, parentheses, sin cos tan exp log sqrt abs, pi and e; every other letter is a one-letter slider declared as "a = 1 in [min, max]". '
+  + 'Core checks the formula and draws every point: explain aloud what the picture shows and what each slider changes, never list points, and do not claim the picture loaded. '
+  + 'When a math card is on screen, its formula and current slider values come from the current presentation.';
+
+function contract({ family = false, math = !family, imageSources = [], pages = false, pageCatalog = screenPages } = {}) {
   if (family) {
     pageCatalog = screenPages.createCatalog(pageCatalog.entries.filter(row => ['ecosystem', 'earth', 'iss', 'kids-tasks'].includes(row.id)));
     pages = pages && pageCatalog.entries.length > 0;
@@ -360,7 +375,7 @@ function contract({ family = false, imageSources = [], pages = false, pageCatalo
       : 'Use kind="secret" for passwords, keys and tokens: it is displayed masked, is not retained and is never spoken.',
     'Do not read a show block aloud unless the user asks you to; then speak its content outside any block.',
     'An explicit request to display a list or document needs only a short spoken announcement. A show block is a presentation proposal, not proof it loaded. Use the current presentation context for references to this page, chart or image; earlier show blocks are history. A Core snapshot attests data and period, separately from browser display. Never describe image pixels unless an image was actually supplied to your vision input.',
-    family ? '' : MATH_CONTRACT,
+    math ? family ? FAMILY_MATH_CONTRACT : MATH_CONTRACT : '',
     imageSources.length
       ? `To show a picture, write <show kind="image" source="${imageSources.join('|')}" title="short caption">a few search words</show>. `
         + 'web searches the internet; photos and media search the household\'s own pictures by file or folder name. Never write a URL or a path; Household finds the picture and it may find none. '

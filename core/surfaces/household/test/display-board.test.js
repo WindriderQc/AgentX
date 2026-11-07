@@ -139,6 +139,27 @@ test('pictures go to their own zone, with provenance, and a missing one says so'
   assert.equal(text.hidden && visual.hidden, true);
 });
 
+test('on the Famille screen, the zone that drew last is what Nestor reads first', () => {
+  const previous = globalThis.AgentXPresentationObservation;
+  globalThis.AgentXPresentationObservation = { observe: card => ({ kind: card.dataset.kind }) };
+  try {
+    const text = new Element('section'), visual = new Element('section');
+    const screen = globalThis.DisplayBoard.createScreen({ text, visual }, { space: 'family' });
+    screen.add({ id: 'b1', kind: 'list', title: 'Étapes', body: '- a' });
+    screen.add({ id: 'b2', kind: 'image', source: 'web', title: 'Girafe', body: 'girafe', status: 'found',
+      image: { url: 'https://images.example.test/g.jpg', sourceLabel: 'Internet' } });
+    assert.deepEqual(screen.context().map(row => row.kind), ['image', 'list'], 'the newer picture comes first');
+    screen.add({ id: 'b3', kind: 'code', title: '', body: 'x' });
+    assert.deepEqual(screen.context().map(row => row.kind), ['code', 'image']);
+    screen.add({ id: 'b0', kind: 'secret', title: '', body: 'x' });
+    assert.deepEqual(screen.context().map(row => row.kind), ['code', 'image'], 'a refused block changes nothing');
+    screen.clear();
+    screen.restore([{ id: 'b1', kind: 'image', source: 'web', title: 'Girafe', body: 'girafe', status: 'found',
+      image: { url: 'https://images.example.test/g.jpg', sourceLabel: 'Internet' } }, { id: 'b2', kind: 'list', title: '', body: '- a' }]);
+    assert.deepEqual(screen.context().map(row => row.kind), ['list', 'image'], 'a restored turn keeps its order');
+  } finally { globalThis.AgentXPresentationObservation = previous; }
+});
+
 test('a math picture is drawn by <llmx-stage> in the Images zone and its receipt goes back to the dock', async () => {
   const bus = new EventTarget(), receipts = [];
   globalThis.addEventListener = bus.addEventListener.bind(bus);

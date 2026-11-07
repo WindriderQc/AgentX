@@ -1,10 +1,11 @@
 'use strict';
 
-// Math Lab in Super Dad (#1270): the shared formula grammar (phase 1, the
-// comparisons of phase 2, and the derivatives, tangents, areas and functions
+// Math Lab in Super Dad and Famille (#1270): the shared formula grammar (phase 1,
+// the comparisons of phase 2, and the derivatives, tangents, areas and functions
 // using functions of phase 3), the `math` display kind, what Nestor reads from
 // a selected math card, and the cube pictures beside the model's own answer in
-// the adult space.
+// the adult space. Famille gets the same card through a short contract and keeps
+// Core's immediate cube answer.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -436,6 +437,45 @@ for (const backend of ['agentx', 'openclaw']) {
     assert.doesNotMatch(h.sent[1].request, /cube picture/);
   });
 }
+
+test('Famille gets the same math card through a short, child-appropriate contract', () => {
+  const family = contract({ family: true, math: true }), adult = contract();
+  assert.match(family, /kind="math"/);
+  assert.match(family, /Start simple for a child/);
+  assert.match(family, /cube picture by themselves/);
+  assert.doesNotMatch(family, /kind="secret"|\|secret/, 'Famille still has no secrets');
+  const famillyMath = family.slice(family.indexOf('Counting and additions'), family.indexOf('current presentation.') + 21);
+  const adultMath = adult.slice(adult.indexOf('To draw a function'), adult.indexOf('beside your answer.') + 19);
+  assert.ok(famillyMath.length < adultMath.length / 2, `the family addition stays short (${famillyMath.length} vs ${adultMath.length})`);
+  const examples = [...family.matchAll(/<show kind="math" title="short title">([^<]+)<\/show>/g)].map(match => math.parsePlot(match[1]));
+  assert.equal(examples.length, 2);
+  assert.ok(examples.every(row => row.ok), 'every family example is valid');
+  assert.equal(examples[0].plot.parameters.length, 1, 'the first example is one curve and one slider');
+  assert.ok(examples[1].plot.derivatives && examples[1].plot.tangents, 'the second example shows the derivative and a tangent');
+  assert.doesNotMatch(contract({ family: true }), /kind="math"/, 'the KidX reader keeps words only');
+  const drawn = channel(`Regarde la droite. <show kind="math" title="Une droite">y = a*x + 1\na = 2 in [-3, 3]\nx in [-5, 5]</show> Bouge a.`, { allowMath: true });
+  assert.equal(drawn.display[0].kind, 'math');
+  assert.equal(drawn.display[0].link, undefined, 'a math card carries no link');
+});
+
+test('Famille draws the model\'s math card; the KidX reader keeps it as code', async () => {
+  const reply = 'Une parabole, c’est une courbe en forme de bol. <show kind="math" title="Un bol">y = a*x^2\na = 1 in [-3, 3]\nx in [-3, 3]</show> Bouge a pour l’ouvrir.';
+  const h = harness({ packId: 'kidx_nestor', backend: 'agentx', response: reply });
+  const events = await streamedTurn(h, 'Montre-moi une parabole');
+  assert.equal(h.sent.length, 1, 'the model answers');
+  assert.match(h.sent[0].prefix, /kind="math"/, 'the family model is told how to write a math block');
+  assert.match(h.sent[0].prefix, /Start simple for a child/);
+  const shown = events.find(row => row.type === 'show')?.block;
+  assert.deepEqual([shown?.kind, shown?.title], ['math', 'Un bol']);
+  assert.equal(shown.body, math.parsePlot('y = a*x^2\na = 1 in [-3, 3]\nx in [-3, 3]').text);
+  assert.doesNotMatch(events.filter(row => row.type === 'delta').map(row => row.delta).join(''), /x\^2|\[-3/);
+  assert.equal(events.some(row => row.type === 'scene'), false, 'no cube picture for a curve');
+
+  const reader = harness({ packId: 'kidx_reader', backend: 'agentx', response: reply });
+  const read = await streamedTurn(reader, 'Que veut dire parabole ?');
+  assert.doesNotMatch(reader.sent[0].prefix, /kind="math"/);
+  assert.equal(read.find(row => row.type === 'show')?.block.kind, 'code');
+});
 
 test('Famille keeps its immediate cube answer without inference', async () => {
   const h = harness({ packId: 'kidx_nestor', backend: 'agentx' });

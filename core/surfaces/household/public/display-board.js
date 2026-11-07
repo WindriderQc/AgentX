@@ -353,13 +353,21 @@
     }
     const boards = [create(text, { secrets, space, kinds: ['text', 'list', 'table', 'code', 'link', 'secret'] }),
       create(visual, { secrets, space, kinds: ['page', 'image', 'scene', 'math'], heading: 'Pages and images' })];
+    // The zone that drew last holds what is "shown" now, so Nestor reads a math card's
+    // sliders even when an older note is still in the text zone.
+    let latest = null;
+    const add = block => {
+      const drawn = boards.filter(board => board.add(block));
+      if (drawn.length) latest = drawn[0];
+      return drawn.length > 0;
+    };
     return {
       // True when one of the zones drew the block.
-      add: block => boards.map(board => board.add(block)).some(Boolean),
-      restore: blocks => boards.forEach(board => board.restore(blocks)),
+      add,
+      restore: blocks => (Array.isArray(blocks) ? blocks : []).forEach(add),
       has: key => boards.some(board => board.has(key)),
-      context: () => boards.flatMap(board => board.context()).slice(0, 3),
-      clear: () => boards.forEach(board => board.clear())
+      context: () => (latest ? [latest, ...boards.filter(board => board !== latest)] : boards).flatMap(board => board.context()).slice(0, 3),
+      clear: () => { latest = null; boards.forEach(board => board.clear()); }
     };
   }
 
