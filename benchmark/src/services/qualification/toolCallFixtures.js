@@ -17,7 +17,7 @@ const crypto = require('crypto');
 const { DEFAULT_EXECUTION_CONFIG } = require('../benchmark/config');
 
 const FIXTURE_VERSION = 'toolcall-fixtures.v3';
-const HARNESS_VERSION = 'toolcall-harness.v3';
+const HARNESS_VERSION = 'toolcall-harness.v4';
 
 // Reuse Benchmark's controlled distribution, including its repeat-index seed
 // policy. Bind the actual controls into qualification identity, not just a label.
