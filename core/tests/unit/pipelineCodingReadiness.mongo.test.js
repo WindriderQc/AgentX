@@ -12,6 +12,17 @@ const proposal = () => ({ authorized: true, confirm: true, expectedRevision: 0, 
   limits: { workSeconds: 900, modelCalls: 32 }, qualification: {
     acceptanceCriteria: ['The deterministic policy accepts a valid request and refuses an invalid one.'],
     requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { workSeconds: 600, modelCalls: 20 } } });
+test('authorization persists operator-required test paths without widening scope or budgets', async () => {
+  const input = proposal(), path = 'core/tests/unit/inferenceRuntimePolicy.test.js';
+  input.scope.push(path); input.qualification.requiredRegressionTests = [path];
+  const response = await request(app).post(url + '/authorization').send(input);
+  expect(response.status).toBe(200);
+  const saved = await Task.findOne({ pipelineId: '0001' }).lean();
+  expect(saved.codingAutonomy.qualification.definition.requiredRegressionTests).toEqual([path]);
+  expect(saved.automation.scope).toEqual(input.scope);
+  expect(saved.codingAutonomy.limits.modelCalls).toBe(input.limits.modelCalls);
+  expect(saved.codingAutonomy.runs).toEqual([]);
+});
 beforeEach(async () => {
   await Promise.all([Task.deleteMany({}), Settings.deleteMany({})]);
   await Task.create({ pipelineId: '0001', title: 'Bounded policy fix', spec: 'Verify a small policy behavior.',

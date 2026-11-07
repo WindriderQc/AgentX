@@ -416,6 +416,13 @@ class RunnerAssemblyAdapter:
         if self.r.git(workspace, "status", "--porcelain", "--untracked-files=normal"):
             raise DeterministicAssemblyFailure("assembly_source_changed",
                 "Assembly source changed after final verification", tests)
+        regression = self._module("coding_regression_requirement")
+        try:
+            requirement = regression.prepare(self.r, workspace, self.progress, manifest, initialize=False)
+            regression.verify(self.r, workspace, self.progress, requirement)
+        except regression.RegressionRefusal as error:
+            raise DeterministicAssemblyFailure(error.reason,
+                "Operator-required regression edits are missing or unverified", tests) from error
         if not os.environ.get("GH_TOKEN", "").strip():
             raise DeterministicAssemblyFailure("assembly_publication_failed",
                 "The coding team's GitHub token is not configured", tests)

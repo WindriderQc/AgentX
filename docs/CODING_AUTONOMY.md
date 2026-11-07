@@ -125,6 +125,28 @@ budgets apply. A private failure receipt supplies context, never an extra attemp
 or a budget grant. Raw rejected source and diagnostics remain outside public Git
 and Pipeline projections.
 
+When the operator declares `qualification.requiredRegressionTests`, it names
+exact writable test files covered by the selected native profile (at most 20).
+The authorization form exposes this optional list; omitting it requires no test
+churn. The runner freezes the prepared Git head in a private
+`task-<id>.regression-requirement.json` before implementation. Corrections retain
+that baseline and requirement; a missing receipt or changed requirement refuses
+instead of establishing a fresh baseline.
+
+After independent tests pass, local and distributed publication check every
+required file against that baseline. Each must remain a regular file with
+content additions beyond whitespace or blank lines. Unchanged content, mode-only
+changes, deletion, empty files and deletion-only edits do not satisfy the
+requirement. `regression_edits_missing` blocks publication even when the old suite
+is green, without another automatic correction or extra budget. The private
+`<requestId>.regression-edits.json` records baseline/candidate blob identities,
+the checked head, per-file verdicts and conservative commit attribution. External
+or earlier-run changes are not credited to the current worker; existing operator
+intervention history remains separate. Operator follow-up needs its own evidence
+and does not rewrite a failed worker result. These receipts establish content
+edits only: `semanticCoverage: not_verified`. Review still evaluates whether the
+tests exercise the requested regressions.
+
 Before each model request, the relay adds a fresh runner budget advisory with
 the remaining durations, model calls and no-progress window. It preserves the
 worker's complete history and model options; the advisory is not saved back into

@@ -18,9 +18,9 @@ let control;
 let receipts;
 let observations;
 const app = express().use(express.json()).use('/api/pipeline', require('../../routes/pipeline-feedback'));
-function intent() {
+function intent(scope = ['integrations/coding/source.py']) {
   return normalizePipelineAutomationIntent({ schema: 'agentx.pipeline-automation/v1', mode: 'review_only',
-    policyRef: 'reviewed/v1', dataClassification: 'public', operations: ['update'], scope: ['integrations/coding/source.py'],
+    policyRef: 'reviewed/v1', dataClassification: 'public', operations: ['update'], scope,
     lockKeys: ['file:integrations/coding/source.py'], executionProfile: 'coding-sandbox/v1', verificationProfile: 'agentx-dispatcher-tests/v1',
     budgets: { maxDurationMs: 14400000, maxAttempts: 3, maxCostNanodollars: 0 }, humanGates: ['review', 'merge', 'deploy'] });
 }
@@ -28,10 +28,10 @@ async function task(id = '0001', extra = {}) {
   return Task.create({ pipelineId: id, title: `Synthetic coding task ${id}`, spec: 'Synthetic fixture only',
     service: 'agentx-coding', status: 'queued', risk: 'low', assignee: null, automation: intent(), ...extra });
 }
-async function authorize(id = '0001', limits) {
+async function authorize(id = '0001', limits, qualification = {}) {
   return service.authorize(id, { authorized: true, confirm: true, expectedRevision: 0, queueRequestId: QUEUE, limits,
     qualification: { acceptanceCriteria: ['The fixture behavior passes independent checks.'], requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'],
-      estimate: { modelCalls: 1, workSeconds: 10 } } });
+      estimate: { modelCalls: 1, workSeconds: 10 }, ...qualification } });
 }
 async function enable() { const state = await service.settings(); return service.configure({ enabled: true, confirm: true, expectedRevision: state.revision }); }
 async function selected() { return (await service.status()).active; }
@@ -749,8 +749,10 @@ test('a task taken by another worker after selection cancels only the unreceived
   expect(original.assignee).toBe('other-worker'); expect(original.codingAutonomy.reason).toBe('task_owned_elsewhere');
 });
 
-test.each(['tests_failed', 'hard_budget', 'operator_stop'])('only exact native unpublished test failure %s can select a bounded correction', async reason => {
-  await task(); await authorize();
+test.each(['tests_failed', 'hard_budget', 'operator_stop', 'regression_edits_missing', 'regression_requirement_unverified'])('only exact native unpublished test failure %s can select a bounded correction', async reason => {
+  const requiredRegressionTests = ['integrations/coding/tests/test_source.py'];
+  await task('0001', { automation: intent(['integrations/coding/source.py', ...requiredRegressionTests]) });
+  await authorize('0001', undefined, { requiredRegressionTests });
   await Task.updateOne({ pipelineId: '0001' }, { $set: { 'codingAutonomy.correction': { kind: 'operator_continuation', text: 'Original reviewed guidance', by: 'operator' } } });
   await enable(); const active = await launch();
   const claimed = await claimEligibleTask(active.pipelineId, 'coding-team', new Date(), { automated: true, dispatchRequestId: active.requestId });
@@ -771,10 +773,13 @@ test.each(['tests_failed', 'hard_budget', 'operator_stop'])('only exact native u
   await service.tick(); const after = await Task.findOne({ pipelineId: active.pipelineId }).lean();
   expect(after.codingAutonomy.runs[0].finishedAt).toBeTruthy();
   expect(after.codingAutonomy.spent.modelCalls).toBe(1);
+  expect(after.codingAutonomy.qualification.definition.requiredRegressionTests).toEqual(requiredRegressionTests);
   if (reason === 'tests_failed') {
     expect(after.codingAutonomy.runs).toHaveLength(2);
     expect(after.codingAutonomy.runs[1].parentRequestId).toBe(active.requestId);
     expect(after.codingAutonomy.correction).toEqual({ kind: 'local_tests', head: HEAD, text: 'Original reviewed guidance', by: 'operator' });
+    expect((await service.workerManifest(active.pipelineId, after.codingAutonomy.runs[1].requestId))
+      .qualification.requiredRegressionTests).toEqual(requiredRegressionTests);
   } else expect(after.codingAutonomy.runs).toHaveLength(1);
 });
 

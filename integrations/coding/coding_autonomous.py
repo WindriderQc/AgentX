@@ -23,6 +23,7 @@ coding_step_progress = load('coding_step_progress')
 coding_distributed_root = load('coding_distributed_root')
 coding_candidate_verification = load('coding_candidate_verification')
 coding_test_feedback = load('coding_test_feedback')
+coding_regression_requirement = load('coding_regression_requirement')
 VERIFICATION_COMMANDS = coding_verification.FULL_COMMANDS
 
 PLANNER_CALLS = 8
@@ -42,6 +43,7 @@ def _bounded_task(task, manifest):
             'discussion': discussion[-4_000:],
             'planning': str((task.get('planningContext') or {}).get('text') or '')[:3_000],
             'acceptanceCriteria': (manifest.get('qualification') or {}).get('acceptanceCriteria', []),
+            'requiredRegressionTests': (manifest.get('qualification') or {}).get('requiredRegressionTests', []),
             'correction': manifest.get('correction') if isinstance(manifest.get('correction'), dict) else None}
 
 
@@ -418,6 +420,7 @@ def execute(r, args, progress):
                 reason = 'git_conflict_remaining'
                 raise coding_git.GitRefusal('Another upstream conflict needs a coding turn')
         progress.checkpoint = r.git(workspace, 'rev-parse', 'HEAD')
+        regression = coding_regression_requirement.prepare(r, workspace, progress, manifest)
         capability = _lane_capability(r, r.MODEL)
         budget = coding_code_steps.step_budget(capability)
         store, ledger, root_request_id = _prepare_ledger(
@@ -590,6 +593,8 @@ def execute(r, args, progress):
         if source_changed_by_test:
             reason = 'tests_failed'
             raise RuntimeError('Independent verification modified source; a new worker checkpoint is required')
+        coding_regression_requirement.verify(r, workspace, progress, regression,
+            worker_commits=[row.get('commit') for row in ledger['steps'] if row['state'] == 'verified'])
         _write_index(r, progress, task_id, root_request_id, ledger, progress.checkpoint)
         progress.phase = 'delivering'
         progress.set_stage('checkpoint')
@@ -622,6 +627,8 @@ def execute(r, args, progress):
         progress.write()
         return 2  # Durable intent; Core reconciles GET observations, never reruns the worker.
     except Exception as error:
+        if isinstance(error, coding_regression_requirement.RegressionRefusal):
+            reason = error.reason
         if isinstance(error, coding_test_feedback.FeedbackRefusal):
             reason = 'local_test_feedback_unverified'
         if isinstance(error, coding_candidate_verification.VerificationRefusal):

@@ -55,6 +55,8 @@
       <fieldset><legend>Check feasibility before authorizing</legend>
       <p class="pipeline-subtle">Define observable success. These checks catch missing access and incompatible budgets; they do not predict whether the model will solve the task.</p>
       <p><label>Acceptance criteria, one per line <textarea name="acceptanceCriteria" rows="3" required maxlength="6000"></textarea></label></p>
+      <p><label>Required regression test edits (optional), exact paths, one per line <textarea name="requiredRegressionTests" rows="2" maxlength="5000"></textarea></label></p>
+      <p class="pipeline-subtle">Leave empty when no new regression edits are required. Every selected test must contain additions in the final delivery. This does not prove semantic coverage.</p>
       <p><label>Required capabilities, one per line <textarea name="requiredCapabilities" rows="3" required>source_read
 source_write
 cpu_tests</textarea></label></p>
