@@ -18,6 +18,69 @@ const REPORT_DETAIL_MAX_BYTES = 4 * 1024 * 1024;
 const REPORT_GROUPS_DEFAULT_LIMIT = 100;
 const REPORT_GROUPS_MAX_LIMIT = 1000;
 
+function currentFingerprintExpression() {
+  return { $eq: [
+    '$hash_fingerprint',
+    { $concat: [{ $toString: '$size' }, ':', { $toString: '$mtime' }] }
+  ] };
+}
+
+/** Dated copy evidence, reduced in Mongo, without materializing file lists.
+ * A source contributes hash evidence only from its latest complete scan.
+ * Cross-source equality does not establish independent disks or a backup.
+ */
+async function aggregateCopyCoverage(db, sources) {
+  if (!sources.length) return [];
+  const branches = sources.map(source => ({
+    case: { $regexMatch: { input: '$path', regex: `^${source.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[\\/]|$)` } },
+    then: { $literal: source.source }
+  }));
+  const scanBranches = sources.filter(source => source.scanId != null).map(source => ({
+    $and: [{ $eq: ['$_source', { $literal: source.source }] }, { $eq: ['$scan_id', { $literal: source.scanId }] }]
+  }));
+  const currentScan = scanBranches.length ? { $or: scanBranches } : { $literal: false };
+  const scope = [
+    { $match: { $or: sources.map(source => ({ path: { $regex: `^${source.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[\\/]|$)` } })) } },
+    { $set: { _source: { $switch: { branches, default: null } } } }
+  ];
+  const files = db.collection('nas_files');
+  const validSize = { $cond: [{ $isNumber: '$size' }, { $and: [
+    { $gte: ['$size', 0] }, { $lte: ['$size', Number.MAX_SAFE_INTEGER] },
+    { $eq: ['$size', { $trunc: '$size' }] }
+  ] }, false] };
+  const totals = await files.aggregate([...scope,
+    { $group: { _id: '$_source', files: { $sum: 1 }, bytes: { $sum: '$size' },
+      invalidSizes: { $sum: { $cond: [validSize, 0, 1] } },
+      scanFiles: { $sum: { $cond: [currentScan, 1, 0] } } } }
+  ], { maxTimeMS: 2000 }).toArray();
+  const covered = sources.filter(source => {
+    const row = totals.find(row => row._id === source.source);
+    return row && Number.isSafeInteger(source.expectedFiles) && source.expectedFiles > 0
+      && row.invalidSizes === 0 && Number.isSafeInteger(row.bytes)
+      && row.files === source.expectedFiles && row.scanFiles === row.files;
+  }).map(source => source.source);
+  const copies = covered.length ? await files.aggregate([...scope,
+        { $match: { _source: { $in: covered } } },
+        { $match: { sha256: { $regex: /^[0-9a-f]{64}$/ }, size: { $gt: 0 },
+          $expr: { $and: [currentFingerprintExpression(), currentScan] } } },
+        { $group: { _id: { hash: '$sha256', size: '$size', source: '$_source' }, files: { $sum: 1 } } },
+        { $group: { _id: { hash: '$_id.hash', size: '$_id.size' },
+          sources: { $push: { source: '$_id.source', files: '$files' } } } },
+        { $set: { sourceCount: { $size: '$sources' } } },
+        { $unwind: '$sources' },
+        { $group: { _id: '$sources.source',
+          hashedFiles: { $sum: '$sources.files' },
+          hashedBytes: { $sum: { $multiply: ['$_id.size', '$sources.files'] } },
+          filesWithOtherSource: { $sum: { $cond: [{ $gt: ['$sourceCount', 1] }, '$sources.files', 0] } },
+          bytesWithOtherSource: { $sum: { $cond: [{ $gt: ['$sourceCount', 1] }, { $multiply: ['$_id.size', '$sources.files'] }, 0] } }
+        } }
+  ], { allowDiskUse: true, maxTimeMS: 3000 }).toArray() : [];
+  return sources.map(source => ({ source: source.source,
+    files: 0, bytes: 0, invalidSizes: 0, scanFiles: 0, hashedFiles: 0, hashedBytes: 0, filesWithOtherSource: 0, bytesWithOtherSource: 0,
+    ...totals.find(row => row._id === source.source), ...copies.find(row => row._id === source.source)
+  })).map(({ _id, ...row }) => row);
+}
+
 /**
  * Single SHA256-group dedup aggregation engine.
  *
@@ -61,12 +124,7 @@ async function aggregateDuplicateGroups(db, opts = {}) {
   const matchStage = { sha256: { $exists: true, $ne: null }, size: { $gt: 0 } };
 
   if (currentHashesOnly) {
-    matchStage.$expr = {
-      $eq: [
-        '$hash_fingerprint',
-        { $concat: [{ $toString: '$size' }, ':', { $toString: '$mtime' }] }
-      ]
-    };
+    matchStage.$expr = currentFingerprintExpression();
   }
 
   if (Array.isArray(rootPaths) && rootPaths.length > 0) {
@@ -326,6 +384,7 @@ module.exports = {
   REPORT_DETAIL_COLLECTION,
   REPORT_GROUPS_MAX_LIMIT,
   aggregateDuplicateGroups,
+  aggregateCopyCoverage,
   buildDedupReport,
   saveReport,
   getReport

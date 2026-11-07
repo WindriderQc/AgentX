@@ -451,6 +451,7 @@ function register(api) {
 
   router.get('/system/resources', relay(() => '/api/v1/system/resources'));
   router.get('/storage/summary', relay(() => '/api/v1/storage/summary', commonScope));
+  router.get('/storage/assessment', relay(() => '/api/v1/storage/assessment'));
   router.get('/storage/scans', relay(() => '/api/v1/storage/scans', {
     limit: { type: 'int', fallback: 10, min: 1, max: 50 },
     page: { type: 'int', fallback: 1, min: 1, max: 10000 }

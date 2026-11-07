@@ -59,7 +59,9 @@ test('storage_summary gives totals, each root, the last scan per source and the 
   assert.equal(result.collector.alive, true);
   assert.deepEqual(result.scanWarnings, []);
   assert.equal(result.summary, 'Index : 1200 fichiers, 3,00 Go, empreintes calculées pour 50 % des fichiers. '
-    + 'photos : dernier scan complet il y a 5 h ; papers : dernier scan complet il y a 6 h. Collecteur actif.');
+    + 'photos : dernier scan complet il y a 5 h ; papers : dernier scan complet il y a 6 h. Collecteur actif. '
+    + 'Évaluation du stockage indisponible; capacité, copies et placement inconnus.');
+  assert.equal(result.assessment.status, 'unavailable');
   assert.ok(fetchData.calls.every((call) => call.method === 'GET' && call.timeoutMs <= 6000));
 });
 

@@ -158,7 +158,8 @@ function reader(deps) {
   };
 }
 
-function projectSummary({ summaryBody, agentsBody, scansBody, rootStats = {}, now = new Date() }) {
+function projectSummary({ summaryBody, agentsBody, scansBody, assessmentBody, rootStats = {}, now = new Date() }) {
+  const assessment = require('./storageAssessmentProjection').projectAssessment(assessmentBody);
   const sources = projectSources({ agentsBody, scansBody, now });
   const nowMs = now instanceof Date ? now.getTime() : Number(now);
   const scanners = (Array.isArray(agentsBody?.scanners) ? agentsBody.scanners : []).slice(0, MAX_SCANNERS).map((scanner) => {
@@ -197,7 +198,8 @@ function projectSummary({ summaryBody, agentsBody, scansBody, rootStats = {}, no
     : collectorAlive ? 'Collecteur actif.' : 'ATTENTION : collecteur de stockage inactif, l\'index ne se met plus à jour.';
 
   return {
-    summary: `${totals} ${scanSentence(sources)} ${collector}`,
+    summary: `${totals} ${scanSentence(sources)} ${collector} ${assessment.summary}`,
+    assessment,
     totalFiles,
     totalBytes,
     totalSizeLabel: sizeLabel(totalBytes),
@@ -218,9 +220,11 @@ async function readStorageSummary(input = {}, deps = {}) {
   const roots = Object.values(agentsBody.sources && typeof agentsBody.sources === 'object' ? agentsBody.sources : {})
     .map((source) => source?.canonicalRoot).filter((root) => typeof root === 'string' && root).slice(0, MAX_ROOTS);
   const rootStats = {};
-  const [summaryBody, scansBody] = await Promise.all([
+  const [summaryBody, scansBody, assessmentBody] = await Promise.all([
     read('/api/v1/storage/summary'),
     read('/api/v1/storage/scans', `limit=${SCAN_LOOKBACK}`),
+    // Older/unavailable Data keeps the base index usable, with unknown evidence.
+    read('/api/v1/storage/assessment').catch(() => null),
     // A per-root total is a detail: when one fails, that root says "unknown"
     // and the rest of the summary still answers.
     ...roots.map(async (root) => {
@@ -228,7 +232,7 @@ async function readStorageSummary(input = {}, deps = {}) {
       catch { rootStats[root] = null; }
     })
   ]);
-  return projectSummary({ summaryBody, agentsBody, scansBody, rootStats, now: deps.now ? deps.now() : new Date() });
+  return projectSummary({ summaryBody, agentsBody, scansBody, assessmentBody, rootStats, now: deps.now ? deps.now() : new Date() });
 }
 
 function validateSearch(input) {

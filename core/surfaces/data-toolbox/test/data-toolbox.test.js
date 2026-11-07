@@ -228,7 +228,7 @@ test('registration mounts the cockpit, GET proxy families and exactly fifteen wr
   // No approval, preview or execution route of the janitor is relayed, under any method.
   assert.deepEqual(routes.filter((route) => !route.path.startsWith('/iot/') && /approve|reject|preview|apply|execute|\/run$/.test(route.path)), []);
   for (const route of [
-    '/status', '/storage/summary', '/storage/files', '/storage/scans/:scanId', '/storage/cleanup', '/storage/directory-count', '/network/devices', '/network/scan-requests/:id',
+    '/status', '/storage/summary', '/storage/assessment', '/storage/files', '/storage/scans/:scanId', '/storage/cleanup', '/storage/directory-count', '/network/devices', '/network/scan-requests/:id',
     '/hardware/collectors', '/hardware/latest', '/hardware/history', '/hardware/occupancy',
     '/databases/collections', '/live-data/feeds', '/mqtt/status', '/mqtt/messages', '/janitor/profiles', '/janitor/dedup-report',
     '/janitor/profiles/:id/runs', '/janitor/runs/:id', '/janitor/strategy/latest', '/janitor/strategy/latest/raw',

@@ -12,6 +12,7 @@ router.get('/status/:scan_id', storageController.getStatus);
 router.post('/stop/:scan_id', storageController.stopScan);
 router.get('/directory-count', storageController.getDirectoryCount);
 router.get('/summary', storageController.getSummary);
+router.get('/assessment', require('../controllers/storageAssessmentController').getAssessment);
 router.get('/trends', storageTrendsController.getTrends);
 router.get('/agents', storageAgentController.listAgents);
 router.post('/agent-scans', storageAgentController.enqueueAgentScan);
