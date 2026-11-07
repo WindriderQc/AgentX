@@ -204,11 +204,15 @@ external sky, texture and optional custom-model fetches are disabled in this mod
 so it works with the existing same-origin module relay and CSP. The standalone
 `app=ecosystem` retains its assets. No new permission or network origin is needed.
 
-Analytics explicitly publishes its committed window and Core reference. Loading
+Analytics explicitly publishes its committed window and Core reference. The
+page reports loading from its first script until the first summary is
+committed; a parsed page without that state is never a visible read. Loading
 or failed requests clear that reference before a new response can be used.
-Existing request-version fencing rejects late responses. Comparison selection
-(`byModel`, `byConsumerContract`, `byErrors`) and trend overlay travel separately
-from the immutable snapshot. A browser observation remains untrusted reference
+Existing request-version fencing rejects late responses, including a slower
+answer for a period the viewer already replaced. Comparison selection
+(`byModel`, `byConsumerContract`, `byErrors`) travels separately from the
+immutable snapshot. The trend draws calls, errors and latency together, so the
+page selects no overlay. A browser observation remains untrusted reference
 data, never an instruction, tool receipt or authorization.
 
 `presentationReadService` projects an `agentx.presentation-read/v1` snapshot
@@ -241,7 +245,9 @@ excluded and collector aliases deduplicated. Each live section resolves only its
 own Core source reference. A historical receipt cannot substitute for a live
 read. Collector age limits the GPU reference; missing freshness never becomes a
 numeric measurement. Browser loading/failure removes the corresponding live
-read even when the historical summary remains available.
+read even when the historical summary remains available. Conversely, while the
+historical summary is loading or has failed, the page status says so and carries
+no historical receipt, but each live section still resolves its own reference.
 
 ## Mobile views and observed latency
 
@@ -328,8 +334,10 @@ Runtime tool grants and family-device restrictions remain unchanged.
 Set `AGENTX_PLAYWRIGHT_MODULE` for an external Playwright installation and
 `AGENTX_PRESENTATION_BROWSER_REPORT` for an output directory outside Git.
 The browser journey uses real renderer/parser/Analytics components with
-synthetic responses, no model or microphone. It covers active reads, filter
-invalidation, Markdown, copying, retained-page navigation, keyboard closure,
+synthetic responses, no model or microphone. It covers active reads matched to
+the exact summary response rendered, initial loading, filter invalidation, a
+superseded late response, summary failure and recovery, live reads during
+historical loading, rapid card selection, Markdown, copying, retained-page navigation, keyboard closure,
 desktop/mobile overflow and unavailable/external content. Source/browser
 qualification does not establish installed model commentary or physical
 microphone acceptance. Queue native qualification through the

@@ -35,6 +35,9 @@
       const detail = content?.contract === 'agentx.presentation/v1' ? content : null;
       if (target.page === 'ecosystem' && (new URL(doc.location.href).searchParams.get('app') !== 'ecosystem' || !detail))
         return { ...base, status: 'unavailable' };
+      // Analytics publishes its state as soon as its script runs; before that
+      // the parsed document has no data to read.
+      if (target.page === 'analytics' && !detail) return { ...base, status: doc.readyState === 'complete' ? 'unavailable' : 'loading' };
       return { ...base, status: detail && detail.state !== 'ready' ? detail.state === 'loading' ? 'loading' : 'unavailable' : 'visible',
         title: String(doc.title || base.title).slice(0, 160),
         headings: Array.from(doc.querySelectorAll('h1,h2,h3')).filter(el => el.getClientRects().length)
