@@ -127,7 +127,7 @@ describe('simple-to-expert UX contract', () => {
     expect(mainSource).toContain('const blocked = !hostState.available || hostState.requiresModel');
     expect(mainSource).toContain("if (hostState.mode !== 'router')");
     expect(mainSource).toContain('await _fetchModels({ elements, state, defaults, helpers }, false)');
-    expect(configSource).toContain('state.sessionLoadedModel?.model');
+    expect(configSource).toContain('const runningModels = getHostRunningModels(pref)');
     expect(mainSource).toContain('sessionLoadedModel: null');
   });
 

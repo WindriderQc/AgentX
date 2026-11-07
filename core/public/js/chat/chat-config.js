@@ -204,15 +204,8 @@ export function getHostChatState(elements, state, defaults) {
     };
   }
 
-  const sessionLoadedModel = normalizeHostUrl(state.sessionLoadedModel?.host) === normalizeHostUrl(host)
-    ? state.sessionLoadedModel?.model
-    : null;
-  const observedRunningModels = getHostRunningModels(pref);
-  const runningModels = observedRunningModels.length
-    ? observedRunningModels
-    : sessionLoadedModel
-      ? [sessionLoadedModel]
-      : [];
+  // A previous successful exchange does not observe current residency.
+  const runningModels = getHostRunningModels(pref);
   const pinnedModels = getHostPinnedModels(pref);
   const selectedModel = elements?.modelSelect?.value || '';
   const primaryPin = pinnedModels[0] || null;

@@ -19,6 +19,8 @@ jest.mock('../../src/services/runtimeTopologyParking', () => {
 });
 
 const HostPreference = require('../../models/HostPreference');
+const RouterTaskConfig = require('../../models/RouterTaskConfig');
+const RuntimeTopologyIntent = require('../../models/RuntimeTopologyIntent');
 const { defaultParking } = require('../../src/services/runtimeTopologyParking');
 const { describeTopology } = require('../../src/services/runtimeTopologyService');
 const app = express();
@@ -155,4 +157,22 @@ test('unconfigured records stay separate and never trigger runtime probes', asyn
       recordUpdatedAt: expect.any(String), status: 'ready', loadedModel: 'old-resident', loadedModels: ['old-resident'] }
   })]);
   expect(global.fetch.mock.calls.every(([url]) => !url.includes('synthetic-retired'))).toBe(true);
+});
+
+test('successful and failed reporting reads leave routes, pins and topology intent unchanged', async () => {
+  await record(0, { status: 'benchmarking' });
+  await RouterTaskConfig.create({ taskType: 'synthetic-task', host: 'lane-a', model: 'desired-resident' });
+  await RuntimeTopologyIntent.create({ groupId: 'synthetic', mode: 'pool', source: 'switch' });
+  const snapshot = async () => JSON.stringify(await Promise.all([
+    HostPreference.find({}).sort({ _id: 1 }).lean(),
+    RouterTaskConfig.find({}).sort({ _id: 1 }).lean(),
+    RuntimeTopologyIntent.find({}).sort({ _id: 1 }).lean()
+  ]));
+  const before = await snapshot();
+  global.fetch.mockResolvedValue(inventory([{ name: 'current-resident' }]));
+  await read();
+  global.fetch.mockRejectedValue(new Error('Inventory unavailable'));
+  await read();
+  expect(await snapshot()).toBe(before);
+  expect(global.fetch.mock.calls.every(([url, options]) => url.endsWith('/api/ps') && !options.method)).toBe(true);
 });

@@ -8,7 +8,7 @@ const vm = require('vm');
 const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/chat/chat-config.js'), 'utf8')
   .replace(/^import .*;$/gm, '').replace(/^export /gm, '');
 const context = {};
-vm.runInNewContext(`${source}\nthis.readResidents = getHostRunningModels;`, context);
+vm.runInNewContext(`${source}\nthis.readResidents = getHostRunningModels; this.chatState = getHostChatState;`, context);
 const read = context.readResidents;
 const saved = { loadedModel: 'saved-resident', loadedModels: ['saved-resident', 'saved-embedding'] };
 
@@ -25,4 +25,19 @@ test('current observations, including legacy live shapes, stay readable', () => 
     .toEqual(['current-resident', 'current-embedding']);
   expect(read({ ...saved, live: { runningModels: [{ name: 'legacy-live-resident' }] } }))
     .toEqual(['legacy-live-resident']);
+});
+
+test.each([undefined, { online: true, runningModels: [], observation: { status: 'fresh' } },
+  { online: true, runningModels: [{ name: 'old-observation' }], observation: { status: 'stale' } }
+])('the full manual view never promotes a previous exchange to observed residency: %j', live => {
+  const host = 'http://synthetic-host:11434';
+  const elements = { hostInput: { value: host }, routingModeSelect: { value: 'manual' },
+    modelSelect: { value: 'explicit-model' } };
+  const state = { settings: {}, sessionLoadedModel: { host, model: 'last-exchange-model' },
+    hostPreferencesByUrl: new Map([[host, { ...saved, live, status: 'ready', pinnedModels: [] }]]) };
+  const result = context.chatState(elements, state, {});
+  expect(result.available).toBe(true);
+  expect(result.runningModels).toEqual([]);
+  expect(result.selectedBasis).toBe('selected');
+  expect(result.reason).not.toContain('last-exchange-model');
 });

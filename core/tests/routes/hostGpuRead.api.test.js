@@ -67,3 +67,22 @@ test('inactive endpoints retain persisted hints separately and expose no live re
   expect(global.fetch).not.toHaveBeenCalled();
   expect(parallelism.readModelParallelism).not.toHaveBeenCalled();
 });
+
+test('failed inventory does not erase independently computed pin routing drift', async () => {
+  const healthy = await http.request.get('/api/nerve-center/host-preferences').expect(200);
+  expect(healthy.body.data[0].driftModels).toEqual(['synthetic-embedder']);
+  global.fetch.mockRejectedValue(new Error('Inventory unavailable'));
+  const failed = await http.request.get('/api/nerve-center/host-preferences').expect(200);
+  expect(failed.body.data[0].driftModels).toEqual(['synthetic-embedder']);
+  expect(failed.body.data[0].live).toMatchObject({ online: false,
+    observation: { status: 'unavailable', observedAt: null } });
+});
+
+test('the resident model alias accepted by the shared reader stays readable in Nerve Center', async () => {
+  global.fetch.mockResolvedValue({ ok: true, json: async () => ({ models: [
+    { model: 'synthetic-embedder', size: 100, size_vram: 100 }
+  ] }) });
+  const response = await http.request.get('/api/nerve-center/host-preferences').expect(200);
+  expect(response.body.data[0].live).toMatchObject({ online: true, pinnedLoaded: true,
+    runningModels: [{ name: 'synthetic-embedder', matchedPinned: 'synthetic-embedder' }] });
+});

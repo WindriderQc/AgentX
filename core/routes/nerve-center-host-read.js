@@ -4,6 +4,7 @@ const logger = require('../config/logger');
 const { HOSTS, TASK_MODELS } = require('../src/services/modelRouterConfig');
 const hostPrefService = require('../src/services/hostPreferenceService');
 const { modelsMatch } = require('../src/helpers/modelNameNormalization');
+const { hostUrlKey } = require('../src/helpers/ollamaHostConfig');
 const { getLoadedEntryStatus } = require('../src/services/hostPinPrimitives');
 const { readHostRuntime } = require('../src/services/hostRuntimeReadService');
 const { projectHostPreferenceForRead } = require('../src/services/hostPreferencePublicProjection');
@@ -24,21 +25,28 @@ router.get('/host-preferences', async (_req, res) => {
     for (const entry of Object.values(TASK_MODELS)) {
       const hostUrl = HOSTS[entry.host];
       if (!hostUrl || !entry.model) continue;
-      if (!taskRoutedByUrl.has(hostUrl)) taskRoutedByUrl.set(hostUrl, new Set());
-      taskRoutedByUrl.get(hostUrl).add(entry.model);
+      const key = hostUrlKey(hostUrl);
+      if (!taskRoutedByUrl.has(key)) taskRoutedByUrl.set(key, new Set());
+      taskRoutedByUrl.get(key).add(entry.model);
     }
 
     // Merge live Ollama status from each host. `pinnedModels` is the only
     // canonical surface — legacy emit (defaultModels / pinnedModel / flat
     // keepAlive / contextSize / autoRestore) is retired.
     const data = await Promise.all(normalizedPrefs.map(async (pref) => {
+      const pinnedEntries = hostPrefService.getPinnedEntries(pref);
+      const pinnedNames = pinnedEntries.map(e => e.model);
+      const primaryPin = pinnedNames[0] || null;
+      // Configuration drift does not depend on a successful runtime read.
+      const routedModels = taskRoutedByUrl.get(hostUrlKey(pref.hostUrl)) || new Set();
+      const driftModels = pinnedNames.filter(m => !routedModels.has(m));
       const runtime = await readHostRuntime(pref.hostUrl);
       const observedAt = runtime.observation.observedAt || runtime.observation.checkedAt;
       if (!runtime.online) {
         return {
           ...pref,
-          pinnedModels: hostPrefService.getPinnedEntries(pref),
-          driftModels: [],
+          pinnedModels: pinnedEntries,
+          driftModels,
           live: {
             online: false,
             runningModels: [],
@@ -56,20 +64,15 @@ router.get('/host-preferences', async (_req, res) => {
       }
 
       const safeHostUrl = runtime.hostUrl;
-      const pinnedEntries = hostPrefService.getPinnedEntries(pref);
-      const pinnedNames = pinnedEntries.map(e => e.model);
-      const primaryPin = pinnedNames[0] || null;
-      // Drift: pinned models not referenced by any task on this host
-      const routedModels = taskRoutedByUrl.get(safeHostUrl) || new Set();
-      const driftModels = pinnedNames.filter(m => !routedModels.has(m));
 
       try {
         const psData = { models: runtime.runningModels };
         const gpuHealth = await readHostGpuHealth(safeHostUrl, { pref, runningModels: psData.models, telemetry: telemetryByHost.get(pref.hostUrl), checkedAt: observedAt });
         const runningModels = (psData.models || []).map(m => {
-          const matchedPinned = pinnedNames.find(p => modelsMatch(m.name, p)) || null;
+          const name = m.name || m.model;
+          const matchedPinned = pinnedNames.find(p => modelsMatch(name, p)) || null;
           return {
-            name: m.name,
+            name,
             size: m.size,
             sizeVram: m.size_vram,
             expiresAt: m.expires_at,
