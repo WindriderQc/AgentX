@@ -87,12 +87,9 @@ function dependencies(overrides = {}) {
       live: { defaultLoaded: true }
     }]),
     claimHostForBenchmark: jest.fn(async () => claim),
-    getBenchmarkClaims: jest.fn(async () => [{
-      hostUrl: 'http://host-a:11434',
-      batchId: 'toolcall-campaign-a',
-      claimGeneration: '11111111-1111-4111-8111-111111111111'
-    }]),
-    heartbeatBenchmarkClaim: jest.fn(async () => ({ heartbeat: true })),
+    getBenchmarkClaims: jest.fn(async () => [{ hostUrl: 'http://host-a:11434', batchId: 'toolcall-campaign-a' }]),
+    heartbeatBenchmarkClaim: jest.fn(async () => ({ heartbeat: true, batchId: 'toolcall-campaign-a',
+      claimGeneration: '11111111-1111-4111-8111-111111111111' })),
     releaseBenchmarkClaim: jest.fn(async () => ({ released: true })),
     resolveStandaloneCampaignInferenceContracts: jest.fn(async () => frozenCampaign()),
     assertFrozenArtifactDigest: jest.fn(async () => 'sha256:a'),
@@ -168,10 +165,10 @@ describe('toolCallCampaignRunner', () => {
       'toolcall-campaign-a',
       expect.objectContaining({
         kind: 'tool-capability-qualification',
-        batchId: 'toolcall-campaign-a',
         hosts: ['http://host-a:11434']
       })
     );
+    expect(deps.beginManagedWorkload.mock.calls[0][1]).not.toHaveProperty('batchId');
     expect(campaignOptions.transport).toHaveBeenCalledWith(expect.objectContaining({
       execution: {
         numCtx: 32768,
@@ -183,7 +180,7 @@ describe('toolCallCampaignRunner', () => {
     expect(deps.recordRepetition).toHaveBeenCalledTimes(3);
     expect(deps.assertFrozenArtifactDigest).toHaveBeenCalledTimes(2);
     expect(deps.resolveArtifactIdentity).toHaveBeenCalledTimes(2);
-    expect(deps.getBenchmarkClaims.mock.calls.length).toBeGreaterThanOrEqual(5);
+    expect(deps.getBenchmarkClaims).not.toHaveBeenCalled();
     expect(deps.heartbeatBenchmarkClaim).toHaveBeenCalled();
     expect(deps.releaseBenchmarkClaim).toHaveBeenCalledWith(
       'http://host-a:11434',
@@ -266,6 +263,18 @@ describe('toolCallCampaignRunner', () => {
     expect(deps.finalizeQualification.mock.invocationCallOrder[0])
       .toBeLessThan(workload.retainForRecovery.mock.invocationCallOrder[0]);
     expect(deps.disconnectDB).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { heartbeat: true, batchId: 'different-campaign', claimGeneration: '11111111-1111-4111-8111-111111111111' },
+    { heartbeat: true, batchId: 'toolcall-campaign-a', claimGeneration: 'replacement-generation' },
+    { heartbeat: true }
+  ])('refuses mismatched or incomplete private heartbeat receipts before freezing: %j', async receipt => {
+    const deps = dependencies({ heartbeatBenchmarkClaim: jest.fn(async () => receipt) });
+    await expect(runToolCapabilityCampaign(options(), deps)).rejects.toMatchObject({ code: 'TOOL_CAMPAIGN_CLAIM_LOST' });
+    expect(deps.resolveStandaloneCampaignInferenceContracts).not.toHaveBeenCalled();
+    expect(deps.runHarness).not.toHaveBeenCalled();
+    expect(deps.releaseBenchmarkClaim).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed when the claim heartbeat loses ownership', async () => {
