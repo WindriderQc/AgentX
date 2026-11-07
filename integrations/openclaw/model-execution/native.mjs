@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { googleSdkFingerprint } from './sdk-fingerprint.mjs';
 
 export const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const withoutSecrets = value => {
@@ -32,7 +33,15 @@ const QUALIFIED_MODEL_APIS = { '2026.9.4': {
   'anthropic-messages': { temperature: null, seed: false, topP: false, jsonResponseFormat: false },
   'openai-responses': { temperature: null, seed: false, topP: false, jsonResponseFormat: false }
 } };
-export const qualifiedModelApi = (version, api) => QUALIFIED_MODEL_APIS[version]?.[api] || null;
+const GOOGLE_SDK_FINGERPRINTS = new Set([
+  '41bbf77413b39227c85120e1a4bc2aa1f104f41f60f29341dedb57ff6bc5765f',
+  'cfad322578d04c51596f5745c29aec4686b98fa42caf75bfedce1b616747d65a'
+]);
+export const qualifiedModelApi = (version, api, transportFingerprint) => {
+  if (api === 'google-generative-ai') return version === '2026.9.4' && GOOGLE_SDK_FINGERPRINTS.has(transportFingerprint)
+    ? { temperature: true, seed: false, topP: false, jsonResponseFormat: false } : null;
+  return QUALIFIED_MODEL_APIS[version]?.[api] || null;
+};
 
 export async function loadNativeSdk() {
   const llmUrl = import.meta.resolve('openclaw/plugin-sdk/llm');
@@ -53,11 +62,14 @@ export async function loadNativeSdk() {
   const resolveExtraParams = Object.values(module).find(value => typeof value === 'function' && value.name === 'resolveExtraParams');
   if (!resolveExtraParams) throw new Error('OPENCLAW_PARAMETER_API_UNAVAILABLE');
   const pluginFingerprint = createHash('sha256').update(Buffer.concat(await Promise.all(
-    ['native.mjs', 'service.mjs', 'index.mjs', 'openclaw.plugin.json', 'ledger.mjs', 'http-observation.mjs', 'terminal-evidence.mjs'].map(file => readFile(new URL(file, import.meta.url)))
+    ['native.mjs', 'service.mjs', 'index.mjs', 'openclaw.plugin.json', 'ledger.mjs', 'http-observation.mjs', 'terminal-evidence.mjs', 'sdk-fingerprint.mjs'].map(file => readFile(new URL(file, import.meta.url)))
   ))).digest('hex');
   const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
+  // Missing Google code leaves only this API closed; other qualifications retain
+  // their existing contract. The digest covers code, never instance settings.
+  const googleTransportFingerprint = await googleSdkFingerprint(root).catch(() => null);
   return { ...sessions, ...agents, ...llm, ...auth, ...modelInfo, attachModelProviderRequestTransport: harness.attachModelProviderRequestTransport, applyExtraParams, resolveExtraParams,
-    version, pluginFingerprint, parameterApiFingerprint: createHash('sha256').update(await readFile(helper)).digest('hex') };
+    version, pluginFingerprint, googleTransportFingerprint, parameterApiFingerprint: createHash('sha256').update(await readFile(helper)).digest('hex') };
 }
 
 export function billingFor(model, configured) {
@@ -122,17 +134,18 @@ export function createNativeBackend(api, { loadSdk = loadNativeSdk } = {}) {
         const providerParams = cfg.models?.providers?.[model.provider]?.params || {};
         const routing = params.provider || providerParams.provider || model.compat?.openRouterRouting || null;
         const local = localModel(model, sdk, configured);
-        const qualified = qualifiedModelApi(sdk.version, model.api);
+        const transport = model.api === 'google-generative-ai' ? { nativeTransportFingerprint: sdk.googleTransportFingerprint } : {};
+        const qualified = qualifiedModelApi(sdk.version, model.api, transport.nativeTransportFingerprint);
         const billing = local ? { kind: 'local', source: 'native-local-model', rates: null } : billingFor(model, configured);
         models.set(ref, {
-          model: ref, name: model.name || model.id, contextWindow: model.contextWindow, maxTokens: model.maxTokens,
+          model: ref, name: model.name || model.id, contextWindow: model.contextWindow, maxTokens: model.maxTokens, ...transport,
           input: model.input || ['text'], reasoning: Boolean(model.reasoning),
           parameterSupport: { jsonResponseFormat: qualified?.jsonResponseFormat ?? null, thinking: Boolean(model.reasoning), temperature: qualified?.temperature ?? null, seed: qualified?.seed ?? null, topP: qualified?.topP ?? null }, origin: local ? 'local' : 'cloud', billing,
           // The native catalogue describes an alias, not proof of a served revision.
           modelVersion: 'unknown', modelVersionSource: 'not-observed', authScope: agentId,
           isolation: { singleCallQualified: Boolean(qualified), noMemory: true, noAgentPrompt: true, noTools: true, noRuntimeFallback: true,
             providerRouting: model.provider === 'openrouter' ? Boolean(routing?.allow_fallbacks === false && Array.isArray(routing?.only) && routing.only.length === 1 && typeof routing.only[0] === 'string' && routing.only[0].trim().length > 0) : true },
-          fingerprint: fingerprint(withoutSecrets({ model, params, providerParams, runtimeVersion: sdk.version, parameterApi: sdk.parameterApiFingerprint, plugin: sdk.pluginFingerprint }))
+          fingerprint: fingerprint(withoutSecrets({ model, params, providerParams, runtimeVersion: sdk.version, parameterApi: sdk.parameterApiFingerprint, plugin: sdk.pluginFingerprint, ...transport }))
         });
       }
     }
