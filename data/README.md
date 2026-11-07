@@ -274,6 +274,37 @@ filesystem, scannerIds }`. The newest measurement wins. A collector that never
 measured yields no volume. On ZFS, `statfs` reports the dataset's used plus
 available space, not the pool size; such a volume carries a `note` saying so.
 
+`GET /storage/assessment` reads only configured sources and their existing
+`nas_files`, `nas_scans` and collector volume reports. It accepts no arguments,
+stores no inventory or report, and never walks the vault or invokes a collector.
+The read returns at most 32 sources and 64 measured volumes, with omitted
+counts. Each scan and capacity observation carries its date, age and unknown
+acceptable freshness: no retention, freshness or reserve policy is inferred.
+
+A source has `complete_at_scan` coverage only when its latest scan is complete,
+dated, unfiltered, limited to that one root and without an overlapping active
+scan or recorded errors. Its positive native `files_seen` count must equal both
+the indexed count and the count stamped by that scan. Empty, missing, partially
+lost, overlapping-root and incompatible multi-root evidence stays unknown.
+SHA-256 matches across qualifying configured sources are reduced in Mongo to
+counts and logical bytes; no file list or hash leaves this read. The hash must
+match the indexed size/mtime fingerprint and latest scan stamp. Same-source
+duplicates, zero-byte files and unverified rows do not prove another copy.
+These dated lower bounds establish neither current copy coverage nor an
+independent or restorable backup.
+
+The placement matrix compares each source's indexed logical bytes with each
+other volume's dated free space, assuming one additional full logical copy,
+without reserve, growth, compression or deduplication. Each pair is independent;
+the matrix is not a simultaneous allocation plan. Unknown source coverage,
+invalid capacity dates and a source's own filesystem yield unknown fit.
+`fits` and `insufficient` describe arithmetic only. Recommendations stay
+withheld with explicit missing freshness, reserve, retention/copy, failure-domain
+and destination-policy evidence. Unregistered disks and whole-instance backup
+coverage remain unknown. Core relays this read at
+`/api/data-toolbox/storage/assessment` and projects a smaller view through
+`storage_summary`; neither interface authorizes a filesystem action.
+
 A scan target is an IPv4 address or an IPv4 CIDR from `/16` to `/32`; Data
 refuses anything else, and the network collector checks a queued target again
 before it runs `nmap` (its own `SCAN_CIDR` may be wider). Posted scan results
