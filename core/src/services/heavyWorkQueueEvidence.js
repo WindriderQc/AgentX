@@ -3,6 +3,7 @@
 const { requestJson } = require('../helpers/crossServiceClient');
 const Runtime = require('../../models/RuntimeCoordination');
 const Images = require('../../models/ImageOperation');
+const { workerFor, candidates } = require('./images/workers');
 const queue = require('./heavyWorkQueueService');
 const { hosts, fail } = require('./heavyWorkQueueContract');
 const { planId, planRef, planTag, batchRequest } = require('../../../shared/benchmarkBatchPlan.cjs');
@@ -37,13 +38,19 @@ async function preDispatch(job) {
     const config = require('./images/config').loadConfig();
     if (job.executor.mode === 'image-operation') {
       if (!config) throw fail('Image executor is not configured', 409);
-      exactHosts(job, [...config.ollamaHosts, new URL(config.workerUrl).origin]);
-      const op = await Images.findOne({ _id: job.executor.operationId, actionKey: job.executor.actionKey }).lean();
+      const op = await Images.findOne({ _id: job.executor.operationId, actionKey: job.executor.actionKey }).select('+workerUrl').lean();
       if (!op || op.requestHash !== job.executor.requestHash || op.state !== 'queued') throw fail('Native image request changed or was already dispatched', 409);
+      // The request is bound to the worker chosen at acceptance.
+      const worker = workerFor(config, op.workerUrl);
+      if (!worker) throw fail('The image worker of this request is no longer configured; submit a new request', 409, 'HEAVY_QUEUE_EXECUTOR_CHANGED');
+      exactHosts(job, [...worker.ollamaHosts, new URL(worker.workerUrl).origin]);
       return;
     }
     if (!config || !config.profiles[job.executor.profile || config.defaultProfile]) throw fail('Image executor is not configured', 409);
-    exactHosts(job, config.ollamaHosts);
+    // A planned image may run on any worker of its profile whose hosts it reserved.
+    const options = candidates(config, job.executor.profile || config.defaultProfile);
+    const matching = options.find(worker => { try { exactHosts(job, worker.ollamaHosts); return true; } catch { return false; } });
+    if (!matching) exactHosts(job, options[0].ollamaHosts);
     const input = require('./images/imageService').validate(job.executor, config);
     const prior = await Images.findOne({ actionKey: job.executor.actionKey }).select('requestHash').lean();
     if (prior && prior.requestHash !== input.requestHash) throw fail('Image actionKey already names another request', 409);

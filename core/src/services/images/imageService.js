@@ -7,6 +7,8 @@ const { decode } = require('./codec');
 const { TRANSFORM, validateParent, prepareReferences } = require('./parentReference');
 const { retainReferences, loadReferences } = require('./referenceStorage');
 const { loadConfig } = require('./config');
+const { workerFor } = require('./workers');
+const { chooseWorker } = require('./workerSelection');
 const { createComfyClient } = require('./comfyClient');
 const { reserve } = require('./gpuReservation');
 const { requestedRecipe, assertRecipe, buildExecution } = require('./recipeExecution');
@@ -51,7 +53,7 @@ function publicOperation(op) {
   } catch { /* A local deployment may only have relative browser routes. */ }
   return { id: op._id, state: op.state, profile: op.profile.id, label: op.profile.label,
     ...(op.queueRequestId && { queueRequestId: op.queueRequestId }),
-    studioPath, ...(studioUrl && { studioUrl }),
+    studioPath, ...(studioUrl && { studioUrl }), ...(op.workerId && { worker: op.workerId }),
     createdAt: op.createdAt, updatedAt: op.updatedAt, runtimeRestored: op.runtimeRestored,
     cancelRequested: op.cancelRequested, error: op.error || null, timings: op.timings || null,
     ...(op.expert && { expert: op.expert }),
@@ -122,14 +124,21 @@ async function accept(body, { conversation, signal } = {}) {
   const prepared = await prepareReferences(input.originals, input.parent, conversation, image);
   const referenceStorage = await retainReferences(prepared);
   signal?.throwIfAborted();
-  const client = createComfyClient(config.workerUrl);
-  try { await client.ready(input.profile, { allowBusy: true }); } catch { throw fail('The image PC is unavailable or the required model is missing.', 503); }
+  // A request the queue already reserved keeps the hosts it reserved.
+  let reservedHosts = null;
+  if (body.queueRequestId) {
+    try { reservedHosts = (await require('../heavyWorkQueueService').get(body.queueRequestId))?.hosts || null; } catch { /* enroll refuses it below */ }
+  }
+  const choice = await chooseWorker(config, input.profile, { queueHosts: reservedHosts });
+  if (!choice.worker) throw fail('The image PC is unavailable or the required model is missing.', 503);
+  const worker = choice.worker;
+  const client = createComfyClient(worker.workerUrl);
   signal?.throwIfAborted();
   const id = crypto.randomUUID();
   let op;
   try {
     op = await ImageOperation.create([{ _id: id, actionKey: body.actionKey, requestHash: input.requestHash,
-      ...(conversation && { conversation }), workerUrl: config.workerUrl, state: 'queued', profile: input.profile, request: input.request,
+      ...(conversation && { conversation }), workerUrl: worker.workerUrl, workerId: worker.worker.id, state: 'queued', profile: input.profile, request: input.request,
       ...(expert && { expert }),
       ...(referenceStorage && { referenceStorage }), ...(prepared.lineage && { lineage: prepared.lineage }), jobId: id }], { writeConcern: { w: 1, j: true } });
     op = op[0].toObject();
@@ -142,10 +151,10 @@ async function accept(body, { conversation, signal } = {}) {
     throw fail('An image is already in progress or must be recovered. Make a new request once it finishes.', 409);
   }
   try {
-    const job = await workQueue.enroll(op, config, body);
+    const job = await workQueue.enroll(op, worker, body);
     op.queueRequestId = job.id;
     if (body.queueDispatchId) op.queueDispatchId = body.queueDispatchId;
-    await workQueue.dispatch(op, accepted => setImmediate(() => execute(accepted, config, client)
+    await workQueue.dispatch(op, accepted => setImmediate(() => execute(accepted, worker, client)
       .catch(error => logger.error('Local image operation failed', { id, error: error.message }))));
   } catch (error) {
     await save(id, { state: 'unknown', error: 'Queue registration uncertain. Check the same receipt before any retry.' });
@@ -159,9 +168,10 @@ async function dispatchQueued() {
   await initialize();
   const pending = await ImageOperation.find({ state: 'queued' }).sort({ createdAt: 1 }).select('+workerUrl').limit(20).lean();
   for (const op of pending) {
-    if (op.workerUrl !== config.workerUrl) continue;
+    const worker = workerFor(config, op.workerUrl);
+    if (!worker) continue;
     try {
-      await workQueue.dispatch(op, accepted => setImmediate(() => execute(accepted, config, createComfyClient(config.workerUrl))
+      await workQueue.dispatch(op, accepted => setImmediate(() => execute(accepted, worker, createComfyClient(worker.workerUrl))
         .catch(error => logger.error('Queued image operation failed', { id: op._id, error: error.message }))));
     } catch (error) { logger.warn('Image queue awaits admission', { id: op._id, code: error.code || 'QUEUE_UNAVAILABLE' }); }
   }
@@ -189,7 +199,7 @@ async function execute(op, config, client) {
     reservation = await reserve(config, op, persist, cancelled);
     await client.ready(op.profile);
     const stats = await client.json('/system_stats');
-    if (stats.devices?.[0]?.vram_free < stats.devices?.[0]?.vram_total * 0.75) throw new Error('GPU used by another application. New request required.');
+    if (stats.devices?.[0]?.vram_free < stats.devices?.[0]?.vram_total * (config.minFreeVramRatio ?? 0.75)) throw new Error('GPU used by another application. New request required.');
     const refs = [];
     for (let i = 0; i < references.length; i++) {
       await reservation.assertOwned(); refs.push(await client.upload(references[i], `agentx-${op._id}-${i}.png`));
@@ -214,7 +224,7 @@ async function execute(op, config, client) {
     try {
       await persist({ state: 'restoring' });
       await reservation.verified({ jobTerminal: true, dispatched: op.dispatchStarted, hasOutput: Boolean(output) });
-      await client.free(reservation.assertOwned);
+      await client.free(reservation.assertOwned, true, config.releasedVramRatio ?? 0.85);
       await reservation.restore();
       await persist({ runtimeRestored: true });
     } catch (error) { terminal = false; generationError = error; await reservation.quarantine(error.message); }
@@ -303,9 +313,9 @@ async function image(id) {
 async function retryArchive(id) {
   const op = await ImageOperation.findById(id).select('+output +workerUrl').lean();
   if (op?.state !== 'archive_failed' || !op.runtimeRestored) throw fail('This operation does not allow an archive retry.', 409);
-  const config = loadConfig();
-  if (!config || op.workerUrl !== config.workerUrl) throw fail('The original worker must be configured to recover this image.', 409);
-  const artifact = await archive(id, createComfyClient(config.workerUrl), op.output);
+  const worker = workerFor(loadConfig(), op.workerUrl);
+  if (!worker) throw fail('The original worker must be configured to recover this image.', 409);
+  const artifact = await archive(id, createComfyClient(worker.workerUrl), op.output);
   return publicOperation(await save(id, { artifact, state: 'completed', error: null }));
 }
 async function recover(id) {
@@ -314,8 +324,9 @@ async function recover(id) {
   if (!op) throw fail('Unknown image operation.', 404);
   const config = loadConfig();
   if (!config) throw fail('Image worker configuration is required', 503);
-  if (op.workerUrl !== config.workerUrl) throw fail('The original worker must be configured to recover this image.', 409);
-  const client = createComfyClient(config.workerUrl);
+  const worker = workerFor(config, op.workerUrl);
+  if (!worker) throw fail('The original worker must be configured to recover this image.', 409);
+  const client = createComfyClient(worker.workerUrl);
   const result = await require('./imageRecovery').recoverOperation(op, client,
     (changes, unset) => save(id, changes, unset), output => archive(id, client, output));
   return publicOperation(result);
