@@ -92,6 +92,7 @@ const HostPreferenceSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  // Operator note, not measured GPU use or a scheduler reservation.
   vramReservedMiB: {
     type: Number,
     default: 0,
@@ -102,10 +103,12 @@ const HostPreferenceSchema = new mongoose.Schema({
     computeCapability: { type: String, default: '' },
     driver: { type: String, default: '' }
   },
+  // Operator notes; these are not verified service placement observations.
   tags: {
     type: [String],
     default: []
   },
+  // Persisted runtime hints, not current observations. Reporting reads /api/ps.
   // Primary-loaded model hint, kept for back-compat with callers that only
   // care about "one model per host". New code should read loadedModels[] —
   // on multi-model hosts (for example, an inference + embedding model pair)

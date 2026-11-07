@@ -5,7 +5,7 @@ const { HOSTS, TASK_MODELS } = require('../src/services/modelRouterConfig');
 const hostPrefService = require('../src/services/hostPreferenceService');
 const { modelsMatch } = require('../src/helpers/modelNameNormalization');
 const { getLoadedEntryStatus } = require('../src/services/hostPinPrimitives');
-const { validateHostUrl } = require('../src/helpers/ollamaHostConfig');
+const { readHostRuntime } = require('../src/services/hostRuntimeReadService');
 const { projectHostPreferenceForRead } = require('../src/services/hostPreferencePublicProjection');
 const { readHostGpuHealth } = require('../src/services/hostGpuHealthService');
 const { getGpuTelemetryForHosts } = require('../src/services/gpuTelemetryService');
@@ -32,9 +32,9 @@ router.get('/host-preferences', async (_req, res) => {
     // canonical surface — legacy emit (defaultModels / pinnedModel / flat
     // keepAlive / contextSize / autoRestore) is retired.
     const data = await Promise.all(normalizedPrefs.map(async (pref) => {
-      const observedAt = new Date().toISOString();
-      const validation = validateHostUrl(pref.hostUrl);
-      if (!validation.valid) {
+      const runtime = await readHostRuntime(pref.hostUrl);
+      const observedAt = runtime.observation.observedAt || runtime.observation.checkedAt;
+      if (!runtime.online) {
         return {
           ...pref,
           pinnedModels: hostPrefService.getPinnedEntries(pref),
@@ -44,14 +44,18 @@ router.get('/host-preferences', async (_req, res) => {
             runningModels: [],
             pinnedLoaded: null,
             anyPinnedLoaded: false,
-            gpuHealth: { status: 'unknown', reason: 'preferences_unavailable', checkedAt: observedAt },
-            blockedByAllowlist: true,
+            gpuHealth: { status: runtime.status === 'inactive' ? 'not_applicable' : 'unknown',
+              reason: runtime.status === 'inactive' ? 'topology_parked' : 'gpu_residency_unverified', checkedAt: observedAt },
+            ...(runtime.observation.reason === 'blocked_by_allowlist' ? { blockedByAllowlist: true } : {}),
+            status: runtime.status,
+            observation: runtime.observation,
+            ...(runtime.topology ? { topology: runtime.topology } : {}),
             observedAt
           }
         };
       }
 
-      const safeHostUrl = validation.host || pref.hostUrl;
+      const safeHostUrl = runtime.hostUrl;
       const pinnedEntries = hostPrefService.getPinnedEntries(pref);
       const pinnedNames = pinnedEntries.map(e => e.model);
       const primaryPin = pinnedNames[0] || null;
@@ -60,12 +64,7 @@ router.get('/host-preferences', async (_req, res) => {
       const driftModels = pinnedNames.filter(m => !routedModels.has(m));
 
       try {
-        const psResponse = await fetch(`${safeHostUrl}/api/ps`, {
-          signal: AbortSignal.timeout(3_000)
-        });
-        if (!psResponse.ok) throw new Error('Model inventory unavailable');
-        const psData = await psResponse.json();
-        if (!Array.isArray(psData.models)) throw new Error('Malformed model inventory');
+        const psData = { models: runtime.runningModels };
         const gpuHealth = await readHostGpuHealth(safeHostUrl, { pref, runningModels: psData.models, telemetry: telemetryByHost.get(pref.hostUrl), checkedAt: observedAt });
         const runningModels = (psData.models || []).map(m => {
           const matchedPinned = pinnedNames.find(p => modelsMatch(m.name, p)) || null;
@@ -88,6 +87,8 @@ router.get('/host-preferences', async (_req, res) => {
           live: {
             gpuHealth,
             online: true,
+            status: runtime.status,
+            observation: runtime.observation,
             runningModels,
             pinnedLoaded: primaryPin
               ? runningModels.some(rm => modelsMatch(rm.name, primaryPin))

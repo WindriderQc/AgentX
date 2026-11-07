@@ -1,5 +1,24 @@
 'use strict';
 
+// The record's update time can change after a pin or runtime operation. It is
+// neither the declaration time of these notes nor a measurement timestamp.
+function hostPreferenceDeclarations(pref) {
+  return {
+    kind: 'operator_notes', source: 'host_preferences', freshness: 'unverified',
+    declaredBy: null, declaredAt: null, recordUpdatedAt: pref?.updatedAt || null,
+    tags: pref?.tags || [], vramReservedMiB: pref?.vramReservedMiB || 0
+  };
+}
+
+function persistedHostState(pref) {
+  return {
+    source: 'host_preferences', freshness: 'unverified', observedAt: null,
+    recordUpdatedAt: pref?.updatedAt || null, status: pref?.status || null,
+    loadedModel: pref?.loadedModel || null,
+    loadedModels: pref?.loadedModels?.length ? pref.loadedModels : (pref?.loadedModel ? [pref.loadedModel] : [])
+  };
+}
+
 /**
  * Return the capability-free HostPreference shape that may cross a public or
  * operator read boundary. Coordination generations, admission identities,
@@ -14,6 +33,8 @@ function projectHostPreferenceForRead(pref) {
     lastBenchmarkReleaseReceipt: _releaseReceipt,
     ...safePref
   } = source;
+  safePref.declaredMetadata = hostPreferenceDeclarations(source);
+  safePref.persistedState = persistedHostState(source);
   if (!safePref.benchmarkClaim) return safePref;
   const claim = safePref.benchmarkClaim;
   return {
@@ -44,6 +65,8 @@ function projectHostPreferencesForRead(preferences) {
 }
 
 module.exports = {
+  hostPreferenceDeclarations,
+  persistedHostState,
   projectHostPreferenceForRead,
   projectHostPreferencesForRead
 };

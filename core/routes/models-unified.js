@@ -329,17 +329,19 @@ router.delete('/ollama/:name', async (req, res) => {
 /**
  * GET /api/models/cluster-summary
  * Compact view of the local Ollama cluster for bounded API consumers.
- * Read-only snapshot of host preferences + pinned model list. No auth,
+ * Read-only runtime observations + declared host preferences. No auth,
  * stable shape — keep backward compatible.
  */
 router.get('/cluster-summary', async (_req, res) => {
   try {
     const HostPreference = require('../models/HostPreference');
+    const { readHostRuntime } = require('../src/services/hostRuntimeReadService');
+    const { hostPreferenceDeclarations, persistedHostState } = require('../src/services/hostPreferencePublicProjection');
 
     const prefs = await HostPreference.find({}, {
         hostId: 1, hostUrl: 1, hostKey: 1, displayName: 1, pinnedModels: 1,
         loadedModel: 1, loadedModels: 1, status: 1, vramTotalMiB: 1, vramReservedMiB: 1,
-        gpu: 1, tags: 1
+        gpu: 1, tags: 1, updatedAt: 1
       }).lean();
 
     const prefByUrl = new Map(prefs.map(p => [hostUrlKey(p.hostUrl), p]).filter(([key]) => key));
@@ -354,26 +356,30 @@ router.get('/cluster-summary', async (_req, res) => {
       }));
     }
 
-    const rows = configuredHosts.map(configured => {
+    const rows = await Promise.all(configuredHosts.map(async configured => {
       const p = prefByUrl.get(hostUrlKey(configured.url)) || {};
       const pinned = buildPinned(p);
+      const runtime = await readHostRuntime(configured.url);
+      const loadedModels = runtime.runningModels.map(model => model.name || model.model).filter(Boolean);
       return {
         hostKey: configured.id,
         name: p.displayName || configured.name || configured.id,
         hostUrl: configured.url,
         hostname: '',
-        online: p.status !== 'offline',
-        status: p.status || 'idle',
-        loadedModel: p.loadedModel || null,
-        loadedModels: Array.isArray(p.loadedModels) && p.loadedModels.length > 0
-          ? p.loadedModels
-          : (p.loadedModel ? [p.loadedModel] : []),
+        online: runtime.online,
+        status: runtime.status,
+        loadedModel: loadedModels[0] || null,
+        loadedModels,
+        observation: runtime.observation,
+        ...(runtime.topology ? { topology: runtime.topology } : {}),
+        persistedState: persistedHostState(p),
+        declaredMetadata: hostPreferenceDeclarations(p),
         pinnedModels: pinned,
         vramTotalMiB: p.vramTotalMiB || Math.round((configured.vramMb || 0)),
         vramReservedMiB: p.vramReservedMiB || 0,
         gpuModel: p.gpu?.model || ''
       };
-    });
+    }));
 
     const stalePreferences = prefs
       .filter(p => {
@@ -385,6 +391,8 @@ router.get('/cluster-summary', async (_req, res) => {
         hostUrl: p.hostUrl,
         name: p.displayName || p.hostKey || p.hostUrl,
         status: p.status || 'idle',
+        persistedState: persistedHostState(p),
+        declaredMetadata: hostPreferenceDeclarations(p),
         pinnedCount: buildPinned(p).length,
         stale: true
       }));

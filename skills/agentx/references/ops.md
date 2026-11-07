@@ -19,6 +19,23 @@ scope, or asked first). Exact routes: [endpoints](endpoints.md).
 - What is loaded and pinned on each host: `GET /api/models/cluster-summary`.
   Catalogue: `/api/models/all`, `/api/models/registry` (filters: category,
   tag, vendor, status), `/api/ollama-hosts`.
+  Cluster rows retain their existing fields: `online`, `status` and
+  `loadedModel(s)` describe this read, with provenance and timestamps in
+  `observation`. A fresh `/api/ps` read is `ready` when it lists residents,
+  `idle` when empty; neither proves routing admission or full GPU residency.
+  Parked endpoints are `inactive`, have no reported residents and are not
+  probed; their `topology` carries the existing parking reason and observation
+  time. A failed inventory is `unknown`, `online: false`, with no residents
+  and an `unavailable` observation; it does not prove the runtime stopped.
+  No previous successful inventory is reused. Pins remain declared intent.
+  `persistedState` retains the saved status/model hints with unverified
+  freshness and no observation time. `declaredMetadata` labels tags and
+  `vramReservedMiB` as unverified operator notes, not live service placement,
+  measured GPU use or queue reservations. Their declarer and declaration time
+  are unknown; `recordUpdatedAt` dates the whole record, including unrelated
+  changes. A default zero reservation does not measure zero use. The Nerve
+  Center host-preference read exposes the same metadata, with current runtime
+  evidence under `live`; its legacy top-level status/models remain persisted.
 - Which model and host serve each task type: `GET /api/router/config`.
 - Usage: `GET /api/analytics/inference/summary?window=7d|30d`,
   `/api/analytics/usage`, `/api/analytics/costs`. Counts include trials and

@@ -4,16 +4,23 @@ jest.mock('../../src/services/hostPreferenceService', () => ({ getAll: jest.fn()
 jest.mock('../../src/helpers/ollamaHostConfig', () => ({ ...jest.requireActual('../../src/helpers/ollamaHostConfig'), validateHostUrl: host => ({ valid: true, host }) }));
 jest.mock('../../src/services/gpuTelemetryService', () => ({ getGpuTelemetryForHosts: jest.fn() }));
 jest.mock('../../src/services/ollamaModelParallelismService', () => ({ readModelParallelism: jest.fn() }));
+jest.mock('../../src/services/runtimeTopologyParking', () => {
+  const actual = jest.requireActual('../../src/services/runtimeTopologyParking');
+  return { ...actual, defaultParking: actual.createParking() };
+});
 const express = require('express');
 const { startTestHttpHarness } = require('../helpers/testHttpServer');
 const preferences = require('../../src/services/hostPreferenceService');
 const telemetry = require('../../src/services/gpuTelemetryService');
 const parallelism = require('../../src/services/ollamaModelParallelismService');
+const { defaultParking } = require('../../src/services/runtimeTopologyParking');
 let http;
 const originalFetch = global.fetch;
 beforeAll(async () => { const app = express(); app.use('/api/nerve-center', require('../../routes/nerve-center-host-read')); http = await startTestHttpHarness(app, { transport: process.platform === 'win32' ? 'pipe' : 'tcp' }); });
 afterAll(async () => { global.fetch = originalFetch; await http?.close(); });
 beforeEach(() => {
+  defaultParking._setDescription(null);
+  parallelism.readModelParallelism.mockClear();
   preferences.getAll.mockResolvedValue([{ hostUrl: 'http://synthetic-host:11434', status: 'ready',
     pinnedModels: [{ model: 'synthetic-embedder', contextSize: 0 }] }]);
   telemetry.getGpuTelemetryForHosts.mockResolvedValue(new Map([['http://synthetic-host:11434', { telemetry: { status: 'fresh' }, gpus: [{}] }]]));
@@ -40,4 +47,23 @@ test('a benchmark owner prevents pin qualification while preserving reachability
     benchmarkClaim: { batchId: 'operation-1', claimedAt: new Date() }, pinnedModels: [{ model: 'synthetic-embedder' }] }]);
   const response = await http.request.get('/api/nerve-center/host-preferences').expect(200);
   expect(response.body.data[0].live).toMatchObject({ online: true, gpuHealth: { status: 'unknown', reason: 'runtime_owner_active' } });
+});
+
+test('inactive endpoints retain persisted hints separately and expose no live residents', async () => {
+  preferences.getAll.mockResolvedValue([{ hostUrl: 'http://synthetic-host:11434', status: 'ready',
+    loadedModels: ['saved-resident'], pinnedModels: [{ model: 'desired-resident' }],
+    tags: ['synthetic-service'], vramReservedMiB: 64 }]);
+  defaultParking._setDescription({ configured: true, valid: true, groups: [{ id: 'synthetic', activeMode: 'other', modes: [
+    { id: 'inactive', endpoints: [{ url: 'http://synthetic-host:11434' }] }, { id: 'other', endpoints: [] }
+  ] }] });
+  const response = await http.request.get('/api/nerve-center/host-preferences').expect(200);
+  expect(response.body.data[0]).toMatchObject({
+    loadedModels: ['saved-resident'], persistedState: { loadedModels: ['saved-resident'], freshness: 'unverified' },
+    declaredMetadata: { kind: 'operator_notes', tags: ['synthetic-service'], vramReservedMiB: 64,
+      declaredAt: null, declaredBy: null, freshness: 'unverified' },
+    live: { online: false, status: 'inactive', runningModels: [],
+      observation: { status: 'not_applicable', reason: 'inactive_topology_mode' } }
+  });
+  expect(global.fetch).not.toHaveBeenCalled();
+  expect(parallelism.readModelParallelism).not.toHaveBeenCalled();
 });
