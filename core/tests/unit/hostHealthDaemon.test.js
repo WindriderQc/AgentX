@@ -4,6 +4,17 @@ jest.mock('../../src/services/pinReconciler', () => ({ checkAndReloadDefaults: j
 const { checkAndReloadDefaults } = require('../../src/services/pinReconciler');
 const daemon = require('../../src/services/hostHealthDaemon');
 
+test('reading scheduler state neither starts nor runs reconciliation', async () => {
+  checkAndReloadDefaults.mockClear();
+  expect(daemon.getHealthCheckState()).toMatchObject({ running: false, intervalMs: expect.any(Number) });
+  expect(checkAndReloadDefaults).not.toHaveBeenCalled();
+  daemon.startHealthCheck();
+  expect(daemon.getHealthCheckState().running).toBe(true);
+  expect(checkAndReloadDefaults).not.toHaveBeenCalled();
+  await daemon.stopHealthCheck();
+  expect(daemon.getHealthCheckState().running).toBe(false);
+});
+
 test('a release requests an immediate cycle and coalesces requests while it is running', async () => {
   jest.useFakeTimers();
   checkAndReloadDefaults.mockClear();

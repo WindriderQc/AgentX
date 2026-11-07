@@ -63,6 +63,10 @@ function getHealthCheckIntervalMs() {
   return healthCheckIntervalMs;
 }
 
+function getHealthCheckState() {
+  return { running: Boolean(healthCheckInterval), intervalMs: healthCheckIntervalMs };
+}
+
 function setHealthCheckIntervalMs(ms) {
   const parsed = parseInt(ms, 10);
   if (!Number.isFinite(parsed) || parsed < 10_000) return;
@@ -74,6 +78,7 @@ function setHealthCheckIntervalMs(ms) {
 }
 
 module.exports = {
+  getHealthCheckState,
   requestReconcile,
   startHealthCheck,
   stopHealthCheck,
