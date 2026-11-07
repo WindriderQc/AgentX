@@ -1,7 +1,7 @@
-# Reuse existing memory classification across surfaces
+# Memory classification and surface access
 
-The owner confirmed the original intent during consolidation: Super Dad / personal
-Nestor can consult all of the owner's information, including PsyX information.
+Super Dad / personal Nestor can consult all of the owner's information,
+including PsyX information.
 Family and child surfaces retain their information restrictions. PsyX may keep
 its conversation/domain structure without becoming inaccessible to the owner.
 Persona presentation does not grant access to another information scope.

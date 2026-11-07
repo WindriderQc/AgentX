@@ -1,8 +1,5 @@
 # ADR 0003: ingested content is data, never authority
 
-Proposed on 2026-10-02, before the mail archive and private knowledge work
-(#23, #24) widen what AgentX reads.
-
 ## Context
 
 Agents read content nobody in the household wrote in the current turn: email,
@@ -11,9 +8,8 @@ derived from those sources, observed application data, and other agents'
 output. Any of it can carry text written to steer a model (indirect prompt
 injection). The same agents hold tools that write, send or change state.
 
-Most paths already frame such content as data. The rule was not written down,
-so some paths injected it raw, and several actions rely on prompt guidance
-alone.
+These sources are untrusted data. Prompt guidance alone cannot authorize an
+outbound action; the tool boundary enforces the confirmation requirements below.
 
 ## Decision
 
@@ -41,14 +37,13 @@ alone.
    ingested content keeps its origin, so a later turn still treats it as
    data from that source.
 
-## Current state (2026-10-02)
+## Enforcement
 
 Framed as data: Gmail read and search (wrapped by the mail CLI), Secretary
 evidence pages, memory-review synthesis, the Household selected context,
 chat RAG, approved household knowledge, attachments, KidX and GraphysX
-observations, and the Planning context of coding tasks. Web search results in
-chat and Roundtable, the Gmail backlog triage fields and earlier attachments
-are framed by the change that introduces this ADR.
+observations, the Planning context of coding tasks, web search results in
+chat and Roundtable, Gmail backlog triage fields and conversation attachments.
 
 Gated in code: Gmail send, reply, forward, draft send, archive, trash, label
 deletion and bulk changes (`integrations/openclaw/gmail-secretary`), and any
@@ -62,10 +57,8 @@ send reports to configured owner destinations; other messaging effects, Gmail
 sending and destructive mailbox changes are blocked. Owner conversations keep
 their one-time outbound approval gates. Provenance describes the session and
 grants no authority; it does not prove which prompt content caused an action.
-Native gateway activation and acceptance remain instance operations (#208).
+Activating and qualifying these gates in a native gateway are instance operations.
 
 ## Consequences
 
-New ingestion paths and new tools are reviewed against this rule. The mail
-ingestion work (#23, #24) starts only once its outbound and provenance gaps
-are closed.
+New or changed ingestion paths and tools must satisfy these rules before use.

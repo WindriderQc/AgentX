@@ -22,10 +22,9 @@ use the same scope. API clients omitting `scope` retain the all-lane listing.
 classification and planning are optional. **Classer et planifier** explains the
 difference between a service (the component concerned) and an epic (a common
 name for related tasks), with the effect of each empty field. Service suggestions
-list current components with explanations; archived aiOps/AgentX-Ecosystem
-labels remain readable and editable in existing tasks. Custom service names
-remain supported. Entering a personal/household service explains that the task
-will leave the engineering view. The creation preview reflects priority,
+list current components with explanations. Stored labels remain readable and
+editable, and custom service names are supported. Entering a personal/household
+service explains that the task will leave the engineering view. The creation preview reflects priority,
 classification, earliest start, dependencies and deadline. Saving creates a
 queued, unassigned task and does not dispatch an agent. An explicitly empty
 group stays empty; API/MCP clients omitting the group keep their inbox default.

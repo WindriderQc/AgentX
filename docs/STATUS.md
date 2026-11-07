@@ -7,7 +7,7 @@ one address where Benchmark answers under `/benchmark` and RAG under `/rag`.
 The runtime baseline is Node.js 24 with Express, MongoDB, Qdrant, Ollama and Docker.
 Instance configuration, data and deployment receipts remain outside Git.
 
-## On main
+## Available capabilities
 
 - **Nestor ArtX.** The family standby screen supplies its current and recent
   render receipts to the dialogue, using Core’s source snapshots and the
@@ -485,8 +485,6 @@ Instance configuration, data and deployment receipts remain outside Git.
   flag into one short model-written report, as background work for a
   CPU-resident host. An opt-in network watch raises one alert per unknown
   device, with a suggested name.
-- The former aiOPs, AgentX-Ecosystem and standalone component repositories are
-  archived, read-only references.
 
 ## Open
 
