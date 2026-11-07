@@ -109,6 +109,7 @@ function buildLiveTransport({ model, host, generateImpl, timeoutMs = DEFAULT_LIV
       data = await generate(workloadId, {
         model,
         host,
+        callerDetail: 'benchmark-batch-tool-qualification',
         // The deterministic harness stores calls as {name, args}; Ollama's
         // native history requires function-wrapped calls and named tool results.
         messages: messages.map(({ name, ...message }) => ({
