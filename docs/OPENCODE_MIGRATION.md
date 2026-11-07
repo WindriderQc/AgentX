@@ -86,11 +86,110 @@ model or Core service participates. It verifies:
 - Native export/import into a separate state root, preserving every exported
   message and part, including tool identities and results, without inference.
 
-A successful receipt still says `cutoverReady: false`. Native fork and import
-preserve source directory references; they do not create an independent working
-repository. The fixture uses the installed runtime's native API, not assumptions
+A successful receipt still says `cutoverReady: false`. A native fork shares the
+source directory. Native import binds its session header to the import command's
+working directory; historical message/tool paths remain recorded. Neither
+command creates an independent repository. The fixture uses the native API, not assumptions
 from newer documentation. It does not test the browser, the host controller,
 Bubblewrap, Core's gateway or real model competence.
+
+## Core worker conversations and independent human copies
+
+The OpenCode runner records one host-owned binding per invocation beneath
+`coding-run-requests/<requestId>.sessions/`. The binding connects the original
+Core task and request to the session id emitted by that invocation's native
+JSONL stdout, its private home and repository. It is outside worker-writable
+mounts; discovery never guesses the latest session in a shared home. DSH's
+runner, histories and Studio bridge keep their existing behavior.
+
+Pipeline's worker monitor opens **Voir la conversation OpenCode** for an
+OpenCode executor. It reads actual native messages and parts, including tool
+arguments, output and errors. This is a Core viewer over native history, not a
+writable observer session imported into the human runtime. A committed-WAL
+SQLite read uses read-only/query-only mode and a consistent transaction. The
+qualified schema is OpenCode 1.19.3. Complete snapshots are limited to 10,000
+messages and 16 MiB of stored JSON; pages are limited to 20 messages/2 MiB.
+Unsupported schemas, oversized messages and changed page revisions refuse
+explicitly rather than truncate evidence. Observation never starts a runtime or
+inference. Local child exit does not establish Core model/resource release.
+
+The existing dispatch bridge supplies exact-executor routes:
+
+```text
+GET  /api/runtime-bridges/coding-dispatch/runs/:requestId/sessions
+GET  /api/runtime-bridges/coding-dispatch/runs/:requestId/sessions/:invocationId
+POST /api/runtime-bridges/coding-dispatch/runs/:requestId/sessions/:invocationId/handoff
+```
+
+Reads require `pipelineId` and the original `executorId`; a page may add
+`offset` and its `revision`. Handoff requires the same identities, exact source
+`revision`, a stable `handoffRequestId` UUID and `confirm: true`. No alternate
+executor or accepted worker request is launched. The host validates its original
+native receipt before returning history. Responses use `Cache-Control: no-store`.
+
+Independent copies are opt-in through these private host settings:
+
+```text
+AGENTX_OPENCODE_ROOT=/reviewed/opencode
+AGENTX_OPENCODE_ENTRY=node_modules/.bin/opencode
+AGENTX_OPENCODE_HUMAN_HOME=/private/opencode-human
+AGENTX_OPENCODE_HANDOFF_ROOT=/private/opencode-handoffs
+AGENTX_OPENCODE_HUMAN_URL=https://opencode.example
+```
+
+The human server uses that home and its `.config`, `.local/share`, `.cache` and
+`.local/state` directories as its XDG roots. Configure its own approved Core
+gateway provider with `agentx-primary`, authentication and context before using
+it. No worker relay configuration, provider secret, MCP setup or Core execution
+grant is copied. The adapter neither installs nor starts that server. Keep its
+private HTTPS origin distinct from worker homes; loopback HTTP is supported for
+isolated qualification. No model or host pin changes are implied.
+
+**Reprendre dans une copie indépendante** is available after the original
+invocation exits. In-flight tool parts, reverted sessions, incompatible native
+identifier formats and changed source revisions refuse. It uses the existing
+DSH Git-copy primitive, verifies before/after/copy file fingerprints, preserves
+dirty files, untracked files, deletions and `refs/stash`, removes remotes,
+disables hooks and avoids shared writable objects. Ignored dependencies are
+excluded; unsupported entries or a changing repository refuse the copy.
+Files represent copy time, not the historical message boundary. The bound is
+128 MiB per file and 512 MiB total source bytes.
+
+The native import receives a new human session plus collision-free message and
+part ids, retaining their monotonic order, payloads and timestamps. A native
+user notice records provenance and the independent current directory. Historical
+arguments and paths remain unchanged. Permissions come from the human profile.
+The human runtime can continue normally from its own directory; the original
+worker, native history, task state, budget and publication stay unchanged.
+
+A private receipt is persisted before effects. Repeating the same request and
+source revision returns the same copy. After a lost import response, recovery
+only reads the existing native import and verifies its complete message hash;
+it does not copy or import again. An incomplete or conflicting intent remains
+blocked on its original receipt. Preserve handoff state and human home across
+configuration moves and restarts. Never delete a pending receipt to retry under
+another identity. The browser retains the handoff UUID across reloads.
+
+The native CPU fixture exercises the real sandbox, relay, CLI, host transport,
+SQLite reader, independent repository and native human tool execution. Its
+optional browser stage exercises Core's actual routes and native host control
+with synthetic request receipts, including a lost successful response and a
+browser reload at desktop/narrow widths:
+
+```bash
+python3 integrations/coding/opencode_worker_bridge_smoke.py \
+  --runtime-root /reviewed/opencode \
+  --node-root /reviewed/node \
+  --playwright-module /test-tools/node_modules/playwright \
+  --chromium /test-tools/chromium/chrome \
+  --output /private/evidence/opencode-worker-bridge.json
+```
+
+No installed Core or real model participates. A native human file write must
+exist only in its independent copy, and source files/history must stay unchanged.
+This does not qualify installed gateway admission/release, report evidence,
+uncertain model recovery, the human OpenCode Web application or real-device
+acceptance. `cutoverReady` remains false until those separate gates are received.
 
 ## Replacement gates
 
@@ -110,9 +209,9 @@ The current DSH-specific adapters are
 [`coding_progress.session_logs`](../integrations/coding/coding_progress.py),
 [`coding_report_save`](../integrations/coding/coding_report_save.py) and the
 [native Studio bridge](../integrations/dsh/coding-team/src/bridge.mjs).
-Pipeline's existing host/status display is useful, but does not replace the
-native conversation bridge. A future OpenCode observer is a projection of its
-native history, not another task or transcript authority.
+The OpenCode host reader and independent handoff are implemented above;
+installed acceptance remains separate. Both observers project native history,
+without creating another task or transcript authority.
 
 Use separate human and worker state roots. Importing a worker's writable
 database or sharing its home would defeat isolation. Native session forks alone

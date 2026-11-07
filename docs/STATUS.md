@@ -354,8 +354,17 @@ Instance configuration, data and deployment receipts remain outside Git.
   pull request. **Follow and decide** has a coding-worker monitor with the exact
   task and launch request, observation age and a dossier link. Its attempt is
   shown only when the loaded dossier proves the request binding. The optional
-  native Studio sidebar bundle links to this same monitor. Pipeline shows the host heartbeat separately from useful source
-  or test progress, remaining budgets, test outcomes and the stop checkpoint.
+  native Studio sidebar bundle links to this same monitor. Pipeline shows the host
+  heartbeat separately from useful source or test progress, remaining budgets,
+  test outcomes and the stop checkpoint.
+  An OpenCode executor's native conversations are readable from this monitor,
+  bound to the original task, request and invocation. Native tool arguments and
+  results update without observation inference. An exited invocation supports
+  an idempotent independent Git copy and native history import into the human
+  runtime, with a provenance notice and collision-free message identities.
+  Source state and the original Core task stay unchanged. See
+  [OpenCode migration](OPENCODE_MIGRATION.md) for configuration, synthetic
+  qualification and installed acceptance limits.
   A controlled stop preserves source changes locally without an automatic retry;
   an inactive host without a terminal receipt stays unknown and blocks new work.
   Manual private reports keep source read-only, archive verified partial files

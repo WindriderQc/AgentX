@@ -78,6 +78,8 @@ def opencode_config(model: str, context_size: int | None, relay_port=8377) -> st
     value = {
         '$schema': 'https://opencode.ai/config.json',
         'model': f'agentx-core/{model}',
+        'small_model': f'agentx-core/{model}',
+        'enabled_providers': ['agentx-core'],
         'provider': {'agentx-core': {
             'npm': '@ai-sdk/openai-compatible', 'name': 'AgentX Core',
             'options': {'baseURL': f'http://127.0.0.1:{relay_port}/v1', 'apiKey': 'local-no-auth'},

@@ -74,6 +74,21 @@ test('the monitor names the incumbent executor, harness and the available fleet'
   expect(evidence).toContain('<dt>Selected executor</dt><dd>Primary (primary-dsh) · dsh</dd>');
 });
 
+test('native conversation access is available only for an exactly identified OpenCode worker', () => {
+  const f = fixture({ stage: 'tool' });
+  const elements = { ...monitorElements(), pipelineNativeSessionButton: { hidden: true } };
+  const draw = () => Monitor.render({ $: id => elements[id], ...f });
+  Object.assign(f.controller.control.run, { harness: 'dsh', executorId: 'existing-dsh' });
+  draw();
+  expect(elements.pipelineNativeSessionButton.hidden).toBe(true);
+  Object.assign(f.controller.control.run, { harness: 'opencode', executorId: 'qualified-open' });
+  draw();
+  expect(elements.pipelineNativeSessionButton.hidden).toBe(false);
+  delete f.controller.control.run.executorId;
+  draw();
+  expect(elements.pipelineNativeSessionButton.hidden).toBe(true);
+});
+
 test('attempt identity requires the dossier request binding and never adds one to the pre-launch count', () => {
   const f = fixture({}, 'running', { inference: { pipelineId: '0001', attempt: 9 }, run: { requestId: ID, pipelineId: '0001',
     phase: 'running', expectedAttemptCount: 8, task: { pipelineId: '0001', automationAttemptCount: 9 } } });

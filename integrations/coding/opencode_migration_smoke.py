@@ -70,7 +70,9 @@ class Handler(BaseHTTPRequestHandler):
             tools = {t['function']['name'] for t in body.get('tools', [])}
             messages = body['messages']
             content = json.dumps(messages, ensure_ascii=False)
-            if not tools or 'MIGRATION_SECOND_TURN' in content:
+            if callable(getattr(self.server, 'reply', None)):
+                call, text = self.server.reply(body)
+            elif not tools or 'MIGRATION_SECOND_TURN' in content:
                 call, text = None, 'MIGRATION_PERSISTED_OK'
             else:
                 completed = [m for m in messages if m.get('role') == 'tool']
