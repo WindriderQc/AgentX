@@ -16,7 +16,9 @@ runner, autonomous, git = fixtures.runner, fixtures.autonomous, fixtures.git
 regression = autonomous.coding_regression_requirement
 KEY, NEXT = fixtures.KEY, fixtures.NEXT_KEY
 TEST = 'integrations/coding/tests/test_one.py'
-OLD = 'import unittest\nfrom source_one import ONE\n\nclass Existing(unittest.TestCase):\n    def test_positive(self):\n        self.assertGreater(ONE, 0)\n'
+POSITIVE = '    def test_positive(self):\n        self.assertGreater(ONE, 0)\n'
+OLD = ('import unittest\nfrom source_one import ONE\n\nclass Existing(unittest.TestCase):\n' + POSITIVE
+       + '\n    def test_existing_type(self):\n        self.assertIsInstance(ONE, int)\n')
 NEW = OLD + '\n    def test_regression(self):\n        self.assertEqual(ONE, 20)\n'
 
 
@@ -90,7 +92,7 @@ class RequiredRegressionTest(unittest.TestCase):
                     if required: self.assertIn('requiredRegressionTests', prompt)
                 (workspace / 'source_one.py').write_text('ONE = 20\n' if second else 'ONE = 10\n')
                 if not second or variant == 'retained': (workspace / TEST).write_text(NEW)
-                elif variant == 'removed_content': (workspace / TEST).write_text('')
+                elif variant == 'removed_content': (workspace / TEST).write_text(OLD.replace(POSITIVE, ''))
                 elif variant == 'whitespace': (workspace / TEST).write_text(OLD + '\n\n')
                 return SimpleNamespace(returncode=0, stdout='synthetic worker', stderr='')
 
