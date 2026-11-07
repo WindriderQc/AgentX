@@ -6,6 +6,7 @@ or permission to research again. Only the normal step validator may merge it.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -22,6 +23,10 @@ SAVE_SECONDS = 15 * 60
 HARNESS_TOKENS = 4096
 OUTPUT_TOKENS = 32768  # Existing worker maxTokens; do not change the installed profile.
 
+_spec = importlib.util.spec_from_file_location('coding_opencode_events', Path(__file__).with_name('coding_opencode_events.py'))
+native = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(native)
+
 
 def encoded(value):
     return json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
@@ -36,9 +41,9 @@ def sessions(r, workspace):
     return {path.parent.resolve(): path for path in r.coding_progress.session_logs(home)}
 
 
-def snapshot(r, workspace):
+def snapshot(r, workspace, request_id=None):
     """Track logical sessions, so a new generation of an old session is excluded."""
-    return set(sessions(r, workspace))
+    return set(native.sessions(r, workspace, request_id) if native.selected(r) else sessions(r, workspace))
 
 
 def trace_bytes(path, home):
@@ -108,7 +113,9 @@ def research(data, session_id, cwd):
     return pairs
 
 
-def capsule(r, workspace, before, request_id):
+def capsule(r, workspace, before, request_id, step_output=None):
+    if native.selected(r):
+        return native.capsule(r, workspace, before, request_id, step_output)
     current = sessions(r, workspace)
     candidates = [path for parent, path in current.items() if parent not in before]
     # The worker must create exactly one logical session. Ambiguity is never
@@ -181,7 +188,7 @@ def attempt(r, args, progress, workspace, result_path, number, original, before,
     if receipt.exists() or receipt.is_symlink():
         return None, 'the original save pass must be reconciled, never repeated'
     try:
-        evidence = capsule(r, workspace, before, args.request_id)
+        evidence = capsule(r, workspace, before, args.request_id, result_path.name)
         prompt, selected, omitted = save_prompt(original, evidence['pairs'], prompt_limit(progress, step_context))
     except (OSError, ValueError, TypeError, RecursionError):
         return None, 'no result file was written'

@@ -16,13 +16,15 @@ Instance configuration, data and deployment receipts remain outside Git.
   and a portable skill distinguish selection, reported visibility and unavailable
   observations. See [ArtX](ARTX.md) for qualification and process-local limits.
 
-- **Coding work in Studio and Nestor.** The optional DSH bundle exposes native
+- **Coding work in Studio and Nestor.** DSH and OpenCode adapters expose native
   worker conversations with read-only progress and independent human
   continuations, using the retained worker logs and separate repository copies.
   Core's bounded dossier reader supplies complete specifications and feedback
   through Nestor's existing `pipeline_tasks` tool. Task state, execution
   authority, review and deployment retain their native owners. Instance
-  installation and human acceptance require separate evidence.
+  installation and human acceptance require separate evidence. OpenCode's native
+  tool and test events feed the same sanitized progress; report save passes bind
+  evidence to the exact original invocation and Core settlement.
 
 - **Personal agenda.** `/dad/calendar` presents up to 50 primary-calendar events
   in the instance time zone, with explicit partial coverage and a Core read

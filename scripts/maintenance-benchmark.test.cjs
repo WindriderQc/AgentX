@@ -157,11 +157,32 @@ test('preparing refuses what Benchmark would not run, and keeps no plan', () => 
   fake.state.preflight = body => ({ ready: false, issues: [unverified], warnings: [], checks: { judge: { ok: true }, hosts: [{ ...body.targets[0], ok: true }] } });
   await assert.rejects(fake.prepare({ 'judge-host': JUDGE_HOST, 'judge-model': 'judge-model:7b' }), error => {
     assert.deepEqual([error.outcome, error.details.code, error.details.issues], ['refused', 'PREFLIGHT_NOT_READY', [unverified]]);
+    assert.equal(error.preparationNotStarted, true);
     return true;
   });
   assert.equal(fake.state.posts.length, 0);
   assert.equal(fs.existsSync(path.join(fake.receiptsDir, 'benchmark-batch')), false);
   await assert.rejects(ACTIONS['benchmark-batch-prepare']({ ...fake.ctx({ host: HOST, model: 'm', categories: 'coding' }), receiptsDir: null }), { exitCode: 2 });
+}));
+
+test('a missing or lost preflight verdict never attests a refused preparation', () => withBenchmark(async fake => {
+  fake.state.preflight = () => ({ issues: ['Synthetic incomplete response'] });
+  await assert.rejects(fake.prepare(), error => {
+    assert.equal(error.preparationNotStarted, undefined);
+    assert.notEqual(error.outcome, 'refused');
+    return true;
+  });
+  const ctx = fake.ctx({ host: HOST, model: 'candidate:7b', categories: 'coding' });
+  const http = ctx.http;
+  ctx.http = (url, options) => {
+    if (url.endsWith('/preflight')) throw new Error('Synthetic preflight response lost');
+    return http(url, options);
+  };
+  await assert.rejects(ACTIONS['benchmark-batch-prepare'](ctx), error => {
+    assert.equal(error.preparationNotStarted, undefined);
+    return /response lost/.test(error.message);
+  });
+  assert.equal(fake.state.posts.length, 0);
 }));
 
 test('a pin wider than the verified context is planned at that context, with the coverage job\'s settings', () => withBenchmark(async fake => {

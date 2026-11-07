@@ -75,8 +75,14 @@ async function observe(job) {
   if (job.kind === 'transcription') return require('./transcriptionExecutor').observe(job);
   let operationId = job.operation?.id;
   let receipt;
-  if (job.kind === 'benchmark') {
-    if (job.executor.prepare === true) throw fail('Preparation needs its native operator plan receipt, not a batch lookup', 409);
+  if (job.kind === 'benchmark' && job.executor.prepare === true) {
+    const refusal = job.preparationRefusal;
+    if (!refusal || refusal.dispatchId !== job.dispatchId || operationId !== job.dispatchId
+      || job.operation.kind !== 'benchmark-preparation' || job.operation.authority !== 'operator-preparation-refusal') {
+      throw fail('Preparation needs its native operator plan or refusal receipt, not a batch lookup', 409);
+    }
+    receipt = { state: 'failed', authority: 'operator-preparation-refusal', operationId, refusal };
+  } else if (job.kind === 'benchmark') {
     const tag = planTag(planId(job.executor.plan));
     if (!operationId) {
       const result = await benchmark(`/api/benchmark/batches?tag=${encodeURIComponent(tag)}&limit=2`);
@@ -146,6 +152,9 @@ async function observe(job) {
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.
   const runtime = await Runtime.findById('runtime').lean();
+  if (job.preparationRefusal && (!runtime || !Array.isArray(runtime.workloads) || !Array.isArray(runtime.inferences))) {
+    throw fail('Native runtime release evidence unavailable', 503, 'HEAVY_QUEUE_RELEASE_UNAVAILABLE');
+  }
   const now = new Date();
   const overlapping = [...(runtime?.workloads || []), ...(runtime?.inferences || [])]
     .filter(item => queue.runtimeOverlaps(job, item));

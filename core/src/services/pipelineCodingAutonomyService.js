@@ -93,6 +93,15 @@ async function authorize(id, input) {
     throw policy.fail('Autonomy scope is full; preserve its existing history');
   if (existing?.runs?.length && input.authorized) throw policy.fail('Completed/stopped campaigns cannot be reset; reconcile their original evidence');
   if (input.authorized && !UUID.test(input.queueRequestId || '')) throw policy.fail('Name the approved heavy-work campaign', 'CODING_AUTONOMY_INVALID', 400);
+  let preferredExecutorId;
+  if (input.authorized && input.executorId !== undefined) {
+    if (typeof input.executorId !== 'string' || typeof control?.executor !== 'function')
+      throw policy.fail('Select an installed autonomous executor', 'CODING_AUTONOMY_INVALID', 400);
+    const executor = control.executor(input.executorId);
+    if (!executor.profiles.includes('autonomous'))
+      throw policy.fail('The selected executor does not support autonomy', 'CODING_EXECUTOR_PROFILE_UNAVAILABLE');
+    preferredExecutorId = executor.id;
+  }
   const qualification = input.authorized ? readiness.assertReady(task, policy.limits(input.limits), input.qualification) : null;
   const state = existing || { schema: 'agentx.pipeline-coding-autonomy/v1', revision: 0, runs: [], spent: {},
     observations: [], seenDiagnostics: [], seenStates: [], seenTests: [], manualInterventions: [] };
@@ -101,6 +110,7 @@ async function authorize(id, input) {
     state: input.authorized ? 'queued' : 'stopped', reason: input.authorized ? null : 'authorization_removed' });
   if (input.authorized) Object.assign(state, { basis: policy.basis(task), limits: policy.limits(input.limits), queueRequestId: input.queueRequestId,
     qualification: { taskBasis: qualification.taskBasis, definition: qualification.definition } });
+  if (preferredExecutorId) state.preferredExecutorId = preferredExecutorId;
   // Removing authorization fences future resumes. An active worker is separately stopped.
   return projection(await save(task, state, extra, undefined,
     input.authorized ? require('./taskIntakePolicy').guard({ updatedAt: task.updatedAt }, task) : { updatedAt: task.updatedAt }));
@@ -295,7 +305,7 @@ async function select(config) {
     if (taskEligibilityReasons(task, { now: new Date(), automated: true, dependencyStatuses: dependencies }).length) continue;
     try { await campaign(task); } catch { continue; }
     let executor = null;
-    const previousExecutorId = task.codingAutonomy.runs.at(-1)?.executorId;
+    const previousExecutorId = task.codingAutonomy.runs.at(-1)?.executorId || task.codingAutonomy.preferredExecutorId;
     try { executor = typeof control.select === 'function' ? await control.select({ profile: 'autonomous',
       ...(previousExecutorId && { executorId: previousExecutorId }) }) : null; }
     catch { continue; }

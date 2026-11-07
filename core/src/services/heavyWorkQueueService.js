@@ -282,10 +282,21 @@ async function assertDispatch(id, dispatchId) {
   return { admitted: true, id, dispatchId, checkedAt: now, runtimeAdmissionRequired: true };
 }
 async function settle(id, observation, actor) {
-  return mutate(state => {
+  return mutate(async state => {
     const job = jobIn(state, id);
     if (TERMINAL.includes(job.state)) return { readOnly: true, value: job };
     if (!job.operation || observation.operationId !== job.operation.id || !TERMINAL.includes(observation.state)) throw fail('Exact terminal executor observation required', 409);
+    if (job.preparationRefusal) {
+      // Recheck on every CAS attempt, including a holder acquired since the
+      // observer read the outcome. This transition releases no native owner.
+      const runtime = await require('../../models/RuntimeCoordination').findById('runtime').lean();
+      if (!runtime || !Array.isArray(runtime.workloads) || !Array.isArray(runtime.inferences)) {
+        throw fail('Native runtime release evidence unavailable', 503, 'HEAVY_QUEUE_RELEASE_UNAVAILABLE');
+      }
+      if ([...runtime.workloads, ...runtime.inferences].some(item => runtimeOverlaps(job, item))) {
+        throw fail('Preparation still has overlapping native runtime authority', 409);
+      }
+    }
     job.state = observation.state; job.finishedAt = new Date().toISOString(); job.releaseReceipt = observation;
     return event(job, actor, 'reconciled', observation);
   });
@@ -395,6 +406,24 @@ async function recover(id, body, actor) {
 async function prepared(id, body, actor) {
   return mutate(async state => {
     const job = jobIn(state, id);
+    if (body.refusal) {
+      if (body.plan || !body.dispatchId || body.dispatchId !== job.dispatchId || job.kind !== 'benchmark' || job.executor?.prepare !== true) {
+        throw fail('Exact refused preparation dispatch required', 409);
+      }
+      const code = text(body.refusal.code, 'refusal.code', 100);
+      const reason = text(body.refusal.reason, 'refusal.reason', 1000);
+      if (job.preparationRefusal) {
+        if (job.preparationRefusal.code !== code || job.preparationRefusal.reason !== reason) throw fail('Preparation refusal receipt differs', 409);
+        return { readOnly: true, value: job };
+      }
+      if (!ACTIVE.includes(job.state) || job.operation) throw fail('Preparation already has another outcome', 409);
+      // Persist the native operator verdict before reading runtime release.
+      // The observer can finish it after a lost response or a Core restart.
+      job.preparationRefusal = { dispatchId: body.dispatchId, code, reason, actor: text(actor, 'actor', 100), observedAt: new Date().toISOString() };
+      job.operation = { id: body.dispatchId, kind: 'benchmark-preparation', authority: 'operator-preparation-refusal' };
+      job.reason = reason;
+      return event(job, actor, 'preparation-refused', job.preparationRefusal);
+    }
     if (!ACTIVE.includes(job.state) || body.dispatchId !== job.dispatchId || job.kind !== 'benchmark' || job.executor.prepare !== true) throw fail('Exact preparation dispatch required', 409);
     if (planRef(planId(body.plan), batchRequest(job.executor.request, { judgeRequired: true })) !== body.plan) throw fail('Prepared plan differs from the queued request', 409);
     const runtime = await require('../../models/RuntimeCoordination').findById('runtime').lean();

@@ -419,6 +419,7 @@ async function executeRoutedInference(deps, request, options = {}) {
       // terminal evidence required to release the inference admission.
       ...(request.stream === true && { onDispatch: () => abortBridge.detachCaller() }),
       admissionKind: request.stream === true ? 'trusted-runtime-stream' : 'trusted-runtime', cacheLabels: { consumerContract, taskType },
+      callerLabel: request.callerDetail || null,
       principal: benchmarkClaim ? 'benchmark-service' : 'core-trusted-runtime', contentRetention: options.contentRetention,
       ...(capacity || {}),
       ...(benchmarkClaim && {

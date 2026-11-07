@@ -58,6 +58,12 @@ the legacy pair for rollback, before adding new hosts. `label` is the bounded
 operator-facing machine name shown in the Coding Team monitor; `id` is the
 stable receipt and routing identity.
 
+An autonomous task authorization may name an installed `executorId` supporting
+the autonomous profile. Core records that task-scoped preference before its first
+selection; existing requests and continuations retain their original executor.
+Tasks without a preference keep the pool's normal priority and availability rules.
+This does not change the registry or the incumbent's profiles.
+
 Status is aggregated. The UI lists every reachable/unreachable executor and
 its harness, while duplicate task candidates from several hosts appear once
 with their available-worker count. Candidate rows retain all compatible

@@ -245,8 +245,8 @@ describe('Nerve Center page layout', () => {
       NerveCenterRuntimeTopology: topologyCard,
       NerveCenterLive: { loadLive: jest.fn() }
     };
-    const document = { getElementById: id => (id === 'sectionModelBody' ? body : null) };
-    vm.runInNewContext(modelSource, { window, document, console });
+    const document = { getElementById: id => (id === 'sectionModelBody' ? body : null), querySelector: () => null, querySelectorAll: () => [] };
+    vm.runInNewContext(modelSource, { window, document, console, URL });
 
     await window.NerveCenterModel.loadModel();
 
@@ -257,4 +257,101 @@ describe('Nerve Center page layout', () => {
     await reload();
     expect(window.NerveCenterLive.loadLive).toHaveBeenCalledWith({ quiet: true });
   });
+
+  test('places the principal panel in the card of the machine that hosts the principal model', () => {
+    // A minimal element: enough for appendChild/removeChild/contains.
+    const el = (id, extra = {}) => ({
+      id, children: [], parentNode: null, hidden: false, dataset: {}, ...extra,
+      appendChild(child) { if (child.parentNode) child.parentNode.removeChild(child); child.parentNode = this; this.children.push(child); return child; },
+      removeChild(child) { this.children = this.children.filter(c => c !== child); child.parentNode = null; return child; },
+      contains(node) { return node === this || this.children.some(c => c.contains && c.contains(node)); }
+    });
+    const section = el('sectionModel');
+    const body = el('sectionModelBody');
+    const panel = el('ncModelPanel');
+    const input = el('principalSelect');
+    panel.appendChild(input);
+    body.appendChild(panel);
+    const bigSlot = el('slot-big', { dataset: { modelSlot: '10.0.0.10' } });
+    const smallSlot = el('slot-small', { dataset: { modelSlot: '10.0.0.20' } });
+    let slots = [smallSlot, bigSlot];
+    const byId = { sectionModel: section, sectionModelBody: body, ncModelPanel: panel };
+    const document = { activeElement: null, getElementById: id => byId[id] || null, querySelector: () => null, querySelectorAll: () => slots };
+    const window = { NerveCenterShared: sharedStub(), NerveCenterPrincipalModel: {}, NerveCenterRuntimeTopology: {} };
+    vm.runInNewContext(modelSource, { window, document, console, URL });
+    const model = window.NerveCenterModel;
+
+    expect(model.place()).toBe(false);
+    expect(panel.parentNode).toBe(body);
+    expect(section.hidden).toBe(false);
+
+    model.state.principal = { hostUrl: 'http://10.0.0.10:11434', selected: 'standard' };
+    expect(model.principalAddress()).toBe('10.0.0.10');
+    expect(model.place()).toBe(true);
+    expect(panel.parentNode).toBe(bigSlot);
+    expect(section.hidden).toBe(true);
+
+    document.activeElement = input;
+    expect(model.holdsFocus()).toBe(true);
+    document.activeElement = null;
+
+    model.detach();
+    slots = [];
+    expect(model.place()).toBe(false);
+    expect(panel.parentNode).toBe(body);
+    expect(section.hidden).toBe(false);
+  });
+
+  test('each machine card names its main pin, and the principal host its principal model', () => {
+    const window = { NerveCenterShared: sharedStub(), NerveCenterModel: { state: { principal: {
+      hostUrl: `${BIG}:11434`, selected: 'standard', model: 'main-model:q8', options: [{ value: 'standard', label: 'Standard' }]
+    } } } };
+    vm.runInNewContext(liveSource, { window, document: { getElementById: () => null }, console, URL, Map, Set, Date, CSS: { escape: v => v } });
+    const live = window.NerveCenterLive;
+    const machines = live.groupMachines({ hosts, prefs, gpuRows, topology });
+    const big = live.renderMachineCard(machines[0], { current: [], next: null, waiting: 0, claims: [] }, Date.now());
+    const small = live.renderMachineCard(machines[1], { current: [], next: null, waiting: 0, claims: [] }, Date.now());
+    expect(big).toContain('Principal model: Standard · main-model:q8');
+    expect(big).toContain('data-model-slot="10.0.0.10"');
+    expect(small).toContain('Main pin: <span class="nc-live-mode">small-model</span>');
+  });
+
+  test('a detached principal panel is found again: a live refresh never loses it', async () => {
+    const el = (id, extra = {}) => ({
+      id, children: [], parentNode: null, hidden: false, dataset: {}, ...extra,
+      appendChild(child) { if (child.parentNode) child.parentNode.removeChild(child); child.parentNode = this; this.children.push(child); return child; },
+      removeChild(child) { this.children = this.children.filter(c => c !== child); child.parentNode = null; return child; },
+      contains(node) { return node === this || this.children.some(c => c.contains && c.contains(node)); }
+    });
+    const section = el('sectionModel');
+    const body = el('sectionModelBody');
+    Object.defineProperty(body, 'innerHTML', {
+      get() { return ''; },
+      set(html) { this.children.slice().forEach(c => this.removeChild(c)); if (html.includes('id="ncModelPanel"')) this.appendChild(el('ncModelPanel')); }
+    });
+    const slot = el('slot', { dataset: { modelSlot: '10.0.0.10' } });
+    // Like the browser: only attached elements are found by id.
+    const find = (node, id) => (node.id === id ? node : node.children.reduce((hit, c) => hit || find(c, id), null));
+    const document = {
+      activeElement: null, querySelector: () => null, querySelectorAll: () => [slot],
+      getElementById: id => (id === 'sectionModel' ? section : find(body, id) || find(slot, id))
+    };
+    const window = {
+      NerveCenterShared: sharedStub(async url => (url.includes('principal-model')
+        ? { status: 'success', data: { hostUrl: 'http://10.0.0.10:11434', selected: 'standard' } } : null)),
+      NerveCenterPrincipalModel: { build: () => '', attach: () => {} },
+      NerveCenterRuntimeTopology: { build: () => '' }
+    };
+    vm.runInNewContext(modelSource, { window, document, console, URL });
+    await window.NerveCenterModel.loadModel();
+    const panel = slot.children[0];
+    expect(panel && panel.id).toBe('ncModelPanel');
+    expect(section.hidden).toBe(true);
+
+    window.NerveCenterModel.detach();
+    expect(document.getElementById('ncModelPanel')).toBeNull();
+    expect(window.NerveCenterModel.place()).toBe(true);
+    expect(slot.children[0]).toBe(panel);
+  });
 });
+

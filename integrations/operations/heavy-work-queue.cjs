@@ -113,6 +113,22 @@ async function runJob(job, client, { actor, benchmark, benchmarkExecutor = bench
     if (typeof operationId !== 'string' || !operationId) throw new Error('Executor returned no operation identity');
     return await client(`/${job.id}/record`, { dispatchId: begun.dispatchId, state: 'running', operationId });
   } catch (error) {
+    if (!operationId && job.kind === 'benchmark' && begun.executor.prepare === true
+      && error.outcome === 'refused' && error.preparationNotStarted === true) {
+      let current;
+      try {
+        current = await client(`/${job.id}/prepared`, { dispatchId: begun.dispatchId,
+          refusal: { code: error.details?.code, reason: String(error.message).slice(0, 1000) } });
+      } catch {
+        // The receipt may have committed before the reply was lost. Read the
+        // same dispatch; never repeat the preparation or infer release.
+        try { current = await client(`/${job.id}`); } catch { /* Remains fenced below. */ }
+      }
+      if (current?.state === 'failed' && current.preparationRefusal?.dispatchId === begun.dispatchId
+        && current.releaseReceipt?.authority === 'operator-preparation-refusal') {
+        throw Object.assign(error, { queueId: job.id });
+      }
+    }
     if (operationId) {
       try {
         const current = await client(`/${job.id}`);
@@ -189,7 +205,7 @@ if (require.main === module) main().then(data => {
   process.stdout.write(JSON.stringify({ ok: true, data }, null, 2) + '\n');
 }).catch(error => {
   process.stdout.write(JSON.stringify({ ok: false, message: error.message, queueId: error.queueId, outcome: error.outcome }) + '\n');
-  process.exitCode = error.outcome === 'uncertain' ? 3 : 1;
+  process.exitCode = error.outcome === 'uncertain' ? 3 : error.outcome === 'refused' ? 4 : 1;
 });
 
 module.exports = { main, parse, json, runJob, checkPlan };

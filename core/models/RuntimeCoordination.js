@@ -92,6 +92,9 @@ const InferenceAdmissionSchema = new mongoose.Schema({
   residencySpec: { type: mongoose.Schema.Types.Mixed, required: true },
   kind: { type: String, required: true },
   mode: { type: String, enum: ['shared', 'exclusive'], default: 'shared' },
+  // Display-only label of the requesting surface (caller detail or consumer
+  // contract), for the Nerve Center live view. Never used for admission.
+  caller: { type: String, default: null },
   workloadAdmissionId: { type: String, default: null },
   workloadGeneration: { type: String, default: null },
   acquiredAt: { type: Date, required: true },

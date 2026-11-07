@@ -15,7 +15,7 @@ def run(r, workspace, home, prompt, seconds, progress, *, read_only, on_stop,
         path.write_bytes(prompt.encode('utf-8'))
         path.chmod(0o400)
         adapter = (r.harness.invocation(harness, SANDBOX_PROMPT, model, context_size, r.relay_port,
-                                       getattr(r, 'dsh_root', None))
+                                       getattr(r, 'dsh_root', None), read_only=read_only)
                    if getattr(r, 'harness', None) else {
                        'command': ['python3', '/opt/coding/model_relay.py', 'inside', '/home/agent/model.sock',
                                    str(r.relay_port), '--', 'node', '--require',
@@ -30,7 +30,11 @@ def run(r, workspace, home, prompt, seconds, progress, *, read_only, on_stop,
             spec = importlib.util.spec_from_file_location('coding_opencode_history', Path(__file__).with_name('coding_opencode_history.py'))
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-            capture = module.Capture(progress, home, workspace)
+            capture = module.Capture(progress, home, workspace, read_only=read_only)
+            spec = importlib.util.spec_from_file_location('coding_opencode_events', Path(__file__).with_name('coding_opencode_events.py'))
+            events = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(events)
+            progress.native_history = events.Observer(capture)
         try:
             sandboxed = r.sandbox(workspace, home, command, network=False, timeout_seconds=seconds,
                 read_only=read_only, role_request_id=progress.request_id if read_only else '', prompt_file=path,
@@ -44,3 +48,6 @@ def run(r, workspace, home, prompt, seconds, progress, *, read_only, on_stop,
             if capture:
                 capture.finish(None)
             raise
+        finally:
+            if capture:
+                progress.native_history = None

@@ -578,7 +578,7 @@ app.get('/nerve-center', (req, res) => {
       '<script src="/js/nerve-center-mode.js"></script>',
       '<script src="/js/nerve-center.js"></script>',
       '<script src="/js/nerve-center-principal-model.js"></script><script src="/js/nerve-center-runtime-topology.js"></script>',
-      '<script src="/js/nerve-center-model.js"></script><script src="/js/nerve-center-live.js"></script>',
+      '<script src="/js/nerve-center-model.js"></script><script src="/js/nerve-center-live-charts.js"></script><script src="/js/nerve-center-live.js"></script>',
       '<script src="/js/nerve-center-routing.js"></script>',
       '<script src="/js/nerve-center-gpu-health.js"></script><script src="/js/nerve-center-gpu-occupancy.js"></script><script src="/js/nerve-center-cluster.js"></script><script src="/js/nerve-center-hosts.js"></script><script src="/js/nerve-center-ops-watch.js"></script>',
       '<script src="/js/nerve-center-health.js"></script>',

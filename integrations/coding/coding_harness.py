@@ -71,7 +71,7 @@ def opencode_runtime() -> tuple[Path, str]:
     return root, entry
 
 
-def opencode_config(model: str, context_size: int | None, relay_port=8377) -> str:
+def opencode_config(model: str, context_size: int | None, relay_port=8377, *, read_only=False) -> str:
     limits = {'output': 32768}
     if context_size:
         limits['context'] = context_size
@@ -92,11 +92,16 @@ def opencode_config(model: str, context_size: int | None, relay_port=8377) -> st
         },
         'plugin': [],
     }
+    if read_only:
+        # Report tools work from their private deliverable directory. Their
+        # source is a separate read-only Bubblewrap mount, outside that cwd.
+        value['permission']['external_directory'] = {'*': 'deny', '/workspace': 'allow', '/workspace/**': 'allow'}
+        value['permission']['edit'] = {'*': 'allow', '/workspace': 'deny', '/workspace/**': 'deny'}
     return json.dumps(value, separators=(',', ':'))
 
 
 def invocation(harness: str, prompt_path: str, model: str, context_size: int | None = None,
-               relay_port=8377, dsh_root: Path | None = None) -> dict:
+               relay_port=8377, dsh_root: Path | None = None, *, read_only=False) -> dict:
     relay = ['python3', '/opt/coding/model_relay.py', 'inside', '/home/agent/model.sock', str(relay_port), '--']
     if harness == 'dsh':
         binds = [(str(dsh_root), '/opt/dsh')] if dsh_root is not None else []
@@ -111,7 +116,7 @@ def invocation(harness: str, prompt_path: str, model: str, context_size: int | N
                    '--model', f'agentx-core/{model}', '--agent', 'build',
                    '--format', 'json', '--auto', '--file', prompt_path]
         environment = {
-            'OPENCODE_CONFIG_CONTENT': opencode_config(model, context_size, relay_port),
+            'OPENCODE_CONFIG_CONTENT': opencode_config(model, context_size, relay_port, read_only=read_only),
             'OPENCODE_DISABLE_AUTOUPDATE': 'true', 'OPENCODE_DISABLE_DEFAULT_PLUGINS': 'true',
             'OPENCODE_DISABLE_LSP_DOWNLOAD': 'true', 'OPENCODE_DISABLE_MODELS_FETCH': 'true',
             'OPENCODE_CONFIG_DIR': '/home/agent/.config/opencode',

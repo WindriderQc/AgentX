@@ -71,11 +71,16 @@ def with_request_policy(body: bytes, policy: dict | None) -> bytes:
                              and tool['function'].get('name') == 'read'), None)
             if read_tool is None:
                 raise ValueError('The editing phase needs read-before-edit support')
+            properties = read_tool['function'].get('parameters', {}).get('properties', {})
+            fields = set(properties) & {'file_path', 'filePath'}
+            if len(fields) > 1 or properties and not fields:
+                raise ValueError('The harness read-path argument is unsupported or ambiguous')
+            field = next(iter(fields), 'file_path')
             allowed.insert(0, {'type': 'function', 'function': {
                 'name': 'read', 'description': 'Read an authorized file once before editing it.',
                 'parameters': {'type': 'object', 'properties': {
-                    'file_path': {'type': 'string', 'enum': paths}},
-                    'required': ['file_path'], 'additionalProperties': False}}})
+                    field: {'type': 'string', 'enum': paths}},
+                    'required': [field], 'additionalProperties': False}}})
         value['tools'] = allowed
         value['tool_choice'] = 'auto'
     return json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode()

@@ -205,13 +205,32 @@ acceptance. `cutoverReady` remains false until those separate gates are received
 | Installed acceptance | Queue representative tasks through the real host controller, sandbox and Core gateway; receive native admission and release. Compare fixes, feedback continuation and interruption recovery. |
 | Rollback | Drain active work, preserve post-switch histories and restore only the reviewed executor/entry settings under the native maintenance owner. Never restore an old whole state tree over newer work. |
 
-The current DSH-specific adapters are
-[`coding_progress.session_logs`](../integrations/coding/coding_progress.py),
-[`coding_report_save`](../integrations/coding/coding_report_save.py) and the
+The OpenCode progress and report adapter reads the exact host-bound invocation
+through the same read-only native SQLite reader. It projects live tool starts,
+completed results, test exits and output limits into the runner's existing
+sanitized stages. Unchanged native records do not refresh activity or useful-work
+timers. Model-call accounting stays on the relay; no history read bills a call.
+Missing exit evidence and interrupted tests remain unknown, never successful.
+
+Report research is selected by original request, workspace, newly created
+invocation and step output. A drained native session supplies complete paired
+tool inputs/results with native message, part and call identities; assistant
+text and reasoning are excluded. Earlier logical sessions, ambiguous invocations,
+changed identities, pending tools and oversized capsules refuse. The save pass
+retains the existing Core settlement, writer reserve and durable one-pass fence.
+Read-only report tools may read the separate `/workspace` mount and write their
+private output; the source mount and Git metadata remain read-only in Bubblewrap.
+Bounded source editing preserves the harness's advertised read-path argument.
+
+The [parity fixture](../integrations/coding/opencode_parity_smoke.py) exercises
+native read-only research, evidence-funded saving, scoped source-pair editing
+and test progress with a synthetic provider and explicitly synthetic Core
+authority. It makes no live model call. Installed report/autonomy and interruption
+acceptance still require the queue and original native authority.
+
+DSH keeps its existing progress reader and
 [native Studio bridge](../integrations/dsh/coding-team/src/bridge.mjs).
-The OpenCode host reader and independent handoff are implemented above;
-installed acceptance remains separate. Both observers project native history,
-without creating another task or transcript authority.
+Both observers project native history without another task or transcript owner.
 
 Use separate human and worker state roots. Importing a worker's writable
 database or sharing its home would defeat isolation. Native session forks alone
