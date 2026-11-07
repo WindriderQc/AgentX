@@ -111,7 +111,7 @@ test('the page loads screen commands before the conversation, and only Nestor mo
   assert.match(page, /const screenWords = family \? null : window\.NestorScreenCommandsEditor\?\.mount\(/);
   assert.match(page, /const screenCommand = family \? null : window\.NestorScreenCommands\?\.handler\(board, \{ phrases: \(\) => screenWords\?\.phrases\(\) \|\| \[\] \}\)/);
   assert.match(page, /localControl: \(text, options\) => idlePhotos\?\.localControl\(text, options\) \|\| screenCommand\?\.\(text, options\) \|\| null/);
-  assert.match(page, /if \(!draftFiles\.length && screenCommand\?\.\(typed\.value\)\)/, 'a typed command passes the same filter; files mean a request');
+  assert.match(page, /if \(!drafts\.hasFiles\(\) && screenCommand\?\.\(typed\.value\)\)/, 'a typed command passes the same filter; files mean a request');
 });
 
 function harness(overrides = {}) {

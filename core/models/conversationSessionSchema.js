@@ -23,6 +23,13 @@ module.exports = new Schema({
     hermesRuntime: { type: Object, default: undefined },
     // Core-owned asynchronous collaborator request, dispatch fence and native identity.
     consultation: { type: Object, default: undefined },
+    // Consent requests contain metadata only. Captures use canonical attachments.
+    screenCaptures: { type: [new Schema({
+      requestId: { type: String, required: true }, purpose: { type: String, required: true, maxlength: 300 },
+      status: { type: String, enum: ['awaiting_consent', 'attached', 'declined'], required: true },
+      createdAt: { type: Date, required: true }, expiresAt: { type: Date, required: true },
+      attachment: { type: require('./attachmentReferenceSchema'), default: undefined }
+    }, { _id: false })], default: undefined },
     agentSessionKey: { type: String, default: null },
     // Native session keys of the team members addressed directly in this conversation (#41).
     agentSessionKeys: { type: Object, default: undefined },

@@ -189,6 +189,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   Playground, PsyX, personal Nestor and Famille. Their shared editor explains
   resource effects, offers presets and requires an explicit save; Famille
   controls live in the parental space.
+- **Screen capture.** Playground captures one screen, window or tab after a
+  browser consent click. Personal Nestor can request the same flow through the
+  owner `screen_capture` tool: its card leaves a preview in the composer, and
+  the person sends it with a message. Core owns the request receipt and scoped
+  attachment. Family and ephemeral conversations exclude this flow. Source
+  tests and synthetic Chromium checks are separate from installed native-agent
+  and real-device acceptance. See [attachments](api/NESTOR_ATTACHMENTS.md).
 - **Optional Hermes conversation.** Personal Nestor can use Hermes behind the existing local voice and reactive avatar. Core keeps dispatch identity, transcript and terminal receipts; native cancellation and uncertain results remain fenced. Family and LLMx exclude this backend. See [Hermes conversation](HERMES_CONVERSATION.md).
 - **Nestor guardian and brain.** Optional personal voice work commits the human
   request before inference. Native mode sends all work to complete Main with its
@@ -488,7 +495,7 @@ Issues hold the current work and remaining acceptance:
 | Area | Tracking |
 |---|---|
 | Work intake, issue/task relationships and attributable authority | [#1011](https://github.com/WindriderQc/AgentX/issues/1011) |
-| Playground screen capture through canonical attachments | [#2](https://github.com/WindriderQc/AgentX/issues/2) |
+| Screen/window capture: real-device and native Nestor tool acceptance | [#2](https://github.com/WindriderQc/AgentX/issues/2) |
 | Real-device acceptance for phone, microphone and voice | [#3](https://github.com/WindriderQc/AgentX/issues/3) |
 | Principal model selection and DSH Studio qualification | [#734](https://github.com/WindriderQc/AgentX/issues/734) |
 | Qualify benchmark judges against human references | [#6](https://github.com/WindriderQc/AgentX/issues/6) |

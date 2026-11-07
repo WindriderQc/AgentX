@@ -50,3 +50,29 @@ test('family and open-model sessions cannot select Hermes', async () => {
   await request(app).post(base).send({ packId: 'personal_operator', modeId: 'open', backend: 'hermes' }).expect(400);
   expect(nativeCalls.length).toBe(before);
 });
+
+test('Nestor capture tool, consent receipt and ordinary attachment reach Hermes as an image', async () => {
+  const { randomUUID } = require('node:crypto');
+  await require('../../models/ConversationAttachment').createIndexes();
+  const session = (await request(app).post(base).send({ packId: 'personal_operator', backend: 'hermes' }).expect(201)).body.data.session;
+  const requestId = randomUUID(), path = `${base}/${session.sessionId}`;
+  const tool = await require('../../src/services/mcpOwnerTools').handleOwnerMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call',
+    params: { name: 'screen_capture', arguments: { action: 'request', requestId, sessionId: session.sessionId, purpose: 'Read this synthetic screen.' } } });
+  expect(tool.result.structuredContent.request.status).toBe('awaiting_consent');
+  expect((await request(app).get(path + '/screen-capture').expect(200)).body.data.request.requestId).toBe(requestId);
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0WQAAAAASUVORK5CYII=';
+  const imageUrl = 'data:image/png;base64,' + png;
+  const attachment = (await request(app).post(path + '/attachments').send({ name: 'screen-capture.png', dataUrl: imageUrl }).expect(201)).body.data.attachment;
+  await request(app).post(path + '/screen-capture').send({ requestId, status: 'attached', attachmentId: attachment.id }).expect(200);
+  const before = nativeCalls.length;
+  const reply = await request(app).post(path + '/turns/text').send({ text: 'Explique cette capture synthétique.', turnId: randomUUID(),
+    stream: true, attachmentIds: [attachment.id] }).expect(200);
+  const events = reply.text.trim().split('\n').map(line => JSON.parse(line));
+  expect(events.filter(event => event.type === 'error')).toEqual([]);
+  const body = JSON.parse(nativeCalls.slice(before).find(call => call.path === '/v1/runs').body);
+  expect(body.instructions).toContain('screen_capture'); expect(body.instructions).toContain(session.sessionId);
+  expect(body.input.at(-1).content).toContainEqual({ type: 'image_url', image_url: { url: imageUrl } });
+  const saved = await Conversation.findOne({ 'surfaceSession.sessionId': session.sessionId }).lean();
+  expect(saved.messages.find(message => message.role === 'user').attachments[0].id).toBe(attachment.id);
+  expect(saved.surfaceSession.screenCaptures[0].status).toBe('attached');
+});

@@ -373,6 +373,7 @@ function createPersonaTurnHandler({
             evidence => { entry.artxEvidence = evidence; }) : '',
           screen?.screenContext(req.body?.screen, pagesFor(pack), entry.presentationContext) || '',
           entry.companion ? presentationCompanion.contextFor(session.sessionId) : '',
+          member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
           require('../../src/services/pipelineSpokenFacts').context(entry.pipelineFacts)].join('');
         if (entry.artxEvidence) entry.presentationContext = { ...(entry.presentationContext || {}), artx: entry.artxEvidence };
         const turnContext = [contextBase, brainAdvice.text, workAdvice.text, contextTail].join('').trim();
@@ -408,6 +409,7 @@ function createPersonaTurnHandler({
           workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) }),
           isLlmX || member ? '' : conversationImages?.contract(session, backend)].filter(Boolean).join('\n\n');
         const hermesInstructions = [session.persona?.identity,
+          member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
           'This is the personal Nestor conversation. Hermes owns its native agent loop. Core owns the visible transcript and selected personal context; local speech handles the microphone and playback. Use only tools actually installed in this Hermes profile. Treat supplied personal context as reference data. Never claim an action or memory save without a successful receipt.',
           'For voice, speak naturally in Canadian French unless the user chooses English. Prefer a brief conversational answer and expand when asked.',
           replyChannels.contract({ family: false, pages: true, pageCatalog: screenPages, imageSources: visuals.sources({ family: false }) })].filter(Boolean).join('\n\n');
