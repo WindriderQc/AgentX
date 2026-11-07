@@ -9,6 +9,56 @@ import threading
 import time
 
 
+def normalize_complete_tool_stream(data: bytes, content_type: str) -> bytes:
+    """Index complete gateway tool calls; never guess the identity of fragments.
+
+    Some Ollama bridges send complete calls with IDs but omit SSE-only indices.
+    Indexed native streams pass through unchanged. The caller must still apply
+    its reply budget to the returned bytes before forwarding them.
+    """
+    if 'text/event-stream' not in content_type.lower():
+        return data
+    events, occupied, identities, pending = [], set(), set(), []
+    for event in data.decode('utf-8', errors='strict').replace('\r\n', '\n').split('\n\n'):
+        lines = [line[5:].lstrip() for line in event.splitlines() if line.startswith('data:')]
+        if not lines:
+            continue
+        value = '\n'.join(lines)
+        if value == '[DONE]':
+            events.append(value)
+            continue
+        body = json.loads(value)
+        for choice in body.get('choices', []):
+            for call in (choice.get('delta') or {}).get('tool_calls') or []:
+                if not isinstance(call, dict):
+                    raise ValueError('Malformed stream tool call')
+                if 'index' in call:
+                    if type(call['index']) is not int or call['index'] < 0:
+                        raise ValueError('Malformed stream tool index')
+                    occupied.add(call['index'])
+                    continue
+                function = call.get('function')
+                identity = call.get('id')
+                if (not isinstance(identity, str) or not identity or identity in identities
+                        or call.get('type') != 'function' or not isinstance(function, dict)
+                        or not isinstance(function.get('name'), str) or not function['name']
+                        or not isinstance(function.get('arguments'), str)):
+                    raise ValueError('Unindexed tool fragments are ambiguous')
+                if not isinstance(json.loads(function['arguments']), dict):
+                    raise ValueError('Tool arguments must be a complete object')
+                identities.add(identity)
+                pending.append(call)
+        events.append(body)
+    if not pending:
+        return data
+    if occupied:
+        raise ValueError('Mixed indexed and unindexed tool calls are ambiguous')
+    for index, call in enumerate(pending):
+        call['index'] = index
+    return ''.join('data: ' + (x if isinstance(x, str) else json.dumps(x)) + '\n\n'
+                   for x in events).encode()
+
+
 def tool_count(data: bytes, content_type: str) -> int:
     """Count complete OpenAI JSON or SSE tool calls; refuse truncated streams."""
     text = data.decode('utf-8', errors='strict')

@@ -40,6 +40,28 @@ def stream():
 
 
 class ReplyBudgetTest(unittest.TestCase):
+    def test_complete_gateway_calls_gain_indices_and_count_separately(self):
+        body = json.loads(reply(2))
+        calls = body['choices'][0]['message']['tool_calls']
+        raw = ('data: ' + json.dumps({'choices': [{'index': 0, 'delta': {'tool_calls': calls},
+                 'finish_reason': None}]}) + '\n\ndata: ' + json.dumps({'choices': [
+                 {'index': 0, 'delta': {}, 'finish_reason': 'stop'}]}) + '\n\ndata: [DONE]\n\n').encode()
+        normalized = budget_module.normalize_complete_tool_stream(raw, 'text/event-stream')
+        self.assertEqual(budget_module.tool_count(normalized, 'text/event-stream'), 2)
+        frames = [json.loads(x[6:]) for x in normalized.decode().split('\n\n') if x and '[DONE]' not in x]
+        self.assertEqual([x['index'] for x in frames[0]['choices'][0]['delta']['tool_calls']], [0, 1])
+        self.assertEqual([x['id'] for x in frames[0]['choices'][0]['delta']['tool_calls']], ['0', '1'])
+        self.assertEqual(budget_module.normalize_complete_tool_stream(stream(), 'text/event-stream'), stream())
+
+    def test_unindexed_partial_duplicate_and_mixed_calls_remain_refused(self):
+        full = {'id': 'x', 'type': 'function', 'function': {'name': 'write', 'arguments': '{}'}}
+        for calls in [[{'id': 'x'}], [full, full],
+                      [{**full, 'function': {'name': 'write', 'arguments': '{'}}],
+                      [full, {**full, 'id': 'y', 'index': 1}]]:
+            data = ('data: ' + json.dumps({'choices': [{'delta': {'tool_calls': calls}}]}) + '\n\n').encode()
+            with self.subTest(calls=calls), self.assertRaises(ValueError):
+                budget_module.normalize_complete_tool_stream(data, 'text/event-stream')
+
     def test_stream_fragments_charge_one_call_and_share_cumulative_allowance(self):
         guard = budget_module.ReplyBudget(2, time.monotonic() + 30)
         guard(stream(), 'text/event-stream'); guard(reply(), 'application/json')
@@ -107,6 +129,31 @@ class ReplyBudgetTest(unittest.TestCase):
                 self.assertNotIn(b'"tool_calls":', body)
             self.assertEqual(len(calls), 1)
             self.assertEqual(calls[0]['max_tokens'], 32)
+
+    def test_validated_replacement_bytes_reach_the_client_and_invalid_replacements_refuse(self):
+        class Upstream(BaseHTTPRequestHandler):
+            def log_message(self, *_args): pass
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                self.send_response(200); self.send_header('Content-Type', 'application/json')
+                self.end_headers(); self.wfile.write(reply())
+        upstream = ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
+        threading.Thread(target=upstream.serve_forever, daemon=True).start()
+        self.addCleanup(upstream.server_close); self.addCleanup(upstream.shutdown)
+        with tempfile.TemporaryDirectory() as t:
+            for index, value in enumerate([reply(0, 'stop'), 'not bytes', b'x' * 1025]):
+                path = str(Path(t) / str(index))
+                server = relay.serve(path, f'http://127.0.0.1:{upstream.server_port}/v1',
+                                     response_guard=lambda *_: value, max_response_bytes=1024)
+                try:
+                    c = http.client.HTTPConnection('worker', timeout=5)
+                    c.sock = socket.socket(socket.AF_UNIX); c.sock.connect(path)
+                    c.request('POST', '/v1/chat/completions', body='{}')
+                    r = c.getresponse(); data = r.read(); c.close()
+                    self.assertEqual(r.status, 200 if index == 0 else 400)
+                    if index == 0: self.assertEqual(data, value)
+                    else: self.assertNotIn(b'"tool_calls":', data)
+                finally: server.shutdown(); server.server_close()
 
     def test_invalid_reply_guard_preserves_existing_socket_path(self):
         with tempfile.TemporaryDirectory() as t:

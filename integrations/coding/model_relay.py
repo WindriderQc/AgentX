@@ -162,7 +162,11 @@ class ModelOnly(BaseHTTPRequestHandler):
                     try:
                         if len(data) > self.max_response_bytes:
                             raise ValueError('Model response exceeds its byte allowance')
-                        self.response_guard(data, upstream.headers.get('Content-Type', 'application/json'))
+                        transformed = self.response_guard(data, upstream.headers.get('Content-Type', 'application/json'))
+                        if transformed is not None:
+                            if not isinstance(transformed, bytes) or len(transformed) > self.max_response_bytes:
+                                raise ValueError('Invalid guarded model response transformation')
+                            data = transformed
                     except ValueError as error:
                         self.refuse(400, str(error))
                         return

@@ -61,6 +61,17 @@ any part of the response. Guarded responses are buffered within
 This changes streaming latency, so qualification reports must not interpret the
 client's first byte as the model's first-token latency.
 
+A response guard may return bounded replacement bytes after validation. The
+optional `normalize_complete_tool_stream` adapter assigns SSE indices to
+complete, uniquely identified gateway tool calls. Apply the reply budget after
+normalization. Indexed fragments pass through unchanged; ambiguous unindexed
+fragments and mixed representations refuse before tools execute.
+
+`coding_process_identity.installation_processes` checks executable and path
+arguments under an isolated installation. Embedded shell/Python source is not
+process ownership. Poll after native shutdown and verify listeners separately;
+an unreadable owned process cannot prove termination.
+
 Keep the same budget object across resumed sessions. Combine it with the
 runner's process deadline, isolated workspace and native workload/host ownership.
 The opt-in guard does not authorize a model run, open a native Benchmark gate,
