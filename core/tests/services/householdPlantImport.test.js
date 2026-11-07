@@ -91,8 +91,11 @@ test('revalidates the displayed hash for thumbnails and import, and rejects corr
   expect(await Plant.countDocuments()).toBe(0);
   await fs.writeFile(path.join(root, 'photos/plants/broken.png'), Buffer.from('89504e470d0a1a0a0000', 'hex'));
   const broken = await folder.read('broken.png');
-  await expect(importer.importGroup(group([broken]))).rejects.toMatchObject({ code: 'PLANT_IMPORT_DECODE' });
+  await fs.writeFile(path.join(root, 'photos/plants', original.name), original.bytes);
+  await expect(importer.importGroup(group([original, broken]))).rejects.toMatchObject({ code: 'PLANT_IMPORT_DECODE' });
   expect(await Plant.countDocuments()).toBe(0);
+  expect(await Imports.countDocuments()).toBe(0);
+  await expect(importer.importGroup(group([original]))).resolves.toMatchObject({ plant: { status: 'draft' } });
 });
 
 test('groups originals into one draft through existing photo receipts and keeps originals unchanged', async () => {

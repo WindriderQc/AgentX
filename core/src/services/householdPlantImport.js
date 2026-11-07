@@ -32,6 +32,10 @@ function createPlantImport({ folder = createPlantFolder(), archive = require('./
     }
     const hashes = entries.map(entry => entry.sha256).sort();
     const key = sha256(Buffer.from(JSON.stringify(hashes)));
+    // Validate the whole group before claiming any original: a corrupt close-up
+    // must not prevent importing its otherwise valid overview in another group.
+    const displays = [];
+    for (const entry of entries) displays.push(await folder.rendition(entry));
     // The unique multikey index claims all original hashes in one atomic write.
     // Preallocated card identity recovers a crash between this claim and create.
     await Imports.ensureImportIndexes();
@@ -45,9 +49,6 @@ function createPlantImport({ folder = createPlantFolder(), archive = require('./
       if (!row) throw fail('Une photo appartient déjà à une autre plante. Actualisez la liste.', 409, 'PLANT_IMPORT_GROUP_CONFLICT');
     }
     if (!row.imported) {
-      // Decode the whole selection before creating a card or any display receipt.
-      const displays = [];
-      for (const entry of entries) displays.push(await folder.rendition(entry));
       let plant = await Plant.findOneAndUpdate({ _id: row.plantId }, { $setOnInsert: {
         nickname: row.nickname, room: row.room, status: 'draft', __v: 0
       } }, { upsert: true, new: true, runValidators: true, writeConcern: WC }).lean();
