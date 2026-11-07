@@ -242,8 +242,9 @@ both interval fields.
   when another one is, `waiting` while a check-in waits for a parent, `happy`
   otherwise. Chores Nestor proposes about a plant keep their `subjectRef`.
 - Ma jungle (`/kids/plants`, `plants-kids.js`, open to pinned family devices)
-  shows the published plants. A door in the Kids Room appears once a plant is
-  published and names the plants waiting on the selected child. The gallery
+  shows the published plants. A door in the Kids Room names the plants waiting
+  on the selected child, or offers to propose one before the first is
+  published. The gallery
   puts those plants first, with each plant's mood. A plant card shows its
   needs, a do-not-eat warning when it applies, its fun fact and one large
   button bound to the child's due chore, which uses the ordinary check-in.
@@ -266,6 +267,28 @@ both interval fields.
   [Folder import](PLANT_IMPORT.md) creates grouped drafts from bounded read-only
   photos, claims original hashes atomically and serializes identification through
   the Core heavy-work queue.
+- A child proposes a plant from Ma jungle (`plant-proposal-kids.js`,
+  `/api/family/plant-proposals`, rules in
+  `src/domains/household/plantProposals.js`). The child sends one photo of
+  2 MB or less, reduced in the browser, and may pick a room from a fixed list;
+  no other text is accepted. Core keeps it as a draft card with
+  `proposal.proposedBy` set to the child's profile. A partial unique index
+  keeps one waiting proposal per child, and a refused or racing proposal leaves
+  no card or photo behind. The child reads only their own proposal and photo:
+  waiting, opened, in Ma jungle, or declined with the parent's reply. The child
+  acknowledges an answer before it disappears.
+  - The parent list shows proposals first, "Proposée par <child>". Opening one
+    (`POST /:id/proposal/open`) is recorded once and starts identification;
+    before that, identification refuses with `PLANT_PROPOSAL_UNOPENED`.
+  - The parent completes and publishes the card through the ordinary flow,
+    which answers the proposal as accepted. `POST /:id/decline`, or discarding
+    the draft, retires it and stores a short reply for the child (default
+    "Papa a vu ta plante. Merci !"). Both answers are revision-bound, so only
+    one wins.
+  - Like the other `/api/family` actions, the parent routes stay reachable
+    from a pinned family tablet (owner decision,
+    [#865](https://github.com/WindriderQc/AgentX/issues/865)); the child page
+    offers none of them.
 
 Google Calendar owns personal events, recurring series and standard reminders.
 Core's shared `personal_calendar` tool uses one native credential-host transport;
