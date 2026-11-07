@@ -104,3 +104,24 @@ it('receives a real preparation preflight refusal through the CLI and lets the n
     .resolves.toMatchObject({ state: 'reserved' });
   expect(calls).not.toContain('/api/benchmark/batch');
 });
+
+it('retains the exact launch refusal when release checking fails, then reconciles it without native work', async () => {
+  const Runtime = require('../../models/RuntimeCoordination');
+  await Runtime.deleteMany({});
+  const job = await queue.submit({ ...input, key: 'native-refusal-api' }, 'fixture');
+  const ready = await queue.reserve(job.id, { expectedRevision: job.revision, start: new Date(Date.now() - 1000).toISOString() }, 'fixture');
+  const begun = await queue.begin(job.id, { expectedRevision: ready.revision }, 'fixture');
+  const receipt = { dispatchId: begun.dispatchId, code: 'HOST_OFFLINE', reason: 'Synthetic refusal before native admission' };
+  await request(app).post(`/queue/${job.id}/refused`).set('x-service-caller', 'benchmark').send(receipt).expect(503);
+  const saved = await request(app).get(`/queue/${job.id}`).expect(200);
+  expect(saved.body.data).toMatchObject({ state: 'dispatching', launchRefusal: { ...receipt, actor: 'benchmark' } });
+  await request(app).post(`/queue/${job.id}/refused`).send({ ...receipt, dispatchId: 'foreign' }).expect(409);
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  const terminal = await request(app).post(`/queue/${job.id}/reconcile`).send({}).expect(200);
+  expect(terminal.body.data).toMatchObject({ state: 'failed', releaseReceipt: { authority: 'operator-launch-refusal' } });
+  const replay = await request(app).post(`/queue/${job.id}/refused`).send(receipt).expect(200);
+  expect(replay.body.data.revision).toBe(terminal.body.data.revision);
+  const next = await queue.submit({ ...input, key: 'after-native-refusal-api' }, 'fixture');
+  await expect(queue.reserve(next.id, { expectedRevision: next.revision, start: new Date().toISOString() }, 'fixture'))
+    .resolves.toMatchObject({ state: 'reserved' });
+});

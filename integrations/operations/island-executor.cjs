@@ -280,12 +280,10 @@ async function runIsland(job, client, deps = {}) {
     if (error.notStarted) {
       // The runner proved nothing started: release the fence with that receipt.
       try {
-        const current = await client(`/${job.id}`);
-        await client(`/${job.id}/recover`, { expectedRevision: current.revision, dispatchId,
-          confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED',
-          receiptRef: `island:not-started: ${error.code}: ${error.message}`.slice(0, 500) });
+        const saved = await require('./queue-outcome.cjs').recordRefusal(job, dispatchId, error, client);
+        if (!saved) throw new Error('No verified launch refusal release receipt');
         book.write({ phase: 'not-started', reason: error.message });
-        throw Object.assign(new Error(`Island run did not start: ${error.message}`), { queueId: job.id });
+        throw Object.assign(new Error(`Island run did not start: ${error.message}`), { queueId: job.id, outcome: 'refused' });
       } catch (recoverError) {
         if (recoverError.queueId) throw recoverError;
       }

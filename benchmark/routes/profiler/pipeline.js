@@ -362,14 +362,14 @@ async function _queueRunSingleProfile(modelName, hostId, hostUrl, depth, lease, 
  */
 async function startProfileHostQueue(body = {}) {
   if (body.queueRequestId !== undefined && !/^[a-f0-9-]{36}$/.test(body.queueRequestId)) {
-    throw Object.assign(new Error('Invalid queueRequestId'), { statusCode: 400 });
+    throw Object.assign(new Error('Invalid queueRequestId'), { statusCode: 400, notStarted: true });
   }
   const { hostId, depth, skipRecentDays, driverPreparationId } = body;
   let { modelNames } = body;
-  if (!hostId) throw Object.assign(new Error('hostId is required'), { statusCode: 400 });
+  if (!hostId) throw Object.assign(new Error('hostId is required'), { statusCode: 400, notStarted: true });
 
   const host = await hostProfileService.getById(hostId);
-  if (!host) throw Object.assign(new Error('Host not found'), { statusCode: 404 });
+  if (!host) throw Object.assign(new Error('Host not found'), { statusCode: 404, notStarted: true });
 
   if (driverPreparationId) {
     if (host.gpuDriverPreparation?.requestId !== driverPreparationId || host.gpuDriverPreparation.state !== 'prepared') {
@@ -382,15 +382,19 @@ async function startProfileHostQueue(body = {}) {
   cleanupStaleProfiles();
   cleanupStaleProfileQueues();
 
+  if (body.queueRequestId && [...activeProfileQueues.values()].some(q => q.queueRequestId === body.queueRequestId)) {
+    throw Object.assign(new Error('This Core request already has a Profiler receipt; reconcile the original queue'), { statusCode: 409 });
+  }
+
   // Reject if host already has an active profile (single or queued)
   for (const [existingId, job] of activeProfiles) {
     if (job.hostId === hostId && job.status === 'running') {
-      throw Object.assign(new Error(`Host ${hostId} already has an active profile job (${job.modelName}, id=${existingId}). Wait for it to complete before queueing.`), { statusCode: 409 });
+      throw Object.assign(new Error(`Host ${hostId} already has an active profile job (${job.modelName}, id=${existingId}). Wait for it to complete before queueing.`), { statusCode: 409, notStarted: true });
     }
   }
   for (const [existingId, q] of activeProfileQueues) {
     if (q.hostId === hostId && q.status === 'running') {
-      throw Object.assign(new Error(`Host ${hostId} already has an active profile queue (id=${existingId}).`), { statusCode: 409 });
+      throw Object.assign(new Error(`Host ${hostId} already has an active profile queue (id=${existingId}).`), { statusCode: 409, notStarted: true });
     }
   }
 
@@ -403,6 +407,7 @@ async function startProfileHostQueue(body = {}) {
   const tracker = {
     queueId,
     queueRequestId: body.queueRequestId || null,
+    launchConfirmed: false,
     hostId,
     hostUrl: host.hostUrl,
     hostName: host.displayName || hostId,
@@ -463,6 +468,7 @@ async function startProfileHostQueue(body = {}) {
     }
   } catch (err) {
     activeProfileQueues.delete(queueId);
+    err.notStarted = true; // Inventory/filtering only; no native claim or model run yet.
     throw err;
   }
 
@@ -485,6 +491,7 @@ async function startProfileHostQueue(body = {}) {
     activeProfileQueues.delete(queueId);
     throw err;
   }
+  tracker.launchConfirmed = true;
 
   // Fire-and-forget driver
   (async () => {
@@ -548,13 +555,28 @@ router.post('/profile-host', async (req, res) => {
   } catch (err) {
     const code = err.statusCode || 500;
     if (code === 500) logger.error('Profile queue start failed', { error: err.message });
-    res.status(code).json({ status: 'error', error: err.message, ...(err.payload || {}) });
+    // A second caller can encounter its own live/terminal queue: that is a
+    // receipt to reconcile, never proof that this intent did not start.
+    const existing = [...activeProfileQueues.values()].some(q => q.queueRequestId && q.queueRequestId === req.body?.queueRequestId);
+    const launchReceipt = !existing && require('../../../shared/queueLaunchReceipt.cjs').refusal(req.body?.queueRequestId, 'profiler', err);
+    try {
+      await require('../../../shared/queueLaunchReceipt.cjs').publishRefusal(launchReceipt, req.body?.queueDispatchId,
+        (path, body) => require('../../src/clients/coreApiClient').coreRequest(path, { method: 'POST', body: JSON.stringify(body) }));
+    } catch (error) { logger.warn('Profiler refusal awaits Core receipt reconciliation', { queueRequestId: req.body?.queueRequestId, error: error.message }); }
+    res.status(code).json({ status: 'error', error: err.message, ...(err.payload || {}), ...(launchReceipt && { launchReceipt }) });
   }
 });
 
 /** GET /pipeline/profile-host/active — running per-host profile queues */
-router.get('/profile-host/active', (_req, res) => {
-  const active = listActiveProfileQueues();
+router.get('/profile-host/active', (req, res) => {
+  if (req.query.queueRequestId && !/^[a-f0-9-]{36}$/.test(req.query.queueRequestId)) return res.status(400).json({ status: 'error', error: 'Invalid queueRequestId' });
+  // A launch reply can be lost after a quick queue already finished. Keep the
+  // ordinary active list unchanged; exact identity lookup includes terminal rows.
+  cleanupStaleProfileQueues();
+  const active = req.query.queueRequestId
+    ? [...activeProfileQueues.entries()].filter(([, tracker]) => tracker.queueRequestId === req.query.queueRequestId)
+      .map(([queueId, tracker]) => ({ queueId, queueRequestId: tracker.queueRequestId, hostId: tracker.hostId }))
+    : listActiveProfileQueues();
   res.json({ status: 'success', data: { active } });
 });
 
@@ -564,6 +586,7 @@ router.get('/profile-host/:queueId/progress', (req, res) => {
   if (!tracker) return res.status(404).json({ status: 'error', error: 'Queue not found or expired' });
   res.json({ status: 'success', data: {
     queueStatus: tracker.status,
+    launchConfirmed: tracker.launchConfirmed,
     queueRequestId: tracker.queueRequestId || null,
     hostId: tracker.hostId,
     hostName: tracker.hostName,

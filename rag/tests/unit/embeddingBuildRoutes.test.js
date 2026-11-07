@@ -71,3 +71,34 @@ describe('embedding build routes', () => {
     expect(res.body).toMatchObject({ ok: false, error: 'EMBEDDING_BUILD_ACTIVE' });
   });
 });
+
+test('the launch protocol requires an explicit producer no-start verdict, never a status alone', async () => {
+  for (const notStarted of [true, false]) {
+    jest.spyOn(embeddingBuild, 'getBuildService').mockReturnValue({ start: async () => {
+      throw Object.assign(new Error('Synthetic busy build'), { statusCode: 409, code: 'EMBEDDING_BUILD_ACTIVE', notStarted });
+    } });
+    const server = express(); server.use(express.json()); server.use('/api/rag', require('../../routes/migration.routes'));
+    const res = await request(server).post('/api/rag/embedding-builds').send({ buildId: ID, model: 'model-b', dimension: 8 });
+    expect(res.status).toBe(409);
+    if (notStarted) expect(res.body.launchReceipt).toMatchObject({ requestId: ID, kind: 'embedding-reindex', outcome: 'not-started' });
+    else expect(res.body.launchReceipt).toBeUndefined();
+  }
+});
+
+test('persists a native refusal in Core before sending the HTTP failure', async () => {
+  const dispatchId = '00000000-0000-4000-8000-000000000002';
+  fetchWithTimeout.mockClear();
+  fetchWithTimeout.mockResolvedValueOnce(answer(200, { ok: true }));
+  jest.spyOn(embeddingBuild, 'getBuildService').mockReturnValue({ start: async () => {
+    throw Object.assign(new Error('Already serving requested profile'), { notStarted: true, code: 'EMBEDDING_MODEL_UNCHANGED', statusCode: 409 });
+  } });
+  const server = express(); server.use(express.json()); server.use('/api/rag', require('../../routes/migration.routes'));
+  const res = await request(server).post('/api/rag/embedding-builds').send({ buildId: ID, queueDispatchId: dispatchId, model: 'model-b', dimension: 8 });
+  expect(res.status).toBe(409);
+  expect(fetchWithTimeout).toHaveBeenCalledTimes(1);
+  const [url, options, timeout, context] = fetchWithTimeout.mock.calls[0];
+  expect(url).toContain(`/api/cluster/schedule/work-queue/${ID}/refused`);
+  expect(JSON.parse(options.body)).toEqual({ dispatchId, code: 'EMBEDDING_MODEL_UNCHANGED', reason: 'Already serving requested profile' });
+  expect(context.operationId).toBe('rag.core-queue.refused');
+  expect(timeout).toBe(10000);
+});

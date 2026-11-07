@@ -27,6 +27,7 @@ jest.mock('../../../src/services/hostTestService', () => ({
   checkHost: jest.fn()
 }));
 jest.mock('../../../src/clients/coreApiClient', () => ({
+  coreRequest: jest.fn().mockResolvedValue({ ok: true }),
   acquireWorkloadAdmission: jest.fn().mockResolvedValue({ acquired: true }),
   heartbeatWorkloadAdmission: jest.fn().mockResolvedValue({ heartbeat: true }),
   releaseWorkloadAdmission: jest.fn().mockResolvedValue({ released: true }),
@@ -93,6 +94,7 @@ describe('profile-host queue depth selection', () => {
 
     expect(started.depth).toBe('standard');
     expect(activeProfileQueues.get(started.queueId).depth).toBe('standard');
+    expect(activeProfileQueues.get(started.queueId).launchConfirmed).toBe(true);
 
     await flushPromises();
     expect(orchestrator.profile).toHaveBeenCalledWith(
@@ -359,4 +361,72 @@ describe('profile completion carries the pin context proposal', () => {
     const done = await request(pipelineApp).get('/api/profiler/pipeline/profile/done-2/progress');
     expect(done.body.data.contextProposal).toEqual({ status: 'unavailable', offer: false, reason: 'Host not found' });
   });
+});
+
+describe('Core launch receipt transport', () => {
+  const queueRequestId = '00000000-0000-4000-8000-000000000001';
+  beforeEach(() => { clearActiveProfilingState(); jest.clearAllMocks(); });
+  afterEach(() => clearActiveProfilingState());
+
+  it('returns a typed no-start verdict only before native admission', async () => {
+    hostProfileService.getById.mockResolvedValue({ hostId: 'fixture', hostUrl: 'http://localhost:11434' });
+    hostTestService.checkHost.mockResolvedValue({ available: false, error: 'Synthetic offline host' });
+    const queueDispatchId = '00000000-0000-4000-8000-000000000002';
+    const response = await request(pipelineApp).post('/api/profiler/pipeline/profile-host').send({ hostId: 'fixture', queueRequestId, queueDispatchId });
+    expect(response.status).toBe(503);
+    expect(response.body.launchReceipt).toMatchObject({ contract: 'agentx.queue-launch/v1', requestId: queueRequestId, kind: 'profiler', outcome: 'not-started' });
+    expect(coreApiClient.acquireWorkloadAdmission).not.toHaveBeenCalled();
+    expect(activeProfileQueues.size).toBe(0);
+    expect(coreApiClient.coreRequest).toHaveBeenCalledWith(`/api/cluster/schedule/work-queue/${queueRequestId}/refused`,
+      { method: 'POST', body: JSON.stringify({ dispatchId: queueDispatchId, code: 'LAUNCH_REFUSED', reason: 'Host unreachable: Synthetic offline host' }) });
+  });
+
+  it('does not call a conflict with its own running intent a no-start refusal', async () => {
+    hostProfileService.getById.mockResolvedValue({ hostId: 'fixture', hostUrl: 'http://localhost:11434' });
+    activeProfileQueues.set('original', { hostId: 'fixture', queueRequestId, status: 'running', startedAt: Date.now() });
+    const response = await request(pipelineApp).post('/api/profiler/pipeline/profile-host').send({ hostId: 'fixture', queueRequestId });
+    expect(response.status).toBe(409);
+    expect(response.body.launchReceipt).toBeUndefined();
+    expect(coreApiClient.acquireWorkloadAdmission).not.toHaveBeenCalled();
+  });
+  it('exposes the pre-admission tracker as unconfirmed while inventory is pending', async () => {
+    hostProfileService.getById.mockResolvedValue({ hostId: 'fixture', hostUrl: 'http://localhost:11434' });
+    let finishProbe;
+    hostTestService.checkHost.mockReturnValueOnce(new Promise(resolve => { finishProbe = resolve; }));
+    const pending = startProfileHostQueue({ hostId: 'fixture', queueRequestId }).catch(error => error);
+    await flushPromises();
+    const [[queueId]] = activeProfileQueues;
+    const response = await request(pipelineApp).get(`/api/profiler/pipeline/profile-host/${queueId}/progress`);
+    expect(response.body.data.launchConfirmed).toBe(false);
+    expect(coreApiClient.acquireWorkloadAdmission).not.toHaveBeenCalled();
+    finishProbe({ available: false, error: 'Synthetic offline host' });
+    expect((await pending).notStarted).toBe(true);
+    expect(activeProfileQueues.size).toBe(0);
+  });
+
+  it('finds completed and failed trackers by exact identity after a lost launch reply', async () => {
+    for (const status of ['completed', 'failed']) {
+      activeProfileQueues.set(status, { hostId: 'fixture', queueRequestId, status, startedAt: Date.now(), finishedAt: Date.now() });
+    }
+    activeProfileQueues.set('foreign', { hostId: 'fixture', queueRequestId: 'foreign', status: 'completed', startedAt: Date.now(), finishedAt: Date.now() });
+    const ordinary = await request(pipelineApp).get('/api/profiler/pipeline/profile-host/active');
+    expect(ordinary.body.data.active).toEqual([]);
+    const exact = await request(pipelineApp).get(`/api/profiler/pipeline/profile-host/active?queueRequestId=${queueRequestId}`);
+    expect(exact.body.data.active.map(row => row.queueId).sort()).toEqual(['completed', 'failed']);
+    expect((await request(pipelineApp).get('/api/profiler/pipeline/profile-host/active?queueRequestId=invalid')).status).toBe(400);
+  });
+});
+
+test('a retained terminal Core identity cannot launch another Profiler queue', async () => {
+  clearActiveProfilingState(); jest.clearAllMocks();
+  const queueRequestId = '00000000-0000-4000-8000-000000000001';
+  hostProfileService.getById.mockResolvedValue({ hostId: 'fixture', hostUrl: 'http://localhost:11434' });
+  activeProfileQueues.set('original', { hostId: 'fixture', queueRequestId, status: 'completed', startedAt: Date.now(), finishedAt: Date.now() });
+  try {
+    const response = await request(pipelineApp).post('/api/profiler/pipeline/profile-host').send({ hostId: 'fixture', queueRequestId });
+    expect(response.status).toBe(409);
+    expect(response.body.launchReceipt).toBeUndefined();
+    expect(coreApiClient.acquireWorkloadAdmission).not.toHaveBeenCalled();
+    expect(activeProfileQueues.size).toBe(1);
+  } finally { clearActiveProfilingState(); }
 });

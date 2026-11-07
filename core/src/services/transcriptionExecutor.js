@@ -50,6 +50,13 @@ async function start(job) {
   if (receipt.id !== job.id || receipt.url !== row.url) throw fail('Reçu vocal incohérent.', 503);
   return { id: receipt.id };
 }
+// The admission verdict is already durable in the personal request. Recover a
+// crash between that write and the queue receipt, without probing or restarting.
+async function unstartedRefusal(job) {
+  const row = await record(job);
+  if (row.state !== 'failed' || row.stage !== 'admission' || row.admission || row.nativeBase) return null;
+  return { dispatchId: job.dispatchId, code: 'TRANSCRIPTION_ADMISSION_REFUSED', reason: row.error };
+}
 function proof(admission) { return { id: admission.admissionId, generation: admission.generation, principal: PRINCIPAL }; }
 async function observe(job) {
   try { return await observeReceipt(job); }
@@ -111,4 +118,4 @@ async function heartbeatActive() {
     return { renewed: results.filter(row => row.heartbeat).length, refused: results.filter(row => !row.heartbeat).length };
   } finally { heartbeating = false; }
 }
-module.exports = { start, observe, preDispatch, cancelNative, native, heartbeatActive };
+module.exports = { start, observe, preDispatch, cancelNative, native, heartbeatActive, unstartedRefusal };

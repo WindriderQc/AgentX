@@ -43,8 +43,11 @@ it('queues preparation before its probes and retains its exact plan without star
   await expect(evidence.preDispatch(job)).resolves.toBeUndefined();
   const plan = newPlanRef(request);
   await expect(queue.prepared(job.id, { dispatchId: job.dispatchId, plan }, 'native-operator')).resolves.toMatchObject({
-    state: 'completed', operation: { id: plan, kind: 'benchmark-preparation' }, releaseReceipt: { authority: 'operator-plan-receipt' }
+    state: 'dispatching', operation: { id: plan, kind: 'benchmark-preparation' }, preparationReceipt: { authority: 'operator-plan-receipt' }
   });
+  await expect(evidence.reconcile(job.id, 'observer')).rejects.toMatchObject({ code: 'HEAVY_QUEUE_RELEASE_UNAVAILABLE' });
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  expect(await evidence.reconcile(job.id, 'observer-after-restart')).toMatchObject({ state: 'completed', releaseReceipt: { preparedPlan: plan } });
   expect(requestJson).not.toHaveBeenCalled();
 });
 
@@ -195,4 +198,31 @@ it('lets a profiler request cover sibling endpoints of its own machine and nothi
     .rejects.toMatchObject({ code: 'HEAVY_QUEUE_EXECUTOR_CHANGED' });
   await expect(evidence.preDispatch(await queue.submit(profile('sibling-only', [B]), 'test')))
     .rejects.toMatchObject({ code: 'HEAVY_QUEUE_EXECUTOR_CHANGED' });
+});
+
+it('persists a launch refusal before checking release and accepts only the same dispatch and outcome', async () => {
+  const job = await dispatch(make('batch-refused'));
+  const body = { dispatchId: job.dispatchId, code: 'PLAN_STALE', reason: 'Synthetic stale plan before batch POST' };
+  const saved = await queue.refused(job.id, body, 'native-operator');
+  expect(saved).toMatchObject({ state: 'dispatching', launchRefusal: body });
+  expect((await queue.refused(job.id, body, 'native-operator')).revision).toBe(saved.revision);
+  for (const changed of [{ ...body, dispatchId: 'foreign' }, { ...body, reason: 'changed' }]) {
+    await expect(queue.refused(job.id, changed, 'native-operator')).rejects.toMatchObject({ statusCode: 409 });
+  }
+  await expect(evidence.reconcile(job.id, 'observer')).rejects.toMatchObject({ code: 'HEAVY_QUEUE_RELEASE_UNAVAILABLE' });
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  const proof = await evidence.observe(saved);
+  await Runtime.updateOne({ _id: 'runtime' }, { $set: { inferences: [{ host: A, state: 'ACTIVE', expiresAt: new Date(Date.now() + 60000) }] } });
+  await expect(queue.settle(job.id, proof, 'observer')).rejects.toMatchObject({ statusCode: 409 });
+  await Runtime.updateOne({ _id: 'runtime' }, { $set: { inferences: [] } });
+  expect(await evidence.reconcile(job.id, 'observer')).toMatchObject({ state: 'failed', releaseReceipt: { authority: 'operator-launch-refusal' } });
+  expect(requestJson).not.toHaveBeenCalled();
+});
+
+it('rejects a no-start verdict after native operation bookkeeping already exists', async () => {
+  const job = await dispatch(make('already-started'));
+  await queue.record(job.id, { dispatchId: job.dispatchId, state: 'running', operationId }, 'native-operator');
+  await expect(queue.refused(job.id, { dispatchId: job.dispatchId, code: 'REFUSED', reason: 'Cannot erase launch' }, 'native-operator'))
+    .rejects.toMatchObject({ statusCode: 409 });
+  expect((await queue.get(job.id)).operation.id).toBe(operationId);
 });

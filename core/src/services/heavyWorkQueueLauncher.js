@@ -16,9 +16,15 @@ const AUTO_ACTOR = 'core-auto-start';
 const START_TIMEOUT_MS = 5 * 60000;
 
 async function startProfile(body) {
-  const answer = await requestJson({ baseUrl: process.env.BENCHMARK_SERVICE_URL || 'http://localhost:3081',
-    path: '/api/profiler/pipeline/profile-host', method: 'POST', body, timeoutMs: START_TIMEOUT_MS, serviceName: 'benchmark' });
-  return answer?.data ?? answer;
+  try {
+    const answer = await requestJson({ baseUrl: process.env.BENCHMARK_SERVICE_URL || 'http://localhost:3081',
+      path: '/api/profiler/pipeline/profile-host', method: 'POST', body, timeoutMs: START_TIMEOUT_MS, serviceName: 'benchmark' });
+    return answer?.data ?? answer;
+  } catch (error) {
+    const refusal = require('../../../shared/queueLaunchReceipt.cjs').readRefusal(error.body, { id: body.queueRequestId, kind: 'profiler' });
+    if (refusal) Object.assign(error, { notStarted: true, code: refusal.code, message: refusal.reason });
+    throw error;
+  }
 }
 // Each request Core launches: its native start and the receipt identity it
 // returns. `start` replaces the Profiler start only (tests, Run now).
@@ -28,7 +34,7 @@ const STARTERS = {
     operationId: result => result?.id, name: 'local transcription'
   },
   profiler: {
-    start: (begun, start) => (start || startProfile)({ ...begun.executor, queueRequestId: begun.id }),
+    start: (begun, start) => (start || startProfile)({ ...begun.executor, queueRequestId: begun.id, queueDispatchId: begun.dispatchId }),
     operationId: result => result?.queueId,
     name: 'Profiler'
   },
@@ -65,8 +71,8 @@ function windowOpen(job, now) {
 
 /**
  * Launch one reserved request now. Every check that can refuse happens before
- * the dispatch mark; after it, any failure leaves the request uncertain with
- * its reason, for the owner to reconcile, and is never retried here.
+ * the dispatch mark. After it, a proven no-start verdict is persisted for
+ * reconciliation; unknown outcomes retain their fence and are never retried.
  */
 async function launch(id, actor, { expectedRevision, start } = {}) {
   const job = await queue.get(id);
@@ -83,18 +89,26 @@ async function launch(id, actor, { expectedRevision, start } = {}) {
     if (typeof operationId !== 'string' || !operationId) throw new Error(`${starter.name} returned no receipt identity`);
     return await queue.record(id, { dispatchId: begun.dispatchId, state: 'running', operationId }, actor);
   } catch (error) {
-    const reason = String(error.message || error).slice(0, 900);
+    const reason = String(error.message || error).replace(/[\x00-\x1f\x7f]/g, ' ').trim().slice(0, 900) || 'Launch refused';
     if (error.notStarted === true) {
       // The executor proved nothing reached the native runner: release the
       // fence with Core's own receipt instead of leaving it uncertain.
       let released = false;
       try {
-        const current = await queue.get(id);
-        await queue.recover(id, { expectedRevision: current.revision, dispatchId: begun.dispatchId,
-          confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED', receiptRef: `core:not-started: ${reason}`.slice(0, 500) }, actor);
-        released = true;
-      } catch { /* Fall back to an uncertain fence below. */ }
+        await queue.refused(id, { dispatchId: begun.dispatchId, code: String(error.code || 'LAUNCH_REFUSED').slice(0, 100), reason }, actor, 'core-launch-refusal');
+        released = (await evidence.reconcile(id, actor)).state === 'failed';
+      } catch {
+        // A lost settlement reply may still have released this exact receipt.
+        try { const current = await queue.get(id); released = current.state === 'failed' && current.launchRefusal?.dispatchId === begun.dispatchId; }
+        catch { /* Fall back to an uncertain fence below. */ }
+      }
       if (released) throw fail(`Request ${id} did not start: ${reason}`, 409, error.code || 'HEAVY_QUEUE_LAUNCH_REFUSED');
+    }
+    // The native producer may have stored its refusal before its HTTP reply
+    // was lost. Observe that exact dispatch instead of overwriting it.
+    const current = await queue.get(id).catch(() => null);
+    if (current?.dispatchId === begun.dispatchId && current.state === 'failed' && current.launchRefusal?.dispatchId === begun.dispatchId) {
+      throw fail(`Request ${id} did not start: ${current.launchRefusal.reason}`, 409, current.launchRefusal.code);
     }
     // A started profile or build is found again by its queue request identity;
     // leave the dispatch mark for the observer instead of declaring it uncertain.

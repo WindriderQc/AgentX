@@ -90,3 +90,51 @@ test('a new missed reservation has its own event; old terminal notifications are
   await notices.publishJobs([{ ...one, reservation: { end: new Date(Date.now() - 1000).toISOString() } }]);
   expect(await Alert.countDocuments()).toBe(3);
 });
+
+ test('uncertainty requests immediate attention, stays acknowledged, and resolves when a native receipt returns', async () => {
+  const uncertain = job({ state: 'uncertain', dispatchedAt: past() });
+  await notices.publishJobs([uncertain]);
+  const [alert] = await Alert.find().lean();
+  expect(alert).toMatchObject({ severity: 'critical', channels: ['telegram'] });
+  expect(relay.selectDue([alert])).toHaveLength(1);
+  await notices.acknowledge(String(alert._id), 'fixture');
+  await notices.publishJobs([uncertain]);
+  expect((await notices.inbox()).count).toBe(0);
+  await notices.publishJobs([{ ...uncertain, state: 'running', estimatedMinutes: 30 }]);
+  expect(await Alert.findById(alert._id).lean()).toMatchObject({ status: 'resolved' });
+});
+
+test('missing launch receipts alert after five minutes; operator work uses its execution estimate', async () => {
+  const { stalled } = require('../../src/services/heavyWorkQueueAttention');
+  const dispatchedAt = new Date(Date.now() - 6 * 60000).toISOString();
+  const native = job({ state: 'dispatching', dispatchedAt, estimatedMinutes: 60, hosts: ['http://127.0.0.1:11434'] });
+  expect(stalled({ ...native, dispatchedAt: future() })).toBeNull();
+  for (const mode of ['operator', 'island']) expect(stalled({ ...native, executor: { mode } })).toBeNull();
+  const overrun = { ...native, id: 'operator-overrun', executor: { mode: 'operator' }, estimatedMinutes: 1 };
+  await notices.publishJobs([native, overrun]);
+  const alerts = await Alert.find().lean();
+  expect(alerts).toHaveLength(2);
+  expect(alerts.every(row => row.severity === 'critical' && row.channels.includes('telegram'))).toBe(true);
+  expect(alerts.map(row => row.context.additionalData.stall.code).sort()).toEqual(['completion_receipt_overdue', 'launch_receipt_overdue']);
+  const launch = alerts.find(row => row.context.additionalData.queueRequestId === native.id);
+  await notices.publishJobs([{ ...native, state: 'running' }, overrun]);
+  expect((await Alert.findById(launch._id).lean()).status).toBe('resolved');
+  await notices.publishJobs([{ ...overrun, state: 'completed' }]);
+  expect((await Alert.findById(alerts.find(row => row !== launch)._id).lean()).status).toBe('resolved');
+  expect(native.state).toBe('dispatching');
+});
+
+test('upgrades an existing active uncertain notice to Telegram without reopening an acknowledged one', async () => {
+  const uncertain = job({ state: 'uncertain' });
+  await notices.publishJobs([uncertain]);
+  await Alert.updateMany({}, { $set: { channels: [], severity: 'info' } });
+  await notices.publishJobs([uncertain]);
+  let alert = await Alert.findOne().lean();
+  expect(alert).toMatchObject({ severity: 'critical', channels: ['telegram'] });
+  await notices.acknowledge(String(alert._id), 'fixture');
+  await Alert.updateMany({}, { $set: { channels: [] } });
+  await notices.publishJobs([uncertain]);
+  alert = await Alert.findOne().lean();
+  expect(alert.status).toBe('acknowledged');
+  expect(alert.channels).toEqual([]);
+});

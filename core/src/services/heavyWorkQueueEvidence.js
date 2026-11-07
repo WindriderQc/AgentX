@@ -72,10 +72,23 @@ async function preDispatch(job) {
   }
 }
 async function observe(job) {
-  if (job.kind === 'transcription') return require('./transcriptionExecutor').observe(job);
+  if (!job.launchRefusal && job.kind === 'transcription') return require('./transcriptionExecutor').observe(job);
   let operationId = job.operation?.id;
   let receipt;
-  if (job.kind === 'benchmark' && job.executor.prepare === true) {
+  if (job.launchRefusal) {
+    const refusal = job.launchRefusal;
+    if (refusal.dispatchId !== job.dispatchId || operationId !== job.dispatchId || job.operation.authority !== refusal.authority) {
+      throw fail('Launch refusal belongs to another dispatch', 409);
+    }
+    receipt = { state: 'failed', operationId, authority: refusal.authority, refusal };
+  } else if (job.preparationReceipt) {
+    const prepared = job.preparationReceipt;
+    if (prepared.dispatchId !== job.dispatchId || operationId !== prepared.preparedPlan
+      || planRef(planId(prepared.preparedPlan), batchRequest(job.executor.request, { judgeRequired: true })) !== prepared.preparedPlan) {
+      throw fail('Prepared plan belongs to another dispatch or request', 409);
+    }
+    receipt = { state: 'completed', operationId, ...prepared };
+  } else if (job.kind === 'benchmark' && job.executor.prepare === true) {
     const refusal = job.preparationRefusal;
     if (!refusal || refusal.dispatchId !== job.dispatchId || operationId !== job.dispatchId
       || job.operation.kind !== 'benchmark-preparation' || job.operation.authority !== 'operator-preparation-refusal') {
@@ -97,13 +110,14 @@ async function observe(job) {
     receipt = { state: receipt.status === 'stopped' ? 'cancelled' : receipt.status, authority: 'benchmark.batch', operationId };
   } else if (job.kind === 'profiler') {
     if (!operationId) {
-      const active = await benchmark('/api/profiler/pipeline/profile-host/active');
+      const active = await benchmark(`/api/profiler/pipeline/profile-host/active?queueRequestId=${encodeURIComponent(job.id)}`);
       const matches = (active?.active || []).filter(item => item.queueRequestId === job.id);
       if (matches.length !== 1) throw fail('Profiler has no unique receipt; inspect its native journal before recovery', 409);
       operationId = matches[0].queueId;
     }
     const result = await benchmark(`/api/profiler/pipeline/profile-host/${encodeURIComponent(operationId)}/progress`);
     if (result.queueRequestId !== job.id || result.hostId !== job.executor.hostId) throw fail('Profiler receipt belongs to another request', 409);
+    if (result.launchConfirmed === false) return { operationId, terminal: false, awaitingDispatch: true };
     if (result.queueStatus === 'running') return { operationId, terminal: false };
     if (!['completed', 'failed', 'cancelled'].includes(result.queueStatus)) throw fail('Profiler outcome is not terminal', 409);
     receipt = { state: result.queueStatus, authority: 'profiler.host-queue', operationId };
@@ -155,7 +169,7 @@ async function observe(job) {
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.
   const runtime = await Runtime.findById('runtime').lean();
-  if (job.preparationRefusal && (!runtime || !Array.isArray(runtime.workloads) || !Array.isArray(runtime.inferences))) {
+  if ((job.preparationRefusal || job.launchRefusal || job.preparationReceipt) && (!runtime || !Array.isArray(runtime.workloads) || !Array.isArray(runtime.inferences))) {
     throw fail('Native runtime release evidence unavailable', 503, 'HEAVY_QUEUE_RELEASE_UNAVAILABLE');
   }
   const now = new Date();
@@ -174,6 +188,10 @@ async function observe(job) {
 async function reconcile(id, actor) {
   let job = await queue.get(id);
   if (!['dispatching', 'running', 'uncertain'].includes(job.state)) return job;
+  if (job.kind === 'transcription' && !job.operation && !job.launchRefusal) {
+    const refusal = await require('./transcriptionExecutor').unstartedRefusal(job);
+    if (refusal) job = await queue.refused(id, refusal, actor, 'core-launch-refusal');
+  }
   const result = await observe(job);
   if (result.awaitingDispatch) return { ...job, observation: result };
   if (!job.operation) job = await queue.record(id, { dispatchId: job.dispatchId, state: 'running', operationId: result.operationId }, actor);

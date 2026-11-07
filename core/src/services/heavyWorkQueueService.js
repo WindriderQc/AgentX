@@ -286,7 +286,7 @@ async function settle(id, observation, actor) {
     const job = jobIn(state, id);
     if (TERMINAL.includes(job.state)) return { readOnly: true, value: job };
     if (!job.operation || observation.operationId !== job.operation.id || !TERMINAL.includes(observation.state)) throw fail('Exact terminal executor observation required', 409);
-    if (job.preparationRefusal) {
+    if (job.preparationRefusal || job.launchRefusal || job.preparationReceipt) {
       // Recheck on every CAS attempt, including a holder acquired since the
       // observer read the outcome. This transition releases no native owner.
       const runtime = await require('../../models/RuntimeCoordination').findById('runtime').lean();
@@ -424,16 +424,37 @@ async function prepared(id, body, actor) {
       job.reason = reason;
       return event(job, actor, 'preparation-refused', job.preparationRefusal);
     }
-    if (!ACTIVE.includes(job.state) || body.dispatchId !== job.dispatchId || job.kind !== 'benchmark' || job.executor.prepare !== true) throw fail('Exact preparation dispatch required', 409);
+    if (!body.dispatchId || body.dispatchId !== job.dispatchId || job.kind !== 'benchmark' || job.executor?.prepare !== true) throw fail('Exact preparation dispatch required', 409);
     if (planRef(planId(body.plan), batchRequest(job.executor.request, { judgeRequired: true })) !== body.plan) throw fail('Prepared plan differs from the queued request', 409);
-    const runtime = await require('../../models/RuntimeCoordination').findById('runtime').lean();
-    if ((runtime?.workloads || []).some(item => runtimeOverlaps(job, item)) || (runtime?.inferences || []).some(item => runtimeOverlaps(job, item))) {
-      throw fail('Preparation still has overlapping native runtime authority', 409);
+    if (job.preparationReceipt) {
+      if (job.preparationReceipt.preparedPlan !== body.plan) throw fail('Prepared plan receipt differs', 409);
+      return { readOnly: true, value: job };
     }
-    job.state = 'completed'; job.finishedAt = new Date().toISOString();
+    if (!ACTIVE.includes(job.state) || job.operation) throw fail('Preparation already has another outcome', 409);
     job.operation = { id: body.plan, kind: 'benchmark-preparation', authority: 'operator-plan-receipt' };
-    job.releaseReceipt = { authority: 'operator-plan-receipt', preparedPlan: body.plan, observedAt: job.finishedAt };
-    return event(job, actor, 'prepared', job.releaseReceipt);
+    job.preparationReceipt = { dispatchId: body.dispatchId, authority: 'operator-plan-receipt', preparedPlan: body.plan, actor, observedAt: new Date().toISOString() };
+    return event(job, actor, 'prepared', job.preparationReceipt);
+  });
+}
+// A producer's explicit no-start verdict is stored before any release read.
+// Reconciliation can finish the same receipt after response loss or restart.
+async function refused(id, body, actor, authority = 'operator-launch-refusal') {
+  const code = text(body.code, 'code', 100);
+  const reason = text(body.reason, 'reason', 1000);
+  return mutate(state => {
+    const job = jobIn(state, id);
+    if (!body.dispatchId || body.dispatchId !== job.dispatchId || !job.executor || job.executor.mode === 'operator') {
+      throw fail('Exact native executor dispatch required', 409);
+    }
+    if (job.launchRefusal) {
+      if (job.launchRefusal.code !== code || job.launchRefusal.reason !== reason) throw fail('Launch refusal receipt differs', 409);
+      return { readOnly: true, value: job };
+    }
+    if (!ACTIVE.includes(job.state) || job.operation || job.preparationRefusal) throw fail('Dispatch already has another outcome', 409);
+    job.launchRefusal = { dispatchId: body.dispatchId, code, reason, authority, actor: text(actor, 'actor', 100), observedAt: new Date().toISOString() };
+    job.operation = { id: body.dispatchId, kind: job.kind, authority };
+    job.reason = reason;
+    return event(job, actor, 'launch-refused', job.launchRefusal);
   });
 }
 async function migrate(body, actor, { file = FILE } = {}) {
@@ -458,4 +479,4 @@ async function migrate(body, actor, { file = FILE } = {}) {
   return list();
 }
 
-module.exports = { AUTO_START_KINDS, autoStartable, submit, reserve, place, preview, slotFor, begin, assertDispatch, record, cancel, settle, prepared, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorRelease, operatorFinish, MAX_JOBS };
+module.exports = { AUTO_START_KINDS, autoStartable, submit, reserve, place, preview, slotFor, begin, assertDispatch, record, cancel, settle, prepared, refused, get, list, migrate, legacySnapshot, sameResources, runtimeOverlaps, archive, archived, recover, operatorRelease, operatorFinish, MAX_JOBS };

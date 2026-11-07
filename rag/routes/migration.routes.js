@@ -99,8 +99,8 @@ router.post('/embedding-migration/reindex', (req, res) => {
 
 // ── Embedding profile and builds ────────────────────────
 
-function sendBuildError(res, err) {
-  if (err.statusCode) return res.status(err.statusCode).json({ ok: false, error: err.code, detail: err.message });
+function sendBuildError(res, err, launchReceipt) {
+  if (err.statusCode) return res.status(err.statusCode).json({ ok: false, error: err.code, detail: err.message, ...(launchReceipt && { launchReceipt }) });
   logger.error('Embedding build route error:', err);
   return sendError(res, 500, 'Embedding build unavailable', err.message);
 }
@@ -129,7 +129,10 @@ router.post('/embedding-builds', async (req, res) => {
     const build = await getBuildService().start({ buildId, model, dimension });
     res.status(202).json({ ok: true, data: build });
   } catch (err) {
-    sendBuildError(res, err);
+    const launchReceipt = require('../../shared/queueLaunchReceipt.cjs').refusal(req.body?.buildId, 'embedding-reindex', err);
+    try { await require('../src/clients/queueLaunchReceipt').publish(launchReceipt, req.body?.queueDispatchId); }
+    catch (error) { logger.warn('Embedding refusal awaits Core receipt reconciliation', { buildId: req.body?.buildId, error: error.message }); }
+    sendBuildError(res, err, launchReceipt);
   }
 });
 

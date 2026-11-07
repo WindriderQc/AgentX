@@ -37,6 +37,7 @@ const SERVICE_OUTBOUND_OPERATION_IDS = Object.freeze({
   COMPRESSION_GENERATE: 'rag.compression.generate',
   CORE_EMBED: 'rag.core-proxy.embed',
   CORE_QUEUE_READ: 'rag.core-queue.read',
+  CORE_QUEUE_REFUSED: 'rag.core-queue.refused',
   INGEST_SUBMIT: 'rag.ingest-worker.submit',
   OLLAMA_EMBED_BATCH: 'rag.ollama.embed-batch',
   OLLAMA_EMBED_SINGLE: 'rag.ollama.embed-single',
@@ -71,6 +72,9 @@ const SERVICE_OUTBOUND_OPERATIONS = Object.freeze({
   }),
   [SERVICE_OUTBOUND_OPERATION_IDS.CORE_QUEUE_READ]: Object.freeze({
     authoritySource: 'configured', deadlineMs: 30_000, maxRequestBytes: 0, maxResponseBytes: MIB,
+  }),
+  [SERVICE_OUTBOUND_OPERATION_IDS.CORE_QUEUE_REFUSED]: Object.freeze({
+    authoritySource: 'configured', deadlineMs: 10_000, maxRequestBytes: 8 * 1024, maxResponseBytes: MIB,
   }),
   [SERVICE_OUTBOUND_OPERATION_IDS.INGEST_SUBMIT]: Object.freeze({
     authoritySource: 'configured', deadlineMs: INGEST_DEADLINE_MS, maxRequestBytes: 8 * MIB, maxResponseBytes: 2 * MIB,
@@ -138,6 +142,7 @@ const SERVICE_OUTBOUND_TIMEOUTS = Object.freeze({
   [SERVICE_OUTBOUND_OPERATION_IDS.COMPRESSION_GENERATE]: COMPRESSION_DEADLINE_MS,
   [SERVICE_OUTBOUND_OPERATION_IDS.CORE_EMBED]: EMBEDDING_DEADLINE_MS,
   [SERVICE_OUTBOUND_OPERATION_IDS.CORE_QUEUE_READ]: 10_000,
+  [SERVICE_OUTBOUND_OPERATION_IDS.CORE_QUEUE_REFUSED]: 10_000,
   [SERVICE_OUTBOUND_OPERATION_IDS.INGEST_SUBMIT]: INGEST_DEADLINE_MS,
   [SERVICE_OUTBOUND_OPERATION_IDS.OLLAMA_EMBED_BATCH]: EMBEDDING_DEADLINE_MS,
   [SERVICE_OUTBOUND_OPERATION_IDS.OLLAMA_EMBED_SINGLE]: EMBEDDING_DEADLINE_MS,
@@ -167,6 +172,7 @@ const SERVICE_OUTBOUND_REQUEST_SPECS = Object.freeze({
   [SERVICE_OUTBOUND_OPERATION_IDS.COMPRESSION_GENERATE]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: '^/api/inference/generate$' }),
   [SERVICE_OUTBOUND_OPERATION_IDS.CORE_EMBED]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: '^/api/inference/embed$' }),
   [SERVICE_OUTBOUND_OPERATION_IDS.CORE_QUEUE_READ]: Object.freeze({ allowSearch: false, method: 'GET', pathPattern: '^/api/cluster/schedule/work-queue/[a-f0-9-]{36}$' }),
+  [SERVICE_OUTBOUND_OPERATION_IDS.CORE_QUEUE_REFUSED]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: '^/api/cluster/schedule/work-queue/[a-f0-9-]{36}/refused$' }),
   [SERVICE_OUTBOUND_OPERATION_IDS.INGEST_SUBMIT]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: '^/api/rag/ingest$' }),
   [SERVICE_OUTBOUND_OPERATION_IDS.OLLAMA_EMBED_BATCH]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: '^/api/embed$' }),
   [SERVICE_OUTBOUND_OPERATION_IDS.OLLAMA_EMBED_SINGLE]: Object.freeze({ allowSearch: false, method: 'POST', pathPattern: '^/api/embeddings$' }),

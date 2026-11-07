@@ -38,3 +38,17 @@ test('startup and Mongo reconnect renew persisted admissions immediately and sto
     expect(mongoose.connection.listenerCount('connected')).toBe(before);
   } finally { monitor.stop(); process.env.NODE_ENV = originalEnvironment; }
 });
+
+test('a pending native launch cannot delay the independent attention observer', async () => {
+  const jobs = [{ id: 'pending-native', state: 'dispatching' }];
+  queue.list.mockResolvedValue({ jobs });
+  notices.publishJobs.mockClear();
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  images.dispatchQueued.mockReturnValueOnce(pending);
+  const sweep = monitor.sweep();
+  await monitor.attentionTick();
+  expect(notices.publishJobs).toHaveBeenCalledWith(jobs);
+  release();
+  await sweep;
+});

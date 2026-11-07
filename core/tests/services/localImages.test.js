@@ -62,6 +62,26 @@ describe('durable local image operations', () => {
     expect(await ImageOperation.countDocuments()).toBe(0);
     expect(reserve).not.toHaveBeenCalled();
   });
+  test('a worker lost after manual dispatch persists a refusal before the HTTP failure and frees the next request', async () => {
+    const queue = require('../../src/services/heavyWorkQueueService');
+    const Runtime = require('../../models/RuntimeCoordination');
+    await Runtime.deleteMany({});
+    await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+    const executor = { actionKey: 'action-manual-offline', prompt: 'A lake' };
+    const job = await queue.submit({ key: executor.actionKey, title: 'Synthetic offline worker', kind: 'image',
+      hosts: ['http://127.0.0.1:11434'], estimatedMinutes: 5, executor }, 'fixture');
+    const ready = await queue.reserve(job.id, { expectedRevision: job.revision, start: new Date().toISOString() }, 'fixture');
+    const begun = await queue.begin(job.id, { expectedRevision: ready.revision }, 'fixture');
+    client.ready.mockRejectedValue(new Error('offline'));
+    await expect(service.accept({ ...executor, queueRequestId: job.id, queueDispatchId: begun.dispatchId })).rejects.toMatchObject({ statusCode: 503 });
+    expect(await queue.get(job.id)).toMatchObject({ state: 'failed', launchRefusal: { code: 'IMAGE_WORKER_UNAVAILABLE' } });
+    expect(await ImageOperation.countDocuments()).toBe(0);
+    const next = await queue.submit({ key: 'after-worker-refusal', title: 'Next synthetic image', kind: 'image', hosts: job.hosts,
+      estimatedMinutes: 5, executor: { ...executor, actionKey: 'action-after-refusal' } }, 'fixture');
+    await expect(queue.reserve(next.id, { expectedRevision: next.revision, start: new Date().toISOString() }, 'fixture')).resolves.toMatchObject({ state: 'reserved' });
+    expect(reserve).not.toHaveBeenCalled();
+    expect(client.submit).not.toHaveBeenCalled();
+  });
   test('a second image waits behind the busy first worker and keeps its identity until dispatch', async () => {
     let finishFirst;
     const firstOutput = new Promise(resolve => { finishFirst = resolve; });

@@ -94,7 +94,7 @@ test('retains uncertainty on lost launch and lost final writes without a retry',
   const recorded = [];
   const client = async (endpoint, body) => {
     if (endpoint.endsWith('/begin')) return { ...job, dispatchId: 'synthetic-dispatch' };
-    recorded.push(body); throw new Error('Synthetic DB response lost');
+    if (body) recorded.push(body); throw new Error('Synthetic DB response lost');
   };
   await assert.rejects(runJob(job, client, { benchmarkExecutor: async () => {
     launches++; throw new Error('Synthetic executor response lost');
@@ -149,3 +149,93 @@ for (const kind of ['untyped-refusal', 'lost-preflight', 'batch-start', 'receipt
     assert.equal(events.some(([endpoint]) => endpoint.endsWith('/prepared')), ['receipt-unavailable', 'runtime-held'].includes(kind));
   });
 }
+
+for (const lostReply of [false, true]) test(`batch no-start persists a refusal and reconciles a lost receipt reply (${lostReply})`, async () => {
+  const events = [];
+  let launches = 0;
+  let current;
+  const client = async (endpoint, body) => {
+    events.push([endpoint, body]);
+    if (endpoint.endsWith('/begin')) return { ...job, dispatchId: 'synthetic-dispatch' };
+    if (endpoint.endsWith('/refused')) {
+      current = { ...job, state: 'failed', launchRefusal: body, releaseReceipt: { authority: 'operator-launch-refusal' } };
+      if (lostReply) throw new Error('Lost after receipt committed');
+    }
+    return current;
+  };
+  await assert.rejects(runJob(job, client, { benchmarkExecutor: async () => {
+    launches++;
+    throw Object.assign(new Error('Synthetic plan stale before POST'), { notStarted: true, outcome: 'refused', details: { code: 'PLAN_STALE' } });
+  } }), error => error.outcome === 'refused' && error.queueId === job.id);
+  assert.equal(launches, 1);
+  assert.equal(current.launchRefusal.code, 'PLAN_STALE');
+  assert.deepEqual(events.map(([endpoint]) => endpoint), [`/${job.id}/begin`, `/${job.id}/refused`, ...(lostReply ? [`/${job.id}`] : [])]);
+});
+
+for (const typed of [true, false]) test(`Profiler HTTP refusal preserves its native verdict (typed: ${typed})`, async () => {
+  const profile = { ...job, kind: 'profiler', executor: { hostId: 'fixture' } };
+  const events = [];
+  const client = async (endpoint, body) => {
+    events.push([endpoint, body]);
+    if (endpoint.endsWith('/begin')) return { ...profile, dispatchId: 'synthetic-dispatch' };
+    if (endpoint.endsWith('/refused')) return { ...profile, state: 'failed', launchRefusal: body, releaseReceipt: { authority: 'operator-launch-refusal' } };
+    return body;
+  };
+  let posts = 0;
+  const launchReceipt = require('../../../shared/queueLaunchReceipt.cjs').refusal(profile.id, profile.kind, { notStarted: true, code: 'HOST_OFFLINE', message: 'Before claim' });
+  await assert.rejects(runJob(profile, client, { benchmark: 'http://localhost:3081', fetchImpl: async () => {
+    posts++;
+    return { ok: false, status: 503, json: async () => ({ error: 'Host offline', ...(typed && { launchReceipt }) }) };
+  } }), error => error.outcome === (typed ? 'refused' : 'uncertain'));
+  assert.equal(posts, 1);
+  assert.equal(events.some(([endpoint]) => endpoint.endsWith('/refused')), typed);
+});
+
+test('a lost native HTTP failure reads the producer refusal instead of replacing it with uncertainty', async () => {
+  const profile = { ...job, kind: 'profiler', executor: { hostId: 'fixture' } };
+  const events = [];
+  const dispatchId = 'synthetic-dispatch';
+  const client = async (endpoint, body) => {
+    events.push([endpoint, body]);
+    if (endpoint.endsWith('/begin')) return { ...profile, dispatchId };
+    return { ...profile, dispatchId, state: 'failed', launchRefusal: { dispatchId, code: 'HOST_OFFLINE', reason: 'Synthetic producer refusal' } };
+  };
+  let posts = 0;
+  await assert.rejects(runJob(profile, client, { benchmark: 'http://localhost:3081', fetchImpl: async () => {
+    posts++; throw new Error('Synthetic native refusal response lost');
+  } }), error => error.outcome === 'refused');
+  assert.equal(posts, 1);
+  assert.equal(events.some(([endpoint]) => endpoint.endsWith('/record')), false);
+});
+
+test('refusal protocol binds the intent and never treats an untyped status as proof', async () => {
+  const { refusal, readRefusal, publishRefusal } = require('../../../shared/queueLaunchReceipt.cjs');
+  assert.equal(refusal(job.id, 'benchmark', { statusCode: 409 }), null);
+  const launchReceipt = refusal(job.id, 'benchmark', { notStarted: true, code: 'NOT_READY', message: 'Synthetic refusal' });
+  assert.deepEqual(readRefusal({ launchReceipt }, job), launchReceipt);
+  for (const change of [{ kind: 'image' }, { requestId: 'foreign' }, { outcome: 'unknown' }, { reason: '' }]) {
+    assert.equal(readRefusal({ launchReceipt: { ...launchReceipt, ...change } }, job), null);
+  }
+  let writes = 0;
+  const post = async () => { writes++; };
+  await publishRefusal(null, job.id, post);
+  await publishRefusal(launchReceipt, 'bad-dispatch', post);
+  assert.equal(writes, 0);
+  await publishRefusal(launchReceipt, job.id, post);
+  assert.equal(writes, 1);
+});
+
+test('a retained preparation plan does not report success while native release remains held', async () => {
+  const preparation = { ...job, executor: { prepare: true } };
+  const events = [];
+  let launches = 0;
+  const client = async (endpoint, body) => {
+    events.push([endpoint, body]);
+    if (endpoint.endsWith('/begin')) return { ...preparation, dispatchId: 'synthetic-dispatch' };
+    return { ...preparation, state: 'running', operation: { id: 'synthetic-plan' }, preparationReceipt: { preparedPlan: 'synthetic-plan' } };
+  };
+  await assert.rejects(runJob(preparation, client, { benchmarkExecutor: async () => { launches++; return { plan: 'synthetic-plan' }; } }),
+    error => error.outcome === 'uncertain' && /release still needs reconciliation/.test(error.message));
+  assert.equal(launches, 1);
+  assert.equal(events.filter(([endpoint]) => endpoint.endsWith('/prepared')).length, 1);
+});

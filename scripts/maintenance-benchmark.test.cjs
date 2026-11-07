@@ -315,6 +315,7 @@ test('a conflict or a refused admission is Benchmark\'s refusal, distinct from a
       assert.deepEqual([error.outcome, error.exitCode, error.details.verdict, error.details.status], ['refused', 4, verdict, launch.status]);
       assert.deepEqual(error.details.response, launch.json);
       assert.equal(error.details.planStartable, true);
+      assert.equal(error.notStarted, true);
       return true;
     });
   };
@@ -339,7 +340,7 @@ test('a conflict or a refused admission is Benchmark\'s refusal, distinct from a
 test('a refusal Benchmark cannot confirm keeps the plan dispatched', () => withBenchmark(async fake => {
   const { plan } = await fake.prepare();
   Object.assign(fake.state, { launch: { status: 409, json: { status: 'error', error: 'Another batch is already running' } }, listFails: true });
-  await assert.rejects(fake.start({ plan }), error => error.outcome === 'refused' && error.details.planStartable === false);
+  await assert.rejects(fake.start({ plan }), error => error.outcome === 'refused' && error.details.planStartable === false && error.notStarted === false);
   Object.assign(fake.state, { launch: 'accept', listFails: false });
   await assert.rejects(fake.start({ plan }), { outcome: 'unknown' });
   assert.equal(fake.state.posts.length, 1);

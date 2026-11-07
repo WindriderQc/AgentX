@@ -108,6 +108,7 @@ it('runs a pooled window: enter, hold, return, completed', async () => {
 });
 
 it('an enter switch refused at start releases the fence instead of leaving it uncertain', async () => {
+  await require('../../models/RuntimeCoordination').collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
   mockRefuse = () => Object.assign(new Error('Group dual has no single active mode'), { statusCode: 409, code: 'TOPOLOGY_GROUP_NOT_STABLE' });
   const job = await queue.submit(windowRequest('refused'), 'test');
   await queue.reserve(job.id, { expectedRevision: job.revision, start: at(-1), autoStart: true }, 'owner');
@@ -202,4 +203,17 @@ it('a lane overflow refusal names the next pooled window', async () => {
     role: 'conversation', mode: 'lanes', group: 'dual' });
   expect(none.data.nextPooledWindow).toBeUndefined();
   expect(none.suggestion).toBe('queue_for_pooled');
+});
+
+it('does not infer topology no-start from an arbitrary HTTP conflict or a conflicting identity', async () => {
+  for (const code of ['UNRELATED_CONFLICT', 'TOPOLOGY_SWITCH_ID_CONFLICT']) {
+    await Queue.deleteMany({}); await Archive.deleteMany({}); await Runtime.deleteMany({});
+    await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+    mockRefuse = () => Object.assign(new Error('Synthetic ambiguous conflict'), { statusCode: 409, code });
+    const job = await queue.submit(windowRequest(code), 'test');
+    await queue.reserve(job.id, { expectedRevision: job.revision, start: at(-1), autoStart: true }, 'owner');
+    await launcher.dispatchDue();
+    expect(await queue.get(job.id)).toMatchObject({ state: 'uncertain' });
+    expect((await queue.get(job.id)).launchRefusal).toBeUndefined();
+  }
 });

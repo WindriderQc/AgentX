@@ -100,7 +100,7 @@ describe('embedding index build', () => {
   test('starts only from a dispatched queue request', async () => {
     const refuse = async () => { throw Object.assign(new Error('not queued'), { statusCode: 409, code: 'EMBEDDING_BUILD_NOT_QUEUED' }); };
     const { builds, repository } = await setup({ verify: refuse });
-    await expect(builds.start({ buildId: BUILD, model: 'model-b', dimension: 8 })).rejects.toMatchObject({ code: 'EMBEDDING_BUILD_NOT_QUEUED' });
+    await expect(builds.start({ buildId: BUILD, model: 'model-b', dimension: 8 })).rejects.toMatchObject({ code: 'EMBEDDING_BUILD_NOT_QUEUED', notStarted: true });
     expect(repository.rows.size).toBe(0);
   });
 
@@ -179,4 +179,15 @@ describe('retiring the previous collection', () => {
     repository.rows.set(OTHER, { _id: OTHER, status: 'copying', startedAt: new Date().toISOString() });
     await expect(builds.retirePrevious({ collection: 'docs', expectedRevision: revision })).rejects.toMatchObject({ code: 'EMBEDDING_BUILD_ACTIVE' });
   });
+});
+
+test('a failed durable build insert response is not labeled no-start, even with an HTTP-shaped status', async () => {
+  const { builds, repository } = await setup();
+  const create = repository.create.bind(repository);
+  repository.create = async doc => { await create(doc); throw Object.assign(new Error('Synthetic insert reply lost'), { statusCode: 409 }); };
+  const failure = await builds.start({ buildId: BUILD, model: 'model-b', dimension: 8 }).catch(error => error);
+  expect(failure).toBeInstanceOf(Error);
+  expect(failure.message).toBe('Synthetic insert reply lost');
+  expect(failure.notStarted).toBeUndefined();
+  expect(repository.rows.get(BUILD)).toMatchObject({ status: 'copying' });
 });

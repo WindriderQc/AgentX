@@ -152,6 +152,7 @@ it('at the slot, grants the campaign and launches the worker from the checkpoint
 
 it('releases the campaign with Core\'s own receipt when the worker could not be started', async () => {
   await seed();
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
   const view = await resume.resume('0939', { confirm: true, when: 'asap' });
   await Queue.updateOne({ _id: 'heavy-work', 'jobs.id': view.campaign.id },
     { $set: { 'jobs.$.reservation.start': new Date(Date.now() - 1000).toISOString() } });
@@ -159,7 +160,7 @@ it('releases the campaign with Core\'s own receipt when the worker could not be 
   await launcher.dispatchDue();
   const job = await queue.get(view.campaign.id);
   expect(job.state).toBe('failed');
-  expect(job.releaseReceipt.receiptRef).toMatch(/^core:not-started: .*native terminal receipt/);
+  expect(job.releaseReceipt).toMatchObject({ authority: 'core-launch-refusal', refusal: { reason: expect.stringContaining('native terminal receipt') } });
   expect(control.launch).not.toHaveBeenCalled();
 });
 
@@ -176,6 +177,7 @@ it('refuses a delivered report, a running task and a changed checkpoint at the s
 
 it('retries an unstarted failure under an explicit new campaign and replays that identity', async () => {
   await seed();
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
   const original = await resume.resume('0939', { confirm: true, when: 'asap' });
   await Queue.updateOne({ _id: 'heavy-work', 'jobs.id': original.campaign.id },
     { $set: { 'jobs.$.reservation.start': new Date(Date.now() - 1000).toISOString() } });

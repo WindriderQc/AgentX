@@ -234,3 +234,17 @@ it('repairs a crash between retry acceptance and child creation under the origin
   expect((await service.retry(row._id, { requestKey: accepted }))._id).toBe(accepted);
   expect(await Model.countDocuments({ retryOf: row._id })).toBe(1);
 });
+
+it('recovers a persisted admission refusal after losing the queue receipt write, with no native POST', async () => {
+  const row = await service.create(input());
+  await coordination.acquireMaintenance({ principal: 'fixture-owner', requestId: 'fixture-lost-refusal', scope: 'deploy', ttl: 120000 });
+  const refusalWrite = jest.spyOn(queue, 'refused').mockRejectedValueOnce(new Error('Synthetic lost queue write'));
+  try {
+    await expect(launch(row)).rejects.toThrow();
+    expect((await queue.get(row.queueId)).state).toBe('uncertain');
+    expect((await service.get(row._id)).state).toBe('failed');
+  } finally { refusalWrite.mockRestore(); }
+  expect(await evidence.reconcile(row.queueId, 'observer-after-restart')).toMatchObject({ state: 'failed',
+    releaseReceipt: { authority: 'core-launch-refusal', refusal: { code: 'TRANSCRIPTION_ADMISSION_REFUSED' } } });
+  expect(starts).toBe(0);
+});

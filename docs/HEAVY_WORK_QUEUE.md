@@ -63,7 +63,13 @@ Supported executors:
   exit 3 and are never retried. Expiration alone never releases a fence.
 - **Profiler**: `{hostId, depth?, skipRecentDays?, modelNames?}` runs the existing
   host queue. Core checks its registered endpoint; the native tracker carries
-  the Core request identity for subsequent observation.
+  the Core request identity for subsequent observation. Exact identity lookup
+  includes retained terminal trackers, so a queue that finishes before its launch
+  reply is read still reconciles. Inventory reservations remain unconfirmed until
+  native claim acquisition; observing one does not overwrite the dispatch fence.
+  Terminal trackers remain for 24 hours after
+  finishing; a Benchmark restart loses these in-memory trackers and requires
+  native journal/operator evidence if Core has not already settled the request.
 - **Image**: the existing image request with `actionKey`, `prompt`, profile,
   dimensions, seed and optional archived parent/recipe. Core checks configured
   GPU consumers. Use artifact references instead of large binary payloads.
@@ -330,12 +336,24 @@ studio link and verified artifact remain the delivery contract.
 Terminal and uncertain outcomes enter the existing Core alert inbox with stable
 IDs. Archive writes the alert before removing the request. Acknowledgment survives
 restart/re-observation; stale-incident cleanup does not expire these results.
-An eventual terminal receipt resolves its earlier uncertain notice. The alert
+A recovered native receipt resolves its earlier uncertain notice, even while the
+request continues running. The alert
 and Nestor notification reads prove persistence, not external delivery.
-Failures and missed windows before dispatch request the `telegram` channel;
-the installed Telegram adapter owns actual delivery, its budget and quiet hours.
-Completed work and ordinary cancellations stay local. Existing alerts are not
-retrospectively enabled for Telegram.
+Failures and missed windows before dispatch request the `telegram` channel.
+Uncertain results and overdue receipts request that channel at critical severity;
+existing active, unsent uncertainty notices are upgraded without reopening
+acknowledgments. Completed work and ordinary cancellations stay local, and old
+terminal alerts are not retrospectively enabled. The installed Telegram adapter
+owns actual delivery, its budget and quiet hours.
+
+A separate observer checks attention every 15 seconds, independently of pending
+launch/evidence RPCs. A native dispatch missing its launch receipt becomes overdue
+after five minutes. Running work becomes overdue after its estimated execution
+duration plus five minutes from dispatch. Operator and island jobs remain
+`dispatching` for their execution, so they use that full duration too. The
+notification names the original request, resources and receipt owner. Its stable
+ID preserves acknowledgment; a returned receipt resolves it. These deadlines
+request attention and never prove termination, clear quarantine or relaunch work.
 
 The observer reports an unstarted requested/reserved job when its `startBefore`
 or reservation end passes, including planning proposals without an executor.
@@ -347,6 +365,46 @@ consumer's expiry cleanup cannot hide the event. A timely cancellation stays
 silent even when observed after the former deadline; legacy cancellations with
 no recorded expiry are not guessed to be failures. Dispatching, running and
 uncertain requests never become unstarted-expiry alerts.
+
+## Refusal and lost-response recovery
+
+`POST /:id/refused` records `{dispatchId, code, reason}` for an exact native
+executor dispatch. It persists the no-start verdict before checking release;
+reconciliation consumes the same receipt after a lost reply or Core restart.
+Only a complete runtime snapshot with no overlapping workload/inference allows
+settlement, with a second check when the queue transition commits. Native owners
+retain their admissions and recovery quarantines. The route rejects another
+dispatch, a changed refusal or an already recorded native operation. Custom
+operator completion uses its own terminal receipt protocol below.
+
+Profiler and RAG use `agentx.queue-launch/v1` for explicit pre-launch refusals,
+bound to the Core request and executor kind. With the dispatch identity supplied
+by Core/CLI, they publish that refusal to Core before returning their HTTP error.
+If this publication loses its response, Core still retains a committed receipt;
+if publication is unavailable, a received typed response lets the original
+launcher store it. An HTTP status alone, a timeout, an empty lookup or a failed
+read never proves no-start. Loss of both receipt publication and response remains
+unknown and requests attention; no distributed receipt protocol infers a result
+that no owner retained.
+
+| Executor path | Conclusive refusal or retained outcome | Lost-response observation |
+| --- | --- | --- |
+| Benchmark preparation | Exact plan or typed preparation refusal persists before release checking | Same queue receipt; an unreturned preflight remains unknown |
+| Benchmark batch | Preflight/stale-plan refusal before POST, or native pre-insert refusal confirmed by plan-tag lookup | Read the original plan tag/batch; never repeat a crossed launch |
+| Profiler manual/automatic | Inventory/filter refusal before claim acquisition publishes to Core; claim failures remain fenced | Exact Core request lookup includes running and terminal trackers |
+| Image manual/native | Worker loss before acceptance stores the exact manual dispatch refusal; created operations retain their own outcome | Original action/operation, artifact and restoration receipt; queued acceptance is not a launch |
+| RAG embedding reindex | Typed refusal before durable build creation publishes to Core | Durable build ID equals the queue request; create/insert ambiguity remains unknown |
+| Topology | Explicit pre-create switch refusal codes; other conflicts remain unknown | Original enter/return switch IDs and native recovery journal |
+| Long transcription | Admission refusal persists in the personal request and can repair a missing queue receipt | Original queue/native SQLite identity and persisted admission; no second POST |
+| Plant identification | Original import/dispatch and terminal identification receipt | A disappeared process or dispatch gap retains the slot for native reconciliation |
+| Pipeline report campaign | Core no-start receipt before runner launch; budget grants remain intact | Original campaign and worker result; a committed grant is never reset for retry |
+| Island/operator | Typed island no-start receipt, or hashed terminal receipt with release proof | Original runner/status and operator receipt; no inferred shell termination |
+
+A successful preparation also stores its plan before release checking. A held
+native admission therefore delays settlement without discarding the known plan.
+The notification deadline applies to every active path above, including paths
+whose native evidence still needs an operator. All recovery reads preserve the
+original request identity and never authorize a replacement launch.
 
 ## Custom coding work
 

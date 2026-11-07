@@ -97,7 +97,11 @@ async function start(begun) {
       requestId: `${begun.id}.enter`, principal: 'heavy-work-queue', source: 'queue' });
   } catch (error) {
     // A typed refusal means no switch began: the queue releases its fence.
-    if (error.statusCode && error.statusCode < 500) throw Object.assign(error, { notStarted: true });
+    if (['TOPOLOGY_SWITCH_INVALID', 'TOPOLOGY_INVALID', 'TOPOLOGY_GROUP_UNKNOWN', 'TOPOLOGY_MODE_UNKNOWN',
+      'TOPOLOGY_ACTUATOR_NOT_CONFIGURED', 'TOPOLOGY_SWITCH_IN_PROGRESS', 'TOPOLOGY_SWITCH_UNCERTAIN',
+      'TOPOLOGY_PREREQUISITE_MISSING', 'TOPOLOGY_GROUP_NOT_STABLE', 'TOPOLOGY_MODE_CHANGED'].includes(error.code)) {
+      throw Object.assign(error, { notStarted: true });
+    }
     throw error;
   }
   return { id: begun.id };

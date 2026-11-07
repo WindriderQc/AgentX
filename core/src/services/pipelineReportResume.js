@@ -34,7 +34,8 @@ const WHEN = ['asap', 'tonight', 'at'];
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 function retryable(task, job) {
   return job?.state === 'failed' && !task.reportResume?.launch
-    && job.releaseReceipt?.receiptRef?.startsWith('core:not-started:')
+    && (job.releaseReceipt?.receiptRef?.startsWith('core:not-started:')
+      || (job.releaseReceipt?.authority === 'core-launch-refusal' && job.launchRefusal?.dispatchId === job.dispatchId))
     && !(task.codingReportAuthority?.grants || []).some(row => row.key === task.reportResume?.grantKey);
 }
 // Conservative cost of one document step when the lane has no agent

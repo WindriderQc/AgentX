@@ -163,12 +163,19 @@ function createBuildService({
       return view(existing);
     }
     // Only the heavy-work queue starts a build, inside its dispatch window.
-    await verifyQueueRequest(buildId, { model, dimension });
-    const other = await repository.findInProgress();
-    if (other) throw fail(`Embedding build ${other._id} is still in progress`, 409, 'EMBEDDING_BUILD_ACTIVE');
-    const profile = await profiles.read();
-    if (profile.active.model === model && profile.active.dimension === dimension) {
-      throw fail(`RAG already serves ${model}`, 409, 'EMBEDDING_MODEL_UNCHANGED');
+    let profile;
+    try {
+      await verifyQueueRequest(buildId, { model, dimension });
+      const other = await repository.findInProgress();
+      if (other?._id === buildId) return view(other);
+      if (other) throw fail(`Embedding build ${other._id} is still in progress`, 409, 'EMBEDDING_BUILD_ACTIVE');
+      profile = await profiles.read();
+      if (profile.active.model === model && profile.active.dimension === dimension) {
+        throw fail(`RAG already serves ${model}`, 409, 'EMBEDDING_MODEL_UNCHANGED');
+      }
+    } catch (error) {
+      if (error.statusCode && error.statusCode < 500) error.notStarted = true;
+      throw error;
     }
     const build = await repository.create({
       _id: buildId, model, dimension,

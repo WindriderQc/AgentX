@@ -43,7 +43,14 @@ function reindexHosts(model) {
 const readProfile = () => rag('GET', '/api/rag/embedding-profile');
 const readBuild = id => rag('GET', `/api/rag/embedding-builds/${encodeURIComponent(id)}`);
 const stopBuild = id => rag('POST', `/api/rag/embedding-builds/${encodeURIComponent(id)}/cancel`);
-const startBuild = job => rag('POST', '/api/rag/embedding-builds', { buildId: job.id, model: job.executor.model, dimension: job.executor.dimension });
+async function startBuild(job) {
+  try { return await rag('POST', '/api/rag/embedding-builds', { buildId: job.id, queueDispatchId: job.dispatchId, model: job.executor.model, dimension: job.executor.dimension }); }
+  catch (error) {
+    const refusal = require('../../../shared/queueLaunchReceipt.cjs').readRefusal(error.body, job);
+    if (refusal) Object.assign(error, { notStarted: true, code: refusal.code, message: refusal.reason });
+    throw error;
+  }
+}
 
 /** The queue's terminal receipt for a build, or null while it still runs. */
 function buildOutcome(build) {

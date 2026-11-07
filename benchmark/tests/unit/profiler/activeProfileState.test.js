@@ -4,10 +4,19 @@ const {
   clearActiveProfilingState,
   findActiveProfilingForHost,
   listActiveProfiles,
+  cleanupStaleProfileQueues,
   listActiveProfileQueues
 } = require('../../../src/services/profiler/activeProfileState');
 
 describe('activeProfileState', () => {
+  it('retains a just-finished long queue for reconciliation, then expires its terminal history', () => {
+    const now = Date.now();
+    activeProfileQueues.set('long', { status: 'completed', startedAt: now - 48 * 3600000, finishedAt: now });
+    cleanupStaleProfileQueues(now + 1000);
+    expect(activeProfileQueues.has('long')).toBe(true);
+    cleanupStaleProfileQueues(now + 25 * 3600000);
+    expect(activeProfileQueues.has('long')).toBe(false);
+  });
   beforeEach(() => {
     clearActiveProfilingState();
   });
