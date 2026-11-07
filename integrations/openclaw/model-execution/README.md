@@ -34,6 +34,21 @@ prepared public SDK auth result is checked again before transport. ADC/OAuth,
 absent keys, ADC markers and placeholders cannot inherit this qualification.
 No provider, credentials or runtime configuration are installed by these tests.
 
+The same runtime version also qualifies `azure-openai-responses` and non-reasoning
+`mistral-conversations` targets on separately pinned client/dependency fingerprints.
+`client-sdk-fingerprint.mjs` extends the SDK digest with the actual client package,
+installed runtime/peer dependencies and missing-peer state. It verifies resolution
+from SDK/AI contexts, including Mistral's HTTP/chat subpaths. A changed or shadowed
+dependency closes admission. These are native SDK clients, not AgentX clients.
+
+Azure uses the model's configured route; `AZURE_OPENAI_BASE_URL`,
+`AZURE_OPENAI_RESOURCE_NAME`, `AZURE_OPENAI_API_VERSION` and
+`AZURE_OPENAI_DEPLOYMENT_NAME_MAP` overrides close admission. The final native
+route identity is checked before HTTP. Native thinking/output settings that are
+not applied are refused, including a thinking-off request on an opaque alias
+that the SDK does not support. Mistral reasoning models and reasoning requests
+remain closed. Both APIs refuse seed, topP and JSON and cannot be judges.
+
 For a required Google qualification, run
 `AGENTX_REQUIRE_OPENCLAW_SDK=1 node --test test/native-google-qualification.test.mjs`
 here. Missing SDK code fails this command. Its synthetic native provider and
@@ -51,8 +66,15 @@ qualification_dir="$(mktemp -d)"
 npm install --global --prefix "$qualification_dir" --ignore-scripts --no-audit --no-fund openclaw@2026.9.4
 mkdir -p integrations/openclaw/model-execution/node_modules
 ln -s "$qualification_dir/lib/node_modules/openclaw" integrations/openclaw/model-execution/node_modules/openclaw
-AGENTX_REQUIRE_OPENCLAW_SDK=1 npm test --prefix integrations/openclaw/model-execution
+unshare --user --map-root-user --net sh -c 'ip link set lo up && AGENTX_REQUIRE_OPENCLAW_SDK=1 npm test --prefix integrations/openclaw/model-execution'
 ```
+
+The complete qualification runs in an isolated Linux network namespace.
+The new Azure/Mistral native tests fail before SDK loading when
+an external network interface is present. They replace the actual SDK model-fetch
+port (replacing global `fetch` alone is insufficient), block sockets and verify
+that only synthetic credentials reach the mock. Loopback supports the existing
+local HTTP observation fixtures; the namespace has no external network.
 
 Run these commands from the repository root. The official distribution's
 Google SDK fingerprint is
