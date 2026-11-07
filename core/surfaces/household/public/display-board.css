@@ -58,6 +58,15 @@
 .math-plot-axes line { stroke: var(--soft); stroke-width: 1.5; }
 .math-plot-labels text { fill: var(--soft); font-size: 15px; font-family: inherit; }
 .math-plot-curve { stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.math-plot-derivative { stroke-width: 2.5; stroke-dasharray: 9 6; stroke-linecap: butt; }
+.math-plot-area { fill-opacity: .32; stroke-width: 1.5; stroke-opacity: .9; }
+.math-plot-tangent { stroke-width: 2; stroke-opacity: .95; }
+.math-plot-touch { stroke-width: 2; }
+/* Legend swatches: dashed for a derivative, a shaded block for an area, outlined white for a tangent. */
+.math-plot-legend-derivative .math-plot-swatch { -webkit-mask: repeating-linear-gradient(90deg, #000 0 4px, transparent 4px 7px); mask: repeating-linear-gradient(90deg, #000 0 4px, transparent 4px 7px); }
+.math-plot-legend-area .math-plot-swatch { height: 10px; transform: translateY(0); }
+.math-plot-legend-tangent .math-plot-swatch { box-shadow: 0 0 0 1px var(--line); }
+.math-plot-legend-tangent, .math-plot-legend-area { flex-basis: 100%; font-size: .95rem; }
 .math-plot-controls { display: grid; gap: 6px; }
 .math-plot-slider { display: grid; grid-template-columns: 1.6em minmax(0, 1fr) minmax(4ch, auto); align-items: center; gap: 10px; min-height: 40px; }
 /* The household's `label > span` caption style must not turn a parameter name into a heading. */
