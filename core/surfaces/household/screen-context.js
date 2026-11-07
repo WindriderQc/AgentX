@@ -31,6 +31,11 @@ function presentationEvidence(value, catalog) {
     selected.page = catalog.canonical(target);
     if (row.status === 'visible') {
       selected.headings = (Array.isArray(row.headings) ? row.headings : []).slice(0, 6).map(text => clean(text, 160));
+      if (target.focus.section && row.focus?.section === target.focus.section
+        && ['applied', 'unavailable'].includes(row.focus.status)) {
+        selected.focus = { section: target.focus.section, status: row.focus.status,
+          ...(row.focus.status === 'applied' && { heading: clean(row.focus.heading, 160) }) };
+      }
       // A browser reference is a claim of selection; the data is read from Core,
       // never from a caller-supplied snapshot or arbitrary URL.
       const read = target.page === 'analytics' ? presentationReader.read(row.read || {}) : null;

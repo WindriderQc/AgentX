@@ -265,6 +265,9 @@
     card._dispose = content._dispose;
     card._screenFrame = content._screenFrame;
     card._screenTarget = block.kind === 'page' ? target : null;
+    if (space === 'personal' && card._screenFrame && target?.focus?.section) {
+      card._screenFrame.addEventListener('load', () => root.AgentXScreenPageFocus?.apply(card));
+    }
     card._screenState = () => content.dataset.state;
     if (content._mathText) card._mathText = content._mathText;
     return card;
@@ -275,8 +278,12 @@
     container.replaceChildren(node('h2', 'display-board-heading', heading), list);
     const update = () => { container.hidden = !list.childElementCount; onChange?.(Array.from(list.children)); };
     const board = {
-      add(block) {
+      add(block, { restoring = false } = {}) {
         if (kinds && !kinds.includes(block?.kind)) return false;
+        if (!restoring && space === 'personal' && block?.kind === 'page') {
+          const existing = Array.from(list.children).find(card => card.dataset.selected === 'true' && root.AgentXScreenPageFocus?.present(card, block));
+          if (existing) { update(); return true; }
+        }
         const card = render(block, { secrets, space });
         if (!card) return false;
         if (space === 'family' && block.kind === 'page') {
@@ -300,7 +307,7 @@
         update();
         return true;
       },
-      restore(blocks = []) { (Array.isArray(blocks) ? blocks : []).forEach(board.add); },
+      restore(blocks = []) { (Array.isArray(blocks) ? blocks : []).forEach(block => board.add(block, { restoring: true })); },
       has: key => Array.from(list.children).some(child => child.dataset?.key === key),
       context() {
         if (container.hidden) return [];

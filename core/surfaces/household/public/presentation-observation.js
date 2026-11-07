@@ -5,7 +5,7 @@
   function observe(card) {
     const block = card._displayBlock;
     const base = { contract: 'agentx.presentation/v1', id: card.dataset.presentationId,
-      revision: card.dataset.presentationId, kind: block.kind === 'review' ? 'text' : block.kind, title: card.querySelector('.display-block-title')?.textContent || block.title || '', status: 'visible',
+      revision: card.dataset.presentationRevision || card.dataset.presentationId, kind: block.kind === 'review' ? 'text' : block.kind, title: card.querySelector('.display-block-title')?.textContent || block.title || '', status: 'visible',
       ...(block.partial && { partial: true }) };
     if (block.kind === 'secret') return { ...base, status: 'unavailable' };
     if (block.kind !== 'page') {
@@ -29,20 +29,23 @@
     try {
       const doc = card._screenFrame.contentDocument;
       const expected = new URL(root.AgentXScreenPages.url(target), root.location.href);
-      if (!doc?.body || doc.location.origin !== root.location.origin || doc.location.pathname !== expected.pathname)
-        return { ...base, status: card._screenState?.() || 'loading' };
+      if (!doc?.body || doc.location.href === 'about:blank') return { ...base, status: card._screenState?.() || 'loading' };
+      if (doc.location.origin !== root.location.origin || doc.location.pathname !== expected.pathname
+        || expected.searchParams.get('view') === 'screen' && new URL(doc.location.href).searchParams.get('view') !== 'screen')
+        return { ...base, status: 'unavailable' };
       const content = card._screenFrame.contentWindow.AgentXPresentedContent;
       const detail = content?.contract === 'agentx.presentation/v1' ? content : null;
       if (target.page === 'ecosystem' && (new URL(doc.location.href).searchParams.get('app') !== 'ecosystem' || !detail))
         return { ...base, status: 'unavailable' };
       // Analytics publishes its state as soon as its script runs; before that
       // the parsed document has no data to read.
-      if (target.page === 'analytics' && !detail) return { ...base, status: doc.readyState === 'complete' ? 'unavailable' : 'loading' };
+      if (['analytics', 'profiler', 'cluster-schedule'].includes(target.page) && !detail) return { ...base, status: doc.readyState === 'complete' ? 'unavailable' : 'loading' };
       return { ...base, status: detail && detail.state !== 'ready' ? detail.state === 'loading' ? 'loading' : 'unavailable' : 'visible',
         title: String(doc.title || base.title).slice(0, 160),
         headings: Array.from(doc.querySelectorAll('h1,h2,h3')).filter(el => el.getClientRects().length)
           .slice(0, 6).map(el => el.textContent.trim().slice(0, 160)),
         ...(detail && { read: detail.read, filters: detail.filters, selection: detail.selection }),
+        ...(target.focus?.section && { focus: root.AgentXScreenPageFocus?.observe(card) || { section: target.focus.section, status: 'unavailable' } }),
         ...(target.page === 'ecosystem' && detail?.observation && { observation: detail.observation }),
         ...(target.page === 'analytics' && { live: card._screenFrame.contentWindow.AgentXPresentedLiveContent }) };
     } catch { return { ...base, status: 'external' }; }

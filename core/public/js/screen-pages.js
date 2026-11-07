@@ -4,6 +4,13 @@
   const STATUSES = Object.freeze(['queued', 'in_progress', 'review', 'blocked', 'done']);
   const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
   const fallback = [{ id: 'pipeline', label: 'Pipeline', href: '/pipeline', mode: 'frame' }];
+  // Public tokens map to fixed page-owned anchors, never caller-supplied selectors.
+  const SECTIONS = Object.freeze(Object.assign(Object.create(null), {
+    pipeline: Object.freeze({ overview: 'pipelineOverview', attention: 'pipelineAttention' }),
+    analytics: Object.freeze({ overview: 'analytics-experience-title', trend: 'ao-trend-title', comparison: 'ao-model-title', live: 'ao-live-title' }),
+    profiler: Object.freeze({ overview: 'screen-overview', hosts: 'screen-hosts', models: 'screen-models' }),
+    'cluster-schedule': Object.freeze({ overview: 'screen-overview', timeline: 'screen-timeline', queue: 'screen-queue' })
+  }));
   // DiskX animation list (GraphysX <diskx-city play>): presentation steps only, never actions.
   const SHOW_SCENES = Object.freeze(['overview', 'duplicates', 'pairs', 'target', 'summary']);
   function diskxPlay(value) {
@@ -50,6 +57,12 @@
       const page = Object.hasOwn(PAGES, words[0]) ? words[0] : '';
       if (!page) return null;
       const focus = {};
+      for (const word of words.slice(1)) {
+        if (!word.startsWith('section=')) continue;
+        const section = word.slice(8);
+        if (!Object.hasOwn(SECTIONS[page] || {}, section) || focus.section) return null;
+        focus.section = section;
+      }
       if (page === 'pipeline') for (const word of words.slice(1)) {
         const [key, value = ''] = word.split('=');
         if (key === 'status' && STATUSES.includes(value) || key === 'task' && /^\d{3,4}$/.test(value)) focus[key] = value;
@@ -91,7 +104,7 @@
     return Object.freeze({ PAGES, STATUSES, parse, canonical, url, label, mode, keepsConversation, entries: Object.freeze(Object.values(PAGES)) });
   }
   let current = createCatalog();
-  const api = Object.freeze({ STATUSES, SHOW_SCENES, ECOSYSTEM_SCENES, diskxPlay, ecosystemPlay, createCatalog, destination, canonical,
+  const api = Object.freeze({ STATUSES, SECTIONS, SHOW_SCENES, ECOSYSTEM_SCENES, diskxPlay, ecosystemPlay, createCatalog, destination, canonical,
     configure(entries) { current = createCatalog(entries); },
     get PAGES() { return current.PAGES; }, get entries() { return current.entries; },
     parse: body => current.parse(body), url: (target, options) => current.url(target, options),

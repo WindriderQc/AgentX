@@ -249,12 +249,14 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   await page.evaluate(() => document.activeElement?.blur());
   await page.clock.fastForward(121000);
   await photoFrame.waitFor({ state: 'visible' });
+  await page.keyboard.press('Tab'); // The photo controls intentionally start hidden.
   await photoFrame.getByRole('button', { name: 'Settings', exact: true }).click();
   assert.equal(await page.locator('#conversationSettings').isVisible(), true);
   await page.locator('#conversationSettingsToggle').click();
   await page.evaluate(() => document.activeElement?.blur());
   await page.clock.fastForward(121000);
   await photoFrame.waitFor({ state: 'visible' });
+  await page.keyboard.press('Tab');
   await photoFrame.getByRole('button', { name: 'Flow', exact: true }).click();
   assert.equal(await page.locator('#conversationWorkflow').isVisible(), true);
   await page.evaluate(() => document.activeElement?.blur());

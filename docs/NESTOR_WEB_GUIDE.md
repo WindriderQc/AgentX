@@ -14,6 +14,29 @@ Pipeline retains its bounded `status` and `task` focus. Unknown IDs, addresses
 and unrecognized focus arguments cannot become browser destinations. Family
 conversations have no private page catalogue or screen observations.
 
+Four personal pages accept `section=<token>` to scroll to and highlight a
+fixed anchor: Pipeline `overview|attention`, Analytics
+`overview|trend|comparison|live`, Profiler `overview|hosts|models`, and Cluster
+Schedule `overview|timeline|queue`. For example,
+`<show kind="page">profiler section=hosts</show>`. Unknown sections and repeated
+section arguments refuse the block. A section is a display request; the next
+browser observation separately reports whether the anchor was displayed. No
+selector, click or business action is accepted.
+Changing only the section of the selected live page preserves its frame and
+read; the browser gives that selection a new observation revision. Reading
+the observation does not scroll again or refresh the page.
+
+Profiler's `view=screen` reads its existing dashboard projection: stored host
+baselines, profile stages and stale profiles. Cluster Schedule's screen variant
+reads the existing day timeline and heavy-work queue; the ordinary route still
+opens Automations' Calendar. These variants load no native control scripts,
+forms or launch handlers. Their only control refreshes the read. Dates and
+queue states retain their native meaning; a baseline date is not live host
+health, and a reservation is not execution. Failed refresh clears older values.
+Both variants supply headings and display state to the conversation, without
+claiming a numeric Core read receipt. Analytics keeps its existing exact
+snapshot contract.
+
 Showing content automatically opens one content workspace: it takes the main
 column, messages and voice controls remain beside it, and the avatar becomes
 small. On tablet and phone widths, the conversation follows the page. Runtime
@@ -109,6 +132,17 @@ frame state preservation, page switching, observations and navigation cleanup:
 NODE_PATH=/path/to/dependencies/node_modules:/path/to/playwright/node_modules \
 PAGE_PRESENTATION_REPORT_DIR=/path/outside/repository \
 node core/tests/browser/nestorPagePresentationJourney.cjs
+```
+
+The screen focus journey renders the production consultation templates and
+Pipeline/Analytics anchors on loopback, with synthetic domain responses. It
+checks closed focus tokens, personal/Family exclusions, same-origin screen
+framing, loading/failure/recovery and zero inference or dispatch requests:
+
+```bash
+AGENTX_PLAYWRIGHT_MODULE=/path/to/playwright \
+SCREEN_FOCUS_REPORT_DIR=/path/outside/repository \
+node core/tests/browser/nestorScreenFocusJourney.cjs
 ```
 
 `GUIDED_SERVICES_BROWSER_EXECUTABLE` optionally selects an already installed
