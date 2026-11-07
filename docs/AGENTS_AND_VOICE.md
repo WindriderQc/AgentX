@@ -243,12 +243,25 @@ still requires operator delivery. Device acceptance and the persona diagnostic
 page live under `/voice-lab/devices` and `/voice-lab/personas`, with redirects
 from their older URLs. The historical Surface receipt keeps its existing owner.
 
+An explicitly chosen microphone stays selected when device discovery no longer
+finds it. The workshop marks it unavailable; saving other settings preserves
+that choice. Capture explains how to reconnect it or deliberately choose and
+save another microphone (including the system default), then Resume. It never
+retries a failed selection with a different microphone automatically.
+
 ## Shared speech behavior
 
 Core owns the common browser capture/conversation/playback loop and server-side
 VoiX transport, synthesis validation, deadlines and stream forwarding. Household
 composes these with its session adapters. Native devices retain their
 own capture and playback qualification.
+
+Nonempty recognized speech, including short numbers, greetings and thanks,
+remains conversation input after the normal wake and control checks. There is
+no phrase blacklist: speech detection rejects audio without detected speech;
+text alone does not establish an acoustic hallucination. Browser voice choices
+inherit the current persona voice until a person explicitly selects an override;
+clearing that override restores inheritance.
 
 Speech health reports recognition routing availability separately from overall
 service degradation. GPU backoff with CPU fallback disabled reports

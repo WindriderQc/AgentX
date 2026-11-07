@@ -81,6 +81,44 @@ await page.locator('[data-action="close"]').click();
 await page.setViewportSize({width:1600,height:1000});await page.locator('#conversationWorkflow').screenshot({path:report+'/daily-signal.png'});await page.setViewportSize({width:1024,height:1000});
 await page.locator('#conversationLanguage label:has(input[value="en"])').click();await page.locator('#conversationLanguage label:has(input[value="fr"])').click();assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('household.conversation.preferences.v2')).profiles.nestor.selections.fr),'voxcpm|gazz');
 await page.goto(origin+'/voice-lab');await page.locator('[data-action="start"]').waitFor();await page.waitForTimeout(100);assert.equal(await page.evaluate(()=>window.captureCalls),0);assert.equal(await page.locator('[data-step="response"]').getAttribute('data-state'),'off');assert.equal(await page.evaluate(()=>[...document.querySelectorAll('[data-role="signalBars"] rect')].every(r=>r.getAttribute('height')==='2')),true);
+// Device discovery must preserve a missing explicit choice and unsaved choices.
+await page.evaluate(() => {
+  navigator.mediaDevices.enumerateDevices = async () => [{ kind:'audioinput',deviceId:'other-mic',label:'Other microphone' }];
+});
+await page.locator('[data-tab="settings"]').click();
+const microphoneChoice = page.locator('[data-field="inputDeviceId"]');
+const discoverMicrophones = page.locator('[data-action="devices"]');
+const saveVoiceSettings = page.locator('[data-role="settings"] button[type="submit"]');
+await discoverMicrophones.click();
+await page.locator('[data-role="notice"]').filter({hasText:'micro choisi est indisponible'}).waitFor();
+assert.equal(await microphoneChoice.inputValue(),'saved-mic');
+assert.match(await microphoneChoice.locator('option:checked').textContent(),/indisponible/);
+await saveVoiceSettings.click();
+assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('agentx.voice.capture.v1.personal')).inputDeviceId),'saved-mic','saving after listing must not silently replace a missing microphone');
+await page.evaluate(() => {
+  navigator.mediaDevices.enumerateDevices = () => new Promise(resolve => {
+    window.finishDeviceDiscovery = () => resolve([{ kind:'audioinput',deviceId:'other-mic',label:'Other microphone' }]);
+  });
+});
+await discoverMicrophones.click();
+await page.waitForFunction(()=>typeof window.finishDeviceDiscovery==='function');
+await microphoneChoice.selectOption('');
+await page.evaluate(()=>window.finishDeviceDiscovery());
+await page.waitForFunction(()=>!document.querySelector('[data-action="devices"]').disabled);
+assert.equal(await microphoneChoice.inputValue(),'','a deliberate choice during discovery outranks the value at discovery start');
+await page.evaluate(() => {
+  navigator.mediaDevices.enumerateDevices = async () => [{ kind:'audioinput',deviceId:'other-mic',label:'Other microphone' }];
+});
+for (const chosen of ['other-mic','']) {
+  await microphoneChoice.selectOption(chosen);
+  await discoverMicrophones.click();
+  await page.waitForFunction(()=>!document.querySelector('[data-action="devices"]').disabled);
+  assert.equal(await microphoneChoice.inputValue(),chosen,'discovery preserves the current unsaved choice');
+  await saveVoiceSettings.click();
+  assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('agentx.voice.capture.v1.personal')).inputDeviceId),chosen,'a deliberate replacement is saved');
+}
+await page.evaluate(()=>window.captureCalls=0);
+await page.locator('[data-tab="microphone"]').click();
 const stopReplay = page.locator('[data-action="stopReplay"]');
 const stopSpeech = page.locator('[data-action="stopSpeech"]');
 assert.equal(await stopReplay.isDisabled(), true, 'idle replay cannot be stopped');

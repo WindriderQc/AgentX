@@ -1294,7 +1294,7 @@ test('a waiting notice is spoken before the answer that follows it (#62)', async
 });
 
 test('every nonempty recognized reply is considered, including numbers and thanks', async () => {
-  const texts = ['7', 'oui', 'merci', 'bye', 'Thank you very much.', 'Thanks for watching!',
+  const texts = ['7', 'oui', 'merci', 'bye', 'Thank you.', 'Hi.', 'Hello.', 'Thank you very much.', 'Thanks for watching!',
     'Sous-titres réalisés par la communauté d’Amara.org', 'Merci d’avoir regardé.', '6.'];
   for (const phrase of texts) {
     const submitted = [];

@@ -972,7 +972,14 @@
     signal.addEventListener('abort', close, { once: true });
     try {
       if (!options.automatic) await context.resume();
-      stream = await root.navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, ...(inputDeviceId ? { deviceId: { exact: inputDeviceId } } : {}) } });
+      try {
+        stream = await root.navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, ...(inputDeviceId ? { deviceId: { exact: inputDeviceId } } : {}) } });
+      } catch (error) {
+        if (inputDeviceId && (error?.name === 'NotFoundError' || error?.name === 'OverconstrainedError' && (!error.constraint || error.constraint === 'deviceId'))) {
+          throw Object.assign(new Error('The selected microphone is unavailable. Reconnect it, or choose and save another microphone in Voice workshop settings, then press Resume.'), { code: 'VOICE_SELECTED_DEVICE_UNAVAILABLE', cause: error });
+        }
+        throw error;
+      }
       if (closed || signal.aborted) { stream.getTracks().forEach((track) => track.stop()); throw new Error('Microphone start cancelled.'); }
       if (options.automatic) {
         let resumeTimer;
