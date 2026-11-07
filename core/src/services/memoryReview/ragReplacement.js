@@ -56,7 +56,7 @@ function createRagReplacement({ ragClient = getRagServiceClient(), now = () => n
     }
     // The successor joins the same memory source, so recall and dedup keep finding it.
     await ragClient.upsertDocumentWithChunks(text.trim(), { documentId: successorId, source: old.source,
-      scope, sensitivity, validFrom: effectiveAt.toISOString(), sourceRefs });
+      scope, sensitivity, validFrom: validFrom ? effectiveAt.toISOString() : null, sourceRefs });
     try {
       await ragClient.setDocumentValidity(ref, { invalidatedAt: effectiveAt.toISOString(), supersededBy: successorId,
         expectedFingerprint });

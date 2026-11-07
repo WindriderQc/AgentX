@@ -159,3 +159,18 @@ test('a forgotten predecessor cannot be revived by replacement or rollback', asy
   await expect(owner.supersede(input)).rejects.toMatchObject({ statusCode: 409 });
   expect((await owner.list({ includeHistory: true })).notes).toEqual([]);
 });
+
+test('an undated replacement keeps its validity unknown while the predecessor records the apply instant', async () => {
+  const start = Date.now();
+  const { validFrom, ...undated } = input;
+  const result = await owner.supersede(undated);
+  const [current] = (await owner.list()).notes;
+  expect(current).toMatchObject({ id: result.id, validFrom: null });
+  expect(Number(new Date(current.recordedAt))).toBeGreaterThanOrEqual(start);
+  const prior = (await owner.list({ includeHistory: true })).notes.find(note => note.id === old.id);
+  expect(prior).toMatchObject({ supersededBy: result.id, validFrom: new Date('2025-01-01T00:00:00Z') });
+  expect(Number(prior.invalidatedAt)).toBeGreaterThanOrEqual(start);
+  expect(await owner.supersede(undated)).toMatchObject({ id: result.id, alreadyApplied: true });
+  expect(await owner.rollbackSupersession({ id: old.id, key: undated.key })).toMatchObject({ forgottenSuccessorId: result.id });
+  expect((await owner.list()).notes.map(note => note.id)).toEqual([old.id]);
+});

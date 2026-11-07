@@ -81,8 +81,9 @@ or `rag` reference found by Core's deduplication in that run. Core captures the 
 fingerprint itself; the synthesis cannot provide one or self-certify a conflict.
 This type always requires individual review, server apply mode and an audited
 run authorization. Apply rechecks the source, space and exact classification.
-An undated reviewed replacement takes effect at its first apply instant;
-an explicitly dated replacement keeps that date separately from recording time.
+An undated reviewed replacement leaves the successor's `validFrom` unknown;
+the predecessor's `invalidatedAt` records the first apply instant. An explicitly
+dated replacement keeps that date separately from recording time.
 Future-effective replacements and reversed date ranges are refused.
 
 The predecessor owns a durable replacement receipt, and the staged successor
@@ -102,7 +103,9 @@ Current RAG recall excludes the predecessor; owner history keeps it. A retry
 resumes by the review key. Restore clears the predecessor's validity and removes
 the unchanged successor; a successor that was itself replaced refuses restore.
 Unlike notes, the successor is visible from its write until the link a moment
-later, so both can briefly appear current.
+later, so both can briefly appear current. When another write changes the
+predecessor before the link, the apply removes its own unlinked successor and
+fails; a retry finishes an interrupted removal.
 
 The synthetic tests cover filtering of owner versus harness/tool content,
 secret sanitation, bounded/resumable collection, API retries, idempotent watermarks,

@@ -177,3 +177,10 @@ test('an unlinked successor that was itself replaced is never deleted silently',
   await expect(replacement.supersede(second)).rejects.toThrow(/itself replaced/);
   expect(rag.docs.has(ragReplacementSuccessorFor(otherKey))).toBe(true);
 });
+
+test('an undated replacement keeps its validity unknown while the predecessor records the apply instant', async () => {
+  const applied = await replacement.supersede(await input({ validFrom: null }));
+  expect(rag.docs.get(applied.id).metadata.validFrom).toBeNull();
+  expect(rag.docs.get('backup-a').metadata).toMatchObject({ invalidatedAt: now().toISOString(), supersededBy: applied.id,
+    validFrom: '2026-01-05T00:00:00.000Z' });
+});
