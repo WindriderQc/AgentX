@@ -76,7 +76,10 @@
     var last = job.last;
     if (!last) return 'No measurement started yet.';
     var what = (last.kind === 'profile' ? 'Profile' : (last.prompts || '') + ' prompts') + ' for ' + last.model + ' on ' + last.hostName;
-    var outcome = { advanced: 'done', no_progress: 'ended without progress', not_started: 'not started: ' + (last.error || '') }[last.outcome] || 'started';
+    var outcome = { advanced: 'done', failed: 'failed: ' + (last.error || 'see native receipt'),
+      no_progress: 'ended without progress', not_started: 'not started: ' + (last.error || '') }[last.outcome]
+      || { uncertain: 'outcome unknown; observing the original request', dispatching: 'start not yet confirmed',
+        requested: 'requested in Core', reserved: 'reserved in Core', cancelled: 'cancelled', running: 'running' }[last.state] || 'started';
     return 'Last: ' + what + ', ' + new Date(last.at).toLocaleString() + ', ' + outcome + '.';
   }
 

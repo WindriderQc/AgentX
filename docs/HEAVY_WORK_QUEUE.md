@@ -61,6 +61,27 @@ Supported executors:
   native owner, and missing release evidence stays fenced. CLI exit 4 reports
   the confirmed refusal; lost preflight replies and unverified outcomes retain
   exit 3 and are never retried. Expiration alone never releases a fence.
+- **Benchmark coverage**: `{mode: "coverage", requestId}` under kind `benchmark`
+  names one immutable native small-batch intent, including its missing prompt
+  IDs and versions, candidate artifact, explicit judge and execution settings.
+  The existing coverage job creates one durable active intent before submitting
+  it to Core; it reserves and requests its launch only in its configured idle
+  window. It stays off until explicitly enabled. Core owns the reservation and
+  dispatch; the existing batch route owns preflight, admission and execution.
+  A profile bite uses the existing Profiler host queue with one explicit model.
+  Both paths recheck coverage policy at launch, including a reservation whose
+  automatic start an operator edits. The batch boundary also revalidates the
+  frozen artifact, scorer, prompt and judge proofs; drift refuses without
+  widening the request. A unique native batch identity and permanent dispatch
+  barriers prevent duplicate effects after concurrent ticks or restart.
+  Lost replies and uncertain writes read the same intent and Core request;
+  an empty lookup or elapsed estimate never permits replacement. Proven
+  refusals use `agentx.queue-launch/v1` and Core's existing refusal receipt.
+  Completion/failure uses the original native result and Core's complete
+  runtime release checks, including a recheck at terminal persistence; held
+  admissions and quarantine retain their owners. Core's result events/alerts
+  and the existing coverage read expose these outcomes. Pre-identity legacy
+  launches require native reconciliation before the job can choose more work.
 - **Profiler**: `{hostId, depth?, skipRecentDays?, modelNames?}` runs the existing
   host queue. Core checks its registered endpoint; the native tracker carries
   the Core request identity for subsequent observation. Exact identity lookup

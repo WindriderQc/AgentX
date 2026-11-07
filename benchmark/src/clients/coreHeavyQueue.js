@@ -44,6 +44,22 @@ async function placeHeavyWork(id, { expectedRevision, when }) {
   return body?.data || null;
 }
 
+async function getHeavyWork(id) {
+  const body = await coreRequest(`/api/cluster/schedule/work-queue/${encodeURIComponent(id)}`, {
+    operationId: CORE_OPERATIONS.HEAVY_QUEUE_GET,
+  });
+  return body?.data || null;
+}
+
+async function transition(id, action, expectedRevision, operationId) {
+  const body = await coreRequest(`/api/cluster/schedule/work-queue/${encodeURIComponent(id)}/${action}`, {
+    method: 'POST', operationId, body: JSON.stringify({ expectedRevision }),
+  });
+  return body?.data || null;
+}
+const runHeavyWork = (id, revision) => transition(id, 'run', revision, CORE_OPERATIONS.HEAVY_QUEUE_RUN);
+const cancelHeavyWork = (id, revision) => transition(id, 'cancel', revision, CORE_OPERATIONS.HEAVY_QUEUE_CANCEL);
+
 /** The principal lane's endpoint from Core's runtime export; its model is not read. */
 async function readPrincipalEndpoint() {
   const body = await coreRequest('/api/nerve-center/agent-runtime-config/export?includeCandidates=false', {
@@ -53,4 +69,5 @@ async function readPrincipalEndpoint() {
   return body?.data?.lanes?.daily?.hostUrl || null;
 }
 
-module.exports = { submitHeavyWork, reserveHeavyWork, listHeavyWork, placeHeavyWork, readPrincipalEndpoint };
+module.exports = { submitHeavyWork, reserveHeavyWork, listHeavyWork, placeHeavyWork, readPrincipalEndpoint,
+  getHeavyWork, runHeavyWork, cancelHeavyWork };

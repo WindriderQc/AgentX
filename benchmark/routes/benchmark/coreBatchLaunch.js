@@ -39,11 +39,12 @@ const {
 } = require('./coreShared');
 const { checkJudgeLimits } = require('../../src/services/benchmark/judgeLaunchLimits');
 const { validateExecutionPolicy } = require('../../src/services/benchmark/executionPolicy');
+const { batchBoundary } = require('../../src/services/measurementCoverage/coverageNativeLaunch');
 /**
  * POST /api/benchmark/batch
  * Start a batch benchmark test with quality scoring
  */
-router.post('/batch', async (req, res) => {
+router.post('/batch', batchBoundary(async (req, res) => {
     let { host, models, targets, levels, prompt_ids, run_name, judge_config, execution_config, execution_mode, depth_config, tags, description, multi_judge, paid_approval, campaign_kind } = req.body;
 
     // Validation
@@ -361,7 +362,10 @@ router.post('/batch', async (req, res) => {
         // Pre-run only: no judge/scoring active yet, so a suggesting intent is allowed.
         buddySurface.emitLifecycle('preflight_ok', `Preflight passed — ready to launch ${normalizedTargets.length} target(s).`);
 
+        if (req.body.requestId) await res.locals.assertCoverageDispatch();
+        res.locals.coverageMayHaveStarted = true;
         const data = await benchmarkService.startBatch({
+            coverage_request_id: req.body.requestId,
             host,
             models,
             targets: normalizedTargets,
@@ -406,6 +410,6 @@ router.post('/batch', async (req, res) => {
         logger.error('Failed to start batch test', { error: err.message });
         res.status(err.statusCode || 500).json({ status: 'error', code: err.code, error: err.message });
     }
-});
+}));
 
 module.exports = router;

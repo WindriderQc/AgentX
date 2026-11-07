@@ -24,7 +24,9 @@ async function preDispatch(job) {
   if (job.kind === 'transcription') {
     return require('./transcriptionExecutor').preDispatch(job);
   }
-  if (job.kind === 'benchmark') {
+  if (job.kind === 'benchmark' && job.executor.mode === 'coverage') {
+    return require('./heavyWorkQueueCoverage').preDispatch(job, { exactHosts });
+  } else if (job.kind === 'benchmark') {
     const request = batchRequest(job.executor.request, { judgeRequired: true });
     if (job.executor.prepare !== true && planRef(planId(job.executor.plan), request) !== job.executor.plan) throw fail('Benchmark plan reference differs from its request', 409);
     exactHosts(job, [request.host, request.judgeHost]);
@@ -88,6 +90,12 @@ async function observe(job) {
       throw fail('Prepared plan belongs to another dispatch or request', 409);
     }
     receipt = { state: 'completed', operationId, ...prepared };
+  } else if (job.kind === 'benchmark' && job.executor.mode === 'coverage') {
+    const result = await require('./heavyWorkQueueCoverage').observe(job);
+    if (!result.terminal) return result;
+    operationId = result.operationId;
+    const { terminal, ...nativeReceipt } = result;
+    receipt = nativeReceipt;
   } else if (job.kind === 'benchmark' && job.executor.prepare === true) {
     const refusal = job.preparationRefusal;
     if (!refusal || refusal.dispatchId !== job.dispatchId || operationId !== job.dispatchId
@@ -170,7 +178,8 @@ async function observe(job) {
   // Native owners retain release authority. A terminal result is insufficient
   // while a matching runtime admission (including UNKNOWN) remains fenced.
   const runtime = await Runtime.findById('runtime').lean();
-  if ((job.preparationRefusal || job.launchRefusal || job.preparationReceipt) && (!runtime || !Array.isArray(runtime.workloads) || !Array.isArray(runtime.inferences))) {
+  if ((job.preparationRefusal || job.launchRefusal || job.preparationReceipt || job.executor?.mode === 'coverage')
+    && (!runtime || !Array.isArray(runtime.workloads) || !Array.isArray(runtime.inferences))) {
     throw fail('Native runtime release evidence unavailable', 503, 'HEAVY_QUEUE_RELEASE_UNAVAILABLE');
   }
   const now = new Date();
@@ -192,6 +201,10 @@ async function reconcile(id, actor) {
   if (job.kind === 'transcription' && !job.operation && !job.launchRefusal) {
     const refusal = await require('./transcriptionExecutor').unstartedRefusal(job);
     if (refusal) job = await queue.refused(id, refusal, actor, 'core-launch-refusal');
+  }
+  if (job.executor?.mode === 'coverage' && !job.operation && !job.launchRefusal) {
+    const refusal = await require('./heavyWorkQueueCoverage').unstartedRefusal(job);
+    if (refusal) job = await queue.refused(id, refusal, actor, 'benchmark-launch-refusal');
   }
   const result = await observe(job);
   if (result.awaitingDispatch) return { ...job, observation: result };

@@ -325,6 +325,7 @@ const BenchmarkBatchSchema = new mongoose.Schema({
     },
 
     // Tags for categorization
+    coverage_request_id: { type: String, match: /^[a-f0-9-]{36}$/, unique: true, sparse: true },
     tags: {
         type: [String],
         default: [],
