@@ -154,6 +154,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
           ...(evidence?.answer?.deliveredBy ? { deliveredBy: evidence.answer.deliveredBy } : {}), ...(browserCall ? { browserReply: browserCall } : {}) },
         metadata: { model: imageDelivery || retainedAnswer ? '' : evidence?.run?.model || '',
           provider: imageDelivery ? imageDelivery.authority : retainedAnswer ? '' : evidence?.run?.provider || '',
+          usage: imageDelivery || retainedAnswer ? null : evidence?.run?.usage || null,
           routingSource: imageDelivery ? imageDelivery.authority : `openclaw/${agentIdFor(session)}`, runId, phases: { ...phases } } };
     };
     // Report each native tool call once, so Household can say what Nestor does.

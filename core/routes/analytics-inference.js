@@ -53,6 +53,7 @@ const {
   shapeDistribution
 } = require('../src/services/inferenceDistributionService');
 const { readContention } = require('../src/services/routing/inferenceContentionCounters');
+const { provenanceMetrics, provenance, cloudCost } = require('../src/services/runtimeUsageAnalytics');
 const {
   buildPromptCachePipeline,
   parsePromptCacheGroupBy,
@@ -400,6 +401,7 @@ router.get('/summary', async (req, res) => {
       cancellations: { $sum: { $cond: ['$_analyticsCancelled', 1, 0] } },
       nonSuccesses: { $sum: { $cond: [{ $eq: ['$status', 'success'] }, 0, 1] } },
       tokensIn: { $sum: { $ifNull: ['$tokensIn', 0] } },
+      ...provenanceMetrics,
       tokensOut: { $sum: { $ifNull: ['$tokensOut', 0] } },
       durationMs: { $sum: { $ifNull: ['$durationMs', 0] } },
       timedCalls: { $sum: { $cond: [{ $gt: ['$durationMs', 0] }, 1, 0] } },
@@ -521,9 +523,8 @@ router.get('/summary', async (req, res) => {
           provider: modelProvider(row._id),
           isCloud: cloud,
           // null for local models: local inference has no per-token price.
-          estimatedCostUsd: cloud
-            ? await estimateCloudCost(row._id, base.tokensIn, base.tokensOut)
-            : null
+          ...(cloud ? await cloudCost(row, (input, output) => estimateCloudCost(row._id, input, output)) : { estimatedCostUsd: null }),
+          ...provenance(row)
         };
       })
     );
@@ -577,7 +578,7 @@ router.get('/summary', async (req, res) => {
     const data = {
       window: { key, from, to, ...(since && { since }) },
       source: 'inferencelogs',
-      scope: 'Recorded AgentX-routed inference attempts only; native calls bypassing Core are outside this view.',
+      scope: 'Core-observed inference attempts and declared direct-provider usage; undeclared native calls are outside this view.',
       observedAt: to,
       ttlMs: SUMMARY_TTL_MS,
       attribution: attributionCoverage(facet?.missingConsumers, t.calls),
@@ -586,6 +587,7 @@ router.get('/summary', async (req, res) => {
       ),
       totals: {
         calls: t.calls,
+        ...provenance(t),
         errors: t.errors,
         errorRate: rate(t.errors, t.calls),
         cancellations: t.cancellations || 0,
@@ -631,8 +633,9 @@ router.get('/summary', async (req, res) => {
         calls: sum(cloudModels, 'calls'),
         totalTokens: sum(cloudModels, 'totalTokens'),
         estimatedCostUsd: pricedCloud.length > 0 ? round(sum(pricedCloud, 'estimatedCostUsd'), 4) : null,
-        unpricedModels: cloudModels.filter((m) => !Number.isFinite(m.estimatedCostUsd)).map((m) => m.model),
-        note: pricedCloud.length === cloudModels.length
+        unpricedModels: cloudModels.filter((m) => m.unpricedCalls > 0 || !Number.isFinite(m.estimatedCostUsd)).map((m) => m.model),
+        coreObservedCalls: sum(cloudModels, 'coreObservedCalls'), declaredCalls: sum(cloudModels, 'declaredCalls'),
+        note: cloudModels.every(model => model.unpricedCalls === 0)
           ? 'All cloud models resolved a price.'
           : 'Some cloud models have no configured price; their spend is excluded rather than guessed.'
       },

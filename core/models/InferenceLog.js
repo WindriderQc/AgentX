@@ -25,6 +25,20 @@ const InferenceLogSchema = new mongoose.Schema({
     enum: ['agentx', 'codex', 'claude-code', 'external', 'other'],
     default: 'agentx'
   },
+  source: { type: String, enum: ['core-observed', 'declared-receipt'], default: 'core-observed' },
+  receiptId: { type: String }, // unique native intent; only declared rows set it
+  declaredUsage: { type: new Schema({
+    runtime: { type: String, enum: ['hermes', 'openclaw'], required: true },
+    instanceId: { type: String, required: true },
+    runIdHash: { type: String, required: true },
+    callIndex: { type: Number, required: true },
+    fingerprint: { type: String, required: true },
+    provider: { type: String, required: true },
+    billing: { type: String, enum: ['metered', 'subscription'], required: true },
+    cachedInputTokens: { type: Number, required: true },
+    costUsd: { type: Number, default: null },
+    costSource: { type: String, enum: ['native', 'configured', 'unknown', 'subscription'], required: true }
+  }, { _id: false }), default: undefined },
   correlationId: { type: String, default: null },
   workItemId: { type: String, default: null },
   attempt: { type: Number, min: 1, default: 1 },
@@ -121,5 +135,6 @@ InferenceLogSchema.index({ autoRouted: 1, timestamp: -1 });
 InferenceLogSchema.index({ runtime: 1, timestamp: -1 });
 InferenceLogSchema.index({ workItemId: 1, timestamp: -1 });
 InferenceLogSchema.index({ correlationId: 1, timestamp: -1 });
+InferenceLogSchema.index({ receiptId: 1 }, { unique: true, partialFilterExpression: { receiptId: { $type: 'string' } } });
 
 module.exports = mongoose.model('InferenceLog', InferenceLogSchema);

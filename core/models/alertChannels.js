@@ -10,6 +10,13 @@ const logger = require('../config/logger');
 
 const ALERT_CHANNELS = Object.freeze(['email', 'slack', 'telegram', 'webhook', 'local_log']);
 
+// Pure read-side policy; the writer below additionally reports dropped values.
+function effectiveAlertChannels(channels) {
+  const list = Array.isArray(channels) ? channels : [];
+  const kept = [...new Set(list.filter(channel => ALERT_CHANNELS.includes(channel)))];
+  return kept.length > 0 ? kept : ['local_log'];
+}
+
 /**
  * Keep the known channels of a rule, in order and without duplicates. Unknown
  * ones are dropped with a warning so the alert is still stored; an empty
@@ -17,12 +24,11 @@ const ALERT_CHANNELS = Object.freeze(['email', 'slack', 'telegram', 'webhook', '
  */
 function sanitizeAlertChannels(channels, ruleId = null) {
   const list = Array.isArray(channels) ? channels : [];
-  const kept = [...new Set(list.filter(channel => ALERT_CHANNELS.includes(channel)))];
   const dropped = list.filter(channel => !ALERT_CHANNELS.includes(channel));
   if (dropped.length > 0) {
     logger.warn('[AlertService] Dropping unknown alert channels', { ruleId, dropped });
   }
-  return kept.length > 0 ? kept : ['local_log'];
+  return effectiveAlertChannels(list);
 }
 
-module.exports = { ALERT_CHANNELS, sanitizeAlertChannels };
+module.exports = { ALERT_CHANNELS, sanitizeAlertChannels, effectiveAlertChannels };

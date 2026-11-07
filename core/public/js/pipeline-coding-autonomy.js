@@ -83,6 +83,8 @@
     };
     lines('acceptanceCriteria', 'Observable acceptance criteria, one per line', (reviewed?.acceptanceCriteria || []).join('\n'));
     lines('requiredCapabilities', 'Required capabilities, one per line', (reviewed?.requiredCapabilities || ['source_read', 'source_write', 'cpu_tests']).join('\n'));
+    lines('requiredRegressionTests', 'Required regression test edits, exact paths (optional)', (reviewed?.requiredRegressionTests || []).join('\n'));
+    fields.requiredRegressionTests.required = false;
     input('estimatedWorkMinutes', 'Estimated remaining work minutes', reviewed ? Math.ceil(reviewed.estimate.workSeconds / 60) : '');
     input('estimatedModelCalls', 'Estimated remaining model calls', reviewed?.estimate.modelCalls || '');
     const label = element('label', 'Correction based on the preserved checkpoint and test evidence');
@@ -96,6 +98,7 @@
       head: run.head, queueRequestId: fields.queueRequestId.value, verificationProfile: task.verificationProfile,
       qualification: { acceptanceCriteria: fields.acceptanceCriteria.value.split('\n').map(value => value.trim()).filter(Boolean),
         requiredCapabilities: fields.requiredCapabilities.value.split('\n').map(value => value.trim()).filter(Boolean),
+        requiredRegressionTests: fields.requiredRegressionTests.value.split('\n').map(value => value.trim()).filter(Boolean),
         estimate: { workSeconds: Number(fields.estimatedWorkMinutes.value) * 60, modelCalls: Number(fields.estimatedModelCalls.value) } },
       text: text.value, budget: Object.fromEntries(['workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls', 'ciSeconds']
         .map(key => [key, Number(fields[key].value) * (key === 'modelCalls' ? 1 : 60)])) })); });
@@ -129,6 +132,8 @@
         element('p', `Remaining: ${remaining(task.remaining.workSeconds)} work, ${remaining(task.remaining.testSeconds)} tests, ${remaining(task.remaining.modelSeconds)} model, ${task.remaining.modelCalls} calls, ${remaining(task.remaining.ciSeconds)} CI`),
         element('p', `Last useful progress: ${task.lastUsefulProgressAt || 'none recorded'} · manual interventions: ${task.manualInterventions.length}`));
       article.append(element('p', `Authorized files: ${task.scope.join(', ')} · campaign ${task.queueRequestId}`));
+      if (task.readiness?.definition?.requiredRegressionTests?.length) article.append(element('p',
+        `Required regression test edits: ${task.readiness.definition.requiredRegressionTests.join(', ')}. Content changes do not prove semantic coverage.`));
       if (task.readiness && !task.readiness.canAuthorize)
         for (const issue of task.readiness.issues) article.append(element('p', `${issue.message} ${issue.nextAction}`));
       appendCodeStepGraph(article, task.codeStepGraph);
@@ -277,6 +282,7 @@
         qualification: {
           acceptanceCriteria: String(data.get('acceptanceCriteria') || '').split('\n').map(text => text.trim()).filter(Boolean),
           requiredCapabilities: String(data.get('requiredCapabilities') || '').split('\n').map(text => text.trim()).filter(Boolean),
+          requiredRegressionTests: String(data.get('requiredRegressionTests') || '').split('\n').map(text => text.trim()).filter(Boolean),
           estimate: { workSeconds: Number(data.get('estimatedWorkMinutes')) * 60, modelCalls: Number(data.get('estimatedModelCalls')) }
         },
         limits: { maxResumes: Number(data.get('maxResumes')), workSeconds: Number(data.get('workMinutes')) * 60,

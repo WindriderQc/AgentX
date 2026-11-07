@@ -39,7 +39,7 @@ async function latestLocalDelivery() {
 
 async function latestFallback() {
   const row = await InferenceLog.findOne({ fallbackUsed: true })
-    .select('_id timestamp status host hostKey fallbackUsed fallbackReason taskType routedHostUrl')
+    .select('_id timestamp status host hostKey fallbackUsed fallbackReason taskType routedHostUrl error routeDecision.outcome.code routeDecision.outcome.reasonCode')
     .sort({ timestamp: -1, _id: -1 }).maxTimeMS(MAX_TIME_MS).lean();
   return require('./routing/inferenceLogReadProjection').projectInferenceLog(row);
 }
@@ -51,27 +51,30 @@ function defaultReaders() {
     alerts: latestAlerts,
     delivery: latestLocalDelivery,
     fallback: latestFallback,
-    ladders: () => require('./routing/taskFallbackLadder').getTaskFallbackStats(),
-    watchdog: () => require('./ollamaWatchdogService').getStats(),
+    ladders: () => require('./routing/taskFallbackLadder').getTaskFallbackConfigurationForRead(),
+    watchdog: () => {
+      const snapshot = require('./ollamaWatchdogService').getStats();
+      return { ...snapshot, history: (snapshot.history || []).map(event => ({ ...event })) };
+    },
     pinDaemon: () => require('./hostHealthDaemon').getHealthCheckState(),
-    watchSettings: () => require('./opsWatchSettings').effective(),
+    watchSettings: () => require('./opsWatchSettings').effective({ maxTimeMS: MAX_TIME_MS }),
     watch: () => {
       const watch = require('./opsWatchService').getOpsWatch();
       return { state: watch.state(), latest: watch.latest() };
     },
-    engine: () => (require('./alertService').rules || []).map(rule => ({ id: rule.id })),
+    engine: () => require('./alertService').rules.map(rule => ({ id: rule.id })),
     notifications: () => require('./notificationService').getNotificationService().getStatus()
   };
 }
 
-async function getSelfHealingStatus({ readers = defaultReaders(), now = new Date() } = {}) {
+async function getSelfHealingStatus({ readers = defaultReaders(), now } = {}) {
   const entries = Object.entries(readers);
   const settled = await Promise.allSettled(entries.map(([, read]) => Promise.resolve().then(read)));
   const sources = Object.fromEntries(entries.map(([key], index) => [key,
     settled[index].status === 'fulfilled'
       ? { value: settled[index].value }
       : { unavailable: true }]));
-  return projectSelfHealing(sources, now);
+  return projectSelfHealing(sources, now || new Date());
 }
 
 module.exports = { getSelfHealingStatus, MAX_CONFIG_ROWS };

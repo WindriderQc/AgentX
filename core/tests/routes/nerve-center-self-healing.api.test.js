@@ -5,7 +5,7 @@ jest.mock('../../src/services/ollamaWatchdogService', () => ({
   runNow: jest.fn(), forceUnjam: jest.fn(), start: jest.fn()
 }));
 jest.mock('../../src/services/routing/taskFallbackLadder', () => ({
-  getTaskFallbackStats: () => ({ configuredTasks: [], configurationErrors: [] })
+  getTaskFallbackConfigurationForRead: () => ({ configuredTasks: [], configurationErrors: [] })
 }));
 jest.mock('../../src/services/opsWatchService', () => ({
   watchIntervalMs: () => 0,
@@ -90,6 +90,13 @@ test('individual read failures become unknown while other sources remain usable'
   expect(JSON.stringify(data)).not.toContain('private error details');
 });
 
+test.each([{ error: 'caller_disconnected' }, { routeDecision: { outcome: { code: 'caller_disconnected' } } }])(
+  'does not turn retained cancellation evidence into a successful fallback: %j', async cancellation => {
+    await InferenceLog.collection.insertOne({ timestamp: new Date(), status: 'success', fallbackUsed: true, ...cancellation });
+    const response = await request(app).get(endpoint).expect(200);
+    expect(response.body.data.rows.find(row => row.id === 'routing-fallbacks').last.outcome).toBe('cancelled');
+  });
+
 test('bounds configuration reads and reports partial coverage', async () => {
   await AlertRule.insertMany(Array.from({ length: MAX_CONFIG_ROWS + 1 }, (_, index) => ({
     ruleId: `synthetic-${String(index).padStart(3, '0')}`, name: 'Synthetic', enabled: false, severity: 'info'
@@ -103,4 +110,21 @@ test('exposes no execution or configuration write endpoint', async () => {
   await request(app).post(endpoint).expect(404);
   await request(app).put(endpoint).expect(404);
   await request(app).delete(endpoint).expect(404);
+});
+
+test('retains the watchdog snapshot taken before other readers add later events', async () => {
+  const timestamp = new Date(Date.now() - 1000).toISOString();
+  const history = [{ type: 'jam_detected', timestamp, origin: 'autonomous', operationId: 'synthetic-operation',
+    hostId: 'synthetic', hostUrl: 'http://synthetic.test:11434' }];
+  watchdog.getStats.mockReturnValueOnce({ history, hosts: [], config: {} });
+  const originalFindOne = Settings.findOne;
+  const spy = jest.spyOn(Settings, 'findOne').mockImplementation(function (...args) {
+    history.push({ ...history[0], type: 'unjam_success' });
+    return originalFindOne.apply(this, args);
+  });
+  try {
+    const response = await request(app).get(endpoint).expect(200);
+    expect(history).toHaveLength(2);
+    expect(response.body.data.rows.find(row => row.id === 'watchdog-unjam').last.outcome).toBe('unknown');
+  } finally { spy.mockRestore(); }
 });

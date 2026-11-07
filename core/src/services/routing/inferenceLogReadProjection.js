@@ -144,6 +144,13 @@ function projectInferenceLog(row) {
     ...(Object.prototype.hasOwnProperty.call(row, 'callerDetail') && { callerDetail: null }),
     ...(Object.prototype.hasOwnProperty.call(row, 'consumerContract') && { consumerContract: operationalIdentifier(row.consumerContract, 160) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'runtime') && { runtime: enumValue(row.runtime, RUNTIMES) }),
+    ...(Object.hasOwn(row, 'source') && { source: enumValue(row.source, new Set(['declared-receipt', 'core-observed'])) }),
+    ...(row.source === 'declared-receipt' && { declaredUsage: {
+      runtime: enumValue(row.declaredUsage?.runtime, new Set(['hermes', 'openclaw'])),
+      billing: enumValue(row.declaredUsage?.billing, new Set(['metered', 'subscription'])),
+      costUsd: finiteNumber(row.declaredUsage?.costUsd),
+      costSource: enumValue(row.declaredUsage?.costSource, new Set(['native', 'configured', 'unknown', 'subscription']))
+    } }),
     ...(Object.prototype.hasOwnProperty.call(row, 'correlationId') && { correlationId: operationalIdentifier(row.correlationId, 160) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'workItemId') && { workItemId: operationalIdentifier(row.workItemId, 160) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'attempt') && { attempt: finiteNumber(row.attempt) }),

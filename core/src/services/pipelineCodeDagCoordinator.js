@@ -178,6 +178,7 @@ function createPipelineCodeDagCoordinator(options = {}) {
       fail('CODING_AUTONOMY_QUEUE_WAIT', 'The approved coding campaign is not within its active queue window');
     }
     return { task: { pipelineId: value.pipelineId, title: value.title, spec: value.spec }, verificationProfile,
+      qualification: value.codingAutonomy.qualification?.definition || null,
       model, rootLeaseId, queueEndAt: job.reservation.end };
   }
 
