@@ -209,7 +209,7 @@ describe('toolCallCampaignRunner', () => {
     expect(workload.retainForRecovery).not.toHaveBeenCalled();
   });
 
-  it('refuses missing frozen sampling controls before inference and releases native ownership', async () => {
+  it('refuses missing frozen sampling before inference and retains the native recovery receipt', async () => {
     const campaign = frozenCampaign();
     campaign.candidates[0].execution.sampling.seed = null;
     const deps = dependencies({
@@ -221,8 +221,10 @@ describe('toolCallCampaignRunner', () => {
     expect(deps.beginQualification).not.toHaveBeenCalled();
     expect(deps.releaseBenchmarkClaim).toHaveBeenCalledTimes(1);
     const workload = await deps.beginManagedWorkload.mock.results[0].value;
-    expect(workload.complete).toHaveBeenCalledTimes(1);
-    expect(workload.retainForRecovery).not.toHaveBeenCalled();
+    expect(workload.complete).not.toHaveBeenCalled();
+    expect(workload.retainForRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'TOOL_CAMPAIGN_SAMPLING_CONTRACT_DRIFT' })
+    );
   });
 
   it('records the Ollama version the campaign ran on (#908)', async () => {
