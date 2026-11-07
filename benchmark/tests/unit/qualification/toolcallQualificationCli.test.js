@@ -54,11 +54,14 @@ describe('toolcall qualification live transport bounds', () => {
     expect(generateImpl).toHaveBeenCalledWith('campaign-a', expect.objectContaining({
       model: 'candidate',
       host: 'http://ollama:11434',
+      callerDetail: 'benchmark-batch-tool-qualification',
       stream: false,
       rawResponse: true,
       think: false,
       options: { num_ctx: 32768, num_predict: 1024, temperature: 0, seed: 42 }
     }), { signal: expect.any(AbortSignal) });
+    const { resolveCallerPolicy } = require('../../../../core/src/services/routing/callerPolicy');
+    expect(resolveCallerPolicy(generateImpl.mock.calls[0][1].callerDetail).lane).toBe('direct');
   });
 
   test('refuses to dispatch without the exact workload identity', async () => {
