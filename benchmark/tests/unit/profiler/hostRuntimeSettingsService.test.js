@@ -4,7 +4,7 @@ jest.mock('../../../config/logger', () => ({ info: jest.fn(), warn: jest.fn(), e
 
 const { SYNC_INTERVAL_MS, syncHostRuntimeSettings, _resetForTests } = require('../../../src/services/profiler/hostRuntimeSettingsService');
 
-const HOST = { hostId: 'ugalien', hostUrl: 'http://ugalien:11434' };
+const HOST = { hostId: 'host-b', hostUrl: 'http://host-b:11434' };
 const environment = (values, extra = {}) => ({
   source: 'systemd', ok: true, observedAt: '2026-10-05T10:00:00.000Z', values, ...extra
 });
@@ -30,7 +30,7 @@ describe('host Ollama settings sync', () => {
       synced: true, changed: true, settings: { kvCacheType: 'q8_0', gpuCount: 2 }
     });
     expect(readHardware).toHaveBeenCalledWith(HOST.hostUrl);
-    expect(model.updateOne).toHaveBeenCalledWith({ hostId: 'ugalien' }, { $set: {
+    expect(model.updateOne).toHaveBeenCalledWith({ hostId: 'host-b' }, { $set: {
       'ollama.settings': { kvCacheType: 'q8_0', flashAttention: 'on', visibleDevices: 'default', schedSpread: 'on', gpuCount: 2 },
       'ollama.settingsObservedAt': new Date('2026-10-05T10:00:00.000Z'),
       'ollama.settingsSource': 'systemd'

@@ -159,7 +159,7 @@ const SECRETARY_TOOLS = Object.freeze([
     title: 'GPU Status',
     description: 'Report the house GPUs from the Data hardware telemetry: per host its freshness and sample age, and per GPU its name, utilisation, video memory used and total, temperature and power. Optional host (id or name) narrows to one machine; includeOccupancy adds each GPU\'s busy share over the last 24 hours. A stale or silent host is returned without numbers: say its state and age, never quote old values as current. It does not say which model or job is using a GPU and cannot change anything. Read-only.',
     inputSchema: objectSchema({
-      host: { type: 'string', pattern: '^[A-Za-z0-9._-]{1,64}$', description: 'Host id or name, e.g. ugalien.' },
+      host: { type: 'string', pattern: '^[A-Za-z0-9._-]{1,64}$', description: 'Host id or name, e.g. host-b.' },
       includeOccupancy: { type: 'boolean', default: false }
     }),
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },

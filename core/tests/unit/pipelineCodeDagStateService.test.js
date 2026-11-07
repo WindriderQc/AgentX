@@ -61,7 +61,7 @@ function task() {
       authorized: true,
       revision: 7,
       basis: BASIS,
-      runs: [{ requestId: ROOT, sourceCommit: SOURCE, executorId: 'ugalien', harness: 'opencode', startedAt: T0 }],
+      runs: [{ requestId: ROOT, sourceCommit: SOURCE, executorId: 'host-b', harness: 'opencode', startedAt: T0 }],
     },
   };
 }
@@ -93,7 +93,7 @@ test('creates one DAG only for the exact active root, source commit, task basis,
   const created = await service.create('0946', createInput());
   expect(created.replayed).toBe(false);
   expect(created.dag).toMatchObject({ revision: 0, rootRequestId: ROOT, sourceCommit: SOURCE,
-    authority: { taskBasis: BASIS, rootRequestId: ROOT, coordinator: { id: 'ugalien', harness: 'opencode' } } });
+    authority: { taskBasis: BASIS, rootRequestId: ROOT, coordinator: { id: 'host-b', harness: 'opencode' } } });
   expect(created.summary).toMatchObject({ schema: 'agentx.code-step-graph-summary/v1', graphId: ROOT,
     state: 'running', activeSteps: [], counts: { pending: 2 } });
   expect(FakeTaskModel.writes[0].filter).toMatchObject({ pipelineId: '0946',
@@ -116,12 +116,12 @@ test('creates one DAG only for the exact active root, source commit, task basis,
 
 test('persists pure transitions with a single-document revision fence and replays a lost acknowledgement', async () => {
   await service.create('0946', createInput());
-  const input = { expectedRevision: 0, stepId: 'step-01', executorId: 'ugbrutal', requestId: 'step-request-01',
+  const input = { expectedRevision: 0, stepId: 'step-01', executorId: 'host-c', requestId: 'step-request-01',
     baseCommit: SOURCE, budget: budget(10, 10, 10, 1), startedAt: T0 };
   const started = await service.startAttempt('0946', input);
   expect(started).toMatchObject({ replayed: false, dag: { revision: 1 }, summary: {
     activeSteps: ['step-01'], counts: { running: 1, pending: 1 },
-    steps: [{ id: 'step-01', executor: { id: 'ugbrutal', harness: 'unknown' } }, { id: 'step-02' }],
+    steps: [{ id: 'step-01', executor: { id: 'host-c', harness: 'unknown' } }, { id: 'step-02' }],
   } });
   expect(FakeTaskModel.writes.at(-1).filter).toMatchObject({
     'codeStepDag.revision': 0, 'codeStepDag.rootRequestId': ROOT,
@@ -130,7 +130,7 @@ test('persists pure transitions with a single-document revision fence and replay
 
   // Core committed the replacement but its response was lost. Repeating the
   // immutable request observes the durable receipt and performs no new write.
-  const secondInput = { ...input, expectedRevision: 1, stepId: 'step-02', executorId: 'ugfrank', requestId: 'step-request-02' };
+  const secondInput = { ...input, expectedRevision: 1, stepId: 'step-02', executorId: 'host-a', requestId: 'step-request-02' };
   FakeTaskModel.loseNextAck = true;
   const recovered = await service.startAttempt('0946', secondInput);
   expect(recovered).toMatchObject({ replayed: true, dag: { revision: 2 }, summary: {
@@ -144,7 +144,7 @@ test('persists pure transitions with a single-document revision fence and replay
 
 test('journals, settles and explicitly reconciles step inference with CAS and replay recovery', async () => {
   await service.create('0946', createInput());
-  await service.startAttempt('0946', { expectedRevision: 0, stepId: 'step-01', executorId: 'ugbrutal',
+  await service.startAttempt('0946', { expectedRevision: 0, stepId: 'step-01', executorId: 'host-c',
     requestId: 'step-request-01', baseCommit: SOURCE, budget: budget(10, 10, 10, 2), startedAt: T0 });
   const start = { expectedRevision: 1, stepId: 'step-01', requestId: 'step-request-01',
     callId: 'call-01', model: 'qwen-code', reservedSeconds: 8, startedAt: T0 };
@@ -174,12 +174,12 @@ test('journals, settles and explicitly reconciles step inference with CAS and re
 
 test('public reads expose bounded graph evidence but no plan paths, objectives, commands or workspace data', async () => {
   await service.create('0946', createInput());
-  await service.startAttempt('0946', { expectedRevision: 0, stepId: 'step-01', executorId: 'ugalien',
+  await service.startAttempt('0946', { expectedRevision: 0, stepId: 'step-01', executorId: 'host-b',
     requestId: 'step-request-01', baseCommit: SOURCE, budget: budget(10, 10, 10, 1), startedAt: T0 });
   const projection = await service.projection('0946');
   expect(projection.steps[0]).toEqual({
     id: 'step-01', title: 'First change', state: 'running', dependsOn: [], attempt: 1,
-    executor: { id: 'ugalien', label: 'ugalien', harness: 'opencode' }, tests: [],
+    executor: { id: 'host-b', label: 'host-b', harness: 'opencode' }, tests: [],
   });
   const serialized = JSON.stringify(projection);
   expect(serialized).not.toMatch(/src\/one|objective|baseCommit|sourceCommit|worktree|ssh|command/i);
@@ -202,7 +202,7 @@ test('persists and projects one replay-safe cumulative-budget terminal receipt',
   expect(result.summary.assembly.receiptFingerprint).toMatch(/^[a-f0-9]{64}$/);
   expect(result.summary.assembly.receiptFingerprint).toBe(result.dag.terminalFailureFingerprint);
   expect(await service.terminalize('0946', input)).toMatchObject({ replayed: true, dag: { revision: 1 } });
-  await expect(service.startAttempt('0946', { expectedRevision: 1, stepId: 'step-01', executorId: 'ugalien',
+  await expect(service.startAttempt('0946', { expectedRevision: 1, stepId: 'step-01', executorId: 'host-b',
     requestId: 'late-request', baseCommit: SOURCE, budget: budget(1, 1, 1, 1), startedAt: T0 }))
     .rejects.toMatchObject({ code: 'DAG_TERMINAL' });
 });
@@ -219,7 +219,7 @@ test('atomically archives a terminal graph for a correction run and replays the 
   FakeTaskModel.task.codingAutonomy.state = 'correction';
   FakeTaskModel.task.codingAutonomy.runs[0].finishedAt = T0;
   FakeTaskModel.task.codingAutonomy.runs.push({ requestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE,
-    parentRequestId: ROOT, executorId: 'ugfrank', harness: 'opencode', startedAt: T0 });
+    parentRequestId: ROOT, executorId: 'host-a', harness: 'opencode', startedAt: T0 });
   const next = createInput({ rootRequestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE,
     createdAt: '2026-10-22T12:01:00.000Z' });
 
@@ -245,7 +245,7 @@ test('never replaces a non-terminal graph when a newer autonomous run races it',
   FakeTaskModel.task.codingAutonomy.revision = 8;
   FakeTaskModel.task.codingAutonomy.runs[0].finishedAt = T0;
   FakeTaskModel.task.codingAutonomy.runs.push({ requestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE,
-    parentRequestId: ROOT, executorId: 'ugfrank', harness: 'opencode', startedAt: T0 });
+    parentRequestId: ROOT, executorId: 'host-a', harness: 'opencode', startedAt: T0 });
   await expect(service.create('0946', createInput({ rootRequestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE })))
     .rejects.toMatchObject({ code: 'DAG_ALREADY_EXISTS' });
   expect(FakeTaskModel.task.codeStepDag.rootRequestId).toBe(ROOT);
@@ -258,7 +258,7 @@ test('does not archive a terminal graph until its owning native run is finished'
     reason: 'Graph terminal but native root unsettled', stepId: null, finishedAt: T0 });
   FakeTaskModel.task.codingAutonomy.revision = 8;
   FakeTaskModel.task.codingAutonomy.runs.push({ requestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE,
-    parentRequestId: ROOT, executorId: 'ugfrank', harness: 'opencode', startedAt: T0 });
+    parentRequestId: ROOT, executorId: 'host-a', harness: 'opencode', startedAt: T0 });
   await expect(service.create('0946', createInput({ rootRequestId: NEXT_ROOT, sourceCommit: NEXT_SOURCE })))
     .rejects.toMatchObject({ code: 'DAG_ALREADY_EXISTS' });
   expect(FakeTaskModel.task.codeStepDag.rootRequestId).toBe(ROOT);
@@ -267,7 +267,7 @@ test('does not archive a terminal graph until its owning native run is finished'
 test('a changed or completed root fences every later DAG mutation', async () => {
   await service.create('0946', createInput());
   FakeTaskModel.task.codingAutonomy.runs[0].finishedAt = T0;
-  await expect(service.startAttempt('0946', { expectedRevision: 0, stepId: 'step-01', executorId: 'ugalien',
+  await expect(service.startAttempt('0946', { expectedRevision: 0, stepId: 'step-01', executorId: 'host-b',
     requestId: 'step-request-01', baseCommit: SOURCE, budget: budget(10, 10, 10, 1), startedAt: T0 }))
     .rejects.toMatchObject({ code: 'DAG_ROOT_NOT_ACTIVE' });
   expect(FakeTaskModel.task.codeStepDag.revision).toBe(0);

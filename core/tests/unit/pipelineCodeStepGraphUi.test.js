@@ -2,7 +2,7 @@
 
 const Graph = require('../../public/js/pipeline-code-step-graph');
 
-const executor = { id: 'ugalien-open', label: 'UGAlien', harness: 'opencode' };
+const executor = { id: 'host-b-open', label: 'host-b', harness: 'opencode' };
 function summary(overrides = {}) {
   return {
     schema: 'agentx.code-step-graph-summary/v1', graphId: 'graph-0001', planFingerprint: 'a'.repeat(64), state: 'running',
@@ -17,7 +17,7 @@ function summary(overrides = {}) {
         commit: 'b'.repeat(40), tests: [{ profile: 'core-unit', outcome: 'passed', durationMs: 1200 }],
         adoption: { state: 'adopted', assemblyCommit: 'c'.repeat(40), receiptFingerprint: 'd'.repeat(64) } },
       { id: 'step-02', title: 'Render <multi-host> evidence', state: 'running', dependsOn: ['step-01'], attempt: 1,
-        executor: { id: 'ugbrutal-open', label: 'UGBrutal', harness: 'opencode' }, tests: [] },
+        executor: { id: 'host-c-open', label: 'host-c', harness: 'opencode' }, tests: [] },
     ],
     assembly: { state: 'assembling', executor, baseCommit: 'e'.repeat(40), headCommit: 'c'.repeat(40), adoptedSteps: 1 },
     ...overrides,
@@ -30,7 +30,7 @@ test('renders ordered dependencies, public executor identity, budgets, tests and
   const html = Graph.render(value);
 
   expect(html.indexOf('Build the graph contract')).toBeLessThan(html.indexOf('Render &lt;multi-host&gt; evidence'));
-  expect(html).toContain('UGAlien (ugalien-open) · opencode');
+  expect(html).toContain('host-b (host-b-open) · opencode');
   expect(html).toContain('step-01');
   expect(html).toContain('1,200 ms');
   expect(html).toContain('Adopted as');

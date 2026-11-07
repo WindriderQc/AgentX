@@ -300,7 +300,7 @@ test('the degraded turn leaves the principal load options behind for the fallbac
   assert.equal('keepAlive' in degraded, false);
 });
 
-// The boss (agentx-primary) keeps a brain while UGAlien is held: the daily
+// The boss (agentx-primary) keeps a brain while host-b is held: the daily
 // operator ladder sends it to Brutal, then Frank, with the fallback's own pin.
 const BRUTAL_ROUTING = Object.freeze({ degraded: true, reason: 'benchmark_claim',
   fallbackFrom: { model: PRIMARY, host: 'primary' }, fallbackTo: { model: LIGHT, host: 'secondary' } });

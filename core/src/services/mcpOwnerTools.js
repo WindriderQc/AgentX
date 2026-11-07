@@ -32,7 +32,7 @@ const TOOLS = [
     { action: { type: 'string', enum: ['list', 'show', 'notifications', 'request', 'cancel'] }, id: string(64), offset: integer(10000, 0), limit: integer(50),
       expectedRevision: integer(1000000, 0),
       request: object({ key: string(160), title: string(200), kind: { type: 'string', enum: ['benchmark', 'profiler', 'image', 'embedding-reindex', 'topology', 'diagnostic', 'other', 'transcription'] },
-        hosts: { type: 'array', items: string(200), minItems: 1, maxItems: 16, description: 'Local endpoint URLs, e.g. http://192.168.2.199:11434' },
+        hosts: { type: 'array', items: string(200), minItems: 1, maxItems: 16, description: 'Local endpoint URLs, e.g. http://192.168.50.20:11434' },
         estimatedMinutes: integer(10080), notBefore: string(40), startBefore: string(40),
         source: object({ type: { type: 'string', enum: ['coding', 'nestor'] }, ref: string(500), taskId: string(500), issueUrl: string(500) }, ['type']) },
       ['key', 'title', 'kind', 'hosts', 'estimatedMinutes', 'source']) }, ['action'], false),

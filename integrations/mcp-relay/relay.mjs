@@ -3,7 +3,7 @@
 // launch local commands (Claude Desktop). No dependencies, no tool logic:
 // every message goes to Core unchanged, every answer comes back unchanged.
 //
-//   node relay.mjs https://agentx.specialblend.icu/mcp
+//   node relay.mjs https://agentx.example.invalid/mcp
 //   AGENTX_CALLER  name sent as x-service-caller (default: claude-desktop)
 //   AGENTX_RELAY_TIMEOUT_MS  per request (default: 120000)
 

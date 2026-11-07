@@ -3709,6 +3709,16 @@
       "category": "memory",
       "secret": false,
       "description": "Qdrant collection of the owner private recall corpus (mail, read attachments, souvenirs, people). It must differ from QDRANT_COLLECTION; shared search, listing, cleanup and snapshots never read it. Unset: agentx_owner_mail."
+    },
+    "HOUSEHOLD_ECOSYSTEM_NODE_HINTS_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Private instance JSON mapping ecosystem graph node IDs to host-name/address hints for family standby alert visits. First matching node wins; only node IDs reach the browser. Unset or invalid: no machine links; critical alert counts remain available."
     }
   }
 }

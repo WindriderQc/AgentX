@@ -186,7 +186,7 @@ class TargetAndListenerTests(unittest.TestCase):
     def test_targets(self):
         self.assertEqual(parse_target("https://agentx.example:18794").port, 18794)
         self.assertEqual(parse_target("http://127.0.0.1:18120/").hostname, "127.0.0.1")
-        for bad in ["http://192.168.2.99:18794", "ftp://x", "https://user:pw@x", "https://x/../private", "https://x/%2fprivate", "https://x/double//path", "https://x?q=1", "https://"]:
+        for bad in ["http://192.168.50.10:18794", "ftp://x", "https://user:pw@x", "https://x/../private", "https://x/%2fprivate", "https://x/double//path", "https://x?q=1", "https://"]:
             with self.assertRaises(ValueError, msg=bad):
                 parse_target(bad)
 

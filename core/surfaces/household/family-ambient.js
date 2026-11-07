@@ -16,25 +16,12 @@ const { issPasses: defaultIssPasses, readHomeObserver } = require('../../src/ser
 const { getOpsWatch: defaultGetOpsWatch } = require('../../src/services/opsWatchService');
 const { createFamilyPaintings } = require('./family-paintings');
 const { skyView } = require('../../src/services/sky/nightSky');
+const { readNodeHints, nodeFor, alertView } = require('./family-ambient-nodes');
 
 const WEATHER_TTL_MS = 10 * 60 * 1000;
 const ISS_TTL_MS = 20 * 60 * 1000;
 const FAILURE_TTL_MS = 2 * 60 * 1000;
 const READ_TIMEOUT_MS = 8000;
-
-// Ecosystem view nodes (GraphysX ?app=ecosystem) a finding's host can point to.
-// Order matters: the first match wins, so specific names come before short ones.
-const NODE_HINTS = [
-  ['ugfrank', ['ugfrank', 'frank', '192.168.2.99']],
-  ['ugalien', ['ugalien', 'alien', '192.168.2.199']],
-  ['ugbrutal', ['ugbrutal', 'brutal', '192.168.2.12']],
-  ['devx', ['devx', '192.168.2.117']],
-  ['ugstation', ['ugstation', '192.168.2.128']],
-  ['ugsmall', ['ugsmall']],
-  ['babypi', ['babypi']],
-  ['piusb', ['piusb']],
-  ['pitft', ['pitft']]
-];
 
 // Environment Canada icon codes, day 00–29 and night 30–48.
 const EC_ICON_KIND = {
@@ -89,28 +76,6 @@ function solarElevationDeg(lat, lon, date = new Date()) {
   return Math.round(elevation / rad * 10) / 10;
 }
 
-function nodeFor(key) {
-  const text = String(key || '').toLowerCase();
-  return NODE_HINTS.find(([, hints]) => hints.some(hint => text.includes(hint)))?.[0] || null;
-}
-
-// The report's shape for a wall screen: counts and the machines to visit, no text.
-// Only what concerns the house counts: a critical finding, or one naming a machine.
-// Routine operator findings (a failed queued job, a stale read) stay in Nerve Center.
-function alertView(report) {
-  if (!report) return null;
-  const findings = (Array.isArray(report.findings) ? report.findings : [])
-    .filter(finding => finding?.severity === 'critical' || nodeFor(finding?.key));
-  const nodes = [...new Set(findings.map(finding => nodeFor(finding?.key)).filter(Boolean))].slice(0, 3);
-  return {
-    at: report.at || null,
-    fingerprint: report.fingerprint || null,
-    count: findings.length,
-    critical: findings.filter(finding => finding?.severity === 'critical').length,
-    nodes
-  };
-}
-
 function passView(result) {
   const next = result?.nextVisible;
   if (!next) return { next: null, stale: Boolean(result?.tle?.stale), computedAt: result?.computedAt || null };
@@ -132,7 +97,8 @@ function passView(result) {
 }
 
 function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = defaultIssPasses,
-  getOpsWatch = defaultGetOpsWatch, observer = readHomeObserver, now = () => new Date(), logger = null, paintings = null } = {}) {
+  getOpsWatch = defaultGetOpsWatch, observer = readHomeObserver, now = () => new Date(), logger = null, paintings = null,
+  nodeHints = readNodeHints(process.env, logger) } = {}) {
   const cache = new Map();
 
   async function cached(name, ttl, read) {
@@ -190,7 +156,7 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
     let sky = null;
     try { sky = position ? skyView(position.lat, position.lon, at) : null; } catch { sky = null; }
     let alerts = null;
-    try { alerts = alertView(getOpsWatch().latest()); } catch { alerts = null; }
+    try { alerts = alertView(getOpsWatch().latest(), nodeHints); } catch { alerts = null; }
     return { at: at.toISOString(), weather, sun, iss, alerts, paintings: pictures || null, sky };
   }
 

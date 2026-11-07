@@ -435,7 +435,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("verb", choices=["send", "collect"],
                         help="send: from this host; collect: from --source-host, run on the archive host")
-    parser.add_argument("--host-label", required=True, help="Lowercase name of the source host, e.g. devx")
+    parser.add_argument("--host-label", required=True, help="Lowercase name of the source host, e.g. dev-host")
     parser.add_argument("--source", action="append", required=True, type=parse_source,
                         help="label=path of a directory or file to archive; repeat for each source")
     parser.add_argument("--destination-host", help="send: SSH target of the archive host")

@@ -240,6 +240,13 @@ instance's mounts rather than assuming a Docker host filesystem path.
 
 ### Personalize without editing public defaults
 
+Family standby ecosystem visits use `HOUSEHOLD_ECOSYSTEM_NODE_HINTS_JSON` in
+the external instance env file. It maps graph node IDs to host-name or address
+hints, for example `{"compute":["gpu-host.example"]}`. Put more specific hints
+first. Core sends only matching node IDs to the family screen. Leave it blank
+to keep critical alert counts without machine-specific visits; invalid mappings
+disable those visits. Keep the real mapping outside Git.
+
 Keep a directory outside the checkout for your `instance.env`, optional Compose
 override, integration settings and asset packs. Select `AGENTX_ENV_FILE`,
 `AGENTX_COMPOSE_OVERRIDE` when used, and the same `AGENTX_PROJECT_NAME` for every

@@ -221,7 +221,7 @@ world protocol (exact list in the module), forwards only `X-Session` and `Conten
 refuses redirects and cookies, requires verified TLS off loopback and listens on loopback
 only. The agent still reaches only its capability proxy, which reaches the relay. The remote
 world keeps recording, resume, spectating and images. A model-free netcheck through the
-relay passed 23/23 on devX (2026-10-29), with direct access to the world refused from the
+relay passed 23/23 on dev-host (2026-10-29), with direct access to the world refused from the
 sandbox. Instance settings (the world folder with its target URL, the runner host firewall)
 stay in the instance repository.
 

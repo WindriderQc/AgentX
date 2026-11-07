@@ -5,6 +5,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const ambient = require('../family-ambient');
+const { readNodeHints } = require('../family-ambient-nodes');
+const nodeHints = readNodeHints({ HOUSEHOLD_ECOSYSTEM_NODE_HINTS_JSON: JSON.stringify({
+  'host-a': ['192.168.50.10'], 'host-b': ['gpu-b.example'], 'host-c': ['gpu-c.example']
+}) });
 const choice = require('../public/nestor-ambient-choice');
 
 const MIN = 60000;
@@ -34,10 +38,10 @@ test('the sun elevation tells day from night at the house', () => {
 
 test('the alert view keeps counts and machines to visit, never alert text', () => {
   const view = ambient.alertView({ at: 'x', fingerprint: 'f1', findings: [
-    { key: 'issue:gpu-hot:ugalien', severity: 'critical', text: 'secret detail' },
-    { key: 'alert:disk:192.168.2.99', severity: 'attention', text: 'other detail' },
-    { key: 'alert:unknown:nowhere', severity: 'attention', text: 'x' }] });
-  assert.deepEqual(view, { at: 'x', fingerprint: 'f1', count: 2, critical: 1, nodes: ['ugalien', 'ugfrank'] });
+    { key: 'issue:gpu-hot:host-b', severity: 'critical', text: 'secret detail' },
+    { key: 'alert:disk:192.168.50.10', severity: 'attention', text: 'other detail' },
+    { key: 'alert:unknown:nowhere', severity: 'attention', text: 'x' }] }, nodeHints);
+  assert.deepEqual(view, { at: 'x', fingerprint: 'f1', count: 2, critical: 1, nodes: ['host-b', 'host-a'] });
   assert.ok(!JSON.stringify(view).includes('detail'));
   // Failed queued jobs name no machine: they stay in Nerve Center, not on the kitchen screen.
   const routine = ambient.alertView({ findings: [
@@ -46,7 +50,7 @@ test('the alert view keeps counts and machines to visit, never alert text', () =
   assert.equal(routine.count, 0);
   assert.equal(ambient.alertView({ findings: [{ key: 'issue:backup-missed:', severity: 'critical' }] }).count, 1);
   assert.equal(ambient.alertView(null), null);
-  assert.equal(ambient.nodeFor('issue:x:ugbrutal'), 'ugbrutal');
+  assert.equal(ambient.nodeFor('issue:x:host-c', nodeHints), 'host-c');
 });
 
 test('the pass view carries the drawn geometry of the next naked-eye pass', () => {
@@ -98,7 +102,7 @@ test('the background follows the weather, the light and the night calm', () => {
 test('a conversation keeps only the background', () => {
   const at = Date.parse('2026-11-04T00:40:00Z');
   const snapshot = { weather: { kind: 'clear', temperatureC: -1.6, condition: 'Dégagé' }, iss: { next: pass('2026-11-04T00:42:00Z') },
-    alerts: { count: 2, critical: 1, nodes: ['ugalien'], fingerprint: 'f' } };
+    alerts: { count: 2, critical: 1, nodes: ['host-b'], fingerprint: 'f' } };
   const scene = choice.chooseScreen(snapshot, { at, hour: 19, standby: false });
   assert.deepEqual(scene.chips, []);
   assert.equal(scene.moment, null);
@@ -125,12 +129,12 @@ test('the ISS gets a countdown, then the sky scene, then leaves', () => {
 
 test('alerts rank by severity and a guided visit stays rare and by day', () => {
   const at = Date.parse('2026-11-04T15:00:00Z');
-  const critical = { weather: { temperatureC: 2, condition: 'Nuageux' }, alerts: { count: 2, critical: 1, nodes: ['ugalien'], fingerprint: 'f' } };
+  const critical = { weather: { temperatureC: 2, condition: 'Nuageux' }, alerts: { count: 2, critical: 1, nodes: ['host-b'], fingerprint: 'f' } };
   const scene = choice.chooseScreen(critical, { at, hour: 10 });
   assert.deepEqual(scene.chips.map(c => c.id), ['alert'], 'the weather is beside the date, not a note');
   assert.equal(scene.chips[0].text, 'Système : un problème important');
   assert.equal(scene.moment.kind, 'visit');
-  assert.equal(scene.moment.play, 'overview,node-ugalien');
+  assert.equal(scene.moment.play, 'overview,node-host-b');
   const key = choice.visitKey(critical.alerts);
   assert.equal(choice.chooseScreen(critical, { at, hour: 10, visits: { [key]: at - 60 * MIN } }).moment, null, 'six hours between visits');
   assert.equal(choice.chooseScreen(critical, { at, hour: 10, visits: { [key]: at - 7 * 60 * MIN } }).moment.kind, 'visit');
@@ -139,7 +143,7 @@ test('alerts rank by severity and a guided visit stays rare and by day', () => {
   assert.equal(choice.chooseScreen(unknownMachine, { at, hour: 10 }).moment, null);
   assert.equal(choice.chooseScreen(unknownMachine, { at, hour: 10 }).chips[0].text, 'Système : un point à surveiller');
   // A pass in progress outranks an ordinary alert and its visit.
-  const both = { iss: { next: pass(new Date(at - MIN).toISOString()) }, alerts: { count: 1, critical: 0, nodes: ['ugfrank'], fingerprint: 'g' } };
+  const both = { iss: { next: pass(new Date(at - MIN).toISOString()) }, alerts: { count: 1, critical: 0, nodes: ['host-a'], fingerprint: 'g' } };
   const busy = choice.chooseScreen(both, { at, hour: 10 });
   assert.deepEqual(busy.chips.map(c => c.id), ['iss', 'alert']);
   assert.equal(busy.moment.kind, 'iss');
@@ -266,7 +270,7 @@ test('a painting continues until it ends, but the ISS and alert visits come firs
   assert.equal(choice.chooseScreen(snapshot, { at, hour: 10, idleMs: 0, lastPaint: at, painting: running }).moment, running);
   const withIss = { ...snapshot, iss: { next: pass(start) } };
   assert.equal(choice.chooseScreen(withIss, { at, hour: 10, painting: running }).moment.kind, 'iss');
-  const withAlert = { ...snapshot, alerts: { count: 1, critical: 0, nodes: ['ugalien'], fingerprint: 'f' } };
+  const withAlert = { ...snapshot, alerts: { count: 1, critical: 0, nodes: ['host-b'], fingerprint: 'f' } };
   assert.equal(choice.chooseScreen(withAlert, { at, hour: 10, painting: running }).moment.kind, 'visit');
   assert.equal(choice.chooseScreen(snapshot, { at, hour: 10, standby: false, painting: running }).moment, null);
 });

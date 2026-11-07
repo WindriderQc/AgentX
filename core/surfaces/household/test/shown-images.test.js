@@ -136,14 +136,14 @@ test('the reply names a picture on screen only by a single digit', () => {
 });
 
 test('a web picture is read back only from a public address, never a redirect', async () => {
-  for (const address of ['127.0.0.1', '10.1.2.3', '192.168.2.99', '172.20.0.1', '169.254.169.254', '100.64.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:192.168.1.1', '0.0.0.0'])
+  for (const address of ['127.0.0.1', '10.1.2.3', '192.168.50.10', '172.20.0.1', '169.254.169.254', '100.64.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:192.168.1.1', '0.0.0.0'])
     assert.equal(publicAddress(address), false, address);
   for (const address of ['93.184.216.34', '2606:2800:220:1::1']) assert.equal(publicAddress(address), true, address);
   const fetches = [];
-  const visuals = createVisuals({ env: {}, lookup: async host => [{ address: host === 'lan.example.test' ? '192.168.2.99' : '93.184.216.34' }],
+  const visuals = createVisuals({ env: {}, lookup: async host => [{ address: host === 'lan.example.test' ? '192.168.50.10' : '93.184.216.34' }],
     fetchImpl: async (url, options) => { fetches.push({ url, options }); return new Response(photo(8, 8), { headers: { 'content-type': 'image/jpeg' } }); } });
   await assert.rejects(visuals.bytesFor({ url: 'https://lan.example.test/a.jpg' }), /not public/);
-  await assert.rejects(visuals.bytesFor({ url: 'https://192.168.2.99/a.jpg' }), /not public/);
+  await assert.rejects(visuals.bytesFor({ url: 'https://192.168.50.10/a.jpg' }), /not public/);
   await assert.rejects(visuals.bytesFor({ url: 'http://images.example.test/a.jpg' }));
   await assert.rejects(visuals.bytesFor({ url: '/api/other/thing' }), /Unknown picture address/);
   assert.equal(fetches.length, 0);

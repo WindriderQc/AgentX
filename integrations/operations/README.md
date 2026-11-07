@@ -32,7 +32,7 @@ Linux) and needs only Python and SSH to the archive host, whose `python3` runs t
 receiving half of the same file, sent with each call. Each source has a label:
 
 ```
-python3 session_archive.py send --host-label devx \
+python3 session_archive.py send --host-label dev-host \
   --source claude-projects=$HOME/.claude/projects \
   --source codex-sessions=$HOME/.codex/sessions \
   --source codex-archived=$HOME/.codex/archived_sessions \
@@ -58,8 +58,8 @@ file, and the files come back over the source host's SSH to the archive host.
 `--state-dir` is then a directory on the source host.
 
 ```
-python3 session_archive.py collect --host-label devx \
-  --source-host devx --return-host archive-host \
+python3 session_archive.py collect --host-label dev-host \
+  --source-host dev-host --return-host archive-host \
   --source claude-projects=/home/owner/.claude/projects ... \
   --destination-root /archive/agent-sessions \
   --state-dir /home/owner/.agentx/session-archive/state

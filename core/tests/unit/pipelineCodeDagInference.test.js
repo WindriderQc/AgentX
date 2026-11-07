@@ -32,9 +32,9 @@ function initialDag() {
         testTargets: ['test:two'], dependsOn: [] },
     ] }, reviewedScope: ['src/one.js', 'src/two.js'],
     reviewedLockKeys: ['file:src/one.js', 'file:src/two.js'], budget: budget(40, 6), createdAt: T0 });
-  dag = dagDomain.startAttempt(dag, { expectedRevision: 0, stepId: 'step-01', executorId: 'ugalien',
+  dag = dagDomain.startAttempt(dag, { expectedRevision: 0, stepId: 'step-01', executorId: 'host-b',
     requestId: REQUEST_ONE, baseCommit: SOURCE, budget: attemptBudget(5), startedAt: T0 }).dag;
-  return dagDomain.startAttempt(dag, { expectedRevision: 1, stepId: 'step-02', executorId: 'ugbrutal',
+  return dagDomain.startAttempt(dag, { expectedRevision: 1, stepId: 'step-02', executorId: 'host-c',
     requestId: REQUEST_TWO, baseCommit: SOURCE, budget: attemptBudget(8), startedAt: T0 }).dag;
 }
 
@@ -74,7 +74,7 @@ function task() {
   return value;
 }
 
-function headers({ step = 'step-01', request = REQUEST_ONE, executor = 'ugalien', call = CALL_ONE,
+function headers({ step = 'step-01', request = REQUEST_ONE, executor = 'host-b', call = CALL_ONE,
   lease = LEASE } = {}) {
   return { 'x-agentx-coding-task': '0946', 'x-agentx-coding-request': request,
     'x-agentx-coding-lease': lease, 'x-agentx-coding-call': call,
@@ -101,7 +101,7 @@ test('two independent step attempts call concurrently under the parent capacity 
   const [first, second] = await Promise.all([
     f.bridge.prepareCodeStep(headers(), MODEL),
     f.bridge.prepareCodeStep(headers({ step: 'step-02', request: REQUEST_TWO,
-      executor: 'ugbrutal', call: CALL_TWO }), MODEL),
+      executor: 'host-c', call: CALL_TWO }), MODEL),
   ]);
   expect(first.options).toMatchObject({ codingDeadlineAt: Date.parse(T0) + 5000,
     codingCapacity: { pipelineId: '0946', leaseId: LEASE },
@@ -143,7 +143,7 @@ test('unknown keeps only its step fenced until explicit state reconciliation', a
 });
 
 test.each([
-  ['executor', headers({ executor: 'ugfrank' }), MODEL, 'CODING_STEP_EXECUTOR_INVALID'],
+  ['executor', headers({ executor: 'host-a' }), MODEL, 'CODING_STEP_EXECUTOR_INVALID'],
   ['request', headers({ request: '71111111-2222-4333-8444-555555555555' }), MODEL, 'CODING_STEP_REQUEST_INVALID'],
   ['lease', headers({ lease: 'wrong-lease' }), MODEL, 'AUTOMATION_LEASE_CONFLICT'],
   ['model', headers(), 'other-model', 'CODING_CAPACITY_PROOF_INVALID'],
@@ -159,7 +159,7 @@ test.each(['revocation', 'scope', 'family'])('an in-flight receipt survives %s w
   if (reason === 'scope') f.record.title = 'Changed scope';
   if (reason === 'family') f.record.origin = 'family';
   await expect(f.bridge.prepareCodeStep(headers({ step: 'step-02', request: REQUEST_TWO,
-    executor: 'ugbrutal', call: CALL_TWO }), MODEL)).rejects.toBeDefined();
+    executor: 'host-c', call: CALL_TWO }), MODEL)).rejects.toBeDefined();
   f.advance(2); await first.finish('completed');
   expect(f.state.current().steps[0].attempts[0].modelReceipts[0].state).toBe('completed');
   expect(f.state.current().steps[1].attempts[0].modelReceipts).toHaveLength(0);

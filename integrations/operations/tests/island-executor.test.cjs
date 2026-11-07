@@ -59,12 +59,12 @@ function fakeRunner({ polls = 2, start, outcome = 'completed', leftover = [] } =
 
 function deps(dir, runner, extra = {}) {
   const reports = [];
-  return { reports, runner, label: 'devx', principal: async () => principal, receiptsDir: dir, actor: 'fixture',
+  return { reports, runner, label: 'dev-host', principal: async () => principal, receiptsDir: dir, actor: 'fixture',
     sleep: async () => {}, pollMs: 0, report: async (id, body) => { reports.push([id, body]); }, ...extra };
 }
 
 test('runner arguments are typed and quoted for SSH; the request carries no command', () => {
-  const config = island.runnerConfig({ AGENTX_ISLAND_RUNNER: 'ssh:devx', AGENTX_ISLAND_RUNNER_SCRIPT: '/opt/agentx/integrations/island/island_runner.py' });
+  const config = island.runnerConfig({ AGENTX_ISLAND_RUNNER: 'ssh:dev-host', AGENTX_ISLAND_RUNNER_SCRIPT: '/opt/agentx/integrations/island/island_runner.py' });
   const argv = island.runnerArgv(config, 'start', { 'run-id': ID, agent: 'Eko', minutes: 60 });
   assert.equal(argv.command, 'ssh');
   assert.equal(argv.args.at(-1), `'python3' '/opt/agentx/integrations/island/island_runner.py' 'start' '--run-id' '${ID}' '--agent' 'Eko' '--minutes' '60'`);

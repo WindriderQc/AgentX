@@ -35,7 +35,7 @@ test('a failed or missing observation gives no settings', () => {
 });
 
 test('a host never observed keeps its fingerprint; settings and their changes alter it', () => {
-  const host = { hostId: 'ugalien', hostUrl: 'http://ugalien:11434', gpu: { vramTotalMiB: 49152 }, ollama: { backend: 'Unknown' } };
+  const host = { hostId: 'host-b', hostUrl: 'http://host-b:11434', gpu: { vramTotalMiB: 49152 }, ollama: { backend: 'Unknown' } };
   const before = buildRuntimeFingerprint(host);
   assert.equal(buildRuntimeFingerprint({ ...host, ollama: { backend: 'Unknown', settings: null } }), before);
   const f16 = { kvCacheType: 'default', flashAttention: 'on', visibleDevices: 'default', schedSpread: 'on', gpuCount: 2 };

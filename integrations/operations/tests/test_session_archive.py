@@ -58,7 +58,7 @@ class SessionArchiveTests(unittest.TestCase):
                         ("codex-archived", self.codex / "archived_sessions")]
         self.root = self.base / "archive"
         self.root.mkdir()
-        self.live = self.root / "live" / "devx"
+        self.live = self.root / "live" / "dev-host"
         self.state = self.base / "state"
         self.host = LocalArchive(self.root)
 
@@ -70,7 +70,7 @@ class SessionArchiveTests(unittest.TestCase):
         os.utime(path, ns=(stamp, stamp))
 
     def run_archive(self, host=None, **options):
-        return module.archive(self.sources, host or self.host, "devx", self.state, **options)
+        return module.archive(self.sources, host or self.host, "dev-host", self.state, **options)
 
     def test_first_run_copies_every_source_and_never_reads_credentials(self):
         report = self.run_archive()
@@ -86,12 +86,12 @@ class SessionArchiveTests(unittest.TestCase):
         self.assertNotIn("write.lock", archived)
         self.assertEqual(report["sources"], {"claude-projects": True, "codex-sessions": True, "codex-history": True,
                                              "codex-auth": True, "codex-archived": False})
-        remote = json.loads((self.root / "receipts" / "devx" / "latest-run.json").read_text())
+        remote = json.loads((self.root / "receipts" / "dev-host" / "latest-run.json").read_text())
         self.assertEqual(remote["runId"], report["runId"])
-        self.assertTrue((self.root / "receipts" / "devx" / f"{report['runId']}.json").is_file())
+        self.assertTrue((self.root / "receipts" / "dev-host" / f"{report['runId']}.json").is_file())
         self.assertEqual(json.loads((self.state / "latest-run.json").read_text())["status"], "verified")
         self.assertNotIn("turn", json.dumps(remote))
-        self.assertFalse((self.root / "staging" / "devx" / report["runId"]).exists())
+        self.assertFalse((self.root / "staging" / "dev-host" / report["runId"]).exists())
         if os.name != "nt":
             for directory in (self.root / "live", self.live, self.live / "claude-projects" / "proj-a" / "s1",
                               self.root / "receipts", self.root / "staging"):
@@ -137,7 +137,7 @@ class SessionArchiveTests(unittest.TestCase):
         report = self.run_archive()
         self.assertEqual(report["versioned"], 1)
         self.assertNotEqual(first["runId"], "")
-        kept = list((self.root / "versions" / "devx").rglob("history.jsonl"))
+        kept = list((self.root / "versions" / "dev-host").rglob("history.jsonl"))
         self.assertEqual([p.read_bytes() for p in kept], [b'{"h": 1}\n'])
         self.assertEqual((self.live / "codex-history" / "history.jsonl").read_bytes(), b'{"h": 2}\n')
 
@@ -176,7 +176,7 @@ class SessionArchiveTests(unittest.TestCase):
 
     def test_receiver_refuses_paths_that_leave_the_archive(self):
         stream = io.BytesIO(b'F {"path": "../escape.txt"}\nC 3\nbad' + b"D x 3\nE\n")
-        results = module.receive(stream, self.root, "devx", "20261025T000000Z")
+        results = module.receive(stream, self.root, "dev-host", "20261025T000000Z")
         self.assertEqual(results, {"../escape.txt": "unsafe"})
         self.assertFalse((self.root / "live" / "escape.txt").exists())
         self.assertFalse((self.root / "escape.txt").exists())
@@ -185,12 +185,12 @@ class SessionArchiveTests(unittest.TestCase):
 
     def test_receiver_rejects_a_truncated_stream(self):
         with self.assertRaises(ValueError):
-            module.receive(io.BytesIO(b'F {"path": "a.jsonl"}\nC 10\nshort'), self.root, "devx", "20261025T000000Z")
+            module.receive(io.BytesIO(b'F {"path": "a.jsonl"}\nC 10\nshort'), self.root, "dev-host", "20261025T000000Z")
         self.assertFalse((self.live / "a.jsonl").exists())
 
     def test_command_line_validates_labels_and_destination(self):
         with self.assertRaises(SystemExit):
-            module.main(["send", "--host-label", "DevX", "--source", "a=/tmp", "--destination-host", "h",
+            module.main(["send", "--host-label", "dev-host", "--source", "a=/tmp", "--destination-host", "h",
                          "--destination-root", "/srv", "--state-dir", str(self.state)])
         with self.assertRaises(ValueError):
             module.SshArchive("-oProxyCommand=x", "/srv")
@@ -221,16 +221,16 @@ class SessionArchiveOverSshTests(unittest.TestCase):
                 """))
             fake.chmod(0o700)
             env = dict(os.environ, PATH=f"{base}{os.pathsep}{os.environ['PATH']}")
-            command = [sys.executable, str(SCRIPT), "send", "--host-label", "devx",
+            command = [sys.executable, str(SCRIPT), "send", "--host-label", "dev-host",
                        "--source", f"claude-projects={base / 'projects'}", "--destination-host", "archive.invalid",
                        "--destination-root", str(root), "--state-dir", str(base / "state")]
             result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             report = json.loads(result.stdout)
             self.assertEqual((report["status"], report["new"]), ("verified", 1))
-            self.assertEqual((root / "live" / "devx" / "claude-projects" / "p" / "s.jsonl").read_bytes(),
+            self.assertEqual((root / "live" / "dev-host" / "claude-projects" / "p" / "s.jsonl").read_bytes(),
                              b'{"turn": "it\'s"}\n')
-            self.assertTrue((root / "receipts" / "devx" / "latest-run.json").is_file())
+            self.assertTrue((root / "receipts" / "dev-host" / "latest-run.json").is_file())
             again = json.loads(subprocess.run(command, capture_output=True, text=True, env=env, timeout=60).stdout)
             self.assertEqual((again["unchanged"], again["sent"]), (1, 0))
 
@@ -261,29 +261,29 @@ class SessionArchiveOverSshTests(unittest.TestCase):
             installed.parent.mkdir()
             shutil.copy(SCRIPT, installed)
             env = dict(os.environ, PATH=f"{base}{os.pathsep}{os.environ['PATH']}")
-            command = [sys.executable, str(installed), "collect", "--host-label", "devx",
-                       "--source-host", "devx.invalid", "--return-host", "archive.invalid",
+            command = [sys.executable, str(installed), "collect", "--host-label", "dev-host",
+                       "--source-host", "dev-host.invalid", "--return-host", "archive.invalid",
                        "--source", f"codex-sessions={base / 'home' / '.codex' / 'sessions'}",
                        "--source", f"codex-auth={base / 'home' / '.codex' / 'auth.json'}",
                        "--destination-root", str(root), "--state-dir", str(base / "source-state")]
             result = subprocess.run(command, capture_output=True, text=True, env=env, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             report = json.loads(result.stdout)
-            self.assertEqual((report["status"], report["host"], report["new"]), ("verified", "devx", 1))
-            self.assertEqual((root / "live" / "devx" / "codex-sessions" / "2026" / "rollout-a.jsonl").read_bytes(),
+            self.assertEqual((report["status"], report["host"], report["new"]), ("verified", "dev-host", 1))
+            self.assertEqual((root / "live" / "dev-host" / "codex-sessions" / "2026" / "rollout-a.jsonl").read_bytes(),
                              b'{"codex": "remote"}\n')
             self.assertFalse(any(p.name == "auth.json" for p in root.rglob("*")))
-            self.assertEqual(calls.read_text().split(), ["devx.invalid", "archive.invalid", "archive.invalid"])
+            self.assertEqual(calls.read_text().split(), ["dev-host.invalid", "archive.invalid", "archive.invalid"])
             self.assertTrue((base / "source-state" / "latest-run.json").is_file())
 
     def test_collect_reports_an_unreachable_source_host(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
             fake = base / "ssh"
-            fake.write_text(f"#!{sys.executable}\nimport sys\nsys.stderr.write('ssh: connect to host devx port 22: No route to host\\n')\nsys.exit(255)\n")
+            fake.write_text(f"#!{sys.executable}\nimport sys\nsys.stderr.write('ssh: connect to host dev-host port 22: No route to host\\n')\nsys.exit(255)\n")
             fake.chmod(0o700)
             env = dict(os.environ, PATH=f"{base}{os.pathsep}{os.environ['PATH']}")
-            result = subprocess.run([sys.executable, str(SCRIPT), "collect", "--host-label", "devx", "--source-host", "devx",
+            result = subprocess.run([sys.executable, str(SCRIPT), "collect", "--host-label", "dev-host", "--source-host", "dev-host",
                                      "--return-host", "archive", "--source", "a=/nowhere", "--destination-root", "/archive",
                                      "--state-dir", "/state"], capture_output=True, text=True, env=env, timeout=60)
             self.assertEqual(result.returncode, 1)

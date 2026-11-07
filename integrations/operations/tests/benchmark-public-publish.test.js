@@ -22,9 +22,9 @@ const { parseArgs, publish } = require('../benchmark-public-publish');
 // Synthetic private payloads shaped like Benchmark's API, with addresses
 // planted in every place the real responses carry them.
 const HOST_NAMES = {
-  'http://192.168.2.99:11434': 'UGFrank',
-  'http://192.168.2.99:11435': 'UGFrank CPU',
-  'http://192.168.2.199:11434': 'UGAlien',
+  'http://192.168.50.10:11434': 'host-a',
+  'http://192.168.50.10:11435': 'host-a CPU',
+  'http://192.168.50.20:11434': 'host-b',
   'http://10.0.0.7:11434': '10.0.0.7',
   'http://ollama-box.lan:11434': 'Box',
 };
@@ -64,35 +64,35 @@ function fixture() {
       total_tests: 3192,
       successful: 3175,
       failed: 17,
-      leaderboard: [{ model: 'qwen2.5:3b', host: 'http://192.168.2.99:11434' }],
+      leaderboard: [{ model: 'qwen2.5:3b', host: 'http://192.168.50.10:11434' }],
     },
     leaderboard: {
       axis: 'quality',
       categoryWeights: { coding: 0.18, reasoning: 0.17 },
-      primaryHostUrl: 'http://192.168.2.199:11434',
-      configuredHosts: [{ name: 'UGAlien', url: 'http://192.168.2.199:11434' }],
-      hostModelSnapshot: { hosts: [{ url: 'http://192.168.2.99:11434', error: 'connect ECONNREFUSED 192.168.2.99:11434' }] },
+      primaryHostUrl: 'http://192.168.50.20:11434',
+      configuredHosts: [{ name: 'host-b', url: 'http://192.168.50.20:11434' }],
+      hostModelSnapshot: { hosts: [{ url: 'http://192.168.50.10:11434', error: 'connect ECONNREFUSED 192.168.50.10:11434' }] },
       leaderboard: [
-        leaderboardRow('gemma4:31b-it-q8_0', 'http://192.168.2.199:11434', 82.9),
-        leaderboardRow('qwen2.5:3b', 'http://192.168.2.99:11434', 41.3),
-        leaderboardRow('qwen2.5:3b', 'http://192.168.2.199:11439', 40.1),
+        leaderboardRow('gemma4:31b-it-q8_0', 'http://192.168.50.20:11434', 82.9),
+        leaderboardRow('qwen2.5:3b', 'http://192.168.50.10:11434', 41.3),
+        leaderboardRow('qwen2.5:3b', 'http://192.168.50.20:11439', 40.1),
         leaderboardRow('agent-model:27b', 'harness:openclaw:openclaw-local', 70),
         leaderboardRow('gpt-x', 'https://api.example.com/v1', 90, { tier: 'cloud', provider: 'openrouter' }),
         leaderboardRow('odd-ip-name', 'http://10.0.0.7:11434', 50),
         leaderboardRow('unknown-host-model', 'http://172.16.4.4:11434', 49),
-        leaderboardRow('evil 192.168.2.99:11434 model', 'http://192.168.2.99:11434', 99),
-        leaderboardRow('<script>x</script>', 'http://192.168.2.99:11434', 98),
-        leaderboardRow('huihui_ai/abliterated:27b', 'http://192.168.2.199:11434', 80),
-        leaderboardRow('not-ranked', 'http://192.168.2.199:11434', null, { rankable: false }),
+        leaderboardRow('evil 192.168.50.10:11434 model', 'http://192.168.50.10:11434', 99),
+        leaderboardRow('<script>x</script>', 'http://192.168.50.10:11434', 98),
+        leaderboardRow('huihui_ai/abliterated:27b', 'http://192.168.50.20:11434', 80),
+        leaderboardRow('not-ranked', 'http://192.168.50.20:11434', null, { rankable: false }),
       ],
     },
     efficiency: {
       entries: [
-        { model: 'gemma4:31b-it-q8_0', host: 'http://192.168.2.199:11434', avgQuality: 8.64, avgTokPerSec: 100.53, avgLatency: 8391.4, testCount: 54, efficiencyScore: 92.7, paretoOptimal: true, rankStatus: 'ranked', categoryScores: { math: 9.73 } },
-        { model: 'medgemma:4b', host: 'http://192.168.2.99:11435', avgQuality: 7, avgTokPerSec: 20, testCount: 10, efficiencyScore: 15, paretoOptimal: false, rankStatus: 'ranked' },
-        { model: 'held-back', host: 'http://192.168.2.99:11434', rankStatus: 'unranked', unrankedReason: 'too few tests' },
+        { model: 'gemma4:31b-it-q8_0', host: 'http://192.168.50.20:11434', avgQuality: 8.64, avgTokPerSec: 100.53, avgLatency: 8391.4, testCount: 54, efficiencyScore: 92.7, paretoOptimal: true, rankStatus: 'ranked', categoryScores: { math: 9.73 } },
+        { model: 'medgemma:4b', host: 'http://192.168.50.10:11435', avgQuality: 7, avgTokPerSec: 20, testCount: 10, efficiencyScore: 15, paretoOptimal: false, rankStatus: 'ranked' },
+        { model: 'held-back', host: 'http://192.168.50.10:11434', rankStatus: 'unranked', unrankedReason: 'too few tests' },
       ],
-      frontier: ['gemma4:31b-it-q8_0@@http://192.168.2.199:11434'],
+      frontier: ['gemma4:31b-it-q8_0@@http://192.168.50.20:11434'],
       meta: { totalModels: 3, generatedAt: '2026-10-25T14:46:28.811Z' },
     },
   };
@@ -128,11 +128,11 @@ test('only allow-listed fields are published', () => {
 
 test('hosts become registry machine names, never addresses', () => {
   const { resolve } = createHostResolver(HOST_NAMES);
-  assert.equal(resolve('http://192.168.2.199:11434'), 'UGAlien');
-  assert.equal(resolve('http://192.168.2.99:11435'), 'UGFrank CPU');
-  assert.equal(resolve('192.168.2.99:11434'), 'UGFrank', 'a URL without scheme still matches');
-  assert.equal(resolve('http://192.168.2.199:11439'), 'UGAlien (other instance)', 'unregistered port on a known machine');
-  assert.equal(resolve('http://192.168.2.99:11999'), 'UGFrank (other instance)', 'prefers the default-port entry over the CPU one');
+  assert.equal(resolve('http://192.168.50.20:11434'), 'host-b');
+  assert.equal(resolve('http://192.168.50.10:11435'), 'host-a CPU');
+  assert.equal(resolve('192.168.50.10:11434'), 'host-a', 'a URL without scheme still matches');
+  assert.equal(resolve('http://192.168.50.20:11439'), 'host-b (other instance)', 'unregistered port on a known machine');
+  assert.equal(resolve('http://192.168.50.10:11999'), 'host-a (other instance)', 'prefers the default-port entry over the CPU one');
   assert.equal(resolve('http://172.16.4.4:11434'), UNLISTED_HOST);
   assert.equal(resolve('http://10.0.0.7:11434'), UNLISTED_HOST, 'a registry name that is an address is not used');
   assert.equal(resolve('harness:openclaw:openclaw-local'), 'openclaw agent');
@@ -159,11 +159,11 @@ test('leaderboard is ranked by score and model cards gather each model across ho
   assert.equal(board[0].model, 'scriptx/script');
   const card = files['model-cards.json'].models.find((entry) => entry.slug === 'qwen2-5-3b');
   assert.equal(card.results.length, 2);
-  assert.deepEqual(card.results.map((result) => result.hostAlias), ['UGFrank', 'UGAlien (other instance)']);
+  assert.deepEqual(card.results.map((result) => result.hostAlias), ['host-a', 'host-b (other instance)']);
   assert.equal(card.generalistScore, 41.3);
   assert.equal(card.totalTests, 208);
-  assert.match(card.summary, /UGFrank/);
-  assert.deepEqual(files['efficiency.json'].frontier, [{ slug: 'gemma4-31b-it-q8-0', model: 'gemma4:31b-it-q8_0', hostAlias: 'UGAlien' }]);
+  assert.match(card.summary, /host-a/);
+  assert.deepEqual(files['efficiency.json'].frontier, [{ slug: 'gemma4-31b-it-q8-0', model: 'gemma4:31b-it-q8_0', hostAlias: 'host-b' }]);
   assert.equal(files['summary.json'].metrics.tests, 3192);
   assert.equal(files['summary.json'].topModel.model, 'scriptx/script');
 });
@@ -181,12 +181,12 @@ test('excluded models stay off every file', () => {
 });
 
 test('the final guard refuses a payload that still locates a machine', () => {
-  for (const value of ['http://example.org', '192.168.2.12', 'host:11434', 'localhost', '[fe80::1]', 'fe80:0:0:0:1:2:3:4', '\\\\nas\\share', 'see /srv/agentx/x']) {
+  for (const value of ['http://example.org', '192.168.50.30', 'host:11434', 'localhost', '[fe80::1]', 'fe80:0:0:0:1:2:3:4', '\\\\nas\\share', 'see /srv/agentx/x']) {
     assert.throws(() => assertPublicSafe({ 'x.json': { label: value } }), UnsafePublicationError, value);
   }
   assert.throws(() => assertPublicSafe({ 'x.json': { 'http://key': 1 } }), UnsafePublicationError);
   assert.throws(() => assertPublicSafe({ 'x.json': { label: 'box.lan' } }, ['box.lan']), UnsafePublicationError);
-  for (const value of ['qwen3.8:27b-mtp-q8_0', 'hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_M', '2026-10-25T14:50:00.000Z', 'qwen2.5:3b', 'UGFrank CPU']) {
+  for (const value of ['qwen3.8:27b-mtp-q8_0', 'hf.co/unsloth/Qwen3.8-27B-GGUF:UD-Q5_K_M', '2026-10-25T14:50:00.000Z', 'qwen2.5:3b', 'host-a CPU']) {
     assert.doesNotThrow(() => assertPublicSafe({ 'x.json': { label: value } }), value);
   }
 });
