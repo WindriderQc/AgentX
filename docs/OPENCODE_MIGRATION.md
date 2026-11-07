@@ -11,6 +11,43 @@ reconciliation, task state and publication. See the
 [multi-harness contract](CODING_TEAM_ARCHITECTURE.md) and
 [shared agent capabilities](SHARED_AGENT_CAPABILITIES.md).
 
+## Human model discovery
+
+The native model manager groups models under a provider connection. The thin
+`integrations/coding/opencode_core_catalog.mjs` config hook labels that connection
+**Passerelle Core** and reads its authenticated `/api/llm/v1/models` catalog.
+Each selectable row names its currently resolved model and host; the principal
+alias carries **par défaut**. The configured default and small model remain
+`agentx-core/agentx-primary`. Concrete model names are discovery data, never
+client routing configuration.
+
+Core publishes `agentx` metadata alongside the compatible model IDs. Host choices
+use `agentx-host/<hostKey>` and bind the existing effective pinned chat model,
+host and context at inference time. Multiple task routes to the same host/model
+produce one choice, and the principal's exact target is not repeated. Embedding
+models, unpinned routes, missing contexts and conflicting host routes do not
+become selectable chat targets. A stale host choice is refused before inference.
+Existing concrete IDs keep their explicit-selection behavior for other clients.
+
+Discovery changes no route, pin, model residency, worker profile or history and
+performs no inference. Discovery failure retains the principal alias with an
+unavailable label; it never fabricates additional choices. The display describes
+the route at discovery time; each request remains subject to Core's live policy,
+admission and capability checks. Install the hook only in the human runtime;
+worker relay configurations retain their existing contract.
+
+Qualify the native hook in an isolated home with a synthetic discovery server:
+
+```bash
+python3 integrations/coding/opencode_catalog_smoke.py \
+  --binary /reviewed/opencode/node_modules/.bin/opencode \
+  --expected-version 1.19.3 --output /private/evidence/catalog-smoke.json
+```
+
+This checks native provider/model names, host contexts, the preserved default,
+embedding exclusion and unavailable discovery with zero model calls. It does
+not qualify model competence or a physical device's model selection.
+
 ## Retain and verify native histories
 
 Preserve Studio's complete native state, attachments, profile manifests and

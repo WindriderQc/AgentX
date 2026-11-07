@@ -57,14 +57,14 @@ function snapshot() {
 const CODEX_TOKEN = 'codex-token-0123456789';
 const AUTH = { authorization: `Bearer ${CODEX_TOKEN}` };
 
-function gateway(execute, clients = parseGatewayClients(JSON.stringify({ codex: { token: CODEX_TOKEN, admission: 'immediate' } }))) {
+function gateway(execute, clients = parseGatewayClients(JSON.stringify({ codex: { token: CODEX_TOKEN, admission: 'immediate' } })), currentSnapshot = snapshot()) {
   const calls = [];
   const router = registerLlmGateway({
     express: fakeExpress(),
     logger: {},
     clients,
     runtimeServices: {
-      routing: { getEffectiveSnapshot: async () => snapshot() },
+      routing: { getEffectiveSnapshot: async () => currentSnapshot },
       inference: { execute: async (request, options) => { calls.push({ request, options }); return execute(request, options); } }
     }
   });
@@ -149,6 +149,36 @@ test('chat completions run under the client identity and the principal alias con
   assert.equal(request.callerDetail, 'llm-gateway/codex');
   assert.equal(options.consumerContract, 'codex-gateway-v1');
   assert.equal(options.hostUrl, 'http://model-host.test:11434');
+});
+
+test('host choices bind the exact effective model, machine and context without changing the principal', async () => {
+  const state = snapshot();
+  state.tasks.utility = { taskType: 'utility', model: 'model-b', hostKey: 'cpu-a',
+    hostUrl: 'http://cpu-a.test:11435', contextSize: 32768, pinAligned: true };
+  state.tasks.ops = { ...state.tasks.utility, taskType: 'ops', hostKey: 'cpu-b', hostUrl: 'http://cpu-b.test:11435' };
+  const { calls, handler } = gateway(async () => ({ ok: true, status: 200,
+    body: { message: { content: 'ok' }, done: true }, metadata: {} }), undefined, state);
+  const discovery = new Response();
+  await handler('get', '/v1/models')(new Request({ headers: AUTH }), discovery);
+  assert.equal(calls.length, 0);
+  assert.equal(discovery.jsonBody.data.find(row => row.id === 'agentx-host/cpu-b').agentx.context_window, 32768);
+  for (const id of ['agentx-host/cpu-a', 'agentx-host/cpu-b', 'agentx-primary']) {
+    const res = new Response();
+    await handler('post', '/v1/chat/completions')(new Request({ headers: AUTH,
+      body: { model: id, messages: [{ role: 'user', content: 'hi' }] } }), res);
+    assert.equal(res.statusCode, 200);
+  }
+  assert.deepEqual(calls.map(({ request, options }) => [request.model, options.hostUrl, request.options.num_ctx]), [
+    ['model-b', 'http://cpu-a.test:11435', 32768], ['model-b', 'http://cpu-b.test:11435', 32768],
+    ['model-a', 'http://model-host.test:11434', 196608]
+  ]);
+  state.tasks.ops.pinAligned = false;
+  const refused = new Response();
+  await handler('post', '/v1/chat/completions')(new Request({ headers: AUTH,
+    body: { model: 'agentx-host/cpu-b', messages: [{ role: 'user', content: 'hi' }] } }), refused);
+  assert.equal(refused.statusCode, 409);
+  assert.equal(refused.jsonBody.error.code, 'HOST_MODEL_UNAVAILABLE');
+  assert.equal(calls.length, 3);
 });
 
 test('explicit no-reasoning reaches native inference without changing other callers or the principal context', async () => {

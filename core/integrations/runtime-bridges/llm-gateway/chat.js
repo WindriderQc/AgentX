@@ -12,29 +12,15 @@ const {
   pipeRuntimeStream,
   publicError,
   requestAbort,
-  sendRuntimeError,
-  uniqueEffectiveModels
+  sendRuntimeError
 } = require('../common');
 const { imageMediaType, ollamaMessages } = require('./messages');
 const { settledStream } = require('../openclaw/settled-stream');
 const { isPreRoutingValidationRefusal } = require('../../../src/extensions/trustedRuntimeServices');
-const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../principal-model');
+const { approvedModels, modelCatalog, resolveGatewayTarget } = require('./model-catalog');
 const { busyMessage, claimOf } = require('../openclaw/busy-reply');
 
 const HARNESS_VERSION = '1.2.0';
-
-function approvedModels(snapshot) {
-  const models = new Set(uniqueEffectiveModels(snapshot).map((task) => task.model));
-  if (snapshot.tasks?.daily_operator?.model) models.add(PRINCIPAL_MODEL_ALIAS);
-  // A role-routed principal may resolve to the pooled pin (#360).
-  if (snapshot.principalTopology?.model) {
-    models.add(PRINCIPAL_MODEL_ALIAS);
-    models.add(snapshot.principalTopology.model);
-  }
-  const authority = String(process.env.HERMES_AUTHORITY_MODEL || '').trim();
-  if (authority) models.add(authority);
-  return [...models];
-}
 
 function requireApprovedModel(snapshot, model) {
   const requested = String(model || '').trim();
@@ -247,11 +233,11 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       });
     }
     const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
-    const principalTarget = resolvePrincipalAlias(snapshot, body.model);
+    const gatewayTarget = resolveGatewayTarget(snapshot, body.model);
     // A report escalation call is authorized by its report execution's own
     // recorded models (#835), checked in prepare(); not by the routing table.
     const escalating = req.headers['x-agentx-report-escalation'] !== undefined && req.headers['x-agentx-report-request'] !== undefined;
-    const model = escalating ? String(body.model || '') : requireApprovedModel(snapshot, principalTarget?.model || body.model);
+    const model = escalating ? String(body.model || '') : requireApprovedModel(snapshot, gatewayTarget?.model || body.model);
     let messages = ollamaMessages(body.messages);
     coding = await require('../../../src/services/pipelineCodingInferenceService').prepare(req.headers, model, abort.signal);
     if (coding?.options?.reportEscalation) {
@@ -276,14 +262,14 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
       signal: abort.signal,
       consumerContract: client.consumerContract,
       observePromptPrefix: true,
-      ...(principalTarget && { hostUrl: principalTarget.hostUrl }),
-      ...(principalTarget?.topology && { topology: principalTarget.topology }),
+      ...(gatewayTarget && { hostUrl: gatewayTarget.hostUrl }),
+      ...(gatewayTarget?.topology && { topology: gatewayTarget.topology }),
       ...(coding?.options || {})
     };
     const execute = () => runtimeServices.inference.execute({
       mode: 'chat',
       model,
-      ...(principalTarget && { options: { num_ctx: principalTarget.numCtx } }),
+      ...(gatewayTarget && { options: { num_ctx: gatewayTarget.numCtx } }),
       messages,
       stream: body.stream === true,
       tools: body.tools,
@@ -396,17 +382,8 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
 
 async function listModels(res, { runtimeServices, logger, client }) {
   try {
-    const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
-    const created = Math.floor(new Date(snapshot.generatedAt).getTime() / 1000);
-    return res.json({
-      object: 'list',
-      data: approvedModels(snapshot).map((id) => ({
-        id,
-        object: 'model',
-        created,
-        owned_by: id.startsWith('openrouter/') ? 'agentx-cloud-router' : 'agentx-local-router'
-      }))
-    });
+    const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false, includeArtifactIdentity: true });
+    return res.json({ object: 'list', data: modelCatalog(snapshot) });
   } catch (error) {
     return sendRuntimeError(res, error, logger, `${client.label} model discovery`);
   }
