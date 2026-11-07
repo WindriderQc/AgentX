@@ -25,6 +25,8 @@ const value = (source, scope = {}, names = Object.keys(scope)) => {
 const WAVE = 'y = a*sin(b*x)\na = 1 in [-3, 3]\nb = 2 in [0.5, 4]\nx in [-2*pi, 2*pi]';
 const COMPARE = 'f(x) = x^2\ng(x) = a x + 1\na = 2 in [-3, 3]\nx in [-3, 3]';
 const CALCULUS = "f(x) = x^3 - 3x\nf'(x)\ntangent f at p\narea f from 0 to b\np = 1 in [-2, 2]\nb = 1.5 in [0, 2]\nx in [-2.5, 2.5]";
+const CIRCLE = 'c(t) = (r cos(t), r sin(t))\nr = 2 in [0.5, 3]';
+const SADDLE = 'z = x^2 - y^2\nx in [-2, 2]\ny in [-2, 2]';
 
 test('the grammar follows ordinary precedence, implicit products and the allowed functions', () => {
   assert.equal(value('1 + 2 * 3'), 7);
@@ -66,7 +68,7 @@ test('a math block declares its function, its parameters with ranges and its win
   assert.ok(wave.ok);
   assert.deepEqual(wave.plot.parameters, [{ name: 'a', value: 1, min: -3, max: 3 }, { name: 'b', value: 2, min: 0.5, max: 4 }]);
   assert.deepEqual(wave.plot.functions, [{ name: 'y', label: 'y', expression: 'a * sin(b * x)' }]);
-  assert.equal(wave.plot.schema, 'agentx.math-plot.v3');
+  assert.equal(wave.plot.schema, 'agentx.math-plot.v4');
   assert.ok(Math.abs(wave.plot.x[1] - 2 * Math.PI) < 1e-12);
   assert.equal(wave.text, 'y = a * sin(b * x)\na = 1 in [-3, 3]\nb = 2 in [0.5, 4]\nx in [-6.283185307, 6.283185307]');
   assert.ok(math.parsePlot(wave.text).ok, 'the canonical body is itself a valid block');
@@ -238,6 +240,89 @@ const channel = (text, options = {}) => {
   return channels.end();
 };
 
+test('a parametric curve is written in t and drawn from its formulas, alone or beside functions', () => {
+  const circle = math.parsePlot(CIRCLE);
+  assert.ok(circle.ok, circle.error?.message);
+  assert.equal(circle.plot.schema, 'agentx.math-plot.v4');
+  assert.deepEqual(circle.plot.curves, [{ name: 'c', label: 'c(t)', x: 'r * cos(t)', y: 'r * sin(t)' }]);
+  assert.deepEqual(circle.plot.t, [0, 2 * Math.PI], 't runs over one turn by default');
+  assert.equal(circle.plot.x, undefined, 'curves alone are framed around themselves');
+  assert.equal(circle.text, 'c(t) = (r * cos(t), r * sin(t))\nr = 2 in [0.5, 3]\nt in [0, 6.283185307]');
+  const again = math.parsePlot(circle.text).plot;
+  assert.deepEqual(again.curves, circle.plot.curves, 'the canonical text parses back to the same curve');
+  assert.ok(Math.abs(again.t[1] - 2 * Math.PI) < 1e-9, 'and the same range, to ten digits');
+  for (const point of math.sampleCurve(circle.curveTrees[0], circle.plot, { r: 3 })) assert.ok(Math.abs(Math.hypot(...point) - 3) < 1e-9);
+  const fitted = math.windowsOf(circle, { r: 3 });
+  assert.ok(fitted.x[0] < -3 && fitted.x[1] > 3 && fitted.y[1] > 3, 'the window follows the slider');
+  // A curve may use the block's functions; with functions the x window is theirs.
+  const mixed = math.parsePlot('f(x) = x^2\nc(t) = (t, f(t) + 1)\nt in [-2, 2]\nx in [-3, 3]');
+  assert.ok(mixed.ok, mixed.error?.message);
+  assert.deepEqual(math.sampleCurve(mixed.curveTrees[0], mixed.plot, {}, 4), [[-2, 5], [-1, 2], [0, 1], [1, 2], [2, 5]]);
+  assert.ok(math.windowsOf(mixed).y[1] >= 5, 'y fits the curve too');
+  const described = math.describe(circle, { r: 1 }, 4);
+  assert.deepEqual(described.curves[0].points.map(([t, x, y]) => [t, x, y]),
+    [[0, 1, 0], [1.570796327, 0, 1], [3.141592654, -1, 0], [4.71238898, 0, -1], [6.283185307, 1, 0]]);
+  assert.deepEqual(described.t, [0, 6.283185307]);
+});
+
+test('curve lines are refused whole when they cannot be drawn exactly', () => {
+  const refused = {
+    'c(t) = (cos(x), sin(t))': /written in t/,
+    'c(t) = (cos(t))': /two formulas in t/,
+    'f(x) = x\nc(t) = (t, t)\ntangent c at 1': /not on the curve/,
+    'y = x\nt in [0, 1]': /goes with a curve/,
+    'f(x) = x\ng(x) = x\nh(x) = x\nc(t) = (t, t)\nd(t) = (t, t)': /At most 4 functions and curves/,
+    'c(t) = (t, g(t))': /./,
+    't(t) = (t, t)': /./,
+  };
+  for (const [body, message] of Object.entries(refused)) {
+    const parsed = math.parsePlot(body);
+    assert.equal(parsed.ok, false, body);
+    assert.match(parsed.error.message, message, body);
+  }
+});
+
+test('a surface z = f(x, y) is computed on a grid from its formula; a block holds only surfaces', () => {
+  const saddle = math.parsePlot(SADDLE);
+  assert.ok(saddle.ok, saddle.error?.message);
+  assert.deepEqual(saddle.plot, { schema: 'agentx.math-plot.v4', kind: 'surfaces', surfaces: [{ name: 'z', label: 'z', expression: 'x^2 - y^2' }],
+    parameters: [], x: [-2, 2], y: [-2, 2] });
+  assert.equal(saddle.text, SADDLE);
+  const { xs, ys, rows } = math.sampleSurface(saddle.trees[0], saddle.plot, {}, 4);
+  assert.deepEqual([xs, ys], [[-2, -1, 0, 1, 2], [-2, -1, 0, 1, 2]]);
+  assert.deepEqual(rows[2], [4, 1, 0, 1, 4], 'rows[j][i] is the height at (xs[i], ys[j])');
+  assert.deepEqual(rows.map(row => row[2]), [-4, -1, 0, -1, -4]);
+  assert.deepEqual(math.windowsOf(saddle).z, [-4.64, 4.64], 'z fits every height, peaks included');
+  const pair = math.parsePlot('f(x, y) = a*sin(x)*cos(y)\ng(x, y) = 0\na = 1 in [0, 2]');
+  assert.ok(pair.ok, pair.error?.message);
+  assert.deepEqual(pair.plot.surfaces.map(row => row.label), ['f(x, y)', 'g(x, y)']);
+  assert.deepEqual([pair.plot.x, pair.plot.y, pair.plot.z], [[-5, 5], [-5, 5], undefined], 'the ground defaults to [-5, 5]');
+  const fixed = math.parsePlot(`${SADDLE}\nz in [-1, 1]`);
+  assert.deepEqual(math.windowsOf(fixed).z, [-1, 1], 'a declared z window is kept as written');
+  const root = math.sampleSurface(math.parsePlot('z = sqrt(x)').trees[0], { parameters: [], x: [-1, 1], y: [-1, 1] }, {}, 2);
+  assert.deepEqual(root.rows[0], [null, 0, 1], 'undefined heights stay undefined, never filled in');
+  const described = math.describe(saddle);
+  assert.equal(described.kind, 'surfaces');
+  assert.equal(described.surfaces[0].points.length, 25, 'a coarse grid for the reader, never a table to read out');
+  assert.deepEqual(described.surfaces[0].points[12], [0, 0, 0]);
+  const refused = {
+    'z = x + y\nf(x) = x': /only surfaces/,
+    'z = x + y\nc(t) = (t, t)': /only surfaces/,
+    'f(x, y) = x\ng(x, y) = y\nh(x, y) = x*y': /At most 2 surfaces/,
+    'z = t*x': /./,
+    'f(x, y) = x\ng(x, y) = f(x, y)': /./,
+    'z = a*x\nz = 1 in [0, 2]': /z/,
+    'f(x, y) = z*x\nz = 1 in [0, 2]': /height/,
+    'y = x\nz in [0, 1]': /goes with a surface/,
+    'z = x\nt in [0, 1]': /goes with a curve/,
+  };
+  for (const [body, message] of Object.entries(refused)) {
+    const parsed = math.parsePlot(body);
+    assert.equal(parsed.ok, false, body);
+    assert.match(parsed.error.message, message, body);
+  }
+});
+
 test('saved slider positions must name every slider and stay inside its range; nothing is clamped', () => {
   const { plot } = math.parsePlot(WAVE);
   assert.deepEqual(math.checkValues(plot, { b: 3, a: -2.5 }), { ok: true, values: { a: -2.5, b: 3 } });
@@ -279,6 +364,10 @@ test('an invalid or disallowed math block stays readable as code and is never dr
   const calculus = contract().match(/<show kind="math" title="short title">(f\(x\) = x\^3[^<]+)<\/show>/)[1];
   const read = math.parsePlot(calculus);
   assert.ok(read.ok && read.plot.derivatives && read.plot.tangents && read.plot.areas, 'the calculus example is valid and uses all three');
+  const curve = math.parsePlot(contract().match(/<show kind="math" title="short title">(c\(t\)[^<]+)<\/show>/)[1]);
+  assert.ok(curve.ok && curve.plot.curves.length === 1, 'the curve example is valid');
+  const surface = math.parsePlot(contract().match(/<show kind="math" title="short title">(z = [^<]+)<\/show>/)[1]);
+  assert.ok(surface.ok && surface.plot.kind === 'surfaces', 'the surface example is valid');
   assert.doesNotMatch(contract(), /cannot use another function/);
   assert.doesNotMatch(contract({ family: true }), /kind="math"/);
 });
@@ -301,6 +390,11 @@ test('Nestor reads the selected math card as Core-validated formula, values and 
   assert.deepEqual(calculus.math.tangents, [{ of: 'f', x: 2, y: 2, slope: 9 }], 'the slope is Core\'s, not the page\'s');
   assert.deepEqual(calculus.math.areas, [{ of: 'f', from: 0, to: 1, value: -1.25 }]);
   assert.equal(calculus.math.derivatives[0].expression, '3 * x^2 - 3');
+  const surface = presentationEvidence([{ ...row, text: SADDLE, math: { surfaces: [{ points: [[0, 0, 99]] }] } }], screenPages);
+  assert.equal(surface.math.kind, 'surfaces');
+  assert.deepEqual(surface.math.surfaces[0].points[12], [0, 0, 0], 'the heights are Core\'s, not the page\'s');
+  const curve = presentationEvidence([{ ...row, text: math.plotText(math.parsePlot(CIRCLE).plot, { r: 1 }) }], screenPages);
+  assert.deepEqual(curve.math.curves[0].points[1], [0.7853981634, 0.7071067812, 0.7071067812]);
   const tampered = presentationEvidence([{ ...row, text: 'y = fetch(x)' }], screenPages);
   assert.equal(tampered.status, 'unavailable');
   assert.equal(tampered.text, undefined);

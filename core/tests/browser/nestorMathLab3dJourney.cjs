@@ -34,7 +34,11 @@ const REPLIES = {
     + "<show kind=\"math\" title=\"Dérivée, tangente et aire\">f(x) = x^3 - 3x\nf'(x)\ntangent f at p\narea f from 0 to b\np = 1 in [-2, 2]\nb = 1.5 in [0, 2]\nx in [-2.5, 2.5]</show>"
     + ' Déplace p : la tangente suit la courbe.',
   composee: 'Une fonction peut en utiliser une autre. '
-    + "<show kind=\"math\" title=\"Fonctions composées\">f(x) = x^2\ng(x) = f(x - 1) + 1\nh(x) = f'(x)\nx in [-3, 3]</show>"
+    + "<show kind=\"math\" title=\"Fonctions composées\">f(x) = x^2\ng(x) = f(x - 1) + 1\nh(x) = f'(x)\nx in [-3, 3]</show>",
+  courbe: 'Un cercle et une courbe de Lissajous, décrits par un paramètre t. '
+    + '<show kind="math" title="Courbes paramétrées">c(t) = (r*cos(t), r*sin(t))\nd(t) = (2*sin(3*t), 2*cos(2*t))\nr = 2 in [0.5, 3]</show> Change r pour agrandir le cercle.',
+  surface: 'Une selle de cheval : elle monte dans un sens et descend dans l’autre. '
+    + '<show kind="math" title="Surface en selle">z = a*(x^2 - y^2)\na = 0.5 in [-1, 1]\nx in [-2, 2]\ny in [-2, 2]</show> Tourne la scène pour la voir.'
 };
 const sessions = new Map(), turns = new Map(), saves = [], submissions = [], errors = [], cases = [];
 let lastSessionId = null;
@@ -133,14 +137,15 @@ let browser, server;
       const probe = document.createElement('canvas'); probe.width = 120; probe.height = 80;
       const context = probe.getContext('2d'); context.drawImage(source, 0, 0, probe.width, probe.height);
       const data = context.getImageData(0, 0, probe.width, probe.height).data;
-      let yellow = 0, cyan = 0, white = 0;
+      let yellow = 0, cyan = 0, white = 0, lit = 0;
       for (let i = 0; i < data.length; i += 4) {
         const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
         if (r > 170 && g > 150 && b < 140) yellow += 1;
         if (r < 140 && g > 150 && b > 160) cyan += 1;
         if (r > 200 && g > 200 && b > 200) white += 1;
+        if (r + g + b > 240) lit += 1;
       }
-      resolve({ yellow, cyan, white });
+      resolve({ yellow, cyan, white, lit });
     })), selector);
 
     // 1. A comparison card lands in the zone, selected, drawn in 3D by GraphysX.
@@ -289,7 +294,95 @@ let browser, server;
     await page.screenshot({ path: path.join(output, `${label}-composed-3d.png`) });
     await composed.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-composed-3d-scene.png`) });
     assert.ok(await fitsWidth(), `no horizontal page scroll after the phase 3 cards (${label})`);
-    cases.push({ label, viewport, cardWidth: box.width, pixels: lit, calculusPixels });
+
+    // 8. Parametric curves alone, drawn by GraphysX from v4 and framed so a circle stays round.
+    await ask('Montre une courbe parametree');
+    const curve = page.locator(selectedMath, { hasText: 'Courbes paramétrées' });
+    await curve.locator('.math-plot[data-view="3d"]').waitFor({ timeout: 15000 });
+    const curveScene = await curve.locator('llmx-stage').evaluate(stage => stage.scene);
+    assert.equal(curveScene.schema, 'agentx.math-scene.v4');
+    assert.deepEqual([curveScene.x, curveScene.functions, curveScene.t], [null, [], [0, 6.283185307]], 'GraphysX frames curves alone itself (t as the canonical text writes it)');
+    assert.deepEqual(curveScene.curves.map(row => [row.label, row.x, row.y, row.color]),
+      [['c(t)', 'r * cos(t)', 'r * sin(t)', '#ffe86b'], ['d(t)', '2 * sin(3 * t)', '2 * cos(2 * t)', '#60d6e8']]);
+    assert.deepEqual(await curve.locator('.math-plot-function').allTextContents(), ['c(t) = (r · cos(t), r · sin(t))', 'd(t) = (2 · sin(3 · t), 2 · cos(2 · t))']);
+    await curve.locator('llmx-stage').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1800);
+    const curvePixels = await stagePixels(selectedMath + ' llmx-stage');
+    assert.ok(curvePixels.yellow > 4 && curvePixels.cyan > 4, `both curves are drawn in 3D (${JSON.stringify(curvePixels)})`);
+    await curve.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(output, `${label}-curves-3d.png`) });
+    await curve.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-curves-3d-scene.png`) });
+    const curveReceipt = curve.locator('llmx-stage').evaluate(stage => new Promise(resolve => stage.addEventListener('llmx-parameters-applied',
+      event => resolve(event.detail), { once: true })));
+    await curve.locator('input[aria-label="Paramètre r"]').evaluate(input => {
+      input.value = '3'; input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const grown = await curveReceipt;
+    assert.equal(grown.curves, 2);
+    assert.ok(grown.y[0] < -3 && grown.y[1] > 3, `GraphysX's frame follows r (${JSON.stringify(grown.y)})`);
+    await page.waitForTimeout(400);
+    await curve.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-curves-3d-slider.png`) });
+    await curve.getByRole('button', { name: 'Vue 2D' }).click();
+    assert.equal(await curve.locator('.math-plot-parametric').count(), 2);
+    assert.ok((await curve.locator('.math-plot-parametric').first().getAttribute('d')).split('L').length > 400, 'the 2D curve is sampled from its formulas');
+    const round = await curve.locator('.math-plot-parametric').first().evaluate(path => { const box = path.getBBox(); return box.width / box.height; });
+    assert.ok(Math.abs(round - 1) < 0.02, `the 2D circle is round (${round})`);
+    await curve.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-curves-2d.png`) });
+    await curve.getByRole('button', { name: 'Vue 3D' }).click();
+    const curveRead = await ask('Quel est le rayon du cercle ?');
+    assert.match(curveRead.screen[0].text, /^c\(t\) = \(r \* cos\(t\), r \* sin\(t\)\)\nd\(t\) = .+\nr = 3 in \[0\.5, 3\]\nt in \[0, 6\.283185307\]$/);
+    assert.deepEqual(curveRead.selected.math.curves[0].points[2], [1.570796327, 0, 3], 'c(π/2) = (0, 3), computed by Core');
+
+    // 9. A surface z = f(x, y): GraphysX's 3D box from v4; the 2D view shows it from above with its contour lines.
+    await ask('Montre une surface');
+    const surface = page.locator(selectedMath, { hasText: 'Surface en selle' });
+    await surface.locator('.math-plot[data-view="3d"]').waitFor({ timeout: 15000 });
+    const surfaceScene = await surface.locator('llmx-stage').evaluate(stage => stage.scene);
+    assert.deepEqual([surfaceScene.schema, surfaceScene.kind, surfaceScene.x, surfaceScene.y, surfaceScene.z],
+      ['agentx.math-scene.v4', 'surfaces', [-2, 2], [-2, 2], null], 'z fitted by GraphysX: no window fixed');
+    assert.deepEqual(surfaceScene.surfaces.map(row => [row.label, row.expression, row.color]), [['z', 'a * (x^2 - y^2)', '#ffe86b']]);
+    assert.deepEqual(await surface.locator('.math-plot-function').allTextContents(), ['z = a · (x² - y²)']);
+    assert.match(await surface.locator('.math-plot-heights').textContent(), /hauteur z de −2\.32 à 2\.32/);
+    await surface.locator('llmx-stage').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1800);
+    const surfacePixels = await stagePixels(selectedMath + ' llmx-stage');
+    assert.ok(surfacePixels.yellow > 40, `the yellow surface fills part of the scene (${JSON.stringify(surfacePixels)})`);
+    await surface.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(output, `${label}-surface-3d.png`) });
+    await surface.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-surface-3d-scene.png`) });
+    // Moving a: GraphysX refits z from the formula; the page's grammar finds the same window.
+    const surfaceReceipt = surface.locator('llmx-stage').evaluate(stage => new Promise(resolve => stage.addEventListener('llmx-parameters-applied',
+      event => resolve(event.detail), { once: true })));
+    await surface.locator('input[aria-label="Paramètre a"]').evaluate(input => {
+      input.value = '1'; input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const raised = await surfaceReceipt;
+    assert.deepEqual([raised.kind, raised.surfaces, raised.molecules], ['surfaces', 1, 400]);
+    const pageWindow = await page.evaluate(body => AgentXMathExpression.windowsOf(AgentXMathExpression.parsePlot(body), { a: 1 }).z,
+      'z = a*(x^2 - y^2)\na = 1 in [-1, 1]\nx in [-2, 2]\ny in [-2, 2]');
+    assert.ok(raised.z.every((value, index) => Math.abs(value - pageWindow[index]) < 1e-9), `GraphysX and the grammar agree on z (${raised.z} vs ${pageWindow})`);
+    assert.match(await surface.locator('.math-plot-heights').textContent(), /hauteur z de −4\.64 à 4\.64/);
+    // Turned, to see the saddle from the side.
+    const surfaceBox = await surface.locator('llmx-stage').boundingBox();
+    await page.mouse.move(surfaceBox.x + surfaceBox.width * 0.5, surfaceBox.y + surfaceBox.height * 0.5);
+    await page.mouse.down();
+    await page.mouse.move(surfaceBox.x + surfaceBox.width * 0.7, surfaceBox.y + surfaceBox.height * 0.55, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    await surface.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-surface-3d-turned.png`) });
+    await surface.getByRole('button', { name: 'Vue 2D' }).click();
+    assert.equal(await surface.locator('.math-plot-field rect').count(), 1600, 'every cell of the grid is shaded from the formula');
+    assert.ok(await surface.locator('.math-plot-level-zero').count() > 0, 'the z = 0 contour is drawn');
+    const ground = await surface.locator('.math-plot-domain').evaluate(rect => rect.getAttribute('width') / rect.getAttribute('height'));
+    assert.ok(Math.abs(ground - 1) < 0.01, `a square window stays square from above (${ground})`);
+    await surface.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-surface-2d.png`) });
+    await surface.getByRole('button', { name: 'Vue 3D' }).click();
+    const surfaceRead = await ask('Où est le point le plus haut ?');
+    assert.equal(surfaceRead.selected.math.kind, 'surfaces');
+    assert.deepEqual(surfaceRead.selected.math.surfaces[0].points.slice(0, 3), [[-2, -2, 0], [-1, -2, -3], [0, -2, -4]], 'heights computed by Core with a = 1');
+    assert.deepEqual(surfaceRead.selected.math.z, [-4.64, 4.64]);
+    assert.ok(await fitsWidth(), `no horizontal page scroll after the curve and surface cards (${label})`);
+    cases.push({ label, viewport, cardWidth: box.width, pixels: lit, calculusPixels, curvePixels, surfacePixels });
     await context.close();
   }
   assert.deepEqual(errors, []);
