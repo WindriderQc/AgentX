@@ -25,7 +25,7 @@ function fakeCore(state = { ...job }, { refuseFinish = 0 } = {}) {
     if (endpoint.includes('/operator-release?')) return { contract:'agentx.operator-release/v1', authority:'core.runtime-coordination', queueRequestId:ID, dispatchId:DISPATCH, runtimeReleased:true, observedAt:new Date().toISOString() };
     if (endpoint.endsWith('/begin')) { Object.assign(state, { state: 'dispatching', dispatchId: DISPATCH, revision: state.revision + 1 }); return { ...state }; }
     if (endpoint.endsWith('/record')) { Object.assign(state, { state: body.state, revision: state.revision + 1 }); return { ...state }; }
-    if (endpoint.endsWith('/recover')) { Object.assign(state, { state: 'failed' }); return { ...state }; }
+    if (endpoint.endsWith('/refused')) { Object.assign(state, { state: 'failed', launchRefusal: body, releaseReceipt: { authority: 'operator-launch-refusal' } }); return { ...state }; }
     if (endpoint.endsWith('/operator-finish')) {
       if (refuseFinish-- > 0) throw new Error('Native runtime authority remains held');
       Object.assign(state, { state: body.state, releaseReceipt:{operationId:DISPATCH} }); return { ...state, finishedWith: body };
@@ -169,9 +169,9 @@ test('a runner refusal after the mark releases the fence with a not-started rece
     const core = fakeCore();
     const { runner } = fakeRunner({ start: () => { throw Object.assign(new Error('run x is still active'), { code: 'RUNNER_BUSY', runnerRefused: true }); } });
     await assert.rejects(island.runIsland({ ...job }, core.client, deps(dir, runner)), /did not start/);
-    const recover = core.calls.find(([e]) => e.endsWith('/recover'))[1];
+    const recover = core.calls.find(([e]) => e.endsWith('/refused'))[1];
     assert.equal(recover.dispatchId, DISPATCH);
-    assert.match(recover.receiptRef, /^island:not-started: RUNNER_BUSY/);
+    assert.equal(recover.code, 'RUNNER_BUSY');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -334,9 +334,9 @@ test('a failed world preparation lifts the mark as not started and never starts 
       throw new Error('World hook refused (prepare): 409 agents on this island');
     };
     await assert.rejects(island.runIsland({ ...job }, core.client, deps(dir, runner, { worldPrepare })), /did not start/);
-    const recover = core.calls.find(([e]) => e.endsWith('/recover'));
-    assert.match(recover[1].receiptRef, /^island:not-started: WORLD_PREPARE: /);
-    assert.equal(recover[1].confirmation, 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED');
+    const recover = core.calls.find(([e]) => e.endsWith('/refused'));
+    assert.equal(recover[1].code, 'WORLD_PREPARE');
+    assert.equal(recover[1].dispatchId, DISPATCH);
     assert.ok(!calls.some(([a]) => a === 'start'));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
@@ -374,8 +374,8 @@ test('a remote world the runner cannot reach is a not-started refusal', async ()
     const core = fakeCore();
     const { runner } = fakeRunner({ start: () => { throw Object.assign(new Error('remote world graphysx-living unavailable: /healthz answered 502'), { runnerRefused: true, code: 'WORLD_UNAVAILABLE' }); } });
     await assert.rejects(island.runIsland({ ...job }, core.client, deps(dir, runner, { worldPrepare: null })), /did not start/);
-    const recover = core.calls.find(([e]) => e.endsWith('/recover'));
-    assert.match(recover[1].receiptRef, /^island:not-started: WORLD_UNAVAILABLE: /);
+    const recover = core.calls.find(([e]) => e.endsWith('/refused'));
+    assert.equal(recover[1].code, 'WORLD_UNAVAILABLE');
     assert.ok(!core.calls.some(([e, body]) => e.endsWith('/record') && body?.state === 'uncertain'));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

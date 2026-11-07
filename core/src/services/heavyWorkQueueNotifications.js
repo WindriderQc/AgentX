@@ -4,10 +4,11 @@ const crypto = require('node:crypto');
 const Alert = require('../../models/Alert');
 const { fail } = require('./heavyWorkQueueContract');
 const { unstartedExpiry } = require('./heavyWorkQueueExpiry');
+const { stalled } = require('./heavyWorkQueueAttention');
 const { defaultPlanningTimeZone } = require('./planningDateService');
 const RULE = 'heavy_work_queue';
 const WC = { w: 1, j: true };
-const labels = { completed: 'completed', failed: 'échec', cancelled: 'cancelled', uncertain: 'uncertain result' };
+const labels = { completed: 'completed', failed: 'échec', cancelled: 'cancelled', uncertain: 'uncertain result', stalled: 'reçu en retard à vérifier' };
 
 function expiryMessage(job, expiry) {
   const zone = defaultPlanningTimeZone();
@@ -20,16 +21,28 @@ function expiryMessage(job, expiry) {
 async function publishJobs(jobs) {
   for (const job of jobs) {
     const expiry = unstartedExpiry(job);
-    const outcome = expiry ? 'expired' : job.state;
-    const attention = outcome === 'failed' || outcome === 'expired';
-    if (!attention && ((!job.dispatchedAt && job.executor?.mode !== 'image-operation') || !labels[job.state])) continue;
-    const fingerprint = `heavy-work:${job.id}:${outcome}${expiry ? `:${expiry.at}` : ''}`;
+    const stall = stalled(job);
+    const outcome = expiry ? 'expired' : stall ? 'stalled' : job.state;
+    const urgent = outcome === 'uncertain' || outcome === 'stalled';
+    const attention = urgent || outcome === 'failed' || outcome === 'expired';
+    const episode = urgent && job.uncertaintyId ? `:${job.uncertaintyId}` : '';
+    const fingerprint = `heavy-work:${job.id}:${outcome}${expiry ? `:${expiry.at}` : stall ? `:${stall.code}` : ''}${episode}`;
+    // Stable per incident, including across restart/acknowledgment. A later
+    // outage has a new identity, so the relay's no-duplicate cache cannot hide it.
+    await Alert.updateMany({ ruleId: RULE, 'context.additionalData.queueRequestId': job.id,
+      'context.additionalData.state': { $in: ['uncertain', 'stalled'] }, fingerprint: { $ne: fingerprint },
+      status: { $in: ['active', 'acknowledged'] } }, { $set: { status: 'resolved', resolution: {
+      resolved: true, resolvedBy: 'core-queue-receipt', resolvedAt: new Date(), resolutionMethod: 'receipt-observed'
+    } } }, { writeConcern: WC });
+    if (!attention && ((!job.dispatchedAt && job.executor?.mode !== 'image-operation') || !labels[outcome])) continue;
     const id = crypto.createHash('sha256').update(fingerprint).digest('hex').slice(0, 24);
     const changes = { ruleId: RULE, ruleName: 'Heavy work queue', fingerprint,
-      severity: outcome === 'completed' || outcome === 'cancelled' ? 'info' : 'warning',
+      severity: urgent ? 'critical' : outcome === 'completed' || outcome === 'cancelled' ? 'info' : 'warning',
       status: 'active', title: `${job.title} — ${expiry ? 'fenêtre expirée sans démarrage' : labels[outcome]}`,
       message: expiry
         ? expiryMessage(job, expiry)
+        : stall
+        ? `Le reçu ${stall.code === 'launch_receipt_overdue' ? 'de lancement' : 'de fin/libération'} est en retard. Les ressources ${job.hosts?.join(', ') || 'de cette demande'} restent protégées. Vérifier ${job.id} avec son propriétaire ${stall.actor}, sans relancer ni effacer les verrous.`
         : job.state === 'uncertain'
         ? `${job.reason ? `${job.reason}. ` : ''}Check the same receipt before any relaunch. The reservation stays held.`
         : job.state === 'failed'
@@ -37,17 +50,16 @@ async function publishJobs(jobs) {
         : `Completion receipt available. Authority: ${job.releaseReceipt?.authority || 'queue'}.`,
       context: { component: 'heavy-work-queue', relatedEvents: [job.id], additionalData: {
         queueRequestId: job.id, state: outcome, queueState: job.state, source: job.source,
-        ...(expiry && { expiry }),
+        ...(expiry && { expiry }), ...(stall && { stall }), hosts: job.hosts || [],
         path: '/cluster-schedule', operation: job.operation, receipt: job.releaseReceipt || null
       } }, channels: attention ? ['telegram'] : [],
-      firstOccurrence: new Date(expiry?.at || job.updatedAt), lastOccurrence: new Date(expiry?.at || job.updatedAt) };
+      firstOccurrence: new Date(expiry?.at || stall?.at || job.updatedAt), lastOccurrence: urgent ? new Date() : new Date(expiry?.at || job.updatedAt) };
     try { await Alert.updateOne({ _id: id }, { $setOnInsert: changes }, { upsert: true, writeConcern: WC }); }
     catch (error) { if (error.code !== 11000) throw error; }
-    if (job.state !== 'uncertain') {
-      await Alert.updateMany({ ruleId: RULE, fingerprint: `heavy-work:${job.id}:uncertain`, status: { $in: ['active', 'acknowledged'] } },
-        { $set: { status: 'resolved', resolution: { resolved: true, resolvedBy: 'core-queue-receipt',
-          resolvedAt: new Date(), resolutionMethod: 'terminal-receipt' } } }, { writeConcern: WC });
-    }
+    // Existing active uncertainty notices previously had no external channel.
+    // Upgrade only those; acknowledgment and delivered messages stay stable.
+    if (urgent) await Alert.updateOne({ _id: id, status: 'active', channels: { $ne: 'telegram' }, 'delivery.telegram.sent': { $ne: true } },
+      { $set: { channels: ['telegram'], severity: 'critical', lastOccurrence: new Date() } }, { writeConcern: WC });
   }
 }
 async function inbox({ offset = 0, limit = 20 } = {}) {

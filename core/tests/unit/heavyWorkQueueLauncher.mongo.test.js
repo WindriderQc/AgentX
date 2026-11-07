@@ -59,7 +59,7 @@ it('starts only opted-in reservations whose slot is open, once, and records the 
   expect(await queue.get(due.id)).toMatchObject({ state: 'running', operation: { id: 'profile-1' } });
   expect(starts()).toHaveLength(1);
   expect(starts()[0][0].body).toEqual({ hostId: 'fixture-a', depth: 'full', skipRecentDays: 0,
-    modelNames: ['synthetic:model'], queueRequestId: due.id });
+    modelNames: ['synthetic:model'], queueRequestId: due.id, queueDispatchId: (await queue.get(due.id)).dispatchId });
   expect((await queue.get(due.id)).events.map(item => item.actor)).toContain('core-auto-start');
   expect((await queue.get(manual.id)).state).toBe('reserved');
   expect((await queue.get(later.id)).state).toBe('reserved');
@@ -108,4 +108,99 @@ it('lets the owner run a reserved Profiler request now, with its revision, and n
   const custom = await queue.submit({ key: 'custom-run', title: 'Synthetic operator fixture', kind: 'diagnostic', hosts: [B], estimatedMinutes: 5,
     executor: { mode: 'operator', receiptRef: '/outside/git/receipt.json' } }, 'test');
   await expect(launcher.launch(custom.id, 'owner', { expectedRevision: custom.revision })).rejects.toMatchObject({ code: 'HEAVY_QUEUE_LAUNCH_UNSUPPORTED' });
+});
+
+it('settles a typed Profiler no-start receipt, frees the next reservation and never repeats its POST', async () => {
+  const job = await queue.submit(profile('typed-refusal'), 'test');
+  const receipt = require('../../../shared/queueLaunchReceipt.cjs').refusal(job.id, job.kind,
+    { notStarted: true, code: 'HOST_OFFLINE', message: 'Synthetic host offline before admission' });
+  benchmarkAnswers({ start: Object.assign(new Error('HTTP 503'), { body: { launchReceipt: receipt } }) });
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  await queue.reserve(job.id, { expectedRevision: job.revision, start: at(-1), autoStart: true }, 'owner');
+  await launcher.dispatchDue();
+  expect(await queue.get(job.id)).toMatchObject({ state: 'failed', launchRefusal: { code: 'HOST_OFFLINE' },
+    releaseReceipt: { authority: 'core-launch-refusal' } });
+  const next = await queue.submit(profile('after-refusal'), 'test');
+  await expect(queue.reserve(next.id, { expectedRevision: next.revision, start: at(-1) }, 'owner')).resolves.toMatchObject({ state: 'reserved' });
+  await launcher.dispatchDue();
+  expect(starts()).toHaveLength(1);
+});
+
+it.each(['untyped', 'foreign'])('keeps a %s HTTP refusal fenced instead of inferring no-start', async type => {
+  const job = await queue.submit(profile(type), 'test');
+  const receipt = require('../../../shared/queueLaunchReceipt.cjs').refusal('00000000-0000-4000-8000-000000000001', 'profiler',
+    { notStarted: true, message: 'Foreign intent' });
+  benchmarkAnswers({ start: Object.assign(new Error('HTTP 409'), { statusCode: 409, body: type === 'foreign' ? { launchReceipt: receipt } : {} }) });
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  await queue.reserve(job.id, { expectedRevision: job.revision, start: at(-1), autoStart: true }, 'owner');
+  await launcher.dispatchDue();
+  expect((await queue.get(job.id)).state).toBe('uncertain');
+  expect((await queue.get(job.id)).launchRefusal).toBeUndefined();
+});
+
+it('preserves a no-start receipt across held native release and reconciles it after the owner releases', async () => {
+  benchmarkAnswers();
+  const job = await queue.submit(profile('release-after-refusal'), 'test');
+  const ready = await queue.reserve(job.id, { expectedRevision: job.revision, start: at(-1) }, 'owner');
+  const start = async () => {
+    await Runtime.collection.insertOne({ _id: 'runtime', workloads: [{ hosts: [A], recoveryState: 'UNKNOWN', expiresAt: new Date(0) }], inferences: [] });
+    throw Object.assign(new Error('Synthetic refusal before native launch'), { notStarted: true, code: 'NOT_READY' });
+  };
+  await expect(launcher.launch(job.id, 'owner', { expectedRevision: ready.revision, start })).rejects.toMatchObject({ code: 'HEAVY_QUEUE_LAUNCH_UNCERTAIN' });
+  expect(await queue.get(job.id)).toMatchObject({ state: 'uncertain', launchRefusal: { code: 'NOT_READY' } });
+  expect((await Runtime.findById('runtime').lean()).workloads).toHaveLength(1);
+  await Runtime.updateOne({ _id: 'runtime' }, { $set: { workloads: [] } });
+  const evidence = require('../../src/services/heavyWorkQueueEvidence');
+  expect(await evidence.reconcile(job.id, 'new-observer')).toMatchObject({ state: 'failed', releaseReceipt: { authority: 'core-launch-refusal' } });
+  expect(starts()).toHaveLength(0);
+});
+
+it('finds a completed Profiler by the original request after its launch answer was lost', async () => {
+  benchmarkAnswers({ start: new Error('Synthetic lost answer') });
+  const job = await queue.submit(profile('quick-completion'), 'test');
+  await queue.reserve(job.id, { expectedRevision: job.revision, start: at(-1), autoStart: true }, 'owner');
+  await launcher.dispatchDue();
+  requestJson.mockImplementation(async ({ path, method }) => {
+    expect(method).toBe('GET');
+    if (path === `/api/profiler/pipeline/profile-host/active?queueRequestId=${job.id}`) return { data: { active: [{ queueRequestId: job.id, queueId: 'done-before-reply' }] } };
+    if (path.endsWith('/done-before-reply/progress')) return { data: { queueRequestId: job.id, hostId: 'fixture-a', queueStatus: 'completed' } };
+    throw new Error(`Unexpected lookup ${path}`);
+  });
+  expect(await require('../../src/services/heavyWorkQueueEvidence').reconcile(job.id, 'observer'))
+    .toMatchObject({ state: 'completed', operation: { id: 'done-before-reply' } });
+  await launcher.dispatchDue();
+  expect(starts()).toHaveLength(1);
+});
+
+it('recovers a producer refusal persisted before its native HTTP response was lost', async () => {
+  benchmarkAnswers();
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  const job = await queue.submit(profile('producer-receipt'), 'test');
+  const ready = await queue.reserve(job.id, { expectedRevision: job.revision, start: at(-1) }, 'owner');
+  let calls = 0;
+  const start = async body => {
+    calls++;
+    await queue.refused(body.queueRequestId, { dispatchId: body.queueDispatchId, code: 'HOST_OFFLINE', reason: 'Synthetic offline host before admission' }, 'benchmark');
+    await require('../../src/services/heavyWorkQueueEvidence').reconcile(job.id, 'native-producer');
+    throw new Error('Synthetic native response lost after durable refusal');
+  };
+  await expect(launcher.launch(job.id, 'owner', { expectedRevision: ready.revision, start })).rejects.toMatchObject({ code: 'HOST_OFFLINE' });
+  expect((await queue.get(job.id)).state).toBe('failed');
+  await launcher.dispatchDue();
+  expect(calls).toBe(1);
+});
+
+it('does not mistake a Profiler inventory reservation for native launch, so a later no-start refusal can settle', async () => {
+  const job = await queue.submit(profile('preparing-profiler'), 'test');
+  const ready = await queue.reserve(job.id, { expectedRevision: job.revision, start: at(-1) }, 'owner');
+  const begun = await queue.begin(job.id, { expectedRevision: ready.revision }, 'owner');
+  requestJson.mockImplementation(async ({ path }) => ({ data: path.endsWith('/progress')
+    ? { queueRequestId: job.id, hostId: 'fixture-a', queueStatus: 'running', launchConfirmed: false }
+    : { active: [{ queueRequestId: job.id, queueId: 'inventory-reservation' }] } }));
+  const evidence = require('../../src/services/heavyWorkQueueEvidence');
+  expect(await evidence.reconcile(job.id, 'observer')).toMatchObject({ state: 'dispatching', observation: { awaitingDispatch: true } });
+  expect((await queue.get(job.id)).operation).toBeNull();
+  await queue.refused(job.id, { dispatchId: begun.dispatchId, code: 'NO_MODELS', reason: 'Synthetic inventory refusal' }, 'benchmark');
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  expect((await evidence.reconcile(job.id, 'observer')).state).toBe('failed');
 });

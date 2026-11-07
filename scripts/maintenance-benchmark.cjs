@@ -130,6 +130,10 @@ async function coverageSettings(ctx, host, model, preflight) {
  * answers; refuses with what Benchmark reported when the batch could not start.
  */
 async function observe(ctx, request) {
+  try { return await observeReady(ctx, request); }
+  catch (error) { if (error.outcome === 'refused') error.notStarted = true; throw error; }
+}
+async function observeReady(ctx, request) {
   const readiness = await ask(ctx, '/api/benchmark/judge/readiness');
   const registered = url => (readiness.hosts || []).find(host => hostUrlKey(host.hostUrl) === hostUrlKey(url))?.hostUrl || null;
   const host = registered(request.host);
@@ -267,7 +271,7 @@ async function start(ctx) {
   const observed = await observe(ctx, plan.request);
   const body = { ...observed.body, tags: [planTag(planId(plan.ref)), ...observed.body.tags] };
   if (JSON.stringify(body) !== JSON.stringify(plan.body)) {
-    throw refuse(ctx, 'Benchmark no longer resolves this plan to the same launch; prepare a new plan', { code: 'PLAN_STALE', projection: observed.projection });
+    throw Object.assign(refuse(ctx, 'Benchmark no longer resolves this plan to the same launch; prepare a new plan', { code: 'PLAN_STALE', projection: observed.projection }), { notStarted: true });
   }
 
   // Optional operator queue hook runs after preflight and before the one launch.
@@ -302,9 +306,9 @@ async function start(ctx) {
     writePlan(ctx, plan);
   }
   const settled = plan.launch === null;
-  throw refuse(ctx, verdict === 'conflict' ? 'Benchmark refused the batch: another batch or a profile holds the host' : 'Benchmark did not admit the batch',
+  throw Object.assign(refuse(ctx, verdict === 'conflict' ? 'Benchmark refused the batch: another batch or a profile holds the host' : 'Benchmark did not admit the batch',
     { verdict, ...answer, plan: plan.ref, planStartable: settled,
-      ...(!settled && { note: 'Benchmark could not confirm that no batch carries this plan; run the same start again to reconcile it.' }) });
+      ...(!settled && { note: 'Benchmark could not confirm that no batch carries this plan; run the same start again to reconcile it.' }) }), { notStarted: settled });
 }
 
 async function status(ctx) {

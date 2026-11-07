@@ -58,7 +58,7 @@ it('starts the RAG build once at its slot with the request id as build id', asyn
   await launcher.dispatchDue();
   expect(await queue.get(job.id)).toMatchObject({ state: 'running', operation: { id: job.id } });
   expect(posts()).toHaveLength(1);
-  expect(posts()[0][0].body).toEqual({ buildId: job.id, model: 'qllama/bge-m3:f16', dimension: 1024 });
+  expect(posts()[0][0].body).toEqual({ buildId: job.id, queueDispatchId: (await queue.get(job.id)).dispatchId, model: 'qllama/bge-m3:f16', dimension: 1024 });
   await launcher.dispatchDue();
   expect(posts()).toHaveLength(1);
 });

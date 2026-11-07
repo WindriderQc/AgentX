@@ -5,10 +5,22 @@ const queue = require('./heavyWorkQueueService');
 const evidence = require('./heavyWorkQueueEvidence');
 const logger = require('../../config/logger');
 let timer;
+let attentionTimer;
+let attentionBusy = false;
 let codingTimer;
 let transcriptionHeartbeatTimer;
 let transcriptionConnectedListener;
 let busy = false;
+
+// Launch/evidence RPCs can consume minutes. Their pending replies must not
+// delay the inbox and Telegram request for a missing receipt.
+async function attentionTick() {
+  if (attentionBusy || mongoose.connection.readyState !== 1) return;
+  attentionBusy = true;
+  try { await require('./heavyWorkQueueNotifications').publishJobs((await queue.list())?.jobs || []); }
+  catch (error) { logger.warn('Heavy queue attention unavailable', { code: error.code || 'QUEUE_UNAVAILABLE' }); }
+  finally { attentionBusy = false; }
+}
 
 // Observe existing receipts and dispatch only images explicitly accepted by
 // the image service, within their bounded start window, and Profiler requests
@@ -39,6 +51,13 @@ async function sweep() {
         // Missing evidence stays fenced. Do not turn it into an inferred
         // completion, and do not overwrite the launch owner's receipt.
         logger.debug('Heavy queue awaits executor evidence', { queueRequestId: job.id, code: error.code || 'EVIDENCE_UNAVAILABLE' });
+        // A previously attached native receipt that disappears must not hide
+        // behind a multi-hour execution estimate. External operator/island
+        // jobs have their own observer and terminal receipt protocol.
+        if (job.state === 'running' && !['operator', 'island'].includes(job.executor?.mode)) {
+          await queue.record(job.id, { dispatchId: job.dispatchId, state: 'uncertain',
+            reason: 'Native receipt is unavailable; reconcile this original operation before any replacement launch.' }, 'core-queue-observer').catch(() => {});
+        }
       }
     }
     await require('./heavyWorkQueueNotifications').publishJobs((await queue.list())?.jobs || []);
@@ -49,6 +68,9 @@ function start() {
   if (timer || process.env.NODE_ENV === 'test') return;
   timer = setInterval(sweep, 15000);
   timer.unref();
+  attentionTimer = setInterval(attentionTick, 15000);
+  attentionTimer.unref();
+  void attentionTick();
   const renewTranscriptions = () => {
     if (mongoose.connection.readyState !== 1) return;
     require('./transcriptionExecutor').heartbeatActive().catch(error =>
@@ -67,6 +89,6 @@ function start() {
   }, 15000);
   codingTimer.unref();
 }
-function stop() { if (transcriptionConnectedListener) mongoose.connection.off('connected', transcriptionConnectedListener); transcriptionConnectedListener = null; if (transcriptionHeartbeatTimer) clearInterval(transcriptionHeartbeatTimer); transcriptionHeartbeatTimer = null; if (timer) clearInterval(timer); timer = null; if (codingTimer) clearInterval(codingTimer); codingTimer = null; }
+function stop() { if (transcriptionConnectedListener) mongoose.connection.off('connected', transcriptionConnectedListener); transcriptionConnectedListener = null; if (transcriptionHeartbeatTimer) clearInterval(transcriptionHeartbeatTimer); transcriptionHeartbeatTimer = null; if (timer) clearInterval(timer); timer = null; if (attentionTimer) clearInterval(attentionTimer); attentionTimer = null; if (codingTimer) clearInterval(codingTimer); codingTimer = null; }
 
-module.exports = { start, stop, sweep };
+module.exports = { start, stop, sweep, attentionTick };

@@ -78,7 +78,12 @@ describe('agent tool usage', () => {
 
   test('the middleware counts calls answered by a surface layer and by Core, and learns the advertised list', async () => {
     const store = { updateOne: jest.fn(async () => ({})) };
-    const catalog = AgentToolCatalog;
+    const catalogWrites = [];
+    const catalog = { updateOne(...args) {
+      const write = AgentToolCatalog.updateOne(...args).exec();
+      catalogWrites.push(write);
+      return write;
+    } };
     const app = express();
     app.use(express.json());
     app.use('/mcp', usageMiddleware({ options: { model: store, catalog: { model: catalog } } }));
@@ -100,7 +105,8 @@ describe('agent tool usage', () => {
     await post('/mcp', { method: 'tools/call', params: { name: 'shopping_list', arguments: {} } });
     await post('/mcp/memory', { method: 'tools/call', params: { name: 'memory_search', arguments: {} } });
     await post('/mcp', { method: 'tools/call', params: { name: 'made_up_tool', arguments: {} } });
-    await new Promise(resolve => setImmediate(resolve));
+    await Promise.all(catalogWrites);
+    expect(catalogWrites).toHaveLength(1);
     expect((await AgentToolCatalog.findById('general').lean()).names).toEqual(['memory_search', 'shopping_list']);
     expect(store.updateOne.mock.calls.map(([key, update]) => [key.bus, key.tool, key.caller, update.$inc.failures])).toEqual([
       ['general', 'shopping_list', 'codex-dev-host', 0],

@@ -35,7 +35,9 @@ async function json(url, { body, actor = 'operator', fetchImpl = fetch, timeoutM
     headers: { 'Content-Type': 'application/json', 'x-service-caller': actor, 'x-agentx-caller': 'operator' },
     signal: AbortSignal.timeout(timeoutMs), ...(body !== undefined && { body: JSON.stringify(body) }) });
   const answer = await response.json();
-  if (!response.ok || answer.ok === false || answer.status === 'error') throw new Error(answer.message || answer.error || `HTTP ${response.status}`);
+  if (!response.ok || answer.ok === false || answer.status === 'error') {
+    throw Object.assign(new Error(answer.message || answer.error || `HTTP ${response.status}`), { status: response.status, body: answer });
+  }
   return answer.data ?? answer;
 }
 function checkPlan(job, receiptsDir = process.env.AGENTX_ACTION_RECEIPTS_DIR) {
@@ -97,13 +99,15 @@ async function runJob(job, client, { actor, benchmark, benchmarkExecutor = bench
       const result = await benchmarkExecutor(begun, { actor, benchmark, assertDispatch });
       if (begun.executor.prepare === true) {
         operationId = result.plan;
-        return await client(`/${job.id}/prepared`, { dispatchId: begun.dispatchId, plan: result.plan });
+        const saved = await client(`/${job.id}/prepared`, { dispatchId: begun.dispatchId, plan: result.plan });
+        if (saved.state !== 'completed') throw new Error('Prepared plan retained; native resource release still needs reconciliation');
+        return saved;
       }
       operationId = result.batchId;
     } else if (job.kind === 'profiler') {
       await assertDispatch();
       const result = await json(`${benchmark}/api/profiler/pipeline/profile-host`, { actor, fetchImpl,
-        body: { ...begun.executor, queueRequestId: begun.id }, timeoutMs: 5 * 60000 });
+        body: { ...begun.executor, queueRequestId: begun.id, queueDispatchId: begun.dispatchId }, timeoutMs: 5 * 60000 });
       operationId = result.queueId;
     } else if (job.kind === 'image') {
       await assertDispatch();
@@ -113,6 +117,12 @@ async function runJob(job, client, { actor, benchmark, benchmarkExecutor = bench
     if (typeof operationId !== 'string' || !operationId) throw new Error('Executor returned no operation identity');
     return await client(`/${job.id}/record`, { dispatchId: begun.dispatchId, state: 'running', operationId });
   } catch (error) {
+    const nativeRefusal = require('../../shared/queueLaunchReceipt.cjs').readRefusal(error.body, begun);
+    if (!operationId && !(job.kind === 'benchmark' && begun.executor.prepare === true) && (error.notStarted === true || nativeRefusal)) {
+      if (nativeRefusal) { error.code = nativeRefusal.code; error.message = nativeRefusal.reason; }
+      const saved = await require('./queue-outcome.cjs').recordRefusal(begun, begun.dispatchId, error, client);
+      if (saved) throw Object.assign(error, { queueId: job.id, outcome: 'refused' });
+    }
     if (!operationId && job.kind === 'benchmark' && begun.executor.prepare === true
       && error.outcome === 'refused' && error.preparationNotStarted === true) {
       let current;
@@ -129,10 +139,20 @@ async function runJob(job, client, { actor, benchmark, benchmarkExecutor = bench
         throw Object.assign(error, { queueId: job.id });
       }
     }
+    // A producer can persist the refusal before losing the launch reply.
+    if (!operationId) {
+      try {
+        const current = await client(`/${job.id}`);
+        if (current?.state === 'failed' && current.dispatchId === begun.dispatchId && current.launchRefusal?.dispatchId === begun.dispatchId) {
+          throw Object.assign(new Error(current.launchRefusal.reason), { outcome: 'refused', queueId: job.id });
+        }
+      } catch (readError) { if (readError.outcome === 'refused') throw readError; }
+    }
     if (operationId) {
       try {
         const current = await client(`/${job.id}`);
-        if (current.operation?.id === operationId && ['running', 'completed', 'failed', 'cancelled'].includes(current.state)) return current;
+        if (current.operation?.id === operationId && ['running', 'completed', 'failed', 'cancelled'].includes(current.state)
+          && (begun.executor.prepare !== true || current.state === 'completed')) return current;
       } catch { /* Lost bookkeeping response remains ambiguous. */ }
     }
     // A lost response is never permission to repeat a launch. The pre-effect

@@ -18,7 +18,7 @@ function cleanupStaleProfiles(now = Date.now()) {
 
 function cleanupStaleProfileQueues(now = Date.now()) {
   for (const [id, q] of activeProfileQueues) {
-    if (q.status !== 'running' && now - Number(q.startedAt || 0) > PROFILE_QUEUE_TTL_MS) activeProfileQueues.delete(id);
+    if (q.status !== 'running' && now - Number(q.finishedAt || q.startedAt || 0) > PROFILE_QUEUE_TTL_MS) activeProfileQueues.delete(id);
   }
 }
 

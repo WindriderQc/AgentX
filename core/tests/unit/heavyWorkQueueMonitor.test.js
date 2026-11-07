@@ -1,5 +1,5 @@
 'use strict';
-jest.mock('../../src/services/heavyWorkQueueService', () => ({ list: jest.fn() }));
+jest.mock('../../src/services/heavyWorkQueueService', () => ({ list: jest.fn(), record: jest.fn(async () => ({})) }));
 jest.mock('../../src/services/heavyWorkQueueEvidence', () => ({ reconcile: jest.fn() }));
 jest.mock('../../src/services/images/imageService', () => ({ dispatchQueued: jest.fn() }));
 jest.mock('../../src/services/heavyWorkQueueNotifications', () => ({ publishJobs: jest.fn() }));
@@ -37,4 +37,29 @@ test('startup and Mongo reconnect renew persisted admissions immediately and sto
     expect(executor.heartbeatActive).toHaveBeenCalledTimes(2);
     expect(mongoose.connection.listenerCount('connected')).toBe(before);
   } finally { monitor.stop(); process.env.NODE_ENV = originalEnvironment; }
+});
+
+test('a pending native launch cannot delay the independent attention observer', async () => {
+  const jobs = [{ id: 'pending-native', state: 'dispatching' }];
+  queue.list.mockResolvedValue({ jobs });
+  notices.publishJobs.mockClear();
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  images.dispatchQueued.mockReturnValueOnce(pending);
+  const sweep = monitor.sweep();
+  await monitor.attentionTick();
+  expect(notices.publishJobs).toHaveBeenCalledWith(jobs);
+  release();
+  await sweep;
+});
+
+test('a missing attached native receipt requests attention immediately, while external operators keep their own protocol', async () => {
+  const jobs = ['profiler', 'operator', 'island'].map(mode => ({ id: mode, state: 'running', dispatchId: 'dispatch',
+    kind: mode === 'profiler' ? 'profiler' : 'other', executor: mode === 'profiler' ? { hostId: 'fixture' } : { mode }, estimatedMinutes: 480 }));
+  queue.record.mockClear();
+  queue.list.mockResolvedValue({ jobs });
+  evidence.reconcile.mockRejectedValue(new Error('Synthetic native receipt lost after service restart'));
+  await monitor.sweep();
+  expect(queue.record).toHaveBeenCalledTimes(1);
+  expect(queue.record).toHaveBeenCalledWith('profiler', expect.objectContaining({ dispatchId: 'dispatch', state: 'uncertain' }), 'core-queue-observer');
 });

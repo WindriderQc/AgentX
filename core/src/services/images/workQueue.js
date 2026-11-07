@@ -5,6 +5,21 @@ const Images = require('../../../models/ImageOperation');
 const { hosts, fail } = require('../heavyWorkQueueContract');
 const WC = { w: 1, j: true };
 
+// A worker can disappear after manual dispatch but before acceptance creates
+// an operation. Store this conclusive refusal before returning the HTTP error.
+async function refuseBeforeAccept(body, config, requestHash, reason) {
+  if (!body.queueRequestId || !body.queueDispatchId) return;
+  const job = await queue.get(body.queueRequestId);
+  if (job.kind !== 'image' || job.executor?.actionKey !== body.actionKey
+    || require('./imageService').validate(job.executor, config).requestHash !== requestHash) {
+    throw fail('Queued image differs from this request', 409);
+  }
+  if (await Images.exists({ actionKey: body.actionKey })) throw fail('Original image receipt must be reconciled', 409);
+  await queue.assertDispatch(job.id, body.queueDispatchId);
+  await queue.refused(job.id, { dispatchId: body.queueDispatchId, code: 'IMAGE_WORKER_UNAVAILABLE', reason }, 'core-images', 'core-launch-refusal');
+  await evidence.reconcile(job.id, 'core-images');
+}
+
 async function enroll(op, config, body) {
   const prior = (await queue.list())?.jobs || [];
   for (const item of prior) {
@@ -78,4 +93,4 @@ async function dispatch(op, launch) {
   launch(accepted);
   return true;
 }
-module.exports = { enroll, dispatch };
+module.exports = { enroll, dispatch, refuseBeforeAccept };

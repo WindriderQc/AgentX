@@ -130,7 +130,11 @@ async function accept(body, { conversation, signal } = {}) {
     try { reservedHosts = (await require('../heavyWorkQueueService').get(body.queueRequestId))?.hosts || null; } catch { /* enroll refuses it below */ }
   }
   const choice = await chooseWorker(config, input.profile, { queueHosts: reservedHosts });
-  if (!choice.worker) throw fail('The image PC is unavailable or the required model is missing.', 503);
+  if (!choice.worker) {
+    const error = fail('The image PC is unavailable or the required model is missing.', 503);
+    await workQueue.refuseBeforeAccept(body, config, input.requestHash, error.message);
+    throw error;
+  }
   const worker = choice.worker;
   const client = createComfyClient(worker.workerUrl);
   signal?.throwIfAborted();
