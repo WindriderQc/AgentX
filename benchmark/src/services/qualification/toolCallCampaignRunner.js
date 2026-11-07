@@ -44,6 +44,11 @@ function requireCampaignInput(options = {}) {
       'TOOL_CAMPAIGN_CONFIRMATION_REQUIRED'
     );
   }
+  if (Object.prototype.hasOwnProperty.call(options, 'driverPreparationId')
+    && (typeof options.driverPreparationId !== 'string'
+      || !/^[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}$/.test(options.driverPreparationId))) {
+    throw new ToolCampaignError('An explicit preparation identity cannot be omitted or malformed', 'TOOL_CAMPAIGN_PREPARATION_ID_REQUIRED');
+  }
   const model = normalizeModelTag(options.model);
   const host = normalizeHostUrl(options.host);
   const repetitions = Number(options.repetitions);

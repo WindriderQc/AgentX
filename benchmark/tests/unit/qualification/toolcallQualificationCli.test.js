@@ -104,3 +104,21 @@ describe('toolcall qualification live transport bounds', () => {
     });
   });
 });
+
+
+describe('prepared campaign CLI intent', () => {
+  test.each([{ tail: [] }, { tail: ['--model', 'candidate'] }, { tail: ['--host', 'http://synthetic.example:11434'] }])(
+    'a missing preparation identity never becomes an ordinary campaign: %j', ({ tail }) => {
+      expect(() => parseArgs(['node', 'toolcall-qualification.js', '--live', '--driver-preparation-id', ...tail]))
+        .toThrow(expect.objectContaining({ code: 'TOOL_CAMPAIGN_PREPARATION_ID_REQUIRED' }));
+    });
+  test('retains an exact preparation identity and leaves ordinary parsing unchanged', () => {
+    expect(parseArgs(['node', 'toolcall-qualification.js', '--live', '--driver-preparation-id', 'prepare-synthetic']))
+      .toMatchObject({ live: true, driverPreparationId: 'prepare-synthetic' });
+    expect(parseArgs(['node', 'toolcall-qualification.js', '--live', '--driver-preparation-id=prepare-synthetic']))
+      .toMatchObject({ live: true, driverPreparationId: 'prepare-synthetic' });
+    expect(() => parseArgs(['node', 'toolcall-qualification.js', '--live', '--driver-preparation-id=']))
+      .toThrow(expect.objectContaining({ code: 'TOOL_CAMPAIGN_PREPARATION_ID_REQUIRED' }));
+    expect(parseArgs(['node', 'toolcall-qualification.js', '--live'])).not.toHaveProperty('driverPreparationId');
+  });
+});

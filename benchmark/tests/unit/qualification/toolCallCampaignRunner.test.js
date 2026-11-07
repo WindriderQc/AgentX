@@ -127,6 +127,17 @@ describe('toolCallCampaignRunner', () => {
     expect(deps.claimHostForBenchmark).not.toHaveBeenCalled();
   });
 
+  it.each([undefined, null, '', '--model'])('refuses a malformed explicit preparation before any admission or write: %j', async driverPreparationId => {
+    const deps = dependencies();
+    await expect(runToolCapabilityCampaign(options({ driverPreparationId }), deps))
+      .rejects.toMatchObject({ code: 'TOOL_CAMPAIGN_PREPARATION_ID_REQUIRED' });
+    expect(deps.connectDB).not.toHaveBeenCalled();
+    expect(deps.beginManagedWorkload).not.toHaveBeenCalled();
+    expect(deps.claimHostForBenchmark).not.toHaveBeenCalled();
+    expect(deps.beginQualification).not.toHaveBeenCalled();
+    expect(deps.runHarness).not.toHaveBeenCalled();
+  });
+
   it('refuses a partial live fixture before any dependency call', async () => {
     const deps = dependencies();
     await expect(runToolCapabilityCampaign(options({ scenarios: ['s1_selection_basic'] }), deps))
