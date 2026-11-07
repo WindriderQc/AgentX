@@ -233,15 +233,29 @@ host, then where to change it:
   unreachable endpoint, a pin not loaded, stale GPU readings). A pin unloaded
   while reserved heavy work or a Benchmark claim holds the machine is shown as
   held, not as a problem.
-- **Machines right now**: one read-only card per machine, grouping the Ollama
-  endpoints that share its address (GPU engine, CPU engine, topology lanes).
-  Each card shows every GPU's utilization, VRAM, temperature and power, the
-  models each endpoint holds (pinned ones marked), endpoints the runtime
-  topology parks on purpose, VRAM used outside Ollama, the heavy-work
-  reservation or Benchmark claim holding the machine, and the next one. Below,
-  the heavy-work queue lists the next 24 hours. The view refreshes every 20 s.
-- **Principal model and topology**: the Standard/Abliterated choice, the only
-  place that changes the principal model, beside the **Runtime topology** card.
+- **Machines right now**: one read-only, full-width card per machine, grouping
+  the Ollama endpoints that share its address (GPU engine, CPU engine, topology
+  lanes). Each card shows a power gauge per GPU (draw as a share of that card's
+  own power limit, so different cards compare; "power unknown" when the reading
+  is missing, never 0), the power history of the last 15 minutes, every GPU's
+  utilization, VRAM and temperature, the models each endpoint holds (pinned
+  ones marked), endpoints the runtime topology parks on purpose, VRAM used
+  outside Ollama, and the heavy-work reservation or Benchmark claim holding the
+  machine, with the next one. Below, side by side: the heavy-work queue for the
+  next 24 hours, and **Live requests**: requests running through Core now that
+  are not heavy work (caller, machine, age), completed requests per minute with
+  heavy-work periods shaded, and the busiest callers. Machine state refreshes
+  every 20 s, requests and power every 10 s, from
+  `GET /api/nerve-center/live-activity` (read-only; admission proofs are never
+  returned).
+- **Principal model and topology**: Core keeps one principal choice
+  (Standard or Abliterated, served as `agentx-primary`) on one host. Its card,
+  the only place that changes the principal model, and the **Runtime
+  topology** card sit inside the live card of the machine that hosts it. The
+  other machine cards name their main pin. If no machine card matches the
+  principal host, both cards show in their own section instead. A live refresh
+  moves the panel without rebuilding it, and skips while a control in it has
+  focus, so a choice in progress is kept.
 - **Attention**: the operations watch report and the alert feed. The feed lists
   alerts that need action first; completed-work receipts and history fold below.
 - **Host settings**, folded by default: **Pins and models** (the per-endpoint

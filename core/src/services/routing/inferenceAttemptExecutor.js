@@ -256,6 +256,8 @@ async function beginAdmittedOllamaAttempt(options, dependencies = {}) {
     model: options.model,
     kind,
     principal: options.principal || 'core-service',
+    // Display label for the Nerve Center live requests card.
+    caller: options.callerLabel || options.cacheLabels?.consumerContract || options.cacheLabels?.taskType || null,
     contentRetention: options.contentRetention,
     requestId: options.requestId,
     workloadAdmissionId: options.workloadAdmissionId || null,

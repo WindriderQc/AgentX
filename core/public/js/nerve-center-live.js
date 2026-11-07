@@ -5,6 +5,8 @@
  * Ollama endpoint holds (pinned or not), endpoints parked by the runtime
  * topology, and the heavy-work reservations and Benchmark claims that hold it.
  * Endpoints are grouped by the address they share. Editing stays in Host settings.
+ * Each machine takes the full width; power gauges, power history and the live
+ * requests card come from nerve-center-live-charts.js when it is loaded.
  */
 (function () {
     'use strict';
@@ -114,6 +116,7 @@
                 context: Number(m.contextLength) || null
             })),
             vramMiB: running.reduce((sum, m) => sum + (Number(m.sizeVram) > 0 ? Number(m.sizeVram) : 0), 0) / (1024 * 1024),
+            pins,
             missingPins: online ? pins.filter(model => !loadedNames.includes(model)) : [],
             benchmarkClaim: pref?.benchmarkClaim || null
         };
@@ -308,6 +311,20 @@
         return outside > 1536 ? outside : 0;
     }
 
+    // The model each machine is pinned to serve. Core has one principal model
+    // (agentx-primary) on one host; the other machines serve their own pins.
+    function mainPinLine(machine) {
+        const principal = window.NerveCenterModel?.state?.principal || null;
+        const hostsPrincipal = Boolean(principal?.hostUrl) && addressOf(principal.hostUrl) === machine.address;
+        if (hostsPrincipal) {
+            const choice = (principal.options || []).find(option => option.value === principal.selected)?.label || principal.selected || '';
+            return `<span class="nc-live-small nc-live-principal"><i class="fas fa-brain" aria-hidden="true"></i> Principal model${choice ? `: ${esc(choice)}` : ''}${principal.model ? ` · ${esc(shared.shortModel(principal.model))}` : ''}</span>`;
+        }
+        const main = machine.endpoints.find(e => e.id === machine.mainHostId) || machine.endpoints[0];
+        const pin = main?.pins?.[0];
+        return `<span class="nc-live-small nc-muted">${pin ? `Main pin: <span class="nc-live-mode">${esc(shared.shortModel(pin))}</span>` : 'No pin'}</span>`;
+    }
+
     function machineCard(machine, work, now) {
         const issues = machineIssues(machine, work);
         const held = holdsWork(work);
@@ -323,20 +340,30 @@
             : '<div class="nc-muted nc-live-small">No GPU readings</div>';
         const modeState = machine.mode?.switching ? ' · switching' : (machine.mode && !machine.mode.settled ? ' · not fully running' : '');
         const mode = machine.mode
-            ? `<div class="nc-live-small nc-muted">Mode: <span class="nc-live-mode">${esc(machine.mode.label)}</span>${esc(modeState)}</div>` : '';
+            ? `<span class="nc-live-small nc-muted">Mode: <span class="nc-live-mode">${esc(machine.mode.label)}</span>${esc(modeState)}</span>` : '';
+        const mainPin = mainPinLine(machine);
+        const charts = window.NerveCenterLiveCharts;
+        const power = charts
+            ? `<div class="nc-live-col nc-live-power">${charts.gauges(machine)}<div data-power-chart="${esc(machine.address)}"></div></div>` : '';
         return `<article class="nc-live-card" data-machine="${esc(machine.address)}" aria-label="${esc(machine.name)}">
             <header class="nc-live-card-head">
-                <h3>${esc(machine.name)}</h3>
+                <div class="nc-live-card-title"><h3>${esc(machine.name)}</h3>${mainPin}${mode}${telemetry}</div>
                 ${badge}
             </header>
-            <div class="nc-live-card-sub">${mode}${telemetry}</div>
-            <div class="nc-live-gpus">${gpus}${vramOutsideOllamaMiB(machine)
-                ? `<div class="nc-muted nc-live-small" title="GPU memory in use that the Ollama models here do not account for">About ${gib(vramOutsideOllamaMiB(machine))} GiB used outside Ollama (another program)</div>` : ''}</div>
-            <div class="nc-live-endpoints">${machine.endpoints.map(e => endpointBlock(e, machine, held)).join('')}</div>
-            <div class="nc-live-card-foot">
-                ${workBlock(work, now)}
-                <button type="button" class="nc-link-btn nc-live-manage" data-host="${esc(machine.mainHostId)}">Manage pins <i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+            <div class="nc-live-card-body">
+                ${power}
+                <div class="nc-live-col">
+                    <div class="nc-live-gpus">${gpus}${vramOutsideOllamaMiB(machine)
+                        ? `<div class="nc-muted nc-live-small" title="GPU memory in use that the Ollama models here do not account for">About ${gib(vramOutsideOllamaMiB(machine))} GiB used outside Ollama (another program)</div>` : ''}</div>
+                    <div class="nc-live-endpoints">${machine.endpoints.map(e => endpointBlock(e, machine, held)).join('')}</div>
+                </div>
+                <div class="nc-live-col nc-live-card-foot">
+                    <div class="nc-live-col-title">Work holding it</div>
+                    ${workBlock(work, now)}
+                    <button type="button" class="nc-link-btn nc-live-manage" data-host="${esc(machine.mainHostId)}">Manage pins <i class="fas fa-chevron-right" aria-hidden="true"></i></button>
+                </div>
             </div>
+            <div class="nc-live-model-slot" data-model-slot="${esc(machine.address)}"></div>
         </article>`;
     }
 
@@ -415,8 +442,14 @@
     async function loadLive({ quiet = false } = {}) {
         const body = document.getElementById('sectionLiveBody');
         if (!body) return;
+        // Never pull the principal panel from under an operator using it.
+        if (quiet && window.NerveCenterModel?.holdsFocus?.()) return;
         const load = ++liveLoad;
-        if (!quiet) shared.renderSectionLoading(body, 'Reading the machines...');
+        if (!quiet) {
+            window.NerveCenterModel?.detach?.();
+            window.NerveCenterModel?.place?.();
+            shared.renderSectionLoading(body, 'Reading the machines...');
+        }
         try {
             const [hostsJson, prefsJson, gpuJson, topologyJson, queueJson, healthJson] = await Promise.all([
                 shared.fetchJson('/api/ollama-hosts'),
@@ -442,11 +475,20 @@
                 return;
             }
             const works = machines.map(m => machineWork(m, jobs, claims, now));
+            const charts = window.NerveCenterLiveCharts;
+            const model = window.NerveCenterModel;
+            if (model?.holdsFocus?.()) return;
+            model?.detach?.();
             body.innerHTML = `<div class="nc-live-grid">${machines.map((m, index) => machineCard(m, works[index], now)).join('')}</div>
-                ${queueCard(jobs, claims, machines, now, Boolean(queue) && queue.available !== false)}`;
+                <div class="nc-live-pair">
+                    ${queueCard(jobs, claims, machines, now, Boolean(queue) && queue.available !== false)}
+                    ${charts ? '<section class="nc-live-queue nc-live-requests" id="ncLiveRequests" aria-labelledby="ncLiveRequestsTitle" aria-live="off"></section>' : ''}
+                </div>`;
             body.querySelectorAll('.nc-live-manage').forEach(button => {
                 button.addEventListener('click', () => openHostSettings(button.dataset.host));
             });
+            model?.place?.();
+            charts?.attach?.({ machines, jobs, machineNameFor });
             renderStatusLine(statusSummary(machines, works), now);
         } catch (err) {
             if (load !== liveLoad) return;
@@ -465,6 +507,7 @@
     let poller = null;
     function startLive() {
         loadLive();
+        window.NerveCenterLiveCharts?.start?.();
         if (poller || typeof setInterval !== 'function') return;
         poller = setInterval(() => {
             if (document.hidden) return;
@@ -473,6 +516,7 @@
     }
 
     window.NerveCenterLive = {
-        loadLive, startLive, groupMachines, parkedUrls, machineWork, machineIssues, statusSummary, jobPhase, endpointLabel, vramOutsideOllamaMiB
+        loadLive, startLive, groupMachines, parkedUrls, machineWork, machineIssues, statusSummary, jobPhase, endpointLabel, vramOutsideOllamaMiB,
+        renderMachineCard: machineCard, mainPinLine
     };
 })();
