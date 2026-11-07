@@ -171,6 +171,13 @@ wake-word mode is off. Outside the frame, these two new aliases are not captured
 Recognition briefly keeps photos visible while deciding between a local command,
 ambient speech and an actual Nestor request. Text editors keep their arrow keys.
 
+The photo shows alone, without controls or mouse cursor. Moving the mouse
+reveals the control bar and cursor; they hide again after three seconds without
+movement, unless the pointer rests on the bar. **Tab** reveals the bar and
+focuses its first button, and the bar stays while keyboard focus is in it.
+Touch, a still cursor and the synthetic move a browser sends when the photo
+appears do not reveal it. A failed next image reveals the bar with its status.
+
 Touch/click outside photo controls or Escape returns to the same conversation. The photo controls
 also reach Settings, Flow, microphone diagnostics and the existing mic button.
 Active conversation work, a focused editor or embedded page, open settings or a dialog prevent

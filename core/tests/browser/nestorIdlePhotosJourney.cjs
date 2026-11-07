@@ -68,12 +68,30 @@ let browser, server;
     };
     await page.evaluate(() => { clockNow = 29000; frame.tick(); });
     assert.equal(await page.evaluate(() => requests.filter(url => !url.endsWith('/status')).length), 0, 'no image before inactivity');
+    const controls = page.locator('.nestor-idle-photos > nav');
+    // The photo shows alone; a real mouse movement brings the controls back.
+    const reveal = async () => {
+      await page.mouse.move(5, 5); await page.mouse.move(60, 60, {steps:3}); await controls.waitFor({state:'visible'});
+    };
+    await page.mouse.move(5, 5);
     await enter();
+    assert.equal(await controls.isVisible(), false, 'photo alone on arrival');
+    assert.equal(await page.locator('.nestor-idle-photos').evaluate(node => getComputedStyle(node).cursor), 'none', 'cursor hidden over the photo');
+    await page.screenshot({path:path.join(output,'frame-photo-only-' + viewport.width + '.png')});
+    await reveal();
+    assert.equal(await page.evaluate(() => frame.active()), true, 'mouse movement keeps the photos');
     for (const label of ['Retour à Nestor','Photo précédente','Photo suivante','Settings','Flow','Diagnostic micro','Micro · activer / pause']) {
-      const rect = await page.locator('.nestor-idle-photos').getByRole('button',{name:label,exact:true}).boundingBox();
+      const button = page.locator('.nestor-idle-photos').getByRole('button',{name:label,exact:true});
+      const rect = await button.boundingBox();
+      assert.equal(await button.isVisible(), true, label + ' visible after mouse movement');
       assert.ok(rect && rect.x >= 0 && rect.y >= 0 && rect.x + rect.width <= viewport.width && rect.y + rect.height <= viewport.height, label + ' reachable');
     }
     await page.screenshot({path:path.join(output,'frame-' + viewport.width + '.png')});
+    await page.evaluate(() => { clockNow += 3500; frame.tick(); });
+    await controls.waitFor({state:'hidden'});
+    await page.keyboard.press('Tab'); await controls.waitFor({state:'visible'});
+    assert.equal(await page.evaluate(() => frame.active()), true, 'Tab opens the controls instead of leaving');
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Retour à Nestor');
     await page.evaluate(() => { clockNow += 6000; frame.tick(); });
     await page.waitForFunction(id => document.querySelector('.nestor-idle-photos img').src.includes(id), ID2);
     assert.equal(await page.evaluate(() => requests.at(-1).includes('exclude=')), true, 'rotation uses native exclusion');
@@ -82,7 +100,7 @@ let browser, server;
     const requestCount = await page.evaluate(() => requests.length);
     await page.keyboard.press('ArrowLeft'); assert.equal(await photo(), firstPhoto);
     await page.keyboard.press('ArrowRight'); assert.equal(await photo(), secondPhoto);
-    await page.getByRole('button',{name:'Photo précédente',exact:true}).click(); assert.equal(await photo(), firstPhoto);
+    await reveal(); await page.getByRole('button',{name:'Photo précédente',exact:true}).click(); assert.equal(await photo(), firstPhoto);
     await page.getByRole('button',{name:'Photo suivante',exact:true}).click(); assert.equal(await photo(), secondPhoto);
     assert.equal(await page.evaluate(() => frame.localControl('recule',{followup:true}).applied),true);
     assert.equal(await photo(),firstPhoto);
@@ -92,14 +110,14 @@ let browser, server;
     assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches),true);
     assert.equal(await page.locator('.nestor-idle-photos').evaluate(node=>getComputedStyle(node).animationName),'none');
 
-    await page.getByRole('button',{name:'Retour à Nestor',exact:true}).click(); await hide();
+    await reveal(); await page.getByRole('button',{name:'Retour à Nestor',exact:true}).click(); await hide();
     assert.equal(await page.locator('#conversationTranscript').textContent(), 'Existing conversation stays here.');
     assert.equal(await page.evaluate(() => session.sessionId), 'fixture-conversation');
     await enter(); await page.locator('.nestor-idle-photos img').tap({position:{x:30,y:30}}); await hide();
     await enter(); await page.keyboard.press('Escape'); await hide();
     for (const [label,key] of [['Settings','settings'],['Flow','flow'],['Diagnostic micro','diagnostics'],['Micro · activer / pause','micro']]) {
       await page.evaluate(() => { document.getElementById('conversationSettings').hidden = true; });
-      await enter(); await page.locator('.nestor-idle-photos').getByRole('button',{name:label,exact:true}).click(); await hide();
+      await enter(); await reveal(); await page.locator('.nestor-idle-photos').getByRole('button',{name:label,exact:true}).click(); await hide();
       assert.equal(await page.evaluate(key => calls[key], key), 1, label + ' routed to existing control');
     }
     await page.evaluate(() => { busy = true; clockNow += 31000; frame.tick(); });

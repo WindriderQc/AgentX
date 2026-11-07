@@ -76,8 +76,33 @@ function harness() {
   h.back = () => h.key('ArrowLeft');
   h.visibility = () => emit(events, { type: 'visibilitychange' });
   h.makeEditor = tag => { const editor = new Element(tag); document.body.append(editor); return editor; };
+  h.nav = h.region.querySelector('nav');
+  h.controls = () => h.region.attributes['data-controls'] === 'shown';
+  h.move = (x, y, { target = h.image, pointerType = 'mouse' } = {}) => emit(events, { type: 'pointermove', screenX: x, screenY: y, target, pointerType });
   return h;
 }
+
+test('photo shows alone; mouse movement or Tab reveals the controls, which hide again', async () => {
+  const h = harness(); await flush();
+  h.move(100, 100); await h.enter();
+  assert.equal(h.frame.active(), true); assert.equal(h.controls(), false, 'photo alone on arrival');
+  assert.notEqual(h.document.activeElement, h.nav.querySelector('button'), 'no control takes focus on arrival');
+  h.move(100, 100); assert.equal(h.controls(), false, 'a still cursor reveals nothing');
+  h.move(140, 120, { pointerType: 'touch' }); assert.equal(h.controls(), false, 'touch reveals nothing');
+  h.move(180, 150); assert.equal(h.controls(), true, 'mouse movement reveals the controls');
+  assert.equal(h.frame.active(), true, 'movement never leaves the photos');
+  h.clock += 2000; h.frame.tick(); assert.equal(h.controls(), true);
+  h.clock += 1500; h.frame.tick(); assert.equal(h.controls(), false, 'controls hide after a still pause');
+  h.move(200, 900, { target: h.nav }); h.clock += 10000; h.frame.tick();
+  assert.equal(h.controls(), true, 'a pointer resting on the bar keeps it open');
+  h.move(300, 300); h.clock += 3500; h.frame.tick(); assert.equal(h.controls(), false);
+  const tab = h.key('Tab');
+  assert.equal(tab.prevented, true); assert.equal(h.frame.active(), true, 'Tab opens the controls instead of leaving');
+  assert.equal(h.controls(), true); assert.equal(h.document.activeElement, h.nav.querySelector('button'));
+  h.clock += 10000; h.frame.tick(); assert.equal(h.controls(), true, 'keyboard focus in the bar keeps it open');
+  h.key('Escape'); assert.equal(h.frame.active(), false); assert.equal(h.controls(), false);
+  h.frame.dispose();
+});
 
 test('first photo has no previous; keyboard, voice and automatic advance share exact history', async () => {
   const h = harness(); await flush(); await h.enter();

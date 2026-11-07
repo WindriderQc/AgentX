@@ -101,7 +101,12 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     await page.evaluate(() => { document.activeElement?.blur(); document.getElementById('conversationSettings').hidden = true; });
     await page.clock.fastForward(121000); await frame.waitFor({state:'visible'});
   };
+  const controls = frame.locator('nav');
+  const reveal = async () => {
+    await page.mouse.move(5, 5); await page.mouse.move(60, 60, {steps:3}); await controls.waitFor({state:'visible'});
+  };
   await enter();
+  assert.equal(await controls.isVisible(), false, 'family photo shows alone');
   await page.evaluate(() => dispatchEvent(new CustomEvent('persona-presence',{detail:{space:'personal',state:'thinking'}})));
   assert.equal(await frame.isVisible(),true,'personal events cannot dismiss a family frame');
   heard='Conversation ambiante'; await page.evaluate(() => say()); await listening();
@@ -134,7 +139,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   for(const label of ['Settings','Flow','Diagnostic micro']) {
     await enter();
     if(label!=='Settings') await page.evaluate(() => { AgentXVoiceWorkshop.open = async opts => { window.workshopScope=opts.scope; return {refresh(){}}; }; });
-    await frame.getByRole('button',{name:label,exact:true}).click(); await frame.waitFor({state:'hidden'});
+    await reveal(); await frame.getByRole('button',{name:label,exact:true}).click(); await frame.waitFor({state:'hidden'});
     if(label==='Settings') assert.equal(await page.locator('#conversationSettings').isVisible(),true);
     else assert.equal(await page.evaluate(() => workshopScope),'family');
   }
