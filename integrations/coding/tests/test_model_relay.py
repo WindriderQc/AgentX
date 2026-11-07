@@ -3,6 +3,7 @@ import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
+import os
 from pathlib import Path
 import socket
 import tempfile
@@ -16,6 +17,43 @@ SPEC.loader.exec_module(relay)
 
 
 class RelayStopTest(unittest.TestCase):
+    def test_graph_worker_socket_keeps_its_long_private_home(self):
+        forwarded = []
+        class Upstream(BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers['Content-Length']))
+                forwarded.append(body)
+                self.send_response(200); self.end_headers(); self.wfile.write(body)
+            def log_message(self, *_args):
+                pass
+        upstream = ThreadingHTTPServer(('127.0.0.1', 0), Upstream)
+        threading.Thread(target=upstream.serve_forever, daemon=True).start()
+        self.addCleanup(upstream.server_close); self.addCleanup(upstream.shutdown)
+        with tempfile.TemporaryDirectory() as directory:
+            for request in ('1' * 36, '2' * 36):
+                home = Path(directory) / ('graph-' + '3' * 36) / ('.home-step-01-' + request)
+                home.mkdir(parents=True, mode=0o700)
+                path = home / 'model.sock'
+                self.assertGreaterEqual(len(os.fsencode(path)), 108)
+                server = relay.serve(str(path), f'http://127.0.0.1:{upstream.server_port}/v1')
+                try:
+                    self.assertTrue(path.is_socket())
+                    fd = os.open(home, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        connection = http.client.HTTPConnection('worker', timeout=5)
+                        connection.sock = socket.socket(socket.AF_UNIX)
+                        connection.sock.connect(f'/proc/self/fd/{fd}/model.sock')
+                    finally:
+                        os.close(fd)
+                    body = json.dumps({'request': request}).encode()
+                    connection.request('POST', '/v1/chat/completions', body=body)
+                    response = connection.getresponse()
+                    self.assertEqual((response.status, response.read()), (200, body))
+                    connection.close()
+                finally:
+                    server.shutdown(); server.server_close()
+            self.assertEqual(len(forwarded), 2)
+
     def test_last_allowed_reply_can_save_before_an_extra_call_is_refused(self):
         spec = importlib.util.spec_from_file_location('coding_progress', Path(__file__).resolve().parents[1] / 'coding_progress.py')
         progress_module = importlib.util.module_from_spec(spec)
