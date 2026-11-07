@@ -176,6 +176,7 @@ async function observe(ctx, request) {
     preflight = await check();
   }
   if (preflight.ready !== true) {
+    if (preflight.ready !== false) throw new ctx.ActionError('Benchmark returned no explicit preflight verdict');
     const hosts = (preflight.checks?.hosts || []).map(check => ({ host: check.host, model: check.model, ok: check.ok, error: check.error || check.benchmark_blocked_reason || null }));
     const code = preflight.checks?.judge?.ok === false ? 'JUDGE_NOT_READY'
       : hosts.some(check => !check.ok) ? 'EXECUTION_TARGET_NOT_READY' : 'PREFLIGHT_NOT_READY';
@@ -194,7 +195,14 @@ async function prepare(ctx) {
   const asked = cliRequest(ctx);
   if (!asked) throw usage(ctx, 'benchmark-batch-prepare needs --host, --model and --categories');
   planFile(ctx, 'unwritten'); // refuses now, before any request, when plans have nowhere to go
-  const observed = await observe(ctx, asked);
+  let observed;
+  try { observed = await observe(ctx, asked); }
+  catch (error) {
+    // Only a completed refusal proves no plan or batch was started. A lost
+    // preflight answer may hide a native probe and must remain fenced.
+    if (error.outcome === 'refused') error.preparationNotStarted = true;
+    throw error;
+  }
   // The plan pins the judge it observed, so the start names it and the launch uses it.
   const request = batchRequest({ ...asked, judgeHost: observed.judge.host, judgeModel: observed.judge.model });
   const ref = newPlanRef(request);

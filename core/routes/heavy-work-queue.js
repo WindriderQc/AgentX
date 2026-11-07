@@ -58,7 +58,10 @@ router.post('/:id/begin', wrap(async req => {
 router.post('/:id/run', wrap(req => require('../src/services/heavyWorkQueueLauncher')
   .launch(req.params.id, actor(req), { expectedRevision: req.body?.expectedRevision })));
 router.post('/:id/record', wrap(req => queue.record(req.params.id, req.body, actor(req))));
-router.post('/:id/prepared', wrap(req => queue.prepared(req.params.id, req.body, actor(req))));
+router.post('/:id/prepared', wrap(async req => {
+  const result = await queue.prepared(req.params.id, req.body, actor(req));
+  return req.body.refusal ? evidence.reconcile(result.id, actor(req)) : result;
+}));
 router.post('/:id/assert-dispatch', wrap(req => queue.assertDispatch(req.params.id, req.body.dispatchId)));
 router.post('/:id/cancel', wrap(req => queue.cancel(req.params.id, req.body, actor(req))));
 router.post('/:id/reconcile', wrap(req => evidence.reconcile(req.params.id, actor(req))));

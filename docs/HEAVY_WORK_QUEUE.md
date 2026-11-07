@@ -51,6 +51,16 @@ Supported executors:
   Queue preparation itself as `{prepare: true, request}` with an explicit judge;
   its returned plan becomes a receipt, not an automatically launched campaign.
   Submit a second linked request with `{plan, request}` to run that plan.
+  An explicit preparation refusal is a failed outcome, not an unknown launch.
+  The CLI records the verdict and its exact dispatch identity through the same
+  `POST /:id/prepared` receipt route (`refusal: {code, reason}` instead of `plan`).
+  Core persists the operator preparation receipt before checking native release;
+  its observer can reconcile it after a lost reply or restart. Both host/device
+  fences are released only after a complete runtime snapshot shows no
+  overlapping inference or workload. A held admission or quarantine keeps its
+  native owner, and missing release evidence stays fenced. CLI exit 4 reports
+  the confirmed refusal; lost preflight replies and unverified outcomes retain
+  exit 3 and are never retried. Expiration alone never releases a fence.
 - **Profiler**: `{hostId, depth?, skipRecentDays?, modelNames?}` runs the existing
   host queue. Core checks its registered endpoint; the native tracker carries
   the Core request identity for subsequent observation.

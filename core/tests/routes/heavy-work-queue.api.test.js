@@ -61,3 +61,46 @@ it('runs a reserved Profiler request now only with its current revision', async 
   await request(app).post(`/queue/${job.id}/run`).send({ expectedRevision: ready.revision + 1 }).expect(409);
   expect((await queue.get(job.id)).state).toBe('reserved');
 });
+
+it('receives a real preparation preflight refusal through the CLI and lets the next image reserve both hosts', async () => {
+  const Runtime = require('../../models/RuntimeCoordination');
+  const { runJob } = require('../../../integrations/operations/heavy-work-queue.cjs');
+  const { ACTIONS } = require('../../../scripts/maintenance-benchmark.cjs');
+  const { ActionError } = require('../../../scripts/maintenance-actions.cjs');
+  const host = 'http://127.0.0.1:11434', judgeHost = 'http://127.0.0.1:11435';
+  const params = { host, model: 'synthetic:candidate', categories: ['coding'], levels: [1], repeats: 1,
+    judgeHost, judgeModel: 'synthetic:judge' };
+  await Runtime.deleteMany({});
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  const job = await queue.submit({ ...input, key: 'refused-preparation-api', kind: 'benchmark', hosts: [host, judgeHost],
+    executor: { prepare: true, request: params } }, 'fixture');
+  const ready = await queue.reserve(job.id, { expectedRevision: job.revision, start: new Date(Date.now() - 1000).toISOString() }, 'fixture');
+  const calls = [];
+  const client = async (suffix, body) => {
+    const pending = request(app)[body === undefined ? 'get' : 'post'](`/queue${suffix}`).set('x-service-caller', 'fixture');
+    const response = await (body === undefined ? pending : pending.send(body)).expect(200);
+    return response.body.data;
+  };
+  await expect(runJob(ready, client, { actor: 'fixture', benchmarkExecutor: () => ACTIONS['benchmark-batch-prepare']({
+    ActionError, receiptsDir: require('node:os').tmpdir(), benchmark: 'http://127.0.0.1:3181',
+    options: { actor: 'fixture', host, model: params.model, categories: 'coding', levels: '1',
+      'judge-host': judgeHost, 'judge-model': params.judgeModel },
+    http: async url => {
+      const route = new URL(url).pathname;
+      calls.push(route);
+      if (route === '/api/tags') return { ok: true, json: { models: [{ name: params.model }, { name: params.judgeModel }] } };
+      const data = route.endsWith('/readiness') ? { hosts: [{ hostUrl: host }, { hostUrl: judgeHost }] }
+        : route.endsWith('/prompts') ? { prompts: [{ _id: '000000000000000000000001', category: 'coding', level: 1 }] }
+          : { ready: false, issues: ['Synthetic profile not qualified'], checks: {} };
+      return { ok: true, status: 200, json: { status: 'success', data } };
+    }
+  }) })).rejects.toMatchObject({ outcome: 'refused', queueId: job.id });
+  const terminal = await client(`/${job.id}`);
+  expect(terminal).toMatchObject({ state: 'failed', preparationRefusal: { code: 'PREFLIGHT_NOT_READY' },
+    releaseReceipt: { authority: 'operator-preparation-refusal' } });
+  const image = await queue.submit({ ...input, key: 'image-after-refusal-api', kind: 'image', hosts: [host, judgeHost],
+    executor: { actionKey: 'synthetic-next-image', prompt: 'Synthetic image fixture' } }, 'fixture');
+  await expect(queue.reserve(image.id, { expectedRevision: image.revision, start: new Date().toISOString() }, 'fixture'))
+    .resolves.toMatchObject({ state: 'reserved' });
+  expect(calls).not.toContain('/api/benchmark/batch');
+});

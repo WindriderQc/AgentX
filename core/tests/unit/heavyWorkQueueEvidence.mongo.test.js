@@ -48,6 +48,73 @@ it('queues preparation before its probes and retains its exact plan without star
   expect(requestJson).not.toHaveBeenCalled();
 });
 
+const refusal = { code: 'PREFLIGHT_NOT_READY', reason: 'Synthetic profile is not qualified' };
+const refusedPreparation = async key => {
+  const job = await dispatch({ ...make(key), executor: { prepare: true, request } });
+  return queue.prepared(job.id, { dispatchId: job.dispatchId, refusal }, 'native-operator');
+};
+
+it('durably records a preparation refusal and frees both hosts only after release is verified', async () => {
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  const job = await refusedPreparation('refused');
+  expect(job).toMatchObject({ state: 'dispatching', preparationRefusal: { ...refusal, dispatchId: job.dispatchId } });
+  const next = await queue.submit({ ...make('next'), executor: { prepare: true, request } }, 'test');
+  const slot = { expectedRevision: next.revision, start: new Date().toISOString() };
+  await expect(queue.reserve(next.id, slot, 'test')).rejects.toMatchObject({ code: 'HEAVY_QUEUE_CONFLICT' });
+  const settled = await evidence.reconcile(job.id, 'core-queue-observer');
+  expect(settled).toMatchObject({ state: 'failed', reason: refusal.reason,
+    releaseReceipt: { authority: 'operator-preparation-refusal', refusal: { ...refusal, actor: 'native-operator' } } });
+  await expect(queue.reserve(next.id, slot, 'test')).resolves.toMatchObject({ state: 'reserved' });
+  const replay = await queue.prepared(job.id, { dispatchId: job.dispatchId, refusal }, 'native-operator');
+  expect(replay.revision).toBe(settled.revision);
+  expect(requestJson).not.toHaveBeenCalled();
+});
+
+it.each(['workloads', 'inferences'])('retains refused preparation evidence while %s remain quarantined, then reconciles the same ID', async field => {
+  const job = await refusedPreparation(`refused-held-${field}`);
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [], [field]: [
+    { hosts: [B], expiresAt: new Date(0), recoveryState: 'UNKNOWN' }
+  ] });
+  expect((await evidence.reconcile(job.id, 'observer')).state).toBe('uncertain');
+  // Native owner release is simulated; reconciliation itself never clears it.
+  expect((await Runtime.findById('runtime').lean())[field]).toHaveLength(1);
+  await Runtime.collection.updateOne({ _id: 'runtime' }, { $set: { [field]: [] } });
+  expect((await evidence.reconcile(job.id, 'observer-after-restart')).state).toBe('failed');
+  expect(requestJson).not.toHaveBeenCalled();
+});
+
+it('keeps an unknown preparation or missing release snapshot fenced without guessing a batch result', async () => {
+  const unknown = await dispatch({ ...make('unknown-prepare'), executor: { prepare: true, request } });
+  await expect(evidence.reconcile(unknown.id, 'observer')).rejects.toThrow('receipt');
+  await queue.prepared(unknown.id, { dispatchId: unknown.dispatchId, refusal }, 'native-operator');
+  await expect(evidence.reconcile(unknown.id, 'observer')).rejects.toMatchObject({ code: 'HEAVY_QUEUE_RELEASE_UNAVAILABLE' });
+  expect((await queue.get(unknown.id)).state).toBe('dispatching');
+  expect(requestJson).not.toHaveBeenCalled();
+});
+
+it('rechecks a new native holder before committing the refused preparation release', async () => {
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  const job = await refusedPreparation('release-race');
+  const observation = await evidence.observe(job);
+  expect(observation.terminal).toBe(true);
+  await Runtime.collection.updateOne({ _id: 'runtime' }, { $set: { inferences: [{ host: B, state: 'ACTIVE', expiresAt: new Date(Date.now() + 60000) }] } });
+  await expect(queue.settle(job.id, observation, 'observer')).rejects.toMatchObject({ statusCode: 409 });
+  expect((await queue.get(job.id)).state).toBe('dispatching');
+  expect((await Runtime.findById('runtime').lean()).inferences).toHaveLength(1);
+});
+
+it('rejects refusal receipts for another dispatch, batch start, plan or prior outcome', async () => {
+  const job = await refusedPreparation('bound-refusal');
+  for (const body of [{ dispatchId: 'another', refusal }, { dispatchId: job.dispatchId, refusal: { ...refusal, code: 'CHANGED' } },
+    { dispatchId: job.dispatchId, refusal, plan: newPlanRef(request) }]) {
+    await expect(queue.prepared(job.id, body, 'test')).rejects.toMatchObject({ statusCode: 409 });
+  }
+  await Runtime.collection.insertOne({ _id: 'runtime', workloads: [], inferences: [] });
+  await evidence.reconcile(job.id, 'observer');
+  const batch = await dispatch(make('not-preparation'));
+  await expect(queue.prepared(batch.id, { dispatchId: batch.dispatchId, refusal }, 'test')).rejects.toMatchObject({ statusCode: 409 });
+});
+
 it('finds a lost launch by its native plan tag and settles only its own terminal receipt', async () => {
   const body = make('lost');
   const job = await dispatch(body);

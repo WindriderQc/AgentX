@@ -102,3 +102,50 @@ test('retains uncertainty on lost launch and lost final writes without a retry',
   assert.equal(launches, 1);
   assert.equal(recorded[0].state, 'uncertain');
 });
+
+for (const lostReply of [false, true]) test(`records an explicit preparation refusal without uncertainty (lost reply: ${lostReply})`, async () => {
+  const preparation = { ...job, executor: { prepare: true } };
+  const events = [];
+  let launches = 0;
+  const terminal = { ...preparation, state: 'failed', preparationRefusal: { dispatchId: 'synthetic-dispatch' },
+    releaseReceipt: { authority: 'operator-preparation-refusal' } };
+  const client = async (endpoint, body) => {
+    events.push([endpoint, body]);
+    if (endpoint.endsWith('/begin')) return { ...preparation, dispatchId: 'synthetic-dispatch' };
+    if (endpoint.endsWith('/prepared')) {
+      assert.deepEqual(body, { dispatchId: 'synthetic-dispatch', refusal: { code: 'PREFLIGHT_NOT_READY', reason: 'Synthetic preflight refusal' } });
+      if (lostReply) throw new Error('Synthetic reply lost after commit');
+    }
+    return terminal;
+  };
+  await assert.rejects(runJob(preparation, client, { benchmarkExecutor: async () => {
+    launches++;
+    throw Object.assign(new Error('Synthetic preflight refusal'), { outcome: 'refused', preparationNotStarted: true, details: { code: 'PREFLIGHT_NOT_READY' } });
+  } }), error => error.outcome === 'refused' && error.queueId === job.id);
+  assert.equal(launches, 1);
+  assert.deepEqual(events.map(([endpoint]) => endpoint), [`/${job.id}/begin`, `/${job.id}/prepared`, ...(lostReply ? [`/${job.id}`] : [])]);
+});
+
+for (const kind of ['untyped-refusal', 'lost-preflight', 'batch-start', 'receipt-unavailable', 'runtime-held']) {
+  test(`keeps the fence for ${kind} and never repeats preparation`, async () => {
+    const preparation = { ...job, executor: { prepare: kind !== 'batch-start' } };
+    const events = [];
+    let launches = 0;
+    const client = async (endpoint, body) => {
+      events.push([endpoint, body]);
+      if (endpoint.endsWith('/begin')) return { ...preparation, dispatchId: 'synthetic-dispatch' };
+      if (kind === 'receipt-unavailable' && !endpoint.endsWith('/record')) throw new Error('Synthetic Core unavailable');
+      return { ...preparation, state: 'uncertain' };
+    };
+    await assert.rejects(runJob(preparation, client, { benchmarkExecutor: async () => {
+      launches++;
+      throw Object.assign(new Error('Synthetic refusal or lost response'), {
+        outcome: kind === 'lost-preflight' ? 'unknown' : 'refused',
+        preparationNotStarted: kind !== 'untyped-refusal' && kind !== 'lost-preflight', details: { code: 'PREFLIGHT_NOT_READY' }
+      });
+    } }), error => error.outcome === 'uncertain');
+    assert.equal(launches, 1);
+    assert.equal(events.at(-1)[1].state, 'uncertain');
+    assert.equal(events.some(([endpoint]) => endpoint.endsWith('/prepared')), ['receipt-unavailable', 'runtime-held'].includes(kind));
+  });
+}
