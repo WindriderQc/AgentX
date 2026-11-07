@@ -279,7 +279,8 @@ class DistributedRootCoordinatorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             r, progress, ledger, task, args, endpoint, submissions = self.fixture(directory, manifests)
             observed = []
-            def assemble(_runtime, assembly_args, _progress, *, manifest):
+            def assemble(_runtime, assembly_args, _progress, *, manifest, finish_progress):
+                self.assertFalse(finish_progress)
                 observed.append((manifest.get('readyAdoption', {}).get('stepId'), manifest['finalReady'],
                                  assembly_args.request_id, assembly_args.executor_id,
                                  assembly_args.timeout_seconds))
@@ -422,7 +423,8 @@ class DistributedRootCoordinatorTest(unittest.TestCase):
             self.assertIsNone(intent['assemblyRequestId'])
             self.assertEqual(intent['rootUsageBeforeDag'],
                 {'workSeconds': 5, 'testSeconds': 1, 'modelSeconds': 2, 'modelCalls': 1})
-            def assemble(_runtime, _assembly_args, _progress, *, manifest):
+            def assemble(_runtime, _assembly_args, _progress, *, manifest, finish_progress):
+                self.assertFalse(finish_progress)
                 self.write_completion(r)
                 return 0
             with patch.object(distributed_root.coding_distributed_assembly, 'execute', side_effect=assemble):

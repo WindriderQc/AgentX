@@ -581,6 +581,9 @@ def reconcile(pipeline_id, key):
         value.update(pr=pr, checkpoint=pr['head'])
         atomic_json(RECEIPTS / f'{key}.progress.json', value)
         atomic_json(path, module.verdict(intent, pr))
+    if not path.is_file() and (RECEIPTS / f'{key}.distributed-plan.json').is_file():
+        runner = load_runner()
+        runner.coding_autonomous.coding_distributed_root.coding_distributed_completion.recover(runner, pipeline_id, key)
     if not path.is_file() or path.stat().st_size > 65536:
         raise ControlError("CODING_DISPATCH_OUTCOME_UNKNOWN", "No durable native verdict to reconcile.")
     body = json.loads(path.read_text())

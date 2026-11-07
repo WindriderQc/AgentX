@@ -18,6 +18,7 @@ def load(name):
 
 coding_code_steps = load('coding_code_steps')
 coding_distributed_assembly = load('coding_distributed_assembly')
+coding_distributed_completion = load('coding_distributed_completion')
 DISTRIBUTED_UNAVAILABLE = frozenset({'CODE_STEP_DAG_UNAVAILABLE', 'CODING_DISTRIBUTION_UNAVAILABLE'})
 BUDGET_KEYS = ('workSeconds', 'testSeconds', 'modelSeconds', 'modelCalls')
 
@@ -228,9 +229,10 @@ def finalize(r, args, progress, lease, distributed, verdict_factory):
     current = r.request(f'{r.CORE}/api/pipeline/tasks/{args.task_id}/worker?agent={r.WORKER}')['data']['task']
     native_run = current['codingAutonomy']['runs'][-1]
     if (native_run['requestId'] != args.request_id or native_run.get('pendingInferences')
-            or not native_run.get('modelReceipts')
-            or any(item['state'] != 'completed' for item in native_run['modelReceipts'])):
+            or not isinstance(native_run.get('modelReceipts', []), list)
+            or any(item['state'] != 'completed' for item in native_run.get('modelReceipts', []))):
         raise DistributedDagPending('Native root model termination requires reconciliation')
+    coding_distributed_completion.settled_calls(current, args.request_id)
     summary = (f'Distributed code-step graph {args.request_id} completed; '
                f'assembly {distributed["assemblyRequestId"]} published one verified PR.')
     return deliver_native(r, progress, args.task_id, args.request_id, lease,
@@ -284,7 +286,7 @@ def execute(r, args, progress, endpoint, task, ledger):
                 'task_id': args.task_id, 'request_id': assembly_request_id,
                 'graph_id': args.request_id, 'executor_id': coordinator,
                 'manifest_fingerprint': raw['manifestFingerprint'], 'timeout_seconds': timeout})()
-            coding_distributed_assembly.execute(r, assembly_args, progress, manifest=raw)
+            coding_distributed_assembly.execute(r, assembly_args, progress, manifest=raw, finish_progress=False)
             completion = _completion(r, args.request_id, assembly_request_id)
             if completion:
                 replay = r.request(plan_endpoint, body)['data']
