@@ -84,6 +84,7 @@ async function settled(id) {
 
 test('request/retry/read are model-free and use the same manual queue intent', async () => {
   const { receipt } = await prepare();
+  expect(receipt).toMatchObject({ hostId: 'fixture', pinIndex: 0 });
   expect(await fit.request({ requestId: receipt.id, hostId: 'fixture' })).toMatchObject({ id: receipt.id, state: 'requested' });
   await fit.get(receipt.id);
   expect(queue.submitHeavyWork).toHaveBeenCalledTimes(1);

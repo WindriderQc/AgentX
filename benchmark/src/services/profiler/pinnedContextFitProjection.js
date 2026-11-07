@@ -6,7 +6,7 @@ function projectFit(row, { writerPresent = false, matchesCurrent = null } = {}) 
   const state = row.state === 'dispatching' && !writerPresent ? 'unknown' : row.state;
   return {
     contract: 'agentx.pinned-context-fit/v1', id: row._id, hostId: row.hostId,
-    model: row.model, numCtx: row.numCtx, artifactDigest: row.artifact?.digest || null,
+    model: row.model, pinIndex: row.pinIndex, numCtx: row.numCtx, artifactDigest: row.artifact?.digest || null,
     runtimeFingerprint: row.artifact?.runtimeFingerprint || null,
     ollamaVersion: row.artifact?.runtime?.ollamaVersion || null,
     measuredVersion: row.measuredVersion || null, state,

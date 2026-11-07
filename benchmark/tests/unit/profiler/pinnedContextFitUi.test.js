@@ -87,3 +87,49 @@ test.each(['unknown', 'unavailable'])('latest B never replaces %s A without its 
   expect(transport.mock.calls[0][1]).toEqual({ cache: 'no-store' });
   expect(status.textContent).not.toContain('Manual request recorded.');
 });
+
+test.each([0, 2])('a fresh device resumes persisted A after a lost queue ACK without allocating B (current pin index %s)', async pinIndex => {
+  const uuid = jest.fn();
+  const transport = jest.fn().mockRejectedValueOnce(new Error('Queue submission ACK lost'))
+    .mockResolvedValue({ ok: true, json: async () => ({ status: 'success',
+      data: { id: 'A', state: 'requested', queueRequestId: 'original-queue' } }) });
+  const persistedA = { ...lane, pinIndex, pinnedFit: { id: 'A', hostId: 'fixture', pinIndex: 0,
+    state: 'requested', queueRequestId: null, runtimeReleased: false } };
+  const stores = [];
+  const freshDevice = () => {
+    const saved = new Map(); stores.push(saved);
+    return loadBrowserModule('model-profiler/lanes.js', 'requestFit', {
+      sessionStorage: { getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value) },
+      crypto: { randomUUID: uuid }, fetch: transport
+    }).requestFit;
+  };
+  const root = { querySelector: () => null };
+  await freshDevice()(persistedA, {}, {}, root);
+  await freshDevice()(persistedA, {}, {}, root); // No shared sessionStorage or module state.
+  expect(uuid).not.toHaveBeenCalled(); expect(transport).toHaveBeenCalledTimes(2);
+  for (const [url, options] of transport.mock.calls) {
+    expect(url).toBe('/benchmark/api/profiler/fit-checks/request');
+    expect(options.method).toBe('POST');
+    expect(JSON.parse(options.body)).toEqual({ requestId: 'A', hostId: 'fixture', pinIndex: 0 });
+  }
+  expect(stores.every(saved => saved.get(`profiler-pinned-fit:fixture:${pinIndex}`) === 'A')).toBe(true);
+});
+
+test.each([
+  { id: 'A', state: 'unknown', runtimeReleased: false },
+  { id: 'A', state: 'completed', runtimeReleased: false },
+  { id: 'A', state: 'requested', runtimeReleased: false } // Original scope unavailable.
+])('a fresh device observes persisted A without replacing an unresolved or incomplete receipt: %o', async pinnedFit => {
+  const uuid = jest.fn(), transport = jest.fn();
+  const saved = new Map();
+  const handler = loadBrowserModule('model-profiler/lanes.js', 'requestFit', {
+    sessionStorage: { getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value) },
+    crypto: { randomUUID: uuid }, fetch: transport
+  }).requestFit;
+  const status = {};
+  await handler({ ...lane, pinnedFit }, {}, status, { querySelector: () => null });
+  expect(uuid).not.toHaveBeenCalled(); expect(transport).not.toHaveBeenCalled();
+  expect(saved.get('profiler-pinned-fit:fixture:0')).toBe('A');
+  expect(status.textContent).toContain('Original fit A');
+  expect(status.textContent).toContain('No new request was recorded.');
+});

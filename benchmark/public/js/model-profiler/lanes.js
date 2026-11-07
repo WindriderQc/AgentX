@@ -24,6 +24,15 @@ async function requestFit(lane, button, status, root) {
   button.disabled = true;
   status.textContent = 'Recording a manual fit request…';
   try {
+    const persisted = lane.pinnedFit;
+    if (!requestId && persisted?.id && !(persisted.runtimeReleased === true
+      && ['completed', 'failed', 'cancelled'].includes(persisted.state))) {
+      // Core's persisted intent survives a new tab/device without local cache.
+      requestId = persisted.id;
+      sessionStorage.setItem(storageKey, requestId);
+      fitRequests.set(key, requestId);
+    }
+    let requestHostId = lane.capability.hostId, requestPinIndex = lane.pinIndex;
     if (requestId) {
       let original = lane.pinnedFit?.id === requestId ? lane.pinnedFit : null;
       if (!original) {
@@ -43,6 +52,15 @@ async function requestFit(lane, button, status, root) {
         button.disabled = false;
         return;
       }
+      else if (original?.state === 'requested') {
+        if (!original.hostId || !Number.isInteger(original.pinIndex)) {
+          status.textContent = `Original fit ${requestId} has incomplete scope; inspect its receipt. No new request was recorded.`;
+          button.disabled = false;
+          return;
+        }
+        requestHostId = original.hostId;
+        requestPinIndex = original.pinIndex;
+      }
     }
     if (!requestId) {
       requestId = crypto.randomUUID();
@@ -51,7 +69,7 @@ async function requestFit(lane, button, status, root) {
     }
     const response = await fetch('/benchmark/api/profiler/fit-checks/request', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId, hostId: lane.capability.hostId, pinIndex: lane.pinIndex })
+      body: JSON.stringify({ requestId, hostId: requestHostId, pinIndex: requestPinIndex })
     });
     const answer = await response.json();
     if (!response.ok || answer.status !== 'success') throw new Error(answer.error || `Benchmark answered ${response.status}`);
