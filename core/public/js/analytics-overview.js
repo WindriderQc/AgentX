@@ -403,6 +403,9 @@
   function init() {
     const overview = document.querySelector('.analytics-overview');
     if (!overview) return;
+    // Nothing has been read until the first summary is committed.
+    window.AgentXPresentedContent = { contract: 'agentx.presentation/v1', state: 'loading',
+      filters: { window: $('analyticsWindow')?.value || '24h' }, selection: { groupBy }, read: null };
     document.addEventListener('analytics:inference', event => {
       const { state, data, windowKey } = event.detail;
       $('analyticsWindow').value = windowKey;
