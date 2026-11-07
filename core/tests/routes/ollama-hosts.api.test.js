@@ -5,6 +5,10 @@ const request = require('supertest');
 
 const mockFetch = jest.fn();
 jest.mock('node-fetch', () => (...args) => mockFetch(...args));
+const mockIsParkedHost = jest.fn(() => false);
+jest.mock('../../src/services/runtimeTopologyParking', () => ({
+  isParkedHost: (...args) => mockIsParkedHost(...args)
+}));
 
 const configuredHosts = [
   { id: 'primary', name: 'Host Alpha', url: 'http://primary:11434', priority: 1 },
@@ -56,6 +60,7 @@ function defaultFetch(url) {
 describe('Ollama hosts inventory API', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsParkedHost.mockReturnValue(false);
     mockFetch.mockImplementation(defaultFetch);
   });
 
@@ -128,5 +133,20 @@ describe('Ollama hosts inventory API', () => {
       installedModels: expect.arrayContaining(['nomic-embed-text:v1.5']),
       ollamaVersion: '0.31.1'
     }));
+  });
+
+  it('reports parked hosts separately without probing their stopped endpoints', async () => {
+    mockIsParkedHost.mockImplementation(url => url === 'http://secondary:11434');
+    const response = await request(app).get('/api/ollama-hosts').expect(200);
+    expect(response.body.data).toMatchObject({ total: 3, available: 2, parked: 1 });
+    expect(response.body.data.hosts[1]).toMatchObject({
+      available: false, status: 'parked', reason: 'topology_parked', installedModels: []
+    });
+    expect(response.body.data.hosts[1].error).toBeUndefined();
+    expect(mockFetch.mock.calls.some(([url]) => url.startsWith('http://secondary:'))).toBe(false);
+    mockFetch.mockClear();
+    const single = await request(app).get('/api/ollama-hosts/secondary/models').expect(200);
+    expect(single.body.data).toMatchObject({ available: false, status: 'parked' });
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

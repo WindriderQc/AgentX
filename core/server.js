@@ -280,7 +280,7 @@ async function startServer() {
             for (const r of results) {
               if (r.status === 'ok' || r.status === 'already_loaded') {
                 console.log(`   ✓ Default: ${r.model} ${r.status === 'already_loaded' ? 'already loaded' : 'loaded'} on ${r.host} (${r.durationMs}ms)`);
-              } else if (typeof r.status === 'string' && r.status.startsWith('skipped')) {
+              } else if (r.status === 'parked' || (typeof r.status === 'string' && r.status.startsWith('skipped'))) {
                 console.log(`   ↷ Default: ${r.model} on ${r.host} — ${r.status}`);
               } else {
                 console.log(`   ⚠ Default: ${r.model} on ${r.host} — ${r.error}`);

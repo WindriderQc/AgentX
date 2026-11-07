@@ -1,6 +1,10 @@
 const mockFetch = jest.fn();
 const mockCustomFind = jest.fn();
 const mockRegistryFind = jest.fn();
+const mockIsParkedHost = jest.fn(() => false);
+jest.mock('../../src/services/runtimeTopologyParking', () => ({
+  isParkedHost: (...args) => mockIsParkedHost(...args)
+}));
 
 jest.mock('node-fetch', () => mockFetch);
 
@@ -59,6 +63,7 @@ function ollamaModel(name, size = 100) {
 describe('modelAggregator', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsParkedHost.mockReturnValue(false);
     modelAggregator.clearCache();
     mockCustomFind.mockReturnValue(leanResult([]));
     mockRegistryFind.mockReturnValue(leanResult([
@@ -77,6 +82,17 @@ describe('modelAggregator', () => {
         status: 'active'
       }
     ]));
+  });
+
+  it('skips stopped topology endpoints and probes them again after activation', async () => {
+    mockIsParkedHost.mockImplementation(url => url === 'http://secondary:11434');
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ({ models: [] }) });
+    await modelAggregator.getAllModels({ useCache: false });
+    expect(mockFetch.mock.calls.map(([url]) => url)).toEqual(['http://primary:11434/api/tags']);
+    mockIsParkedHost.mockReturnValue(false);
+    mockFetch.mockClear();
+    await modelAggregator.getAllModels({ useCache: false });
+    expect(mockFetch.mock.calls.map(([url]) => url)).toContain('http://secondary:11434/api/tags');
   });
 
   it('deduplicates case variants without collapsing distinct namespaces', async () => {

@@ -2225,8 +2225,11 @@ group is parked until it ends.
   the intended mode is not a switch: its endpoints keep their alerts.
 - **What stays quiet.** The pin reconciler, startup warm-up, pin restore, the
   watchdog, GPU health, telemetry polling, router host health, the ecosystem
-  summary, the implicit embedding chain and the light-task fallback ladder
+  summary, model registry discovery, model inventories, the implicit embedding chain and the light-task fallback ladder
   skip parked hosts, or report them as `parked`.
+- **Registry discovery** refreshes parking before its startup pass and preserves
+  installations on skipped hosts. `/api/ollama-hosts` counts parked hosts
+  separately and keeps their `available` flag false without a connection error.
 - **Saving a pin** on a parked host stores it without loading it, so the lane
   hosts can be registered and pinned while the pooled mode runs.
 - **The principal switch** (Standard/Abliterated) on a parked principal host is
