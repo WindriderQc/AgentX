@@ -3,6 +3,7 @@
 const express = require('express');
 const request = require('supertest');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const Queue = require('../../models/HeavyWorkQueue');
@@ -11,6 +12,7 @@ const Runtime = require('../../models/RuntimeCoordination');
 const LoadTest = require('../../models/PerformanceLoadTest');
 const queue = require('../../src/services/heavyWorkQueueService');
 const parser = require('../../src/services/artilleryParser');
+const { main: operatorCli } = require('../../../integrations/operations/heavy-work-queue.cjs');
 const app = express();
 app.use(express.json());
 app.use('/queue', require('../../routes/heavy-work-queue'));
@@ -130,6 +132,113 @@ it('repairs a lost projection write after termination and archive without changi
   expect(retried.body.data.releaseReceipt).toEqual(done.releaseReceipt);
   expect(await LoadTest.countDocuments()).toBe(1);
   expect((await queue.get(job.id)).revision).toBe(done.revision);
+});
+
+it('reconciles a terminal queue write whose acknowledgment was lost', async () => {
+  const job = await begun();
+  const update = Queue.updateOne.bind(Queue);
+  jest.spyOn(Queue, 'updateOne').mockImplementationOnce(async (...args) => {
+    await update(...args);
+    throw new Error('Synthetic queue acknowledgment lost after commit');
+  });
+  await finish(job).expect(200);
+  const done = await queue.get(job.id);
+  expect(done.state).toBe('completed');
+  expect(done.events.filter(event => event.action === 'operator-finished')).toHaveLength(1);
+  expect(await LoadTest.countDocuments()).toBe(1);
+  await finish(job).expect(200);
+  expect((await queue.get(job.id)).revision).toBe(done.revision);
+});
+
+it('never records a result when the terminal queue write fails before commit', async () => {
+  const job = await begun();
+  jest.spyOn(Queue, 'updateOne').mockRejectedValueOnce(new Error('Synthetic queue write refused'));
+  await finish(job).expect(503);
+  expect((await queue.get(job.id)).state).toBe('dispatching');
+  expect(await LoadTest.countDocuments()).toBe(0);
+  await finish(job).expect(200);
+  expect(await LoadTest.countDocuments()).toBe(1);
+});
+
+it('preserves the saved result when its write acknowledgment is lost and deliveries resume concurrently after archive', async () => {
+  const job = await begun();
+  const upsert = LoadTest.findOneAndUpdate.bind(LoadTest);
+  jest.spyOn(LoadTest, 'findOneAndUpdate').mockImplementationOnce(async (...args) => {
+    await upsert(...args);
+    throw new Error('Synthetic result acknowledgment lost after commit');
+  });
+  await finish(job).expect(503);
+  const done = await queue.get(job.id);
+  const saved = await LoadTest.findOne().lean();
+  expect(saved.queueJobId).toBe(job.id);
+  await queue.archive(actor);
+  const resumed = await Promise.all(Array.from({ length: 4 }, () => finish(job)));
+  expect(resumed.map(result => result.status)).toEqual([200, 200, 200, 200]);
+  expect(new Set(resumed.map(result => result.body.data.loadTest.id))).toEqual(new Set([String(saved._id)]));
+  expect(await LoadTest.countDocuments()).toBe(1);
+  expect(await LoadTest.findOne().lean()).toEqual(saved);
+  expect((await queue.get(job.id)).releaseReceipt).toEqual(done.releaseReceipt);
+  expect((await queue.get(job.id)).revision).toBe(done.revision);
+});
+
+it('can retry index creation after a failure without finalizing the queue twice', async () => {
+  const job = await begun();
+  jest.spyOn(LoadTest.collection, 'createIndex').mockRejectedValueOnce(new Error('Synthetic index write unavailable'));
+  await finish(job).expect(503);
+  const done = await queue.get(job.id);
+  expect(done.state).toBe('completed');
+  expect(await LoadTest.countDocuments()).toBe(0);
+  await finish(job).expect(200);
+  expect(await LoadTest.countDocuments()).toBe(1);
+  expect((await queue.get(job.id)).revision).toBe(done.revision);
+});
+
+it.each(['lost-response', 'failed-result-write'])
+('replays the original CLI command through Core after %s and archive', async failure => {
+  const job = await begun();
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'load-test-replay-'));
+  const file = path.join(directory, 'synthetic-receipt.json');
+  fs.writeFileSync(file, JSON.stringify({ contract: 'agentx.operator-heavy-work/v1', queueRequestId: job.id,
+    dispatchId: job.dispatchId, actor, receiptRef: job.executor.receiptRef,
+    state: 'completed', runtimeReleased: true, loadTest }));
+  const args = ['finish-operator', '--core', 'http://127.0.0.1:3180', '--actor', actor,
+    '--id', job.id, '--revision', String(job.revision), '--file', file];
+  let lostResponse = failure === 'lost-response';
+  if (failure === 'failed-result-write') {
+    jest.spyOn(LoadTest, 'findOneAndUpdate').mockRejectedValueOnce(new Error('Synthetic result write unavailable'));
+  }
+  // Transport calls the real routers on this disposable test database. No
+  // installed service, native executor or inference is contacted.
+  const deps = { fetchImpl: async (url, options) => {
+    const route = new URL(url).pathname.replace('/api/cluster/schedule/work-queue', '/queue');
+    let call = request(app)[options.method.toLowerCase()](route).set(options.headers);
+    if (options.body) call = call.send(JSON.parse(options.body));
+    const response = await call;
+    if (lostResponse && route.endsWith('/operator-finish')) {
+      lostResponse = false;
+      expect(response.status).toBe(200);
+      throw new Error('Synthetic HTTP finish response lost');
+    }
+    return { ok: response.status < 400, status: response.status, json: async () => response.body };
+  } };
+  try {
+    await expect(operatorCli(args, deps)).rejects.toThrow();
+    const done = await queue.get(job.id);
+    expect(done.state).toBe('completed');
+    const saved = await LoadTest.findOne().lean();
+    expect(Boolean(saved)).toBe(failure === 'lost-response');
+    await queue.archive(actor);
+    const results = await Promise.all(Array.from({ length: 3 }, () => operatorCli(args, deps)));
+    expect(new Set(results.map(result => result.loadTest.id)).size).toBe(1);
+    expect(await LoadTest.countDocuments()).toBe(1);
+    if (saved) expect(await LoadTest.findOne().lean()).toEqual(saved);
+    const replayed = await queue.get(job.id);
+    expect(replayed.revision).toBe(done.revision);
+    expect(replayed.releaseReceipt).toEqual(done.releaseReceipt);
+    expect(replayed.events.filter(event => event.action === 'operator-finished')).toHaveLength(1);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 it.each(['actor', 'dispatchId', 'receiptRef', 'receiptSha256', 'confirmation', 'state', 'report'])

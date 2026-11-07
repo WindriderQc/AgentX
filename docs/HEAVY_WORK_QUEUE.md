@@ -389,8 +389,10 @@ Core validates the report before accepting completion, records its content
 hash in the terminal release receipt, then stores a `PerformanceLoadTest` with
 `queueJobId`. Server performance reads it through its existing load-test table.
 A unique job index prevents duplicates during concurrent delivery or restart.
-If the result write fails after termination, read the original job and repeat
-`finish-operator` with its current revision and the same receipt file. This
+If a finish response is lost or the result write fails after termination,
+repeat the original `finish-operator` command with the same receipt file.
+Core reconciles an exact terminal load-test receipt even with the original
+revision; active jobs still require the current revision. This
 repairs only the result, including after queue archive; it starts no work and
 adds no second terminal event. A changed receipt, actor or report refuses.
 Manual imports remain available and have no queue job identity.

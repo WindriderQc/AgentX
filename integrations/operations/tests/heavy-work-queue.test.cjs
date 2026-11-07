@@ -36,13 +36,36 @@ test('custom operator completion hashes the exact local receipt and cannot finis
     assert.equal(writes[0].receiptSha256, crypto.createHash('sha256').update(bytes).digest('hex'));
     assert.deepEqual(writes[0].loadTest, receipt.loadTest);
     current.state = 'completed'; current.revision++;
-    const retryArgs = args.map((arg, index) => args[index - 1] === '--revision' ? String(current.revision) : arg);
-    await main(retryArgs, deps);
+    current.releaseReceipt = { loadTestHash: 'b'.repeat(64) };
+    // A lost finish response leaves the caller with the original command and
+    // revision. Core can reconcile this terminal receipt without a mutation.
+    await main(args, deps);
     assert.equal(writes[1].receiptSha256, writes[0].receiptSha256);
     assert.deepEqual(writes[1].loadTest, writes[0].loadTest);
+    assert.equal(writes[1].expectedRevision, 2);
     fs.writeFileSync(file, JSON.stringify({ ...receipt, dispatchId: 'different' }));
-    await assert.rejects(main(retryArgs, deps), /differs/); assert.equal(writes.length, 2);
+    await assert.rejects(main(args, deps), /differs/); assert.equal(writes.length, 2);
+    const { loadTest, ...withoutReport } = receipt;
+    fs.writeFileSync(file, JSON.stringify(withoutReport));
+    await assert.rejects(main(args, deps), /Request changed/); assert.equal(writes.length, 2);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+test('stale revisions still refuse active writes, unrelated terminal receipts and begin before any effect', async () => {
+  const cases = [
+    { action: 'finish-operator', state: 'dispatching', releaseReceipt: { loadTestHash: 'b'.repeat(64) } },
+    { action: 'finish-operator', state: 'completed' },
+    { action: 'begin-operator', state: 'completed', releaseReceipt: { loadTestHash: 'b'.repeat(64) } }
+  ];
+  for (const item of cases) {
+    let reads = 0;
+    const deps = { fetchImpl: async (_url, options) => {
+      assert.equal(options.body, undefined); reads++;
+      return { ok: true, json: async () => ({ ok: true, data: { ...job, ...item } }) };
+    } };
+    await assert.rejects(main([item.action, '--core', 'http://127.0.0.1:3180', '--actor', 'fixture',
+      '--id', job.id, '--revision', '1'], deps), /Request changed/);
+    assert.equal(reads, 1);
+  }
 });
 test('marks dispatch before the native launch and saves its exact operation', async () => {
   const events = [];
