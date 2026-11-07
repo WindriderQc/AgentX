@@ -32,6 +32,30 @@ test('questionnaires are scored by code: totals, bands, the safety item, and not
   assert.deepEqual(stored.map(item => [item.id, item.score, item.band]), [['a', 7, 'léger']]);
 });
 
+test('the wording is the official French for Canada form, and only new results name their version', () => {
+  const { phq9, gad7 } = assessments.ASSESSMENTS;
+  assert.deepEqual([phq9.version, gad7.version], ['phq9-fr-CA-phqscreeners-201412', 'gad7-fr-CA-phqscreeners-201412']);
+  for (const { source } of [phq9, gad7]) assert.match(source.url, /^https:\/\/www\.phqscreeners\.com\/.*French%20for%20Canada\.pdf$/);
+  assert.deepEqual([phq9.choices[2], gad7.choices[2]], ['Plus de sept jours', 'Plus de la moitié des jours']);
+  assert.match(phq9.intro, /^Au cours des deux dernières semaines, à quelle fréquence avez-vous été dérangé\(e\)/);
+  assert.match(gad7.intro, /^Au cours des 14 derniers jours/);
+  assert.equal(phq9.items[8], 'Vous avez pensé que vous seriez mieux mort(e) ou pensé à vous blesser d’une façon ou d’une autre');
+  assert.equal(gad7.items[1], 'Incapable d’arrêter de vous inquiéter ou de contrôler vos inquiétudes');
+  assert.ok([phq9, gad7].every(definition => [definition.intro, ...definition.items].every(text => !/(tu|tes|te)/.test(text))));
+
+  const created = assessments.createAssessment('gad7', [1, 1, 1, 1, 1, 0, 0], new Date('2026-11-07T12:00:00Z'));
+  assert.equal(created.version, gad7.version);
+  // A result saved before versioning keeps no version; a recorded one survives; a malformed one is dropped.
+  const [legacy, current, malformed] = assessments.normalizeAssessments([
+    { id: 'old', kind: 'phq9', answers: Array(9).fill(0), at: '2026-10-01T00:00:00Z' },
+    created,
+    { id: 'bad', kind: 'phq9', answers: Array(9).fill(0), version: { $gt: '' }, at: '2026-10-02T00:00:00Z' }]);
+  assert.equal(Object.hasOwn(legacy, 'version'), false);
+  assert.equal(current.version, gad7.version);
+  assert.equal(Object.hasOwn(malformed, 'version'), false);
+  assert.equal(assessments.publicDefinitions().phq9.version, phq9.version);
+});
+
 test('a questionnaire is due when never taken or three weeks old, and its result reaches the reply and the dream', () => {
   const now = new Date('2026-10-03T12:00:00Z');
   const result = (kind, answers, at) => ({ id: `${kind}-${at}`, ...assessments.scoreAssessment(kind, answers), at });
@@ -102,10 +126,12 @@ test('answers are stored with a server-side score, shown as due or not, and a sa
     const toolbox = (await (await fetch(`${base}/toolbox`, { headers })).json()).data;
     assert.deepEqual([toolbox.due, toolbox.assessments.phq9.max, toolbox.assessments.gad7.items.length, toolbox.techniques.length], [['phq9', 'gad7'], 27, 7, 6]);
     assert.equal(toolbox.assessments.phq9.safetyItem, undefined);
+    assert.equal(toolbox.assessments.phq9.version, 'phq9-fr-CA-phqscreeners-201412');
 
     assert.equal((await post({ kind: 'phq9', answers: [1, 2] })).status, 400);
     const calm = (await (await post({ kind: 'gad7', answers: [1, 1, 1, 1, 1, 0, 0], score: 0 })).json()).data;
     assert.deepEqual([calm.assessment.score, calm.assessment.band, calm.safety, calm.due], [5, 'léger', undefined, ['phq9']]);
+    assert.deepEqual([calm.assessment.version, calm.state.assessments[0].version], ['gad7-fr-CA-phqscreeners-201412', 'gad7-fr-CA-phqscreeners-201412']);
     const flagged = (await (await post({ kind: 'phq9', answers: [0, 0, 0, 0, 0, 0, 0, 0, 2] })).json()).data;
     assert.equal(flagged.assessment.safety, true);
     assert.ok(flagged.safety.resources.some(item => item.contact === '9-8-8'));
