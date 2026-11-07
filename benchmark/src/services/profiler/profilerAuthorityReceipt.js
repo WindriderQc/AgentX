@@ -110,6 +110,7 @@ function hasQualifiedProfilerAuthority(readiness, evidence, context = {}) {
     && evidence?.profile?.benchmarkQualified === true
     && readiness?.benchmarkQualified === evidence.profile.benchmarkQualified
     && readiness?.stale !== true
+    && evidence?.stale !== true
     && ['standard', 'full'].includes(readiness?.profileDepth)
     && readiness.profileDepth === evidenceDepth
     && verifyProfilerAuthorityReceipt(readiness, evidence, context)

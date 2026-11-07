@@ -1,6 +1,6 @@
 'use strict';
 
-const ModelProfile = require('../../../models/ModelProfile');
+const { readCurrentModelProfile } = require('../profiler/modelProfileService');
 const HostProfile = require('../../../models/HostProfile');
 const { normalizeHostUrl } = require('../../helpers/ollamaHostConfig');
 const { normalizeModelName } = require('./modelMetadata');
@@ -59,9 +59,7 @@ async function readThinkingProfile(modelName, hostId) {
     if (!modelName || !hostId) return { profile: null, modelProfileName: null };
     const normalizedModel = normalizeModelName(modelName);
     const profileLookupNames = modelNameCandidates(normalizedModel);
-    const profile = await ModelProfile.findOne({ name: { $in: profileLookupNames } })
-        .select('name capabilities thinkingProfiles')
-        .lean();
+    const profile = await readCurrentModelProfile({ name: { $in: profileLookupNames } }, 'name capabilities thinkingProfiles');
     return {
         profile: readMapLikeEntry(profile?.thinkingProfiles, hostId),
         modelProfileName: profile?.name || null

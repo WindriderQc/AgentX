@@ -25,6 +25,19 @@ function verifiedReadiness(overrides = {}) {
 describe('modelReadinessService v2 authority', () => {
   beforeEach(() => service.clearReadinessCache());
 
+  test('invalidation during an owner read refreshes that caller and prevents stale cache insertion', async () => {
+    let finish;
+    const prior = new Promise(resolve => { finish = resolve; });
+    const client = { getReadinessProfiles: jest.fn().mockReturnValueOnce(prior)
+      .mockResolvedValue([{ name: 'current-model', readiness: {} }]) };
+    const pending = service.loadReadinessIndex({ benchmarkClient: client });
+    service.clearReadinessCache();
+    finish([{ name: 'historical-model', readiness: {} }]);
+    expect([...(await pending).keys()]).toEqual(['current-model']);
+    expect([...(await service.loadReadinessIndex({ benchmarkClient: client })).keys()]).toEqual(['current-model']);
+    expect(client.getReadinessProfiles).toHaveBeenCalledTimes(2);
+  });
+
   test('only exact live v2 authority can make a profile routing-ready', () => {
     expect(service._normalizeReadinessEntry(verifiedReadiness(), 'primary', 'host')).toMatchObject({
       isReady: true,

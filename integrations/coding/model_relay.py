@@ -325,7 +325,19 @@ def serve(socket_path: str, model_url: str, observer=None, runner_headers=None, 
                     "response_guard": staticmethod(response_guard) if response_guard is not None else None,
                     "max_response_bytes": max_response_bytes,
                     "budget_guidance": staticmethod(budget_guidance or (lambda: None))})
-    server = UnixServer(socket_path, handler)
+    if len(os.fsencode(socket_path)) < 108:
+        server = UnixServer(socket_path, handler)
+    else:
+        # Graph/request identities make valid worker homes longer than Linux's
+        # sockaddr_un limit. Bind the same filesystem node through its directory
+        # descriptor; the sandbox still sees /home/agent/model.sock. No home,
+        # history, permission or request identity moves to a shared short path.
+        parent, name = os.path.split(os.path.abspath(socket_path))
+        directory_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            server = UnixServer(f'/proc/self/fd/{directory_fd}/{name}', handler)
+        finally:
+            os.close(directory_fd)
     server.request_budget = dict(request_budget) if request_budget is not None else None
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

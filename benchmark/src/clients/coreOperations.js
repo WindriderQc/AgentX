@@ -43,6 +43,7 @@ const CORE_OPERATIONS = Object.freeze({
   WORKLOAD_YIELD_POINT: 'benchmark.core-api.workload-yield-point',
   INFERENCE_GENERATE: 'benchmark.core-api.inference-generate',
   INFERENCE_CONTRACT: 'benchmark.core-api.inference-contract',
+  GPU_DRIVER_CACHE_INVALIDATION: 'benchmark.core-api.gpu-driver-cache-invalidation',
   HEAVY_QUEUE_SUBMIT: 'benchmark.core-api.heavy-queue-submit',
   HEAVY_QUEUE_RESERVE: 'benchmark.core-api.heavy-queue-reserve',
   HEAVY_QUEUE_LIST: 'benchmark.core-api.heavy-queue-list',
@@ -75,6 +76,9 @@ function operation(method, pathPattern, {
 const CORE_OPERATION_SPECS = Object.freeze({
   [CORE_OPERATIONS.HEAVY_QUEUE_REFUSED]: operation('POST', '^/api/cluster/schedule/work-queue/[a-f0-9-]{36}/refused$', {
     maxRequestBytes: 8 * 1024, maxResponseBytes: 256 * 1024,
+  }),
+  [CORE_OPERATIONS.GPU_DRIVER_CACHE_INVALIDATION]: operation('POST', '^/api/inference/contract/gpu-driver-cache-invalidation$', {
+    maxRequestBytes: 16 * 1024, maxResponseBytes: 64 * 1024,
   }),
   // Records an owner-reviewed request only; Core reservation and admission
   // still govern execution (#832 lane capability "Measure tonight").

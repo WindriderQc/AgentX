@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { googleSdkFingerprint } from './sdk-fingerprint.mjs';
+import { clientSdkFingerprint } from './client-sdk-fingerprint.mjs';
 
 export const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const withoutSecrets = value => {
@@ -37,10 +38,19 @@ const GOOGLE_SDK_FINGERPRINTS = new Set([
   '41bbf77413b39227c85120e1a4bc2aa1f104f41f60f29341dedb57ff6bc5765f',
   'cfad322578d04c51596f5745c29aec4686b98fa42caf75bfedce1b616747d65a'
 ]);
+const KEY_SDK_FINGERPRINTS = {
+  'azure-openai-responses': ['35c117cefd6a115da7e5f89a1c03dbb1a7f1982f6ead8425594bd394f2f1f3af', '5616a3d7a32dacb898935f900c40535f5bda5cf232c6b5f9ce9d494f9d40b4d5'],
+  'mistral-conversations': ['82338a944b12ad99bfd3140e29c98bb4341a867ac4496f9dc1f36849d5fcee23', 'c724e0b9d73a1b81f89f775aecda097fa23332b94f0dfc3cd163b7d845c34652']
+};
+const azureModelRouteOnly = () => ['AZURE_OPENAI_BASE_URL', 'AZURE_OPENAI_RESOURCE_NAME', 'AZURE_OPENAI_API_VERSION', 'AZURE_OPENAI_DEPLOYMENT_NAME_MAP']
+  .every(key => !process.env[key]);
 export const qualifiedModelApi = (version, api, transportFingerprint) => {
+  if (Object.hasOwn(KEY_SDK_FINGERPRINTS, api)) return version === '2026.9.4' && KEY_SDK_FINGERPRINTS[api].includes(transportFingerprint)
+    ? { temperature: true, seed: false, topP: false, jsonResponseFormat: false } : null;
   if (['google-generative-ai', 'google-vertex'].includes(api)) return version === '2026.9.4' && GOOGLE_SDK_FINGERPRINTS.has(transportFingerprint)
     ? { temperature: true, seed: false, topP: false, jsonResponseFormat: false } : null;
-  return QUALIFIED_MODEL_APIS[version]?.[api] || null;
+  const apis = Object.hasOwn(QUALIFIED_MODEL_APIS, version) ? QUALIFIED_MODEL_APIS[version] : null;
+  return apis && Object.hasOwn(apis, api) ? apis[api] : null;
 };
 
 export async function loadNativeSdk() {
@@ -62,14 +72,18 @@ export async function loadNativeSdk() {
   const resolveExtraParams = Object.values(module).find(value => typeof value === 'function' && value.name === 'resolveExtraParams');
   if (!resolveExtraParams) throw new Error('OPENCLAW_PARAMETER_API_UNAVAILABLE');
   const pluginFingerprint = createHash('sha256').update(Buffer.concat(await Promise.all(
-    ['native.mjs', 'service.mjs', 'index.mjs', 'openclaw.plugin.json', 'ledger.mjs', 'http-observation.mjs', 'terminal-evidence.mjs', 'sdk-fingerprint.mjs'].map(file => readFile(new URL(file, import.meta.url)))
+    ['native.mjs', 'service.mjs', 'index.mjs', 'openclaw.plugin.json', 'ledger.mjs', 'http-observation.mjs', 'terminal-evidence.mjs', 'sdk-fingerprint.mjs', 'client-sdk-fingerprint.mjs'].map(file => readFile(new URL(file, import.meta.url)))
   ))).digest('hex');
   const version = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
   // Missing Google code leaves only this API closed; other qualifications retain
   // their existing contract. The digest covers code, never instance settings.
   const googleTransportFingerprint = await googleSdkFingerprint(root).catch(() => null);
+  const [azureTransportFingerprint, mistralTransportFingerprint] = await Promise.all([
+    clientSdkFingerprint(root, googleTransportFingerprint, 'openai').catch(() => null),
+    clientSdkFingerprint(root, googleTransportFingerprint, '@mistralai/mistralai').catch(() => null)
+  ]);
   return { ...sessions, ...agents, ...llm, ...auth, ...modelInfo, attachModelProviderRequestTransport: harness.attachModelProviderRequestTransport, applyExtraParams, resolveExtraParams,
-    version, pluginFingerprint, googleTransportFingerprint, parameterApiFingerprint: createHash('sha256').update(await readFile(helper)).digest('hex') };
+    version, pluginFingerprint, googleTransportFingerprint, azureTransportFingerprint, mistralTransportFingerprint, parameterApiFingerprint: createHash('sha256').update(await readFile(helper)).digest('hex') };
 }
 
 export function billingFor(model, configured) {
@@ -136,8 +150,11 @@ export function createNativeBackend(api, { loadSdk = loadNativeSdk } = {}) {
         const local = localModel(model, sdk, configured);
         const vertex = model.api === 'google-vertex';
         const transport = ['google-generative-ai', 'google-vertex'].includes(model.api) ? { nativeTransportFingerprint: sdk.googleTransportFingerprint,
-          ...(vertex ? { nativeAuthMode: cfg.models?.providers?.[model.provider]?.auth === 'api-key' ? 'api-key' : 'unqualified' } : {}) } : {};
-        const qualified = vertex && transport.nativeAuthMode !== 'api-key' ? null : qualifiedModelApi(sdk.version, model.api, transport.nativeTransportFingerprint);
+          ...(vertex ? { nativeAuthMode: cfg.models?.providers?.[model.provider]?.auth === 'api-key' ? 'api-key' : 'unqualified' } : {}) }
+          : model.api === 'azure-openai-responses' ? { nativeTransportFingerprint: sdk.azureTransportFingerprint, nativeRouteMode: azureModelRouteOnly() ? 'model-configuration' : 'unqualified' }
+          : model.api === 'mistral-conversations' ? { nativeTransportFingerprint: sdk.mistralTransportFingerprint, nativeReasoningMode: model.reasoning ? 'unqualified' : 'non-reasoning' } : {};
+        const qualified = (vertex && transport.nativeAuthMode !== 'api-key') || transport.nativeRouteMode === 'unqualified' || transport.nativeReasoningMode === 'unqualified'
+          ? null : qualifiedModelApi(sdk.version, model.api, transport.nativeTransportFingerprint);
         const billing = local ? { kind: 'local', source: 'native-local-model', rates: null } : billingFor(model, configured);
         models.set(ref, {
           model: ref, name: model.name || model.id, contextWindow: model.contextWindow, maxTokens: model.maxTokens, ...transport,
@@ -167,8 +184,13 @@ export function createNativeBackend(api, { loadSdk = loadNativeSdk } = {}) {
     const scope = await scopeFor(cfg, descriptor.authScope, sdk);
     const slash = ref.indexOf('/');
     const model = scope.registry.find(ref.slice(0, slash), ref.slice(slash + 1));
-    if (model.api === 'google-vertex' && (descriptor.isolation.singleCallQualified !== true || descriptor.nativeAuthMode !== 'api-key')) {
+    if ((['google-vertex', 'azure-openai-responses', 'mistral-conversations'].includes(model.api) && descriptor.isolation.singleCallQualified !== true)
+        || (model.api === 'google-vertex' && descriptor.nativeAuthMode !== 'api-key')) {
       throw Object.assign(new Error('OPENCLAW_MODEL_TRANSPORT_UNQUALIFIED'), { code: 'OPENCLAW_MODEL_TRANSPORT_UNQUALIFIED', statusCode: 503 });
+    }
+    if (model.api === 'mistral-conversations' && (parameters.thinking === true || parameters.reasoningMaxTokens != null
+        || (parameters.thinkingLevel != null && parameters.thinkingLevel !== 'off'))) {
+      throw Object.assign(new Error('OPENCLAW_REASONING_UNSUPPORTED'), { code: 'OPENCLAW_REASONING_UNSUPPORTED', statusCode: 422 });
     }
     const auth = await sdk.getRuntimeAuthForModel({ model, cfg, workspaceDir: scope.workspaceDir });
     // Only the native API-key client is qualified. Missing keys, ADC markers and
@@ -195,9 +217,14 @@ export function createNativeBackend(api, { loadSdk = loadNativeSdk } = {}) {
       { ...parameters, ...(Object.keys(extraBody).length ? { extraBody } : {}), ...(parameters.responseFormat === 'json' ? { responseFormat: { type: 'json_object' } } : {}) },
       thinkingLevel, scope.agentId, scope.workspaceDir, selected, scope.agentDir, 'sse', { nativeWebSearchPolicyContext: {} });
     return { model: selected, descriptor, runtimeVersion: sdk.version, pluginFingerprint: sdk.pluginFingerprint, effectiveParameters: publicParameters(effectiveExtraParams),
-      stream: (context, options) => streamHost.streamFn(selected, context, { ...options, transport: 'sse',
+      stream: (context, options) => {
+        if (model.api === 'azure-openai-responses' && !azureModelRouteOnly()) {
+          throw Object.assign(new Error('OPENCLAW_MODEL_TRANSPORT_UNQUALIFIED'), { code: 'OPENCLAW_MODEL_TRANSPORT_UNQUALIFIED', statusCode: 503 });
+        }
+        return streamHost.streamFn(selected, context, { ...options, transport: 'sse',
         apiKey: auth.apiKey || keyAndHeaders.apiKey, headers: keyAndHeaders.headers,
-        ...(thinkingLevel && thinkingLevel !== 'off' ? { reasoning: thinkingLevel } : {}) }) };
+        ...(thinkingLevel && thinkingLevel !== 'off' ? { reasoning: thinkingLevel } : {}) });
+      } };
   }
 
   return { catalogue, prepare };

@@ -43,6 +43,7 @@ async function projectReadinessEntry(modelName, hostId, rawReadiness, evidenceBy
     }
   }
   const evidenceQualified = evidence?.profile?.benchmarkQualified === true
+    && evidence.stale !== true && readiness.stale !== true
     && readiness.benchmarkQualified === true
     && evidence.profile.benchmarkQualified === readiness.benchmarkQualified
     && !new Set(['pending_reconciliation', 'authority_invalidated']).has(readiness.authorityState)

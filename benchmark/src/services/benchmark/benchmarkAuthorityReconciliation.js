@@ -39,6 +39,7 @@ async function reconcilePendingResultInvalidations(options = {}) {
   try {
     const profilerKinds = [
       'profiler_evidence_write',
+      'gpu_driver_activation',
       'profiler_baseline_write',
       'profiler_snapshot_write',
       'profiler_context_write'

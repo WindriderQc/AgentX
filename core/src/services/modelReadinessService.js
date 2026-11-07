@@ -13,6 +13,7 @@ const CACHE_TTL_MS = 60 * 1000;
 
 let readinessCache = null;
 let readinessCacheTimestamp = 0;
+let readinessGeneration = 0;
 
 // Canonical form for registry/profile/routing lookups. Namespaces are part of
 // artifact identity; only Ollama's implicit :latest alias is normalized.
@@ -150,6 +151,7 @@ function getHostReadiness(readinessStore, hostId) {
 }
 
 async function loadReadinessIndex(options = {}) {
+  const generation = readinessGeneration;
   const useCache = options.useCache !== false;
   if (
     useCache &&
@@ -176,6 +178,7 @@ async function loadReadinessIndex(options = {}) {
       });
     });
 
+    if (generation !== readinessGeneration) return loadReadinessIndex({ ...options, useCache: false });
     readinessCache = index;
     readinessCacheTimestamp = Date.now();
     return index;
@@ -215,8 +218,10 @@ async function getModelReadiness(modelName, hostRef = null, options = {}) {
 }
 
 function clearReadinessCache() {
+  readinessGeneration += 1;
   readinessCache = null;
   readinessCacheTimestamp = 0;
+  return readinessGeneration;
 }
 
 module.exports = {

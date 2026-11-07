@@ -31,6 +31,7 @@ function resourceTypeForKind(kind) {
     judge_governance_invalidation: 'JudgeGovernanceRun',
     ground_truth_invalidation: 'JudgeGroundTruth',
     profiler_evidence_write: 'ModelPerformanceProfile',
+    gpu_driver_activation: 'HostProfile',
     profiler_baseline_write: 'HostProfileBaseline',
     profiler_snapshot_write: 'HostPerformanceSnapshot',
     profiler_context_write: 'ModelContextProfile'
@@ -97,6 +98,7 @@ function resourceModel(record) {
     judge_governance_invalidation: JudgeGovernanceRun,
     ground_truth_invalidation: JudgeGroundTruth,
     profiler_evidence_write: ModelPerformanceProfile,
+    gpu_driver_activation: HostProfile,
     profiler_baseline_write: HostProfile,
     profiler_snapshot_write: HostPerformanceSnapshot,
     profiler_context_write: ModelContextProfile
@@ -106,6 +108,7 @@ function resourceModel(record) {
 function isProfilerAuthorityKind(kind) {
   return new Set([
     'profiler_evidence_write',
+    'gpu_driver_activation',
     'profiler_baseline_write',
     'profiler_snapshot_write',
     'profiler_context_write'

@@ -3,6 +3,7 @@ import { fingerprint } from './native.mjs';
 import { observationFor, observeHttp, refusedResponse, errorMetadata } from './http-observation.mjs';
 
 const aliasesForMaxTokens = ['max_tokens', 'max_completion_tokens', 'max_output_tokens', 'maxOutputTokens', 'num_predict'];
+const outputBoundKeys = model => model.api === 'mistral-conversations' ? ['maxTokens'] : aliasesForMaxTokens;
 const reject = (code, statusCode = 400) => { throw Object.assign(new Error(code), { code, statusCode }); };
 const metric = (value, label) => {
   if (!Number.isSafeInteger(value) || value < 0) reject(`OPENCLAW_USAGE_${label}_UNAVAILABLE`, 502);
@@ -87,8 +88,10 @@ const wireContext = {
   'google-generative-ai': googleWireContext,
   'google-vertex': googleWireContext,
   'openai-completions': payload => payload.messages,
+  'mistral-conversations': payload => payload.messages,
   'anthropic-messages': payload => Array.isArray(payload.messages) ? [...(payload.system != null ? [{ role: 'system', content: payload.system }] : []), ...payload.messages] : null,
-  'openai-responses': payload => Array.isArray(payload.input) ? [...(payload.instructions != null ? [{ role: 'system', content: payload.instructions }] : []), ...payload.input] : null
+  'openai-responses': payload => Array.isArray(payload.input) ? [...(payload.instructions != null ? [{ role: 'system', content: payload.instructions }] : []), ...payload.input] : null,
+  'azure-openai-responses': payload => Array.isArray(payload.input) ? [...(payload.instructions != null ? [{ role: 'system', content: payload.instructions }] : []), ...payload.input] : null
 };
 // Provider-held state, replay or fallback would add context or calls outside the request.
 const nativeStateKeys = ['previous_response_id', 'conversation', 'prompt', 'background', 'fallbacks', 'context_management', 'mcp_servers', 'container', 'cachedContent'];
@@ -127,7 +130,7 @@ function verifyPayload(payload, parameters, context, model) {
     }
   }
   if (payload.model && payload.model !== model.id) reject('OPENCLAW_MODEL_PARAMETER_DRIFT', 502);
-  const aliases = { maxTokens: ['max_tokens', 'max_completion_tokens', 'max_output_tokens', 'maxOutputTokens', 'num_predict'],
+  const aliases = { maxTokens: outputBoundKeys(model),
     temperature: ['temperature'], topP: ['top_p', 'topP'], seed: ['seed'] };
   for (const [key, names] of Object.entries(aliases)) {
     if (parameters[key] != null && findParameter(payload, names) !== parameters[key]) reject('OPENCLAW_PARAMETER_UNAPPLIED', 422);
@@ -179,9 +182,12 @@ export function createExecutionService({ backend, now = () => Date.now(), catalo
       const stream = observeHttp(http, () => native.stream(context, { signal: boundedSignal, requestId: id, maxTokens: parameters.maxTokens,
         ...(parameters.temperature != null ? { temperature: parameters.temperature } : {}),
         ...(parameters.reasoningMaxTokens != null ? { thinkingBudgets: { low: parameters.reasoningMaxTokens } } : {}),
-        onPayload: value => {
+        onPayload: (value, observedModel) => {
           if (++calls !== 1) reject('OPENCLAW_SECOND_MODEL_CALL_FORBIDDEN', 502);
-          try { verifyPayload(value, parameters, context, native.model); } catch (error) { payloadError = error; throw error; }
+          try {
+            if (native.model.api === 'azure-openai-responses' && (!observedModel || ['provider', 'id', 'api', 'baseUrl'].some(key => observedModel[key] !== native.model[key]))) reject('OPENCLAW_NATIVE_ROUTE_DRIFT', 502);
+            verifyPayload(value, parameters, context, native.model);
+          } catch (error) { payloadError = error; throw error; }
           payload = structuredClone(value);
         },
         onResponse: response => { responseId = response.headers?.get?.('x-request-id') || response.headers?.get?.('request-id') || response.headers?.['x-request-id'] || response.headers?.['request-id'] || null; }
@@ -220,7 +226,7 @@ export function createExecutionService({ backend, now = () => Date.now(), catalo
         isolation: { noAgentPrompt: true, noMemory: true, noTools: !context.tools?.length, toolsExecuted: 0,
           noRuntimeFallback: true, modelCalls: calls, providerRouting: payload.provider ? { only: payload.provider.only || null, allow_fallbacks: payload.provider.allow_fallbacks ?? null } : null },
         contextFingerprint: fingerprint(context), payloadFingerprint: fingerprint(payload), configuredParameters: native.effectiveParameters,
-        observedParameters: { maxTokens: findParameter(payload, aliasesForMaxTokens), temperature: findParameter(payload, ['temperature']) ?? null,
+        observedParameters: { maxTokens: findParameter(payload, outputBoundKeys(native.model)), temperature: findParameter(payload, ['temperature']) ?? null,
           topP: findParameter(payload, ['top_p', 'topP']) ?? null, seed: findParameter(payload, ['seed']) ?? null } };
       if (reservation && ledger) { recorded = true; await ledger.record(cost?.nanodollars ?? null); }
       const value = { schema: 'agentx.openclaw-model-result/v1', requestId: id, model: request.model, text, thinking, toolCalls, finishReason, receipt };

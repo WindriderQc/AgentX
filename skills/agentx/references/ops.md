@@ -57,9 +57,16 @@ scope, or asked first). Exact routes: [endpoints](endpoints.md).
   wait for `/benchmark/api/benchmark/batches/active` to be empty before the next.
 
 GPU driver rollout is host-specific. `docs/GPU_DRIVER_TRANSITION.md` describes
-observation and the prepared-proof operation. Preparation freezes every native
+observation, preparation, atomic activation and native abandonment. Preparation freezes every native
 qualified capability; new target proofs stay separate from current readiness.
-It starts no measurement and exposes no activation. Prepared Profiler and tool
+It starts no measurement. Activation requires new compatible proof for the complete
+frozen scope, an exclusive native workload and its existing authority journal,
+then confirmed Core cache invalidation before release. Retry the same uncertain
+operation; never delete its manifest or reopen it under another coordination ID.
+Only an unactivated preparation with no unresolved activation may be abandoned
+and prepared again through the native action. After activation, a known driver
+change updates identity; missing telemetry keeps the identity value without
+claiming a fresh measured driver. Prepared Profiler and tool
 campaigns retain the heavy-work queue and their exact native claims. Never
 rewrite or re-key historical proof to make it valid with a newly known driver.
 

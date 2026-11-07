@@ -46,9 +46,18 @@ async function readModel(host, entry, requestId, d) {
     && hasQualifiedProfilerAuthority(readiness, evidence, { modelName: entry.modelName, hostId: host.hostId })
     && identitiesMatch(evidence.artifact, artifact) && identitiesMatch(readiness.artifact, artifact);
   const reasons = [];
+  if (artifact.digest !== entry.digest) reasons.push('artifact_digest_changed');
   if (entry.performance && !performanceValid) reasons.push('performance_required');
+  const sealedThinking = evidence?.profile?.thinking;
+  const thinkingValid = performanceValid && evidence.authorityWriteId
+    && thinking?.authorityWriteId === evidence.authorityWriteId
+    && readiness.authorityWriteId === evidence.authorityWriteId
+    && !['pending_reconciliation', 'authority_invalidated'].includes(thinking.authorityState)
+    && ['supported', 'visibleFinalAnswerOk', 'finalAnswerContractOk', 'thinkingOnlyResponse']
+      .every(key => Boolean(thinking[key]) === Boolean(sealedThinking?.[key]))
+    && thinking.recommendedPolicy === sealedThinking?.recommendedPolicy;
   const requiredThinking = entry.performance?.thinking;
-  if (requiredThinking && (thinking?.supported !== true
+  if (requiredThinking && (!thinkingValid || thinking?.supported !== true
     || (requiredThinking.modeOn && thinking.recommendedPolicy === 'disallowed')
     || (requiredThinking.visibleFinalAnswer && !(thinking.visibleFinalAnswerOk === true
       && thinking.finalAnswerContractOk === true && thinking.thinkingOnlyResponse !== true)))) reasons.push('thinking_required');
@@ -83,7 +92,7 @@ async function readModel(host, entry, requestId, d) {
     hostProfile: { ...host, gpus: preparedTarget(host, requestId, entry.modelName, d.now()).target.gpus },
     modelProfile: { name: entry.modelName, capabilities: profile?.capabilities || {},
       readiness: projected ? { [host.hostId]: projected } : {},
-      thinkingProfiles: thinking && projected ? { [host.hostId]: thinking } : {} },
+      thinkingProfiles: thinkingValid && projected ? { [host.hostId]: thinking } : {} },
     contextProfile: contextValid ? context : null, toolQualification: tools,
     performanceEvidence: performanceValid ? evidence : null };
 }

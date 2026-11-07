@@ -3,6 +3,8 @@
 const router = require('express').Router();
 const preparation = require('../../src/services/profiler/gpuDriverPreparationService');
 const evidence = require('../../src/services/profiler/gpuDriverPreparedEvidenceService');
+const activation = require('../../src/services/profiler/gpuDriverActivationService');
+const { abandon } = require('../../src/services/profiler/gpuDriverPreparationAbandon');
 const hostProfiles = require('../../src/services/profiler/hostProfileService');
 const { assertQualificationAuthority } = require('../../src/services/profiler/gpuDriverQualificationAuthority');
 
@@ -12,6 +14,10 @@ const handle = operation => async (req, res) => {
 };
 
 router.get('/:hostId', handle(req => preparation.inspect(req.params.hostId)));
+router.post('/:hostId/activate', handle(req => activation.activate({ hostId: req.params.hostId,
+  requestId: req.body?.requestId, preparationId: req.body?.preparationId })));
+router.post('/:hostId/abandon', handle(req => abandon({ hostId: req.params.hostId,
+  requestId: req.body?.requestId, preparationId: req.body?.preparationId })));
 router.post('/:hostId/prepare', handle(req => preparation.prepare({ hostId: req.params.hostId,
   requestId: req.body?.requestId, expectedFingerprint: req.body?.expectedFingerprint })));
 router.get('/:hostId/prepared/:requestId', handle(async req => {

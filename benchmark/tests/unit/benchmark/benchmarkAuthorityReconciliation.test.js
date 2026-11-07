@@ -580,6 +580,7 @@ test('the restart sweep gives every profiler projection write a stale-owner grac
     $or: [
       { kind: { $nin: [
         'profiler_evidence_write',
+        'gpu_driver_activation',
         'profiler_baseline_write',
         'profiler_snapshot_write',
         'profiler_context_write'
@@ -587,6 +588,7 @@ test('the restart sweep gives every profiler projection write a stale-owner grac
       {
         kind: { $in: [
           'profiler_evidence_write',
+          'gpu_driver_activation',
           'profiler_baseline_write',
           'profiler_snapshot_write',
           'profiler_context_write'

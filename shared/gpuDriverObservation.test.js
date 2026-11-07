@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { preserveInventoryDrivers } = require('./gpuDriverObservation');
+const { preserveInventoryDrivers, inventoryForIdentity } = require('./gpuDriverObservation');
 const { buildRuntimeFingerprint } = require('./artifactIdentity');
 const { buildMeasuredRuntime } = require('./measuredRuntime');
 
@@ -78,4 +78,16 @@ test('unknown driver identity epochs are refused rather than interpreted as a kn
     assert.throws(() => buildRuntimeFingerprint({ ...host, gpus: inventory, gpuDriverIdentityVersion }),
       { code: 'GPU_DRIVER_IDENTITY_VERSION_UNSUPPORTED' });
   }
+});
+
+test('activated inventory tracks every known driver transition but retains identity on missing telemetry', () => {
+  const version = 'agentx.gpu-driver-identity/v1';
+  const previous = inventory.map(gpu => ({ ...gpu, driver: '580.95.05' }));
+  const observed = previous.map(gpu => ({ ...gpu, driver: '590.1' })).reverse();
+  const active = { ...host, gpus: previous, gpuDriverIdentityVersion: version };
+  const changed = { ...active, gpus: inventoryForIdentity(previous, observed, version) };
+  assert.notEqual(buildRuntimeFingerprint(changed), buildRuntimeFingerprint(active));
+  assert.equal(buildRuntimeFingerprint({ ...active, gpus: inventoryForIdentity(previous, inventory, version) }), buildRuntimeFingerprint(active));
+  assert.deepEqual(inventoryForIdentity(previous, observed), preserveInventoryDrivers(previous, observed));
+  assert.throws(() => inventoryForIdentity(previous, observed, 'unknown'), { code: 'GPU_DRIVER_IDENTITY_VERSION_UNSUPPORTED' });
 });

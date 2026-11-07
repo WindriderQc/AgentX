@@ -15,8 +15,8 @@ const { profileThinkingBehavior } = require('./thinkingProfileService');
 const { resolveModelNumCtxDetails } = require('../modelContextResolver');
 const { listRunning, showModel } = require('../../clients/ollamaClient');
 const { isSameOllamaModel } = require('../../helpers/ollamaModelIdentity');
-const ModelProfile = require('../../../models/ModelProfile');
-const ModelPerformanceProfile = require('../../../models/ModelPerformanceProfile');
+const { readCurrentModelProfile } = require('./modelProfileService');
+const { readCurrentPerformance } = require('./modelPerformanceProfileService');
 const logger = require('../../../config/logger');
 const buddySurface = require('../benchmark/buddySurfaceEvents');
 const { _formatCtx, buildContextInsight } = require('./profilerContextInsight');
@@ -566,19 +566,19 @@ async function preflight(batchConfig) {
     const resolved = { ...model, host: hostId, hostUrl };
 
     const artifact = await resolveArtifactIdentity(model.name, hostId, hostUrl, { refresh: true });
-    const profile = await ModelProfile.findOne({ name: artifact.model }).select('readiness').lean();
+    const profile = await readCurrentModelProfile({ name: artifact.model }, 'readiness');
     const readinessForHost = profile?.readiness instanceof Map
       ? profile.readiness.get(hostId)
       : profile?.readiness?.[hostId] || null;
     const performanceEvidence = readinessForHost?.evidenceId
-      ? await ModelPerformanceProfile.findOne({
+      ? await readCurrentPerformance({
         _id: readinessForHost.evidenceId,
         modelName: artifact.model,
         hostId,
         active: true,
         stale: { $ne: true },
         authorityState: { $nin: ['pending_reconciliation', 'authority_invalidated'] }
-      }).lean()
+      })
       : null;
     const hasProfile = ['standard', 'full'].includes(readinessForHost?.profileDepth)
       && readinessForHost?.benchmarkQualified === true
