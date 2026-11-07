@@ -5,8 +5,8 @@ For each archived message before the cutoff, record its value lane
 (value_lanes.py) and, for every finding of the message, the owner's decisions
 in Core's historical review: an entry imported for that exact finding, or a
 consolidated souvenir candidate that cites it (from the private candidate
-manifests). The planner then accepts bulk mail, or person/important mail whose
-every finding the owner decided, in place of an exact-message analysis.
+manifests). These snapshots are information for review, not current native
+acceptance, source-analysis qualification or mailbox authority.
 
 Read-only: Core is only read, Gmail is never contacted, and the output is a
 private file outside the archive. It grants no mailbox permission.
@@ -21,9 +21,10 @@ import sys
 import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from evidence_store import load, now, save  # noqa: E402
+from evidence_store import load, now  # noqa: E402
 from history_coverage import content_hash, coverage, cutoff_date  # noqa: E402
-from retention_plan import DISPOSITION_CONTRACT, rolling_cutoff  # noqa: E402
+from retention_plan import DISPOSITION_CONTRACT, rolling_cutoff, review_packet  # noqa: E402
+from review_receipts import durable  # noqa: E402
 from secretary_evidence import DEFAULT_ROOT, Archive  # noqa: E402
 from value_lanes import LANES_NAME  # noqa: E402
 
@@ -51,8 +52,12 @@ def dispositions(archive, before, entries, manifests=(), at=None):
               for manifest in manifests for entry in manifest.get("entries", [])}
     by_finding, citing = defaultdict(list), defaultdict(list)
     for entry in entries:
+        if entry.get("reviewState") == "forgotten":
+            continue
         source = entry.get("source") or {}
         decision = {"entryId": entry["id"], "state": entry["reviewState"], "revision": entry.get("revision"),
+                    "kind": entry.get("kind"),
+                    "entrySha256": content_hash(entry), "decision": entry.get("decision"),
                     **({"souvenirNoteId": entry["souvenirNoteId"]} if entry.get("souvenirNoteId") else {})}
         for finding in merged.get(source.get("findingId"), [source.get("findingId")]):
             by_finding[finding].append(decision)
@@ -68,15 +73,19 @@ def dispositions(archive, before, entries, manifests=(), at=None):
             continue
         findings = {identity: {"section": section, "decidedBy": by_finding.get(identity, [])}
                     for section, identities in row["findingIds"].items() for identity in identities}
-        undecided = sorted({d["entryId"] for d in citing.get(row["messageId"], []) if d["state"] == "candidate"})
+        undecided = sorted({d["entryId"] for d in citing.get(row["messageId"], [])
+                            if d["state"] == "candidate" or
+                            (d["state"] == "retained" and d["kind"] in ("action", "deliverable"))})
         out.append({"schema": DISPOSITION_CONTRACT, "at": at or now(),
                     "messageId": row["messageId"], "threadId": row["threadId"], "sourceSha256": row["originalSha256"],
                     "evidenceHash": row["evidenceHash"], "reviewSha256": row["reviewSha256"], "basis": basis,
+                    "reviewPacketSha256": content_hash(review_packet(archive, row)),
                     "lane": {"lane": lane["lane"], "reason": lane.get("reason"), "valueLanesSha256": lanes_sha},
                     "findings": findings, "undecidedEntries": undecided,
                     "generator": "retention_dispositions.py", "grantsMailboxPermission": False})
-        undecided_findings = any(not f["decidedBy"] or any(d["state"] == "candidate" for d in f["decidedBy"])
-                                 for f in findings.values())
+        undecided_findings = any(not f["decidedBy"] or any(d["state"] == "candidate" or
+            (f["section"] in ("actions", "deliverables") and d["state"] == "retained")
+            for d in f["decidedBy"]) for f in findings.values())
         counts[f"{basis}:{'undecided' if undecided or undecided_findings else 'decided'}"] += 1
     return out, dict(counts)
 
@@ -99,7 +108,7 @@ def main(argv=None):
     before = args.before or rolling_cutoff(args.older_than_days)
     archive = Archive(args.root, run=lambda _: (_ for _ in ()).throw(RuntimeError("Provider access disabled")))
     rows, counts = dispositions(archive, before, core_entries(args.core), [load(p) for p in args.souvenir_manifest])
-    save(args.output, rows)
+    durable(args.output, rows, exclusive=True)
     print(json.dumps({"before": before.isoformat(), "dispositions": len(rows), "counts": counts}))
     return 0
 

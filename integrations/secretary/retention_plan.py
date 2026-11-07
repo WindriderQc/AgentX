@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
 """Prepare an exact-message cleanup review; never perform a mailbox change.
 
-Archive coverage, qualified analysis and information disposition are separate
-receipts. All must match current evidence. This planner deliberately has no
-Gmail transport, approval implementation or deletion command.
+Archive coverage and local analysis/disposition attestations prepare proposals,
+not native acceptance. This planner has no native semantic/preservation decision
+or mailbox approval binding, Gmail transport or deletion command.
 """
 from __future__ import annotations
 
 import argparse
 from collections import Counter
 from datetime import datetime, timedelta, timezone
-import hashlib
 import json
 from pathlib import Path
 import re
 
-from evidence_store import load, now, save
-from history_coverage import content_hash, coverage, cutoff_date, independent, proof_matches
+from evidence_store import load
+from history_coverage import content_hash, coverage, cutoff_date, independent, proof_matches, current_file_matches
 from secretary_evidence import Archive, DEFAULT_ROOT
 from compound_sources import packet_scopes, proof_paths, decision_reasons
+from review_receipts import durable
+from verify_archive import sha_file
+from value_lanes import LANES_NAME
 
 HASH = re.compile(r"[a-f0-9]{64}")
 QUALIFICATION_CASES = frozenset((
@@ -28,10 +30,12 @@ QUALIFICATION_CASES = frozenset((
     "signature_information", "owner_aliases", "mime_alternatives", "external_references",
 ))
 ANALYSIS_CONTRACT = "agentx.secretary-retention-analysis/v1"
-DISPOSITION_CONTRACT = "agentx.secretary-retention-disposition/v1"
-DECIDED = frozenset(("retained", "resolved", "dismissed"))
-# Findings an owner disposition must cover even for bulk mail.
-OBLIGATIONS = frozenset(("actions", "deliverables", "invoices"))
+DISPOSITION_CONTRACT = "agentx.secretary-retention-disposition/v2"
+# No caller-supplied JSON can discharge a native contract this planner lacks.
+NATIVE_GAPS = (
+    "native_semantic_acceptance_unavailable", "native_decision_reconciliation_unavailable",
+    "native_preservation_acceptance_unavailable", "native_manifest_approval_binding_unavailable",
+)
 
 
 def aware(value):
@@ -132,18 +136,14 @@ def _reasons_for_decision(row, decision, packet, qualification):
     return reasons
 
 
-def _reasons_for_disposition(row, disposition):
-    """An owner disposition: bulk mail, or every finding decided by the owner in Core.
-
-    It replaces the exact-message analysis only. Integrity, copies, provider,
-    draft, date and unread-page blockers still apply. A finding the owner never
-    saw (left out of Core) keeps the message held.
-    """
+def _reasons_for_disposition(row, disposition, packet):
+    """Check a saved Core decision snapshot as review information, not authority."""
     if disposition.get("schema") != DISPOSITION_CONTRACT:
-        return ["owner_disposition_missing"]
+        return ["owner_disposition_contract_not_current" if disposition.get("schema") else "owner_disposition_missing"]
     reasons = []
     pins = {"messageId": row["messageId"], "threadId": row["threadId"], "sourceSha256": row["originalSha256"],
-            "evidenceHash": row["evidenceHash"], "reviewSha256": row["reviewSha256"]}
+            "evidenceHash": row["evidenceHash"], "reviewSha256": row["reviewSha256"],
+            "reviewPacketSha256": content_hash(packet)}
     if any(disposition.get(key) != value for key, value in pins.items()) or not aware(disposition.get("at")):
         reasons.append("owner_disposition_stale_or_wrong_source")
     expected = {identity: section for section, identities in row["findingIds"].items() for identity in identities}
@@ -154,7 +154,7 @@ def _reasons_for_disposition(row, disposition):
     if disposition.get("undecidedEntries"):
         reasons.append("owner_review_entries_undecided")
     if basis == "bulk-lane" and lane == "bulk":
-        required = [i for i, s in expected.items() if s in OBLIGATIONS]
+        required = list(expected)
     elif basis == "owner-decided" and lane in ("person", "important"):
         required = list(expected)
         if not required:
@@ -164,10 +164,49 @@ def _reasons_for_disposition(row, disposition):
         return reasons + ["owner_disposition_basis_invalid"]
     for identity in required:
         decided = (supplied.get(identity) or {}).get("decidedBy") or []
-        if not decided or any(entry.get("state") not in DECIDED for entry in decided):
+        allowed = {"resolved", "dismissed"} if expected[identity] in ("actions", "deliverables") \
+            else {"retained", "dismissed"}
+        if any(entry.get("state") == "retained" for entry in decided) \
+                and expected[identity] in ("actions", "deliverables"):
+            reasons.append("retained_action_still_open")
+        if not decided or any(entry.get("state") not in allowed for entry in decided):
             reasons.append("finding_not_decided_by_owner")
-            break
     return reasons
+
+
+def file_pin(root, relative):
+    try:
+        file = (root / relative).resolve()
+        if not file.is_relative_to(root.resolve()) or not file.is_file():
+            return None
+        return {"sha256": sha_file(file), "bytes": file.stat().st_size}
+    except (OSError, ValueError, RuntimeError):
+        return None
+
+
+def restore_observation(root, row, mirror):
+    """An exact-source local restore report is information, not native acceptance."""
+    receipt = load(root / "raw-receipts" / f"{row['messageId']}.json", {})
+    sample = mirror.get("restoreSample") or {}
+    if not isinstance(sample, dict) or not isinstance(sample.get("sources"), dict) \
+            or not isinstance(sample.get("failures"), list) \
+            or any(not isinstance(failure, dict) for failure in sample["failures"]):
+        return "missing_or_mismatched"
+    source = sample["sources"].get(row["messageId"], {})
+    if not isinstance(source, dict):
+        return "missing_or_mismatched"
+    if mirror.get("schema") != "agentx.secretary-archive-verification/v1" or not aware(mirror.get("at")) \
+            or not proof_matches(mirror, "raw", row["messageId"], receipt) \
+            or not current_file_matches(root, receipt) \
+            or any(source.get(key) != receipt.get(key) for key in ("path", "sha256", "bytes")) \
+            or source.get("sha256") != row["originalSha256"] \
+            or type(source.get("partsDecoded")) is not int or source["partsDecoded"] < 1 \
+            or type(source.get("attachmentsDecoded")) is not int or not 0 <= source["attachmentsDecoded"] <= source["partsDecoded"] \
+            or type(sample.get("opened")) is not int or sample["opened"] < 1 \
+            or type(sample.get("sampled")) is not int or sample["sampled"] < sample["opened"] \
+            or any(f.get("messageId") == row["messageId"] for f in sample.get("failures", [])):
+        return "missing_or_mismatched"
+    return "reported"
 
 
 def review_packet(archive, row):
@@ -190,6 +229,10 @@ def review_packet(archive, row):
     compound = packet_scopes(archive.root, message.get("attachments", []))
     if compound:
         packet["compoundAttachments"] = compound
+    paths = [f"threads/{tid}/manifest.json", f"threads/{tid}/original.json", f"reviews/{tid}.json",
+             f"raw-receipts/{mid}.json", *(f"page-reviews/{p['pageId']}.json" for p in pages)]
+    packet["packetContract"] = "agentx.secretary-retention-review-packet/v2"
+    packet["metadataFiles"] = {path: file_pin(archive.root, path) for path in paths}
     return packet
 
 
@@ -197,8 +240,8 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
     clock = clock or datetime.now(timezone.utc)
     report = coverage(archive, before, primary, mirror)
     global_reasons, provider_ids = inventory_checks(inventory, before, clock)
-    # The triage qualification attests the exact-analysis process only; owner
-    # dispositions rest on the owner's own decisions instead.
+    decisions, dispositions = list(decisions), list(dispositions)
+    # These are local attestations, never a native acceptance decision.
     analysis_unqualified = not qualification_valid(qualification)
     grouped, owned = {}, {}
     for decision in decisions:
@@ -206,8 +249,8 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
     for disposition in dispositions:
         owned.setdefault(disposition.get("messageId"), []).append(disposition)
     rows, counts = [], Counter()
-    # These preliminary blockers are discharged only by exact, qualified
-    # per-message review. Hash/copy/source/date/draft blockers cannot be waived.
+    # Matching local attestations can form a review proposal only. They never
+    # discharge NATIVE_GAPS or waive hash/copy/source/date/draft blockers.
     reviewable = {"unread_source_pages", "attachment_analysis_needs_review", "action_findings_need_reconciliation",
                   "information_disposition_not_verified", "thread_questions_unresolved",
                   "analysis_validation_required", "message_classification_proof_required"}
@@ -216,12 +259,10 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
         matching, disposed = grouped.get(row["messageId"], []), owned.get(row["messageId"], [])
         owner_path = not matching and len(disposed) == 1
         if owner_path:
-            # Unread pages are never waived; bulk mail also waives attachment
-            # images and thread questions, which person/important mail keeps.
+            # Local decision snapshots inform review only. Bulk mail cannot
+            # waive unread pages, attachment images or thread questions.
             waived = {"analysis_validation_required", "message_classification_proof_required",
                       "action_findings_need_reconciliation", "information_disposition_not_verified"}
-            if disposed[0].get("basis") == "bulk-lane":
-                waived |= {"attachment_analysis_needs_review", "thread_questions_unresolved"}
             reasons = list(global_reasons) + [b for b in row["blockers"] if b not in waived]
         else:
             reasons = list(global_reasons) + [b for b in row["blockers"] if b not in reviewable]
@@ -242,36 +283,50 @@ def plan(archive, before, inventory, primary, mirror, qualification, decisions, 
                   if (archive.root / "page-reviews" / (page + ".json")).is_file()]
         paths += proof_paths(packet.get("compoundAttachments", {}))
         for relative in paths:
-            file = archive.root / relative
-            expected = {"sha256": hashlib.sha256(file.read_bytes()).hexdigest(), "bytes": file.stat().st_size} if file.is_file() else {}
+            expected = file_pin(archive.root, relative) or {}
             if not proof_matches(primary, "archiveTreeFiles", relative, expected) \
                     or not proof_matches(mirror, "archiveTreeFiles", relative, expected):
                 reasons.append("current_metadata_copies_not_verified")
         if row["messageId"] not in provider_ids:
             reasons.append("message_absent_from_provider_inventory")
         if owner_path:
-            reasons.extend(_reasons_for_disposition(row, disposed[0]))
+            reasons.extend(_reasons_for_disposition(row, disposed[0], packet))
+            lane = disposed[0].get("lane") or {}
+            if lane.get("valueLanesSha256") != content_hash(load(archive.root / LANES_NAME, {})):
+                reasons.append("value_lane_snapshot_stale")
         elif len(matching) != 1:
             reasons.append("analysis_missing_or_ambiguous")
         else:
             reasons.extend(_reasons_for_decision(row, matching[0], packet, qualification))
         if row["coverage"]["expectedPages"] == 0:
             reasons.append("source_page_plan_empty")
+        restored = restore_observation(archive.root, row, mirror)
+        if not independent(primary, mirror) or restored != "reported":
+            reasons.append("restore_evidence_missing_or_wrong_source")
+        if review_packet(archive, row) != packet:
+            reasons.append("source_changed_during_preparation")
         reasons = sorted(set(reasons))
-        counts.update(reasons)
-        rows.append({**row, "reviewPacket": packet, "blockers": reasons,
+        blockers = sorted(set(reasons) | set(NATIVE_GAPS))
+        counts.update(blockers)
+        rows.append({**row, "reviewPacket": packet, "blockers": blockers,
+                     "reviewBlockers": reasons, "reviewProposal": not reasons,
+                     "cleanupStatus": "blocked", "mirrorRestoreObservation": restored,
                      "basis": (disposed[0].get("basis") if owner_path else "exact-analysis" if len(matching) == 1 else None),
-                     "candidateForOwnerReview": not reasons, "executionAllowed": False})
+                     "candidateForOwnerReview": False, "executionAllowed": False})
     archived_ids = {row["messageId"] for row in rows}
     missing = sorted(provider_ids - archived_ids)
-    return {"schema": "agentx.secretary-retention-plan/v1", "at": clock.isoformat(), "before": before.isoformat(),
+    return {"schema": "agentx.secretary-retention-plan/v2", "at": clock.isoformat(), "before": before.isoformat(),
+            "cleanupStatus": "blocked", "nativeValidationGaps": list(NATIVE_GAPS),
             "executionAllowed": False, "requiresNativeApproval": True,
             "effect": "none; exact-message review preparation only",
             "counts": {"historicalArchiveMessages": len(rows), "providerMessages": len(provider_ids),
                        "providerMessagesWithoutHistoricalArchive": len(missing),
                        "candidatesForOwnerReview": sum(r["candidateForOwnerReview"] for r in rows),
+                       "proposalsForOwnerReview": sum(r["reviewProposal"] for r in rows),
                        "held": sum(not r["candidateForOwnerReview"] for r in rows), "blockers": dict(counts)},
             "providerMessagesWithoutHistoricalArchive": missing, "messages": rows,
+            "reviewAttestations": {"qualification": qualification, "analyses": decisions,
+                                   "ownerDispositions": dispositions},
             "inputHashes": {"inventory": content_hash(inventory), "primary": content_hash(primary),
                             "mirror": content_hash(mirror), "qualification": content_hash(qualification),
                             "decisions": content_hash(decisions), "dispositions": content_hash(list(dispositions))},
@@ -306,8 +361,11 @@ def main():
     result = plan(Archive(args.root, run=lambda _: (_ for _ in ()).throw(RuntimeError("Provider access disabled"))),
         args.before, read(args.inventory, {}), read(args.primary_proof, {}), read(args.mirror_proof, {}),
         read(args.qualification, {}), read(args.decisions, []), dispositions=read(args.dispositions, []))
-    save(args.output, result)
-    print(json.dumps({k: v for k, v in result.items() if k not in ("messages", "providerMessagesWithoutHistoricalArchive")}, ensure_ascii=False))
+    durable(args.output, result, exclusive=True)
+    summary = {key: result[key] for key in (
+        "schema", "at", "before", "cleanupStatus", "nativeValidationGaps", "executionAllowed",
+        "requiresNativeApproval", "effect", "counts", "inputHashes")}
+    print(json.dumps(summary, ensure_ascii=False))
 
 
 if __name__ == "__main__":

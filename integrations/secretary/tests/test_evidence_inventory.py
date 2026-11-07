@@ -57,6 +57,32 @@ class InventoryReconciliationTests(unittest.TestCase):
                 collect_discovered(self.archive(kind), "thread01", [self.row])
             self.assertFalse(unavailable(self.root, self.row))
             self.assertEqual(collection_status(self.archive(), ["contact"], [self.manifest])["uncollectedThreads"], 1)
+            receipt = load(self.root / "source-availability/oldDraft1.json")
+            self.assertEqual(receipt["outcome"], kind)
+            self.assertEqual(load(self.root / receipt["receipt"])["outcome"], kind)
+        receipts = (self.root / "source-observations/oldDraft1").glob("*.json")
+        self.assertEqual({load(file)["outcome"] for file in receipts}, {"authorization", "transient", "unknown"})
+
+    def test_partial_reconciliation_retains_not_found_and_failure_with_exact_identities(self):
+        second = {**self.row, "id": "oldDraft2"}
+        archive = self.archive()
+        original = archive.run
+
+        def run(command):
+            if command[:3] == ["gmail", "get", second["id"]]:
+                raise GmailProviderError("gmail.get", 5, "authorization")
+            return original(command)
+
+        archive.run = run
+        with self.assertRaises(GmailProviderError):
+            collect_discovered(archive, "thread01", [self.row, second])
+        first_receipt = load(self.root / "source-availability/oldDraft1.json")
+        self.assertTrue(unavailable(self.root, self.row))
+        self.assertFalse(unavailable(self.root, second))
+        self.assertEqual(load(self.root / "source-availability/oldDraft2.json")["outcome"], "authorization")
+        with self.assertRaises(GmailProviderError):
+            collect_discovered(archive, "thread01", [self.row, second])
+        self.assertEqual(load(self.root / "source-availability/oldDraft1.json"), first_receipt)
 
     def test_a_source_that_still_exists_remains_pending_until_full_collection(self):
         archive = self.archive()

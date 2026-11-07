@@ -32,6 +32,8 @@ FRESH = timedelta(hours=1)
 
 
 def batch_of(manifest, name):
+    if manifest.get("schema") == "agentx.secretary-retention-plan/v2":
+        raise SystemExit("A v2 retention report is review-only; it is not an approved mailbox batch")
     batch = next((b for b in manifest.get("batches", []) if b.get("batch") == name), None)
     if not batch or not batch.get("messages"):
         raise SystemExit(f"Batch {name} is not in this manifest")
