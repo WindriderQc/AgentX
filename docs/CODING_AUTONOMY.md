@@ -132,6 +132,11 @@ churn. The runner freezes the prepared Git head in a private
 `task-<id>.regression-requirement.json` before implementation. Corrections retain
 that baseline and requirement; a missing receipt or changed requirement refuses
 instead of establishing a fresh baseline.
+All three Core continuation modes preserve the same normalized list, including
+its absence on older tasks. Adding, removing or replacing a required path refuses
+before the continuation fence, credits or runner launch; reordering the same
+paths is allowed. The continuation form displays this fixed list read-only,
+including when the rest of the saved qualification needs a new review.
 
 After independent tests pass, local and distributed publication check every
 required file against that baseline. Each must remain a regular file with

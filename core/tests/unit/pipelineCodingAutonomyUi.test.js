@@ -107,7 +107,9 @@ test('merged PR and failed CI remain visible as separate facts without acceptanc
 test('reviewed continuation sends the original checkpoint and intent with explicit cumulative credits', async () => {
   const snapshot = state('stopped'), task = snapshot.tasks[0];
   Object.assign(task, { authorized: false, taskStatus: 'blocked', pr: null, authorizationRevision: 12,
-    nativeAttemptCount: 3, nativeAttemptLimit: 3, automationFingerprint: 'b'.repeat(64), verificationProfile: 'agentx-core-runner-tests/v1' });
+    nativeAttemptCount: 3, nativeAttemptLimit: 3, automationFingerprint: 'b'.repeat(64), verificationProfile: 'agentx-core-runner-tests/v1',
+    requiredRegressionTests: ['core/tests/unit/inferenceRuntimePolicy.test.js'],
+    readiness: { canAuthorize: false, definition: null, issues: [] } });
   task.runs[0].head = 'a'.repeat(40);
   const { nodes, calls } = setup(snapshot); await flush(); nodes.codingAutonomyConfirm.checked = true;
   const form = descendants(nodes.codingAutonomyTasks).find(n => n.events.submit && descendants(n).some(child => child.textContent === 'Record reviewed continuation'));
@@ -115,7 +117,8 @@ test('reviewed continuation sends the original checkpoint and intent with explic
   const field = title => descendants(form).find(n => n.textContent === title).children[0];
   field('New approved coding campaign').value = KEY;
   field('Observable acceptance criteria, one per line').value = 'The exact preserved failure is corrected.';
-  field('Required regression test edits, exact paths (optional)').value = 'core/tests/unit/inferenceRuntimePolicy.test.js';
+  expect(field('Required regression test edits (fixed for this task)').value).toBe('core/tests/unit/inferenceRuntimePolicy.test.js');
+  expect(field('Required regression test edits (fixed for this task)').readOnly).toBe(true);
   field('Estimated remaining work minutes').value = '10';
   field('Estimated remaining model calls').value = '8';
   descendants(form).find(n => n.textContent.startsWith('Correction based')).children[0].value = 'Fix the exact preserved test failure.';
@@ -128,6 +131,17 @@ test('reviewed continuation sends the original checkpoint and intent with explic
       requiredRegressionTests: ['core/tests/unit/inferenceRuntimePolicy.test.js'],
       requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'], estimate: { workSeconds: 600, modelCalls: 8 } },
     budget: { workSeconds: 3600, testSeconds: 900, modelSeconds: 1800, modelCalls: 32, ciSeconds: 900 } });
+});
+test('a legacy continuation keeps its absent regression requirement empty and read-only', async () => {
+  const snapshot = state('stopped'), task = snapshot.tasks[0];
+  Object.assign(task, { authorized: false, taskStatus: 'blocked', pr: null, authorizationRevision: 12,
+    nativeAttemptCount: 1, nativeAttemptLimit: 2, automationFingerprint: 'b'.repeat(64), verificationProfile: 'agentx-core-runner-tests/v1' });
+  task.runs[0].head = 'a'.repeat(40);
+  const { nodes } = setup(snapshot); await flush();
+  const label = descendants(nodes.codingAutonomyTasks).find(node => node.textContent === 'Required regression test edits (fixed for this task)');
+  expect(label.children[0].value).toBe('');
+  expect(label.children[0].readOnly).toBe(true);
+  expect(label.children[0].required).toBe(false);
 });
 test('a merged PR offers authorization withdrawal and refuses another review correction in the UI', async () => {
   const snapshot = state('ready_for_review'); snapshot.tasks[0].delivery = { merged: true, state: 'closed',
