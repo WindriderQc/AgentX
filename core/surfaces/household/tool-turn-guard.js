@@ -1,6 +1,14 @@
 'use strict';
 
 const TASK_TOOLS = new Set(['list_personal_tasks', 'agentx__list_personal_tasks', 'personal_briefing', 'agentx__personal_briefing']);
+const TASK_DETERMINERS = String.raw`(?:(?:autres?|ma|mon|mes|notre|nos|la|le|les|des|my|our|the|any|other|personal|personnelles?)\s+)*`;
+const EXCLUDED_TASK_SCOPE = new RegExp([
+  String.raw`\b(?:aucune?|ni|sans|pas|no|not|nor|neither|without)\s+`,
+  String.raw`(?:(?:toucher|modifier|consulter|lire|touching|changing|reading|checking|touch|change|read|check)\s+)?(?:a\s+)?`,
+  TASK_DETERMINERS,
+  String.raw`(?:liste\s+(?:de|des)\s+${TASK_DETERMINERS})?`,
+  String.raw`(?:taches?|tasks?|to[ -]?do(?: list)?)\b`
+].join(''), 'g');
 
 // A deliberately narrow requirement: an explicit request to read/count the
 // current personal task list. Advice, stories and general task questions stay
@@ -12,7 +20,7 @@ function requestsTaskCheck(text) {
   // a calendar read elsewhere must not turn "ni tâche à toucher" into a check.
   const input = normalized.split(/[.!?;,\n]|\b(?:et|puis|ensuite|mais|and|then|but)\b/)
     .filter(clause => !/\b(?:ne|don't|do not)\b[^.!?]{0,40}\b(?:pas|check|look|list|read)\b/.test(clause))
-    .map(clause => clause.replace(/\b(?:aucune?|ni|sans|pas|no|not|nor|neither|without)\s+(?:(?:toucher|modifier|consulter|lire|touching|changing|reading|checking|touch|change|read|check)\s+)?(?:a\s+)?(?:(?:autres?|mes|nos|les|des|my|our|any|other|personal|personnelles?)\s+)*(?:taches?|tasks?|to[ -]?do(?: list)?)\b/g, ' '))
+    .map(clause => clause.replace(EXCLUDED_TASK_SCOPE, ' '))
     .join(' ');
   if (/\b(?:comment|how to|explain|explique|conseils?|advice|histoire|story)\b/.test(input)) return false;
   const topic = /\b(?:taches?|tasks?|to[ -]?do(?: list)?)\b/.test(input);
