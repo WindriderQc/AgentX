@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Run one Pipeline task with the local coding worker and open a draft PR.
 
-The worker (DSH) gets a fresh clone on its own branch, a shell and the test
-tools inside a Bubblewrap sandbox: it sees that clone and nothing else of the
-host, no credentials, and it cannot push. It has no network: its only way out
-is one relay to Core's model route, so Core admits each inference like any
-other. Dependencies are installed before it starts. Review of the draft PR and
-its CI is the gate.
+The worker runs on the selectable coding harness, DSH or OpenCode. It gets a
+fresh clone on its own branch, a shell and the test tools inside a Bubblewrap
+sandbox: it sees that clone and nothing else of the host, no credentials, and
+it cannot push. It has no network: its only way out is one relay to Core's
+model route, so Core admits each inference like any other. Dependencies are
+installed before it starts. Review of the draft PR and its CI is the gate.
 """
 
 from __future__ import annotations
