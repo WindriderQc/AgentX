@@ -18,6 +18,7 @@ test('historical metadata copies only the matching canonical input observation w
   history.snapshot.read.totals.calls = 999;
   assert.equal(JSON.stringify(turn), before, 'the canonical turn, display and read remain unchanged');
   assert.equal(metadata(block, turn).snapshot.read.expiresAt, '2026-01-01T00:05:00Z', 'reading an old observation never refreshes expiry');
+  assert.equal(metadata(block, { ...turn, traceId: 'canonical-trace' }).sourceTurnId, 'canonical-trace', 'complete canonical conversation context identifies a turn by its trace');
 });
 
 test('legacy, different pages and different focus never acquire an invented observation', () => {

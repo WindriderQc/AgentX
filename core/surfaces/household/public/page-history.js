@@ -13,7 +13,7 @@
     // This is the observation at the INPUT of that turn, never a receipt that
     // the page proposed in the answer loaded. Preserve its captured values.
     const snapshot = matches ? JSON.parse(JSON.stringify(turn.presentationContext)) : null;
-    return { recordedAt: date(turn.createdAt), sourceTurnId: clean(turn.clientTurnId || turn.traceId, 80), snapshot };
+    return { recordedAt: date(turn.createdAt), sourceTurnId: clean(turn.traceId || turn.clientTurnId, 80), snapshot };
   }
   function create({ block, target, turn, onOpen }) {
     const data = metadata(block, turn);
