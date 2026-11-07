@@ -25,7 +25,7 @@ describe('Nerve Center individual pin controls', () => {
   const primary = { model: 'gemma:latest', keepAlive: 300, contextSize: 32768, autoRestore: false };
   const embedding = { model: 'qllama/bge-m3:f16', keepAlive: -1, contextSize: 0, autoRestore: true };
 
-  async function controlHarness(selector, { model, value, checked, removing = false, ollamaConcurrency = null, gpuRows = [], modelParallelism, confirm = () => true } = {}) {
+  async function controlHarness(selector, { model, value, checked, removing = false, ollamaConcurrency = null, gpuRows = [], modelParallelism, voiceReviewContention, confirm = () => true } = {}) {
     const body = { innerHTML: '' };
     const listeners = {};
     const control = {
@@ -36,7 +36,7 @@ describe('Nerve Center individual pin controls', () => {
     const responses = {
       '/api/ollama-hosts': { data: { hosts: [{ id: 'primary', name: 'Host', url: hostUrl, available: true,
         models: [], runningModels: [] }] } },
-      '/api/nerve-center/host-preferences': { data: [{ hostUrl, pinnedModels: [primary, embedding],
+      '/api/nerve-center/host-preferences': { voiceReviewContention, data: [{ hostUrl, pinnedModels: [primary, embedding],
         maxConcurrentModels: 2, ollamaConcurrency, status: 'ready', live: { runningModels: [{ name: embedding.model }, { name: primary.model }], modelParallelism } }] },
       '/api/nerve-center/inference/gpu-status': { data: gpuRows }
     };
@@ -56,6 +56,31 @@ describe('Nerve Center individual pin controls', () => {
     window.NerveCenterCluster.loadCluster = jest.fn();
     return { body, listeners, fetchJson, control, window };
   }
+
+  it('shows qualified recent sharing only in Diagnostics, with its observation window and evidence times', async () => {
+    const { body, fetchJson } = await controlHarness('unused', { voiceReviewContention: { windowMs: 900000, surfaces: [{
+      surface: 'nestor', status: 'warning', model: '<img src=x>', host: 'http://synthetic:11434',
+      voiceObservedAt: 'voice-time', reviewObservedAt: 'review-time', slotsSource: 'startup-log', slotsObservedAt: 'slots-time'
+    }] } });
+    expect(body.innerHTML).toContain('recent voice and reviewer calls share one request slot');
+    expect(body.innerHTML).toContain('observation window: 15 minutes');
+    expect(body.innerHTML).toContain('Slot limit recorded from startup-log at slots-time');
+    expect(body.innerHTML).toContain('Voice: voice-time; reviewer: review-time');
+    expect(body.innerHTML).not.toContain('<img src=x>');
+    expect(body.innerHTML).toMatch(/class="nc-detail-only" role="status"/);
+    expect(fetchJson.mock.calls.filter(([, options]) => options)).toEqual([]);
+  });
+
+  it('does not turn missing evidence into a healthy contention result', async () => {
+    const { body } = await controlHarness('unused', { voiceReviewContention: { surfaces: [{ surface: 'nestor', status: 'unknown' }] } });
+    expect(body.innerHTML).toContain('Voice / reviewer sharing is unknown');
+    expect(body.innerHTML).not.toContain('recent voice and reviewer calls share one request slot');
+    expect(body.innerHTML).not.toContain('No contention');
+    const missing = await controlHarness('unused');
+    expect(missing.body.innerHTML).toContain('Voice / reviewer sharing is unknown');
+    const inactive = await controlHarness('unused', { voiceReviewContention: { surfaces: [{ surface: 'nestor', status: 'inactive' }] } });
+    expect(inactive.body.innerHTML).not.toContain('Voice / reviewer contention:');
+  });
 
   it('asks before swapping the loaded model and sends nothing when declined', async () => {
     const declined = await controlHarness('.nc-pin-swap', { confirm: () => false });

@@ -249,6 +249,53 @@ that choice. Capture explains how to reconnect it or deliberately choose and
 save another microphone (including the system default), then Resume. It never
 retries a failed selection with a different microphone automatically.
 
+## Configuration owners and consumers
+
+Voice settings keep their existing owners. Reusing the speech service alone
+does not import a personality, browser preferences or a conversation policy.
+
+| Choice | Canonical owner and application |
+|---|---|
+| Personality voice | Core's versioned `PromptConfig`, authored through Team and the Voice workshop. `persona-catalog.js` resolves the saved voice, the optional `HOUSEHOLD_PERSONA_VOICES` instance map and the shared catalog. Existing sessions retain their selected personality snapshot; server speech refreshes the instance map for each reply. |
+| Explicit language, voice and capture choices | Browser storage, through the shared voice settings and presentation modules. Personal, family and reading capture scopes stay distinct; personal and family Nestor share presentation preferences on that browser. Clearing an explicit voice restores personality inheritance. |
+| Recognition model and speech-service defaults | The speech service's external configuration and saved `/config` speech choices. `/api/voix/settings` exposes only a read-only projection of startup settings. Per-request synthesis choices and the service's `native_defaults` option are distinct contracts. |
+| Speech upstream availability | Core's `VOIX_BASE_URL` and optional `VOIX_FALLBACK_URL` transport. This selects a speech peer; it does not select a conversation model or grant browser speech fallback. |
+| Conversation and reviewer models | Core routing and the selected native runtime's model policy. A voice choice does not change models, tools, memory, admission or fallback policy. |
+
+Generic language profiles and the speech service's default voices are defaults
+for their own callers, not additional personality catalogs. A consumer that
+uses a Core personality resolves and sends its requested provider, language and
+voice; a direct speech client does not acquire that personality implicitly.
+Private service addresses, runtime configuration and installed voice assignments
+remain instance data.
+
+| Consumer | Shared behavior and boundary |
+|---|---|
+| Nestor and Family browser conversations | Core's shared capture/conversation loop, personality presentation, `/api/voix` transport and browser speech ladder. OpenClaw or Hermes supplies native execution when selected; the page still owns capture and playback. |
+| Kids Room and Lecture | The shared loop and Nestor presentation, with their reading language/voice preferences and existing family contracts. |
+| Hermes dashboard voice plugin | Reuses the Core Nestor catalog, personal browser preferences, `/api/voix` and speech ladder. Its half-duplex capture pauses during playback; the native terminal owns the chat and execution. The terminal's own `/voice` feature is a separate native audio path. See [the adapter](../integrations/hermes/dashboard-voice/README.md). |
+| Telegram and other native channels | Their installed runtime owns channel capture, playback and voice configuration. This repository does not establish their installed STT/TTS providers or cloud policy. Calling VoiX `/v1` directly does not traverse Core's `/api/voix` proxy or the browser loop: Core's backup transport, personality inheritance, Stop handling and browser ladder are not implied. Qualify the actual adapter and configuration separately. |
+| Direct speech-service clients | VoiX performs stateless transcription or synthesis with the supplied request choices and service defaults. It owns no microphone, conversation or playback. Its optional controls endpoint is distinct from ordinary transcription. See [the service contract](../integrations/voix/README.md). |
+
+Browser speech fallback, Core's backup speech peer and a conversation-model
+fallback are separate mechanisms. Sharing one of them does not enable the
+others. The browser ladder below describes presentation only; it does not
+authorize a reduced-capability conversation brain.
+
+Nerve Center's Diagnostics also reports when recent Core voice and reviewer
+calls share a configured model and endpoint with a recorded one-slot limit.
+The read reuses the host-preferences observation; it starts no probe or model
+call and changes no route. It requires enabled review preferences, simple fixed
+targets (or an explicit reviewer model/host pair), successful `core-observed`
+receipts for both consumers in the same space under the current routing version,
+and a fresh online host observation. Receipts and the operator's recorded
+`process-environment` or `startup-log` slot observation must be within fifteen
+minutes; the UI shows their times and window. The architecture-derived slot
+hint alone, including `no_completion`, does not qualify that warning. Missing,
+stale or native-channel evidence stays unknown, without an absence-of-contention
+claim. This diagnoses possible shared use, not measured latency or prompt-cache
+loss; acoustic and native-runtime qualification remain separate.
+
 ## Shared speech behavior
 
 Core owns the common browser capture/conversation/playback loop and server-side
@@ -276,6 +323,17 @@ its existing word-confidence threshold. Grammar coverage is separate from
 recognizer/model and microphone qualification. A spoken Stop cuts playback;
 already accepted Main work belongs to Core and continues independently. Task
 cancellation is a distinct command and requires its own execution receipt.
+
+The two Stop detectors serve different inputs. The optional Vosk adapter checks
+uploaded audio before Whisper and returns a structured `control: stop` without
+starting general transcription. The browser accepts that control, and also
+checks complete recognized text when ordinary transcription or an explicitly
+enabled browser recognizer supplies it. The browser loop applies the playback
+interruption; the speech service does not own a playing conversation. Both
+detectors are checked against
+[`shared/voice-control-examples.json`](../shared/voice-control-examples.json);
+sharing these examples does not make acoustic confidence and text matching the
+same measurement.
 
 Wake mode requires an interjection before Nestor (Hey/Eille/Heille/Hé/Eh/Oh/Ah,
 including known name transcriptions). A name alone or an ordinary reference such
