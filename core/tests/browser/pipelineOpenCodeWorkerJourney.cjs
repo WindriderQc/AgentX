@@ -81,6 +81,7 @@ async function main() {
         // Local child completion must enable a handoff even when native history
         // and its revision are unchanged between the two polls.
         await page.waitForFunction(() => !document.getElementById('pipelineNativeSessionHandoff').disabled);
+        assert((await page.locator('#pipelineNativeSessionSelect option:checked').innerText()).endsWith(' · exited'));
       }
       await button.click();
       if (device === 'desktop') {
