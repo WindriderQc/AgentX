@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const test = require('node:test');
 const os = require('node:os');
+const { spawnSync } = require('node:child_process');
 const {
   COOKIE_NAME,
   accessTokenValid,
@@ -119,6 +120,40 @@ test('invalid DSH public, isolation, TTL, and secret settings fail closed', () =
   withEnvironment({ ...baseline, DSH_STUDIO_PUBLIC_URL: 'https://other.example:18791' }, () => {
     assert.throws(validateDshStudioEnvironment, /same hostname/);
   });
+  for (const suffix of ['?token=excluded', '#fragment', '?', '#']) {
+    withEnvironment({ ...baseline, DSH_STUDIO_PUBLIC_URL: `https://192.0.2.99/dsh/${suffix}` }, () => {
+      assert.throws(validateDshStudioEnvironment, /query|fragment/);
+    });
+  }
+  withEnvironment({ ...baseline, DSH_STUDIO_PUBLIC_URL: 'https://user:secret@192.0.2.99/dsh/' }, () => {
+    assert.throws(validateDshStudioEnvironment, /credentials/);
+  });
+});
+
+test('prefix launch preserves the mount through native authentication and relative client endpoints', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-mount-'));
+  const file = path.join(directory, 'launch.json');
+  fs.writeFileSync(file, JSON.stringify({ contract: 'agentx.dsh-studio-launch/v1', token: 'n'.repeat(43) }));
+  try {
+    for (const suffix of ['/dsh', '/dsh/']) withEnvironment({
+      CORE_PUBLIC_URL: 'https://agentx.example', DSH_STUDIO_PUBLIC_URL: `https://agentx.example${suffix}`,
+      DSH_STUDIO_ACCESS_SECRET: 'z'.repeat(48), DSH_STUDIO_LAUNCH_FILE: file,
+    }, () => {
+      assert.equal(validateDshStudioEnvironment().publicUrl, 'https://agentx.example/dsh/');
+      const router = registerDshStudioOperations({ express: fakeExpress() });
+      const launched = response();
+      router.routes.find(route => route.path === '/control-launch').handlers.at(-1)(request(), launched);
+      assert.equal(launched.headers.Location, `https://agentx.example/dsh/?token=${'n'.repeat(43)}`);
+      const authenticated = new URL('./', launched.headers.Location); // native token-exchange redirect
+      assert.equal(authenticated.href, 'https://agentx.example/dsh/');
+      assert.equal(new URL('api', authenticated).pathname, '/dsh/api');
+      assert.equal(new URL('assets/client.js', authenticated).pathname, '/dsh/assets/client.js');
+      const check = response();
+      router.routes.find(route => route.path === '/access-check').handlers.at(-1)(
+        request({ cookie: launched.headers['Set-Cookie'].split(';')[0] }), check);
+      assert.equal(check.statusCode, 204);
+    });
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 
 test('signed browser access expires and rejects tampering', () => {
@@ -219,6 +254,38 @@ test('native launch exchange stays on the configured origin and missing records 
       launch(request(), invalid);
       assert.equal(invalid.statusCode, 503);
     });
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('Studio forwards the optional public mount to the native web process', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-shell-'));
+  const bin = path.join(directory, 'runtime/node_modules/.bin');
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(path.join(bin, 'dsh'), '#!/bin/sh\nprintf "%s\\n" "$@"\n', { mode: 0o700 });
+  const fakeNode = path.join(directory, 'node');
+  // This shell transport test does not run the settings helper or call Core.
+  fs.writeFileSync(fakeNode, `#!/bin/sh\nif [ "$1" = "-e" ]; then exec '${process.execPath}' "$@"; fi\nexit 0\n`, { mode: 0o700 });
+  const settings = path.join(directory, 'settings.yaml');
+  fs.writeFileSync(settings, '{}');
+  try {
+    for (const publicUrl of ['', 'https://runtime.example/dsh/']) {
+      const env = { ...process.env, HOME: directory, AGENTX_NODE_BIN: fakeNode,
+        AGENTX_LLM_DSH_STUDIO_TOKEN: 'synthetic-studio-key', DSH_STUDIO_ISOLATION: 'host',
+        DSH_STUDIO_DSH_ROOT: path.join(directory, 'runtime'), DSH_STUDIO_SETTINGS_FILE: settings,
+        DSH_STUDIO_WORKSPACE_ROOT: path.join(directory, 'workspaces'),
+        DSH_STUDIO_STATE_ROOT: path.join(directory, 'state'), DSH_STUDIO_PUBLIC_URL: publicUrl,
+        DSH_STUDIO_LAUNCH_FILE: '', DSH_STUDIO_BROWSER_EXECUTABLE: '', DSH_STUDIO_PORT: '3085',
+        DSH_STUDIO_TRUSTED_HOST: 'runtime.example:18791' };
+      const result = spawnSync('bash', [path.join(repoRoot, 'integrations/coding/dsh-studio.sh')], { env, encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      const args = result.stdout.trim().split('\n');
+      assert.equal(args[0], 'web');
+      assert.equal(args[args.indexOf('--host') + 1], '127.0.0.1');
+      assert.equal(args.includes('--public-url'), Boolean(publicUrl));
+      const trustedHosts = args.filter((arg, i) => args[i - 1] === '--trusted-host');
+      assert.deepEqual(trustedHosts, publicUrl ? ['runtime.example:18791', 'runtime.example'] : ['runtime.example:18791']);
+      if (publicUrl) assert.equal(args[args.indexOf('--public-url') + 1], publicUrl);
+    }
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 

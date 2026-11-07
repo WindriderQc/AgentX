@@ -10,7 +10,7 @@ const { registerOpenClawProtocol } = require('./openclaw/protocol');
 const { createConversationHostResolver, parseConversationHosts, parseNoThinkModels } = require('./openclaw/conversationHosts');
 const { createAioOpsEvidenceService } = require('./evidence-service');
 const { registerEcosystemSnapshotMcp } = require('./ecosystem-snapshot-mcp');
-const { registerHermesOperations, registerOpenClawOperations } = require('./operations');
+const { hermesPublicUrl, registerHermesOperations, registerOpenClawOperations } = require('./operations');
 const { dshStudioConfig, registerDshStudioOperations, validateDshStudioEnvironment } = require('./dsh/studio');
 const {
   buildRuntimeConfigExport,
@@ -151,7 +151,7 @@ function register(api) {
   app.locals.aioOpsSecretaryMail = new SecretaryMailControl();
   app.locals.trustedRuntimeNavItems = [
     ...(Array.isArray(app.locals.trustedRuntimeNavItems) ? app.locals.trustedRuntimeNavItems : []),
-    // Two distinct doors, each naming its provider so Product surfaces never
+    // Distinct doors, each naming its provider so Product surfaces never
     // present a private runtime as a Product page. Product validates this
     // bounded contract and republishes it through /api/config so Benchmark and
     // RAG render the same launchers as Core.
@@ -162,6 +162,10 @@ function register(api) {
     ...(dshStudioConfig().configured ? [{
       id: 'dsh-studio', label: 'DSH Studio', href: '/api/dsh/control-launch', icon: 'fa-terminal',
       owner: 'AIOps', description: 'Isolated coding studio launched through AgentX. Opens in its own tab.'
+    }] : []),
+    ...(hermesPublicUrl() ? [{
+      id: 'hermes-runtime', label: 'Hermes', href: '/api/hermes/control-launch', icon: 'fa-feather',
+      owner: 'AIOps', description: 'Official Hermes dashboard with native login and profile management. Opens in its own tab.'
     }] : []),
   ];
 

@@ -1357,17 +1357,19 @@ test('the OpenClaw cron route does not collect inventory or session evidence', a
   assert.equal(response.jsonBody.data[0].enabled, false);
 });
 
-test('trusted runtime launchers are two distinct provider-tagged doors without private locations', () => {
+test('trusted runtime launchers include the configured dashboards without private locations', () => {
   const previous = {
     OPENCLAW_CONTROL_UI_PUBLIC_URL: process.env.OPENCLAW_CONTROL_UI_PUBLIC_URL,
     OPENCLAW_GATEWAY_TOKEN: process.env.OPENCLAW_GATEWAY_TOKEN,
     DSH_STUDIO_PUBLIC_URL: process.env.DSH_STUDIO_PUBLIC_URL,
-    DSH_STUDIO_ACCESS_SECRET: process.env.DSH_STUDIO_ACCESS_SECRET
+    DSH_STUDIO_ACCESS_SECRET: process.env.DSH_STUDIO_ACCESS_SECRET,
+    HERMES_PUBLIC_URL: process.env.HERMES_PUBLIC_URL
   };
   process.env.OPENCLAW_CONTROL_UI_PUBLIC_URL = 'https://openclaw-private.example:18789';
   process.env.OPENCLAW_GATEWAY_TOKEN = 'secret-gateway-token-value';
   process.env.DSH_STUDIO_PUBLIC_URL = 'https://dsh-private.example';
   process.env.DSH_STUDIO_ACCESS_SECRET = 'test-access-secret-with-at-least-32-characters';
+  process.env.HERMES_PUBLIC_URL = 'https://hermes-private.example/hermes';
   try {
     const app = { use() {}, get() {} };
     manifest.register({
@@ -1381,11 +1383,12 @@ test('trusted runtime launchers are two distinct provider-tagged doors without p
     const items = app.locals.trustedRuntimeNavItems;
     assert.deepEqual(items.map((item) => [item.id, item.label, item.href, item.owner]), [
       ['openclaw-runtime', 'OpenClaw', '/api/openclaw/control-launch/overview', 'AIOps'],
-      ['dsh-studio', 'DSH Studio', '/api/dsh/control-launch', 'AIOps']
+      ['dsh-studio', 'DSH Studio', '/api/dsh/control-launch', 'AIOps'],
+      ['hermes-runtime', 'Hermes', '/api/hermes/control-launch', 'AIOps']
     ]);
     for (const item of items) {
       assert.ok(item.description && item.description.length <= 160);
-      assert.doesNotMatch(JSON.stringify(item), /openclaw-private|dsh-private|secret-gateway-token-value|https?:\/\//);
+      assert.doesNotMatch(JSON.stringify(item), /openclaw-private|dsh-private|hermes-private|secret-gateway-token-value|https?:\/\//);
     }
   } finally {
     for (const [key, value] of Object.entries(previous)) {

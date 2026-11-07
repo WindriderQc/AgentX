@@ -243,6 +243,17 @@ function cleanUrl(value) {
   return String(value || '').trim().replace(/\/+$/, '');
 }
 
+function hermesPublicUrl(env = process.env) {
+  if (!env.HERMES_PUBLIC_URL) return null;
+  try {
+    const url = new URL(env.HERMES_PUBLIC_URL);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null;
+    url.search = '';
+    url.hash = '';
+    return url.href;
+  } catch { return null; }
+}
+
 function hermesGatewayFreshness(status = {}, now = Date.now(), maxAgeMs = Math.max(60000, Number(process.env.HERMES_GATEWAY_STALE_MS) || 86400000)) {
   const timestamps = [
     status.gateway_updated_at,
@@ -337,6 +348,12 @@ async function getHermesStatusEvidence() {
 
 function registerHermesOperations({ express, logger, statusProvider = getHermesStatusEvidence }) {
   const router = express.Router();
+  router.get('/control-launch', (_req, res) => {
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+    const url = hermesPublicUrl();
+    if (!url) return res.status(503).json({ ok: false, code: 'HERMES_DASHBOARD_NOT_CONFIGURED' });
+    return res.redirect(302, url);
+  });
   router.get('/status', async (_req, res) => {
     try {
       return res.json(await statusProvider());
@@ -348,4 +365,4 @@ function registerHermesOperations({ express, logger, statusProvider = getHermesS
   return router;
 }
 
-module.exports = { getHermesStatusEvidence, hermesGatewayFreshness, registerHermesOperations, registerOpenClawOperations };
+module.exports = { getHermesStatusEvidence, hermesGatewayFreshness, hermesPublicUrl, registerHermesOperations, registerOpenClawOperations };

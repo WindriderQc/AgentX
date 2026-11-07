@@ -20,8 +20,13 @@ function sessionTtlSeconds() {
 function dshStudioConfig() {
   const rawPublicUrl = String(process.env.DSH_STUDIO_PUBLIC_URL || '').trim();
   if (!rawPublicUrl) return Object.freeze({ configured: false, isolation: configuredIsolation() });
-  const publicUrl = cleanBaseUrl(rawPublicUrl);
-  const parsed = new URL(publicUrl);
+  const parsed = new URL(cleanBaseUrl(rawPublicUrl));
+  // Relative assets, RPC and WebSockets resolve against the mounted root.
+  let publicUrl = cleanBaseUrl(rawPublicUrl);
+  if (parsed.pathname !== '/') {
+    parsed.pathname = `${parsed.pathname.replace(/\/+$/, '')}/`;
+    publicUrl = parsed.href;
+  }
   return Object.freeze({
     configured: true,
     publicUrl,
@@ -49,8 +54,8 @@ function validateDshStudioEnvironment() {
   if (parsed.protocol !== 'https:' && !(loopback && parsed.protocol === 'http:')) {
     throw new Error('DSH_STUDIO_PUBLIC_URL must use HTTPS except on loopback');
   }
-  if ((parsed.pathname && parsed.pathname !== '/') || parsed.search || parsed.hash) {
-    throw new Error('DSH_STUDIO_PUBLIC_URL must be an origin without a path, query, or fragment');
+  if (parsed.username || parsed.password || /[?#]/.test(process.env.DSH_STUDIO_PUBLIC_URL)) {
+    throw new Error('DSH_STUDIO_PUBLIC_URL must not contain credentials, a query, or a fragment');
   }
   const corePublic = String(process.env.CORE_PUBLIC_URL || '').trim();
   if (corePublic && new URL(cleanBaseUrl(corePublic)).hostname !== parsed.hostname) {
