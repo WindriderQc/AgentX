@@ -5,7 +5,7 @@ const { withRequestReceipt } = require('../services/conversations/exchangeContex
 const { trackDelivery, waitForDelivery } = require('../services/conversations/exchangeDeliveryRegistry');
 async function ownedConversation(scope, id) {
   if (!/^[a-f0-9]{24}$/i.test(String(id || ''))) return null;
-  const userId = scope.startsWith('playground:') ? scope.slice(11) : scope.startsWith('psyx:') ? `surface:psyx:${scope.slice(5)}` : null;
+  const userId = scope.startsWith('playground:') ? scope.slice(11) : null;
   if (!userId) return null;
   const model = require('../../models/Conversation');
   const row = await model.findOne({ _id: id, userId, surface: { $exists: false } }, '_id');

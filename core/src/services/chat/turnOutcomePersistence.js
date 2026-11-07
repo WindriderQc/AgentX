@@ -92,7 +92,7 @@ function storedTurnReceipt(conversation, clientTurnId) {
 }
 
 // Only Playground conversations owned by the server-resolved identity are
-// reachable. Surface histories (PsyX, Household, ...) keep their own session
+// reachable. Household surface histories keep their own session
 // locks and must never be appended to through this route.
 function playgroundScope(userId) {
   return withPlaygroundHistoryFilter({

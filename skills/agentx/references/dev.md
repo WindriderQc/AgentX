@@ -25,7 +25,7 @@ chapter is the map and the working method around it.
 | `core/` | The main service: APIs, pages, conversations, routing, tasks, memory, Pipeline |
 | `core/routes/` | Express routers, one file per area |
 | `core/src/services/` | Domain logic; `mcpSkillBus.js` and `mcp*Tools.js` are the general tool bus, `mcpOwnerTools.js` the owner bus |
-| `core/surfaces/` | Composed surfaces (household, psyx…) with their own tests |
+| `core/surfaces/` | Composed surfaces (Household, Data Toolbox…) with their own tests |
 | `core/views/`, `core/public/` | Server templates and browser code (built by esbuild) |
 | `core/tests/` | Jest: `unit/`, `integration/`, `routes/`, `services/`, `browser/` journeys |
 | `benchmark/`, `rag/`, `data/` | The other services, each with its own `package.json` and tests |

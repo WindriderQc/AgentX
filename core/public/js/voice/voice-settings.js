@@ -5,7 +5,7 @@
   else root.AgentXVoiceSettings = api;
 })(typeof window === 'undefined' ? globalThis : window, function (root) {
   'use strict';
-  const SCOPES = ['personal', 'family', 'reading', 'psyx'];
+  const SCOPES = ['personal', 'family', 'reading'];
   const DEFAULTS = Object.freeze({ threshold: .015, minimumVoiceMs: 100, endSilenceMs: 1000, interruptionSilenceMs: 250 });
   const LIMITS = Object.freeze({ threshold: [.002, .15], minimumVoiceMs: [40, 400], endSilenceMs: [400, 2000], interruptionSilenceMs: [100, 700] });
   const scope = value => SCOPES.includes(value) ? value : 'personal';
@@ -22,25 +22,18 @@
     }
     return result;
   }
-  function inputDevice(context, store = storage()) { const value = json(store, scope(context) === 'psyx' ? 'psyx.voice.preferences.v1' : 'agentx.voice.capture.v1.' + scope(context)).inputDeviceId; return typeof value === 'string' && value.length <= 256 ? value : ''; }
+  function inputDevice(context, store = storage()) { const value = json(store, 'agentx.voice.capture.v1.' + scope(context)).inputDeviceId; return typeof value === 'string' && value.length <= 256 ? value : ''; }
   function capture(context, store = storage()) { return normalize(json(store, 'agentx.voice.capture.v1.' + scope(context))); }
   function writeCapture(context, value, store = storage()) {
     const selected = normalize(value, true);
     if (value.inputDeviceId !== undefined && (typeof value.inputDeviceId !== 'string' || value.inputDeviceId.length > 256)) throw new Error('Invalid microphone identifier');
-    if (scope(context) !== 'psyx') selected.inputDeviceId = value.inputDeviceId ?? inputDevice(context, store);
+    selected.inputDeviceId = value.inputDeviceId ?? inputDevice(context, store);
     if (!store) throw new Error('This browser cannot save preferences.');
     store.setItem('agentx.voice.capture.v1.' + scope(context), JSON.stringify(selected));
     return selected;
   }
   function read(context, personas = [], store = storage()) {
     context = scope(context);
-    if (context === 'psyx') {
-      const module = root.PsyXVoicePreferences;
-      const prefs = module ? module.readPreferences(store) : json(store, 'psyx.voice.preferences.v1');
-      return { language: prefs.language === 'en' ? 'en' : 'fr', voice: prefs.ttsVoice ? prefs.ttsProvider + '|' + prefs.ttsVoice : '',
-        inputDeviceId: prefs.inputDeviceId || '', wakeWord: false, interruption: false,
-        spokenReplies: prefs.spokenReplies === true, autoSend: prefs.autoSend === true, owner: 'PsyX · ce navigateur', capture: capture(context, store) };
-    }
     if (context === 'reading') {
       let lang; try { lang = store?.getItem('household.reading.language.v1'); } catch {}
       const language = lang === 'en' ? 'en' : 'fr', voices = json(store, 'household.reading.voices.v1');
@@ -66,15 +59,7 @@
     if (!store) throw new Error('This browser cannot save preferences.');
     const language = patch.language === 'en' ? 'en' : 'fr';
     if (patch.voice && !validVoice(patch.voice)) throw new Error('Select an installed voice.');
-    if (context === 'psyx') {
-      const module = root.PsyXVoicePreferences;
-      if (!module) throw new Error('PsyX preferences are unavailable.');
-      const prefs = module.readPreferences(store), separator = (patch.voice || '').indexOf('|');
-      const next = module.normalizePreferences({ ...prefs, language, ttsVoice: separator >= 0 ? patch.voice.slice(separator + 1) : '',
-        ttsProvider: separator >= 0 ? patch.voice.slice(0, separator) : prefs.ttsProvider,
-        inputDeviceId: patch.inputDeviceId || '', spokenReplies: patch.spokenReplies === true, autoSend: patch.autoSend === true });
-      store.setItem(module.STORAGE_KEY, JSON.stringify(next));
-    } else if (context === 'reading') {
+    if (context === 'reading') {
       const voices = json(store, 'household.reading.voices.v1');
       if (patch.voice) voices[language] = patch.voice; else delete voices[language];
       store.setItem('household.reading.voices.v1', JSON.stringify(voices));

@@ -3,8 +3,8 @@
 // Bookmark and cookie migration only. Human access belongs to the private LAN;
 // this module has no sessions, credentials, authorization or biometric storage.
 const RETIRED_PAGE = /^\/(?:unlock|access(?:\/|$))/i;
-const RETIRED_API = /^\/api\/(?:access(?:\/|$)|psyx\/auth(?:\/|$))/i;
-const LEGACY_COOKIES = ['agentx_adult', 'psyx_session'];
+const RETIRED_API = /^\/api\/access(?:\/|$)/i;
+const LEGACY_COOKIES = ['agentx_adult'];
 
 function safeDestination(value, env = process.env) {
   if (typeof value !== 'string' || value.length >= 2000 || /[\\\s]/.test(value)) return '/dad';

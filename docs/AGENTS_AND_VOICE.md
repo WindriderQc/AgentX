@@ -218,13 +218,12 @@ Playback controls stay disabled at rest. Stop replay affects only the playing
 excerpt and retains it for another listen; resuming capture is explicit. Stop
 reading cancels the current TTS preparation or playback. In attached diagnostics,
 the voice control interrupts the conversation's speech while Main work continues.
-Nestor and PsyX open that same component on their current conversation; Reading
+Nestor opens that same component on its current conversation; Reading
 opens it on its learning loop. Attached diagnostics keep that loop and its scope,
 so opening them does not request another microphone. Their resume action resumes
 the real conversation. Standalone tests create no business conversation, call no
 brain or tools and perform no warmup on page load. Listening starts explicitly
-and continues until Pause. PsyX tests stay on protected PsyX voice routes and
-retain its local-only English device-voice policy.
+and continues until Pause.
 
 Replay remains browser RAM only: at most twenty seconds, erased after two
 minutes, Pause or page exit. The explicit A/B action transcribes the same
@@ -234,7 +233,7 @@ request IDs, declared processing times and actual playback receipts remain
 separate from acoustic acceptance; missing phases stay absent.
 
 Capture thresholds and timing preferences live per browser and per personal,
-family, reading or PsyX scope. Reference values remain unchanged until saved;
+family or reading scope. Reference values remain unchanged until saved;
 new microphone openings read them. Existing language/voice preference keys keep
 their owners. Nestor presentation preferences are shared by personal and family
 Nestor on that browser, which the workshop discloses. A separate personality
@@ -248,14 +247,12 @@ from their older URLs. The historical Surface receipt keeps its existing owner.
 
 Core owns the common browser capture/conversation/playback loop and server-side
 VoiX transport, synthesis validation, deadlines and stream forwarding. Household
-and PsyX compose these with their session adapters. Native devices retain their
+composes these with its session adapters. Native devices retain their
 own capture and playback qualification.
 
 Speech health reports recognition routing availability separately from overall
 service degradation. GPU backoff with CPU fallback disabled reports
 `recognition.available: false`; it does not claim that CPU recognition is ready.
-PsyX keeps a responding degraded service reachable, displays its degraded state,
-and lets transcription use the shared transport's existing retry/backup policy.
 Reachability does not certify synthesis, loaded models or acoustic quality.
 
 Standalone spoken controls (`stop`, `stop talking`, `arrête`, `arrête de parler`,
@@ -276,18 +273,15 @@ including single digits, thanks and goodbye, are not discarded by a lexical nois
 blacklist. Acoustic noise/echo handling and recognition quality remain distinct.
 
 The loop speaks clauses and prepares at most one ahead. Timed holding phrases
-are off by default, including Household and PsyX: elapsed time is not evidence
+are off by default, including Household: elapsed time is not evidence
 of delegated work. An adapter may opt in with `holdingDelayMs`; available text
 drops a phrase that has not started. `say_end` flushes the last clause before a
-Household turn's remaining completion work. PsyX waits for its confirmed reply. One selected language applies throughout a turn, including notices
+Household turn's remaining completion work. One selected language applies throughout a turn, including notices
 and holding phrases. Nestor and Family browser conversations default to Quebec
 French (`fr`, browser locale `fr-CA`); English requires an explicit selection.
 Kids Room and Lecture share a browser-local language choice in the Voice workshop,
 sent to recognition, each reply request and playback. A pending reply keeps the
 language captured for that turn; replay retains the reply's selected language.
-PsyX sends its own browser voice preference with spoken chat requests; its
-spoken prompt uses Quebec French by default and English only when selected.
-Typed PsyX chat retains its existing latest-message language behavior.
 Saved automatic choices become French, while explicit English choices remain.
 The browser sends its current choice with each turn, including resumed sessions,
 and Core places that language directive outside the reference-data block. The
@@ -304,13 +298,7 @@ A failure before audio is scheduled permits one clause retry, at most once per
 turn, starting below the failed voice. A partially scheduled clause is terminal;
 it is never repeated automatically. Explicit replay remains available. Invalid
 requests and access refusals do not advance to another voice. Interruption cancels
-playback and does not initiate fallback. PsyX keeps its protected chosen-voice
-route and does not retry that same failed voice. Explicitly chosen English may
-fall back to a device voice only when Chrome reports `localService === true` and
-an English language. Remote and unspecified system voices are excluded. Voice
-discovery waits briefly and remains cancellable; absent local English is shown
-as unavailable while the complete answer remains visible. French keeps its
-protected service route. This device fallback never bypasses an access refusal.
+playback and does not initiate fallback.
 Exhausting a ladder can leave text unspoken while the complete result stays visible.
 
 Kids Room and Lecture use the same hands-free conversation loop. Enable voice
@@ -457,8 +445,7 @@ available to this player. None of these marks proves a first audible word.
 
 Unreported phases stay absent rather than becoming zero. Prefix observations
 apply to instrumented OpenClaw/Hermes calls; they are not universal direct-lane
-traces. Household persists timing by the browser's turn id within its session;
-PsyX has no timing store/adapter and does not collect that timeline.
+traces. Household persists timing by the browser's turn id within its session.
 
 The browser also records first speakable clause, speech request dispatch, speech
 response headers, first response bytes and an estimated first nonzero output

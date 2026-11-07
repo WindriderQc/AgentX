@@ -5,14 +5,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const P = require('../public/persona-presentation');
-const PsyX = require('../../psyx/public/voice-preferences');
 const { Endpoint } = require('../../../public/js/voice/browser-conversation');
 const { serviceSettings } = require('../../../src/services/voice/settings');
 const personas = [{ id:'nestor', name:'Nestor' }, { id:'helper', name:'Helper' }];
 function settings(initial = {}, browser = {}) {
   const values = new Map(Object.entries(initial));
   const storage = { getItem:k => values.get(k) ?? null, setItem:(k,v) => values.set(k,String(v)), removeItem:k => values.delete(k) };
-  const window = { localStorage:storage, PersonaPresentation:P, PsyXVoicePreferences:PsyX, ...browser };
+  const window = { localStorage:storage, PersonaPresentation:P, ...browser };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../../public/js/voice/voice-settings.js'),'utf8'), { window });
   return { api:window.AgentXVoiceSettings, storage, values };
 }
@@ -27,18 +26,13 @@ test('workshop preserves existing preference owners, other languages and other p
   assert.equal(h.storage.getItem('household.space.personal.listening'),'wake');
   assert.equal(h.api.capture('personal',h.storage).threshold,.01); assert.equal(h.api.capture('family',h.storage).threshold,.015);
 });
-test('reading and PsyX edits use their own keys without changing shared speech configuration', () => {
-  const h = settings({ 'household.reading.voices.v1':JSON.stringify({ fr:'voxcpm|gazz' }), 'psyx.voice.preferences.v1':JSON.stringify({ language:'fr', ttsProvider:'voxcpm', ttsVoice:'helper', autoSend:true }) });
+test('reading edits use their own keys without changing shared speech configuration', () => {
+  const h = settings({ 'household.reading.voices.v1':JSON.stringify({ fr:'voxcpm|gazz' }) });
   h.api.save('reading',{ language:'en',voice:'voxcpm|jarvis',inputDeviceId:'reader-mic' },h.api.DEFAULTS,personas,h.storage);
   assert.deepEqual(JSON.parse(h.storage.getItem('household.reading.voices.v1')),{ fr:'voxcpm|gazz',en:'voxcpm|jarvis' });
   assert.equal(h.api.read('reading',personas,h.storage).inputDeviceId,'reader-mic');
-  assert.equal(PsyX.readPreferences(h.storage).ttsVoice,'helper');
-  h.api.save('psyx',{ language:'en', voice:'voxcpm|analyst', inputDeviceId:'psyx-mic', spokenReplies:true,autoSend:false },h.api.DEFAULTS,personas,h.storage);
-  assert.equal(PsyX.readPreferences(h.storage).ttsVoice,'analyst'); assert.equal(PsyX.readPreferences(h.storage).inputDeviceId,'psyx-mic');
-  assert.equal(h.api.inputDevice('psyx',h.storage),'psyx-mic');
-  assert.equal(JSON.parse(h.storage.getItem('agentx.voice.capture.v1.psyx')).inputDeviceId,undefined,'PsyX keeps a single microphone preference owner');
   assert.equal(h.storage.getItem('household.reading.language.v1'),'en');
-  assert.ok([...h.values.keys()].every(k => /^(household\.|psyx\.|agentx\.voice\.capture\.)/.test(k)));
+  assert.ok([...h.values.keys()].every(k => /^(household\.|agentx\.voice\.capture\.)/.test(k)));
 });
 test('invalid capture edits refuse before any preference changes and storage failure restores previous values', () => {
   const h = settings({ 'household.reading.language.v1':'fr' }), before = [...h.values];
@@ -101,16 +95,6 @@ test('A/B is explicit, reuses one excerpt, refuses expired audio and performs no
   await assert.rejects(()=>h.session.compare('fr'),/unexpired/);assert.equal(h.requests.length,2);
   h.session.conversation.audio.reviewStatus=()=>({id:'live',expiresAt:Date.now()+10000}); h.fail();
   await assert.rejects(()=>h.session.compare('en'),/Lost reply/); assert.equal(h.requests.length,3,'an uncertain result is never retried automatically');
-});
-test('PsyX tests stay on protected routes and request local-only English fallback', async () => {
-  const h=sessionHarness('psyx');await h.io.transcribe(new Blob(['sound']), 'en',new AbortController().signal);
-  assert.equal(h.requests[0].url,'/api/psyx/voice/transcribe');assert.equal(h.requests[0].options.headers['X-PsyX-Language'],'en');
-  await h.session.speak('Hello',null,'en');
-  assert.equal(h.speech[0].value.language,'en');
-  assert.equal(h.speech[0].options.deviceVoice({language:'en'}).localOnly,true);
-  assert.equal(h.speech[0].options.deviceVoice({language:'fr'}),false);
-  const response=await h.speech[0].options.request({text:'Hello',language:'en',choice:{provider:'voxcpm',voice:'gazz'}},new AbortController().signal);
-  assert.equal(response.status,200);assert.equal(h.requests[1].url,'/api/psyx/voice/synthesize/stream');
 });
 test('empty speech refuses before closing capture or opening a player and sending a request', async () => {
   const h=sessionHarness(); await h.session.start();

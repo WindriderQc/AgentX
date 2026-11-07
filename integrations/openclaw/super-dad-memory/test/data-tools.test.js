@@ -40,7 +40,7 @@ test('only the owner\'s personal assistant receives the storage, file, GPU and J
     { ...household, agentId: 'kidx' },
     { ...telegram, agentId: 'family' },
     // Every other team member and operator agent.
-    ...['secretary', 'comptable', 'leadx', 'psyx', 'cloudx'].map(agentId => ({ ...household, agentId })),
+    ...['secretary', 'comptable', 'leadx', 'cloudx'].map(agentId => ({ ...household, agentId })),
     { agentId: 'secretary', sessionKey: 'agent:secretary:cron:triage' },
     // The assistant itself outside the owner's private conversation.
     { ...household, sandboxed: true },

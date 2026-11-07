@@ -30,3 +30,9 @@ capability an instance needs is implemented in AgentX behind a profile or
 capability, and the instance deploys a chosen product revision. External
 harnesses may read instance settings and act through Core's bounded capabilities;
 they do not own the product or its canonical data.
+
+Instance-specific specialist identities and their instructions, questionnaires,
+interpretations, protocols, techniques and evaluation criteria belong in the
+private instance layer. Core retains genuinely reusable capabilities. A future
+instance role consumes those capabilities; its existence does not require a
+specialized built-in surface or a parallel implementation of Core.

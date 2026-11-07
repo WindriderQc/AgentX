@@ -5,7 +5,7 @@ const env = { CORE_PUBLIC_URL: 'https://home.example', BENCHMARK_PUBLIC_URL: 'ht
 test.each([
   undefined, [' /dad'], '//evil.example/x', '/\\evil.example/x', 'https://evil.example/',
   'http://home.example/', 'javascript:alert(1)', 'https://owner:secret@home.example/',
-  '/unlock', '/UNLOCK?next=/dad', '/access/face', '/api/access/unlock', '/api/psyx/auth/status',
+  '/unlock', '/UNLOCK?next=/dad', '/access/face', '/api/access/unlock',
   '/%75nlock', '/%2f%2fevil.example', '/%5cevil.example', '/%0d%0aLocation:evil', '/bad%zz',
   '/dad\r\nLocation:evil', '/unlock/nested', '/x/../unlock', '/x'.repeat(1000)
 ])('refuses unsafe or recursive legacy destinations: %p', next => {

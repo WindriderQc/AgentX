@@ -28,8 +28,8 @@ test('old bookmarks return directly to a bounded destination without a code', as
 test('old cookies are expired once when supplied and never create a session', async () => {
   const gateway = fixture();
   const response = await request(gateway).get('/dad').set('X-Forwarded-Proto', 'https')
-    .set('Cookie', 'agentx_adult=expired; psyx_session=expired; dsh_studio=independent').expect(200);
-  expect(response.headers['set-cookie']).toHaveLength(2);
+    .set('Cookie', 'agentx_adult=expired; dsh_studio=independent').expect(200);
+  expect(response.headers['set-cookie']).toHaveLength(1);
   for (const cookie of response.headers['set-cookie']) {
     expect(cookie).toContain('Expires=Thu, 01 Jan 1970');
     expect(cookie).toContain('Secure');
@@ -44,8 +44,7 @@ test('retired code, face and forward-auth APIs are absent at the real Core app',
     ['get', '/api/access/session'], ['get', '/api/access/authorize'], ['post', '/api/access/unlock'],
     ['post', '/api/access/lock'], ['post', '/api/access/code/setup'], ['post', '/api/access/code/change'],
     ['get', '/api/access/face/status'], ['post', '/api/access/face/challenge'], ['post', '/api/access/face/frame'],
-    ['get', '/api/access/face/enrollment'], ['post', '/api/access/face/enrollment/samples'], ['delete', '/api/access/face/enrollment'],
-    ['get', '/api/psyx/auth/status'], ['post', '/api/psyx/auth/unlock'], ['post', '/api/psyx/auth/lock']
+    ['get', '/api/access/face/enrollment'], ['post', '/api/access/face/enrollment/samples'], ['delete', '/api/access/face/enrollment']
   ]) {
     const response = await request(app)[method](path).send({}).expect(404);
     expect(response.headers.location).toBeUndefined();
