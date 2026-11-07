@@ -129,6 +129,20 @@ def manifest(base, *, source=None, base_adoptions=None, paths=None, step_id="ste
 
 
 class DistributedStepTest(unittest.TestCase):
+    def test_generic_step_receives_the_reviewed_task_requirement(self):
+        brief = 'Reject invalid input with RuntimeError while preserving valid positive values.'
+        prompt = step_worker.step_prompt({
+            'task': {'title': 'Validate input', 'spec': brief},
+            'step': {'id': 'step-01', 'title': 'Implement the reviewed pair',
+                     'objective': 'Implement source and tests together.'},
+            'allowedPaths': ['src/value.py', 'tests/test_value.py'],
+            'testTargets': ['tests/test_value.py'],
+        })
+        self.assertIn(brief, prompt)
+        self.assertIn('Task: Validate input', prompt)
+        self.assertIn('Exact writable paths: ["src/value.py", "tests/test_value.py"]', prompt)
+        self.assertIn('Do not commit or push', prompt)
+
     def test_setup_exception_terminalizes_and_replays_without_a_model_call(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

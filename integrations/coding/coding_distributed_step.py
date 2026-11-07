@@ -195,9 +195,12 @@ def validate_manifest(value: object, *, task_id: str, request_id: str, graph_id:
 
 def step_prompt(manifest: dict) -> str:
     step = manifest["step"]
+    task = manifest.get("task") or {}
     return (
         "Implement only this independently testable code step. Read AGENTS.md first. "
         "Do not commit or push; the runner owns verification and the single commit.\n\n"
+        f"Task: {task.get('title', '')}\n"
+        f"Reviewed task brief:\n{task.get('spec', '')}\n\n"
         f"Step: {_field(step, 'stepId', 'id')} — {step.get('title', '')}\n"
         f"Objective: {step.get('objective', '')}\n"
         f"Exact writable paths: {json.dumps(manifest['allowedPaths'])}\n"
