@@ -512,6 +512,9 @@ def load_runner():
     spec = importlib.util.spec_from_file_location("coding_run", HERE / "coding_run.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # Remote control commands read coding.env without exporting it. Reuse the
+    # resolved endpoint when importing runner helpers for exact reconciliation.
+    module.CORE = CORE
     return module
 
 

@@ -53,7 +53,15 @@ class ControlTest(unittest.TestCase):
             spec = importlib.util.spec_from_file_location("coding_dispatch_control_remote", control.__file__)
             remote = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(remote)
+            runner = remote.load_runner()
         self.assertEqual(remote.CORE, "https://core.example.test")
+        self.assertEqual(runner.CORE, remote.CORE)
+        report_spec = importlib.util.spec_from_file_location(
+            "coding_report_remote", Path(control.__file__).with_name("coding_report.py"))
+        report = importlib.util.module_from_spec(report_spec)
+        report_spec.loader.exec_module(report)
+        self.assertEqual(report.endpoint(runner, "0001", KEY),
+                         f"https://core.example.test/api/pipeline/tasks/0001/reports/{KEY}")
 
     def manifest(self, url, **kwargs):
         parts = url.split("/")
