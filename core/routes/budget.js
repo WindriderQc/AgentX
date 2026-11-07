@@ -10,6 +10,7 @@ const InferenceLog = require('../models/InferenceLog');
 const logger = require('../config/logger');
 const { normalizeBudgetHealth, recommendEscalation } = require('../src/services/nestorEscalationPolicyService');
 const { buildCloudBudget } = require('../src/services/budgetAccountingService');
+const { budgetMetrics } = require('../src/services/runtimeUsageAnalytics');
 
 const DAILY_TOKEN_LIMIT = parseInt(process.env.DAILY_TOKEN_LIMIT || '500000', 10);
 // Billable-only ceiling. Local Ollama tokens are free, so the cloud gate needs
@@ -44,6 +45,7 @@ async function buildBudgetStatus(hoursInput) {
       matchStage,
       { $group: {
         _id: '$model',
+        ...budgetMetrics,
         requests: { $sum: 1 },
         tokens: { $sum: { $add: ['$tokensIn', '$tokensOut'] } }
       }}

@@ -11,10 +11,12 @@
 
 const express = require('express');
 const router = express.Router();
+router.use(require('./analytics-runtime-usage'));
 const InferenceLog = require('../models/InferenceLog');
 const logger = require('../config/logger');
 const { isCloudCall, modelProvider } = require('../src/services/budgetAccountingService');
 const { COST_CURRENCY, calculateMessageCost } = require('../src/services/costCalculator');
+const { provenanceMetrics, cloudCost } = require('../src/services/runtimeUsageAnalytics');
 const {
   ingestCodexUsage,
   readCodexSubscriptionValue,
@@ -46,6 +48,7 @@ async function aggregateProviderBucket(window, agentId) {
     { $group: {
       _id: { model: '$model', agentId: { $ifNull: ['$consumerContract', 'unknown'] } },
       requests: { $sum: 1 },
+      ...provenanceMetrics,
       promptTokens: { $sum: { $ifNull: ['$tokensIn', 0] } },
       completionTokens: { $sum: { $ifNull: ['$tokensOut', 0] } },
       hosts: { $addToSet: '$host' },
@@ -58,13 +61,14 @@ async function aggregateProviderBucket(window, agentId) {
   const priced = await Promise.all(cloudRows.map(async (row) => {
     const model = row._id.model;
     const totalTokens = Number(row.promptTokens || 0) + Number(row.completionTokens || 0);
-    const cost = await calculateMessageCost(model, {
-      usage: {
-        promptTokens: Number(row.promptTokens || 0),
-        completionTokens: Number(row.completionTokens || 0),
-        totalTokens,
-      },
-    });
+    let pricingSource = row.declaredCalls > 0 ? 'declared-receipt' : 'unconfigured';
+    const accounting = await cloudCost(row, async (promptTokens, completionTokens) => {
+      const cost = await calculateMessageCost(model, {
+        usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens },
+      });
+      pricingSource = row.declaredCalls > 0 ? 'declared-and-configured' : cost.pricingSource?.source || 'unconfigured';
+      return cost.pricingSource?.source && cost.pricingSource.source !== 'default' ? cost.totalCost : null;
+    }, row.requests || 0);
     return {
       model,
       provider: modelProvider(model),
@@ -75,10 +79,9 @@ async function aggregateProviderBucket(window, agentId) {
       totalTokens,
       // No configured price is NOT zero spend. Null lets the UI say 'unpriced'
       // instead of reporting real OpenRouter traffic as free.
-      estimatedSpendUsd: cost.pricingSource?.source && cost.pricingSource.source !== 'default'
-        ? Number(cost.totalCost || 0)
-        : null,
-      pricingSource: cost.pricingSource?.source || 'unconfigured',
+      ...accounting,
+      estimatedSpendUsd: accounting.estimatedCostUsd,
+      pricingSource,
       source: 'agentx-cloud',
     };
   }));
@@ -91,12 +94,13 @@ async function aggregateProviderBucket(window, agentId) {
       promptTokens: 0,
       completionTokens: 0,
       totalTokens: 0,
+      coreObservedCalls: 0, declaredCalls: 0, unpricedCalls: 0,
       // null until a priced row contributes, so an unpriced model does not
       // render as $0.0000 alongside real traffic.
       estimatedSpendUsd: null,
       source: 'agentx-cloud',
     };
-    for (const field of ['sessions', 'promptTokens', 'completionTokens', 'totalTokens']) {
+    for (const field of ['sessions', 'promptTokens', 'completionTokens', 'totalTokens', 'coreObservedCalls', 'declaredCalls', 'unpricedCalls']) {
       acc[id][field] += row[field];
     }
     // Unpriced rows keep the group null rather than dragging it to a fake 0.
@@ -106,18 +110,19 @@ async function aggregateProviderBucket(window, agentId) {
     return acc;
   }, {})).sort((left, right) => right.totalTokens - left.totalTokens);
   const totals = priced.reduce((acc, row) => {
-    for (const field of ['sessions', 'promptTokens', 'completionTokens', 'totalTokens']) {
+    for (const field of ['sessions', 'promptTokens', 'completionTokens', 'totalTokens', 'coreObservedCalls', 'declaredCalls', 'unpricedCalls']) {
       acc[field] += row[field];
     }
     if (Number.isFinite(row.estimatedSpendUsd)) {
       acc.estimatedSpendUsd = (acc.estimatedSpendUsd || 0) + row.estimatedSpendUsd;
     }
     return acc;
-  }, { sessions: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedSpendUsd: null });
-  totals.unpricedModels = priced.filter((r) => !Number.isFinite(r.estimatedSpendUsd)).map((r) => r.model);
+  }, { sessions: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0, estimatedSpendUsd: null,
+    coreObservedCalls: 0, declaredCalls: 0, unpricedCalls: 0 });
+  totals.unpricedModels = [...new Set(priced.filter((r) => r.unpricedCalls > 0 || !Number.isFinite(r.estimatedSpendUsd)).map((r) => r.model))];
   return {
     source: 'agentx-cloud',
-    scope: 'agentx-routed-calls',
+    scope: 'core-observed-and-declared-calls',
     authorityNote: 'Provider-native billing remains authoritative for plans and balances.',
     window: window.key,
     from: fromDate.toISOString(),
@@ -260,7 +265,7 @@ router.get('/federated', async (req, res) => {
     local_error: localError,
     providers,
     provider_status: providerStatus,
-    provider_scope: 'agentx-routed-calls',
+    provider_scope: 'core-observed-and-declared-calls',
     codexSubscription: subscriptionResult.status === 'fulfilled' ? subscriptionResult.value : null,
     ...(subscriptionResult.status === 'rejected'
       ? { codex_subscription_error: subscriptionResult.reason?.message || String(subscriptionResult.reason) }

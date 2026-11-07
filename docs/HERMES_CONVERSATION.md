@@ -61,6 +61,13 @@ Public text deltas and content-free tool activity are translated into the
 existing conversation stream. Internal reasoning and raw tool arguments/results
 are excluded. The terminal native receipt supplies the actual model/provider
 and usage, including fallback; a configured model label alone is insufficient.
+Content-free tool-completion receipts are journaled before consuming the next
+event. Duplicate turns and archived recovered replies retain those receipts,
+native tokens and provider, including when the reply text was already saved.
+Recovered knowledge-search receipts set the same RAG flags as live turns.
+Completed direct cloud runs also submit an idempotent
+[declared usage receipt](ANALYTICS.md#declared-native-usage) to Core; local
+fallback does not declare another cloud call.
 
 An interruption requests the native run's stop and waits for terminal status.
 An uncertain result retains its fence and blocks replacement. A lost acceptance

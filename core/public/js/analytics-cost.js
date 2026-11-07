@@ -61,7 +61,7 @@ function showCostPanels(visible) {
   if (panels) panels.hidden = !visible;
   if (note) {
     note.hidden = visible;
-    note.textContent = visible ? '' : 'No priced spend in this period. Local models have no per-token price, and cloud turns made outside Core (Hermes, OpenClaw → OpenRouter) carry no recorded cost or tokens. See Cloud usage below.';
+    note.textContent = visible ? '' : 'No priced chat spend in this period. Local models have no per-token price; direct cloud usage appears below when a runtime submits its receipt.';
   }
 }
 

@@ -46,18 +46,22 @@ function voiceTask(env = process.env) {
 // These are transports, not two agent loops. OpenClaw runs its native agent;
 // AgentX runs the existing routed inference contract. A started turn is never
 // replayed through the other transport, including after an ambiguous failure.
-function createConversationExecutor({ agentClient, inference, consumerContract, env = process.env, personalRecaps = null, conversations, hermesClient }) {
-  const hermes = hermesClient || createHermesTransport({ env, archive: conversations ? async (session, state) => {
+function createConversationExecutor({ agentClient, inference, consumerContract, env = process.env, personalRecaps = null, conversations, hermesClient, recordRuntimeUsage }) {
+  const hermes = hermesClient || createHermesTransport({ env,
+    recordUsage: recordRuntimeUsage || (receipt => require('../../src/services/runtimeUsageService').ingestRuntimeUsage(receipt)),
+    archive: conversations ? async (session, state) => {
     const scope = { sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId };
     const previous = await conversations.getTurn({ ...scope, 'toolEvidence.runId': state.runId });
     const presentation = require('./reply-channels');
     const channels = presentation.createReplyChannels({ allowSecrets: true });
     channels.push(state.receipt.output || '');
     const parsed = channels.end(), replyText = presentation.plainReply(parsed.say);
-    if (previous?.replyText === replyText) return;
+    const receipts = state.toolReceipts || previous?.toolEvidence?.receipts || [];
     const recovered = { replyText, display: presentation.storedDisplay(parsed.display), outcome: 'completed',
       model: state.receipt.runtime?.model || '', routingSource: 'hermes/nestor', routeTier: 'agent',
-      toolEvidence: { authority: 'hermes', status: 'observed', runId: state.runId, receipts: [], recovered: true } };
+      usage: state.receipt.usage, modelProvider: state.receipt.runtime?.provider,
+      knowledgeStatus: 'agent-managed', knowledgeUsed: receipts.some(row => /rag_search|memory_search|wiki_search/.test(row.tool)),
+      toolEvidence: { authority: 'hermes', status: 'observed', runId: state.runId, receipts, recovered: true } };
     if (previous) {
       const updated = await conversations.updateTurn({ ...scope, traceId: previous.traceId }, { $set: recovered });
       if (!updated) throw new Error('The recovered Hermes answer could not be saved.');

@@ -289,7 +289,7 @@
     set('ao-local-time', data.local?.calls > 0 ? hours(data.local.inferenceHours) : '—');
     const cloud = data.cloud || {};
     set('ao-cloud-cost', cloud.calls === 0 ? 'No calls' : finite(cloud.estimatedCostUsd) ? `$${cloud.estimatedCostUsd.toFixed(2)}` : 'Unpriced');
-    set('ao-cloud-note', cloud.calls === 0 ? 'No recorded cloud traffic' : `${count(cloud.calls)} calls · ${cloud.unpricedModels?.length ? `${cloud.unpricedModels.length} unpriced models excluded` : 'USD estimate, configured rates'}`);
+    set('ao-cloud-note', cloud.calls === 0 ? 'No recorded cloud traffic' : `${count(cloud.calls)} calls · ${cloud.unpricedModels?.length ? `${cloud.unpricedModels.length} models with unpriced usage` : 'USD, recorded costs and configured rates'}${cloud.declaredCalls > 0 ? ` · ${count(cloud.declaredCalls)} declared by runtimes` : ''}`);
     renderAttribution(data);
     const to = new Date(data.window.to);
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
