@@ -24,6 +24,7 @@
   const HARNESS = /^[a-z][a-z0-9._-]{0,63}$/;
   const SHA40 = /^[a-f0-9]{40}$/;
   const SHA256 = /^[a-f0-9]{64}$/;
+  const UUID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 
   function fail(message) { throw new Error(`Invalid code-step graph summary: ${message}`); }
   function object(value, name) {
@@ -103,6 +104,15 @@
     const attempt = integer(raw.attempt, `${name}.attempt`, { max: 5 });
     const executor = raw.executor == null ? null : normalizeExecutor(raw.executor, `${name}.executor`);
     if (attempt > 0 && !executor) fail(`${name} attempted state requires its selected executor`);
+    let nativeSession;
+    if (raw.nativeSession != null) {
+      const target = object(raw.nativeSession, `${name}.nativeSession`);
+      if (!/^\d{4}$/.test(target.pipelineId || '') || !UUID.test(target.requestId || '')
+          || attempt < 1 || executor?.harness !== 'opencode' || target.executorId !== executor.id) {
+        fail(`${name}.nativeSession must name this exact OpenCode attempt`);
+      }
+      nativeSession = { pipelineId: target.pipelineId, requestId: target.requestId, executorId: target.executorId };
+    }
     const commit = optionalSha(raw.commit, SHA40, `${name}.commit`);
     if (state === 'passed' && (!commit || !tests.length || tests.some(test => test.outcome !== 'passed'))) {
       fail(`${name} passed state requires one commit and passing focused tests`);
@@ -118,7 +128,7 @@
     const adoption = raw.adoption == null ? null : normalizeAdoption(raw.adoption, `${name}.adoption`);
     if (adoption && state !== 'passed') fail(`${name} may have adoption evidence only after passing`);
     return { id, title: line(raw.title, `${name}.title`, 160), state, dependsOn, attempt,
-      ...(executor && { executor }), ...(commit && { commit }), tests,
+      ...(executor && { executor }), ...(nativeSession && { nativeSession }), ...(commit && { commit }), tests,
       ...(waitCode && { waitCode }), ...(failureCode && { failureCode }), ...(adoption && { adoption }) };
   }
 

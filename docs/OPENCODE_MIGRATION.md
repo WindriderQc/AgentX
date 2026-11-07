@@ -113,6 +113,14 @@ Unsupported schemas, oversized messages and changed page revisions refuse
 explicitly rather than truncate evidence. Observation never starts a runtime or
 inference. Local child exit does not establish Core model/resource release.
 
+Distributed graph steps expose **Conversation OpenCode** for their exact
+recorded child request and executor, including when the coordinator uses DSH
+or performs no inference. The graph's bounded public projection carries only
+the task/request/executor identity. The button opens the same native viewer
+and independent-copy action; reading the transcript creates no model call.
+Historical summaries without a recorded native target retain their graph
+evidence without guessing a request identity.
+
 The existing dispatch bridge supplies exact-executor routes:
 
 ```text

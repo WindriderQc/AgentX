@@ -5,6 +5,7 @@
   'use strict';
   const UUID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
   const viewers = new WeakMap();
+  const boundDocuments = new WeakSet();
   function identity(run) {
     return run?.harness === 'opencode' && /^\d{4}$/.test(run.pipelineId || '') && UUID.test(run.requestId || '')
       && /^[a-z][a-z0-9_-]{0,63}$/.test(run.executorId || '')
@@ -182,16 +183,32 @@
     }
   }
 
+  function open($, run) {
+    const dialog = $('pipelineNativeSessionDialog');
+    if (!identity(run) || !dialog) return;
+    let viewer = viewers.get(dialog);
+    if (!viewer) { viewer = new Viewer($); viewers.set(dialog, viewer); }
+    return viewer.open(run);
+  }
+  function bind(document) {
+    if (boundDocuments.has(document)) return;
+    boundDocuments.add(document);
+    document.addEventListener('click', event => {
+      const button = event.target?.closest?.('button[data-native-step-request]');
+      if (!button) return;
+      const run = { pipelineId: button.dataset.nativeStepPipeline, requestId: button.dataset.nativeStepRequest,
+        executorId: button.dataset.nativeStepExecutor, harness: 'opencode' };
+      if (!identity(run)) return;
+      event.preventDefault();
+      return open(id => document.getElementById(id), run);
+    });
+  }
   function render({ $, run }) {
     const button = $('pipelineNativeSessionButton');
     if (!button) return;
     button.hidden = !identity(run);
-    button.onclick = () => {
-      const dialog = $('pipelineNativeSessionDialog');
-      let viewer = viewers.get(dialog);
-      if (!viewer) { viewer = new Viewer($); viewers.set(dialog, viewer); }
-      return viewer.open(run);
-    };
+    button.onclick = () => open($, run);
   }
-  return { Viewer, identity, safeUrl, render };
+  if (typeof document !== 'undefined') bind(document);
+  return { Viewer, identity, safeUrl, open, bind, render };
 });

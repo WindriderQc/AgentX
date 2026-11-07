@@ -37,6 +37,9 @@
         `<li><code>${escapeHtml(test.profile)}</code> · ${escapeHtml(test.outcome)}${test.durationMs == null ? '' : ` · ${escapeHtml(durationLabel(test.durationMs))}`}</li>`).join('')}</ul>`
         : '<span class="pipeline-code-step-tests-empty">Focused tests not recorded</span>';
       const commit = step.commit ? `<code title="${escapeHtml(step.commit)}">${escapeHtml(step.commit.slice(0, 12))}</code>` : 'No verified commit';
+      const session = step.nativeSession;
+      const conversation = session ? `<button type="button" data-native-step-pipeline="${escapeHtml(session.pipelineId)}"
+        data-native-step-request="${escapeHtml(session.requestId)}" data-native-step-executor="${escapeHtml(session.executorId)}">Conversation OpenCode</button>` : '';
       const adoption = step.adoption ? step.adoption.state === 'adopted'
         ? `Adopted as <code title="${escapeHtml(step.adoption.assemblyCommit)}">${escapeHtml(step.adoption.assemblyCommit.slice(0, 12))}</code>`
         : step.adoption.state === 'conflict' ? 'Assembly conflict recorded' : 'Awaiting adoption' : 'No adoption receipt';
@@ -49,7 +52,7 @@
           ${step.waitCode ? `<div><dt>Wait</dt><dd><code>${escapeHtml(step.waitCode)}</code></dd></div>` : ''}
           ${step.failureCode ? `<div><dt>Failure</dt><dd><code>${escapeHtml(step.failureCode)}</code></dd></div>` : ''}
           <div><dt>Assembly</dt><dd>${adoption}</dd></div>
-        </dl>${tests}</li>`;
+        </dl>${tests}${conversation}</li>`;
     }).join('');
     const assembly = graph.assembly;
     const publication = assembly.publication?.state === 'published'
