@@ -57,9 +57,12 @@ def _source(source, manifest):
         raise ValueError("Rejected-copy source is outside the frozen objective")
 
 
-def _plan(source, unit, manifest):
-    return list(pages(source, [unit], manifest["objectiveSha256"],
+def _plan(objective, source, unit, manifest, *, create=True):
+    from objective_attribution import bind_pages
+    plan = list(pages(source, [unit], manifest["objectiveSha256"],
                       manifest["config"]["pageChars"], manifest["config"]["overlap"]))
+    bind_pages(Path(objective).parents[2], objective, manifest, source, [unit], plan, create=create)
+    return plan
 
 
 def _index_file(objective, key):
@@ -94,7 +97,7 @@ def _canonical(objective, manifest, key):
         content += row["body"][len(content) - row["offset"]:]
         rows.append(row)
     unit = {**ref, "content": content}
-    plan = _plan(source, unit, manifest)
+    plan = _plan(objective, source, unit, manifest, create=False)
     if _key(source, unit, manifest) != key or [page["pageId"] for page in plan] != index["pageIds"] \
             or any(row["identity"] != page["identity"] or row["totalChars"] != len(content)
                    for row, page in zip(rows, plan)):
@@ -109,7 +112,7 @@ def register(objective, manifest, source, unit, unit_pages):
         if key is None:
             return
         _source(source, manifest)
-        plan = _plan(source, unit, manifest)
+        plan = _plan(objective, source, unit, manifest, create=False)
         if not plan or unit_pages != plan:
             raise ValueError("Rejected-copy registration needs the full exact unit plan")
         rows = [rejected.read(objective, manifest, page["pageId"], expected_identity=page["identity"])
@@ -150,7 +153,7 @@ def matches(objective, manifest, source, unit, unit_pages):
         canonical = _canonical(objective, manifest, key) if key else None
         if not canonical:
             return False
-        if unit_pages != _plan(source, unit, manifest):
+        if unit_pages != _plan(objective, source, unit, manifest, create=False):
             raise ValueError("Rejected-copy match needs the complete current unit plan")
         return len(unit_pages) == len(canonical["pages"]) and all(
             all(page[k] == original[k] for k in ("content", "offset", "end", "totalChars", "sourceContext"))
@@ -181,7 +184,7 @@ def read(objective, manifest, page_id, *, expected_identity=None):
         if not canonical or canonical["fileSha256"] != row.get("canonicalIndexSha256"):
             raise ValueError("Rejected-copy canonical proof changed")
         unit = {**ref, "content": canonical["unit"]["content"]}
-        target_plan = _plan(source, unit, manifest)
+        target_plan = _plan(objective, source, unit, manifest, create=False)
         page = next((page for page in target_plan if page["pageId"] == page_id), None)
         plan = load(Path(objective) / "sources" / (hashed([source["system"], source["id"], source["sha256"]]) + ".json"), {})
         original = next((page for page in canonical["pages"] if page["pageId"] == row.get("canonicalPageId")), None)
@@ -214,7 +217,7 @@ def defer(objective, manifest, source, unit, unit_pages, page):
         canonical = _canonical(objective, manifest, key)
         if not canonical:
             return None
-        if unit_pages != _plan(source, unit, manifest) or page not in unit_pages:
+        if unit_pages != _plan(objective, source, unit, manifest, create=False) or page not in unit_pages:
             raise ValueError("Rejected-copy target requires a complete current plan")
         original = next((p for p in canonical["pages"] if all(p[k] == page[k]
                         for k in ("content", "offset", "end", "totalChars", "sourceContext"))), None)

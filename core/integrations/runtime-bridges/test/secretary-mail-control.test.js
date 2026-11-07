@@ -40,6 +40,20 @@ test('anything outside the vocabulary is refused before the host is contacted', 
   assert.throws(() => new SecretaryMailControl({ remoteRoot: '/srv/../etc' }), error => error.code === 'SECRETARY_MAIL_CONFIGURATION_INVALID');
 });
 
+test('saved dossiers can request only an explicit supported source contract', async () => {
+  const commands = [];
+  const control = configured(async (_target, command) => { commands.push(command); return envelope({ ok: true }); });
+  for (const readerContract of ['secretary.dossier-sources/v1', 'secretary.dossier-sources/v2']) {
+    await control.dossier({ threadId: '1a0a72c7f639bccf', readerContract });
+    assert.equal(commands.at(-1), `${script} dossier --thread 1a0a72c7f639bccf --reader-contract ${readerContract}`);
+  }
+  for (const readerContract of ['', 'v2', 'secretary.dossier-sources/v3', '$(never-execute)']) {
+    await assert.rejects(control.dossier({ threadId: '1a0a72c7f639bccf', readerContract }),
+      error => error.code === 'SECRETARY_MAIL_BAD_REQUEST');
+  }
+  assert.equal(commands.length, 2);
+});
+
 test('mail continuation is encoded and absent or invalid message selections never reach the host', async () => {
   const commands = [];
   const control = configured(async (_target, command) => { commands.push(command); return envelope({ ok: true }); });

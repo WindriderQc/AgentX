@@ -49,6 +49,31 @@ test('native candidates map to Core context without user confirmation', () => {
   assert.equal(result.timeline.claimsWithExactQuotes[0].quote, source.body);
   assert.equal(result.timeline.metadata.userConfirmed, false);
 });
+test('versioned quote attribution reaches Core metadata without changing source, candidate or decisions', () => {
+  const { finding, source, indexed } = fixture();
+  const before = publisher.build(finding, indexed);
+  finding.quoteAttribution = { schema: 'secretary.objective-attribution/v1', gaps: [], citations: [
+    { state: 'quoted', author: null, date: null, claimedAuthor: 'Person A', claimedDate: 'July 2026',
+      sourceSpans: [{ start: 40, end: 86 }], laterMessageIds: ['later-reply'], requiresReconciliation: true }
+  ] };
+  source.nativeRef.sourceContext = { schema: 'secretary.source-context/v2', offsetUnit: 'unicode-code-point' };
+  const result = publisher.build(finding, indexed);
+  assert.deepEqual(result.timeline.metadata.quoteAttribution, finding.quoteAttribution);
+  assert.deepEqual(result.sourceRecords[0].nativeRef.sourceContext, source.nativeRef.sourceContext);
+  assert.deepEqual(result.timeline.claimsWithExactQuotes, before.timeline.claimsWithExactQuotes);
+  assert.equal(result.timeline.reviewState, 'candidate');
+  assert.equal(result.timeline.metadata.userConfirmed, false);
+  assert.equal(result.timeline.date, before.timeline.date);
+  assert.equal(result.sourceRecords[0].bodySha256, before.sourceRecords[0].bodySha256);
+});
+test('a withheld exact repeated assertion cannot bypass reconciliation through direct candidate construction', () => {
+  const { finding, indexed } = fixture();
+  finding.quoteReconciliation = { schema: 'secretary.objective-quote-reconciliation/v1',
+    state: 'withheld-repeat', canonicalFindingId: 'objective-' + 'd'.repeat(64) };
+  assert.throws(() => publisher.build(finding, indexed), /reconciliation, not another proposal/);
+  assert.equal(finding.reviewState, 'candidate');
+  assert.equal(finding.userConfirmed, false);
+});
 test('a source audit publishes an unknown date initially and retains the exact model proposal in Core metadata', () => {
   const { finding, source, indexed } = fixture();
   const review = { findingId: finding.id, clear: ['start'], reason: 'Seule une borne supérieure est attestée.',

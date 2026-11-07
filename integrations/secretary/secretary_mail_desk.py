@@ -79,6 +79,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     commands.add_parser("catchup")
     dossier = commands.add_parser("dossier")
     dossier.add_argument("--thread", required=True)
+    dossier.add_argument("--reader-contract", choices=("secretary.dossier-sources/v1", "secretary.dossier-sources/v2"), default="secretary.dossier-sources/v2")
     archived = commands.add_parser("archived")
     archived.add_argument("--message", required=True)
     archived.add_argument("--sha256", required=True)
@@ -354,7 +355,8 @@ def main(argv: list[str] | None = None) -> int:
             # Archive uses the same native provider/keyring configuration. It
             # only reads; no collection, OCR or model operation is invoked.
             try:
-                data = read_dossier(Archive(args.evidence_root, run=lambda command: run_gog(args, "gmail.thread.get", command)), args.thread)
+                data = read_dossier(Archive(args.evidence_root, run=lambda command: run_gog(args, "gmail.thread.get", command)), args.thread,
+                                    contract=args.reader_contract)
             except (OSError, ValueError, RuntimeError, KeyError):
                 raise MailDeskError("The current correspondence could not be read", "SECRETARY_DOSSIER_SOURCE_UNAVAILABLE") from None
         else:

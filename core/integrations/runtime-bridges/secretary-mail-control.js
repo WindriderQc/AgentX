@@ -98,8 +98,11 @@ class SecretaryMailControl {
     return this.call(`threads --label ${exactLabel(label)}${pageToken ? ` --page-token-b64 ${Buffer.from(pageToken).toString('base64url')}` : ''}`);
   }
 
-  async dossier({ threadId } = {}) {
-    return this.call(`dossier --thread ${exactThreadId(threadId)}`);
+  async dossier({ threadId, readerContract } = {}) {
+    if (readerContract !== undefined && !['secretary.dossier-sources/v1', 'secretary.dossier-sources/v2'].includes(readerContract)) {
+      throw new SecretaryMailError('Unknown dossier reader contract', { code: 'SECRETARY_MAIL_BAD_REQUEST', statusCode: 400 });
+    }
+    return this.call(`dossier --thread ${exactThreadId(threadId)}${readerContract ? ` --reader-contract ${readerContract}` : ''}`);
   }
 
   async handled({ threadId, label, messageIds } = {}) {

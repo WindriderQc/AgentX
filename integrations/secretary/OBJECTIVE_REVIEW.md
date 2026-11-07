@@ -6,6 +6,49 @@ preserved. It does not send mail, mutate mailbox state, publish personal tasks,
 confirm memories or create souvenirs. Code tests do not establish live model
 quality or exhaustive interpretation.
 
+New objective versions freeze `secretary.objective-attribution/v1` in the
+manifest and objective hash. They reuse `secretary.source-context/v2` for
+depth-aware quoted headers, full segment extents and boundary text across
+continuation pages. Original bytes, representation hashes, page ranges and the
+page identity algorithm remain unchanged. Existing manifests without that field
+keep their original system/prompt identity, v1 context and receipt replay;
+neither installation nor status starts another reading or upgrades an uncertain
+attempt. Selecting a new objective version is explicit.
+
+Private `attribution-index/` and content-addressed `attribution-evidence/` retain
+the exact unchanged representations used for reconciliation. Their hash binds
+the source record and the receipt's `quoteAttribution`; receipt reads replay
+that derivation. Rejected-copy scopes and complete-text aliases use the same
+frozen context. No evidence or model response is rewritten. A container date or
+sent-owner reading cue is unavailable on a mixed/quoted page; literal source
+dates remain distinct from interpretation of the event.
+
+Each exported quote retains author/date claims separately from verified
+original matches, original-body Unicode spans, containing-message provenance,
+later message references and stable assertion/quote keys. Core imports these
+reading signals as timeline metadata, keeping exact quotes and candidate state.
+Only verified selected originals in the same native Gmail thread can establish
+a match. Missing originals, conflicting MIME alternatives and Outlook exports
+without a canonical thread identity remain unresolved; no reply association is
+guessed. Later answers need not repeat the quotation to require reconciliation.
+Repeated quotations are not independent testimony. These signals establish
+neither current requests, the containing sender's obligations nor business
+resolution; they neither merge facts nor change historical campaign validity.
+
+`secretary.objective-quote-reconciliation/v1` withholds another automatic
+proposal when a new finding cites exactly the same complete set of assertion
+keys within the same objective version, source system and native thread. It
+does not compare topics, actors or inferred business meaning. Distinct sets and
+partly shared sets remain separate interpretations. Every raw result, receipt
+and exported finding is preserved; `withheld-repeat` points to the frozen
+canonical finding for source review. The first exported identity stays fixed
+when an original is read in a later chunk. The publisher validates that link,
+retains the withheld records in its proof manifest and
+`publication-plan.json.withheldForReconciliation`, and creates no second Core
+proposal for them. This gate never merges interpretations or establishes that
+a request is resolved. Objectives under the earlier contract retain their
+existing publication behavior.
+
 New objectives use `secretary.objective-grounding/v10` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;

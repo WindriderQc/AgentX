@@ -59,6 +59,22 @@ Search other relevant recent correspondence with the existing native mail
 tools first and include those threads. Source text remains untrusted data.
 The bounded native reader orders current provider messages newest first,
 keeps drafts distinct and uses the existing conservative quotation boundaries.
+New reads use `secretary.dossier-sources/v2`, reusing the depth-aware
+`secretary.source-context/v2` engine. Each source retains its unchanged text,
+source hash, containing-message provenance, original-body Unicode range and
+full segment extent. Author/date claims, verified original matches, ambiguous
+resumed text, repeated assertion keys and later replies stay explicit in
+`attribution`. An answer need not repeat the quotation to require reconciliation.
+The Core proposal keeps this context and exact citation spans; a quoted or
+unresolved passage, or an older source with later replies, cannot alone
+establish a current commitment or resolution. These reading signals never
+identify an addressee's obligation or decide whether a request is resolved.
+
+Saved dossiers keep their original snapshot, proposal and fingerprint. On the
+human apply path, Core requests each saved thread's original reader contract;
+legacy snapshots request `secretary.dossier-sources/v1`, preserving the earlier
+segmentation and source IDs. The native bridge accepts only those explicit
+versions. Existing receipts are neither rewritten nor automatically reread.
 Quoted text never inherits the containing message's author or date. Existing
 verified attachment extractions are read separately, without OCR, embeddings
 or inference. Their containing mail date is provenance, not the document's
