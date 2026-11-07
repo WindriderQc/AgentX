@@ -109,7 +109,16 @@ function buildLiveTransport({ model, host, generateImpl, timeoutMs = DEFAULT_LIV
       data = await generate(workloadId, {
         model,
         host,
-        messages,
+        // The deterministic harness stores calls as {name, args}; Ollama's
+        // native history requires function-wrapped calls and named tool results.
+        messages: messages.map(({ name, ...message }) => ({
+          ...message,
+          ...(message.role === 'tool' && name && { tool_name: name }),
+          ...(Array.isArray(message.tool_calls) && { tool_calls: message.tool_calls.map(call => ({
+            type: 'function',
+            function: call.function || { name: call.name, arguments: call.args || {} }
+          })) })
+        })),
         tools,
         stream: false,
         rawResponse: true,
