@@ -107,11 +107,31 @@
     return parts.length ? `Kids Room: ${parts.join(', ')}.` : '';
   }
 
+  // A child's proposal (#876): who sent it, and the replies a parent can choose when declining.
+  const proposer = (plant, profiles = []) => {
+    const id = plant.proposal?.proposedBy;
+    return id ? profiles.find(profile => profile.id === id)?.displayName || id : '';
+  };
+  const DECLINE_REPLIES = ['Papa a vu ta plante. Merci !', 'Papa a vu ta plante. Elle est déjà dans Ma jungle !',
+    'Papa a vu ta plante. On la regardera ensemble !'];
+
+  function proposalBannerHtml(plant, esc, profiles = []) {
+    if (!plant.proposal?.open) return '';
+    return `<section class="card plant-proposed" data-plant-proposed><p class="card-kicker">Proposée par ${esc(proposer(plant, profiles))}</p>
+      <p>${plant.room ? `Pièce choisie : <strong>${esc(plant.room)}</strong>. ` : ''}Continue l’ajout ci-dessous, ou réponds-lui gentiment.</p>
+      <div class="row wrap"><label class="plant-field grow"><span>Réponse à ${esc(proposer(plant, profiles))}</span>
+      <select name="declineReply">${DECLINE_REPLIES.map(reply => `<option>${esc(reply)}</option>`).join('')}</select></label>
+      <button type="button" class="compact danger" data-plant-decline>Refuser la proposition</button></div></section>`;
+  }
+
   function listRowHtml(plant, esc, profiles = []) {
     const photo = plant.photos?.[0];
-    const hint = plant.status === 'draft' ? (problemText(plant.problems)[0] || 'Ready to publish.') : nextCare(plant, profiles) || plant.room || '';
-    const [moodLabel, moodClass] = plant.status === 'published' ? MOODS[plant.mood] || MOODS.happy : [statusLabel(plant.status), plant.status === 'draft' ? 'waiting' : ''];
-    return `<a class="plant-row status-${esc(plant.status)}" href="/dad/family/plants?plant=${encodeURIComponent(plant.id)}">
+    const proposed = plant.proposal?.open;
+    const hint = proposed ? [plant.room, problemText(plant.problems)[0]].filter(Boolean).join(' · ')
+      : plant.status === 'draft' ? (problemText(plant.problems)[0] || 'Ready to publish.') : nextCare(plant, profiles) || plant.room || '';
+    const [moodLabel, moodClass] = proposed ? [`Proposée par ${proposer(plant, profiles)}`, 'waiting']
+      : plant.status === 'published' ? MOODS[plant.mood] || MOODS.happy : [statusLabel(plant.status), plant.status === 'draft' ? 'waiting' : ''];
+    return `<a class="plant-row status-${esc(plant.status)}${proposed ? ' proposed' : ''}" href="/dad/family/plants?plant=${encodeURIComponent(plant.id)}">
       ${photo ? `<img src="${esc(photo.url)}?view=manage" alt="" loading="lazy">` : '<span class="plant-thumb" aria-hidden="true"></span>'}
       <span class="grow"><strong>${esc(plant.nickname)}</strong><small>${esc(plant.identification?.commonName || 'Species to choose')}${hint ? ` · ${esc(hint)}` : ''}</small></span>
       <span class="pill ${moodClass}">${moodLabel}</span></a>`;
@@ -152,6 +172,6 @@
     return Boolean(draft) && sameSheet && titles(draft.carePlan) === titles(plant.carePlan);
   }
 
-  window.PlantView = { CARE, ROOMS, ageAllows, choreSummary, draftApplied, nextCare, actionHtml, candidatesHtml, careSheetHtml, childPreviewHtml, keepSources,
-    listRowHtml, problemText, readEditor, statusLabel, toxicityHtml };
+  window.PlantView = { CARE, DECLINE_REPLIES, ROOMS, ageAllows, choreSummary, draftApplied, nextCare, actionHtml, candidatesHtml, careSheetHtml, childPreviewHtml, keepSources,
+    listRowHtml, problemText, proposalBannerHtml, proposer, readEditor, statusLabel, toxicityHtml };
 })();

@@ -140,6 +140,40 @@
   .jungle-mood { left: .4rem; bottom: .4rem; padding: .35rem .6rem; font-size: .85rem; }
 }
 
+/* A child's plant proposal (#876): Ma jungle panel and the parent's banner. */
+.jungle-propose { margin-top: 1rem; }
+.propose-card { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: 1rem; border: 2px dashed rgba(126, 226, 168, .45); border-radius: 24px; background: var(--panel-2); }
+.propose-card p { margin: 0; }
+.propose-card h2 { margin: 0 0 .3rem; font-size: 1.4rem; }
+.propose-guest { color: #a9bccb; font-size: 1.1rem; }
+.propose-guest > span { font-size: 2rem; }
+.propose-body { display: grid; gap: .6rem; flex: 1 1 260px; min-width: 0; }
+.propose-photo { display: block; width: 132px; height: 132px; flex: none; border-radius: 20px; object-fit: cover; background: #163527; }
+.propose-no-photo { display: grid; place-items: center; font-size: 3rem; }
+.propose-start { display: flex; align-items: center; gap: 1rem; width: 100%; min-height: 88px; padding: .6rem 1rem; border-radius: 22px; background: #7ee2a8; color: #0b2a1b; cursor: pointer; }
+.propose-start > span { margin: 0; color: inherit; font-size: 2rem; letter-spacing: 0; text-transform: none; }
+.propose-start strong { display: block; font-size: 1.5rem; }
+.propose-start small { display: block; font-size: 1rem; font-weight: 600; }
+.propose-start.busy { opacity: .7; cursor: progress; }
+.propose-start:has(input:focus-visible) { outline: 3px solid var(--cyan); outline-offset: 3px; }
+.propose-rooms { display: flex; flex-wrap: wrap; gap: .5rem; }
+.propose-room { min-height: 56px; padding-inline: 1rem; border: 2px solid var(--line); border-radius: 18px; background: var(--panel); font-size: 1.1rem; font-weight: 700; }
+.propose-room[aria-pressed="true"] { border-color: #7ee2a8; background: #173a2a; color: #b5f2cd; }
+.propose-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+.propose-send { min-height: 72px; padding-inline: 1.6rem; border: 0; border-radius: 22px; background: #7cc4ff; color: #04213a; font-size: 1.3rem; font-weight: 900; }
+.propose-cancel { min-height: 72px; padding-inline: 1.2rem; border-radius: 22px; }
+.propose-waiting { border-style: solid; border-color: #2a3a48; }
+.propose-answer { border-style: solid; }
+.propose-answer.accepted { border-color: #7ee2a8; }
+.propose-answer.declined { border-color: #7cc4ff; }
+.propose-answer button { justify-self: start; min-height: 56px; min-width: 120px; font-size: 1.2rem; font-weight: 800; }
+.propose-open { color: #7ee2a8; font-weight: 800; font-size: 1.1rem; }
+.propose-message { padding: .6rem .8rem; border-radius: 14px; background: #3b1620; color: #ffd2da; font-weight: 700; }
+.plant-row.proposed { border-color: rgba(124, 196, 255, .6); background: #0f1d29; }
+.plant-proposed { border-color: rgba(124, 196, 255, .5); background: rgba(124, 196, 255, .06); }
+.plant-proposed p { margin: 0 0 .6rem; }
+@media (max-width: 600px) { .propose-photo { width: 96px; height: 96px; } .propose-start strong { font-size: 1.25rem; } }
+
 .plant-import-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; margin-block: 1rem; }
 .plant-import-photo { display: flex; flex-direction: column; gap: .5rem; overflow-wrap: anywhere; }
 .plant-import-photo img { width: 100%; height: 120px; object-fit: contain; }

@@ -36,6 +36,7 @@
     if (!response.ok || body.status === 'error') {
       const error = new Error(body.message || `HTTP ${response.status}`);
       error.status = response.status;
+      if (body.code) error.code = body.code;
       const retryAfterSeconds = Number(response.headers.get('Retry-After'));
       error.retryAfterMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
         ? retryAfterSeconds * 1000
@@ -471,16 +472,18 @@
         document.getElementById('kidSoundDoor').hidden = false;
       }
     } catch (_error) { /* no door, the room still works */ }
-    // Ma jungle (#870): the door appears once a plant is published, and says who needs this child.
+    // Ma jungle (#870): the door says who needs this child. Before the first published plant it
+    // still opens, so a child can propose one (#876).
     try {
       const { plants } = await api('/api/family/plants');
       const door = document.getElementById('kidPlantDoor');
       const update = () => {
         const thirsty = plants.filter(plant => (plant.care || []).some(chore => chore.profileId === profileSelect.value && !chore.waiting && (chore.dueToday || chore.overdue)));
-        document.getElementById('kidPlantDoorCount').textContent = thirsty.length ? `${thirsty.map(plant => plant.nickname).join(', ')} need${thirsty.length > 1 ? '' : 's'} you` : `${plants.length} plant${plants.length > 1 ? 's' : ''} to meet`;
+        document.getElementById('kidPlantDoorCount').textContent = thirsty.length ? `${thirsty.map(plant => plant.nickname).join(', ')} need${thirsty.length > 1 ? '' : 's'} you`
+          : plants.length ? `${plants.length} plant${plants.length > 1 ? 's' : ''} to meet` : 'Proposer une plante';
         door.href = `/kids/plants${profileSelect.value ? `?profile=${encodeURIComponent(profileSelect.value)}` : ''}`;
       };
-      if (plants.length) { update(); door.hidden = false; profileSelect.addEventListener('change', update); }
+      update(); door.hidden = false; profileSelect.addEventListener('change', update);
     } catch (_error) { /* no door, the room still works */ }
     // "Ask Nestor about a plant" from Ma jungle arrives as ?ask=.
     const ask = new URLSearchParams(location.search).get('ask');
