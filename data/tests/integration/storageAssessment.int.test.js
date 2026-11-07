@@ -114,6 +114,14 @@ describe('stored storage assessment (synthetic Mongo evidence)', () => {
     expect(result.sources.find(source => source.source === 'photos').copies.observedHashedFiles).toBe(0);
   });
 
+  test.each(['/', '/mnt/photos', '/mnt/photos/child'])('an active legacy scan at %s also blocks complete-source claims', async root => {
+    await db.collection('nas_files').insertMany([file('/mnt/photos/a', 'photos'), file('/mnt/photos/b', 'photos')]);
+    await db.collection('nas_scans').insertOne({ _id: 'legacy', status: 'running', roots: [root], started_at: NOW });
+    const result = await assess();
+    expect(result.sources.find(source => source.source === 'photos')).toMatchObject({ coverage: 'unknown', reason: 'scan_in_progress' });
+    expect(result.placement.compatibility.filter(pair => pair.source === 'photos').every(pair => pair.observedCapacityFit === 'unknown')).toBe(true);
+  });
+
   test('overlapping roots fail closed without double counting the same file', async () => {
     process.env.STORAGE_AGENT_SOURCES = JSON.stringify({ photos: { canonicalRoot: '/mnt/photos' }, nested: { canonicalRoot: '/mnt/photos/child' } });
     await db.collection('nas_files').insertOne(file('/mnt/photos/child/a', 'photos'));

@@ -21,7 +21,8 @@ const escaped = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function scanScope(root) {
   const ancestors = root.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/')).filter(Boolean);
-  return { 'config.roots': { $in: ['/', ...ancestors, new RegExp(`^${escaped(root)}(?:/|$)`)] } };
+  const roots = { $in: ['/', ...ancestors, new RegExp(`^${escaped(root)}(?:/|$)`)] };
+  return { $or: [{ 'config.roots': roots }, { roots }] };
 }
 
 async function readStorageAssessment(db, { now = new Date() } = {}) {
