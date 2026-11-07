@@ -5,13 +5,14 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from evidence_record import record_page
 from evidence_store import load, save
 from history_coverage import content_hash, cutoff_date, coverage
-from retention_plan import ANALYSIS_CONTRACT, QUALIFICATION_CASES, plan, review_packet, qualification_valid
+from retention_plan import ANALYSIS_CONTRACT, QUALIFICATION_CASES, plan, review_packet, qualification_valid, main
 from secretary_evidence import Archive, sha
 from verify_archive import verify
 from compound_sources import index_attachment
@@ -135,6 +136,35 @@ class RetentionPlanTests(unittest.TestCase):
         self.mirror["host"] = "independent-synthetic-host"
         self.primary["intact"] = False
         self.assertIn("original_integrity_not_verified", self.target(self.result([self.decision()]))["blockers"])
+
+    def test_prior_proof_cannot_waive_current_original_corruption_or_loss(self):
+        decision = self.decision()
+        receipt = load(self.root / "raw-receipts" / f"{self.mid}.json")
+        original = self.root / receipt["path"]
+        original.write_bytes(b"X" * receipt["bytes"])
+        row = self.target(self.result([decision]))
+        self.assertIn("original_integrity_not_verified", row["blockers"])
+        self.assertFalse(row["candidateForOwnerReview"])
+        original.unlink()
+        row = self.target(self.result([decision]))
+        self.assertIn("original_integrity_not_verified", row["blockers"])
+
+    def test_another_writer_cannot_replace_a_frozen_manifest_after_the_existence_check(self):
+        output = Path(self.temp.name) / "frozen-plan.json"
+        inventory = Path(self.temp.name) / "inventory.json"
+        save(inventory, self.inventory)
+        original = {"schema": "synthetic-original-plan", "messages": [self.mid]}
+
+        def competing_writer(*args, **kwargs):
+            save(output, original)
+            return {"schema": "synthetic-losing-plan", "messages": []}
+
+        argv = ["retention_plan.py", "--root", str(self.root), "--before", self.before.isoformat(),
+                "--inventory", str(inventory), "--output", str(output)]
+        with patch.object(sys, "argv", argv), patch("retention_plan.plan", side_effect=competing_writer):
+            with self.assertRaises(FileExistsError):
+                main()
+        self.assertEqual(load(output), original)
 
     def test_source_revision_and_page_receipts_are_pinned(self):
         decision = self.decision()

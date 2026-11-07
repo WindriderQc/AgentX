@@ -61,7 +61,10 @@ Discovery retains every source ID, including replaced drafts. When a collected
 thread omits a discovered ID, the collector checks that message individually.
 Only a typed Gmail not-found response records it as unavailable; authorization,
 network and unclassified failures keep the source pending. Immutable
-`source-observations/` receipts back the `source-availability/` index. Rediscovery
+`source-observations/` receipts back the `source-availability/` index.
+Typed authorization and provider failures retain their own exact-message
+observations before the error is returned; partial reconciliation preserves
+the successful observations and retries only the remaining gaps. Rediscovery
 reopens collection without removing those receipts. Native progress and raw
 completeness report unavailable sources separately from uncollected sources.
 Unavailable means the provider could not return the source; it does not certify
@@ -217,6 +220,10 @@ no raw receipt, even when all receipts that remain are intact. A proof records
 the host, root, source hashes and optional MIME restore sample. Coverage accepts
 independent-copy evidence only from a different host with matching source hashes;
 another directory on the same host does not establish independent preservation.
+The restore sample names only the exact message IDs, hashes and sizes copied
+and successfully decoded, with per-message MIME part and attachment counts.
+Missing files, changed bytes and MIME defects stay failures. This sample does
+not establish restoration of other messages or of the complete archive.
 Hash verification and restoration of a large live archive use the instance's
 heavy-work queue; synthetic tests remain ordinary isolated checks.
 
@@ -226,6 +233,9 @@ python3 integrations/secretary/history_coverage.py --root "$GMAIL_SECRETARY_ROOT
 ```
 
 Reports and proof files contain private source identifiers and stay outside Git.
+Coverage rehashes current originals and attachments inside the archive before
+accepting their prior copy-verification receipts. Missing, changed or escaped
+paths remain integrity gaps even when old proofs still match the saved hashes.
 The separate Outlook import is not part of Gmail coverage; selecting an existing
 export does not start an Outlook synchronization or a new import.
 
@@ -389,6 +399,8 @@ a fresh exact-message provider/metadata check, a concrete manifest, the native
 one-time approval, reversible Trash first and reconciliation of each effect.
 Newer members of a mixed-date thread stay outside the selected message scope.
 Keep manifests and all qualification/analysis receipts outside Git.
+The planner creates its output exclusively and flushes it durably. A concurrent
+writer cannot replace a plan that already owns that output identity.
 
 ```bash
 python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORICAL_CUTOFF" --inventory "$PRIVATE_GMAIL_INVENTORY" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --qualification "$PRIVATE_QUALIFICATION" --decisions "$PRIVATE_ANALYSIS_RECEIPTS" --output "$PRIVATE_RETENTION_PLAN"

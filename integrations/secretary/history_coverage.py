@@ -17,6 +17,7 @@ import re
 
 from evidence_store import load, now, save
 from secretary_evidence import Archive, DEFAULT_ROOT, message_text
+from verify_archive import sha_file
 
 SECTIONS = ("actions", "memories", "deliverables", "invoices")
 
@@ -59,6 +60,20 @@ def independent(primary, mirror):
     return bool(primary.get("host") and mirror.get("host") and primary["host"] != mirror["host"])
 
 
+def current_file_matches(root, receipt):
+    """A prior verification cannot establish that the current bytes still match."""
+    relative = receipt.get("path")
+    if not isinstance(relative, str) or not relative or Path(relative).is_absolute():
+        return False
+    try:
+        file = (root / relative).resolve()
+        return file.is_relative_to(root.resolve()) and file.is_file() \
+            and type(receipt.get("bytes")) is int and file.stat().st_size == receipt["bytes"] \
+            and sha_file(file) == receipt.get("sha256")
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
 def message_coverage(root, manifest, message, original, review, pages, primary, mirror):
     mid, tid = message["id"], manifest["threadId"]
     reasons = []
@@ -69,7 +84,8 @@ def message_coverage(root, manifest, message, original, review, pages, primary, 
     if direction == "unknown":
         reasons.append("message_direction_unknown")
     receipt = load(root / "raw-receipts" / f"{mid}.json", {})
-    raw_ok = proof_matches(primary, "raw", mid, receipt) and bool(receipt.get("sha256"))
+    raw_ok = proof_matches(primary, "raw", mid, receipt) and current_file_matches(root, receipt) \
+        and receipt.get("messageId") == mid and receipt.get("threadId") == tid
     backup_ok = independent(primary, mirror) and proof_matches(mirror, "raw", mid, receipt)
     if not raw_ok:
         reasons.append("original_integrity_not_verified")
@@ -88,7 +104,7 @@ def message_coverage(root, manifest, message, original, review, pages, primary, 
     missing_files = []
     for attachment in message.get("attachments", []):
         path = attachment.get("path")
-        if not path or not proof_matches(primary, "attachments", path, attachment) \
+        if not path or not current_file_matches(root, attachment) or not proof_matches(primary, "attachments", path, attachment) \
                 or not proof_matches(mirror, "attachments", path, attachment) or not independent(primary, mirror):
             missing_files.append(attachment.get("sha256") or attachment.get("partId"))
         (native_text if attachment.get("status") == "text_extracted" else visual).append(attachment.get("sha256"))

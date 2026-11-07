@@ -15,10 +15,11 @@ import json
 from pathlib import Path
 import re
 
-from evidence_store import load, now, save
+from evidence_store import load, now
 from history_coverage import content_hash, coverage, cutoff_date, independent, proof_matches
 from secretary_evidence import Archive, DEFAULT_ROOT
 from compound_sources import packet_scopes, proof_paths, decision_reasons
+from review_receipts import durable
 
 HASH = re.compile(r"[a-f0-9]{64}")
 QUALIFICATION_CASES = frozenset((
@@ -306,7 +307,7 @@ def main():
     result = plan(Archive(args.root, run=lambda _: (_ for _ in ()).throw(RuntimeError("Provider access disabled"))),
         args.before, read(args.inventory, {}), read(args.primary_proof, {}), read(args.mirror_proof, {}),
         read(args.qualification, {}), read(args.decisions, []), dispositions=read(args.dispositions, []))
-    save(args.output, result)
+    durable(args.output, result, exclusive=True)
     print(json.dumps({k: v for k, v in result.items() if k not in ("messages", "providerMessagesWithoutHistoricalArchive")}, ensure_ascii=False))
 
 

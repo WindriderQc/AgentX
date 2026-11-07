@@ -177,22 +177,32 @@ def restore_sample(root, receipts, count, target=None, seed=None):
     work = Path(target) if target else Path(tempfile.mkdtemp(prefix="archive-restore-"))
     work.mkdir(parents=True, exist_ok=True)
     opened = parts = attachments = 0
-    failures = []
+    failures, sources = [], {}
     try:
         for receipt in chosen:
             restored = work / Path(receipt["path"]).name
-            shutil.copyfile(Path(root) / receipt["path"], restored)
             try:
-                if sha_file(restored) != receipt["sha256"]:
+                shutil.copyfile(Path(root) / receipt["path"], restored)
+                if restored.stat().st_size != receipt["bytes"] or sha_file(restored) != receipt["sha256"]:
                     raise ValueError("restored copy differs")
                 with open(restored, "rb") as handle:
                     message = email.message_from_binary_file(handle, policy=policy.default)
+                message_parts = message_attachments = 0
                 for part in message.walk():
+                    if part.defects:
+                        raise ValueError("restored MIME has parse defects")
                     if part.is_multipart():
                         continue
                     part.get_content()  # decodes the transfer encoding and charset
-                    parts += 1
-                    attachments += part.get_filename() is not None
+                    if part.defects:
+                        raise ValueError("restored MIME has decoding defects")
+                    message_parts += 1
+                    message_attachments += part.get_filename() is not None
+                sources[receipt["messageId"]] = {
+                    "path": receipt["path"], "sha256": receipt["sha256"], "bytes": restored.stat().st_size,
+                    "partsDecoded": message_parts, "attachmentsDecoded": message_attachments}
+                parts += message_parts
+                attachments += message_attachments
                 opened += 1
             except Exception as error:  # report and continue: one bad message is a finding
                 failures.append({"messageId": receipt["messageId"], "error": type(error).__name__})
@@ -200,7 +210,7 @@ def restore_sample(root, receipts, count, target=None, seed=None):
         if not target:
             shutil.rmtree(work, ignore_errors=True)
     return {"sampled": len(chosen), "opened": opened, "partsDecoded": parts,
-            "attachmentsDecoded": attachments, "failures": failures}
+            "attachmentsDecoded": attachments, "failures": failures, "sources": sources}
 
 
 def main():

@@ -109,6 +109,35 @@ class VerifyArchiveTests(unittest.TestCase):
         self.assertEqual(sample["attachmentsDecoded"], 2)
         self.assertEqual(set(Path(tempfile.gettempdir()).glob("archive-restore-*")), before)
 
+    def test_restore_receipt_only_pins_the_exact_sources_actually_opened(self):
+        _, receipts = module.verify(self.copy)
+        sample = module.restore_sample(self.copy, receipts, 1, seed=1)
+        self.assertEqual(len(sample["sources"]), 1)
+        mid, restored = next(iter(sample["sources"].items()))
+        original = next(row for row in receipts if row["messageId"] == mid)
+        self.assertEqual({key: restored[key] for key in ("path", "sha256", "bytes")},
+                         {key: original[key] for key in ("path", "sha256", "bytes")})
+        self.assertEqual((restored["partsDecoded"], restored["attachmentsDecoded"]), (2, 1))
+
+    def test_lost_or_corrupt_originals_leave_no_successful_restore_source(self):
+        _, receipts = module.verify(self.copy)
+        (self.copy / receipts[0]["path"]).unlink()
+        (self.copy / receipts[1]["path"]).write_bytes(b"changed")
+        sample = module.restore_sample(self.copy, receipts, 2, seed=1)
+        self.assertEqual(sample["sources"], {})
+        self.assertEqual(sample["opened"], 0)
+        self.assertEqual({row["messageId"] for row in sample["failures"]}, {"message1", "message2"})
+
+    def test_mime_decoding_defects_cannot_become_restore_evidence(self):
+        _, receipts = module.verify(self.copy)
+        receipt = receipts[0]
+        data = rfc822(receipt["messageId"]).replace(base64.b64encode(ATTACHMENT), b"a")
+        (self.copy / receipt["path"]).write_bytes(data)
+        sample = module.restore_sample(self.copy, [{**receipt, "sha256": evidence.sha(data), "bytes": len(data)}], 1)
+        self.assertEqual(sample["sources"], {})
+        self.assertEqual(sample["opened"], 0)
+        self.assertEqual(len(sample["failures"]), 1)
+
     def test_the_report_holds_no_message_content(self):
         report, receipts = module.verify(self.copy)
         report["restoreSample"] = module.restore_sample(self.copy, receipts, 2, seed=1)

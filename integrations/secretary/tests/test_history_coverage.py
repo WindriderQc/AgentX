@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from evidence_record import record_page
 from evidence_store import load, save
-from history_coverage import coverage, cutoff_date, proof_matches
+from history_coverage import coverage, cutoff_date, proof_matches, current_file_matches
 from secretary_evidence import Archive, sha
 from verify_archive import verify
 
@@ -83,6 +83,37 @@ class HistoricalCoverageTests(unittest.TestCase):
         row = next(r for r in self.report()["messages"] if r["messageId"] == "message1")
         self.assertIn("original_integrity_not_verified", row["blockers"])
         self.assertIn("independent_original_copy_not_verified", row["blockers"])
+
+    def test_current_source_must_remain_inside_the_archive_and_match_its_receipt(self):
+        receipt = load(self.root / "raw-receipts/message1.json")
+        self.assertTrue(current_file_matches(self.root, receipt))
+        outside = Path(self.temp.name) / "outside.eml"
+        outside.write_bytes((self.root / receipt["path"]).read_bytes())
+        self.assertFalse(current_file_matches(self.root, {**receipt, "path": "../outside.eml"}))
+        self.assertFalse(current_file_matches(self.root, {**receipt, "path": str(outside)}))
+        original = self.root / receipt["path"]
+        original.unlink()
+        original.symlink_to(outside)
+        self.assertFalse(current_file_matches(self.root, receipt))
+        original.unlink()
+        original.symlink_to(original)
+        self.assertFalse(current_file_matches(self.root, receipt))
+        self.assertFalse(current_file_matches(self.root, {**receipt, "path": "raw/\0invalid.eml"}))
+
+    def test_prior_copy_receipts_do_not_hide_current_attachment_corruption(self):
+        file = self.root / "files/synthetic.txt"
+        file.parent.mkdir(exist_ok=True)
+        file.write_bytes(b"Synthetic attachment")
+        item = {"path": "files/synthetic.txt", "sha256": sha(file.read_bytes()),
+                "bytes": file.stat().st_size, "status": "text_extracted"}
+        manifest = load(self.root / "threads/thread01/manifest.json")
+        manifest["messages"][0]["attachments"] = [item]
+        save(self.root / "threads/thread01/manifest.json", manifest)
+        for proof in (self.primary, self.mirror):
+            proof["attachments"][item["path"]] = item
+        file.write_bytes(b"X" * item["bytes"])
+        row = next(r for r in self.report()["messages"] if r["messageId"] == "message1")
+        self.assertIn("attachment_copies_not_verified", row["blockers"])
 
     def test_a_stale_review_and_thread_questions_remain_visible(self):
         p = self.root / "reviews/thread01.json"

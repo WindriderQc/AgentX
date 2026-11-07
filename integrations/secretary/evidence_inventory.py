@@ -66,6 +66,10 @@ def reconcile_absent(archive, rows, manifest=None):
             reply = archive.run(["gmail", "get", row["id"], "--format=metadata"])
         except GmailProviderError as error:
             if error.kind != "not_found":
+                # Keep the typed failure beside this exact source. It remains
+                # a collection gap, never evidence that the message is gone.
+                observation(archive.root, row["id"], row["threadId"], error.kind,
+                            source="gmail.get.metadata", labels=row.get("labels", []))
                 raise
             observation(archive.root, row["id"], row["threadId"], "not_found",
                         source="gmail.get.metadata", labels=row.get("labels", []))
