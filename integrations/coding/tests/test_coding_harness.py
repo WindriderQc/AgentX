@@ -75,6 +75,14 @@ class HarnessAdapterTest(unittest.TestCase):
         ordinary = json.loads(harness.opencode_config('agentx-primary', 65536))
         self.assertEqual(ordinary['permission']['external_directory'], 'deny')
 
+    def test_opencode_config_rejects_unavailable_context_sizes(self):
+        self.assertNotIn('context', json.loads(harness.opencode_config('local-model', None))['provider']['agentx-core']['models']['local-model']['limit'])
+        self.assertEqual(json.loads(harness.opencode_config('local-model', 65536))['provider']['agentx-core']['models']['local-model']['limit'],
+                         {'output': 32768, 'context': 65536})
+        for size in [0, -1, True, False, '65536', 65536.0]:
+            with self.assertRaisesRegex(RuntimeError, 'Coding context is unavailable'):
+                harness.opencode_config('local-model', size)
+
     def test_unknown_harness_and_escaping_entry_refuse(self):
         with mock.patch.dict(os.environ, {'AGENTX_CODING_HARNESS': 'unknown'}):
             with self.assertRaisesRegex(RuntimeError, 'Unsupported'):
