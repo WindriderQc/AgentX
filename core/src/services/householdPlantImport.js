@@ -2,11 +2,20 @@
 const mongoose = require('mongoose');
 const Imports = require('../../models/HouseholdPlantImport');
 const Plant = require('../../models/HouseholdPlant');
+const PlantPhoto = require('../../models/HouseholdPlantPhoto');
 const plants = require('./householdPlantService');
 const { plantInput, LIMITS } = require('../domains/household/plants');
 const { createPlantFolder, sha256, fail } = require('./householdPlantFolder');
 const identification = require('./householdPlantImportQueue');
 const WC = { w: 1, j: true };
+let indexesReady;
+function ensureStorageIndexes() {
+  // Receipt upserts rely on #866's unique (plantId, sha256) index as well as
+  // the import hash/worker indexes. Await them before admitting racing writes.
+  if (!indexesReady) indexesReady = Promise.all([Imports.ensureImportIndexes(), PlantPhoto.createIndexes()])
+    .catch(error => { indexesReady = null; throw error; });
+  return indexesReady;
+}
 function createPlantImport({ folder = createPlantFolder(), archive = require('./imageArchive').defaultArchive(), queue = identification } = {}) {
   async function list(input) {
     const result = await folder.list(input);
@@ -38,7 +47,7 @@ function createPlantImport({ folder = createPlantFolder(), archive = require('./
     for (const entry of entries) displays.push(await folder.rendition(entry));
     // The unique multikey index claims all original hashes in one atomic write.
     // Preallocated card identity recovers a crash between this claim and create.
-    await Imports.ensureImportIndexes();
+    await ensureStorageIndexes();
     let row;
     try {
       row = await Imports.findOneAndUpdate({ _id: key }, { $setOnInsert: { hashes, files: entries.map(({ bytes: _bytes, roomHint: _hint, ...file }) => file),

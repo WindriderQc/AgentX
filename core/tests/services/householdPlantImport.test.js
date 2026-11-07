@@ -125,6 +125,8 @@ test('concurrent retries create one card and one receipt per photo; overlapping 
   const results = await Promise.all(Array.from({ length: 5 }, () => importer.importGroup(input)));
   expect(new Set(results.map(result => result.plant.id)).size).toBe(1);
   expect(await Plant.countDocuments()).toBe(1); expect(await Photo.countDocuments()).toBe(2);
+  const indexes = await Photo.collection.indexes();
+  expect(indexes).toEqual(expect.arrayContaining([expect.objectContaining({ key: { plantId: 1, sha256: 1 }, unique: true })]));
   const repeated = await importer.importGroup(group([leaf, original]));
   expect(repeated).toMatchObject({ duplicate: true, plant: { id: results[0].plant.id } });
   await fs.writeFile(path.join(root, 'photos/plants/renamed.png'), original.bytes);
