@@ -95,6 +95,8 @@
         const page = await this.request(this.path(invocation) + '?' + this.query());
         if (generation !== this.generation || !this.dialog.open) return;
         if (page.invocationId !== invocation) throw new Error('Invocation native différente.');
+        const option = this.$('pipelineNativeSessionSelect').selectedOptions?.[0];
+        if (option) option.textContent = `${page.nativeSessionId || 'Session en démarrage'} · ${page.state}`;
         if (this.page?.revision !== page.revision || this.page?.invocationId !== invocation) {
           this.$('pipelineNativeSessionMessages').replaceChildren();
           this.append(page.messages); this.page = page;
