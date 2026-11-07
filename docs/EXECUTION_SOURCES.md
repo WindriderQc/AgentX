@@ -96,7 +96,7 @@ The first model API accepts text context. Image content and replayed tool messag
 require an explicit contract extension; the existing local and Household paths retain
 their attachment contracts.
 
-Model-only admission is a table of runtime version and native API. On OpenClaw
+Model-only admission checks runtime version and native API. On OpenClaw
 2026.9.4 it qualifies `openai-completions`, `anthropic-messages` and
 `openai-responses`. A different runtime version is unavailable in model mode
 until its transports are qualified and the table is updated. For each qualified
@@ -106,17 +106,28 @@ The plugin compares the final payload with the submitted context on each call,
 and refuses provider-held state, server-side model fallback and any prompt the
 SDK adds, such as the agent identity sent with an Anthropic subscription token.
 
+`google-generative-ai` additionally requires the exact executable SDK/dependency
+fingerprint in `native.mjs`. It covers the OpenClaw distribution, `@openclaw/ai`
+2026.9.4 and `@google/genai` 2.19.0. The native Google client makes one attempt
+when its retry options are absent; the intercepted transport tests prove this
+on the pinned code. Missing or changed code closes this API, including changes
+that keep the same version strings. The native catalogue publishes that digest
+as `nativeTransportFingerprint` and includes it in the target fingerprint.
+
 | Native API | Applied | Refused before dispatch |
 | --- | --- | --- |
 | `openai-completions` | output limit, temperature, seed, topP, JSON, thinking | numeric reasoning budget when unapplied |
 | `anthropic-messages` | output limit, thinking on/off and level, temperature where the model accepts it | seed, topP, JSON, numeric reasoning budget |
 | `openai-responses` | output limit, thinking on/off and level, temperature where the model accepts it | seed, topP, JSON, numeric reasoning budget |
+| `google-generative-ai` (pinned SDK code) | output limit, temperature, thinking on/off, level and numeric budget | seed, topP, JSON; thinking off where the native model cannot disable it |
 
 A target without JSON and seed cannot be a judge. `openai-chatgpt-responses`
 (subscription) stays unavailable in model mode: its native payload carries no
-output limit, so the requested bound cannot be applied. The Google SDK defaults
-to five attempts and has no configured provider to qualify. Configured native
-agents on these APIs remain accessible. This is a runtime capability gate, with
+output limit, so the requested bound cannot be applied. Google Vertex and other
+Google APIs remain unavailable in model mode. Google qualification uses a
+synthetic native provider configuration and intercepts the actual SDK network;
+it does not install a provider, enable instance targets or make a live call.
+Configured native agents on these APIs remain accessible. This is a runtime capability gate, with
 no AgentX provider client.
 
 The SDK parameter wrapper is currently an internal generic OpenClaw function.
@@ -227,6 +238,13 @@ The installed-SDK test runs when OpenClaw is available next to the plugin and
 injects the native network port. Other synthetic tests require no OpenClaw
 installation. Egress tests permit only the configured gateway from AgentX;
 provider HTTP construction is confined to the native SDK inside OpenClaw.
+`AGENTX_REQUIRE_OPENCLAW_SDK=1 node --test integrations/openclaw/model-execution/test/native-google-qualification.test.mjs`
+requires the real qualified SDK; absence fails instead of skipping. A skipped
+suite is not qualification. Google payload validation verifies exact supplied text,
+rejects provider-held cached context, retry overrides and hidden message parts,
+and retains partial output on broken streams and cancellation. Native request
+identity, served model revision, invoices and live provider acceptance remain
+unverified by the synthetic Google tests.
 Deployment acceptance additionally checks container credential names and
 observed Core/Benchmark/Broker destinations. Do not merge synthetic tests with
 live model qualification or claim deployment from a successful source build.

@@ -17,9 +17,39 @@ agent Responses endpoint retains its existing agent mode and continuity path.
 Run `npm test` here. The installed-SDK test is skipped when the native package is
 unavailable. It uses the actual SDK registry, payload policy and streaming parser
 with an injected native fetch port; it opens no provider socket. Model mode is
-open only for the runtime version and APIs listed in `QUALIFIED_MODEL_APIS`
-(`native.mjs`). Qualify each runtime update or new API with the same transport
+open only for the runtime version and APIs admitted by `qualifiedModelApi`
+(`native.mjs`). Google also requires the pinned executable SDK/dependency digest
+computed by `sdk-fingerprint.mjs`; a dependency patch closes that transport even
+if its version string stays unchanged. The digest is published on native Google
+targets and included in their fingerprints. Qualify each runtime update or new API with the same transport
 tests before adding it there or refreshing benchmark pins.
+
+For a required Google qualification, run
+`AGENTX_REQUIRE_OPENCLAW_SDK=1 node --test test/native-google-qualification.test.mjs`
+here. Missing SDK code fails this command. Its synthetic native provider and
+intercepted network use no real credential or provider socket; a skipped suite
+is not qualification or installed-instance acceptance.
+
+Reproduce from the official npm package in a fresh worktree (Node.js 24 or
+newer). A temporary prefix keeps the package and its dependencies separate from
+installed runtimes. Its manifest pins `@openclaw/ai` 2026.9.4 and `@google/genai`
+2.19.0. Installation scripts stay disabled; do not run the OpenClaw CLI.
+
+```bash
+qualification_dir="$(mktemp -d)"
+npm install --global --prefix "$qualification_dir" --ignore-scripts --no-audit --no-fund openclaw@2026.9.4
+mkdir -p integrations/openclaw/model-execution/node_modules
+ln -s "$qualification_dir/lib/node_modules/openclaw" integrations/openclaw/model-execution/node_modules/openclaw
+AGENTX_REQUIRE_OPENCLAW_SDK=1 npm test --prefix integrations/openclaw/model-execution
+```
+
+Run these commands from the repository root. The official distribution's
+Google SDK fingerprint is
+`cfad322578d04c51596f5745c29aec4686b98fa42caf75bfedce1b616747d65a`.
+The other admitted digest identifies separately tested SDK code; it is not an
+instruction to patch the official package. No runtime configuration, credentials
+or SDK copy belongs in Git. CI without this isolated SDK may skip native tests;
+its green status does not replace the required-SDK qualification above.
 
 See [execution sources](../../../docs/EXECUTION_SOURCES.md) for the API,
 ownership, budgets, benchmark isolation and observable limitations.
