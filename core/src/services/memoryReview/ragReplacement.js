@@ -36,7 +36,10 @@ function createRagReplacement({ ragClient = getRagServiceClient(), now = () => n
     if (typeof text !== 'string' || !text.trim() || text.length > 4000) throw fail('A replacement needs bounded text');
     const successorId = successorFor(key);
     const old = await read(ragClient, ref);
-    if (!old) throw fail('The source no longer exists');
+    if (!old) {
+      await discardUnlinked(ref, successorId);
+      throw fail('The source no longer exists');
+    }
     const m = meta(old);
     if (m.supersededBy === successorId) {
       if (!(await read(ragClient, successorId))) throw fail('The recorded successor is missing; reconcile before any retry');
@@ -44,6 +47,7 @@ function createRagReplacement({ ragClient = getRagServiceClient(), now = () => n
     }
     if (m.supersededBy || m.invalidatedAt || m.revisionFingerprint !== expectedFingerprint
         || scope !== 'owner' || m.scope !== scope || m.sensitivity !== sensitivity) {
+      await discardUnlinked(ref, successorId);
       throw fail('The reviewed source changed or its labels do not match');
     }
     const effectiveAt = validFrom ? new Date(validFrom) : now();
@@ -53,9 +57,31 @@ function createRagReplacement({ ragClient = getRagServiceClient(), now = () => n
     // The successor joins the same memory source, so recall and dedup keep finding it.
     await ragClient.upsertDocumentWithChunks(text.trim(), { documentId: successorId, source: old.source,
       scope, sensitivity, validFrom: effectiveAt.toISOString(), sourceRefs });
-    await ragClient.setDocumentValidity(ref, { invalidatedAt: effectiveAt.toISOString(), supersededBy: successorId,
-      expectedFingerprint });
+    try {
+      await ragClient.setDocumentValidity(ref, { invalidatedAt: effectiveAt.toISOString(), supersededBy: successorId,
+        expectedFingerprint });
+    } catch (error) {
+      // Judge the stored state, not the reply: the link may have committed, the
+      // source may be unchanged (a retry resumes), or another write won.
+      const after = await read(ragClient, ref);
+      if (meta(after).supersededBy === successorId) return { id: successorId, predecessorId: ref, alreadyApplied: false };
+      if (after && meta(after).revisionFingerprint === expectedFingerprint) throw error;
+      await discardUnlinked(ref, successorId);
+      throw fail('The reviewed source changed before linking; the unlinked replacement was removed');
+    }
     return { id: successorId, predecessorId: ref, alreadyApplied: false };
+  }
+
+  // A successor its predecessor never linked must not stay a current fact once
+  // that predecessor has changed. Only this operation's own unreplaced
+  // successor is removed; anything else is left for the owner to reconcile.
+  async function discardUnlinked(ref, successorId) {
+    const [old, successor] = await Promise.all([read(ragClient, ref), read(ragClient, successorId)]);
+    if (!successor || meta(old).supersededBy === successorId) return;
+    if (meta(successor).invalidatedAt || meta(successor).supersededBy) {
+      throw fail('An unlinked replacement was itself replaced; reconcile before any retry');
+    }
+    await ragClient.deleteDocument(successorId);
   }
 
   async function rollback({ ref, key }) {
