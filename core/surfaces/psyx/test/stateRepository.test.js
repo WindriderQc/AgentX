@@ -8,156 +8,7 @@ const {
   createStateRepository
 } = require('../../../src/domains/psyx/stateRepository');
 
-function clone(value) {
-  return value === undefined ? undefined : structuredClone(value);
-}
-
-function valueAt(doc, path) {
-  const parts = path.split('.');
-  let current = doc;
-  for (const part of parts) {
-    if (Array.isArray(current)) return current.map((item) => item?.[part]);
-    current = current?.[part];
-  }
-  return current;
-}
-
-function matches(doc, filter) {
-  return Object.entries(filter).every(([path, expected]) => {
-    if (path === '$or') return expected.some((clause) => matches(doc, clause));
-    const actual = valueAt(doc, path);
-    if (expected && typeof expected === 'object' && '$elemMatch' in expected) {
-      return Array.isArray(actual) && actual.some((item) => matches(item, expected.$elemMatch));
-    }
-    if (expected && typeof expected === 'object' && '$ne' in expected) {
-      return Array.isArray(actual)
-        ? !actual.flat(Infinity).some((value) => String(value) === String(expected.$ne))
-        : String(actual) !== String(expected.$ne);
-    }
-    if (Array.isArray(actual)) return actual.flat(Infinity).some((value) => String(value) === String(expected));
-    return String(actual) === String(expected);
-  });
-}
-
-class MemoryCursor {
-  constructor(documents) {
-    this.documents = documents;
-    this.max = null;
-  }
-
-  sort(spec) {
-    const [[key, direction]] = Object.entries(spec);
-    this.documents.sort((left, right) => {
-      const a = new Date(left[key] || 0).getTime();
-      const b = new Date(right[key] || 0).getTime();
-      return direction < 0 ? b - a : a - b;
-    });
-    return this;
-  }
-
-  limit(value) { this.max = value; return this; }
-  project() { return this; }
-  async toArray() { return clone(this.max ? this.documents.slice(0, this.max) : this.documents); }
-}
-
-class MemoryCollection {
-  constructor(documents = []) {
-    this.documents = clone(documents);
-    this.nextId = 1000;
-    this.indexes = [];
-  }
-
-  find(filter = {}) {
-    return new MemoryCursor(this.documents.filter((doc) => matches(doc, filter)));
-  }
-
-  async findOne(filter = {}) {
-    return clone(this.documents.find((doc) => matches(doc, filter)) || null);
-  }
-
-  async createIndex(keys, options) {
-    this.indexes.push({ keys, options });
-    if (options?.unique) {
-      const seen = new Set();
-      for (const doc of this.documents) {
-        const value = doc[Object.keys(keys)[0]];
-        if (seen.has(value)) throw new Error('duplicate key');
-        seen.add(value);
-      }
-    }
-    return options?.name || 'index';
-  }
-
-  async deleteOne(filter) {
-    const index = this.documents.findIndex((doc) => matches(doc, filter));
-    if (index < 0) return { deletedCount: 0 };
-    this.documents.splice(index, 1);
-    return { deletedCount: 1 };
-  }
-
-  async updateOne(filter, update, options = {}) {
-    let index = this.documents.findIndex((doc) => matches(doc, filter));
-    let inserted = false;
-    if (index < 0 && options.upsert) {
-      const seed = {};
-      for (const [key, value] of Object.entries(filter)) {
-        if (!key.includes('.') && (typeof value !== 'object' || value === null)) seed[key] = value;
-      }
-      seed._id = `memory-${this.nextId++}`;
-      this.documents.push(seed);
-      index = this.documents.length - 1;
-      inserted = true;
-    }
-    if (index < 0) return { matchedCount: 0, modifiedCount: 0 };
-
-    const doc = this.documents[index];
-    const before = JSON.stringify(doc);
-    if (inserted && update.$setOnInsert) Object.assign(doc, clone(update.$setOnInsert));
-    if (update.$set) {
-      for (const [path, value] of Object.entries(update.$set)) {
-        const match = path.match(/^(\w+)\.\$\[(\w+)\]\.(.+)$/);
-        if (match) {
-          const id = options.arrayFilters?.[0]?.[`${match[2]}.id`];
-          const item = doc[match[1]]?.find((entry) => entry.id === id);
-          if (item) item[match[3]] = clone(value);
-        } else {
-          doc[path] = clone(value);
-        }
-      }
-    }
-    if (update.$push) {
-      for (const [key, specification] of Object.entries(update.$push)) {
-        if (!Array.isArray(doc[key])) doc[key] = [];
-        if (specification && Array.isArray(specification.$each)) {
-          doc[key].push(...clone(specification.$each));
-          if (Number.isInteger(specification.$slice) && specification.$slice < 0) {
-            doc[key] = doc[key].slice(specification.$slice);
-          }
-        } else {
-          doc[key].push(clone(specification));
-        }
-      }
-    }
-    if (update.$pull) {
-      for (const [key, condition] of Object.entries(update.$pull)) {
-        doc[key] = (doc[key] || []).filter((entry) => !matches(entry, condition));
-      }
-    }
-    if (update.$inc) {
-      for (const [key, value] of Object.entries(update.$inc)) doc[key] = Number(doc[key] || 0) + value;
-    }
-    return {
-      matchedCount: 1,
-      modifiedCount: before === JSON.stringify(doc) ? 0 : 1,
-      upsertedCount: inserted ? 1 : 0
-    };
-  }
-}
-
-function createHarness(documents = []) {
-  const collection = new MemoryCollection(documents);
-  return { collection, repository: createStateRepository({ collection, logger: null }) };
-}
+const { MemoryCollection, createHarness } = require('./support/state');
 
 test('state infrastructure merges duplicate legacy documents before creating the unique user index', async () => {
   const harness = createHarness([
@@ -520,4 +371,99 @@ test('the profile is the user\'s own text and survives a memory reset; goals are
   assert.equal(goal.state.goals[0].text, 'Crier moins le soir');
   const reset = await harness.repository.reset('default');
   assert.deepEqual([reset.profile.about, reset.goals], ['Père seul de deux enfants.', []]);
+});
+
+function syntheticSupervision(conversationId, ordinal = 2, content = 'Réponse synthétique?') {
+  const { replyTarget, supervisionNote, CRITERIA } = require('../../../src/domains/psyx/supervision');
+  const target = replyTarget(conversationId, [{ id: 'reply-' + ordinal, ordinal, role: 'assistant', content,
+    control: { mode: 'talk', voice: false } }]);
+  return supervisionNote({ replyId: target.replyId, replyHash: target.replyHash,
+    observations: Object.fromEntries(CRITERIA.map(key => [key, { status: 'uncertain', reason: 'Contexte limité.' }])) },
+  { target, reply: content, promptVersion: 3 });
+}
+
+test('supervision and existing review arrays commit together once across concurrent writes and repository restart', async () => {
+  const harness = createHarness();
+  const supervision = syntheticSupervision('c');
+  const input = { conversationId: 'c', supervision };
+  const writes = await Promise.all(Array.from({ length: 4 }, () => harness.repository.recordReview('default', input)));
+  assert.equal(writes.filter(result => !result.skipped).length, 1);
+  let state = await harness.repository.read('default');
+  assert.equal(state.supervisionNotes.length, 1);
+  assert.equal(state.supervisionSummary.replies, 1);
+  assert.equal(state.revision, 1);
+  const restarted = createStateRepository({ collection: harness.collection });
+  assert.equal((await restarted.recordReview('default', input)).skipped, 'duplicate');
+  assert.equal((await restarted.read('default')).revision, 1);
+  const newer = await restarted.recordReview('default', { conversationId: 'c', supervision: syntheticSupervision('c', 6) });
+  assert.equal(newer.state.supervisionSummary.replies, 2);
+  const stale = await restarted.recordReview('default', { conversationId: 'c', supervision: syntheticSupervision('c', 4),
+    digest: { conversationId: 'c', summary: 'Stale digest' } });
+  assert.equal(stale.skipped, undefined, 'an older critique is retained on its own target');
+  assert.equal(stale.state.sessionDigests.length, 0);
+  assert.equal(stale.state.supervisionSummary.replies, 3);
+});
+
+test('supervision retention and summary share the same explicit bounded window and erasure scope', async () => {
+  const { NOTE_LIMIT } = require('../../../src/domains/psyx/supervision');
+  const harness = createHarness();
+  for (let i = 0; i < NOTE_LIMIT + 3; i++) {
+    await harness.repository.recordReview('default', { conversationId: 'c', supervision: syntheticSupervision('c', 2 * (i + 1)) });
+  }
+  let state = await harness.repository.read('default');
+  assert.equal(state.supervisionNotes.length, NOTE_LIMIT);
+  assert.equal(state.supervisionNotes[0].replyOrdinal, 8);
+  assert.equal(state.supervisionSummary.replies, NOTE_LIMIT);
+  assert.equal(state.supervisionSummary.modelObservations.criteria.stance.uncertain, NOTE_LIMIT);
+  assert.equal(state.supervisionSummary.modelObservations.criteria.stance.met, 0);
+  await harness.repository.recordReview('other-owner', { conversationId: 'c', supervision: syntheticSupervision('c') });
+  await harness.repository.recordReview('default', { conversationId: 'other-session', supervision: syntheticSupervision('other-session') });
+  await harness.repository.forgetConversation('default', 'c');
+  state = await harness.repository.read('default');
+  assert.deepEqual(state.supervisionNotes.map(item => item.conversationId), ['other-session']);
+  assert.equal(state.supervisionSummary.replies, 1);
+  assert.equal((await harness.repository.read('other-owner')).supervisionSummary.replies, 1);
+  await harness.repository.reset('default');
+  state = await harness.repository.read('default');
+  assert.deepEqual(state.supervisionNotes, []);
+  assert.equal(state.supervisionSummary.replies, 0);
+  assert.equal((await harness.repository.read('other-owner')).supervisionSummary.replies, 1);
+});
+
+test('reset and rejection during the supervision write retain the existing memory semantics', async () => {
+  const { readReview } = require('../../../src/domains/psyx/review');
+  const harness = createHarness();
+  const review = readReview({ digest: { summary: 'Digest' }, proposals: [
+    { kind: 'notes', text: 'Proposition synthétique', evidence: ['source synthétique'] }
+  ] }, { conversationId: 'c' });
+  const first = await harness.repository.recordReview('default', { conversationId: 'c', ...review });
+  const proposal = first.state.proposals[0];
+  const update = harness.collection.updateOne.bind(harness.collection);
+  let intercept = true;
+  harness.collection.updateOne = async (filter, change, options) => {
+    if (intercept && change.$set?.supervisionNotes) {
+      intercept = false;
+      await harness.repository.rejectProposal('default', proposal.id);
+    }
+    return update(filter, change, options);
+  };
+  const recorded = await harness.repository.recordReview('default', { conversationId: 'c', ...review, supervision: syntheticSupervision('c') });
+  assert.equal(recorded.state.supervisionNotes.length, 1);
+  assert.deepEqual(recorded.state.proposals, []);
+  assert.ok(recorded.state.settledProposals.includes(proposal.fingerprint));
+  assert.deepEqual(recorded.state.notes, [], 'supervision never becomes accepted memory');
+  intercept = true;
+  harness.collection.updateOne = async (filter, change, options) => {
+    if (intercept && change.$set?.supervisionNotes) {
+      intercept = false;
+      await harness.repository.reset('default');
+    }
+    return update(filter, change, options);
+  };
+  const resetRace = await harness.repository.recordReview('default', { conversationId: 'c', ...review, supervision: syntheticSupervision('c', 4) });
+  assert.equal(resetRace.skipped, 'reset');
+  assert.deepEqual(resetRace.state.supervisionNotes, []);
+  assert.equal(resetRace.state.supervisionSummary.replies, 0);
+  assert.deepEqual(resetRace.state.sessionDigests, []);
+  assert.deepEqual(resetRace.state.proposals, []);
 });

@@ -44,7 +44,8 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
     const result = await runtimeServices.inference.execute({
       mode: 'chat', stream: false, taskType: request.taskType, think: false, format: 'json', timeoutMs: request.timeoutMs,
       messages: request.local?.messages || request.messages, options: { temperature: 0.2 }, callerDetail: `psyx/${work}`
-    }, { consumerContract: 'psyx' });
+    }, { consumerContract: 'psyx',
+      ...(request.requestId ? { attribution: { correlationId: request.requestId, runtime: 'agentx' } } : {}) });
     if (!result?.ok) throw Object.assign(new Error(result?.body?.message || `PsyX ${work} inference failed`), { code: 'PSYX_REVIEW_INFERENCE_FAILED' });
     const body = result.body || {};
     return { content: body.message?.content || body.response || body.choices?.[0]?.message?.content || '',
@@ -76,7 +77,15 @@ function createCoreProvider(runtimeServices, { frontier = null, config = {}, log
     // Background work (the review, the dream): one JSON answer, no stream, no
     // thinking, no cancellation once admitted.
     async complete(request) {
-      if (request.location !== 'frontier' || !frontierReady()) return localComplete(request);
+      if (request.location !== 'frontier' || !frontierReady()) {
+        try { return await localComplete(request); }
+        catch (error) {
+          // Reuse Core's pre-dispatch proof. A code from a failed cloud attempt
+          // followed by local fallback is not proof about the whole request.
+          if (require('../../../src/services/routing/taskFallbackLadder').refusedBeforeDispatch(error)) error.reviewNotDispatched = true;
+          throw error;
+        }
+      }
       try {
         const [system, ...rest] = request.messages;
         const result = await frontier.run({ agentId: frontierConfig.agent, instructions: system.content, messages: rest, timeoutMs: request.timeoutMs,

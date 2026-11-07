@@ -1,6 +1,6 @@
 # PsyX in AgentX
 
-The full profile serves the PsyX 2.12.0 conversation UI at `/psyx`. Psychological
+The full profile serves the PsyX 2.13.0 conversation UI at `/psyx`. Psychological
 domain rules and longitudinal state live in `core/src/domains/psyx`; generic
 conversation persistence/lifecycle and admitted inference are Core capabilities.
 No separate PsyX server, database client or inference router starts here.
@@ -27,16 +27,83 @@ existing `psyxstates` domain collection, with a unique owner index. Startup does
 not merge or delete duplicate state records. No PsyX text is automatically added
 to selected notes or RAG, and inference itself does not persist another transcript.
 
-After each completed turn, a background review rereads the conversation with the
-longitudinal state. It runs through Core's admitted inference on the router task
-`PSYX_REVIEW_TASK` (default `deep_reasoning`), never writes into the transcript and
-is never cancelled once admitted; turns completing meanwhile coalesce into one
-follow-up review. It stores a digest per conversation, which later conversations
-receive as `recentSessions`, and at most five memory proposals with evidence.
-Proposals stay pending and outside the prompt until the user accepts (optionally
-edited) or rejects them; settled proposals are not proposed again. The interface
-always shows when a review runs and what it proposed. `PSYX_AUTO_REVIEW=false`
-disables it.
+Each new completed reply explicitly enrolls for background review in its
+canonical turn metadata when review is enabled. The same review capability
+calls Core's admitted inference on the router task `PSYX_REVIEW_TASK` (default
+`deep_reasoning`), once per enrolled reply. It never writes into the transcript
+and never cancels an admitted inference. The default delay is four seconds,
+adjustable through the existing preferences. A conversation's worker processes
+every enrolled reply in transcript order, including replies arriving before
+the delay or during inference. It defers model calls while the user is being
+answered, so a backlog can increase review latency. No separate cadence or
+model route is introduced.
+
+The review critiques its exact target against emotion before analysis, at most
+one question, length, applied stance and lecture avoidance. Core binds the
+note to the canonical assistant message ID, transcript ordinal and SHA-256 of
+the complete reply. Stance and spoken/typed mode come from the saved turn,
+not the reviewer. Context ends at that target: at most 40 whole messages and
+normally 24k transcript characters, with explicit included/available counts.
+An unusually long target is supplied whole even when it alone exceeds that
+usual history budget; Core's existing context-overflow refusal still applies.
+
+PsyX state retains at most 100 supervision notes across conversations. A compact
+cursor per canonical conversation prevents replay after notes leave that window;
+permanent deletion removes the cursor. At most one dispatch/result per
+conversation remains in progress. Before calling the model the worker saves a
+stable request identity and a fenced dispatch attempt. A proven refusal can
+renew that attempt under the same request; an earlier attempt cannot defer,
+replace or project a newer one. It saves the bounded normalized result before applying
+the note, digest and memory proposals together with the cursor in a revision-
+checked state write. Preference and target checks are recomputed after each
+revision conflict. A saved result resumes projection without inference.
+A dispatch whose terminal result is unknown stays visibly uncertain and blocks
+automatic replay, including after restart: recovery needs independent
+reconciliation, since the existing model transport has no idempotent replay
+contract. A proven local refusal before dispatch instead defers the same request
+identity with backoff; no such proof is inferred after a cloud attempt and local
+fallback. No success is inferred from a timeout, a new turn or process death.
+
+Startup and periodic recovery inspect current canonical enrollment markers.
+They never backfill old unmarked transcripts or replies saved with review
+disabled. Reset clears notes, counts and cursors and changes the enrollment
+epoch; earlier replies and in-flight results cannot repopulate it.
+Explicit disabling prevents new model calls, and preference changes discard
+obsolete findings without retrying their completed dispatch. Recovery also
+retries interrupted domain cleanup after canonical deletion, including with
+review inference disabled. It confirms owner-scoped absence before removing
+orphaned supervision notes/cursors; an incomplete list or an archived session
+does not authorize cleanup.
+
+Each note separates code measurements (whitespace-delimited word count,
+question-mark count and the known mode's usual word range) from fallible model
+observations: met, missed, uncertain and not_applicable. Literal reply quotes
+are matched for provenance only; neither matching nor a model judgment proves
+clinical truth or independent quality. Missing, invalid and preference-discarded
+findings stay explicit and never count as success. The existing state API and
+export expose notes and `supervisionSummary` over the same retained window,
+never lifetime quality totals or clinical outcomes. The review status separately
+reports enrolled replies in the current reset epoch, settled attempts, pending
+replies, excluded historical/disabled replies and retained usable critiques.
+A settled attempt is not necessarily a usable model critique.
+
+Late critiques remain on their own targets. Only the latest target can replace
+the conversation digest or propose memory; an earlier review cannot overwrite
+newer derived state. A valid note reaches the next reply only while its ID,
+ordinal and full text hash still match that reply's preceding canonical
+response. It stays outside durable user memory, cannot override explicit
+controls or safety, and is omitted when background review or history context
+is disabled. It shares the existing system-context budget, including a
+frontier-to-local fallback. The dialogue currently does not wait for an unfinished
+critique; completed notes become available when ready.
+
+The current conversation review stores its digest as `recentSessions` for later
+sessions and proposes at most five memory items with evidence. Proposals stay
+pending and outside reply context until the user accepts (optionally edited)
+or rejects them; settled proposals are not proposed again. Acceptance,
+correction and rejection retain their existing semantics. The interface shows
+running reviews, proposals and uncertain execution. `PSYX_AUTO_REVIEW=false`
+disables new review calls.
 
 The review also recommends the stance (talk, analyze, challenge, plan) and depth
 (normal, deep) of the conversation's next turn, with a one-sentence reason. A

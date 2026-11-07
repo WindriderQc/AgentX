@@ -224,3 +224,31 @@ test('a completed HTTP turn reports actual local context coverage after frontier
     assert.equal(calls[0].messages.length, 42, 'system, forty whole history messages, current user message');
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
+
+test('only a proven local pre-dispatch refusal permits the review scheduler to defer and retry', async () => {
+  const runtime = { inference: { execute: async () => {
+    throw Object.assign(new Error('Synthetic admission refusal'), { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED' });
+  } } };
+  const local = createCoreProvider(runtime);
+  await assert.rejects(local.complete({ messages: [], taskType: 'deep_reasoning', location: 'local' }),
+    error => error.reviewNotDispatched === true);
+  const network = createCoreProvider({ inference: { execute: async () => { throw new Error('Synthetic transport failure'); } } });
+  await assert.rejects(network.complete({ messages: [], taskType: 'deep_reasoning' }),
+    error => error.reviewNotDispatched !== true);
+  const cloud = createCoreProvider(runtime, { config: frontierConfig, logger: {}, frontier: {
+    available: () => true, run: async () => { throw new Error('Synthetic cloud result unknown'); }
+  } });
+  await assert.rejects(cloud.complete({ messages: [{ role: 'system', content: 'Synthetic' }], location: 'frontier' }),
+    error => error.reviewNotDispatched !== true, 'a local refusal does not prove the earlier cloud call was never dispatched');
+});
+
+test('the existing local transport attributes a review to its durable request identity', async () => {
+  let received;
+  const provider = createCoreProvider({ inference: { execute: async (_request, options) => {
+    received = options;
+    return { ok: true, body: { message: { content: '{}' } } };
+  } } });
+  const requestId = '00000000-0000-4000-8000-000000000001';
+  await provider.complete({ requestId, messages: [], taskType: 'deep_reasoning' });
+  assert.deepEqual(received, { consumerContract: 'psyx', attribution: { correlationId: requestId, runtime: 'agentx' } });
+});

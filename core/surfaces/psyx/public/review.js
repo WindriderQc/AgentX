@@ -21,18 +21,23 @@ function renderReviewIndicator(status = review.last) {
   const chip = $('reviewStatus');
   const pending = pendingProposals().length;
   const running = status && ['queued', 'running'].includes(status.status);
-  chip.hidden = !review.enabled || (!running && !pending && status?.status !== 'failed' && status?.status !== 'done');
+  const uncertain = status?.status === 'uncertain';
+  chip.hidden = !review.enabled || (!running && !pending && !uncertain && status?.status !== 'failed' && status?.status !== 'done');
   chip.classList.toggle('running', Boolean(running));
   chip.classList.toggle('has-proposals', !running && pending > 0);
-  chip.classList.toggle('failed', status?.status === 'failed');
-  chip.textContent = running
+  chip.classList.toggle('failed', status?.status === 'failed' || uncertain);
+  chip.textContent = uncertain
+    ? 'La revue est en attente de vérification'
+    : running
     ? 'PsyX is reflecting on this conversation…'
     : status?.status === 'failed'
       ? 'The automatic reflection did not complete'
       : pending
         ? `PsyX reflected · ${pending} proposal${pending === 1 ? '' : 's'} to approve`
         : 'PsyX reflected · nothing new to remember';
-  chip.title = running
+  chip.title = uncertain
+    ? 'Un appel a une issue incertaine. Il ne sera pas relancé automatiquement. Les réponses en attente restent enregistrées.'
+    : running
     ? 'A background review rereads the conversation. It never writes into the conversation and nothing enters memory without you.'
     : status?.model ? `Last review by ${status.model}` : '';
   const badge = pending ? String(pending) : '';
@@ -51,8 +56,9 @@ async function pollReview(conversationId, watch, startedAt) {
     if (watch !== review.watch || state.conversationId !== conversationId) return;
     review.enabled = status.enabled !== false;
     review.last = status;
-    if (['done', 'failed'].includes(status.status)) {
+    if (['done', 'failed', 'uncertain'].includes(status.status)) {
       stopReviewWatch();
+      renderReviewIndicator(status);
       await loadPsyXState();
       await loadSessions();
       // "Nothing new" is worth a glance, not a permanent label.
@@ -90,6 +96,7 @@ async function resumeReviewStatus(conversationId) {
     const status = await api(`/api/psyx/review/status?conversationId=${encodeURIComponent(conversationId)}`, { cache: 'no-store' });
     if (state.conversationId !== conversationId) return;
     if (['queued', 'running'].includes(status.status)) watchReview(conversationId);
+    else if (['uncertain', 'failed'].includes(status.status)) { review.last = status; renderReviewIndicator(); }
   } catch { /* the indicator stays quiet */ }
 }
 

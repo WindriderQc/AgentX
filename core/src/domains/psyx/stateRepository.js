@@ -9,6 +9,9 @@ const { createItemCorrection } = require('./stateItemCorrection');
 const dream = require('./dream');
 const assessments = require('./assessments');
 const { createDreamStore } = require('./dreamStore');
+const { createReviewStore } = require('./reviewStore');
+const { normalizeProgress, createReviewProgress } = require('./reviewProgress');
+const { normalizeNotes, summarizeNotes } = require('./supervision');
 const { normalizeEvidenceRefs } = require('./dreamEvidence');
 
 const PSYX_STATE_VERSION = 2;
@@ -165,6 +168,10 @@ function emptyState(userId = 'default') {
     proposals: [],
     settledProposals: [],
     sessionDigests: [],
+    supervisionNotes: [],
+    reviewProgress: {},
+    reviewEpoch: null,
+    supervisionSummary: summarizeNotes([]),
     checkIns: [],
     settings: { frontierMode: null },
     profile: { about: '', expectations: '' },
@@ -186,6 +193,10 @@ function normalizeState(doc, userId = 'default') {
     proposals: proposals.normalizeProposals(doc.proposals),
     settledProposals: proposals.normalizeSettled(doc.settledProposals),
     sessionDigests: proposals.normalizeDigests(doc.sessionDigests),
+    supervisionNotes: normalizeNotes(doc.supervisionNotes),
+    reviewProgress: normalizeProgress(doc.reviewProgress),
+    reviewEpoch: cleanText(doc.reviewEpoch, 80) || null,
+    supervisionSummary: summarizeNotes(doc.supervisionNotes),
     checkIns: followUp.normalizeCheckIns(doc.checkIns),
     resetAt: normalizeDate(doc.resetAt),
     assessments: assessments.normalizeAssessments(doc.assessments),
@@ -490,52 +501,16 @@ function createStateRepository({ collection, logger }) {
   async function reset(userId) {
     await ensureDocument(userId);
     const now = new Date();
-    const cleared = Object.fromEntries([...STATE_ITEM_KEYS, 'experiments', 'proposals', 'settledProposals', 'sessionDigests', 'checkIns', 'assessments'].map((key) => [key, []]));
+    const cleared = Object.fromEntries([...STATE_ITEM_KEYS, 'experiments', 'proposals', 'settledProposals', 'sessionDigests', 'supervisionNotes', 'checkIns', 'assessments'].map((key) => [key, []]));
     await collection.updateOne(
       { userId },
       {
         // resetAt lets a review that started before the reset discard its result.
-        $set: { ...cleared, portrait: null, portraitPrevious: null, portraitRejected: [], dreamLog: [], version: PSYX_STATE_VERSION, updatedAt: now, resetAt: now },
+        $set: { ...cleared, reviewProgress: {}, reviewEpoch: crypto.randomUUID(), portrait: null, portraitPrevious: null, portraitRejected: [], dreamLog: [], version: PSYX_STATE_VERSION, updatedAt: now, resetAt: now },
         $inc: { revision: 1 }
       }
     );
     return read(userId);
-  }
-
-  // Background review output: a digest replaces the conversation's previous one;
-  // proposals already known (memory, pending or settled by the user) are dropped.
-  async function recordReview(userId, { conversationId, digest = null, proposals: incoming = [], resetAt = null, stillWanted = null }) {
-    await ensureDocument(userId);
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const state = await read(userId);
-      if ((state.resetAt || null) !== (resetAt || null)) return { added: 0, digest: null, skipped: 'reset', state };
-      const known = new Set([
-        ...state.proposals.map((item) => item.fingerprint), ...state.settledProposals,
-        ...STATE_ITEM_KEYS.flatMap((key) => state[key].map((item) => proposals.proposalFingerprint(key, item.text))),
-        ...state.experiments.map((item) => proposals.proposalFingerprint('experiments', item.hypothesis, item.action))
-      ]);
-      const fresh = incoming.filter((item) => !known.has(item.fingerprint));
-      if (stillWanted && !await stillWanted()) return { added: 0, digest: null, skipped: 'gone', state };
-      if (!fresh.length && !digest) return { added: 0, digest: null, state };
-      const set = { updatedAt: new Date(), version: PSYX_STATE_VERSION };
-      if (fresh.length) set.proposals = [...state.proposals, ...fresh].slice(-proposals.PROPOSAL_LIMITS.pending);
-      if (digest) set.sessionDigests = [...state.sessionDigests.filter(item => item.conversationId !== conversationId), digest].slice(-proposals.PROPOSAL_LIMITS.digests);
-      // Reset, erasure and proposal decisions change the revision. Replace both
-      // derived arrays together, or reread; stale model output cannot undo them.
-      const result = await collection.updateOne({ userId, revision: state.revision }, { $set: set, $inc: { revision: 1 } });
-      if (result.modifiedCount) return { added: fresh.length, digest, state: await read(userId) };
-    }
-    throw Object.assign(new Error('PsyX state changed during review'), { statusCode: 409, code: 'PSYX_REVIEW_STATE_CONFLICT' });
-  }
-
-  // A permanently deleted conversation leaves nothing derived from it in PsyX memory.
-  async function forgetConversation(userId, conversationId) {
-    const result = await collection.updateOne({ userId }, {
-      $pull: { sessionDigests: { conversationId }, proposals: { conversationId } },
-      $inc: { revision: 1 },
-      $set: { updatedAt: new Date() }
-    });
-    return { removed: result.modifiedCount > 0 };
   }
 
   function proposalNotFound() {
@@ -665,8 +640,8 @@ function createStateRepository({ collection, logger }) {
     addExperiment,
     updateExperiment,
     reset,
-    recordReview,
-    forgetConversation,
+    ...createReviewProgress({ collection, read, ensureDocument }),
+    ...createReviewStore({ collection, read, ensureDocument, stateItemKeys: STATE_ITEM_KEYS, version: PSYX_STATE_VERSION }),
     acceptProposal,
     rejectProposal
   };

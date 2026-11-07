@@ -37,30 +37,32 @@ test('an all-light PsyX turn preserves crisis safeguards while sending no option
 
 test('review preferences gate queued work and discard a running result after a settings revision changes', async () => {
   let preferences = { revision: 1, values: { ...defaultsFor('psyx', {}), reviewDelaySeconds: 0, backgroundReview: false } };
-  let calls = 0, recorded = 0, release, started;
+  let calls = 0, release, started;
+  const { repository } = require('./support/state').createHarness();
   const begin = new Promise(resolve => { started = resolve; });
   const reviewer = createReviewer({ config: { review: { enabled: false, delayMs: 0 }, requestTimeoutMs: 1000 },
     preferencesFor: async () => structuredClone(preferences), logger: { warn() {} },
     provider: { complete: async () => { calls++; started(); await new Promise(resolve => { release = resolve; });
       return { content: JSON.stringify({ digest: { summary: 'Synthetic summary', next: { mode: 'talk', depth: 'normal' } }, proposals: [] }) }; } },
-    conversationRepository: { context: async () => [{ role: 'user', content: 'Synthetic context' }] },
-    stateRepository: { read: async () => emptyState(), recordReview: async (_id, input) => { if (await input.stillWanted()) recorded++; return { added: 0 }; } } });
+    conversationRepository: { context: async () => [{ role: 'user', content: 'Synthetic context' }, { role: 'assistant', id: 'r', ordinal: 2, content: 'Reply', control: { reviewRequested: true } }] },
+    stateRepository: repository });
   reviewer.schedule('owner', 'session'); await tick(); assert.equal(calls, 0);
   preferences = { revision: 2, values: { ...preferences.values, backgroundReview: true } };
   reviewer.schedule('owner', 'session'); await begin;
   preferences = { revision: 3, values: { ...preferences.values, backgroundReview: false } };
-  release(); await tick(); assert.equal(calls, 1); assert.equal(recorded, 0);
+  release(); await tick(); assert.equal(calls, 1); assert.equal((await repository.read('owner')).supervisionNotes[0].modelReview.status, 'discarded');
   reviewer.forgetUser('owner');
 });
 
 test('the saved review delay postpones inference dispatch', async t => {
   let calls = 0;
+  const { repository } = require('./support/state').createHarness();
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const reviewer = createReviewer({ config: { review: {} }, logger: {},
     preferencesFor: async () => ({ revision: 1, values: { ...defaultsFor('psyx', {}), reviewDelaySeconds: 0.025 } }),
     provider: { complete: async () => { calls++; return { content: '{"digest":{"summary":"Synthetic"},"proposals":[]}' }; } },
-    conversationRepository: { context: async () => [{ role: 'user', content: 'Synthetic' }] },
-    stateRepository: { read: async () => emptyState(), recordReview: async () => ({ added: 0 }) } });
+    conversationRepository: { context: async () => [{ role: 'user', content: 'Synthetic' }, { role: 'assistant', id: 'r', ordinal: 2, content: 'Reply', control: { reviewRequested: true } }] },
+    stateRepository: repository });
   const flush = () => new Promise(resolve => setImmediate(resolve));
   try {
     reviewer.schedule('owner', 'session'); await flush();

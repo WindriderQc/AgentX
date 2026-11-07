@@ -90,6 +90,8 @@ function normalizeDigest(raw, { conversationId = null, now = new Date().toISOStr
     movement: clean(raw.movement, 300),
     commitment: clean(raw.commitment, 300),
     next: normalizeNext(raw.next),
+    ...(Number.isSafeInteger(raw.reviewedReplyOrdinal) && raw.reviewedReplyOrdinal > 0
+      ? { reviewedReplyOrdinal: raw.reviewedReplyOrdinal } : {}),
     updatedAt: normalizeDate(raw.updatedAt, now)
   };
 }
