@@ -11,6 +11,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
   isBusy = () => false, locationFor = () => 'local', preferencesFor = null }) {
   const enabled = Boolean(preferencesFor || config.review?.enabled !== false) && typeof provider.complete === 'function';
   const jobs = new Map(), runningRequests = new Set();
+  let stopped = false;
   const key = (user, conversation) => user + ':' + conversation;
   const preferences = user => preferencesFor ? preferencesFor(user) : Promise.resolve(null);
   const delay = settings => settings ? settings.values.reviewDelaySeconds * 1000 : config.review?.delayMs ?? 4000;
@@ -63,7 +64,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
     return { added: result.added, error: output.error || null, skipped: result.skipped };
   }
 
-  async function one(userId, conversationId, current, settings) {
+  async function one(userId, conversationId, current, settings, job) {
     let work = current.cursor.active;
     if (work) {
       if (work.phase === 'result_ready') return project(userId, conversationId, work);
@@ -72,6 +73,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
       const remaining = Date.parse(work.retryAt) - Date.now();
       if (remaining > 0) return { waitMs: remaining };
     }
+    if (!current.turns) return { drained: true };
     const target = work?.target || current.pending[0];
     if (!target) return { drained: true };
     const due = new Date(target.repliedAt || 0).getTime() + delay(settings);
@@ -88,7 +90,18 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
       preferencesRevision: settings?.revision ?? null });
     if (claim.skipped) return { retry: true };
     work = claim.work;
-    if (!await stillExists(userId, conversationId, target)) return { uncertain: true, work, error: 'PSYX_REVIEW_TARGET_UNAVAILABLE' };
+    const fresh = await plan(userId, conversationId);
+    if (fresh.cursor.active?.requestId !== work.requestId) return { skipped: 'gone' };
+    const latestSettings = await preferences(userId);
+    if (stopped || jobs.get(key(userId, conversationId)) !== job
+      || !fresh.turns || targetIn(target, fresh.turns) < 0
+      || (latestSettings && (!latestSettings.values.backgroundReview || latestSettings.revision !== work.preferencesRevision))) {
+      // No provider call has started: preserve this exact identity as safely
+      // deferred, rather than losing it or treating it as an uncertain dispatch.
+      await stateRepository.saveReviewResult(userId, { work, error: 'PSYX_REVIEW_DEFERRED_BEFORE_DISPATCH',
+        retryAt: new Date().toISOString() });
+      return { waitMs: 1000 };
+    }
     runningRequests.add(work.requestId);
     try {
       const result = await provider.complete({
@@ -134,7 +147,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
         if (isBusy(userId) && current.cursor.active?.phase !== 'result_ready') {
           job.status = 'queued'; arm(userId, conversationId, job, Math.max(1000, delay(settings))); return;
         }
-        const outcome = await one(userId, conversationId, current, settings);
+        const outcome = await one(userId, conversationId, current, settings, job);
         if (jobs.get(key(userId, conversationId)) !== job) { schedule(userId, conversationId); return; }
         if (outcome.waitMs != null) { job.status = 'queued'; arm(userId, conversationId, job, outcome.waitMs); return; }
         if (outcome.uncertain || outcome.unavailable) {
@@ -168,7 +181,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
   }
 
   function schedule(userId, conversationId) {
-    if (!enabled || !conversationId) return false;
+    if (!enabled || stopped || !conversationId) return false;
     const id = key(userId, conversationId);
     let job = jobs.get(id);
     if (job && ['running', 'queued'].includes(job.status)) { job.sequence++; return true; }
@@ -228,10 +241,12 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
   }
   function start() {
     if (!enabled || clock) return;
+    stopped = false;
     const check = () => void scan().catch(error => logger.warn?.('PsyX review recovery failed', { code: error.code }));
     check(); clock = setInterval(check, 60000); clock.unref?.();
   }
   function stop() {
+    stopped = true;
     clearInterval(clock); clock = null;
     for (const job of jobs.values()) clearTimeout(job.timer);
     jobs.clear();

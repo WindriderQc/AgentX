@@ -243,6 +243,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
   api.delete('/portrait/statements/:id', asyncRoute(async (req, res) => responseData(res, { state: (await stateRepository.rejectPortraitStatement(res.locals.psyxUserId, cleanText(req.params.id, 80))).state })));
   api.post('/state/reset', asyncRoute(async (req, res) => {
     if (req.body?.confirmation !== 'RESET PSYX MEMORY') return res.status(400).json({ ok: false, status: 'error', code: 'PSYX_RESET_CONFIRMATION_REQUIRED', message: 'Type RESET PSYX MEMORY to confirm.' });
+    review.forgetUser?.(res.locals.psyxUserId);
     return responseData(res, await stateRepository.reset(res.locals.psyxUserId));
   }));
   api.get('/export', asyncRoute(async (_req, res) => {

@@ -264,3 +264,54 @@ test('separate resets at the same instant still fence stale enrollment and dispa
   assert.deepEqual((await h.repository.read('u')).reviewProgress, {});
   t.mock.timers.reset();
 });
+
+test('disabling review during the durable claim cannot launch inference and later resumes the same request', async () => {
+  const h = setup();
+  h.append('a');
+  let preferences = { revision: 1, values: { backgroundReview: true, reviewDelaySeconds: 0 } };
+  h.options.preferencesFor = async () => structuredClone(preferences);
+  const claimReview = h.repository.claimReview;
+  let release, claimed;
+  h.repository.claimReview = async (...args) => {
+    const result = await claimReview(...args);
+    if (!claimed) { claimed = result.work; await new Promise(resolve => { release = resolve; }); }
+    return result;
+  };
+  const reviewer = createReviewer(h.options);
+  reviewer.schedule('u', 'c');
+  await until(() => Boolean(release));
+  preferences = { revision: 2, values: { ...preferences.values, backgroundReview: false } };
+  reviewer.forgetUser('u');
+  release();
+  await until(async () => (await h.repository.read('u')).reviewProgress.c.active.phase === 'waiting');
+  assert.equal(h.calls.length, 0);
+  assert.equal((await h.repository.read('u')).reviewProgress.c.active.requestId, claimed.requestId);
+  preferences = { revision: 3, values: { ...preferences.values, backgroundReview: true } };
+  reviewer.forgetUser('u');
+  reviewer.schedule('u', 'c');
+  await drain(reviewer);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].request.requestId, claimed.requestId);
+  reviewer.stop();
+});
+
+test('reset while the durable claim is settling prevents the old generation from dispatching', async () => {
+  const h = setup();
+  h.append('a');
+  const claimReview = h.repository.claimReview;
+  let release;
+  h.repository.claimReview = async (...args) => {
+    const result = await claimReview(...args);
+    await new Promise(resolve => { release = resolve; });
+    return result;
+  };
+  const reviewer = createReviewer(h.options);
+  reviewer.schedule('u', 'c');
+  await until(() => Boolean(release));
+  await h.repository.reset('u');
+  release();
+  await drain(reviewer);
+  assert.equal(h.calls.length, 0);
+  assert.deepEqual((await h.repository.read('u')).reviewProgress, {});
+  reviewer.stop();
+});
