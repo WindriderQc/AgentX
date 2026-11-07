@@ -35,14 +35,17 @@ const text = (value, max, name, required = false) => {
   return value.trim();
 };
 
+// The moment's page in Life Atlas, absolute when the instance names its public address.
+function momentLink(id, env = process.env) {
+  const path = `/atlas/#entry:${id}`;
+  try { return env.CORE_PUBLIC_URL ? new URL(path, env.CORE_PUBLIC_URL).href : path; } catch { return path; }
+}
+
 function createHistoryProposals({ history = require('./personalHistoryService'), context = require('./personalHistoryContextService'),
   contract = require('./personalHistoryContextContract'), notes = () => require('./memoryNoteService').personal(),
   env = process.env } = {}) {
 
-  const link = id => {
-    const path = `/atlas/#entry:${id}`;
-    try { return env.CORE_PUBLIC_URL ? new URL(path, env.CORE_PUBLIC_URL).href : path; } catch { return path; }
-  };
+  const link = id => momentLink(id, env);
 
   // A moment as Nestor and the inbox see it: what can be proposed and against which revision.
   function view(entry) {
@@ -294,4 +297,4 @@ function createHistoryProposals({ history = require('./personalHistoryService'),
   return { search, moment, propose, proposeMoment, list, accept, refuse, operateForNestor, pendingCount, CONTEXT_FIELDS, SOUVENIR_FIELDS };
 }
 
-module.exports = { createHistoryProposals };
+module.exports = { createHistoryProposals, momentLink };

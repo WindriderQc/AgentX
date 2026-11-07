@@ -47,13 +47,14 @@ function forAudience(audience, { ragClient = getRagServiceClient(), minScore = d
         // A tag, persona or caller filter cannot grant access to owner data.
         searchOptions.filters = { ...options.filters, scope: 'household', sensitivity: 'normal' };
       }
-      if (audience === 'owner-private') return privateSearch(query.trim(), searchOptions, { ragClient, recall });
-      const results = await ragClient.searchSimilarChunks(query.trim(), searchOptions);
+      const results = audience === 'owner-private'
+        ? await privateSearch(query.trim(), searchOptions, { ragClient, recall })
+        : await ragClient.searchSimilarChunks(query.trim(), searchOptions);
       // Recheck returned labels before text can enter a prompt or UI. Missing
       // labels are not a family grant, even if an upstream adapter ignores its filter.
       // An older RAG service may not filter replaced facts yet; recheck them too.
       const now = new Date();
-      return (Array.isArray(results) ? results : []).filter(result => (audience === 'owner'
+      return (Array.isArray(results) ? results : []).filter(result => (audience !== 'household'
         || (result?.metadata?.scope === 'household' && result?.metadata?.sensitivity === 'normal'))
         && (history || isCurrentFact(result?.metadata || {}, now)));
     }

@@ -31,6 +31,9 @@ needs her tools, not for an ordinary task or calendar entry.
   selection and explicit confirmation of a family-readable copy are separate.
   A RAG search, persona or device does not approve sharing. This human workflow
   has no MCP promotion tool; see the product's `docs/HOUSEHOLD_DOCUMENT_REVIEW.md`.
+- **Life history** (`life_history`, owner bus): find and read the owner's
+  moments with their Atlas link. `propose` and `add` file proposals only; the
+  owner accepts or refuses them in Life Atlas. Quote the owner's own words.
 - No match does not prove a fact or document never existed.
 
 ## Personal tasks
@@ -135,7 +138,10 @@ request for that photo. Details: `docs/PHOTOS.md`.
   seconds per pending call, so call again without adding `sleep`; honor any
   returned retry delay. Report only the returned answer and evidence. If
   uncertain, keep polling the original identity; never submit a replacement.
-- Mail history: `mail_journal` and `mail_recall`. Never send mail or do
+- Mail history: `mail_journal` and `mail_recall`. A recall result's `links`
+  point to digests, moments, souvenirs and open personal tasks that share its
+  exact message or thread; read the linked record before relying on it, and
+  mention `linkStatus.unavailable` when present. Never send mail or do
   anything destructive without the owner's explicit request. Cloud budget,
   campaign approval and native admission still apply.
 

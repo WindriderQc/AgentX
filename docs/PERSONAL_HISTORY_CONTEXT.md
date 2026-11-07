@@ -209,7 +209,9 @@ told it; only the owner decides. A proposal changes nothing by itself.
   `rationale`, `evidence`) or `status` (pending count, inbox link, recent
   proposals and decisions). The
   OpenClaw tool `life_atlas` (super-dad-memory, private owner context only)
-  calls it. There is no accept, refuse or edit operation on this contract.
+  and the owner MCP tool `life_history` (`/api/consumers/nestor/v1/mcp`, absent
+  from `/mcp` and family runtimes) call the same service. There is no accept,
+  refuse or edit operation on this contract.
 - A moment with a context accepts `title`, `description`, `date`/`precision`,
   `endDate`/`endPrecision`, `ongoing`, `category`, `place` and `notes`,
   normalized by the context contract when proposed. A kept souvenir accepts
@@ -253,6 +255,30 @@ private recall (`ownerRecallService.sync`, three seconds later, at most fifty
 records) so Nestor's `mail_recall` sees the change without waiting for the
 next indexing run. Only an instance with `OWNER_MAIL_RAG_TOKEN` syncs; a
 failure is logged and never affects the owner's action.
+
+## Links in the private recall
+
+Each owner-private recall result (`mail_recall` on the owner MCP bus and
+`POST /api/consumers/nestor/v1/memory/recall`) carries `links`: records in other
+Core stores that share an identical identifier. A mail or file hit links by its
+`messageId` (`same_message`) or `threadId` (`same_thread`) to mail journal
+digests, history moments (`source` or `relatedSources`), active kept souvenirs
+citing that message and open personal tasks whose dossier or evidence signal
+names that thread. A souvenir hit links to its own moment (`kept_souvenir`).
+No similarity, name or date matching creates a link.
+
+Forgotten moments, forgotten or replaced notes, expired digests and closed or
+non-personal tasks are excluded. A link names its system, id, relation and
+bounded title, the moment's Atlas link and dates; an unknown date stays null
+with precision `unknown`, and a sealed note's text is not copied. At most six
+links per result; `linkStatus` reports `basis: exact_identifiers`, whether the
+set is `complete`, which stores were `unavailable` and whether it was
+`truncated`. A missing link is not proof that no relation exists.
+
+Links are read-only pointers. They create, accept or change no task, moment,
+note, digest or calendar event. The audience is bound by
+`core/src/services/ownerContextLinks.js`, reached only from Nestor's owner HTTP
+and MCP transports.
 
 ## Deployment
 
