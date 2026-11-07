@@ -1,6 +1,7 @@
 import { readState } from "./store.js";
 import { nativeToolChecks } from './tool-evidence.js';
 import { isNativeToolCallId } from '../../../shared/nativeToolCallId.cjs';
+import { openclawTurnUsage } from '../../../shared/openclawTurnUsage.cjs';
 
 const invalid = message => Object.assign(new Error(message), { statusCode: 400 });
 const householdKey = /^agent:([a-z0-9][a-z0-9_-]*):household:direct:[a-f0-9-]{36}$/;
@@ -162,6 +163,9 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
       const failure = nativeTurnFailure(history, request.sessionKey, request.runId);
       if (result.run?.status !== 'failed' && failure) result.run = failure;
       result.answer = nativeTurnAnswer(history, request.sessionKey, request.runId);
+      if (result.run && result.answer.status === 'ready' && !result.answer.deliveredBy) {
+        result.run = { ...result.run, usage: openclawTurnUsage(history, request.sessionKey, request.runId) };
+      }
       result.progress = nativeTurnProgress(history, request.sessionKey, request.runId);
       result.toolChecks = nativeToolChecks(history, request.sessionKey, request.runId);
     } else throw invalid("Choose agents or turn; notes belong to AgentX Core");

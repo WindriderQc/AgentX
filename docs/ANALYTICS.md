@@ -1,6 +1,7 @@
 # Reading Analytics
 
-Open `/analytics` for a compact overview of recorded AgentX-routed calls.
+Open `/analytics` for a compact overview of Core-observed calls and declared
+direct-provider usage.
 The selected period applies to the four headline metrics, the volume/error
 chart, model or consumer comparison, and local/cloud accounting. The default
 is 24 hours until the operator starts the daily-use reporting period. Then
@@ -29,7 +30,8 @@ observations, not a claim that one metric caused another.
   including admission refusals. A gateway waiting for a reservation may record
   several refused attempts for one client request. Its error rate is an attempt
   rate, not a percentage of failed user requests. Calls made by a native provider
-  without passing through Core are outside this view.
+  without passing through Core appear only when a runtime submits a declared
+  usage receipt. Undeclared traffic remains outside this view.
 - **Completed successfully** is successful terminal records divided by all
   records. Errors and caller cancellations remain separate below it. An empty
   window has no success percentage.
@@ -42,7 +44,9 @@ observations, not a claim that one metric caused another.
   energy use or native decoding speed. Output tok/s in the detailed table uses
   that same end-to-end duration.
 - **Cloud estimate** uses configured token prices for recognized cloud calls.
-  Unpriced models are identified and excluded. No recorded cloud calls is
+  Declared receipts use their native USD cost or a configured estimate; unknown
+  cost and subscription usage have no invented API price. Models with any
+  unpriced calls are identified. No recorded cloud calls is
   different from unpriced traffic. All models contribute to local/cloud totals;
   the detailed model list displays at most 40, with coverage in the API.
 
@@ -184,8 +188,8 @@ Household (surface) turns record the same message fields as the Playground:
 `stats.usage` with the tokens the engine measured (summed over a tool loop),
 `stats.meta.model` with the model that served the message (the principal
 alias resolved to the host pin current at record time, alias kept in
-`requestedModel`) and `cost`. An engine that reports no counts, such as an
-OpenClaw agent today, leaves usage unknown. A cloud provider without a
+`requestedModel`) and `cost`. An engine that reports no complete counts leaves
+usage unknown. A cloud provider without a
 configured price keeps its tokens and an unknown cost, never $0. Chat cost,
 feedback and stats grouped by model use each message's own model; the
 conversation's `model` is only its latest one. A turn with supplied knowledge
@@ -199,3 +203,88 @@ tokens, as embeddings never do. A model OpenClaw ran itself is recorded as
 `openclaw:model:<provider>/<model>`; cloud classification and pricing read the
 provider inside that name, so OpenRouter calls through the LAN gateway count
 as cloud.
+
+## Declared native usage
+
+`POST /api/analytics/runtime-usage` accepts content-free receipts from Hermes
+and OpenClaw on the existing private-LAN Analytics boundary. This is declared
+accounting, not server-attested execution or a new consumer principal. Required
+fields are `runtime` (`hermes` or `openclaw`), stable `instanceId`, native `runId`,
+integer `callIndex`, `transport: "direct-provider"`, `provider`, `model`,
+`inputTokens`, `outputTokens`, `billing` (`metered` or `subscription`) and ISO
+`completedAt`. `inputTokens` includes cached input; optional `cachedInputTokens`
+is its cache-read subset. Optional `durationMs` measures the native call/run,
+and `nativeCost: { amount, currency: "USD" }` reports a known metered cost.
+Missing token counts refuse; unknown costs stay null. Configured pricing is
+used only without cached input, because the ordinary calculator has no cache
+tariff. A run aggregate and its individual calls must never both be submitted.
+
+The native identity `(runtime, instanceId, runId, callIndex)` deduplicates retries
+atomically. Changing the payload under that identity returns 409. Keep native
+identities, completion timestamps and arguments across retries, including lost
+replies. Core stores only a hash of the native run id, plus accounting metadata,
+in `inferencelogs` with `source: declared-receipt` and `runtime: external`.
+Receipts outside the configured inference-log retention refuse with 410;
+historical calls are not backfilled automatically. The response supplies a
+`receiptId`; `GET /api/analytics/runtime-usage/:receiptId` reconciles it through
+the safe inference-log projection. It does not expose native session ids.
+
+A call already recorded by Core uses `transport: "core"` with its exact
+`coreLogId` and native identity instead. Core binds that identity to the existing
+row without adding usage; an unconfirmed log refuses with 409. A later direct
+declaration under the bound identity conflicts. Runtime collectors must select
+only explicitly configured direct providers: a provider label alone does not
+prove that it bypasses Core. Do not run both a call collector and a run-aggregate
+collector on the same traffic. The current local LLM gateway does not forward
+OpenRouter; provider-routing changes require their own compatible transport.
+
+Inference summary and federated buckets expose `coreObservedCalls` and
+`declaredCalls`; log rows expose their source and declared billing/cost kind.
+The cloud overview names the declared count. Stored native costs are not priced
+again. Partial known costs remain a partial total with unpriced coverage.
+`cloud_health` retains its token-limit semantics: Core-observed cloud tokens
+and declared **known-cost metered** tokens enter its gate. Subscription and
+unpriced declarations remain visible but are excluded; the budget reports
+`cloud_gate_tokens`, `cloud_declared_requests` and
+`cloud_excluded_declared_requests`. These records are not a provider invoice.
+
+Household Hermes submits its completed native run receipt directly to this Core
+service. A duplicate browser turn reuses the same native declaration. Native
+local/Core fallback is excluded. The durable run journal retains the source
+receipt and a content-free pending outbox if accounting is unavailable. Later
+observations retry the same entries, including across subsequent native runs;
+only acknowledged receipts leave the outbox. At 1,000 pending entries a new
+native run refuses until accounting is reconciled. The journal can also be
+resubmitted with the collector.
+Accounting failure does not discard a completed conversation answer.
+
+`integrations/operations/runtime-usage-sync.cjs` translates native OpenClaw
+agent-session JSONL on its host. It sends metadata and usage only, including
+tool-use calls, and never invokes a model. Explicit `--direct-providers` excludes
+Core bridges; model-mode executions do not use this agent transcript. Example:
+
+```sh
+node integrations/operations/runtime-usage-sync.cjs \
+  --core-url https://core.example.test \
+  --sessions-dir /absolute/native/agent/sessions \
+  --instance-id native-openclaw-instance \
+  --direct-providers openrouter,openai-codex --lookback-days 30
+```
+
+Use the same instance id on every run. Set lookback within Core's retention.
+Run the collector through the instance's existing native operational scheduler;
+source delivery does not install a recurring job. No new compute queue is used.
+For an archived Hermes terminal journal, pass `--hermes-state /absolute/state.json`
+and `--hermes-origin https://hermes.example.test` instead of the OpenClaw flags.
+The state contains `runId`, stable `settledAt` and native terminal `receipt`.
+Retain the original Hermes origin, which determines the same instance id as the
+live transport. Native Hermes use outside Household must supply its terminal
+run journal through this adapter; merely installing Core does not instrument
+another native entry point.
+
+OpenClaw continuity projects usage from its existing bounded native transcript
+only when the exact run's first assistant call follows a retained user boundary,
+every assistant call has complete native counts, and the final reply is terminal.
+Missing, clipped, delegated and repeated-message evidence stays unknown. Core
+stores the measured sum on the household turn; it does not sum its own bridge
+logs again. This chat accounting is separate from platform inference totals.

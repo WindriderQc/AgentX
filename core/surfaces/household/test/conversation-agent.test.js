@@ -111,7 +111,7 @@ test('one native session owns tools and history; presentation and model remain i
   const requests = [], starts = [], deltas = [];
   const client = createAgentClient({ env, continuity: async req => {
     assert.equal(req.runId, runId); assert.equal(req.sessionKey, sessionKeyFor(session));
-    return { answer: answer('Trouvé.'), run: { model: 'local', provider: 'ollama' }, receipts: [{ tool: 'agentx__rag_search', observed: true }], toolChecks: { status: 'observed', runId, completedTools: ['agentx__rag_search'], loop: null } };
+    return { answer: answer('Trouvé.'), run: { model: 'local', provider: 'ollama', usage: { input: 10, output: 2, cacheRead: 5, cacheWrite: 1 } }, receipts: [{ tool: 'agentx__rag_search', observed: true }], toolChecks: { status: 'observed', runId, completedTools: ['agentx__rag_search'], loop: null } };
   }, fetchImpl: async (url, options) => {
     requests.push({ url, options, body: JSON.parse(options.body) });
     return { ok: true, body: (async function* () {
@@ -124,6 +124,7 @@ test('one native session owns tools and history; presentation and model remain i
     onStarted: async key => starts.push(key), onDelta: text => deltas.push(text) };
   const first = await client(call);
   assert.equal(first.text, 'Trouvé.'); assert.deepEqual(deltas, ['Trouvé.']);
+  assert.deepEqual(first.metadata.usage, { input: 10, output: 2, cacheRead: 5, cacheWrite: 1 });
   assert.equal(first.tools.receipts[0].tool, 'agentx__rag_search');
   assert.deepEqual(first.tools.toolChecks.completedTools, ['agentx__rag_search']);
   assert.equal(requests[0].url.pathname, '/v1/responses');

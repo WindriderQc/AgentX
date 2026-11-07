@@ -33,7 +33,7 @@ function fixture(options = {}) {
     turnContext: 'Synthetic selected personal fact', signal: new AbortController().signal,
     onDelta: value => deltas.push(value), onActivity: value => activity.push(value) };
   const archived = [];
-  const run = createHermesTransport({ env, fetchImpl, pollMs: 1, stopMs: 100, archive: async (_session, state) => archived.push(state),
+  const run = createHermesTransport({ env, fetchImpl, pollMs: 1, stopMs: 100, recordUsage: options.recordUsage, archive: async (_session, state) => archived.push(state),
     persist: async (_id, value) => { if (options.persistFailure) throw new Error('Synthetic write failure'); saved = value; writes.push(value); } });
   return { run, request, calls, writes, deltas, activity, archived, saved: () => saved };
 }
@@ -166,8 +166,67 @@ test('duplicate browser identity returns its receipt even if selected context ch
   f.request.history = [{ role: 'assistant', content: 'Changed history' }];
   const result = await f.run(f.request);
   assert.equal(result.text, 'Bonjour!');
+  assert.deepEqual(result.tools.receipts, f.saved().toolReceipts);
+  assert.equal(result.tools.receipts[0].tool, 'synthetic_read');
   assert.equal(f.calls.length, count);
   assert.equal(f.saved().state, 'completed');
+});
+
+test('completed direct Hermes usage keeps one stable declaration across a lost accounting reply', async () => {
+  const declarations = [];
+  const f = fixture({ terminal: { usage: { input_tokens: 12, output_tokens: 3 } },
+    recordUsage: async receipt => { declarations.push(receipt); if (declarations.length === 1) throw new Error('Synthetic lost receipt'); } });
+  assert.equal((await f.run(f.request)).text, 'Bonjour!');
+  assert.equal((await f.run(f.request)).text, 'Bonjour!');
+  assert.equal(declarations.length, 2);
+  assert.deepEqual(declarations[0], declarations[1]);
+  assert.equal(declarations[0].billing, 'subscription');
+  assert.equal(declarations[0].inputTokens, 12);
+  assert.equal(f.calls.filter(call => call.path === '/v1/runs').length, 1);
+});
+
+test('Hermes archive repairs usage and retrieval evidence even when the answer text is already saved', async () => {
+  const originalFetch = globalThis.fetch, recovered = [];
+  let state = { key: 'prior', runId: 'run_prior', state: 'completed', settledAt: new Date().toISOString(),
+    receipt: completed({ run_id: 'run_prior', usage: { input_tokens: 12, output_tokens: 3 } }),
+    toolReceipts: [{ tool: 'agentx__rag_search', runId: 'run_prior', status: 'completed', authority: 'hermes' }] };
+  const previous = { traceId: 'previous-trace', replyText: 'Bonjour!', toolEvidence: { runId: 'run_prior' } };
+  globalThis.fetch = async url => String(url).endsWith('/events') ? stream([{ event: 'run.completed' }])
+    : String(url).endsWith('/v1/runs') ? reply({ run_id: 'run_synthetic' }) : reply(completed());
+  try {
+    const execute = createConversationExecutor({ env, recordRuntimeUsage: async () => {}, conversations: {
+      getTurn: async () => previous, updateTurn: async (_query, update) => { recovered.push(update.$set); return previous; },
+      updateSession: async (_query, update) => { state = update.$set.hermesRuntime; return {}; }
+    } });
+    await execute({ backend: 'hermes', turnId: 'next-turn', text: 'Next question', history: [],
+      session: { sessionId: 'synthetic-session', packId: 'personal_operator', scopeId: 'personal', hermesRuntime: state },
+      pack: { id: 'personal_operator' }, signal: new AbortController().signal });
+    assert.equal(recovered.length, 1);
+    assert.deepEqual(recovered[0].usage, { input_tokens: 12, output_tokens: 3 });
+    assert.equal(recovered[0].modelProvider, 'openai-codex');
+    assert.equal(recovered[0].knowledgeUsed, true);
+    assert.equal(recovered[0].toolEvidence.receipts[0].tool, 'agentx__rag_search');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('unacknowledged usage survives a later native run and drains without repeating inference', async () => {
+  let runs = 0, accountingAvailable = false;
+  const f = fixture({ recordUsage: async () => { if (!accountingAvailable) throw new Error('Accounting unavailable'); },
+    fetch: async path => {
+      if (path === '/v1/runs') return reply({ run_id: 'run_' + (++runs) });
+      if (path.endsWith('/events')) return stream([{ event: 'run.completed' }]);
+      return reply(completed({ run_id: path.split('/').at(-1), usage: { input_tokens: 12, output_tokens: 3 } }));
+    } });
+  await f.run(f.request);
+  const original = f.saved().pendingUsage[0];
+  f.request.turnId = 'second-turn';
+  await f.run(f.request);
+  assert.equal(f.saved().pendingUsage.length, 2);
+  assert.deepEqual(f.saved().pendingUsage[0], original);
+  accountingAvailable = true;
+  await f.run(f.request);
+  assert.deepEqual(f.saved().pendingUsage, []);
+  assert.equal(runs, 2);
 });
 
 test('lost completed event is recovered from the durable native receipt', async () => {

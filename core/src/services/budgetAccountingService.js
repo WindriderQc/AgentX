@@ -161,6 +161,11 @@ function buildCloudBudget({ rows = [], hours = 24, cloudDailyLimit } = {}) {
     : null;
   const scaledLimit = limit ? Math.round(limit * (Number(hours) / 24)) : null;
   const ratio = scaledLimit && scaledLimit > 0 ? cloud.tokens / scaledLimit : 0;
+  const cloudRows = (Array.isArray(rows) ? rows : []).filter(row => isCloudModel(row?._id || row?.model));
+  const gateTokens = cloudRows.reduce((sum, row) => sum + (row.gateTokens ?? Number(row.tokens || 0)), 0);
+  const declaredRequests = cloudRows.reduce((sum, row) => sum + (row.declaredRequests || 0), 0);
+  const excludedDeclaredRequests = cloudRows.reduce((sum, row) => sum + (row.excludedDeclaredRequests || 0), 0);
+  const gateRatio = scaledLimit > 0 ? gateTokens / scaledLimit : ratio;
 
   return {
     cloud_requests: cloud.requests,
@@ -170,9 +175,12 @@ function buildCloudBudget({ rows = [], hours = 24, cloudDailyLimit } = {}) {
     local_tokens: local.tokens,
     cloud_daily_limit: limit,
     cloud_scaled_limit: scaledLimit,
-    cloud_usage_ratio: Math.round(ratio * 1000) / 1000,
-    cloud_health: healthFromRatio(ratio),
-    cloud_spend_observability: cloud.requests > 0 ? 'agentx-routed-calls' : 'none-recorded'
+    cloud_usage_ratio: Math.round(gateRatio * 1000) / 1000,
+    cloud_health: healthFromRatio(gateRatio),
+    cloud_gate_tokens: gateTokens,
+    cloud_declared_requests: declaredRequests,
+    cloud_excluded_declared_requests: excludedDeclaredRequests,
+    cloud_spend_observability: declaredRequests > 0 ? 'core-observed-and-declared-calls' : cloud.requests > 0 ? 'agentx-routed-calls' : 'none-recorded'
   };
 }
 
