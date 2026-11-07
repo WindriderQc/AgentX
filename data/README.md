@@ -381,6 +381,9 @@ omitted-pair counts; this order is not a priority. Core's existing
 removing volume IDs, mount paths and configured failure-domain names. It carries
 the reasons, missing inputs, arithmetic, dates and omitted count. Older Data
 without advice keeps the existing observation view.
+An unmeasured configured destination retains its diagnostic with `volume: null`,
+without its private ID. Known volumes beyond Core's eight-volume projection
+remain omitted and counted.
 
 Advice is conditional and `executionAuthorized` remains false. The original
 unreserved placement matrix and its withheld definitive recommendation remain

@@ -37,7 +37,9 @@ function projectAdvice(body) {
       observedHashedFiles: count(row.evidence?.observedHashedFiles),
       observedFilesWithOtherSource: count(row.evidence?.observedFilesWithOtherSource), independentBackupCoverage: 'unknown' }
   }), MAX_ITEMS);
-  const placement = rows('placement', row => sourceLabel(row.source) && (row.volumeId === null || volumeNumber(row.volumeId)), row => ({
+  const visibleDestination = row => row.volumeId === null || volumeNumber(row.volumeId)
+    || (row.status === 'unknown' && !body.volumes.some(volume => volume.id === row.volumeId));
+  const placement = rows('placement', row => sourceLabel(row.source) && visibleDestination(row), row => ({
     source: sourceLabel(row.source), volume: volumeNumber(row.volumeId),
     status: choice(row.status, ['candidate_for_review', 'blocked']), reasons: codes(row.reasons),
     evidence: Object.fromEntries([

@@ -62,3 +62,30 @@ test('candidate advice remains conditional and cannot become execution authoriza
   expect(result.summary).toContain('1 candidat(s) de copie à examiner');
   expect(result.advice.copyCoverage[0].evidence.independentBackupCoverage).toBe('unknown');
 });
+
+test('Data to Core retains a missing-destination diagnosis without exposing its private configured ID', () => {
+  const b = body();
+  b.volumes = [];
+  b.advice = buildStorageAdvice(b, readPolicy(JSON.stringify({ version: 1, maxScanAgeMs: 1000, maxVolumeAgeMs: 1000,
+    sources: { s0: { growthBytes: 0, failureDomain: 'private-primary', allowedVolumeIds: ['private-missing-volume'] } },
+    volumes: { 'private-missing-volume': { reserveBytes: 0, failureDomain: 'private-secondary' } } })));
+  expect(b.advice.placement[0].missingEvidence).toEqual(['configured_destination_measurement', 'dated_volume_measurement']);
+  const result = projectAssessment(b);
+  expect(result.advice.placement).toHaveLength(1);
+  expect(result.advice.placement[0]).toMatchObject({ source: 's0', volume: null, status: 'unknown',
+    action: 'verify_placement_inputs', missingEvidence: ['configured_destination_measurement', 'dated_volume_measurement'],
+    evidence: { freeBytes: null, volumeObservedAt: null } });
+  expect(result.advice.omittedPlacementPairs).toBe(0);
+  expect(JSON.stringify(result)).not.toContain('private');
+});
+
+test('a known destination outside Core bounds stays omitted even when Data marks it as a candidate', () => {
+  const b = body(9);
+  const hidden = b.advice.placement.find(pair => pair.volumeId === 'private-volume-8');
+  hidden.status = 'candidate_for_review';
+  hidden.action = 'review_additional_full_logical_copy';
+  const result = projectAssessment(b);
+  expect(result.advice.placement.every(pair => pair.volume !== null && pair.volume <= 8)).toBe(true);
+  expect(result.advice.omittedPlacementPairs).toBe(81 - result.advice.placement.length);
+  expect(JSON.stringify(result)).not.toContain('private');
+});
