@@ -113,6 +113,9 @@ when its retry options are absent; the intercepted transport tests prove this
 on the pinned code. Missing or changed code closes this API, including changes
 that keep the same version strings. The native catalogue publishes that digest
 as `nativeTransportFingerprint` and includes it in the target fingerprint.
+Resolution from the SDK and AI transport code must select those same hashed
+packages. A nested dependency shadow or an unvisited `dist` symlink closes
+qualification instead of inheriting the shared package's digest.
 
 | Native API | Applied | Refused before dispatch |
 | --- | --- | --- |

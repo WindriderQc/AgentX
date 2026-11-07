@@ -21,7 +21,10 @@ open only for the runtime version and APIs admitted by `qualifiedModelApi`
 (`native.mjs`). Google also requires the pinned executable SDK/dependency digest
 computed by `sdk-fingerprint.mjs`; a dependency patch closes that transport even
 if its version string stays unchanged. The digest is published on native Google
-targets and included in their fingerprints. Qualify each runtime update or new API with the same transport
+targets and included in their fingerprints. Native module resolution from both
+the SDK and `@openclaw/ai` must select the shared hashed dependencies; a shadow
+copy closes Google qualification. Unvisited symlinks inside `dist` also refuse.
+Qualify each runtime update or new API with the same transport
 tests before adding it there or refreshing benchmark pins.
 
 For a required Google qualification, run
