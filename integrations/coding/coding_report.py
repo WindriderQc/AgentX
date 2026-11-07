@@ -542,7 +542,7 @@ def run_steps(r,args,progress,task,workspace,root,path,snapshot,baseline):
 
     def one(number, prompt, calls, seconds, *, save_pass=True):
         name = f'step-{number:02d}.json'
-        before = saving.snapshot(r, workspace) if save_pass else None
+        before = saving.snapshot(r, workspace, args.request_id) if save_pass else None
         progress.begin_step(calls, seconds, f'{sandbox_root}/{name}')
         try:
             run = r.run_worker(workspace, prompt, seconds, progress, read_only=True)

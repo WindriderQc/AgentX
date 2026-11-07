@@ -28,10 +28,10 @@ async function task(id = '0001', extra = {}) {
   return Task.create({ pipelineId: id, title: `Synthetic coding task ${id}`, spec: 'Synthetic fixture only',
     service: 'agentx-coding', status: 'queued', risk: 'low', assignee: null, automation: intent(), ...extra });
 }
-async function authorize(id = '0001', limits, qualification = {}) {
+async function authorize(id = '0001', limits, qualification = {}, selection = {}) {
   return service.authorize(id, { authorized: true, confirm: true, expectedRevision: 0, queueRequestId: QUEUE, limits,
     qualification: { acceptanceCriteria: ['The fixture behavior passes independent checks.'], requiredCapabilities: ['source_read', 'source_write', 'cpu_tests'],
-      estimate: { modelCalls: 1, workSeconds: 10 }, ...qualification } });
+      estimate: { modelCalls: 1, workSeconds: 10 }, ...qualification }, ...selection });
 }
 async function enable() { const state = await service.settings(); return service.configure({ enabled: true, confirm: true, expectedRevision: state.revision }); }
 async function selected() { return (await service.status()).active; }
@@ -200,6 +200,21 @@ test('selection journals the executor before an autonomous launch', async () => 
   await service.tick();
   expect(control.launch).toHaveBeenCalledWith(expect.objectContaining({ executorId: 'alien-local', autonomous: true }));
   expect(control.status).toHaveBeenCalledWith(expect.objectContaining({ executorId: 'alien-local', requestId: active.requestId }));
+});
+test('task-scoped executor selection preserves the default pool and pins the first native run', async () => {
+  control.executor = jest.fn(id => ({ id, profiles: ['code', 'autonomous'] }));
+  control.select = jest.fn(async () => ({ id: 'candidate-open', harness: 'opencode' }));
+  await task(); await authorize('0001', undefined, {}, { executorId: 'candidate-open' });
+  expect((await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy.preferredExecutorId).toBe('candidate-open');
+  await enable(); await service.tick();
+  expect(control.select).toHaveBeenCalledWith({ profile: 'autonomous', executorId: 'candidate-open' });
+  expect(await selected()).toMatchObject({ executorId: 'candidate-open', harness: 'opencode' });
+});
+test('task-scoped executor selection refuses a missing autonomous profile before recording authorization', async () => {
+  control.executor = jest.fn(id => ({ id, profiles: ['code'] }));
+  await task();
+  await expect(authorize('0001', undefined, {}, { executorId: 'code-only' })).rejects.toMatchObject({ code: 'CODING_EXECUTOR_PROFILE_UNAVAILABLE' });
+  expect((await Task.findOne({ pipelineId: '0001' }).lean()).codingAutonomy).toBeUndefined();
 });
 test('lost launch response reconciles the original identity without another launch or attempt', async () => {
   await task(); await authorize(); await enable(); await service.tick(); const first = await selected();

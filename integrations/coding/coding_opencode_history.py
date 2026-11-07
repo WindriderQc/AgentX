@@ -59,7 +59,7 @@ def read_json(path, limit=65536):
 
 class Capture:
     """Only the host runner can write this binding; worker stdout supplies its native id."""
-    def __init__(self, progress, home, workspace):
+    def __init__(self, progress, home, workspace, *, read_only=False):
         if not UUID.fullmatch(progress.request_id) or not re.fullmatch(r'\d{4}', progress.task_id):
             raise SessionError('An exact Core request and task are required')
         invocation = str(uuid4())
@@ -70,6 +70,8 @@ class Capture:
         self.value = {'schema': SCHEMA, 'harness': 'opencode', 'pipelineId': progress.task_id,
             'requestId': progress.request_id, 'invocationId': invocation, 'nativeSessionId': None,
             'home': str(home.resolve(strict=True)), 'workspace': str(workspace.resolve(strict=True)),
+            'directory': f'/home/agent/deliverables/{progress.request_id}' if read_only else '/workspace',
+            'readOnly': read_only, 'stepOutput': (getattr(progress, 'step', None) or {}).get('output'),
             'state': 'running', 'createdAt': int(time.time() * 1000)}
         atomic(self.path, self.value)
 
