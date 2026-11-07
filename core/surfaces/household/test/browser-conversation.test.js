@@ -316,6 +316,20 @@ test('ending during an unconfirmed onset releases the held answer without playin
   assert.equal(h.conversation.state, 'idle');
 });
 
+test('Yo Nestor wakes from standby and preserves the request after the prefix', () => {
+  const wake = new WakeWindow();
+  for (const phrase of ['Yo Nestor', 'YO NESTOR !', 'Yo, Nestor.', 'Yo Nestor, Bonjour !', 'Yo, Nester, Bonjour !']) {
+    wake.arm();
+    assert.deepEqual(wake.accept(phrase), { text: phrase.includes('Bonjour') ? 'Bonjour !' : '', activated: true }, phrase);
+    assert.equal(wake.active(), true);
+  }
+  for (const phrase of ['Yo', 'Yo Paul', 'Yoyo Nestor', 'On dit Yo Nestor.', 'Yo Nestorius']) {
+    wake.arm();
+    assert.deepEqual(wake.accept(phrase), { text: '', activated: false }, phrase);
+    assert.equal(wake.active(), false);
+  }
+});
+
 test('wake requires an interjection and stays active until explicitly paused or put to sleep', () => {
   let now = 1000;
   const wake = new WakeWindow(() => now);
@@ -1292,9 +1306,9 @@ test('every nonempty recognized reply is considered, including numbers and thank
     h.conversation.stop();
   }
 });
-test('"Hey Nestor" is answered with the page’s own wake reply', async () => {
+for (const phrase of ['Hey Nestor', 'Yo Nestor']) test(`"${phrase}" is answered with the page’s own wake reply`, async () => {
   const spoken = [];
-  const h = harness({ transcribe: async () => 'Hey Nestor', wakeReply: () => ({ text: 'Dis-moi !', language: 'fr' }),
+  const h = harness({ transcribe: async () => phrase, wakeReply: () => ({ text: 'Dis-moi !', language: 'fr' }),
     synthesize: async reply => { spoken.push(reply.text); return new ArrayBuffer(10); } });
   await h.conversation.start({ wakeWord: true, language: 'fr' });
   h.beginSpeech(); await h.say(); await nextTimer();

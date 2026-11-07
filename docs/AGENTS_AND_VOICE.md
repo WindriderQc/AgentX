@@ -314,7 +314,7 @@ protected service route. This device fallback never bypasses an access refusal.
 Exhausting a ladder can leave text unspoken while the complete result stays visible.
 
 Kids Room and Lecture use the same hands-free conversation loop. Enable voice
-once to grant microphone access, then address Nestor with Hey/Eille/Oh/Ah before
+once to grant microphone access, then address Nestor with Hey/Eille/Oh/Ah/Yo before
 its name. Bare Nestor does not activate it; after activation short replies continue
 until Pause. Pause or leaving the page closes capture. Stop interrupts speech,
 including speech still being prepared. An already sent learning request may
