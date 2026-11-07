@@ -243,8 +243,22 @@ host, then where to change it:
   outside Ollama, and the heavy-work reservation or Benchmark claim holding the
   machine, with the next one. Below, side by side: the heavy-work queue for the
   next 24 hours, and **Live requests**: requests running through Core now that
-  are not heavy work (caller, machine, age), completed requests per minute with
-  heavy-work periods shaded, and the busiest callers. Machine state refreshes
+  are not heavy work (caller, machine, age), completed requests per minute, and
+  the busiest callers. Each minute's bar stacks its successes and its failures
+  (red, sized by count) under a legend with the window's totals, a scale (peak
+  and 0), local time ticks every 5 minutes and heavy-work periods shaded.
+  Tapping a bar lists that minute's requests (caller, machine, duration,
+  status and a plain failure reason from Core's stable codes, never the error
+  text) from `GET /api/nerve-center/live-activity/minute?at=` (read-only, last
+  24 hours, at most 60 rows). **Full history** links to AI activity.
+  The queue card's summary line counts the requests with no usable slot by
+  what they need next, from the queue's own next action (for example "4 need a
+  slot planned · 3 windows expired, to review · none starts on its own"), and
+  expands them read-only: title, hosts, estimated duration, permitted start
+  window, submitter (session, task, issue), the start of its purpose and why it
+  waits. A machine card's "N queued, … · show which" opens that list.
+  Planning, reordering and cancelling stay with the queue's owner (calendar
+  view). Machine state refreshes
   every 20 s, requests and power every 10 s, from
   `GET /api/nerve-center/live-activity` (read-only; admission proofs are never
   returned).
