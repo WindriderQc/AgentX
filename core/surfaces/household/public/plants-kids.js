@@ -43,7 +43,7 @@
   }
 
   function galleryHtml(plants, profileId, esc) {
-    if (!plants.length) return '<div class="jungle-empty"><span aria-hidden="true">🌱</span><h2>No plant yet</h2><p>Dad adds the plants of the house here.</p></div>';
+    if (!plants.length) return '<div class="jungle-empty"><span aria-hidden="true">🌱</span><h2>No plant yet</h2><p>Dad adds the plants of the house here. You can propose one too!</p></div>';
     return `<div class="jungle-gallery">${ordered(plants, profileId).map(plant => {
       const [icon, label, kind] = mood(plant), due = dueFor(plant, profileId);
       return `<a class="jungle-tile mood-${kind}${due ? ' mine' : ''}" href="/kids/plants?plant=${encodeURIComponent(plant.id)}" data-plant-id="${esc(plant.id)}">
@@ -86,9 +86,11 @@
     app.innerHTML = `<section class="kids-room jungle"><div class="kids-shell"><header class="kids-header jungle-header">
       <div><a class="jungle-back" href="/kids">← Kids Room</a><p class="eyebrow">Kids Room</p><h1>Ma jungle</h1></div>
       <label class="kid-profile"><span>Who are you?</span><select id="jungleProfile"></select></label></header>
-      <p class="jungle-hello" data-jungle-hello hidden></p><div data-jungle-body><div class="empty" role="status">Loading…</div></div></div></section>`;
+      <p class="jungle-hello" data-jungle-hello hidden></p><div class="jungle-propose" data-jungle-propose></div><div data-jungle-body><div class="empty" role="status">Loading…</div></div></div></section>`;
     const body = app.querySelector('[data-jungle-body]'), select = app.querySelector('#jungleProfile');
     const child = () => profiles.find(profile => profile.id === profileId);
+    const proposeHost = app.querySelector('[data-jungle-propose]');
+    let proposal = null;
 
     function render() {
       const id = params().get('plant'), plant = id && plants.find(entry => entry.id === id);
@@ -98,6 +100,7 @@
       hello.innerHTML = waitingOnMe.length ? `<span aria-hidden="true">💧</span><span><strong>${esc(waitingOnMe.map(entry => entry.nickname).join(', '))}</strong> ${waitingOnMe.length > 1 ? 'need' : 'needs'} you today, ${esc(child()?.displayName || 'friend')}!</span>` : '';
       body.innerHTML = plant ? cardHtml(plant, profileId, esc) : galleryHtml(plants, profileId, esc);
       app.querySelector('.jungle')?.classList.toggle('jungle-detail', Boolean(plant));
+      proposeHost.hidden = Boolean(plant);
       body.querySelectorAll('[data-plant-id], [data-jungle-gallery]').forEach(link => link.addEventListener('click', event => {
         event.preventDefault(); stopPlayback?.(); history.pushState(null, '', link.getAttribute('href')); render();
       }));
@@ -132,6 +135,8 @@
         : '<option value="">Guest</option>';
       select.disabled = !profiles.length;
       render();
+      // "Proposer une plante" (#876): the selected child's photo goes to Dad as a draft.
+      proposal = window.KidsPlantProposal?.mount({ host: proposeHost, api, esc, profile: () => child() ? { id: child().id, displayName: child().displayName } : null });
       setRuntime?.(true, `${plants.length} plant${plants.length === 1 ? '' : 's'}`);
     } catch (error) {
       body.innerHTML = `<div class="empty">${esc(error.message)}</div>`;
@@ -141,6 +146,7 @@
       profileId = select.value;
       try { localStorage.setItem('household.kids.profile', profileId); } catch { /* tab-only choice */ }
       render();
+      proposal?.refresh();
     });
     window.addEventListener('popstate', () => { stopPlayback?.(); render(); });
   }

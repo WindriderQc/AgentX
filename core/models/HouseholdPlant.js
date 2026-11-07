@@ -46,8 +46,24 @@ const schema = new mongoose.Schema({
     care: { state: { type: String, enum: ['running', 'completed', 'failed'] }, error: String, model: String,
       startedAt: Date, finishedAt: Date, unsourced: Boolean, draft: mongoose.Schema.Types.Mixed }
   },
+  // A child's proposal (#876; rules in src/domains/household/plantProposals.js).
+  // `open` is true only while the proposal waits for a parent; the partial
+  // unique index below keeps one waiting proposal per child.
+  proposal: {
+    type: new mongoose.Schema({
+      proposedBy: { type: String, required: true },
+      open: { type: Boolean },
+      state: { type: String, enum: ['pending', 'opened', 'accepted', 'declined'], required: true },
+      proposedAt: Date, openedAt: Date, decidedAt: Date,
+      reply: { type: String, maxlength: 160 },
+      seenAt: Date
+    }, { _id: false }),
+    default: null
+  },
   publishedAt: { type: Date, default: null },
   retiredAt: { type: Date, default: null }
 }, { timestamps: true, collection: 'household_plants' });
+schema.index({ 'proposal.proposedBy': 1 }, { name: 'one_open_proposal_per_child', unique: true,
+  partialFilterExpression: { 'proposal.open': true } });
 
 module.exports = mongoose.models.HouseholdPlant || mongoose.model('HouseholdPlant', schema);

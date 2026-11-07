@@ -49,6 +49,8 @@ function createPlantAssistant({ inference, consumerContract, searchWeb = require
   async function claim(id, step, queueId) {
     const { plant } = await plants.get({ id, view: 'manage' });
     if (plant.status === 'retired') throw failure(409, 'PLANT_RETIRED', 'This plant is retired.');
+    // A child's proposal is identified only once a parent has opened it (#876).
+    if (plant.proposal?.state === 'pending') throw failure(409, 'PLANT_PROPOSAL_UNOPENED', 'A parent opens this proposal before it is identified.');
     const pending = plant.assistant?.[step];
     if (pending?.queueId && ['queued', 'running'].includes(pending.state) && pending.queueId !== queueId) {
       throw failure(409, 'PLANT_ASSIST_QUEUED', 'This identification belongs to the Core queue.');

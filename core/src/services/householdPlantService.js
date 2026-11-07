@@ -8,6 +8,7 @@ const Plant = require('../../models/HouseholdPlant');
 const PlantPhoto = require('../../models/HouseholdPlantPhoto');
 const content = require('../helpers/fileContentChecks');
 const { LIMITS, childPlant, managedPlant, plantInput, publishProblems } = require('../domains/household/plants');
+const { closing, isOpen } = require('../domains/household/plantProposals');
 
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
 const PHOTO_TYPES = Object.freeze(['image/jpeg', 'image/png']);
@@ -75,8 +76,9 @@ async function list(input = {}) {
   const query = as === 'child' ? { status: 'published' }
     : String(input.includeRetired || '') === 'true' ? {} : { status: { $ne: 'retired' } };
   const rows = await Plant.find(query).sort({ nickname: 1 }).limit(200).lean();
-  // Parents see what needs them first: drafts, then the rest by name.
-  if (as === 'manage') rows.sort((a, b) => Number(a.status !== 'draft') - Number(b.status !== 'draft'));
+  // Parents see what needs them first: children's proposals, other drafts, then the rest by name.
+  const rank = row => isOpen(row.proposal) ? 0 : row.status === 'draft' ? 1 : 2;
+  if (as === 'manage') rows.sort((a, b) => rank(a) - rank(b));
   const chores = await plantChores().choresByPlant(rows.filter(row => row.status === 'published').map(row => row._id));
   return { plants: rows.map(row => project(row, as, chores.get(String(row._id)) || [])) };
 }
@@ -103,10 +105,11 @@ async function update(input = {}) {
 }
 
 /**
- * Adds one display photo: a browser data URL, or bytes a Core caller already
- * holds (for example a conversation attachment). The same photo is kept once.
+ * Checks one display photo: a browser data URL, or bytes a Core caller already
+ * holds (for example a conversation attachment). JPEG or PNG, 2 MB or less,
+ * with content that matches its format.
  */
-async function addPhoto(input = {}) {
+function displayPhoto(input = {}) {
   let data;
   let mimeType;
   if (input.dataUrl !== undefined) {
@@ -123,9 +126,14 @@ async function addPhoto(input = {}) {
   if (!data?.length || !PHOTO_TYPES.includes(mimeType)) throw failure(400, 'PLANT_PHOTO_INVALID', 'Accepted photos: JPEG or PNG.');
   if (data.length > MAX_PHOTO_BYTES) throw failure(413, 'PLANT_PHOTO_TOO_LARGE', 'The photo must be 2 MB or less.');
   if (!content.imageSignatureMatches(mimeType, data)) throw failure(400, 'PLANT_PHOTO_INVALID', 'The content does not match the image format.');
+  return { data, mimeType, size: data.length, sha256: content.sha256(data) };
+}
+
+/** Adds one display photo to a card. The same photo is kept once. */
+async function addPhoto(input = {}) {
+  const { data, mimeType, sha256 } = displayPhoto(input);
   const plant = await find(input.id);
   assertEditable(plant);
-  const sha256 = content.sha256(data);
   const existing = (plant.photos || []).find(photo => photo.sha256 === sha256);
   if (existing) return { plant: managedPlant(plant), duplicate: true };
   if ((plant.photos || []).length >= LIMITS.photos) throw failure(409, 'PLANT_PHOTO_LIMIT', `A plant keeps at most ${LIMITS.photos} photos.`);
@@ -161,15 +169,23 @@ async function publish(input = {}) {
   assertEditable(plant);
   if (plant.status === 'published') return { plant: managedPlant(plant), alreadyPublished: true };
   assertPublishable(plant);
-  const saved = await write(input.id, input.expectedRevision, { status: 'published', publishedAt: new Date() });
+  const at = new Date();
+  // Publishing a child's proposal answers it: the plant is in Ma jungle.
+  const answer = isOpen(plant.proposal) ? closing('accepted', at) : null;
+  const saved = await write(input.id, input.expectedRevision, { status: 'published', publishedAt: at, ...answer?.set },
+    answer ? { $unset: answer.unset } : {});
   const { chores } = await synced(saved);
   return { plant: await withChores(saved), chores };
 }
 
+/** Retires a card. Discarding a child's proposal declines it, with the parent's short reply. */
 async function retire(input = {}) {
   const plant = await find(input.id);
   if (plant.status === 'retired') return { plant: managedPlant(plant), alreadyRetired: true };
-  const saved = await write(input.id, input.expectedRevision, { status: 'retired', retiredAt: new Date() });
+  const at = new Date();
+  const answer = isOpen(plant.proposal) ? closing('declined', at, input.reply) : null;
+  const saved = await write(input.id, input.expectedRevision, { status: 'retired', retiredAt: at, ...answer?.set },
+    answer ? { $unset: answer.unset } : {});
   const { chores } = await synced(saved);
   return { plant: managedPlant(saved), chores };
 }
@@ -188,4 +204,4 @@ async function exportToVault(input = {}, deps = {}) {
   }
 }
 
-module.exports = { MAX_PHOTO_BYTES, exportToVault, addPhoto, create, get, list, photo, publish, removePhoto, retire, update };
+module.exports = { MAX_PHOTO_BYTES, exportToVault, addPhoto, create, displayPhoto, get, list, photo, plantId, publish, removePhoto, retire, update };

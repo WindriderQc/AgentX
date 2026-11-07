@@ -653,7 +653,8 @@ function createTrustedRuntimeServices(overrides = {}) {
     memory: Object.freeze({ ...require('../services/memoryReadService'),
       notes: Object.freeze(require('../services/memoryNoteService')) }),
     pipeline: Object.freeze(require('../services/pipelineTaskPreparationService')),
-    household: Object.freeze({ plants: Object.freeze(require('../services/householdPlantService')) }),
+    household: Object.freeze({ plants: Object.freeze(require('../services/householdPlantService')),
+      plantProposals: Object.freeze(require('../services/householdPlantProposals')) }),
     tasks: Object.freeze({
       family: Object.freeze(require('../services/familyTaskService')),
       personal: Object.freeze({

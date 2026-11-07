@@ -89,6 +89,13 @@
       if (family) profiles = family.profiles || [];
     }
 
+    // A child's proposal waits for a parent to open it; opening it starts identification once (#876).
+    async function openProposal() {
+      if (plant.proposal?.state !== 'pending') return;
+      try { ({ plant } = await post(`${url(plant.id)}/proposal/open`)); }
+      catch (error) { toast(error.message); }
+    }
+
     // One revision-bound write; a conflict reloads the card and says so.
     async function save(path, body, message) {
       if (busy) return false;
@@ -178,6 +185,7 @@
         <div class="plant-photos">${plant.photos.map(photo => `<figure><img src="${esc(photo.url)}?view=manage" alt="${esc(plant.nickname)}">
           <button type="button" class="compact" data-plant-remove-photo="${esc(photo.id)}" aria-label="Remove this photo">✕</button></figure>`).join('')}
           ${plant.photos.length < 4 ? `<label class="plant-photo-add"><input type="file" accept="image/*" capture="environment" data-plant-more hidden><span>+ Photo</span></label>` : ''}</div>
+        ${view().proposalBannerHtml(plant, esc, profiles)}
         ${stepHtml(1, 'Who is it?', identifyBody(), Boolean(plant.identification?.commonName))}
         ${stepHtml(2, 'Care card and chores', careBody(), !plant.problems.some(code => code !== 'species'))}
         ${stepHtml(3, plant.status === 'published' ? 'For the kids' : 'Publish', publishBody(), plant.status === 'published')}`;
@@ -240,6 +248,19 @@
           toast(/VAULT_INBOX_DISABLED|not configured/i.test(error.message) ? 'The vault inbox is not configured on this instance.' : error.message);
         }
       });
+      on('[data-plant-decline]', async () => {
+        const who = view().proposer(plant, profiles), reply = host.querySelector('[name="declineReply"]')?.value;
+        if (busy || !window.confirm(`Refuser la plante de ${who} ? ${who} lira : « ${reply} »`)) return;
+        busy = true;
+        try {
+          await post(`${url(plant.id)}/decline`, { expectedRevision: plant.revision, reply });
+          toast(`Réponse envoyée à ${who}.`);
+          go('');
+        } catch (error) {
+          if (error.status === 409) { toast('Cette proposition a changé entre-temps. Elle a été rechargée.'); await load(plant.id); render(host); }
+          else toast(error.message);
+        } finally { busy = false; }
+      });
       on('[data-plant-publish]', async () => { if (await save('/publish', {}, `${plant.nickname} is in Ma jungle.`)) render(host); });
       on('[data-plant-retire]', async () => {
         if (!window.confirm(plant.status === 'draft' ? 'Discard this draft?' : `Retire ${plant.nickname}? The kids will no longer see it.`)) return;
@@ -259,6 +280,7 @@
 
     async function detail(host, id) {
       await load(id);
+      await openProposal();
       render(host);
     }
 
