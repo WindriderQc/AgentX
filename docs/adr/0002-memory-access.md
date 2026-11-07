@@ -53,6 +53,12 @@ source, then marks the predecessor `invalidatedAt`/`supersededBy` through a
 validity-only rewrite that refuses a changed document. Retries resume by the
 review key; an explicit restore clears the predecessor's validity and removes
 the unchanged successor, refusing a successor that was itself replaced.
+RAG records the initial successor write key, exact payload fingerprint and native
+revision in its first payload. Create retries cannot overwrite an existing
+successor. Orphan cleanup and restore remove only that initial revision through
+an atomic storage filter; edited, re-ingested or legacy successors without this
+proof stay stored and report a reconciliation conflict. Proof of an owned write
+does not grant apply or rollback authorization.
 
 Core exposes an audience-bound memory read capability. Owner reads keep all
 information scopes, including private-domain and unclassified historical

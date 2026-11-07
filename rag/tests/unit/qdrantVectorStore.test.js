@@ -381,6 +381,22 @@ describe('QdrantVectorStore.upsertDocument', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('binds only an initial replacement write to its proof; later writes allocate another revision', async () => {
+    const receipt = { key: 'memory-review:synthetic:one', fingerprint: 'a'.repeat(64), revision: '911ec105-eebc-43ca-8b28-6ef03125e555' };
+    const payloads = [];
+    fetch.mockImplementation(async (url, options) => {
+      if (url.endsWith('/scroll')) return mockOk({ result: { points: [] } });
+      const body = JSON.parse(options.body);
+      if (body.points) payloads.push(body.points[0].payload);
+      return mockOk();
+    });
+    const chunks = [{ text: 'Synthetic fact', chunkIndex: 0, embedding: [1] }];
+    await store.upsertDocument('doc-1', { replacementWrite: receipt }, chunks, { initialReplacementRevision: receipt.revision });
+    await store.upsertDocument('doc-1', { replacementWrite: receipt }, chunks);
+    expect(payloads[0]).toMatchObject({ revision: receipt.revision, replacementWrite: receipt });
+    expect(payloads[1].revision).not.toBe(receipt.revision);
+  });
+
   it('calls _ensureCollection, checks for existing points, upserts, cleans up and returns result', async () => {
     store._collectionVerified = false;
 
@@ -806,6 +822,33 @@ describe('QdrantVectorStore.deleteDocument', () => {
     fetch.mockResolvedValueOnce(mockFail(500, 'delete failed'));
 
     await expect(store.deleteDocument('doc-1')).rejects.toThrow('Qdrant delete by filter failed: 500');
+  });
+
+  it('atomically filters cleanup by the initial write proof and native revision', async () => {
+    const receipt = { key: 'memory-review:synthetic:one', fingerprint: 'a'.repeat(64), revision: 'initial-native-revision' };
+    const points = [
+      { documentId: 'doc-1', revision: receipt.revision, replacementWrite: receipt },
+      { documentId: 'doc-1', revision: 'concurrent-edit-revision', replacementWrite: receipt },
+      { documentId: 'doc-2', revision: receipt.revision, replacementWrite: receipt }
+    ];
+    let remaining;
+    fetch.mockImplementationOnce(async (_url, options) => {
+      const { filter } = JSON.parse(options.body);
+      expect(filter.must).toEqual([
+        { key: 'documentId', match: { value: 'doc-1' } },
+        { key: 'revision', match: { value: receipt.revision } },
+        { key: 'replacementWrite.key', match: { value: receipt.key } },
+        { key: 'replacementWrite.fingerprint', match: { value: receipt.fingerprint } }
+      ]);
+      // Apply the actual outgoing storage predicate to both revisions.
+      remaining = points.filter(point => !filter.must.every(({ key, match }) =>
+        key.split('.').reduce((value, part) => value?.[part], point) === match.value));
+      return mockOk();
+    });
+    await store.deleteReplacementDocument('doc-1', receipt);
+    expect(remaining).toEqual(points.slice(1));
+    expect(fetch.mock.calls[0][0]).toContain('/points/delete?wait=true');
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 

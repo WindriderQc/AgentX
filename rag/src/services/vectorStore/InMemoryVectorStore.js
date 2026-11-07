@@ -3,6 +3,7 @@
  */
 
 const VectorStoreAdapter = require('./VectorStoreAdapter');
+const { randomUUID } = require('node:crypto');
 const { distinctSources, sortDocuments } = require('./documentListing');
 const { cosineSimilarity } = require('../../utils/cosineSimilarity');
 const { isCurrentFact } = require('../../../../shared/memoryFactMetadata');
@@ -16,7 +17,7 @@ class InMemoryVectorStore extends VectorStoreAdapter {
     this.payloadSchema = {};
   }
 
-  async upsertDocument(documentId, metadata, chunks) {
+  async upsertDocument(documentId, metadata, chunks, options = {}) {
     const existingDoc = this.documents.get(documentId);
     if (existingDoc) {
       this.vectors = this.vectors.filter(v => v.documentId !== documentId);
@@ -24,6 +25,7 @@ class InMemoryVectorStore extends VectorStoreAdapter {
 
     this.documents.set(documentId, {
       documentId, ...metadata,
+      revision: options.initialReplacementRevision || randomUUID(),
       chunkCount: chunks.length,
       createdAt: existingDoc ? existingDoc.createdAt : new Date(),
       updatedAt: new Date(),
@@ -125,6 +127,16 @@ class InMemoryVectorStore extends VectorStoreAdapter {
   async deleteDocument(documentId) {
     const doc = this.documents.get(documentId);
     if (!doc) return false;
+    this.documents.delete(documentId);
+    this.vectors = this.vectors.filter(v => v.documentId !== documentId);
+    return true;
+  }
+
+  async deleteReplacementDocument(documentId, receipt) {
+    const doc = this.documents.get(documentId);
+    if (!doc || doc.revision !== receipt.revision || doc.replacementWrite?.key !== receipt.key
+        || doc.replacementWrite?.fingerprint !== receipt.fingerprint) return false;
+    // Compare and remove in the same synchronous critical section.
     this.documents.delete(documentId);
     this.vectors = this.vectors.filter(v => v.documentId !== documentId);
     return true;

@@ -10,7 +10,7 @@ class VectorStoreAdapter {
     this.config = config;
   }
 
-  async upsertDocument(_documentId, _metadata, _chunks) {
+  async upsertDocument(_documentId, _metadata, _chunks, _options = {}) {
     throw new Error('upsertDocument() must be implemented');
   }
 
@@ -32,6 +32,10 @@ class VectorStoreAdapter {
 
   async deleteDocument(_documentId) {
     throw new Error('deleteDocument() must be implemented');
+  }
+
+  async deleteReplacementDocument(_documentId, _receipt) {
+    throw new Error('Atomic replacement deletion is unavailable');
   }
 
   async getStats() {

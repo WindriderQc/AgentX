@@ -10,6 +10,7 @@ const router = express.Router();
 const logger = require('../config/logger');
 const { getRagStore } = require('../src/services/ragStore');
 const { revisionFingerprint } = require('../src/services/documentRevision');
+const { unchangedReplacement } = require('../src/services/replacementDocument');
 const { sendError } = require('../src/utils/response');
 const { memoryFactProjection, memoryValidityProjection } = require('../../shared/memoryFactMetadata');
 
@@ -35,7 +36,9 @@ router.get('/documents/:id', async (req, res) => {
           contentHash: doc.contentHash || null, mixedRevision: doc.mixedRevision === true,
           ...memoryFactProjection(doc), ...memoryValidityProjection(doc),
           ...(doc.scope ? { scope: doc.scope, sensitivity: doc.sensitivity } : {}),
-          revisionFingerprint: revisionFingerprint(doc) }
+          revisionFingerprint: revisionFingerprint(doc),
+          replacementWrite: doc.replacementWrite || null,
+          replacementUnchanged: unchangedReplacement(doc, doc.replacementWrite?.key) }
       }
     });
   } catch (err) {
@@ -90,5 +93,20 @@ router.post('/documents/:id/validity', async (req, res) => {
     res.status(status).json({ ok: false, error: err.code || 'VALIDITY_UPDATE_FAILED', detail: err.message });
   }
 });
+
+// Create-only/resume and conditional removal of one reviewed replacement.
+// These primitives keep the initial proof inside the RAG owner, across retries.
+for (const [method, operation] of [['post', 'createReplacementDocument'], ['delete', 'deleteReplacementDocument']]) {
+  router[method]('/documents/:id/replacement', async (req, res) => {
+    try {
+      const data = await getRagStore()[operation](req.params.id, req.body || {});
+      res.json({ ok: true, data });
+    } catch (err) {
+      const status = err.statusCode || (err.code === 'INVALID_MEMORY_FACT_METADATA' ? 400 : 500);
+      if (status >= 500) logger.error('RAG replacement write error:', err);
+      res.status(status).json({ ok: false, error: err.code || 'RAG_REPLACEMENT_FAILED', detail: err.message });
+    }
+  });
+}
 
 module.exports = router;

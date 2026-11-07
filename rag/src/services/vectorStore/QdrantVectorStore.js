@@ -21,7 +21,7 @@ const QDRANT_TIMEOUT = SERVICE_OUTBOUND_TIMEOUTS[
 const DOCUMENT_METADATA_FIELDS = [
   'documentId', 'source', 'tags', 'sourceIdentity', 'sourceIdentityKind',
   'contentHash', 'identityVersion', 'chunkSize', 'chunkOverlap', 'scope', 'sensitivity',
-  'format', 'title', 'validFrom', 'recordedAt', 'sourceRefs', 'invalidatedAt', 'supersededBy'
+  'format', 'title', 'validFrom', 'recordedAt', 'sourceRefs', 'invalidatedAt', 'supersededBy', 'replacementWrite'
 ];
 const METADATA_PAGE_SIZE = 1000;
 // Facts every point of one stored revision shares. Points that disagree mean
@@ -183,7 +183,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
     return must;
   }
 
-  async upsertDocument(documentId, metadata, chunks) {
+  async upsertDocument(documentId, metadata, chunks, options = {}) {
     if (!chunks.length) return { documentId, chunkCount: 0, status: 'empty' };
 
     const vectorSize = chunks[0].embedding.length;
@@ -197,7 +197,7 @@ class QdrantVectorStore extends VectorStoreAdapter {
 
     // Each write is a new revision with its own point IDs, so the previous
     // revision stays whole until the new one is completely stored.
-    const revision = crypto.randomUUID();
+    const revision = options.initialReplacementRevision || crypto.randomUUID();
     const points = chunks.map(chunk => ({
       id: this._generatePointId(documentId, revision, chunk.chunkIndex),
       vector: chunk.embedding,
@@ -298,7 +298,8 @@ class QdrantVectorStore extends VectorStoreAdapter {
     })) {
       for (const point of points) {
         payload = payload || point.payload;
-        if (REVISION_FIELDS.some(key => point.payload[key] !== payload[key])) mixedRevision = true;
+        if (REVISION_FIELDS.some(key => point.payload[key] !== payload[key])
+            || JSON.stringify(point.payload.replacementWrite) !== JSON.stringify(payload.replacementWrite)) mixedRevision = true;
         chunkCount++;
       }
     }
@@ -312,6 +313,8 @@ class QdrantVectorStore extends VectorStoreAdapter {
       ...memoryValidityProjection(payload),
       ...(payload.scope ? { scope: payload.scope, sensitivity: payload.sensitivity } : {}),
       hash: payload.hash,
+      revision: payload.revision,
+      ...(payload.replacementWrite ? { replacementWrite: payload.replacementWrite } : {}),
       ...(payload.sourceIdentity ? { sourceIdentity: payload.sourceIdentity } : {}),
       ...(payload.sourceIdentityKind ? { sourceIdentityKind: payload.sourceIdentityKind } : {}),
       ...(payload.contentHash ? { contentHash: payload.contentHash } : {}),
@@ -411,6 +414,15 @@ class QdrantVectorStore extends VectorStoreAdapter {
 
   async deleteDocument(documentId) {
     return this._deleteByDocumentId(documentId);
+  }
+
+  async deleteReplacementDocument(documentId, receipt) {
+    return this._deleteByFilter({ must: [
+      { key: 'documentId', match: { value: documentId } },
+      { key: 'revision', match: { value: receipt.revision } },
+      { key: 'replacementWrite.key', match: { value: receipt.key } },
+      { key: 'replacementWrite.fingerprint', match: { value: receipt.fingerprint } }
+    ] });
   }
 
   async _deleteByDocumentId(documentId) {

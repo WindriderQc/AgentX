@@ -37,7 +37,7 @@ function createRagReplacement({ ragClient = getRagServiceClient(), now = () => n
     const successorId = successorFor(key);
     const old = await read(ragClient, ref);
     if (!old) {
-      await discardUnlinked(ref, successorId);
+      await discardUnlinked(ref, successorId, key);
       throw fail('The source no longer exists');
     }
     const m = meta(old);
@@ -47,7 +47,7 @@ function createRagReplacement({ ragClient = getRagServiceClient(), now = () => n
     }
     if (m.supersededBy || m.invalidatedAt || m.revisionFingerprint !== expectedFingerprint
         || scope !== 'owner' || m.scope !== scope || m.sensitivity !== sensitivity) {
-      await discardUnlinked(ref, successorId);
+      await discardUnlinked(ref, successorId, key);
       throw fail('The reviewed source changed or its labels do not match');
     }
     const effectiveAt = validFrom ? new Date(validFrom) : now();
@@ -55,7 +55,7 @@ function createRagReplacement({ ragClient = getRagServiceClient(), now = () => n
       throw fail('Replacement validity must be known now and follow the previous fact');
     }
     // The successor joins the same memory source, so recall and dedup keep finding it.
-    await ragClient.upsertDocumentWithChunks(text.trim(), { documentId: successorId, source: old.source,
+    await ragClient.createReplacementDocument(successorId, { key, text: text.trim(), source: old.source,
       scope, sensitivity, validFrom: validFrom ? effectiveAt.toISOString() : null, sourceRefs });
     try {
       await ragClient.setDocumentValidity(ref, { invalidatedAt: effectiveAt.toISOString(), supersededBy: successorId,
@@ -66,7 +66,7 @@ function createRagReplacement({ ragClient = getRagServiceClient(), now = () => n
       const after = await read(ragClient, ref);
       if (meta(after).supersededBy === successorId) return { id: successorId, predecessorId: ref, alreadyApplied: false };
       if (after && meta(after).revisionFingerprint === expectedFingerprint) throw error;
-      await discardUnlinked(ref, successorId);
+      await discardUnlinked(ref, successorId, key);
       throw fail('The reviewed source changed before linking; the unlinked replacement was removed');
     }
     return { id: successorId, predecessorId: ref, alreadyApplied: false };
@@ -75,13 +75,13 @@ function createRagReplacement({ ragClient = getRagServiceClient(), now = () => n
   // A successor its predecessor never linked must not stay a current fact once
   // that predecessor has changed. Only this operation's own unreplaced
   // successor is removed; anything else is left for the owner to reconcile.
-  async function discardUnlinked(ref, successorId) {
+  async function discardUnlinked(ref, successorId, key) {
     const [old, successor] = await Promise.all([read(ragClient, ref), read(ragClient, successorId)]);
     if (!successor || meta(old).supersededBy === successorId) return;
     if (meta(successor).invalidatedAt || meta(successor).supersededBy) {
       throw fail('An unlinked replacement was itself replaced; reconcile before any retry');
     }
-    await ragClient.deleteDocument(successorId);
+    await ragClient.deleteReplacementDocument(successorId, key);
   }
 
   async function rollback({ ref, key }) {
@@ -90,12 +90,15 @@ function createRagReplacement({ ragClient = getRagServiceClient(), now = () => n
     if (!old) throw fail('The predecessor no longer exists; restore refused');
     const m = meta(old), s = meta(successor);
     if (successor && (s.invalidatedAt || s.supersededBy)) throw fail('The replacement was itself replaced; restore refused');
+    if (successor && (s.replacementWrite?.key !== key || s.replacementUnchanged !== true)) {
+      throw fail('The replacement changed or its initial write proof is missing; reconcile before any retry');
+    }
     if (m.supersededBy === successorId) {
       await ragClient.setDocumentValidity(ref, { invalidatedAt: null, supersededBy: null, expectedFingerprint: m.revisionFingerprint });
     } else if (m.supersededBy || m.invalidatedAt) {
       throw fail('The predecessor changed after replacement; restore refused');
     }
-    if (successor) await ragClient.deleteDocument(successorId);
+    if (successor) await ragClient.deleteReplacementDocument(successorId, key);
     return { restored: ref, removedSuccessor: successor ? successorId : null, alreadyRolledBack: !successor && m.supersededBy !== successorId };
   }
 

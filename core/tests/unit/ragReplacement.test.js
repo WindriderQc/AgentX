@@ -1,38 +1,6 @@
 'use strict';
 
-const { createHash } = require('node:crypto');
-// A faithful in-memory RAG boundary: reads expose a revision fingerprint, and
-// validity writes refuse a changed document exactly like the RAG service.
-function fakeRag(hits = []) {
-  const docs = new Map(), calls = [];
-  const notFound = () => Object.assign(new Error('RAG returned 404: Document not found'), { status: 404 });
-  const fingerprint = doc => createHash('sha256').update(JSON.stringify(doc)).digest('hex');
-  const view = doc => ({ documentId: doc.documentId, source: doc.source,
-    metadata: { ...doc.metadata, revisionFingerprint: fingerprint(doc) } });
-  return { docs, calls,
-    seed(documentId, text, metadata, source = 'nestor-memory') {
-      docs.set(documentId, { documentId, source, text, metadata: { scope: 'owner', sensitivity: 'private', validFrom: null,
-        sourceRefs: [], invalidatedAt: null, supersededBy: null, ...metadata } });
-    },
-    async getDocument(id) { calls.push(['get', id]); const doc = docs.get(id); if (!doc) throw notFound(); return view(doc); },
-    async getDocumentChunks(id) { const doc = docs.get(id); if (!doc) throw notFound(); return { documentId: id, chunks: [{ chunkIndex: 0, text: doc.text }] }; },
-    async upsertDocumentWithChunks(text, m) {
-      calls.push(['upsert', m.documentId]);
-      docs.set(m.documentId, { documentId: m.documentId, source: m.source, text, metadata: { scope: m.scope, sensitivity: m.sensitivity,
-        validFrom: m.validFrom || null, sourceRefs: m.sourceRefs || [], invalidatedAt: null, supersededBy: null } });
-      return { documentId: m.documentId, status: 'created' };
-    },
-    async setDocumentValidity(id, { invalidatedAt, supersededBy, expectedFingerprint }) {
-      calls.push(['validity', id, supersededBy]);
-      const doc = docs.get(id); if (!doc) throw notFound();
-      if (fingerprint(doc) !== expectedFingerprint) throw Object.assign(new Error('RAG returned 409: The document changed after review'), { status: 409 });
-      doc.metadata = { ...doc.metadata, invalidatedAt, supersededBy };
-      return { documentId: id };
-    },
-    async deleteDocument(id) { calls.push(['delete', id]); if (!docs.delete(id)) throw notFound(); return { documentId: id }; },
-    async searchSimilarChunks() { return hits; },
-  };
-}
+const { fakeRag } = require('../helpers/fakeReplacementRag');
 
 const { createRagReplacement, ragReplacementSuccessorFor } = require('../../src/services/memoryReview/ragReplacement');
 const key = 'memory-review:synthetic-run:candidate-1';
@@ -86,10 +54,10 @@ test('a changed source, other labels or an impossible validity date refuse befor
 test('restore clears the predecessor, removes the unchanged successor and resumes a partial restore', async () => {
   await replacement.supersede(await input());
   const successor = ragReplacementSuccessorFor(key);
-  const original = rag.deleteDocument;
-  rag.deleteDocument = async () => { throw new Error('lost reply'); };
+  const original = rag.deleteReplacementDocument;
+  rag.deleteReplacementDocument = async () => { throw new Error('lost reply'); };
   await expect(replacement.rollback({ ref: 'backup-a', key })).rejects.toThrow('lost reply');
-  rag.deleteDocument = original;
+  rag.deleteReplacementDocument = original;
   expect(rag.docs.get('backup-a').metadata).toMatchObject({ invalidatedAt: null, supersededBy: null });
   expect(await replacement.rollback({ ref: 'backup-a', key })).toMatchObject({ removedSuccessor: successor, alreadyRolledBack: false });
   expect(rag.docs.has(successor)).toBe(false);
@@ -141,10 +109,10 @@ test('a concurrent replacement that loses the link leaves no current successor b
 
 test('a retry removes an unlinked successor whose cleanup was interrupted', async () => {
   const second = await raceSecondAgainstFirst();
-  const remove = rag.deleteDocument;
-  rag.deleteDocument = async () => { throw new Error('lost reply'); };
+  const remove = rag.deleteReplacementDocument;
+  rag.deleteReplacementDocument = async () => { throw new Error('lost reply'); };
   await expect(replacement.supersede(second)).rejects.toThrow('lost reply');
-  rag.deleteDocument = remove;
+  rag.deleteReplacementDocument = remove;
   expect(rag.docs.has(ragReplacementSuccessorFor(otherKey))).toBe(true);
   await expect(replacement.supersede(second)).rejects.toMatchObject({ statusCode: 409 });
   expect(rag.docs.has(ragReplacementSuccessorFor(otherKey))).toBe(false);
@@ -169,10 +137,10 @@ test('a predecessor deleted before linking leaves no successor behind', async ()
 
 test('an unlinked successor that was itself replaced is never deleted silently', async () => {
   const second = await raceSecondAgainstFirst();
-  const remove = rag.deleteDocument;
-  rag.deleteDocument = async () => { throw new Error('lost reply'); };
+  const remove = rag.deleteReplacementDocument;
+  rag.deleteReplacementDocument = async () => { throw new Error('lost reply'); };
   await expect(replacement.supersede(second)).rejects.toThrow('lost reply');
-  rag.deleteDocument = remove;
+  rag.deleteReplacementDocument = remove;
   rag.docs.get(ragReplacementSuccessorFor(otherKey)).metadata.supersededBy = 'later';
   await expect(replacement.supersede(second)).rejects.toThrow(/itself replaced/);
   expect(rag.docs.has(ragReplacementSuccessorFor(otherKey))).toBe(true);
@@ -183,4 +151,111 @@ test('an undated replacement keeps its validity unknown while the predecessor re
   expect(rag.docs.get(applied.id).metadata.validFrom).toBeNull();
   expect(rag.docs.get('backup-a').metadata).toMatchObject({ invalidatedAt: now().toISOString(), supersededBy: applied.id,
     validFrom: '2026-01-05T00:00:00.000Z' });
+});
+
+test('a late cleanup retry preserves an orphan edited after the first cleanup failed', async () => {
+  const second = await raceSecondAgainstFirst();
+  const remove = rag.deleteReplacementDocument;
+  rag.deleteReplacementDocument = async () => { throw new Error('cleanup unavailable'); };
+  await expect(replacement.supersede(second)).rejects.toThrow('cleanup unavailable');
+  rag.deleteReplacementDocument = remove;
+  const orphanId = ragReplacementSuccessorFor(otherKey);
+  rag.docs.get(orphanId).text = 'Synthetic independently edited successor';
+  await expect(replacement.supersede(second)).rejects.toThrow(/reconcile/);
+  expect(rag.docs.get(orphanId).text).toBe('Synthetic independently edited successor');
+});
+
+test('a lost create ACK resumes without writing again, and an intervening edit refuses a retry', async () => {
+  const reviewed = await input();
+  const create = rag.createReplacementDocument.bind(rag);
+  rag.createReplacementDocument = async (...args) => { await create(...args); throw new Error('create ACK lost'); };
+  await expect(replacement.supersede(reviewed)).rejects.toThrow('create ACK lost');
+  const successor = ragReplacementSuccessorFor(key);
+  rag.docs.get(successor).text = 'Synthetic intervening edit';
+  rag.createReplacementDocument = create;
+  await expect(replacement.supersede(reviewed)).rejects.toThrow(/reconcile/);
+  expect(rag.docs.get(successor).text).toBe('Synthetic intervening edit');
+  expect(rag.docs.get('backup-a').metadata.supersededBy).toBeNull();
+  expect(rag.calls.filter(([op]) => op === 'upsert')).toHaveLength(1);
+});
+
+test('a lost create ACK without an edit resumes the same successor without a rewrite', async () => {
+  const reviewed = await input();
+  const create = rag.createReplacementDocument.bind(rag);
+  rag.createReplacementDocument = async (...args) => { await create(...args); throw new Error('create ACK lost'); };
+  await expect(replacement.supersede(reviewed)).rejects.toThrow('create ACK lost');
+  rag.createReplacementDocument = create;
+  expect(await replacement.supersede(reviewed)).toMatchObject({ id: ragReplacementSuccessorFor(key) });
+  expect(rag.calls.filter(([op]) => op === 'upsert')).toHaveLength(1);
+});
+
+test('restore preserves an edited successor before changing the predecessor', async () => {
+  await replacement.supersede(await input());
+  const successor = ragReplacementSuccessorFor(key);
+  rag.docs.get(successor).text = 'Synthetic independent edit';
+  await expect(replacement.rollback({ ref: 'backup-a', key })).rejects.toThrow(/reconcile/);
+  expect(rag.docs.get('backup-a').metadata.supersededBy).toBe(successor);
+  expect(rag.docs.get(successor).text).toBe('Synthetic independent edit');
+});
+
+test('a late restore retry preserves an edit after predecessor restoration and interrupted cleanup', async () => {
+  await replacement.supersede(await input());
+  const remove = rag.deleteReplacementDocument.bind(rag);
+  rag.deleteReplacementDocument = async () => { throw new Error('cleanup unavailable'); };
+  await expect(replacement.rollback({ ref: 'backup-a', key })).rejects.toThrow('cleanup unavailable');
+  const successor = ragReplacementSuccessorFor(key);
+  rag.docs.get(successor).text = 'Synthetic late independent edit';
+  rag.deleteReplacementDocument = remove;
+  await expect(replacement.rollback({ ref: 'backup-a', key })).rejects.toThrow(/reconcile/);
+  expect(rag.docs.get('backup-a').metadata.supersededBy).toBeNull();
+  expect(rag.docs.get(successor).text).toBe('Synthetic late independent edit');
+});
+
+test.each(['cleanup', 'restore'])('an edit at conditional %s deletion is preserved and reported', async action => {
+  const second = action === 'cleanup' ? await raceSecondAgainstFirst() : null;
+  if (action === 'restore') await replacement.supersede(await input());
+  const successor = ragReplacementSuccessorFor(action === 'cleanup' ? otherKey : key);
+  const remove = rag.deleteReplacementDocument.bind(rag);
+  rag.deleteReplacementDocument = async (...args) => {
+    rag.docs.get(successor).text = 'Synthetic concurrent edit at removal';
+    return remove(...args);
+  };
+  const result = action === 'cleanup' ? replacement.supersede(second) : replacement.rollback({ ref: 'backup-a', key });
+  await expect(result).rejects.toThrow(/reconcile/);
+  expect(rag.docs.get(successor).text).toBe('Synthetic concurrent edit at removal');
+});
+
+test('a lost delete ACK resumes rollback after the original successor is already absent', async () => {
+  await replacement.supersede(await input());
+  const remove = rag.deleteReplacementDocument.bind(rag);
+  rag.deleteReplacementDocument = async (...args) => { await remove(...args); throw new Error('delete ACK lost'); };
+  await expect(replacement.rollback({ ref: 'backup-a', key })).rejects.toThrow('delete ACK lost');
+  rag.deleteReplacementDocument = remove;
+  expect(await replacement.rollback({ ref: 'backup-a', key })).toMatchObject({ alreadyRolledBack: true });
+});
+
+test('a lost restoration ACK resumes without clearing predecessor validity twice', async () => {
+  await replacement.supersede(await input());
+  const restore = rag.setDocumentValidity.bind(rag);
+  rag.setDocumentValidity = async (...args) => { await restore(...args); throw new Error('restore ACK lost'); };
+  await expect(replacement.rollback({ ref: 'backup-a', key })).rejects.toThrow('restore ACK lost');
+  rag.setDocumentValidity = restore;
+  expect(await replacement.rollback({ ref: 'backup-a', key })).toMatchObject({ restored: 'backup-a' });
+  expect(rag.calls.filter(([op, , successor]) => op === 'validity' && successor === null)).toHaveLength(1);
+});
+
+test.each(['cleanup', 'restore'])('a legacy successor without initial proof refuses %s', async action => {
+  const second = action === 'cleanup' ? await raceSecondAgainstFirst() : null;
+  if (action === 'restore') await replacement.supersede(await input());
+  const successor = ragReplacementSuccessorFor(action === 'cleanup' ? otherKey : key);
+  if (action === 'cleanup') {
+    const remove = rag.deleteReplacementDocument;
+    rag.deleteReplacementDocument = async () => { throw new Error('cleanup unavailable'); };
+    await expect(replacement.supersede(second)).rejects.toThrow('cleanup unavailable');
+    rag.deleteReplacementDocument = remove;
+  }
+  delete rag.docs.get(successor).replacementWrite;
+  const result = action === 'cleanup' ? replacement.supersede(second) : replacement.rollback({ ref: 'backup-a', key });
+  await expect(result).rejects.toThrow(/reconcile/);
+  expect(rag.docs.has(successor)).toBe(true);
 });
