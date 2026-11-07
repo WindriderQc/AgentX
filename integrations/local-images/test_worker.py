@@ -226,19 +226,42 @@ class ResourceReceiptTest(unittest.TestCase):
         self.assertEqual(lifetime.samples['attempted'], 400); self.assertEqual(lifetime.vram()['observedMaxMiB'], 749)
         self.worker.args.vram_sample_ms = 200
         self.worker.sample_interval = 0.2
-        sampled = threading.Event()
-        def reading(pid):
-            sampled.set()
-            return ('matched', 4096)
-        self.worker.process_vram = reading
+        self.worker.process_vram = lambda pid: ('matched', 4096)
         self.worker.process_ram_peak = Mock(return_value={'status': 'measured', 'peakKiB': 1})
         self.worker.track(100.0)
         thread = self.worker.lifetime.thread
-        self.assertTrue(sampled.wait(5))
+        deadline = module.time.monotonic() + 5
+        while self.worker.lifetime.samples['matched'] < 1:  # Recorded, not merely requested.
+            self.assertLess(module.time.monotonic(), deadline)
+            module.time.sleep(.01)
         receipt = self.worker.free()['resources']
         self.assertFalse(thread.is_alive())
         self.assertEqual(receipt['vram']['observedMaxMiB'], 4096)
         self.assertEqual(receipt['vram']['intervalMs'], 200)
+
+    def test_a_reading_that_lands_after_release_is_ignored(self):
+        lifetime = module.ChildLifetime(4242, 1.0, 2.0, 1.2, 1)
+        lifetime.record('matched', 1000, 3.0)
+        lifetime.stop.set()
+        lifetime.record('matched', 99999, 9.0)
+        vram = lifetime.vram()
+        self.assertEqual(vram['observedMaxMiB'], 1000)
+        self.assertEqual(vram['lastMatchedAtMs'], 3000)
+        self.assertEqual(vram['samples']['attempted'], 1)
+        release = threading.Event()
+        def slow_reading(pid):
+            release.wait(5)  # Simulates a driver query still running at release.
+            return ('matched', 99999)
+        self.worker.process_vram = slow_reading
+        self.worker.sample_interval = 0.2
+        self.worker.process_ram_peak = Mock(return_value={'status': 'measured', 'peakKiB': 1})
+        self.worker.track(100.0)
+        started = module.time.monotonic()
+        receipt = self.worker.free()['resources']
+        self.assertLess(module.time.monotonic() - started, 3)
+        release.set()
+        self.assertEqual(receipt['vram']['status'], 'unavailable')
+        self.assertEqual(receipt['vram']['samples']['attempted'], 0)
 
     def test_submission_lists_each_job_of_the_same_child(self):
         self.worker.start = Mock()

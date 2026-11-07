@@ -46,6 +46,8 @@ class ChildLifetime:
 
     def record(self, outcome, mib=None, at=None):
         with self.lock:
+            if self.stop.is_set():
+                return  # A late reading must not fall after the receipt's release time.
             self.samples['attempted'] += 1
             self.samples[outcome] += 1
             if outcome == 'matched':
@@ -179,7 +181,8 @@ class Worker:
         """Release receipt for one child lifetime; returned by /free and kept with each job."""
         lifetime.stop.set()
         if lifetime.thread:
-            lifetime.thread.join(timeout=6)
+            # Short wait: an in-flight driver query is ignored once stopped, never awaited.
+            lifetime.thread.join(timeout=1)
         receipt = {'contract': RESOURCE_CONTRACT,
             'child': {'spawnedAtMs': epoch_ms(lifetime.spawned), 'readyAtMs': epoch_ms(lifetime.ready),
                 'releasedAtMs': epoch_ms(time.time()), 'reserveVramGiB': lifetime.reserve, 'jobIds': list(lifetime.job_ids)},
