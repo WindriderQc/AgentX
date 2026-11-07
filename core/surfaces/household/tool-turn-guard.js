@@ -1,14 +1,28 @@
 'use strict';
 
 const TASK_TOOLS = new Set(['list_personal_tasks', 'agentx__list_personal_tasks', 'personal_briefing', 'agentx__personal_briefing']);
+const TASK_DETERMINERS = String.raw`(?:(?:autres?|ma|mon|mes|notre|nos|la|le|les|des|my|our|the|any|other|personal|personnelles?)\s+)*`;
+const EXCLUDED_TASK_SCOPE = new RegExp([
+  String.raw`\b(?:aucune?|ni|sans|pas|no|not|nor|neither|without)\s+`,
+  String.raw`(?:(?:toucher|modifier|consulter|lire|touching|changing|reading|checking|touch|change|read|check)\s+)?(?:a\s+)?`,
+  TASK_DETERMINERS,
+  String.raw`(?:liste\s+(?:de|des)\s+${TASK_DETERMINERS})?`,
+  String.raw`(?:taches?|tasks?|to[ -]?do(?: list)?)\b`
+].join(''), 'g');
 
 // A deliberately narrow requirement: an explicit request to read/count the
 // current personal task list. Advice, stories and general task questions stay
 // conversational. This does not claim semantic grounding of every answer.
 function requestsTaskCheck(text) {
-  const input = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const normalized = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/’/g, "'").toLowerCase();
+  // Exclusions in one clause do not request a task read and cannot cancel an
+  // explicit positive request in another. Remove only the excluded task topic:
+  // a calendar read elsewhere must not turn "ni tâche à toucher" into a check.
+  const input = normalized.split(/[.!?;,\n]|\b(?:et|puis|ensuite|mais|and|then|but)\b/)
+    .filter(clause => !/\b(?:ne|don't|do not)\b[^.!?]{0,40}\b(?:pas|check|look|list|read)\b/.test(clause))
+    .map(clause => clause.replace(EXCLUDED_TASK_SCOPE, ' '))
+    .join(' ');
   if (/\b(?:comment|how to|explain|explique|conseils?|advice|histoire|story)\b/.test(input)) return false;
-  if (/\b(?:ne|don't|do not)\b[^.!?]{0,40}\b(?:pas|check|look|list|read)\b/.test(input)) return false;
   const topic = /\b(?:taches?|tasks?|to[ -]?do(?: list)?)\b/.test(input);
   // A request to create tasks "sans consulter de spécialiste" is not a
   // request to read the personal list. Ignore only the negated read verb;

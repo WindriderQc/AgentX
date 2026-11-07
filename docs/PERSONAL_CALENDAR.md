@@ -53,6 +53,10 @@ policy, and install the reviewed `skills/agentx` skill (its assistant chapter). 
 contain no domain logic. Keep family profiles and the memory-only endpoint
 unchanged. Allow a tool timeout of at least 70 seconds for native reconciliation.
 
+The native task-read guard ignores excluded task scope in a calendar request.
+An explicit positive task-list request in a mixed request still requires its
+own same-run task evidence. Calendar receipts never qualify a personal-task read.
+
 ## Creation and recovery
 
 An event needs a title, start and end. Dates create all-day events with an
