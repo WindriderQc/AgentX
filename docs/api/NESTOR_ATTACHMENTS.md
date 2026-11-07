@@ -4,9 +4,9 @@ The full-profile personal Nestor composer accepts three files per message, each
 at most 2 MiB: JPEG, PNG, UTF-8 text, Markdown, CSV, JSON and text PDFs. Documents
 are limited to 24,000 extracted characters; PDFs also have a 20-page limit.
 Unreadable, protected or textless PDFs and oversized documents are rejected,
-never silently truncated. OCR, office formats, screen capture and family uploads
-are not implemented. Playground screen capture is tracked in
-[#2](https://github.com/WindriderQc/AgentX/issues/2).
+never silently truncated. OCR, office formats and family uploads are not
+implemented. [Playground screen capture](../PLAYGROUND_ATTACHMENTS.md) uses the
+same Core attachment service through its own conversation owner scope.
 
 Files stay in the browser draft until Send. A message is required. On success,
 the draft clears; on failure it remains available for correction/retry. Repeating

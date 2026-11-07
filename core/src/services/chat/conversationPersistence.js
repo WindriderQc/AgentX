@@ -83,9 +83,10 @@ async function persistConversation(params) {
         userId, conversationId, clientTurnId = null, model,
         effectiveSystemPrompt, message, assistantContent,
         activePrompt, metadata = {}, stats,
-        ragUsed, useRag, ragSources
+        ragUsed, useRag, ragSources, attachmentIds = []
     } = params;
 
+    const attachments = await require('./playgroundAttachments').references({ attachmentIds, conversationId, userId });
     let conversation;
     let assistantMessageId = null;
 
@@ -118,6 +119,7 @@ async function persistConversation(params) {
         if (message && message.trim()) {
             conversation.messages.push({
                 role: 'user', content: message.trim(),
+                ...(attachments.length ? { attachments } : {}),
                 ...((clientTurnId || metadata.executionReceipt) ? { metadata: { ...turnMetadata, ...unansweredReceipt } } : {})
             });
         }

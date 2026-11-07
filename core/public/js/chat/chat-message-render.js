@@ -1,3 +1,5 @@
+import { renderAttachments } from './chat-attachments.js';
+
 /**
  * Chat message rendering: sanitizing, turn identity, status line, modal,
  * message bubbles and the feedback row.
@@ -294,6 +296,7 @@ export function renderMessage(message, state, elements) {
 
   bubble.appendChild(meta);
   bubble.appendChild(body);
+  renderAttachments(bubble, message.attachments, state.conversationId);
 
   // Message action bar (hover actions)
   if (role !== 'system' && !isSystemMessage) {

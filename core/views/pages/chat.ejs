@@ -262,6 +262,8 @@
         <div class="composer">
           <label class="chat-announcements" for="messageInput">Message Agent X</label>
           <textarea id="messageInput" rows="1" placeholder="Ask a question or explore an idea…" aria-describedby="chatStatusHelp composerHint"></textarea>
+          <div id="captureScreenDraft" aria-label="Snapshot attachments"></div>
+          <p id="captureScreenStatus" role="status" aria-live="polite"></p>
           <div class="composer-actions">
             <button class="chat-command-mode" id="composerModeBtn" type="button" aria-label="Change response strategy" aria-describedby="simpleModeLabel simpleModeAutomation" aria-haspopup="dialog" aria-controls="configDrawer">
               <i class="fas fa-sliders" aria-hidden="true"></i>
@@ -284,6 +286,7 @@
               </div>
             </details>
             <span class="char-count" id="charCount"></span>
+            <button class="ghost small" id="captureScreenBtn" type="button" aria-describedby="captureScreenStatus">Capture screen</button>
             <div class="flex-spacer"></div>
             <button class="primary" id="sendBtn" disabled title="Checking chat readiness">Send</button>
           </div>

@@ -66,6 +66,26 @@ function forConversation({ surface, sessionId, packId, scopeId }) {
     if (!row) throw fail('Conversation not found.', 404);
     return row;
   }
+  return scopedStore({ owner, context: { surface }, withWrite: action =>
+    require('./surfaceConversationService').withSessionWrite(surface, sessionId, action) });
+}
+
+// Playground has canonical conversations rather than surface sessions. Keep the
+// same bytes, validation, references and preparation behind its owner predicate.
+function forPlayground({ conversationId, userId }) {
+  const mongoose = require('mongoose');
+  if (!userId || !mongoose.isObjectIdOrHexString(conversationId)) throw fail('Conversation not found.', 404);
+  const scope = require('./conversations/historyAnswerBlocks').visibleBlockScope(userId, new mongoose.Types.ObjectId(conversationId));
+  async function owner() {
+    const row = await Conversation.findOne(scope).select('_id').lean();
+    if (!row) throw fail('Conversation not found.', 404);
+    return row;
+  }
+  return scopedStore({ owner, context: { surface: 'playground' }, withWrite: action =>
+    require('./conversations/writeFence').withOwnerWrite(conversationId, action) });
+}
+
+function scopedStore({ owner, withWrite, context }) {
   async function load(values, maximum = MAX_PER_TURN) {
     const selected = ids(values, maximum);
     const conversation = await owner();
@@ -74,13 +94,16 @@ function forConversation({ surface, sessionId, packId, scopeId }) {
     return selected.map(id => rows.find(row => String(row._id) === id));
   }
   async function upload(input) {
-    return require('./surfaceConversationService').withSessionWrite(surface, sessionId, async () => {
+    return withWrite(async () => {
       const conversation = await owner();
-      if (conversation.surfaceSession.status !== 'active') throw fail('This conversation is closed.', 409);
+      if (conversation.surfaceSession && conversation.surfaceSession.status !== 'active') throw fail('This conversation is closed.', 409);
       const payload = await decode(input);
       const query = { conversationId: conversation._id, sha256: payload.sha256, name: payload.name, mimeType: payload.mimeType };
       let row;
-      try { row = await Attachment.findOneAndUpdate(query, { $setOnInsert: payload }, { upsert: true, new: true, runValidators: true }).lean(); }
+      const { currentFence, acknowledged } = require('./conversations/writeFence');
+      const mutate = action => currentFence(conversation._id)?.mutate(action) || action();
+      try { row = await mutate(() => Attachment.findOneAndUpdate(query, { $setOnInsert: payload },
+        { upsert: true, new: true, runValidators: true, ...acknowledged }).lean()); }
       catch (error) { if (error.code !== 11000) throw error; row = await Attachment.findOne(query).lean(); }
       return reference(row);
     });
@@ -92,7 +115,7 @@ function forConversation({ surface, sessionId, packId, scopeId }) {
     const [row] = await load([id]);
     if (row.kind !== 'image') throw fail('Only an image has an original to archive.');
     const receipt = await archive.store({ bytes, name: name || row.name, origin: 'uploaded',
-      context: { surface, conversationId: String(row.conversationId), attachmentId: String(row._id), attachmentName: row.name } });
+      context: { ...context, conversationId: String(row.conversationId), attachmentId: String(row._id), attachmentName: row.name } });
     const original = { sha256: receipt.sha256, mimeType: receipt.mimeType, size: receipt.size, path: receipt.path, archivedAt: receipt.archivedAt };
     // The immutable working copy can acquire one original across Core writers.
     // Same-byte retries remain idempotent; another original cannot replace it.
@@ -149,4 +172,4 @@ async function prepareWithLoader(messages, backend, load) {
   });
 }
 
-module.exports = { forConversation, ids, decode, prepareWithLoader, MAX_BYTES, MAX_PER_TURN };
+module.exports = { forConversation, forPlayground, ids, decode, prepareWithLoader, MAX_BYTES, MAX_PER_TURN };

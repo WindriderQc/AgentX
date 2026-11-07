@@ -29,7 +29,8 @@ async function loadStoredTurns({ conversationId, userId } = {}) {
   return (conversation.messages || [])
     .filter(message => message && ['user', 'assistant'].includes(message.role)
       && typeof message.content === 'string')
-    .map(message => ({ role: message.role, content: message.content }));
+    .map(message => ({ role: message.role, content: message.content,
+      ...(message.attachments?.length ? { attachments: message.attachments } : {}) }));
 }
 
 /**
@@ -46,7 +47,8 @@ async function loadStoredTurns({ conversationId, userId } = {}) {
  */
 async function resolveContextMessages({ messages = [], conversationId, userId, historyContext } = {}) {
   if (historyContext === false) return [];
-  if (messages.length > 0) return messages.map(m => ({ role: m.role, content: m.content }));
+  if (messages.length > 0) return messages.map(m => ({ role: m.role, content: m.content,
+    ...(m.attachments?.length ? { attachments: m.attachments } : {}) }));
   return loadStoredTurns({ conversationId, userId });
 }
 

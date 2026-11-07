@@ -150,6 +150,11 @@ async function erase() {
       const rows = await matchingRoots(this.model, { $and: [filter, { _id: candidate._id }] });
       const raw = rows[0];
       if (!raw) throw new mongoose.Error.DocumentNotFoundError(filter);
+      // Surface sessions retain their own retryable tombstone/file cleanup.
+      // Ordinary conversations erase their files inside this same owner barrier,
+      // before removing the root that authorizes uploads and downloads.
+      if (!raw.surfaceSession) await fence.mutate(() => require('../../../models/ConversationAttachment')
+        .deleteMany({ conversationId: candidate._id }, acknowledged));
       const finalFilter = await exactRootFilter(this.model, raw, filter);
       let query;
       if (replacement) {

@@ -25,6 +25,7 @@ export async function persistTerminalTurn(ctx, {
   assistantContent,
   outcome,
   model,
+  attachmentIds = [],
   error = null
 }) {
   const { state, helpers } = ctx;
@@ -40,6 +41,7 @@ export async function persistTerminalTurn(ctx, {
       assistantContent,
       outcome,
       model: model || 'unknown',
+      attachmentIds,
       errorCode: error?.code || null,
       errorMessage: error?.message || null
     })

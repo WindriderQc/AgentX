@@ -56,6 +56,7 @@ function normalizeTurnOutcome(input = {}) {
 
   return {
     conversationId: conversationId || null,
+    attachmentIds: require('../conversationAttachmentService').ids(input.attachmentIds),
     sourceUserMessageId: sourceUserMessageId || null,
     clientTurnId: boundedString(input.clientTurnId, { field: 'clientTurnId', required: true, maxLength: 160 }),
     model: boundedString(input.model || 'unknown', { field: 'model', maxLength: 240 }) || 'unknown',
@@ -106,6 +107,7 @@ function buildTurnMessages(input, sourceUserMessage) {
     _id: new mongoose.Types.ObjectId(),
     role: 'user',
     content: input.userMessage,
+    ...(input.attachments?.length ? { attachments: input.attachments } : {}),
     metadata: { clientTurnId: input.clientTurnId, outcomeRecord: true }
   };
   const assistantMessage = {
@@ -212,7 +214,12 @@ async function persistTurnOutcome(userId, rawInput = {}) {
   if (!owner || owner.startsWith('surface:')) {
     throw new TurnOutcomeError('Conversation not found', 404, 'CONVERSATION_NOT_FOUND');
   }
-  const input = normalizeTurnOutcome(rawInput);
+  let input;
+  try {
+    input = normalizeTurnOutcome(rawInput);
+    input.attachments = await require('./playgroundAttachments').references({ ...input, userId: owner });
+  }
+  catch (error) { throw new TurnOutcomeError(error.message, error.statusCode, error.code); }
   try {
     return await require('../conversations/exchangeReceipts').guardTurn(`playground:${owner}`, input.clientTurnId,
       fence => input.conversationId ? appendToConversation(owner, input, fence) : createConversation(owner, input, fence));
