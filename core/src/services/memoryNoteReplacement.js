@@ -80,7 +80,7 @@ function forNotes({ audience, boundary, seal, indexLater, forget }) {
     const values = { _id: op.successorId, packId: old.packId, scopeId: old.scopeId, scope, sensitivity,
       text, kind: old.kind || 'fact', type: old.type || 'fact', topic: old.topic || 'general',
       source: 'memory-review', sourceTraceId: `replacement:${key}`, sourceRefs: fact.sourceRefs || [],
-      validFrom: op.effectiveAt, contentHash: createHash('sha256').update(text.toLowerCase()).digest('hex'),
+      validFrom: fact.validFrom ? op.effectiveAt : null, contentHash: createHash('sha256').update(text.toLowerCase()).digest('hex'),
       status: 'pending', replacementKey: key, replaces: id, createdAt: new Date(), updatedAt: new Date() };
     let next = await MemoryNote.findOne({ _id: op.successorId }).lean();
     if (!next) {

@@ -111,3 +111,76 @@ test('the review preview is a live bounded RAG read', async () => {
   expect(await replacement.preview('backup-a')).toEqual({ text: 'Synthetic backup runs on host A', validFrom: '2026-01-05T00:00:00.000Z', invalidatedAt: null });
   expect(await replacement.preview('missing')).toEqual({ unavailable: true });
 });
+
+// Two reviewed replacements of the same predecessor, applied at once: the
+// predecessor's conditional link lets one win; the other must not leave its
+// successor behind as a second current fact.
+const otherKey = 'memory-review:synthetic-run:candidate-2';
+async function raceSecondAgainstFirst() {
+  const first = await input();
+  const second = await input({ key: otherKey, text: 'Synthetic backup runs on host C' });
+  const upsert = rag.upsertDocumentWithChunks;
+  rag.upsertDocumentWithChunks = async (text, m) => {
+    const written = await upsert(text, m);
+    if (m.documentId === ragReplacementSuccessorFor(otherKey)) {
+      rag.upsertDocumentWithChunks = upsert;
+      await replacement.supersede(first);
+    }
+    return written;
+  };
+  return second;
+}
+
+test('a concurrent replacement that loses the link leaves no current successor behind', async () => {
+  const second = await raceSecondAgainstFirst();
+  await expect(replacement.supersede(second)).rejects.toMatchObject({ statusCode: 409 });
+  expect(rag.docs.get('backup-a').metadata.supersededBy).toBe(ragReplacementSuccessorFor(key));
+  expect(rag.docs.has(ragReplacementSuccessorFor(key))).toBe(true);
+  expect(rag.docs.has(ragReplacementSuccessorFor(otherKey))).toBe(false);
+});
+
+test('a retry removes an unlinked successor whose cleanup was interrupted', async () => {
+  const second = await raceSecondAgainstFirst();
+  const remove = rag.deleteDocument;
+  rag.deleteDocument = async () => { throw new Error('lost reply'); };
+  await expect(replacement.supersede(second)).rejects.toThrow('lost reply');
+  rag.deleteDocument = remove;
+  expect(rag.docs.has(ragReplacementSuccessorFor(otherKey))).toBe(true);
+  await expect(replacement.supersede(second)).rejects.toMatchObject({ statusCode: 409 });
+  expect(rag.docs.has(ragReplacementSuccessorFor(otherKey))).toBe(false);
+  expect(rag.docs.has(ragReplacementSuccessorFor(key))).toBe(true);
+});
+
+test('a lost reply after the link committed reports the replacement as applied', async () => {
+  const reviewed = await input();
+  const link = rag.setDocumentValidity;
+  rag.setDocumentValidity = async (...args) => { await link(...args); throw new Error('lost reply'); };
+  expect(await replacement.supersede(reviewed)).toMatchObject({ id: ragReplacementSuccessorFor(key), alreadyApplied: false });
+  expect(rag.docs.get('backup-a').metadata.supersededBy).toBe(ragReplacementSuccessorFor(key));
+});
+
+test('a predecessor deleted before linking leaves no successor behind', async () => {
+  const reviewed = await input();
+  const upsert = rag.upsertDocumentWithChunks;
+  rag.upsertDocumentWithChunks = async (text, m) => { const written = await upsert(text, m); rag.docs.delete('backup-a'); return written; };
+  await expect(replacement.supersede(reviewed)).rejects.toMatchObject({ statusCode: 409 });
+  expect(rag.docs.has(ragReplacementSuccessorFor(key))).toBe(false);
+});
+
+test('an unlinked successor that was itself replaced is never deleted silently', async () => {
+  const second = await raceSecondAgainstFirst();
+  const remove = rag.deleteDocument;
+  rag.deleteDocument = async () => { throw new Error('lost reply'); };
+  await expect(replacement.supersede(second)).rejects.toThrow('lost reply');
+  rag.deleteDocument = remove;
+  rag.docs.get(ragReplacementSuccessorFor(otherKey)).metadata.supersededBy = 'later';
+  await expect(replacement.supersede(second)).rejects.toThrow(/itself replaced/);
+  expect(rag.docs.has(ragReplacementSuccessorFor(otherKey))).toBe(true);
+});
+
+test('an undated replacement keeps its validity unknown while the predecessor records the apply instant', async () => {
+  const applied = await replacement.supersede(await input({ validFrom: null }));
+  expect(rag.docs.get(applied.id).metadata.validFrom).toBeNull();
+  expect(rag.docs.get('backup-a').metadata).toMatchObject({ invalidatedAt: now().toISOString(), supersededBy: applied.id,
+    validFrom: '2026-01-05T00:00:00.000Z' });
+});
