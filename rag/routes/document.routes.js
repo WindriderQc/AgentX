@@ -32,6 +32,7 @@ router.get('/documents/:id', async (req, res) => {
         source: doc.source,
         chunkCount: chunks.length,
         metadata: { tags: doc.tags, hash: doc.hash,
+          contentHash: doc.contentHash || null, mixedRevision: doc.mixedRevision === true,
           ...memoryFactProjection(doc), ...memoryValidityProjection(doc),
           ...(doc.scope ? { scope: doc.scope, sensitivity: doc.sensitivity } : {}),
           revisionFingerprint: revisionFingerprint(doc) }

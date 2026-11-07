@@ -1293,6 +1293,12 @@ browser speaks its remark only while listening with no turn in flight.
 The default family knowledge corpus is empty and disabled; an approved external
 configuration may be selected with `NESTOR_KNOWLEDGE_CONFIG_PATH`.
 
+The personal [document review](HOUSEHOLD_DOCUMENT_REVIEW.md) stages explicitly
+configured private text exports, retains originals and provenance, and separates
+selection from explicit confirmation of a family-readable copy in the existing
+household RAG source. Its LAN reviewer name is a declaration, not verified adult
+identity. It changes no instance corpus or ingestion configuration automatically.
+
 A household documents folder extends that corpus without listing each file. In
 the external RAG ingestion policy (`RAG_INGESTION_POLICY_PATH`),
 `ingestion.classifiedRoots` labels every file under a root beneath an approved

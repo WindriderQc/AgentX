@@ -27,6 +27,10 @@ needs her tools, not for an ordinary task or calendar entry.
   and development decisions belong in project docs, not memory.
 - **Documents** (`rag_search`): cite the source and keep an excerpt distinct
   from verified current state.
+- Private archive candidates are reviewed at `/dad/documents`: preparation,
+  selection and explicit confirmation of a family-readable copy are separate.
+  A RAG search, persona or device does not approve sharing. This human workflow
+  has no MCP promotion tool; see the product's `docs/HOUSEHOLD_DOCUMENT_REVIEW.md`.
 - No match does not prove a fact or document never existed.
 
 ## Personal tasks
