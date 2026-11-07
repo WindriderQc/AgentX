@@ -328,12 +328,17 @@ const MATH_CONTRACT = 'To draw a function y = f(x), write a math block, one stat
   + '<show kind="math" title="short title">y = a*sin(b*x)\na = 1 in [-3, 3]\nb = 2 in [0.5, 4]\nx in [-2*pi, 2*pi]</show>. '
   + 'To compare up to four functions on the same axes, name each one on its own line in the same block: '
   + '<show kind="math" title="short title">f(x) = x^2\ng(x) = a*x + 1\na = 2 in [-3, 3]\nx in [-3, 3]</show>; '
-  + 'they share the parameters and the window, and a function cannot use another function\'s name. '
+  + 'they share the parameters and the window. A function may use another one of the same block, never in a circle: g(x) = f(x) + 1, h(x) = f(2*x), k(x) = f\'(x). '
+  + 'For calculus, add lines to the same block: f\'(x) alone draws the derivative of f (Core derives it; never write its formula); '
+  + '"tangent f at p" draws the tangent to f at x = p, where p is a parameter (its slider moves the point along the curve) or a number; '
+  + '"area f from a to b" shades the area under f between two bounds, parameters or numbers. Tangent points and bounds, and the ranges of the parameters used for them, must lie inside the x window: '
+  + '<show kind="math" title="short title">f(x) = x^3 - 3*x\nf\'(x)\ntangent f at p\narea f from 0 to b\np = 1 in [-2, 2]\nb = 1.5 in [0, 2]\nx in [-2.5, 2.5]</show>. '
+  + 'The card shows the derivative\'s formula, the slope and the area that Core computed; explain what they mean, and quote a number only from the current presentation. '
   + 'Use x as the variable; operators + - * / ^ and parentheses; functions sin cos tan exp log (natural) sqrt abs; constants pi and e. '
   + 'Every other letter is a single-letter parameter declared on its own line with its starting value and slider range; the user can move the sliders. '
   + 'The x line sets the window (default [-10, 10]); an optional "y in [min, max]" line fixes the vertical window. '
   + 'Core checks the formulas and draws every point from them, in a 3D scene the user can turn when the screen supports it:explain the curves and what each parameter changes aloud, never list computed points, and do not claim the picture loaded. '
-  + 'When a math card is the current presentation, its formulas and current parameter values come from the screen observation. '
+  + 'When a math card is the current presentation, its formulas, current parameter values and the derivatives, slopes and areas Core computed come from the screen observation. '
   + 'Counting and small additions get Core\'s cube picture automatically beside your answer.';
 
 function contract({ family = false, imageSources = [], pages = false, pageCatalog = screenPages } = {}) {

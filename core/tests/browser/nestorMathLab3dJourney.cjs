@@ -1,9 +1,11 @@
 'use strict';
 
-// Math Lab in Super Dad (#1270), phase 2: a comparison card drawn by GraphysX's
-// <llmx-stage> (agentx.math-scene.v2) in the "Pages and images" zone, its
-// sliders driving the 3D scene, the 2D view, what the next turn reports to
-// Core, and the released slider positions coming back after a reload.
+// Math Lab in Super Dad (#1270), phases 2 and 3: a comparison card drawn by
+// GraphysX's <llmx-stage> (agentx.math-scene.v2) in the "Pages and images"
+// zone, its sliders driving the 3D scene, the 2D view, what the next turn
+// reports to Core, and the released slider positions coming back after a
+// reload; then (v3) a derivative with a tangent on a slider and a shaded area,
+// and functions that use other functions.
 // Shipped page and reply channels, scripted replies only: no model,
 // microphone or external HTTP request. The GraphysX module is the built embed
 // (`npm run build:face` in GraphysX-Web), passed by path.
@@ -27,7 +29,12 @@ const REPLIES = {
     + '<show kind="math" title="Parabole et droite">f(x) = x^2\ng(x) = a*x + 1\na = 2 in [-3, 3]\nx in [-3, 3]</show> Bouge a pour faire tourner la droite.',
   ondes: 'Trois ondes, trois fréquences. '
     + '<show kind="math" title="Trois ondes">f(x) = sin(x)\ng(x) = sin(2x)\nh(x) = a*sin(3x)\na = 1 in [0, 2]\nx in [-pi, pi]</show>',
-  question: 'Regarde où les deux courbes se croisent.'
+  question: 'Regarde où les deux courbes se croisent.',
+  derivee: 'La dérivée dit la pente de la courbe en chaque point. '
+    + "<show kind=\"math\" title=\"Dérivée, tangente et aire\">f(x) = x^3 - 3x\nf'(x)\ntangent f at p\narea f from 0 to b\np = 1 in [-2, 2]\nb = 1.5 in [0, 2]\nx in [-2.5, 2.5]</show>"
+    + ' Déplace p : la tangente suit la courbe.',
+  composee: 'Une fonction peut en utiliser une autre. '
+    + "<show kind=\"math\" title=\"Fonctions composées\">f(x) = x^2\ng(x) = f(x - 1) + 1\nh(x) = f'(x)\nx in [-3, 3]</show>"
 };
 const sessions = new Map(), turns = new Map(), saves = [], submissions = [], errors = [], cases = [];
 let lastSessionId = null;
@@ -120,19 +127,20 @@ let browser, server;
     };
     const selectedMath = '.page-presentation .display-block[data-kind=math][data-selected=true]';
     const fitsWidth = () => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
-    // Pixels of the 3D canvas: how many carry each function's colour (yellow f, cyan g).
+    // Pixels of the 3D canvas: how many carry each function's colour (yellow f, cyan g), and near-white (tangents, labels).
     const stagePixels = selector => page.evaluate(sel => new Promise(resolve => requestAnimationFrame(() => {
       const source = document.querySelector(sel).shadowRoot.querySelector('canvas');
       const probe = document.createElement('canvas'); probe.width = 120; probe.height = 80;
       const context = probe.getContext('2d'); context.drawImage(source, 0, 0, probe.width, probe.height);
       const data = context.getImageData(0, 0, probe.width, probe.height).data;
-      let yellow = 0, cyan = 0;
+      let yellow = 0, cyan = 0, white = 0;
       for (let i = 0; i < data.length; i += 4) {
         const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
         if (r > 170 && g > 150 && b < 140) yellow += 1;
         if (r < 140 && g > 150 && b > 160) cyan += 1;
+        if (r > 200 && g > 200 && b > 200) white += 1;
       }
-      resolve({ yellow, cyan });
+      resolve({ yellow, cyan, white });
     })), selector);
 
     // 1. A comparison card lands in the zone, selected, drawn in 3D by GraphysX.
@@ -225,7 +233,63 @@ let browser, server;
     await restored.locator('llmx-stage').scrollIntoViewIfNeeded();
     await page.waitForTimeout(1800);
     await restored.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-compare-restored.png`) });
-    cases.push({ label, viewport, cardWidth: box.width, pixels: lit });
+
+    // 6. Phase 3: the derivative, a tangent riding the p slider and a shaded area, drawn by GraphysX from v3.
+    await ask('Montre la derivee et l’aire');
+    const calculus = page.locator(selectedMath, { hasText: 'Dérivée, tangente et aire' });
+    await calculus.locator('.math-plot[data-view="3d"]').waitFor({ timeout: 15000 });
+    const calculusScene = await calculus.locator('llmx-stage').evaluate(stage => stage.scene);
+    assert.equal(calculusScene.schema, 'agentx.math-scene.v3');
+    assert.deepEqual([calculusScene.derivatives, calculusScene.tangents, calculusScene.areas], [['f'], [{ of: 'f', at: 'p' }], [{ of: 'f', from: 0, to: 'b' }]]);
+    assert.deepEqual(await calculus.locator('.math-plot-function').allTextContents(), ['f(x) = x³ - 3 · x', "f'(x) = 3 · x² - 3",
+      'Tangente à f(x) en x = 1 : pente 0', 'Aire sous f(x) de 0 à 1.5 : −2.109 (la partie sous l’axe compte en moins)']);
+    await calculus.locator('llmx-stage').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1800);
+    const calculusPixels = await stagePixels(selectedMath + ' llmx-stage');
+    assert.ok(calculusPixels.yellow > lit.yellow, `the derivative and the area add yellow to the scene (${JSON.stringify(calculusPixels)})`);
+    assert.ok(calculusPixels.white > lit.white, `the white tangent is drawn (${JSON.stringify(calculusPixels)} vs ${JSON.stringify(lit)})`);
+    await calculus.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(output, `${label}-calculus-3d.png`) });
+    await calculus.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-calculus-3d-scene.png`) });
+    // Moving p: GraphysX finds the new slope itself; the legend (Core's grammar in the page) agrees.
+    const receipt = calculus.locator('llmx-stage').evaluate(stage => new Promise(resolve => stage.addEventListener('llmx-parameters-applied',
+      event => resolve(event.detail), { once: true })));
+    await calculus.locator('input[aria-label="Paramètre p"]').evaluate(input => {
+      input.value = '2'; input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const applied = await receipt;
+    assert.deepEqual(applied.tangents, [{ of: 'f', x: 2, y: 2, slope: 9 }], 'GraphysX computes the same slope');
+    assert.ok(Math.abs(applied.areas[0].value - -2.109375) < 1e-9, 'and the same area');
+    assert.match(await calculus.locator('.math-plot-legend-tangent').textContent(), /en x = 2 : pente 9$/);
+    await page.waitForTimeout(400);
+    await calculus.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-calculus-3d-slider.png`) });
+    for (let wait = 0; wait < 20 && !saves.some(row => row.values?.p === 2); wait += 1) await page.waitForTimeout(100);
+    assert.deepEqual(saves.at(-1).values, { p: 2, b: 1.5 }, 'tangent and bound sliders are kept like any other');
+    await calculus.getByRole('button', { name: 'Vue 2D' }).click();
+    assert.ok((await calculus.locator('.math-plot-derivative').getAttribute('d')).length > 200, 'the 2D derivative is drawn');
+    assert.match(await calculus.locator('.math-plot-area').getAttribute('d'), /Z$/, 'the 2D area is shaded');
+    assert.equal(await calculus.locator('.math-plot-tangent').isVisible(), true);
+    await calculus.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-calculus-2d.png`) });
+    await calculus.getByRole('button', { name: 'Vue 3D' }).click();
+    assert.ok(await fitsWidth(), `no horizontal page scroll with the calculus legend (${label})`);
+    const slope = await ask('Quelle est la pente maintenant ?');
+    assert.match(slope.screen[0].text, /^f\(x\) = x\^3 - 3 \* x\nf'\(x\)\ntangent f at p\narea f from 0 to b\np = 2 in \[-2, 2\]/);
+    assert.deepEqual(slope.selected.math.tangents, [{ of: 'f', x: 2, y: 2, slope: 9 }], 'Core reads the slope from the formula');
+    assert.deepEqual(slope.selected.math.areas, [{ of: 'f', from: 0, to: 1.5, value: -2.109375 }]);
+
+    // 7. Functions using functions: g is f shifted, h is f's derivative.
+    await ask('Montre une fonction composee');
+    const composed = page.locator(selectedMath, { hasText: 'Fonctions composées' });
+    await composed.locator('.math-plot[data-view="3d"]').waitFor({ timeout: 15000 });
+    assert.equal((await composed.locator('llmx-stage').evaluate(stage => stage.scene)).schema, 'agentx.math-scene.v3');
+    assert.deepEqual(await composed.locator('.math-plot-function').allTextContents(), ['f(x) = x²', 'g(x) = f(x - 1) + 1', 'h(x) = f\'(x)']);
+    await composed.locator('llmx-stage').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1800);
+    await composed.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: path.join(output, `${label}-composed-3d.png`) });
+    await composed.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-composed-3d-scene.png`) });
+    assert.ok(await fitsWidth(), `no horizontal page scroll after the phase 3 cards (${label})`);
+    cases.push({ label, viewport, cardWidth: box.width, pixels: lit, calculusPixels });
     await context.close();
   }
   assert.deepEqual(errors, []);

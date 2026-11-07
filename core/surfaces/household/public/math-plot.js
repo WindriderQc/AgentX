@@ -3,6 +3,9 @@
    Phase 2: the picture is GraphysX's <llmx-stage> (agentx.math-scene.v2), the
    Math Game in 3D; a plain 2D SVG plot stays as the fallback when the 3D module
    is missing, older, refused the scene or has no WebGL, and as a "2D view".
+   Phase 3: dashed derivative curves, tangents that follow a slider, shaded
+   areas with their value, and functions that use other functions; GraphysX
+   draws them from agentx.math-scene.v3, older modules leave the card in 2D.
    Every point comes from the formula through AgentXMathExpression (and its
    GraphysX port), never from numbers the model wrote. */
 (function (root) {
@@ -10,6 +13,11 @@
   const SVG = 'http://www.w3.org/2000/svg';
   const HEIGHT = 320, PAD = { left: 40, right: 12, top: 12, bottom: 28 };
   const STAGE_SCHEMA = 'agentx.math-scene.v2';
+  // Derivatives, tangents, areas and functions using functions need the phase 3 scene.
+  const CALCULUS_SCHEMA = 'agentx.math-scene.v3';
+  const TANGENT_COLOR = '#f4f7fb';
+  // GraphysX's area fill: over a function's own molecules its colour would not show. Edges keep the function's colour.
+  const AREA_COLOR = '#9fd7ff';
   // The same order as GraphysX's palette, sent explicitly so the legend always matches the picture.
   const COLORS = Object.freeze(['#ffe86b', '#60d6e8', '#ff7a6b', '#9dff8a']);
   const STAGE_WAIT_MS = 4000;
@@ -50,11 +58,11 @@
   const pretty = expression => expression.replace(/\*/g, '·').replace(/\^(\d+)/g, (_, digits) => digits.replace(/\d/g, d => SUPERSCRIPT[d]));
   const label = value => Number(value.toPrecision(4)).toString().replace('-', '−');
 
-  // The 3D element when this page has (or can load) a version that draws functions; null otherwise.
-  function stageElement() {
+  // The 3D element when this page has (or can load) a version that draws `schema`; null otherwise.
+  function stageElement(schema) {
     const registry = root.customElements;
     if (!registry) return Promise.resolve(null);
-    const supported = () => (registry.get('llmx-stage')?.schemas || []).includes(STAGE_SCHEMA) ? registry.get('llmx-stage') : null;
+    const supported = () => (registry.get('llmx-stage')?.schemas || []).includes(schema) ? registry.get('llmx-stage') : null;
     if (registry.get('llmx-stage')) return Promise.resolve(supported());
     // The avatar dock relays GraphysX's module; ask for it even when the avatar is hidden.
     root.AvatarDock?.loadFace?.();
@@ -76,6 +84,10 @@
     holder.dataset.state = 'visible';
     holder.dataset.view = '2d';
     const { plot, trees } = parsed;
+    const derivatives = plot.derivatives || [], tangents = plot.tangents || [], areas = plot.areas || [];
+    const schema = parsed.references || derivatives.length || tangents.length || areas.length ? CALCULUS_SCHEMA : STAGE_SCHEMA;
+    const colorOf = name => colors[plot.functions.findIndex(fn => fn.name === name)];
+    const nameOf = name => (name === 'y' ? 'y' : `${name}(x)`);
     // Positions saved in Core for this card start where they were left; invalid ones are ignored.
     const saved = block.values ? math.checkValues(plot, block.values) : null;
     const values = saved?.ok ? { ...saved.values } : Object.fromEntries(plot.parameters.map(row => [row.name, row.value]));
@@ -92,7 +104,12 @@
     defs.append(clip);
     const grid = svg('g', { class: 'math-plot-grid' }), axes = svg('g', { class: 'math-plot-axes' }), labels = svg('g', { class: 'math-plot-labels' });
     const curves = plot.functions.map((_, index) => svg('path', { class: 'math-plot-curve', 'clip-path': `url(#${clipId})`, fill: 'none', stroke: colors[index] }));
-    chart.append(defs, grid, axes, ...curves, labels);
+    const clipped = attributes => ({ 'clip-path': `url(#${clipId})`, ...attributes });
+    const shades = areas.map(row => svg('path', clipped({ class: 'math-plot-area', fill: AREA_COLOR, stroke: colorOf(row.of) })));
+    const slopes = derivatives.map(name => svg('path', clipped({ class: 'math-plot-curve math-plot-derivative', fill: 'none', stroke: colorOf(name) })));
+    const touches = tangents.map(() => svg('line', clipped({ class: 'math-plot-tangent', stroke: TANGENT_COLOR })));
+    const dots = tangents.map(row => svg('circle', { class: 'math-plot-touch', r: 5, fill: colorOf(row.of), stroke: TANGENT_COLOR }));
+    chart.append(defs, grid, axes, ...shades, ...curves, ...slopes, ...touches, ...dots, labels);
     view.append(chart);
 
     // A wide card gets a wider chart instead of a small one centred in empty space.
@@ -106,21 +123,46 @@
       return true;
     }
     const valuesText = () => plot.parameters.map(row => `${row.name} = ${math.formatNumber(values[row.name])}`).join(', ');
+    const entry = (kind, color, text) => {
+      const line = el('p', 'math-plot-function' + (kind ? ' math-plot-legend-' + kind : ''));
+      const swatch = el('span', 'math-plot-swatch');
+      swatch.style.background = kind === 'area' ? AREA_COLOR : color;
+      if (kind === 'area') swatch.style.boxShadow = `inset 0 0 0 2px ${color}`;
+      line.append(swatch, el(kind === 'tangent' || kind === 'area' ? 'span' : 'strong', '', text));
+      formula.append(line);
+    };
+    // Slopes and areas are computed here from the formula with the current slider values.
+    const tangentText = row => {
+      const t = math.tangentAt(parsed, row, values);
+      return `Tangente à ${nameOf(row.of)} en x = ${label(t.x)} : ` + (t.slope === null ? 'non définie ici' : `pente ${label(t.slope)}`);
+    };
+    const areaText = row => {
+      const a = areaOfRow(row), where = `Aire sous ${nameOf(row.of)} de ${label(a.from)} à ${label(a.to)}`;
+      if (a.value === null) return `${where} : non définie (${nameOf(row.of)} n’est pas définie partout entre les bornes)`;
+      return `${where} : ${label(a.value)}` + (a.dips ? ' (la partie sous l’axe compte en moins)' : '');
+    };
+    function areaOfRow(row) {
+      const a = math.areaOf(parsed, row, values), index = plot.functions.findIndex(fn => fn.name === row.of);
+      const low = Math.min(a.from, a.to), high = Math.max(a.from, a.to), scope = { ...values };
+      let below = false;
+      for (let i = 0; i <= 64 && high > low; i += 1) {
+        const y = math.evaluate(trees[index], { ...scope, x: low + (high - low) * i / 64 });
+        if (y < 0) below = true;
+      }
+      return { ...a, dips: below };
+    }
     function legend() {
       formula.replaceChildren();
-      plot.functions.forEach((fn, index) => {
-        const line = el('p', 'math-plot-function');
-        const swatch = el('span', 'math-plot-swatch');
-        swatch.style.background = colors[index];
-        line.append(swatch, el('strong', '', `${fn.label} = ${pretty(fn.expression)}`));
-        formula.append(line);
-      });
+      plot.functions.forEach((fn, index) => entry('', colors[index], `${fn.label} = ${pretty(fn.expression)}`));
+      derivatives.forEach(name => entry('derivative', colorOf(name), `${math.derivativeLabel(name)} = ${pretty(math.format(parsed.slopes[name]))}`));
+      tangents.forEach(row => entry('tangent', TANGENT_COLOR, tangentText(row)));
+      areas.forEach(row => entry('area', colorOf(row.of), areaText(row)));
       if (plot.parameters.length) formula.append(el('span', 'math-plot-values', valuesText()));
     }
     function draw() {
       chart.setAttribute('viewBox', `0 0 ${WIDTH} ${HEIGHT}`);
       clipRect.setAttribute('width', WIDTH - PAD.left - PAD.right);
-      const samples = trees.map(tree => math.sample(tree, plot, values));
+      const samples = math.curves(parsed).map(tree => math.sample(tree, plot, values));
       const [x0, x1] = plot.x, [y0, y1] = math.fitY(samples.flat(), plot);
       const left = PAD.left, right = WIDTH - PAD.right, top = PAD.top, bottom = HEIGHT - PAD.bottom;
       const px = x => left + (x - x0) / (x1 - x0) * (right - left);
@@ -147,9 +189,35 @@
           path += (previous === null || jump ? 'M' : 'L') + px(x).toFixed(1) + ' ' + clamp(y).toFixed(1);
           previous = y;
         }
-        curves[index].setAttribute('d', path);
+        (curves[index] || slopes[index - curves.length]).setAttribute('d', path);
       });
-      const shown = plot.functions.map(fn => `${fn.label} = ${pretty(fn.expression)}`).join(' ; ');
+      // Areas: from the curve to the x axis between the bounds, broken where the function is undefined.
+      areas.forEach((row, index) => {
+        const a = math.areaOf(parsed, row, values), low = Math.min(a.from, a.to), high = Math.max(a.from, a.to);
+        const tree = trees[plot.functions.findIndex(fn => fn.name === row.of)], base = clamp(0);
+        let path = '', open = [];
+        const close = () => { if (open.length > 1) path += 'M' + open[0][0] + ' ' + base.toFixed(1) + open.map(([x, y]) => 'L' + x + ' ' + y).join('') + 'L' + open[open.length - 1][0] + ' ' + base.toFixed(1) + 'Z'; open = []; };
+        for (let i = 0; i <= 160 && high > low; i += 1) {
+          const x = low + (high - low) * i / 160, y = math.evaluate(tree, { ...values, x });
+          if (!Number.isFinite(y)) { close(); continue; }
+          open.push([px(x).toFixed(1), clamp(y).toFixed(1)]);
+        }
+        close();
+        shades[index].setAttribute('d', path);
+      });
+      // Tangents: the line through the point of contact with the computed slope, across the window.
+      tangents.forEach((row, index) => {
+        const t = math.tangentAt(parsed, row, values), line = touches[index], dot = dots[index];
+        const drawn = t.slope !== null;
+        line.toggleAttribute('hidden', !drawn);
+        dot.toggleAttribute('hidden', !drawn || t.y < y0 || t.y > y1);
+        if (!drawn) return;
+        line.setAttribute('x1', px(x0)); line.setAttribute('y1', py(t.y + t.slope * (x0 - t.x)));
+        line.setAttribute('x2', px(x1)); line.setAttribute('y2', py(t.y + t.slope * (x1 - t.x)));
+        dot.setAttribute('cx', px(t.x)); dot.setAttribute('cy', py(t.y));
+      });
+      const shown = [...plot.functions.map(fn => `${fn.label} = ${pretty(fn.expression)}`),
+        ...derivatives.map(name => `dérivée ${math.derivativeLabel(name)}`), ...tangents.map(tangentText), ...areas.map(areaText)].join(' ; ');
       chart.setAttribute('aria-label', `Graphique de ${shown}${plot.parameters.length ? ', ' + valuesText() : ''}, x de ${label(x0)} à ${label(x1)}`);
     }
 
@@ -169,7 +237,8 @@
       note.textContent = threeD ? 'Scène 3D GraphysX calculée à partir des formules. Glissez pour la tourner, double-clic pour revenir.'
         : stage || state === 'released' ? 'Tracé 2D calculé à partir des formules.'
           : state === 'loading' ? 'Tracé 2D calculé à partir des formules, en attendant la scène 3D.'
-            : 'Tracé 2D calculé à partir des formules (la scène 3D n’est pas disponible).';
+            : state === 'outdated' ? 'Tracé 2D calculé à partir des formules (la scène 3D chargée ne dessine pas encore ces calculs).'
+              : 'Tracé 2D calculé à partir des formules (la scène 3D n’est pas disponible).';
       if (!threeD) draw();
     }
     function release() {
@@ -183,9 +252,13 @@
     }
     function mountStage() {
       holder.dataset.stage = 'loading';
-      stageElement().then(Stage => {
+      stageElement(schema).then(Stage => {
         if (!holder.isConnected && holder.dataset.stage === 'disposed') return;
-        if (!Stage) { holder.dataset.stage = 'unavailable'; show('2d'); return; }
+        if (!Stage) {
+          // An older GraphysX draws plain functions but not derivatives, tangents or areas: keep 2D, say why.
+          const older = schema !== STAGE_SCHEMA && (root.customElements?.get('llmx-stage')?.schemas || []).includes(STAGE_SCHEMA);
+          holder.dataset.stage = older ? 'outdated' : 'unavailable'; show('2d'); return;
+        }
         const element = document.createElement('llmx-stage');
         element.className = 'math-plot-stage';
         element.setAttribute('role', 'img');
@@ -203,9 +276,12 @@
         element.addEventListener('llmx-stage-error', () => fallBack('no-webgl'), { once: true });
         element.hidden = true;
         // Declared colours keep the legend and the picture in agreement; y only when the block fixed it.
-        element.scene = { schema: STAGE_SCHEMA, kind: 'functions', x: plot.x.slice(), ...(plot.y ? { y: plot.y.slice() } : {}),
+        element.scene = { schema, kind: 'functions', x: plot.x.slice(), ...(plot.y ? { y: plot.y.slice() } : {}),
           functions: plot.functions.map((fn, index) => ({ name: fn.name, label: fn.label, expression: fn.expression, color: colors[index] })),
-          parameters: plot.parameters.map(row => ({ ...row, value: values[row.name] })) };
+          parameters: plot.parameters.map(row => ({ ...row, value: values[row.name] })),
+          // Names and points only: GraphysX derives, finds slopes and integrates from the formulas itself.
+          ...(schema === CALCULUS_SCHEMA ? { derivatives: derivatives.slice(), tangents: tangents.map(row => ({ ...row })),
+            areas: areas.map(row => ({ ...row })) } : {}) };
         view.append(element);
       });
     }
@@ -255,5 +331,5 @@
     return holder;
   }
 
-  root.NestorMathPlot = Object.freeze({ create, COLORS, STAGE_SCHEMA });
+  root.NestorMathPlot = Object.freeze({ create, COLORS, STAGE_SCHEMA, CALCULUS_SCHEMA });
 }(typeof window !== 'undefined' ? window : globalThis));
