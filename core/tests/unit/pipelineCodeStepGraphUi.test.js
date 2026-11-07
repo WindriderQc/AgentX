@@ -38,6 +38,20 @@ test('renders ordered dependencies, public executor identity, budgets, tests and
   expect(html).not.toMatch(/10\.0\.0|private output|private\/worktree|sshTarget/);
 });
 
+test('opens only the exact Core-owned child identity and never guesses historical requests', () => {
+  const value = summary();
+  expect(Graph.render(value)).not.toContain('data-native-step-request');
+  value.steps[0].nativeSession = { pipelineId: '0001', requestId: '11111111-2222-4333-8444-555555555555',
+    executorId: executor.id, sshTarget: 'private@10.0.0.2' };
+  const html = Graph.render(value);
+  expect(html).toContain('data-native-step-pipeline="0001"');
+  expect(html).toContain('data-native-step-request="11111111-2222-4333-8444-555555555555"');
+  expect(html).toContain('Conversation OpenCode');
+  expect(html).not.toContain('private@');
+  value.steps[0].nativeSession.executorId = 'different-worker';
+  expect(Graph.render(value)).toContain('malformed evidence was not displayed');
+});
+
 test('supports several active steps and fails closed on dependency or active-state drift', () => {
   const value = summary();
   value.steps[0] = { ...value.steps[0], state: 'uncertain', commit: undefined, adoption: undefined,

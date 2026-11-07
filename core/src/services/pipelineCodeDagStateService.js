@@ -69,6 +69,10 @@ function projectStep(dag, step) {
     state,
     dependsOn: [...step.effectiveDependsOn],
     attempt: step.attempts.length,
+    ...(attempt && /^\d{4}$/.test(dag.pipelineId) && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(attempt.requestId)
+      && attemptExecutor(dag, step)?.harness === 'opencode' && {
+      nativeSession: { pipelineId: dag.pipelineId, requestId: attempt.requestId, executorId: attempt.executorId },
+    }),
     tests: step.verifiedReceipt?.tests.map(test => ({
       profile: test.profile,
       outcome: test.outcome,
