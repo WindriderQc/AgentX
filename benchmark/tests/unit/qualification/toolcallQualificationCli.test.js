@@ -6,6 +6,24 @@ const {
 } = require('../../../scripts/toolcall-qualification');
 
 describe('toolcall qualification live transport bounds', () => {
+  test('replays completed harness calls and named results as native Ollama history without changing the fixture', async () => {
+    const messages = [
+      { role: 'assistant', content: '', tool_calls: [{ name: 'lookup_word', args: { word: 'bonjour', language: 'fr' } }] },
+      { role: 'tool', name: 'lookup_word', content: '{"definition":"salutation"}' }
+    ];
+    const before = JSON.stringify(messages);
+    const generateImpl = jest.fn(async () => ({ done: true, message: { content: 'Une salutation.' } }));
+    const transport = buildLiveTransport({ model: 'candidate', host: 'http://synthetic.test', generateImpl });
+    await transport({ messages, tools: [], workloadId: 'campaign-a' });
+    expect(generateImpl.mock.calls[0][1].messages).toEqual([
+      { role: 'assistant', content: '', tool_calls: [{ type: 'function', function: {
+        name: 'lookup_word', arguments: { word: 'bonjour', language: 'fr' }
+      } }] },
+      { role: 'tool', tool_name: 'lookup_word', content: '{"definition":"salutation"}' }
+    ]);
+    expect(JSON.stringify(messages)).toBe(before);
+  });
+
   test('uses Core workload admission for a successful tool call', async () => {
     const generateImpl = jest.fn(async () => ({
       done: true,
