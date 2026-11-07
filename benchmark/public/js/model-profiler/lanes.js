@@ -25,16 +25,9 @@ async function requestFit(lane, button, status, root) {
   status.textContent = 'Recording a manual fit request…';
   try {
     const persisted = lane.pinnedFit;
-    if (!requestId && persisted?.id && !(persisted.runtimeReleased === true
-      && ['completed', 'failed', 'cancelled'].includes(persisted.state))) {
-      // Core's persisted intent survives a new tab/device without local cache.
-      requestId = persisted.id;
-      sessionStorage.setItem(storageKey, requestId);
-      fitRequests.set(key, requestId);
-    }
+    let original = persisted?.id === requestId ? persisted : null;
     let requestHostId = lane.capability.hostId, requestPinIndex = lane.pinIndex;
     if (requestId) {
-      let original = lane.pinnedFit?.id === requestId ? lane.pinnedFit : null;
       if (!original) {
         // Another tab may have completed a newer request. Its receipt says
         // nothing about this tab's original, potentially uncertain intent.
@@ -46,21 +39,32 @@ async function requestFit(lane, button, status, root) {
         } else if (response.status !== 404) throw new Error('Original fit receipt is unavailable');
         // A missing record does not establish termination. Retry the same UUID.
       }
-      if (original?.runtimeReleased === true && ['completed', 'failed', 'cancelled'].includes(original.state)) requestId = null;
-      else if (original && !['requested'].includes(original.state)) {
-        status.textContent = `Original fit ${requestId} is ${original.state || 'unknown'}; inspect its native receipt in Calendar. No new request was recorded.`;
+      if (original?.runtimeReleased === true && ['completed', 'failed', 'cancelled'].includes(original.state)) {
+        requestId = null;
+        original = null;
+      }
+    }
+    if (!requestId && persisted?.id && !(persisted.runtimeReleased === true
+      && ['completed', 'failed', 'cancelled'].includes(persisted.state))) {
+      // Adopt the persisted intent after resolving a cached predecessor too.
+      requestId = persisted.id;
+      original = persisted;
+      sessionStorage.setItem(storageKey, requestId);
+      fitRequests.set(key, requestId);
+    }
+    if (original && original.state !== 'requested') {
+      status.textContent = `Original fit ${requestId} is ${original.state || 'unknown'}; inspect its native receipt in Calendar. No new request was recorded.`;
+      button.disabled = false;
+      return;
+    }
+    if (original?.state === 'requested') {
+      if (!original.hostId || !Number.isInteger(original.pinIndex)) {
+        status.textContent = `Original fit ${requestId} has incomplete scope; inspect its receipt. No new request was recorded.`;
         button.disabled = false;
         return;
       }
-      else if (original?.state === 'requested') {
-        if (!original.hostId || !Number.isInteger(original.pinIndex)) {
-          status.textContent = `Original fit ${requestId} has incomplete scope; inspect its receipt. No new request was recorded.`;
-          button.disabled = false;
-          return;
-        }
-        requestHostId = original.hostId;
-        requestPinIndex = original.pinIndex;
-      }
+      requestHostId = original.hostId;
+      requestPinIndex = original.pinIndex;
     }
     if (!requestId) {
       requestId = crypto.randomUUID();
