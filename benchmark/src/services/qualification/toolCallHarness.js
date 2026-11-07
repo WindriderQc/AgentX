@@ -140,6 +140,7 @@ async function runHarness(transport, opts = {}) {
     generatedAt: new Date().toISOString(),
     artifact: opts.artifact || { model: null, digest: null, host: null },
     contractSnapshot: opts.contractSnapshot || null,
+    execution: opts.execution || null,
     toolbox: TOOLBOX_V1.map((t) => t.name),
     // Tool-call/contract outcomes — deliberately separate from any quality
     // scoring surface; this harness does not produce quality numbers.

@@ -14,9 +14,17 @@
  */
 
 const crypto = require('crypto');
+const { DEFAULT_EXECUTION_CONFIG } = require('../benchmark/config');
 
-const FIXTURE_VERSION = 'toolcall-fixtures.v2';
-const HARNESS_VERSION = 'toolcall-harness.v2';
+const FIXTURE_VERSION = 'toolcall-fixtures.v3';
+const HARNESS_VERSION = 'toolcall-harness.v3';
+
+// Reuse Benchmark's controlled distribution, including its repeat-index seed
+// policy. Bind the actual controls into qualification identity, not just a label.
+const TOOL_QUALIFICATION_SAMPLING = Object.freeze(Object.fromEntries(
+  ['temperature', 'top_p', 'top_k', 'repeat_penalty', 'seed', 'seed_policy']
+    .map(key => [key, DEFAULT_EXECUTION_CONFIG[key]])
+));
 
 // Common execution contract, not a scenario answer or a retry injected after
 // seeing a failed grade. It is sent before every scenario and fingerprinted.
@@ -253,7 +261,8 @@ function canonicalize(value) {
 }
 
 function fixtureFingerprint() {
-  const payload = canonicalize({ FIXTURE_VERSION, HARNESS_VERSION, TOOL_USE_INSTRUCTIONS, TOOLBOX_V1, SCENARIOS_V1 });
+  const payload = canonicalize({ FIXTURE_VERSION, HARNESS_VERSION, TOOL_USE_INSTRUCTIONS,
+    TOOL_QUALIFICATION_SAMPLING, TOOLBOX_V1, SCENARIOS_V1 });
   return crypto.createHash('sha256').update(payload).digest('hex');
 }
 
@@ -269,6 +278,7 @@ module.exports = {
   FIXTURE_VERSION,
   HARNESS_VERSION,
   TOOL_USE_INSTRUCTIONS,
+  TOOL_QUALIFICATION_SAMPLING,
   TOOLBOX_V1,
   SCENARIOS_V1,
   fixtureFingerprint,

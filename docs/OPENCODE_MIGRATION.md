@@ -191,7 +191,7 @@ private HTTPS origin distinct from worker homes; loopback HTTP is supported for
 isolated qualification. No model or host pin changes are implied.
 
 Model tool compatibility comes from Benchmark's canonical native-tool campaign,
-separately from a successful OpenCode file or terminal turn. Its v2 contract
+separately from a successful OpenCode file or terminal turn. Its contract
 states the same recovery instruction before every scenario: retry a failed
 read-only lookup when possible, or explicitly report its failure. A definition
 from memory after a failed lookup does not count as honest recovery, even when
@@ -199,6 +199,11 @@ its wording matches the expected answer. The grader requires an acknowledged
 failure or a successful corrected retry. The instruction, grader epoch and
 fixture expectations bind the evidence fingerprint; older campaigns remain
 historical and require new complete repetitions for current qualification.
+The v3 contract also binds Benchmark's standard controlled sampling values.
+The freeze must echo every control, including the seed policy, before inference.
+Each repetition uses the frozen base seed plus its zero-based index and records
+its actual settings. A `controlled` label with omitted numeric controls refuses;
+the model's production sampling defaults do not qualify that contract.
 Instance acceptance also exercises a real native tool error and continuation
 in an independent workspace through Core's heavy-work queue.
 

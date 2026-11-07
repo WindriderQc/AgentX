@@ -19,6 +19,8 @@ const { normalizeModelTag } = require('../../../../shared/modelNames');
 const { normalizeHostUrl } = require('../../../../shared/artifactIdentity');
 const { runHarness } = require('./toolCallHarness');
 const qualificationStore = require('./toolCapabilityQualificationService');
+const { TOOL_QUALIFICATION_SAMPLING } = require('./toolCallFixtures');
+const { seedForRepeat } = require('../benchmark/config');
 const {
   identitiesMatch: artifactIdentitiesMatch,
   resolveArtifactIdentity
@@ -316,6 +318,7 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
       executionConfig: {
         response_mode: 'final_only',
         repeats: repetitions,
+        ...TOOL_QUALIFICATION_SAMPLING,
         sampling_profile: 'controlled',
         sampling_source: 'tool_capability_qualification'
       }
@@ -324,6 +327,11 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
       throw new ToolCampaignError('Core did not freeze exactly one artifact', 'TOOL_CAMPAIGN_FREEZE_INVALID');
     }
     const candidate = frozenCampaign.candidates[0];
+    if (Object.entries(TOOL_QUALIFICATION_SAMPLING)
+      .some(([key, value]) => candidate.execution?.sampling?.[key] !== value)) {
+      throw new ToolCampaignError('Frozen tool sampling differs from the controlled qualification contract',
+        'TOOL_CAMPAIGN_SAMPLING_CONTRACT_DRIFT');
+    }
     if (options.driverPreparationId && candidate.contract?.snapshot?.driverPreparationId !== options.driverPreparationId) {
       throw new ToolCampaignError('Core did not freeze the exact prepared request', 'TOOL_CAMPAIGN_PREPARATION_MISMATCH');
     }
@@ -358,9 +366,13 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
       // The same frozen contract and exact mocked toolbox are reused for every
       // repetition. Production tools are never inputs to runHarness.
       // eslint-disable-next-line no-await-in-loop
+      const execution = { ...frozenExecution, sampling: {
+        ...frozenExecution.sampling,
+        seed: seedForRepeat(frozenExecution.sampling, index)
+      } };
       const frozenTransport = (input) => options.transport({
         ...input,
-        execution: frozenExecution,
+        execution,
         signal: workload.signal,
         workloadId: campaignId
       });
@@ -373,6 +385,7 @@ async function runToolCapabilityCampaign(options = {}, overrides = {}) {
           runtimeFingerprint: identity.runtimeFingerprint
         },
         contractSnapshot: candidate.contract,
+        execution,
         scenarios: undefined
       });
       reports.push(report);
