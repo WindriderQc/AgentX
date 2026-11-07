@@ -27,11 +27,19 @@ copy closes Google qualification. Unvisited symlinks inside `dist` also refuse.
 Qualify each runtime update or new API with the same transport
 tests before adding it there or refreshing benchmark pins.
 
+Vertex (`google-vertex`) qualifies only the native API-key/Express client on the
+same pinned SDK code. Native configuration must explicitly select `auth: "api-key"`;
+its bounded `nativeAuthMode` is published and included in target identity. The
+prepared public SDK auth result is checked again before transport. ADC/OAuth,
+absent keys, ADC markers and placeholders cannot inherit this qualification.
+No provider, credentials or runtime configuration are installed by these tests.
+
 For a required Google qualification, run
 `AGENTX_REQUIRE_OPENCLAW_SDK=1 node --test test/native-google-qualification.test.mjs`
 here. Missing SDK code fails this command. Its synthetic native provider and
 intercepted network use no real credential or provider socket; a skipped suite
-is not qualification or installed-instance acceptance.
+is not qualification or installed-instance acceptance. This required suite covers
+both Google Generative AI and the bounded Vertex API-key path.
 
 Reproduce from the official npm package in a fresh worktree (Node.js 24 or
 newer). A temporary prefix keeps the package and its dependencies separate from

@@ -38,7 +38,7 @@ const GOOGLE_SDK_FINGERPRINTS = new Set([
   'cfad322578d04c51596f5745c29aec4686b98fa42caf75bfedce1b616747d65a'
 ]);
 export const qualifiedModelApi = (version, api, transportFingerprint) => {
-  if (api === 'google-generative-ai') return version === '2026.9.4' && GOOGLE_SDK_FINGERPRINTS.has(transportFingerprint)
+  if (['google-generative-ai', 'google-vertex'].includes(api)) return version === '2026.9.4' && GOOGLE_SDK_FINGERPRINTS.has(transportFingerprint)
     ? { temperature: true, seed: false, topP: false, jsonResponseFormat: false } : null;
   return QUALIFIED_MODEL_APIS[version]?.[api] || null;
 };
@@ -134,8 +134,10 @@ export function createNativeBackend(api, { loadSdk = loadNativeSdk } = {}) {
         const providerParams = cfg.models?.providers?.[model.provider]?.params || {};
         const routing = params.provider || providerParams.provider || model.compat?.openRouterRouting || null;
         const local = localModel(model, sdk, configured);
-        const transport = model.api === 'google-generative-ai' ? { nativeTransportFingerprint: sdk.googleTransportFingerprint } : {};
-        const qualified = qualifiedModelApi(sdk.version, model.api, transport.nativeTransportFingerprint);
+        const vertex = model.api === 'google-vertex';
+        const transport = ['google-generative-ai', 'google-vertex'].includes(model.api) ? { nativeTransportFingerprint: sdk.googleTransportFingerprint,
+          ...(vertex ? { nativeAuthMode: cfg.models?.providers?.[model.provider]?.auth === 'api-key' ? 'api-key' : 'unqualified' } : {}) } : {};
+        const qualified = vertex && transport.nativeAuthMode !== 'api-key' ? null : qualifiedModelApi(sdk.version, model.api, transport.nativeTransportFingerprint);
         const billing = local ? { kind: 'local', source: 'native-local-model', rates: null } : billingFor(model, configured);
         models.set(ref, {
           model: ref, name: model.name || model.id, contextWindow: model.contextWindow, maxTokens: model.maxTokens, ...transport,
@@ -165,7 +167,16 @@ export function createNativeBackend(api, { loadSdk = loadNativeSdk } = {}) {
     const scope = await scopeFor(cfg, descriptor.authScope, sdk);
     const slash = ref.indexOf('/');
     const model = scope.registry.find(ref.slice(0, slash), ref.slice(slash + 1));
+    if (model.api === 'google-vertex' && (descriptor.isolation.singleCallQualified !== true || descriptor.nativeAuthMode !== 'api-key')) {
+      throw Object.assign(new Error('OPENCLAW_MODEL_TRANSPORT_UNQUALIFIED'), { code: 'OPENCLAW_MODEL_TRANSPORT_UNQUALIFIED', statusCode: 503 });
+    }
     const auth = await sdk.getRuntimeAuthForModel({ model, cfg, workspaceDir: scope.workspaceDir });
+    // Only the native API-key client is qualified. Missing keys, ADC markers and
+    // placeholders make the Vertex SDK switch clients; never inherit its proof.
+    if (model.api === 'google-vertex' && (auth.mode !== 'api-key' || typeof auth.apiKey !== 'string'
+        || !auth.apiKey.trim() || auth.apiKey.trim() === 'gcp-vertex-credentials' || /^<[^>]+>$/.test(auth.apiKey.trim()))) {
+      throw Object.assign(new Error('OPENCLAW_AUTH_TRANSPORT_UNQUALIFIED'), { code: 'OPENCLAW_AUTH_TRANSPORT_UNQUALIFIED', statusCode: 503 });
+    }
     const keyAndHeaders = await scope.registry.getApiKeyAndHeaders(model);
     if (!keyAndHeaders.ok) throw new Error('OPENCLAW_AUTH_UNAVAILABLE');
     if (auth.baseUrl && auth.baseUrl !== model.baseUrl) throw new Error('OPENCLAW_AUTH_ROUTE_UNSUPPORTED');
