@@ -220,6 +220,7 @@ const NerveCenter = (() => {
             routing: () => window.NerveCenterRouting?.loadRouting?.(),
             cluster: () => window.NerveCenterCluster?.loadCluster?.(),
             health: () => window.NerveCenterHealth?.loadHealth?.(),
+            automations: () => window.NerveCenterHealth?.loadAutomations?.(),
             performance: () => window.NerveCenterPerformance?.loadPerformance?.(),
             inference: () => window.NerveCenterInference?.loadInference?.(),
             'inference-health': () => window.NerveCenterInferenceHealth?.loadInferenceHealth?.(),
@@ -283,6 +284,7 @@ const NerveCenter = (() => {
         loadSection('cluster');
         loadSection('routing');
         loadSection('health');
+        loadSection('automations');
         loadSection('performance');
         loadSection('inference');
         loadSection('inference-health');

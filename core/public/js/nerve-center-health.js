@@ -2,6 +2,85 @@
     'use strict';
 
     const shared = window.NerveCenterShared;
+    let automationTimer = null;
+    let automationLoading = false;
+
+    function renderAutomations(data) {
+        const esc = shared.escapeHtml;
+        const date = value => value ? `<time datetime="${esc(value)}">${esc(new Date(value).toLocaleString())}</time>` : 'Not observed';
+        const operator = item => {
+            const href = item?.href || '';
+            if (!href.startsWith('/nerve-center#') && !href.startsWith('https://github.com/WindriderQc/AgentX/blob/main/docs/')) return '';
+            return `<a href="${esc(href)}">${esc(item.label)}</a>`;
+        };
+        const modes = { autonomous: 'Autonomous action', detection: 'Detection only', notification: 'Notification only' };
+        const states = Object.entries(data.sources || {}).filter(([, source]) => source.status === 'unavailable' || source.truncated)
+            .map(([name, source]) => `${name}: ${source.status === 'unavailable' ? 'unavailable' : 'partial coverage'}`);
+        const renderRow = row => {
+            const last = row.last || {};
+            const enabled = row.enabled === true ? 'Enabled' : row.enabled === false ? 'Disabled' : 'Enablement unknown / no global switch';
+            const running = row.running === true ? ' · scheduled / loaded in this process'
+                : row.running === false ? ' · not scheduled / loaded in this process' : '';
+            return `<article class="nc-host-card" style="padding:12px;margin:10px 0;overflow-wrap:anywhere;">
+                <h3 style="font-size:0.95rem;margin:0 0 6px;">${esc(row.name)}</h3>
+                <div>${esc(modes[row.mode] || 'Unknown mode')} · <strong>${enabled}</strong>${running}</div>
+                <div class="nc-muted">Configuration: ${esc(row.configurationSource)} · ${operator(row.operator)}</div>
+                <div>Last trigger / observation: ${date(last.timestamp)} · Result: ${esc(last.outcome || 'unknown')}
+                    · ${esc(last.freshness || 'not_observed')}${last.reason ? ` · ${esc(last.reason)}` : ''}</div>
+                ${last.resultTimestamp ? `<div>Result recorded: ${date(last.resultTimestamp)}${last.subject ? ` · ${esc(last.subject)}` : ''}</div>` : ''}
+                <div class="nc-muted">Evidence: ${esc(last.source || 'unavailable')}${last.id ? ` · ID ${esc(last.id)}` : ''}
+                    ${last.event ? ` · Event / alert rule: ${esc(last.event)}` : ''}</div>
+                <p class="nc-muted" style="margin:6px 0 0;">${esc(row.limit || '')}</p>
+            </article>`;
+        };
+        const rows = data.rows || [];
+        const counts = rows.reduce((totals, row) => {
+            totals[row.enabled === true ? 'enabled' : row.enabled === false ? 'disabled' : 'unknown']++;
+            return totals;
+        }, { enabled: 0, disabled: 0, unknown: 0 });
+        const groups = [
+            ['Autonomous actions', rows.filter(row => row.mode === 'autonomous')],
+            ['Detection only', rows.filter(row => row.mode === 'detection')],
+            ['Notifications', rows.filter(row => row.mode === 'notification')]
+        ].filter(([, entries]) => entries.length).map(([label, entries]) =>
+            `<details><summary>${label} (${entries.length})</summary>${entries.map(renderRow).join('')}</details>`).join('');
+        return `<p class="nc-muted">Read at ${date(data.observedAt)}. ${esc(data.scope || '')}</p>
+            <p>Configuration: ${counts.enabled} enabled · ${counts.disabled} disabled · ${counts.unknown} unknown / no global switch.</p>
+            ${states.length ? `<p role="status">Evidence gaps: ${esc(states.join(' · '))}</p>` : ''}
+            ${groups || '<p>No automation configuration observed.</p>'}
+            <h3 style="font-size:0.95rem;">Manual remedies</h3>
+            <ul>${(data.manual || []).map(item => `<li>${esc(item.name)} · Manual · ${operator(item.operator)}</li>`).join('')}</ul>`;
+    }
+
+    async function loadAutomations() {
+        const body = document.getElementById('sectionAutomationsBody');
+        if (!body || automationLoading) return;
+        body.onclick = event => {
+            const href = event.target.closest?.('a')?.getAttribute('href') || '';
+            if (!href.startsWith('/nerve-center#')) return;
+            const id = href.split('#')[1];
+            const section = document.getElementById(id);
+            if (section?.classList.contains('collapsed')) window.NerveCenter?.toggleSection?.(id);
+        };
+        automationLoading = true;
+        shared.renderSectionLoading(body, 'Loading automation evidence...');
+        try {
+            const result = await shared.fetchJson('/api/nerve-center/self-healing');
+            if (!result?.data) throw new Error('Evidence unavailable');
+            body.innerHTML = renderAutomations(result.data);
+        } catch (_error) {
+            shared.renderSectionError(body, 'Automation evidence unavailable; enablement and execution are unknown.');
+        } finally {
+            shared.finishSectionLoad(body);
+            automationLoading = false;
+        }
+        if (!automationTimer) {
+            automationTimer = setInterval(() => {
+                const section = document.getElementById('sectionAutomations');
+                if (!document.hidden && section && section.offsetParent !== null && !section.classList.contains('collapsed')) loadAutomations();
+            }, 30_000);
+        }
+    }
 
     // Speech engines: the cloned-voice worker (VoxCPM2 or Pocket TTS) and the Kokoro catalog voices.
     function renderVoices(voix) {
@@ -104,5 +183,5 @@
         }
     }
 
-    window.NerveCenterHealth = { loadHealth };
+    window.NerveCenterHealth = { loadHealth, loadAutomations, renderAutomations };
 })();

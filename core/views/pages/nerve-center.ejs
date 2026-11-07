@@ -240,6 +240,24 @@
           </div>
       </div>
 
+      <!-- Automation evidence stays in Diagnostics; reads never execute it. -->
+      <div class="nc-section nc-detail-only" id="sectionAutomations">
+          <div class="nc-section-header">
+              <button class="nc-section-toggle" type="button" data-section="sectionAutomations" aria-expanded="true" aria-controls="sectionAutomationsBody" aria-labelledby="sectionAutomationsTitle"></button>
+              <div class="nc-section-title-group">
+                  <i class="fas fa-eye nc-section-icon" aria-hidden="true"></i>
+                  <div>
+                      <h2 id="sectionAutomationsTitle">Automation evidence</h2>
+                      <span class="nc-section-subtitle">Configuration, detections and recorded outcomes; read only</span>
+                  </div>
+              </div>
+              <div class="nc-section-actions"><i class="fas fa-chevron-down nc-collapse-icon" aria-hidden="true"></i></div>
+          </div>
+          <div class="nc-section-body" id="sectionAutomationsBody" aria-busy="true">
+              <div class="nc-section-placeholder" role="status" aria-live="polite" aria-atomic="true">Loading automation evidence...</div>
+          </div>
+      </div>
+
       <!-- Section: Inference Health (admission gate, benchmark claims, drift) -->
       <div class="nc-section inference-health nc-detail-only" id="sectionInferenceHealth">
           <div class="nc-section-header">
