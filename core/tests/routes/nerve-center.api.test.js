@@ -13,6 +13,8 @@ process.env.OLLAMA_HOST_SECONDARY = 'http://secondary:11434';
 process.env.OLLAMA_HOST_TERTIARY = 'http://tertiary:11434';
 
 const mockRouterTaskOverrideState = new Map();
+const mockVoiceReviewContention = jest.fn(async () => ({ surfaces: [{ surface: 'nestor', status: 'unknown', reason: 'test_fixture' }] }));
+jest.mock('../../src/services/voiceReviewContention', () => ({ readVoiceReviewContention: (...args) => mockVoiceReviewContention(...args) }));
 
 // ── InferenceLog chainable mock ─────────────────────────────────────────────
 const mockLean = jest.fn();
@@ -1317,6 +1319,8 @@ describe('Nerve Center API Routes', () => {
         })
       ]);
       expect(Number.isNaN(Date.parse(res.body.data[0].live.observedAt))).toBe(false);
+      expect(mockVoiceReviewContention).toHaveBeenCalledWith(res.body.data);
+      expect(res.body.voiceReviewContention.surfaces).toEqual([{ surface: 'nestor', status: 'unknown', reason: 'test_fixture' }]);
     });
 
     it('redacts every claim and workload capability from the public host projection', async () => {

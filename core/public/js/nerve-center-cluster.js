@@ -901,7 +901,21 @@
                 return;
             }
 
-            body.innerHTML = buildClusterGrid(cards);
+            const diagnosis = hostPrefsJson.voiceReviewContention;
+            const warnings = (diagnosis?.surfaces || []).filter(row => row.status === 'warning');
+            const contention = warnings.map(row => `<p class="nc-detail-only" role="status"><strong>Voice / reviewer contention:</strong>
+                ${shared.escapeHtml(row.surface)} recent voice and reviewer calls share one request slot on
+                ${shared.escapeHtml(row.model)} (${shared.escapeHtml(row.host)}).
+                They can delay each other or replace the conversation prompt cache. Review their placement in the existing routing settings;
+                no route is changed here. Voice: ${shared.escapeHtml(row.voiceObservedAt)}; reviewer: ${shared.escapeHtml(row.reviewObservedAt)}.
+                Slot limit recorded from ${shared.escapeHtml(row.slotsSource)} at ${shared.escapeHtml(row.slotsObservedAt)};
+                observation window: ${Math.round((diagnosis.windowMs || 0) / 60000)} minutes.</p>`).join('');
+            const unknown = (diagnosis?.surfaces || [{ surface: 'nestor', status: 'unknown' }, { surface: 'family', status: 'unknown' }])
+                .filter(row => row.status === 'unknown');
+            const coverage = unknown.length ? `<p class="nc-detail-only nc-muted">Voice / reviewer sharing is unknown for
+                ${unknown.map(row => shared.escapeHtml(row.surface)).join(', ')}. Exact configured targets, recent Core voice/review receipts
+                and a sequential-model observation are required. Native channel targets are not inferred.</p>` : '';
+            body.innerHTML = contention + coverage + buildClusterGrid(cards);
             attachHostCardHandlers();
             attachClusterPreferenceHandlers();
             attachPinHandlers();

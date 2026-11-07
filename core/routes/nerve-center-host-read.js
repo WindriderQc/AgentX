@@ -11,6 +11,7 @@ const { projectHostPreferenceForRead } = require('../src/services/hostPreference
 const { readHostGpuHealth } = require('../src/services/hostGpuHealthService');
 const { getGpuTelemetryForHosts } = require('../src/services/gpuTelemetryService');
 const { readModelParallelism } = require('../src/services/ollamaModelParallelismService');
+const { readVoiceReviewContention } = require('../src/services/voiceReviewContention');
 router.get('/host-preferences', async (_req, res) => {
   try {
     const prefs = await hostPrefService.getAll();
@@ -118,7 +119,8 @@ router.get('/host-preferences', async (_req, res) => {
       status: 'success',
       data,
       healthCheckIntervalMs: hostPrefService.getHealthCheckIntervalMs(),
-      hostIdentityDrift
+      hostIdentityDrift,
+      voiceReviewContention: await readVoiceReviewContention(data)
     });
   } catch (err) {
     logger.error('[NerveCenter] host preferences fetch failed', { error: err.message });
