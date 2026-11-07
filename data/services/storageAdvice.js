@@ -35,9 +35,11 @@ function readPolicy(raw = process.env.STORAGE_ADVICE_POLICY_JSON) {
   } catch (_) { return { status: 'invalid', value: {} }; }
 }
 
+const hasObservation = observation => Boolean(observation?.observedAt) && integer(observation.ageMs);
+
 function freshness(observation, maximum) {
   if (!integer(maximum)) return 'unknown';
-  if (!observation?.observedAt || !integer(observation.ageMs)) return 'unknown';
+  if (!hasObservation(observation)) return 'unknown';
   return observation.ageMs <= maximum ? 'acceptable_by_policy' : 'stale_by_policy';
 }
 
@@ -56,7 +58,7 @@ function buildStorageAdvice(assessment, policy = readPolicy()) {
     const missing = [...policyMissing];
     if (!integer(config.maxVolumeAgeMs)) missing.push('max_volume_age_ms');
     if (!integer(rule.reserveBytes)) missing.push('volume_reserve_bytes');
-    if (fresh === 'unknown') missing.push('dated_volume_measurement');
+    if (!hasObservation(volume.observation)) missing.push('dated_volume_measurement');
     if (fresh === 'stale_by_policy') missing.push('fresh_volume_measurement');
     const known = !missing.length;
     const deficit = known ? Math.max(0, rule.reserveBytes - volume.freeBytes) : null;
@@ -106,8 +108,10 @@ function buildStorageAdvice(assessment, policy = readPolicy()) {
       if (!integer(config.maxVolumeAgeMs)) missing.push('max_volume_age_ms');
       const scanFreshness = freshness(source.lastScan, config.maxScanAgeMs);
       const volumeFreshness = freshness(volume?.observation, config.maxVolumeAgeMs);
-      if (scanFreshness !== 'acceptable_by_policy') missing.push('fresh_complete_source_scan');
-      if (volumeFreshness !== 'acceptable_by_policy') missing.push('fresh_volume_measurement');
+      if (!hasObservation(source.lastScan)) missing.push('dated_source_scan');
+      else if (scanFreshness === 'stale_by_policy') missing.push('fresh_complete_source_scan');
+      if (!hasObservation(volume?.observation)) missing.push('dated_volume_measurement');
+      else if (volumeFreshness === 'stale_by_policy') missing.push('fresh_volume_measurement');
       if (!integer(rule.growthBytes)) missing.push('source_growth_bytes');
       if (!integer(target.reserveBytes)) missing.push('volume_reserve_bytes');
       if (!rule.failureDomain || !target.failureDomain) missing.push('declared_failure_domains');
@@ -119,7 +123,9 @@ function buildStorageAdvice(assessment, policy = readPolicy()) {
         ? indexedBytes + rule.growthBytes + target.reserveBytes : null;
       if (requiredBytes !== null && !integer(requiredBytes)) missing.push('safe_capacity_arithmetic');
       const safeRequired = integer(requiredBytes) ? requiredBytes : null;
-      if (safeRequired !== null && volume && volume.freeBytes < safeRequired) blocked.push('insufficient_space_after_reserve_and_growth');
+      if (safeRequired !== null && volume && volume.freeBytes < safeRequired
+        && scanFreshness === 'acceptable_by_policy' && volumeFreshness === 'acceptable_by_policy'
+        && source.coverage === 'complete_at_scan') blocked.push('insufficient_space_after_reserve_and_growth');
       const status = blocked.length ? 'blocked' : missing.length ? 'unknown' : 'candidate_for_review';
       placement.push({ source: source.source, volumeId, status,
         action: status === 'candidate_for_review' ? 'review_additional_full_logical_copy'

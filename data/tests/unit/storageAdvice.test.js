@@ -59,6 +59,20 @@ test.each(['maxScanAgeMs', 'maxVolumeAgeMs', 'growthBytes', 'reserveBytes', 'fai
   expect(evaluate(assessment(), p).placement[0].status).toBe('unknown');
 });
 
+test('a missing freshness policy does not claim that an existing dated measurement is missing', () => {
+  const p = config(); delete p.maxVolumeAgeMs; delete p.maxScanAgeMs;
+  const result = evaluate(assessment(), p);
+  expect(result.capacity[0].missingEvidence).toEqual(['max_volume_age_ms']);
+  expect(result.placement[0].missingEvidence).toEqual(['max_scan_age_ms', 'max_volume_age_ms']);
+});
+
+test('a stale historical free-space shortfall stays unknown rather than diagnosing a current deficit', () => {
+  const a = assessment(); a.volumes[0].freeBytes = 0; a.volumes[0].observation.ageMs = 1001;
+  const result = evaluate(a);
+  expect(result.capacity[0]).toMatchObject({ status: 'unknown', evidence: { deficitBytes: null } });
+  expect(result.placement[0]).toMatchObject({ status: 'unknown', reasons: [], missingEvidence: ['fresh_volume_measurement'] });
+});
+
 test.each(['same-domain', 'same-root', 'incomplete', 'missing-volume', 'ambiguous-volume', 'overflow', 'no-destinations'])('%s evidence cannot produce a placement candidate', kind => {
   const a = assessment(); const p = config();
   if (kind === 'same-domain') p.volumes.target.failureDomain = 'primary';
