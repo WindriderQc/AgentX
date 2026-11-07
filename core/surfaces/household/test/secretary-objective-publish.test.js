@@ -66,6 +66,14 @@ test('versioned quote attribution reaches Core metadata without changing source,
   assert.equal(result.timeline.date, before.timeline.date);
   assert.equal(result.sourceRecords[0].bodySha256, before.sourceRecords[0].bodySha256);
 });
+test('a withheld exact repeated assertion cannot bypass reconciliation through direct candidate construction', () => {
+  const { finding, indexed } = fixture();
+  finding.quoteReconciliation = { schema: 'secretary.objective-quote-reconciliation/v1',
+    state: 'withheld-repeat', canonicalFindingId: 'objective-' + 'd'.repeat(64) };
+  assert.throws(() => publisher.build(finding, indexed), /reconciliation, not another proposal/);
+  assert.equal(finding.reviewState, 'candidate');
+  assert.equal(finding.userConfirmed, false);
+});
 test('a source audit publishes an unknown date initially and retains the exact model proposal in Core metadata', () => {
   const { finding, source, indexed } = fixture();
   const review = { findingId: finding.id, clear: ['start'], reason: 'Seule une borne supérieure est attestée.',

@@ -30,6 +30,7 @@ import objective_equivalence as equivalent
 import objective_dispositions as dispositions
 import objective_rejected_copies as rejected_copies
 import objective_attribution as attribution
+from objective_quote_reconciliation import reconcile as reconcile_quotes
 from objective_annual import aggregate as annual_coverage
 from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled, blocked_phase, blocked_counts, result_file
 from review_response import ReviewInvalidOutput
@@ -271,6 +272,7 @@ def export(objective, manifest):
                 finding["claimsWithExactQuotes"].extend({"sourceId": other["id"], "quote": q} for c in claims for q in c["quotes"])
                 finding["sourceIndependence"] = "same-declaration"
             findings.append(finding)
+    reconcile_quotes(objective, manifest, findings)
     report = coverage(objective, manifest, include_annual=True)
     durable(objective / "findings.json", findings)
     durable(objective / "sources.json", list(records.values()))

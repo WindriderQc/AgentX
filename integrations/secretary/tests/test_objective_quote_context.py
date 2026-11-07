@@ -1,9 +1,12 @@
 """Objective consumer regressions: synthetic originals, no provider or inference."""
 import copy
 import email.message
+from email.utils import parsedate_to_datetime
 import hashlib
+import json
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 
@@ -39,7 +42,8 @@ class ObjectiveQuoteContextTests(unittest.TestCase):
         (self.root / "raw").mkdir(exist_ok=True)
         (self.root / path).write_bytes(raw)
         ref = {"system": "gmail", "id": mid, "threadId": "synthetic-thread", "sha256": digest,
-               "path": path, "bytes": len(raw), "labels": ["INBOX"]}
+               "path": path, "bytes": len(raw), "labels": ["INBOX"],
+               "sourceDate": str(int(parsedate_to_datetime(date).timestamp() * 1000))}
         self.manifest["sources"].append(ref)
         return ref
 
@@ -143,6 +147,22 @@ class ObjectiveQuoteContextTests(unittest.TestCase):
         self.assertEqual(self.plan(ref)[0], page)
         self.assertNotIn("unselected", self.quote(page, CAMP).get("laterMessageIds", []))
 
+    def test_preserved_provider_order_is_independent_of_written_message_dates(self):
+        original = self.mail("original", CAMP, sender=A, date=OCTOBER)
+        original["sourceDate"] = "1784232000000"
+        ref = self.mail("copy", GMAIL + quoted(CAMP), date=JULY)
+        ref["sourceDate"] = "1791720000000"
+        found = self.quote(self.plan(ref)[0], CAMP)
+        self.assertEqual(found["state"], "matched-original")
+        self.assertEqual(found["originalMessageId"], original["id"])
+        self.assertEqual(found["date"], OCTOBER)  # original's written Date, never an event date
+        self.assertIn(ref["id"], self.quote(self.plan(original)[0], CAMP)["laterMessageIds"])
+        self.objective = self.objective.parent / "unknown-order"
+        original.pop("sourceDate")
+        found = self.quote(self.plan(ref)[0], CAMP)
+        self.assertEqual(found["state"], "quoted")
+        self.assertIsNone(found["author"])
+
     def test_attachment_context_cannot_inherit_the_container_author(self):
         source = {"system": "gmail", "id": "attachment", "threadId": "t", "sha256": "f" * 64,
                   "headers": {"from": B, "date": OCTOBER}, "direction": "received"}
@@ -214,6 +234,81 @@ class ObjectiveFrozenContractTests(unittest.TestCase):
         self.assertEqual(load(objective / "manifest.json"), manifest)
         for file, data in attempts.items():
             self.assertEqual(file.read_bytes(), data)
+
+
+class ObjectivePublicationTests(unittest.TestCase):
+    setUp = ObjectiveQuoteContextTests.setUp
+    mail = ObjectiveQuoteContextTests.mail
+
+    def run_worker(self, *, max_pages=50, priority=()):
+        class SyntheticClient(fixtures.Client):
+            def extract(client, system, prompt, light=False, request_id=None):
+                client.calls.append(request_id)
+                text = json.loads(prompt)["untrustedContent"]
+                selections = [[q] for q in (CAMP, INVOICES) if q in text]
+                if CAMP in text and INVOICES in text:
+                    selections.append([CAMP, INVOICES])
+                moments = []
+                for selected in selections:
+                    item = fixtures.moment(selected[0])
+                    item.update(title=selected[0], description="Invented source interpretation for review.", quotes=selected,
+                        startDate=None, startPrecision="unknown", originalDate="")
+                    moments.append(item)
+                return {"summary": "Synthetic quoted statements.", "classification": "life-events" if moments else "no-life-event",
+                        "moments": moments, "gaps": []}
+        return worker.run(self.root, self.objective, self.manifest, SyntheticClient(), max_pages=max_pages,
+                          queue_id=fixtures.QUEUE, dispatch_id=fixtures.DISPATCH, priority=priority)
+
+    def corpus(self):
+        self.manifest.update(schema=worker.CONTRACT, createdAt="2026-11-07T00:00:00Z")
+        self.manifest["config"].update(id="life", version="v2", instructions="", ownerAliases=[B])
+        self.mail("original", CAMP + "\n" + "Filler without a claim.\n" * 90 + CAMP + "\n" + INVOICES,
+                  sender=A, date=JULY)
+        self.mail("copy", GMAIL + quoted(CAMP))
+        self.mail("repeat", GMAIL + quoted(CAMP), date="Mon, 12 Oct 2026 12:00:00 +0000")
+        self.mail("later", "A later reply needs review; no resolution is established.", date="Tue, 13 Oct 2026 12:00:00 +0000")
+        save(self.objective / "manifest.json", self.manifest)
+
+    def publication_plan(self):
+        script = Path(__file__).resolve().parents[1] / "objective_publish.cjs"
+        result = subprocess.run(["node", str(script), "plan", "--directory", str(self.objective)],
+                                capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["published"], 0)
+        return load(self.objective / "publication-plan.json")
+
+    def test_real_export_to_publication_withholds_exact_repeats_but_keeps_distinct_and_partly_shared_assertions(self):
+        self.corpus()
+        self.assertEqual(self.run_worker()["phase"], "done")
+        findings = load(self.objective / "findings.json")
+        held = [f for f in findings if f["quoteReconciliation"]["state"] == "withheld-repeat"]
+        self.assertGreaterEqual(len(held), 2)  # original continuation, quote and repeated quoted mail
+        originals = [f for f in findings if f["quoteReconciliation"]["state"] == "canonical"]
+        self.assertEqual({tuple(f["quotes"]) for f in originals}, {(CAMP,), (INVOICES,), (CAMP, INVOICES)})
+        all_receipts = {f: f.read_bytes() for f in (self.objective / "page-reviews").glob("*.json")}
+        plan = self.publication_plan()
+        self.assertEqual(len(plan["entries"]), 3)
+        self.assertEqual(len(plan["withheldForReconciliation"]), len(held))
+        self.assertEqual(load(self.objective / "findings.json"), findings)
+        self.assertTrue(any(c.get("laterMessageIds") for f in findings for c in f["quoteAttribution"]["citations"]))
+        for entry in plan["entries"]:
+            self.assertEqual(entry["timeline"]["reviewState"], "candidate")
+            self.assertFalse(entry["timeline"]["metadata"]["userConfirmed"])
+        self.assertEqual(self.run_worker()["inferenceCalls"], 0)
+        for file, before in all_receipts.items():
+            self.assertEqual(file.read_bytes(), before)
+        self.assertEqual(self.publication_plan()["entries"], plan["entries"])
+
+    def test_first_export_identity_stays_frozen_when_the_original_is_read_in_a_later_chunk(self):
+        self.corpus()
+        self.assertEqual(self.run_worker(max_pages=1, priority=("gmail:copy",))["newlyReviewedPages"], 1)
+        first = self.publication_plan()
+        self.assertEqual(len(first["entries"]), 1)
+        import_id = first["entries"][0]["importId"]
+        self.run_worker()
+        final = self.publication_plan()
+        self.assertIn(import_id, [entry["importId"] for entry in final["entries"]])
+        self.assertEqual(len(final["entries"]), 3)
 
 
 if __name__ == "__main__":

@@ -31,16 +31,17 @@ def milliseconds(value):
 
 
 def context(own, offset, length, messages, *, kind="body"):
-    newer = [m["id"] for m in messages if m.get("direction") != "draft" and m["internalDate"] > own["internalDate"]]
+    newer = [m["id"] for m in messages if own["internalDate"] > 0 and m.get("direction") != "draft" and m["internalDate"] > own["internalDate"]]
     return {**page_context(own["spans"], offset, length, kind=kind,
                           newer_messages=len(newer), text=own["body"]),
-            "laterMessageIds": sorted(newer), "reconciliationPolicy": POLICY}
+            "laterMessageIds": sorted(newer), "chronologyKnown": own["internalDate"] > 0, "reconciliationPolicy": POLICY}
 
 
 def citation(own, excerpt, offset, length, messages, *, kind="body"):
     page = {"messageId": own["id"], "kind": kind, "offset": offset,
             "externalUntrustedContent": own["body"][offset:offset + length]}
-    result = attribute(page, excerpt, [m for m in messages if m["id"] == own["id"] or m.get("direction") != "draft"])
+    result = attribute(page, excerpt, [m for m in messages if m["id"] == own["id"]
+        or own["internalDate"] > 0 and m["internalDate"] > 0 and m.get("direction") != "draft"])
     # Only literal occurrences inside this consumer's retained range qualify.
     positions, start = [], offset
     while excerpt and start < offset + length:
@@ -54,10 +55,11 @@ def citation(own, excerpt, offset, length, messages, *, kind="body"):
         result.update(state="unlocated", reason="excerpt-not-in-retained-range", author=None, date=None)
         result.pop("anchor", None)
     # All later replies matter, even when their answer does not repeat a quote.
-    later = sorted(m["id"] for m in messages if m.get("direction") != "draft" and m["internalDate"] > own["internalDate"])
+    later = sorted(m["id"] for m in messages if own["internalDate"] > 0 and m.get("direction") != "draft" and m["internalDate"] > own["internalDate"])
     if later:
         result["laterMessageIds"] = later
-    result["requiresReconciliation"] = bool(later or result.get("earlierAuthoredMessageIds")) \
+    result["chronologyKnown"] = own["internalDate"] > 0
+    result["requiresReconciliation"] = not result["chronologyKnown"] or bool(later or result.get("earlierAuthoredMessageIds")) \
         or result["state"] != "container"
     anchor = result.get("anchor")
     if result.get("quoteKey"):

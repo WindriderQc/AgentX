@@ -100,6 +100,7 @@ function boundHistoricalOngoing(payload, finding, source) {
   return payload;
 }
 function build(finding, indexed, { matches = [], dateReview = null } = {}) {
+  if (finding.quoteReconciliation?.state === 'withheld-repeat') throw new Error('Repeated source assertion requires reconciliation, not another proposal');
   if (!/^objective-[a-f0-9]{64}$/.test(finding.id || '') || finding.userConfirmed !== false || finding.reviewState !== 'candidate') throw new Error('Only native unconfirmed objective candidates can be imported');
   const allRecords = finding.sourceIds.map(id => { const record = indexed.get(id); if (!record) throw new Error(`Missing quoted source ${id}`); return record; });
   const bounded = boundEquivalentCopies(finding, allRecords);
@@ -129,6 +130,7 @@ function build(finding, indexed, { matches = [], dateReview = null } = {}) {
       proposedRelations: [...(finding.relationHints || []), ...proposals],
       metadata: { objectiveId: finding.objectiveId, objectiveVersion: finding.objectiveVersion,
         ...(finding.quoteAttribution && { quoteAttribution: finding.quoteAttribution }),
+        ...(finding.quoteReconciliation && { quoteReconciliation: finding.quoteReconciliation }),
         subject: finding.subject, subjectName: finding.subjectName, userConfirmed: false,
         proofLimits: Object.fromEntries(Object.entries(bounded.limits).filter(([key]) => key !== 'omitted')) } },
     sourceRecords: records.map(sourceRecord),
@@ -241,7 +243,22 @@ async function main(argv = process.argv.slice(2)) {
   const supplied = options.adjudications ? read(path.resolve(options.adjudications)) : [];
   if (!Array.isArray(supplied) || supplied.some(row => !row || !findings.some(f => f.id === row.findingId)) ||
       new Set(supplied.map(row => row.findingId)).size !== supplied.length) throw new Error('Adjudications must reference distinct current native findings');
-  const plan = findings.map(finding => {
+  const withheld = findings.filter(finding => finding.quoteReconciliation?.state === 'withheld-repeat');
+  const withheldIds = new Set(withheld.map(finding => finding.id));
+  const indexedFindings = new Map(findings.map(finding => [finding.id, finding]));
+  for (const finding of withheld) {
+    const marker = finding.quoteReconciliation;
+    const canonical = indexedFindings.get(marker.canonicalFindingId);
+    if (!canonical || marker.schema !== 'secretary.objective-quote-reconciliation/v1'
+        || canonical.quoteReconciliation?.state !== 'canonical'
+        || canonical.quoteReconciliation.key !== marker.key
+        || canonical.quoteReconciliation.objectiveSha256 !== marker.objectiveSha256
+        || !isDeepStrictEqual(canonical.quoteReconciliation.assertionKeys, marker.assertionKeys)) {
+      throw new Error('Repeated source assertion lacks its frozen canonical finding');
+    }
+  }
+  if (supplied.some(row => withheldIds.has(row.findingId))) throw new Error('A withheld repeated interpretation needs source review before date adjudication or publication');
+  const plan = findings.filter(finding => !withheldIds.has(finding.id)).map(finding => {
     const importId = `objective:${finding.objectiveId}:${finding.objectiveVersion}:${finding.id.slice('objective-'.length)}`;
     const retained = nativeDateReview(existing.find(row => row.importId === importId));
     const requested = supplied.find(row => row.findingId === finding.id);
@@ -255,8 +272,12 @@ async function main(argv = process.argv.slice(2)) {
   }));
   const normalized = plan.map(value => contract.normalize(value)); // All validate before any mutation.
   durable(path.join(directory, 'publication-plan.json'), { at: new Date().toISOString(), entries: plan,
+    ...(withheld.length && { withheldForReconciliation: withheld.map(finding => ({ findingId: finding.id,
+      ...finding.quoteReconciliation })) }),
     contextHashes: normalized.map(value => value.context.inputHash) });
-  if (command === 'plan') { console.log(JSON.stringify({ entries: plan.length, proposedMatches: plan.reduce((n, p) => n + p.relations.length, 0), published: 0 })); return; }
+  if (command === 'plan') { console.log(JSON.stringify({ entries: plan.length,
+    ...(withheld.length && { withheldForReconciliation: withheld.length }),
+    proposedMatches: plan.reduce((n, p) => n + p.relations.length, 0), published: 0 })); return; }
   if (!call || !/^[1-9]\d*$/.test(options['max-entries'] || '')) throw new Error('Publication needs Core and an explicit positive --max-entries budget');
   const receipts = [];
   let writes = 0;

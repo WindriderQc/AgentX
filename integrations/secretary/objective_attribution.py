@@ -24,6 +24,17 @@ def source_context(own, page, messages):
     return quotes.context(own, page["offset"], len(page["content"]), messages, kind=kind)
 
 
+def source_time(source):
+    # Gmail's preserved provider chronology orders messages; a quoted/RFC Date
+    # is source wording and must not turn a later reply into an earlier original.
+    if source["system"] == "gmail":
+        try:
+            return max(0, int(source.get("sourceDate") or 0))
+        except (TypeError, ValueError, OverflowError):
+            return 0
+    return quotes.milliseconds(source.get("mailDate"))
+
+
 def bind_pages(root, objective, manifest, source, units, plan, *, create=True):
     """Verify only frozen same-thread originals, without downloading new mail.
 
@@ -47,7 +58,7 @@ def bind_pages(root, objective, manifest, source, units, plan, *, create=True):
                 gaps.append({"sourceId": ref["id"], "reason": "ambiguous-inline-representations"})
                 continue
             peers.append(quotes.message(current["id"], bodies[0], current["headers"],
-                quotes.milliseconds(current.get("mailDate")), sourceSha256=current["sha256"], direction=current["direction"]))
+                source_time(current), sourceSha256=current["sha256"], direction=current["direction"]))
         except (OSError, ValueError, KeyError):
             gaps.append({"sourceId": ref["id"], "reason": "frozen-thread-source-unavailable"})
     for unit in units:
@@ -68,7 +79,7 @@ def bind_pages(root, objective, manifest, source, units, plan, *, create=True):
             if not create:
                 raise ValueError("Missing frozen attribution index")
             own = quotes.message(source["id"], unit["content"], source["headers"],
-                quotes.milliseconds(source.get("mailDate")), sourceSha256=source["sha256"], direction=source["direction"])
+                source_time(source), sourceSha256=source["sha256"], direction=source["direction"])
             evidence = {"schema": CONTRACT, "objectiveSha256": manifest["objectiveSha256"],
                         "own": own, "messages": [own, *peers], "gaps": gaps}
             digest = hashed(evidence)
