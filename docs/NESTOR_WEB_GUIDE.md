@@ -46,6 +46,26 @@ between pages, Markdown, lists, tables, code, images and scenes without moving
 retained frames or losing form and scroll state. Only the selected, displayed
 content contributes browser observations. Family keeps its scoped boards.
 
+Resuming a personal conversation restores pages as **historical references**,
+without an iframe, page request or source refresh. **Ouvrir la vue actuelle**
+explicitly creates a separate current card with a new identity and dated read
+request, revalidated against the current catalogue. The reference and canonical
+turn remain unchanged. Selecting history, expanding it or reopening the content
+workspace does not fetch the page. A detached reference cannot open content in
+another conversation.
+
+An exactly matching `presentationContext` on the original turn supplies the
+preserved observation, including its original values, nulls, units and expiry.
+It describes the page observed **at the input of that turn**; it does not prove
+that the page proposed in its answer loaded. The reference labels this boundary
+and never resolves an expired cache or recomputes freshness. Older proposals
+without a matching observation say that no observation was retained. Historical
+cards supply no current numeric read to Nestor; complete canonical conversation
+context retains the earlier evidence as `historicalPresentation`. The existing
+500-turn browser window and 30-card workspace remain bounded, with one historical
+reference per page and its separate current frame. Images reuse their retained
+asset or scoped ImageOperation, without repeating a search or creation.
+
 For AgentX pages under the same origin, a `view=screen` request allows framing
 by that origin and hides shared navigation. Normal page requests retain their
 existing framing policy. The personal conversation receives its selected
@@ -143,6 +163,18 @@ framing, loading/failure/recovery and zero inference or dispatch requests:
 AGENTX_PLAYWRIGHT_MODULE=/path/to/playwright \
 SCREEN_FOCUS_REPORT_DIR=/path/outside/repository \
 node core/tests/browser/nestorScreenFocusJourney.cjs
+```
+
+The history journey uses the real Nestor controller/resume path, `publicAudit`
+and canonical synthetic read receipts. It checks zero page reads on resume and
+reconnection, explicit reopening, immutable expired evidence, legacy references,
+local commands, unavailable/removed targets, rapid selection, retained images
+and detached controls across conversations:
+
+```bash
+AGENTX_PLAYWRIGHT_MODULE=/path/to/playwright \
+PAGE_HISTORY_REPORT_DIR=/path/outside/repository \
+node core/tests/browser/nestorPageHistoryJourney.cjs
 ```
 
 `GUIDED_SERVICES_BROWSER_EXECUTABLE` optionally selects an already installed

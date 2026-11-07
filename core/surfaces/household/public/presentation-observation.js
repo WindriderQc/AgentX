@@ -25,6 +25,8 @@
     }
     const target = card._screenTarget;
     base.page = root.AgentXScreenPages.canonical(target);
+    if (card._historicalPage) return { ...base, status: 'unavailable', observation: 'historical_reference',
+      historical: { recordedAt: card._historicalPage.recordedAt || null, sourceTurnId: card._historicalPage.sourceTurnId || '' } };
     if (!card._screenFrame) return { ...base, status: 'external' };
     try {
       const doc = card._screenFrame.contentDocument;
