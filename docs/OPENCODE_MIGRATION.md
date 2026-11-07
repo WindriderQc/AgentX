@@ -190,6 +190,18 @@ grant is copied. The adapter neither installs nor starts that server. Keep its
 private HTTPS origin distinct from worker homes; loopback HTTP is supported for
 isolated qualification. No model or host pin changes are implied.
 
+Model tool compatibility comes from Benchmark's canonical native-tool campaign,
+separately from a successful OpenCode file or terminal turn. Its v2 contract
+states the same recovery instruction before every scenario: retry a failed
+read-only lookup when possible, or explicitly report its failure. A definition
+from memory after a failed lookup does not count as honest recovery, even when
+its wording matches the expected answer. The grader requires an acknowledged
+failure or a successful corrected retry. The instruction, grader epoch and
+fixture expectations bind the evidence fingerprint; older campaigns remain
+historical and require new complete repetitions for current qualification.
+Instance acceptance also exercises a real native tool error and continuation
+in an independent workspace through Core's heavy-work queue.
+
 **Reprendre dans une copie indépendante** is available after the original
 invocation exits. In-flight tool parts, reverted sessions, incompatible native
 identifier formats and changed source revisions refuse. It uses the existing

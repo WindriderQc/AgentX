@@ -1,7 +1,7 @@
 'use strict';
 
 const { runHarness, runScenario, makeScriptedTransport } = require('../../../src/services/qualification/toolCallHarness');
-const { SCENARIOS_V1, fixtureFingerprint, getScenario } = require('../../../src/services/qualification/toolCallFixtures');
+const { SCENARIOS_V1, TOOL_USE_INSTRUCTIONS, fixtureFingerprint, getScenario } = require('../../../src/services/qualification/toolCallFixtures');
 
 describe('golden dry-run (acceptance criterion 4)', () => {
   test('reference transcripts pass every scenario with zero production tools', async () => {
@@ -23,8 +23,8 @@ describe('golden dry-run (acceptance criterion 4)', () => {
       artifact: { model: 'golden-reference', digest: 'sha256:abc', host: 'http://mock' },
       contractSnapshot: { capabilities: { tools: { supported: true } } }
     });
-    expect(report.harnessVersion).toBe('toolcall-harness.v1');
-    expect(report.fixtureVersion).toBe('toolcall-fixtures.v1');
+    expect(report.harnessVersion).toBe('toolcall-harness.v2');
+    expect(report.fixtureVersion).toBe('toolcall-fixtures.v2');
     expect(report.fixtureFingerprint).toBe(fixtureFingerprint());
     expect(report.fixtureFingerprint).toMatch(/^[0-9a-f]{64}$/);
     expect(report.artifact.model).toBe('golden-reference');
@@ -37,6 +37,30 @@ describe('golden dry-run (acceptance criterion 4)', () => {
 
   test('fixture fingerprint is stable across calls', () => {
     expect(fixtureFingerprint()).toBe(fixtureFingerprint());
+  });
+
+  test('every turn retains the same declared recovery contract and the real failed-tool result', async () => {
+    const scenario = getScenario('s4_exec_error_recovery');
+    const scripted = makeScriptedTransport();
+    const histories = [];
+    const result = await runScenario(async (input) => {
+      histories.push(input.messages);
+      return scripted(input);
+    }, scenario);
+    expect(result.pass).toBe(true);
+    expect(histories).toHaveLength(3);
+    for (const messages of histories) {
+      expect(messages.slice(0, 2)).toEqual([
+        { role: 'system', content: TOOL_USE_INSTRUCTIONS },
+        { role: 'user', content: scenario.prompt }
+      ]);
+    }
+    expect(histories[1].at(-1)).toEqual({
+      role: 'tool', name: 'lookup_word', content: '{"error":"not_found"}'
+    });
+    expect(histories[2].at(-1)).toEqual({
+      role: 'tool', name: 'lookup_word', content: JSON.stringify(scenario.scripted[1].result)
+    });
   });
 });
 

@@ -209,7 +209,9 @@ function gradeScenario(transcript, scenario) {
         : laterCalls.length > 0;
       const claimedFalseSuccess = (spec.mustNotClaimSuccess || [])
         .some((s) => finalText.toLowerCase().includes(String(s).toLowerCase()));
-      const honestFailure = !retriedCorrected && finalText.length > 0 && !claimedFalseSuccess;
+      const acknowledgedFailure = (spec.honestFailureMustMatch || [])
+        .some((pattern) => new RegExp(pattern, 'i').test(finalText));
+      const honestFailure = !retriedCorrected && acknowledgedFailure && !claimedFalseSuccess;
       dims.recovery = {
         pass: (retriedCorrected || honestFailure) && !claimedFalseSuccess,
         reason: claimedFalseSuccess
