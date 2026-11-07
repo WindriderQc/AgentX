@@ -63,15 +63,22 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       return res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
         <style>:root{--line:#526471;--text:#eefaff;--soft:#9db6c5}body{background:#07131d;color:#eee;font-family:system-ui}</style>
-        <link rel="stylesheet" href="/avatar-dock.css"><main><h1>Famille</h1><button id="micro">Micro simulé</button></main>
+        <link rel="stylesheet" href="/avatar-dock.css"><link rel="stylesheet" href="/idle-photos.css">
+        <style>main{box-sizing:border-box;width:min(500px,100%);padding:12px}.avatar-camera{overflow-wrap:anywhere}</style>
+        <main><h1>Famille</h1><button id="micro">Micro simulé</button>
+          <button id="settingsToggle" aria-expanded="false" aria-controls="conversationSettings">Réglages</button>
+          <section id="conversationSettings" hidden><h2>Regard caméra</h2><div id="conversationCameraSettings"></div></section></main>
         <script src="/avatar-motion.js"></script><script src="/avatar-dock.js"></script>
-        <script>window.handle=AvatarDock.mount({space:new URLSearchParams(location.search).get('space')||'family'});</script>`);
+        <script>settingsToggle.onclick=()=>{conversationSettings.hidden=!conversationSettings.hidden;
+          settingsToggle.setAttribute('aria-expanded',String(!conversationSettings.hidden));};
+          if(new URLSearchParams(location.search).has('noSettings'))document.getElementById('conversationCameraSettings').remove();
+          window.handle=AvatarDock.mount({space:new URLSearchParams(location.search).get('space')||'family'});</script>`);
     }
     if (name === '/api/household/avatar/llmx-face.js') {
       res.setHeader('Content-Type', 'text/javascript');
       return res.end(process.env.AGENTX_FACE_FIXTURE ? fs.readFileSync(process.env.AGENTX_FACE_FIXTURE) : stub);
     }
-    if (['/avatar-motion.js', '/avatar-dock.js', '/avatar-dock.css'].includes(name)) {
+    if (['/avatar-motion.js', '/avatar-dock.js', '/avatar-dock.css', '/idle-photos.css'].includes(name)) {
       res.setHeader('Content-Type', name.endsWith('.css') ? 'text/css' : 'text/javascript');
       return res.end(fs.readFileSync(path.join(publicDir, name.slice(1))));
     }
@@ -81,7 +88,7 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   const origin = `http://127.0.0.1:${server.address().port}`;
   browser = await chromium.launch({ headless: true,
     ...(process.env.AGENTX_BROWSER_EXECUTABLE && { executablePath: process.env.AGENTX_BROWSER_EXECUTABLE }) });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
   await context.route('**/*', route => {
     const request = route.request(); network.push({ url: request.url(), method: request.method() });
     return new URL(request.url()).origin === origin ? route.continue() : route.abort();
@@ -89,8 +96,14 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   await context.addInitScript(fakeMedia);
   const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
   const status = () => page.locator('.avatar-camera [role=status]').textContent();
-  const start = () => page.getByRole('button', { name: 'Activer le regard caméra', exact: true }).click();
+  const settings = async () => {
+    if (await page.locator('.avatar-dock').getAttribute('data-view') === 'plein') await page.locator('.avatar-dock-stage').click();
+    if (await page.locator('#conversationSettings').isHidden()) await page.getByRole('button', { name: 'Réglages', exact: true }).click();
+  };
+  const start = async () => { await settings(); await page.getByRole('button', { name: 'Activer le regard caméra', exact: true }).click(); };
   const stop = () => page.getByRole('button', { name: 'Arrêter la caméra', exact: true }).click();
+  // Lifecycle coverage while the simulated photo surface hides the real settings.
+  const stopBehindPhotos = () => page.locator('.avatar-camera button').evaluate(button => button.click());
   const active = () => page.waitForSelector('.avatar-camera[data-active=true]');
   const allStopped = () => page.evaluate(() => tracks.every(track => track.stopped));
   const capture = async name => {
@@ -99,7 +112,16 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   };
   await page.goto(origin); await page.waitForSelector('.avatar-dock[data-renderer=face]');
   assert.equal(await page.evaluate(() => mediaCalls.length), 0, 'no camera on load');
+  assert.ok(await page.locator('.avatar-camera').isHidden(), 'camera setup is hidden with settings on load');
   await capture('camera-off');
+  await settings();
+  assert.equal(await page.locator('#conversationSettings .avatar-camera').count(), 1, 'camera setup belongs to settings');
+  assert.equal(await page.locator('.avatar-camera').evaluate(panel => getComputedStyle(panel).position), 'static');
+  assert.equal(await page.evaluate(() => mediaCalls.length), 0, 'opening settings does not request a camera');
+  await page.evaluate(() => { const photo = document.createElement('section'); photo.className = 'nestor-idle-photos'; document.body.append(photo); });
+  assert.ok(await page.locator('.avatar-camera').isHidden(), 'inactive setup never covers photos, even with settings open');
+  await capture('photos-camera-off');
+  await page.evaluate(() => document.querySelector('.nestor-idle-photos').remove());
   await page.setViewportSize({ width: 360, height: 780 });
   const bounds = await page.locator('.avatar-camera').boundingBox();
   assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 360, 'camera consent fits a narrow screen');
@@ -122,10 +144,12 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   assert.ok(sample.count <= 16, 'capture rate stays bounded');
   await capture('look-right');
   await page.evaluate(() => { motionSide = 'right'; });
-  await page.waitForFunction(() => points.at(-1)[0] < innerWidth * 0.3);
+  await page.waitForFunction(() => { const rect = document.querySelector('llmx-face').getBoundingClientRect();
+    return points.at(-1)[0] < rect.x + rect.width * 0.3; });
   await capture('look-left');
   await page.evaluate(() => { motionSide = 'center'; });
-  await page.waitForFunction(() => Math.abs(points.at(-1)[0] - innerWidth / 2) < 3);
+  await page.waitForFunction(() => { const rect = document.querySelector('llmx-face').getBoundingClientRect();
+    return Math.abs(points.at(-1)[0] - rect.x - rect.width / 2) < 3; });
   await capture('quiet-center');
   // Conversation speech/interruption stays owned by the existing presence loop.
   for (const state of ['speaking', 'paused', 'listening']) {
@@ -152,7 +176,9 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   await active();
   // Photo idle mode interrupts capture without generating wake/activity events.
   await page.evaluate(() => { const photo = document.createElement('section'); photo.className = 'nestor-idle-photos'; document.body.append(photo); });
-  await page.waitForSelector('.avatar-camera[data-active=paused]'); assert.ok(await allStopped());
+  await page.waitForSelector('.avatar-camera[data-active=paused]', { state: 'attached' }); assert.ok(await allStopped());
+  assert.ok(await page.locator('.avatar-camera').isHidden(), 'paused status and stop never cover photos');
+  assert.equal(await page.getByRole('button', { name: 'Arrêter la caméra', exact: true }).count(), 0, 'photo keyboard navigation excludes camera settings');
   await capture('camera-paused');
   const pausedCalls = await page.evaluate(() => mediaCalls.length);
   await page.waitForTimeout(450); assert.equal(await page.evaluate(() => mediaCalls.length), pausedCalls);
@@ -160,7 +186,7 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   await active(); assert.equal(await page.evaluate(() => mediaCalls.length), pausedCalls + 1, 'photo return resumes once');
   // Stop while paused clears session intent, including on later voice and visibility events.
   await page.evaluate(() => { document.querySelector('.nestor-idle-photos').hidden = false; });
-  await page.waitForSelector('.avatar-camera[data-active=paused]'); await stop();
+  await page.waitForSelector('.avatar-camera[data-active=paused]', { state: 'attached' }); await stopBehindPhotos();
   const stoppedCalls = await page.evaluate(() => mediaCalls.length);
   await page.evaluate(() => { document.querySelector('.nestor-idle-photos').remove(); document.dispatchEvent(new Event('visibilitychange'));
     dispatchEvent(new CustomEvent('persona-presence', { detail: { state: 'speaking' } })); });
@@ -219,6 +245,9 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   await page.goto(origin + '?space=personal'); await page.waitForSelector('.avatar-dock[data-renderer=face]');
   assert.equal(await page.locator('.avatar-camera').count(), 0, 'other avatar consumers unchanged');
   assert.equal(await page.evaluate(() => mediaCalls.length), 0);
+  await page.goto(origin + '?noSettings'); await page.waitForSelector('.avatar-dock[data-renderer=face]');
+  assert.equal(await page.locator('.avatar-camera').count(), 0, 'missing settings never creates a floating fallback');
+  assert.equal(await page.evaluate(() => mediaCalls.length), 0);
   await page.goto(origin); await page.waitForSelector('.avatar-dock[data-renderer=face]');
   await start(); await active();
   await page.evaluate(() => document.querySelector('llmx-face').dispatchEvent(new CustomEvent('llmx-face-error')));
@@ -233,7 +262,7 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   assert.deepEqual(errors, []);
   assert.ok(network.every(row => row.url.startsWith(origin) && row.method === 'GET'), 'no media/data uploads or outgoing requests');
   console.log(JSON.stringify({ result: 'passed', camera: 'synthetic only', captures: sample.count,
-    scenarios: 'opt-in, mobile, refusal, absent, bounded gaze, calm idle, voice interruption, stop, late permission, hidden/photo pause/resume, stop-resume races, denied/prompt/unsupported query, missing-camera resume, masked, disconnect, play/draw failure, pagehide, dispose, personal/orb/missing API fallback',
+    scenarios: 'settings placement, hidden setup on load/photos, mobile, opt-in, refusal, absent, bounded gaze, calm idle, voice interruption, stop, late permission, hidden/photo pause/resume, stop-resume races, denied/prompt/unsupported query, missing-camera resume, masked, disconnect, play/draw failure, pagehide, dispose, personal/orb/missing API fallback',
     network: 'same-origin static GET only', errors, screenshots: output || null }, null, 2));
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   await browser?.close(); if (server) await new Promise(resolve => server.close(resolve));

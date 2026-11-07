@@ -160,7 +160,8 @@
       if (renderer !== 'face' && motion?.active) motion.stop();
       finishReady(renderer);
     };
-    if (family) motion = root.AvatarMotion?.mount({ documentRef: doc, face: () => face,
+    if (family) motion = root.AvatarMotion?.mount({ documentRef: doc,
+      container: doc.getElementById('conversationCameraSettings'), face: () => face,
       available: () => dock.dataset.renderer === 'face' && mode !== 'cache'
         && !doc.querySelector?.('.nestor-idle-photos:not([hidden])') });
     // A slow 3D face must not hold Nestor's first words: the orb stands in meanwhile, and the
