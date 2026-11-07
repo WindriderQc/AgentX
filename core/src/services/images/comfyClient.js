@@ -73,11 +73,13 @@ function createComfyClient(base, fetchImpl = fetch) {
   }
   // releasedRatio: share of the card that must be free once the worker let go,
   // lower on a desktop whose screen keeps part of the card.
-  async function free(assertOwned, requireEmptyGpu = true, releasedRatio = 0.85) {
+  // onReleased receives the worker's answer (its optional resource receipt) before memory is checked.
+  async function free(assertOwned, requireEmptyGpu = true, releasedRatio = 0.85, onReleased = () => {}) {
     await assertOwned();
     const q = await json('/queue');
     if (q.queue_running?.length || q.queue_pending?.length) throw new Error('Worker has unfinished work');
-    await json('/free', { unload_models: true, free_memory: true });
+    const released = await json('/free', { unload_models: true, free_memory: true });
+    try { onReleased(released); } catch { /* A receipt never blocks or changes the release. */ }
     for (let i = 0; i < 30; i++) {
       await assertOwned();
       const stats = await json('/system_stats');

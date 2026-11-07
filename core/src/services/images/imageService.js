@@ -20,6 +20,7 @@ const constraints = require('../../../public/js/image-brief-constraints');
 const textPolicy = require('../../../public/js/image-text-policy');
 const { assertSupportedRequest } = require('./labIntent');
 const workQueue = require('./workQueue');
+const resourceReceipt = require('./resourceReceipt');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const ACTIVE = ['accepted', 'reserving', 'generating', 'archiving', 'restoring'];
@@ -55,7 +56,7 @@ function publicOperation(op) {
     ...(op.queueRequestId && { queueRequestId: op.queueRequestId }),
     studioPath, ...(studioUrl && { studioUrl }), ...(op.workerId && { worker: op.workerId }),
     createdAt: op.createdAt, updatedAt: op.updatedAt, runtimeRestored: op.runtimeRestored,
-    cancelRequested: op.cancelRequested, error: op.error || null, timings: op.timings || null,
+    cancelRequested: op.cancelRequested, error: op.error || null, timings: op.timings || null, resources: op.resources || null,
     ...(op.expert && { expert: op.expert }),
     ...(op.artifact && { artifact: { sha256: op.artifact.sha256, mimeType: op.artifact.mimeType,
       width: op.artifact.width, height: op.artifact.height, url: `/api/images/operations/${op._id}/image` } }) };
@@ -189,7 +190,8 @@ async function archive(id, client, output) {
 }
 async function execute(op, config, client) {
   const start = Date.now();
-  let reservation, terminal = true, output, artifact, generationError;
+  let reservation, terminal = true, output, artifact, generationError, resources;
+  const phases = [], enter = name => phases.push([name, Date.now()]);
   const cancelled = async () => (await ImageOperation.findById(op._id).select('cancelRequested').lean())?.cancelRequested === true;
   const persist = changes => save(op._id, changes);
   try {
@@ -199,7 +201,7 @@ async function execute(op, config, client) {
       throw fail('The archived references do not match the accepted request.', 503);
     }
     const references = await loadReferences(stored);
-    await persist({ state: 'reserving' });
+    enter('reserving'); await persist({ state: 'reserving' });
     reservation = await reserve(config, op, persist, cancelled);
     await client.ready(op.profile);
     const stats = await client.json('/system_stats');
@@ -210,7 +212,7 @@ async function execute(op, config, client) {
     }
     if (await cancelled()) throw Object.assign(new Error('Image request cancelled'), { cancelled: true });
     const execution = buildExecution(op.profile, op.request, refs, op._id);
-    const recorded = await persist({ state: 'generating', execution, dispatchStarted: true });
+    enter('generating'); const recorded = await persist({ state: 'generating', execution, dispatchStarted: true });
     if (!recorded?.execution?.graph || recorded.execution.graphSha256 !== execution.graphSha256
       || hash(JSON.stringify(recorded.execution.graph)) !== execution.graphSha256) {
       throw new Error('Image execution snapshot could not be retained');
@@ -220,22 +222,25 @@ async function execute(op, config, client) {
     await client.submit(op.jobId, execution.graph);
     output = await client.observe(op.jobId, { timeoutMs: config.timeoutMs, cancelled,
       assertOwned: reservation.assertOwned, onTerminal: async () => { terminal = true; } });
-    await persist({ state: 'archiving', output });
+    enter('archiving'); await persist({ state: 'archiving', output });
     artifact = await archive(op._id, client, output);
     await persist({ artifact });
   } catch (error) { if (error.notSubmitted) terminal = true; generationError = error; }
   if (reservation && terminal) {
     try {
-      await persist({ state: 'restoring' });
+      enter('restoring'); await persist({ state: 'restoring' });
       await reservation.verified({ jobTerminal: true, dispatched: op.dispatchStarted, hasOutput: Boolean(output) });
-      await client.free(reservation.assertOwned, true, config.releasedVramRatio ?? 0.85);
+      await client.free(reservation.assertOwned, true, config.releasedVramRatio ?? 0.85,
+        released => { resources = resourceReceipt.normalize(released, op.jobId); });
       await reservation.restore();
       await persist({ runtimeRestored: true });
     } catch (error) { terminal = false; generationError = error; await reservation.quarantine(error.message); }
   } else if (reservation) await reservation.quarantine(generationError?.message || 'Unknown image outcome');
   const state = !terminal || generationError?.runtimeUnknown ? 'unknown' : artifact ? 'completed'
     : output ? 'archive_failed' : generationError?.cancelled ? 'cancelled' : 'failed';
-  await save(op._id, { state, error: generationError?.message || null, timings: { totalMs: Date.now() - start } },
+  const end = Date.now();
+  await save(op._id, { state, error: generationError?.message || null,
+    timings: { totalMs: end - start, phasesMs: resourceReceipt.phaseDurations(phases, end) }, ...(resources && { resources }) },
     state === 'unknown' ? {} : { workerSlot: 1, references: 1, admission: 1 });
   try {
     await require('../heavyWorkQueueEvidence').reconcile(op.queueRequestId, 'core-images');

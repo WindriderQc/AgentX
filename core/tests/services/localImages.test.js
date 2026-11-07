@@ -183,4 +183,63 @@ describe('durable local image operations', () => {
     loadConfig.mockReturnValue({ defaultProfile: 'quality', profiles: { quality: { ...profile, family: 'qwen21', steps: 25 } } });
     expect(service.status().conversationProfile).toBeNull();
   });
+  describe('resource receipts (synthetic worker answers only)', () => {
+    const OTHER = '6a1f9c3e-2b4d-4e8f-9c1a-7b3d5e6f8a90';
+    const workerRelease = jobId => ({ resources: { contract: 'agentx.image-worker-resources/v1',
+      child: { spawnedAtMs: 1000, readyAtMs: 2000, releasedAtMs: 9000, reserveVramGiB: 1.2, jobIds: [jobId] },
+      ram: { status: 'measured', peakKiB: 4096 }, vram: { status: 'sampled', bound: 'lower', intervalMs: 1000,
+        samples: { attempted: 2, matched: 2, absent: 0, failed: 0, invalid: 0 }, observedMaxMiB: 512,
+        observedMaxAtMs: 3000, firstMatchedAtMs: 2500, lastMatchedAtMs: 3000 },
+      jobs: [{ jobId, executionMs: 1500 }] } });
+    const releaseWith = answer => client.free.mockImplementation(async (_owned, _empty, _ratio, onReleased) => {
+      onReleased(typeof answer === 'function' ? answer(client.submit.mock.calls.at(-1)[0]) : answer); return {};
+    });
+    const phases = op => Object.keys(op.timings.phasesMs);
+    const expectPhases = (op, names) => {
+      expect(phases(op)).toEqual(names);
+      const values = Object.values(op.timings.phasesMs);
+      expect(values.every(value => Number.isInteger(value) && value >= 0)).toBe(true);
+      expect(values.reduce((sum, value) => sum + value, 0)).toBeLessThanOrEqual(op.timings.totalMs);
+    };
+    test('completion, failure and cancellation each keep their own child receipt and Core phases', async () => {
+      releaseWith(workerRelease);
+      const done = await waitFor((await service.accept({ actionKey: 'resources-done', prompt: 'A lake' })).id, 'completed');
+      expect(done.resources).toMatchObject({ contract: 'agentx.image-resources/v1', status: 'recorded', attribution: 'exclusive', executionMs: 1500,
+        ram: { status: 'measured', peakKiB: 4096, scope: 'cuda-child-process' },
+        vram: { status: 'sampled-lower-bound', observedMaxMiB: 512, scope: 'cuda-child-process' } });
+      expectPhases(done, ['reserving', 'generating', 'archiving', 'restoring']);
+      client.observe.mockImplementationOnce(async (_id, options) => { await options.onTerminal(); throw Object.assign(new Error('Image generation failed'), { terminal: true }); });
+      const failed = await waitFor((await service.accept({ actionKey: 'resources-failed', prompt: 'A lake' })).id, 'failed');
+      expect(failed).toMatchObject({ runtimeRestored: true, resources: { status: 'recorded', ram: { peakKiB: 4096 } } });
+      expectPhases(failed, ['reserving', 'generating', 'restoring']);
+      client.observe.mockImplementationOnce(async (_id, options) => { await options.onTerminal(); throw Object.assign(new Error('Image generation cancelled'), { terminal: true, cancelled: true }); });
+      const cancelled = await waitFor((await service.accept({ actionKey: 'resources-cancelled', prompt: 'A lake' })).id, 'cancelled');
+      expect(cancelled).toMatchObject({ runtimeRestored: true, resources: { status: 'recorded' } });
+      expect(reservation.restore).toHaveBeenCalledTimes(3);
+    });
+    test('an uncertain dispatch never reaches release, so it records no resource figure', async () => {
+      releaseWith(workerRelease);
+      client.submit.mockRejectedValue(new Error('connection lost after dispatch'));
+      const unknown = await waitFor((await service.accept({ actionKey: 'resources-unknown', prompt: 'A lake' })).id, 'unknown');
+      expect(unknown.resources).toBeNull();
+      expect(client.free).not.toHaveBeenCalled();
+      expectPhases(unknown, ['reserving', 'generating']);
+    });
+    test('a stale, missing or malformed worker receipt never blocks completion or attributes figures', async () => {
+      for (const [key, answer, status] of [['stale', workerRelease(OTHER), 'stale'], ['empty', {}, 'unavailable'], ['garbage', { resources: [1, 2] }, 'unavailable']]) {
+        releaseWith(answer);
+        const done = await waitFor((await service.accept({ actionKey: `resources-${key}`, prompt: 'A lake' })).id, 'completed');
+        expect(done.runtimeRestored).toBe(true);
+        expect(done.resources.status).toBe(status);
+        expect(done.resources).not.toHaveProperty('ram');
+      }
+    });
+    test('older receipts keep their fields and report no resource receipt', async () => {
+      await ImageOperation.collection.insertOne({ _id: 'legacy-image-operation', actionKey: 'legacy-action-key', requestHash: 'a'.repeat(64),
+        state: 'completed', request: { prompt: 'A lake' }, profile: { id: 'quality', label: 'Test image' }, runtimeRestored: true,
+        timings: { totalMs: 4200 }, createdAt: new Date(), updatedAt: new Date() });
+      const legacy = await service.get('legacy-image-operation');
+      expect(legacy).toMatchObject({ state: 'completed', runtimeRestored: true, timings: { totalMs: 4200 }, resources: null });
+    });
+  });
 });
