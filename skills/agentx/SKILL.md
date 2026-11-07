@@ -120,3 +120,5 @@ copies are deployment artifacts: install them from the instance
 (`GET <core>/api/operator-skill/download`) or read the deployed checkout
 directly; never edit a copy in place. Reusable behavior belongs in AgentX;
 only connection and presentation choices belong in a runtime adapter.
+`node integrations/agent-skills/sync.mjs --core <core>` refreshes the Claude Code
+and Codex copies when the served revision or files change; deployments run it daily.
