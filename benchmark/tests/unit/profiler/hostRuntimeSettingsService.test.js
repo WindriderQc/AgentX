@@ -9,9 +9,9 @@ const environment = (values, extra = {}) => ({
   source: 'systemd', ok: true, observedAt: '2026-10-05T10:00:00.000Z', values, ...extra
 });
 
-function store(settings = null, exists = true, gpus = undefined) {
+function store(settings = null, exists = true, gpus = undefined, gpuDriverObservation = undefined) {
   const model = {
-    findOne: jest.fn(() => ({ select: () => ({ lean: async () => (exists ? { ollama: { settings }, gpus } : null) }) })),
+    findOne: jest.fn(() => ({ select: () => ({ lean: async () => (exists ? { ollama: { settings }, gpus, gpuDriverObservation } : null) }) })),
     updateOne: jest.fn(async () => ({ modifiedCount: 1 })),
   };
   return model;
@@ -87,7 +87,7 @@ describe('host Ollama settings sync', () => {
     const { buildMeasuredRuntime } = require('../../../../shared/measuredRuntime');
     const gpus = [{ index: 0, uuid: 'GPU-A', model: 'Synthetic GPU', vramTotalMiB: 24576, driver: null }];
     const model = store(null, true, gpus);
-    const hardware = { status: 'observed', source: 'agentx-data', sampledAt: '2026-11-07T12:00:00Z',
+    const hardware = { status: 'observed', source: 'agentx-data', sampledAt: '2026-11-07T12:00:00Z', staleAfterMs: 90000,
       gpus: [{ ...gpus[0], driver: '580.95.05' }] };
     await expect(syncHostRuntimeSettings(HOST, { model, readHardware: async () => hardware }))
       .resolves.toMatchObject({ synced: true, changed: false });
@@ -97,7 +97,23 @@ describe('host Ollama settings sync', () => {
     const before = { ...HOST, gpus };
     const after = { ...before, ...update };
     expect(buildRuntimeFingerprint(after)).toBe(buildRuntimeFingerprint(before));
-    expect(buildMeasuredRuntime({ hostProfile: after }).gpuDriver).toBe('580.95.05');
+    expect(buildMeasuredRuntime({ hostProfile: after, observedAt: '2026-11-07T12:00:01Z' }).gpuDriver).toBe('580.95.05');
+  });
+
+  test('failed reads mark cached drivers unavailable even when Ollama settings are unchanged', async () => {
+    const settings = { kvCacheType: 'q8_0', flashAttention: 'default', visibleDevices: 'default', schedSpread: 'default', gpuCount: 1 };
+    const gpus = [{ index: 0, uuid: 'GPU-A', model: 'Synthetic GPU', vramTotalMiB: 24576, driver: null }];
+    const observation = { gpus: [{ ...gpus[0], driver: '580.95.05' }], status: 'observed',
+      observedAt: new Date('2026-11-07T12:00:00Z'), staleAfterMs: 90000 };
+    for (const status of ['stale', 'unavailable']) {
+      for (const ollamaEnvironment of [undefined, environment({ OLLAMA_KV_CACHE_TYPE: 'q8_0' })]) {
+        const model = store(settings, true, gpus, observation);
+        await syncHostRuntimeSettings(HOST, { model, force: true,
+          readHardware: async () => ({ status, ollamaEnvironment, knownGpuCount: 1 }) });
+        expect(model.updateOne).toHaveBeenCalledWith({ hostId: HOST.hostId },
+          { $set: { 'gpuDriverObservation.status': status } });
+      }
+    }
   });
 
   test('a stale, failed or absent inventory never erases the last observed GPUs', async () => {

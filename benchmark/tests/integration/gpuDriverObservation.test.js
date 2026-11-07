@@ -40,7 +40,7 @@ test('observations persist separately without rewriting existing performance evi
 
   for (const driver of ['580.95.05', '590.1']) {
     await syncHostRuntimeSettings(host, { force: true, readHardware: async () => ({
-      status: 'observed', source: 'agentx-data', sampledAt: '2026-11-07T12:00:00Z',
+      status: 'observed', source: 'agentx-data', sampledAt: '2026-11-07T12:00:00Z', staleAfterMs: 90000,
       gpus: gpus.map(gpu => ({ ...gpu, driver }))
     }) });
     const current = await HostProfile.findOne({ hostId: host.hostId }).lean();
@@ -48,15 +48,24 @@ test('observations persist separately without rewriting existing performance evi
       source: 'agentx-data', observedAt: new Date('2026-11-07T12:00:00Z'),
       gpus: [expect.objectContaining({ driver }), expect.objectContaining({ driver })]
     });
-    expect(buildMeasuredRuntime({ hostProfile: current }).gpuDriver).toBe(driver);
+    expect(buildMeasuredRuntime({ hostProfile: current, observedAt: '2026-11-07T12:00:01Z' }).gpuDriver).toBe(driver);
     expect(buildRuntimeFingerprint(current)).toBe(fingerprint);
     expect(current.gpus.map(gpu => gpu.driver)).toEqual([null, null]);
     expect(await ModelPerformanceProfile.findById(historical._id).lean()).toEqual(proofBefore);
   }
 
   const beforeUnavailable = await HostProfile.findOne({ hostId: host.hostId }).lean();
-  await syncHostRuntimeSettings(host, { force: true, readHardware: async () => ({ status: 'stale' }) });
-  expect(await HostProfile.findOne({ hostId: host.hostId }).lean()).toEqual(beforeUnavailable);
+  for (const status of ['stale', 'unavailable']) {
+    await syncHostRuntimeSettings(host, { force: true, readHardware: async () => ({ status }) });
+    const unavailable = await HostProfile.findOne({ hostId: host.hostId }).lean();
+    expect(unavailable.gpuDriverObservation.gpus).toEqual(beforeUnavailable.gpuDriverObservation.gpus);
+    expect(unavailable.gpuDriverObservation.observedAt).toEqual(beforeUnavailable.gpuDriverObservation.observedAt);
+    expect(unavailable.gpuDriverObservation.status).toBe(status);
+    expect(buildRuntimeFingerprint(unavailable)).toBe(fingerprint);
+    for (const observedAt of ['2026-11-07T12:00:01Z', '2026-11-08T15:00:00Z']) {
+      expect(buildMeasuredRuntime({ hostProfile: unavailable, observedAt }).gpuDriver).toBeNull();
+    }
+  }
 
   // A real hardware change retains its existing invalidation semantics.
   await syncHostRuntimeSettings(host, { force: true, readHardware: async () => ({

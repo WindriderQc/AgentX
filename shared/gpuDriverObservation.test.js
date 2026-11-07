@@ -17,9 +17,9 @@ test('driver observations preserve exact existing hashes and record new measurem
     const observed = inventory.map(gpu => ({ ...gpu, driver: '580.95.05' }));
     const before = { ...host, gpus: previous };
     const after = { ...host, gpus: preserveInventoryDrivers(previous, observed),
-      gpuDriverObservation: { gpus: observed, observedAt: '2026-11-07T12:00:00Z' } };
+      gpuDriverObservation: { gpus: observed, observedAt: '2026-11-07T12:00:00Z', staleAfterMs: 90000, status: 'observed' } };
     assert.equal(buildRuntimeFingerprint(after), buildRuntimeFingerprint(before));
-    assert.equal(buildMeasuredRuntime({ hostProfile: after }).gpuDriver, '580.95.05');
+    assert.equal(buildMeasuredRuntime({ hostProfile: after, observedAt: '2026-11-07T12:00:01Z' }).gpuDriver, '580.95.05');
     assert.equal(buildMeasuredRuntime({ hostProfile: before }).gpuDriver, existingDriver);
     assert.deepEqual(previous.map(gpu => gpu.driver), [existingDriver, existingDriver]);
   }
@@ -42,4 +42,22 @@ test('unknown or partial observation never claims an old driver as newly measure
     assert.equal(buildMeasuredRuntime({ hostProfile: { ...legacy, gpuDriverObservation: { gpus } } }).gpuDriver, null);
   }
   assert.equal(buildMeasuredRuntime({ hostProfile: legacy }).gpuDriver, '570.1');
+});
+
+
+test('Data freshness, unknown windows and failed observations cannot date an old driver as current', () => {
+  const observation = { gpus: inventory.map(gpu => ({ ...gpu, driver: '580.95.05' })),
+    observedAt: '2026-11-07T12:00:00Z', staleAfterMs: 90000, status: 'observed' };
+  const measure = (observedAt, overrides = {}) => buildMeasuredRuntime({ observedAt,
+    hostProfile: { ...host, gpuDriverObservation: { ...observation, ...overrides } } }).gpuDriver;
+  assert.equal(measure('2026-11-07T12:01:30Z'), '580.95.05');
+  assert.equal(measure('2026-11-07T12:01:30.001Z'), null);
+  assert.equal(measure('2026-11-07T11:59:59Z'), null);
+  assert.equal(measure('2026-11-08T12:00:00Z'), null);
+  for (const status of ['stale', 'unavailable', 'no_data', 'no_host', 'not_configured']) {
+    assert.equal(measure('2026-11-07T12:00:01Z', { status }), null);
+  }
+  for (const staleAfterMs of [undefined, null, 0, -1, Infinity, 'unknown']) {
+    assert.equal(measure('2026-11-07T12:00:01Z', { staleAfterMs }), null);
+  }
 });

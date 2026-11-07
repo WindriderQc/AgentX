@@ -27,6 +27,8 @@ const HostProfileSchema = new mongoose.Schema({
   gpuDriverObservation: {
     gpus: { type: [GpuIdentitySchema], default: undefined },
     observedAt: Date,
+    staleAfterMs: Number,
+    status: String,
     source: String
   },
   gpusObservedAt: Date,

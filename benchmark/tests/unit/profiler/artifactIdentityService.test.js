@@ -1,5 +1,7 @@
 'use strict';
 
+jest.mock('../../../src/services/profiler/hostRuntimeSettingsService', () => ({ syncHostRuntimeSettings: jest.fn(async () => ({ synced: false })) }));
+
 jest.mock('../../../src/clients/coreApiClient', () => ({ getModelRegistryByName: jest.fn() }));
 jest.mock('../../../src/services/benchmark/modelDigestService', () => ({ getModelDigest: jest.fn() }));
 jest.mock('../../../src/services/profiler/hostProfileService', () => ({ getById: jest.fn() }));
@@ -77,7 +79,7 @@ describe('profiler artifact identity service', () => {
     hostProfiles.getById.mockResolvedValue(profile);
     const before = await resolveArtifactIdentity('synthetic-artifact', 'host-a', HOST_URL, { requireRegistry: false });
     hostProfiles.getById.mockResolvedValue({ ...profile, gpuDriverObservation: {
-      gpus: [{ ...profile.gpus[0], driver: '580.95.05' }], observedAt: new Date('2026-11-07T12:00:00Z'), source: 'agentx-data'
+      gpus: [{ ...profile.gpus[0], driver: '580.95.05' }], observedAt: new Date(Date.now() - 1000), staleAfterMs: 90000, status: 'observed', source: 'agentx-data'
     } });
     const after = await resolveArtifactIdentity('synthetic-artifact', 'host-a', HOST_URL, { requireRegistry: false });
     expect(after.runtime.gpuDriver).toBe('580.95.05');

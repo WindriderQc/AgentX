@@ -37,10 +37,14 @@ async function syncHostRuntimeSettings({ hostId, hostUrl } = {}, {
   const reloadPending = environment?.needDaemonReload === true;
   const observed = reloadPending ? null : runtimeSettingsFromObservation({ environment, gpuCount: hardware?.knownGpuCount });
   const gpus = hardware?.status === 'observed' ? normalizeGpuInventory(hardware.gpus) : null;
-  if (!observed && !gpus) return { synced: false, reason: reloadPending ? 'daemon_reload_pending' : 'not_observed' };
-
   const current = await model.findOne({ hostId }).select('ollama.settings gpus gpuDriverObservation').lean();
   if (!current) return { synced: false, reason: 'no_host_profile' };
+  if (!observed && !gpus) {
+    if (current.gpuDriverObservation?.gpus) {
+      await model.updateOne({ hostId }, { $set: { 'gpuDriverObservation.status': hardware?.status || 'unavailable' } });
+    }
+    return { synced: false, reason: reloadPending ? 'daemon_reload_pending' : 'not_observed' };
+  }
   const previous = normalizeRuntimeSettings(current.ollama?.settings);
   // A GPU count the collector cannot give now keeps the last known one.
   const settings = observed ? { ...observed, gpuCount: observed.gpuCount ?? previous?.gpuCount ?? null } : previous;
@@ -49,12 +53,16 @@ async function syncHostRuntimeSettings({ hostId, hostUrl } = {}, {
   const identityGpus = gpus && preserveInventoryDrivers(previousGpus, gpus);
   const gpusChanged = identityGpus && JSON.stringify(identityGpus) !== JSON.stringify(previousGpus);
   const driverObservation = gpus && {
-    gpus, observedAt: new Date(hardware.sampledAt), source: hardware.source
+    gpus, observedAt: new Date(hardware.sampledAt), staleAfterMs: hardware.staleAfterMs,
+    status: 'observed', source: hardware.source
   };
   const observationChanged = driverObservation
     && JSON.stringify(driverObservation) !== JSON.stringify(current.gpuDriverObservation);
 
-  if (!settingsChanged && !gpusChanged && !observationChanged) return { synced: false, reason: 'unchanged', settings };
+  const unavailableStatus = !gpus && current.gpuDriverObservation?.gpus
+    ? hardware?.status || 'unavailable' : null;
+  const availabilityChanged = unavailableStatus && unavailableStatus !== current.gpuDriverObservation.status;
+  if (!settingsChanged && !gpusChanged && !observationChanged && !availabilityChanged) return { synced: false, reason: 'unchanged', settings };
   const update = {};
   if (settingsChanged) Object.assign(update, {
     'ollama.settings': settings,
@@ -65,6 +73,9 @@ async function syncHostRuntimeSettings({ hostId, hostUrl } = {}, {
     gpus: identityGpus, gpusObservedAt: new Date(hardware.sampledAt), gpusSource: hardware.source
   });
   if (observationChanged) update.gpuDriverObservation = driverObservation;
+  else if (availabilityChanged) {
+    update['gpuDriverObservation.status'] = unavailableStatus;
+  }
   await model.updateOne({ hostId }, { $set: update });
   logger.info('Host runtime settings and GPU observations recorded', {
     hostId, previous, settings, gpusChanged: Boolean(gpusChanged), driverObservationChanged: Boolean(observationChanged)
