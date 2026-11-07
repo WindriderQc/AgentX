@@ -238,6 +238,12 @@ no model does. Results stay in PsyX state, are cleared by a memory reset, and
 reach replies and the dream as a score, its band and its trend, never as a
 diagnosis. Any answer above "never" to the PHQ-9 item on thoughts of death or
 self-harm shows the crisis resources at once and tells PsyX to check in. The
+wording is the official "French for Canada" translation from phqscreeners.com,
+word for word (free to reproduce, translate, display and distribute, as each
+form states); `assessments.js` names the source PDF and its SHA-256. Each new
+result records the wording version it was answered with. Results saved before
+that carry no version: their text was written from memory, not from a form.
+A text change gets a new version. The
 dream also tracks how much of an intake it knows (situation, goals, family of
 origin, relationships, children, work, health, sleep, substances, supports, past
 help) and draws its questions from the least-known domains, a question at a
