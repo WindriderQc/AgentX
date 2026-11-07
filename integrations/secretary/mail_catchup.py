@@ -25,13 +25,14 @@ import urllib.error
 import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from evidence_record import record_page  # noqa: E402
+from evidence_record import attribute_page_review, record_page  # noqa: E402
 from evidence_store import load, now, save  # noqa: E402
 from mailbox_backfill import MAX_CONSECUTIVE_FAILURES, Lock  # noqa: E402
 from secretary_evidence import DEFAULT_ROOT, Archive  # noqa: E402
 from review_attempts import ReviewUncertain, extract_once, unsettled, blocked_phase, blocked_counts  # noqa: E402
 from review_response import ReviewInvalidOutput, parse_content  # noqa: E402
 from review_policy import STRICT_RULES, context_for  # noqa: E402
+from quote_attribution import needs_reconciliation, reconcile_proposals  # noqa: E402
 from review_refusals import BUSY_HTTP, PRE_DISPATCH_CODES, pre_dispatch_refusal  # noqa: E402
 
 LOCK_NAME = "catchup.lock"  # secretary_evidence.native_next stops issuing pages while it is fresh
@@ -48,8 +49,12 @@ PAUSE_SECONDS = 60
 INVOICE_FIELDS = ("supplier", "documentNumber", "documentDate", "person", "grossAmount", "currency", "tax",
                   "patientPaid", "insurancePaid", "insurer", "documentKind", "paymentEvidence",
                   "reimbursementStatus", "notes", "originalFilename")
-FIELDS = {"actions": ("text", "status", "owner", "due"), "memories": ("text", "status", "date"),
-          "deliverables": ("text", "status")}
+FIELDS = {"actions": ("text", "status", "owner", "due", "excerpt"), "memories": ("text", "status", "date", "excerpt"),
+          "deliverables": ("text", "status", "excerpt")}
+# Identifiers and claims only: quoted header text stays in the private review.
+ATTRIBUTION_SUMMARY = ("schema", "state", "reason", "containerMessageId", "segmentIndex", "claimedAuthor",
+                       "claimedDate", "originalMessageId", "anchor", "quoteKey", "laterMessageIds",
+                       "earlierAuthoredMessageIds", "otherQuotingMessageIds")
 
 
 def _object(names, status=False):
@@ -95,6 +100,11 @@ Write in French. Return only the JSON object required by the schema.
 - sourceContext.messageDirection identifies a received message, sent message or unsent draft.
   A draft is not evidence that its words were sent, agreed, or communicated to another person.
   Preserve it as unconfirmed intent; never derive an accepted commitment or completed event from it.
+- excerpt of each action, memory and deliverable: 8 to 200 characters copied verbatim from THIS page
+  that state the finding, without quote markers (>). Secretary attributes the finding to the segment
+  holding that excerpt: quoted text keeps its own claimedAuthor/claimedDate or stays unknown, never the
+  container headers. sourceContext.boundary shows text beyond the page edges. Use "unknown" only when no
+  single passage states it; such findings cannot become new actions from a page containing quotations.
 - deliverables: documents or items promised, sent or missing (missing referenced invoices included).
 - status of each finding: "current" only when the page itself shows it still needs attention now;
   otherwise "waiting", "resolved", "historical" (old, no evidence of current relevance) or "uncertain".
@@ -294,30 +304,54 @@ def to_review(page, raw):
     return value
 
 
+def _iso(milliseconds):
+    return datetime.fromtimestamp(milliseconds / 1000, timezone.utc).isoformat()
+
+
 def proposals_for(page, value, clock=time.time):
     """Current ideas and reconciliation signals, never accepted commitments.
 
     Resolved/waiting/historical findings can matter to an existing task. Keep
     their identity and source date; Core asks for a fresh dossier read instead
     of creating another action or silently closing the existing one.
+
+    Each finding's attribution (its excerpt's segment, see quote_attribution)
+    decides. Only text the containing message authored, not repeated from an
+    earlier message nor answered by a later one, can become a new action. A
+    passage matching one earlier original cites that original and its date.
     """
     if not page.get("internalDate") or (page.get("sourceContext") or {}).get("messageDirection") == "draft":
         return []
     recent = clock() * 1000 - page["internalDate"] <= CURRENT_DAYS * 86_400_000
-    # Without a finding span, a mixed/quoted page cannot establish which
+    # Without a located excerpt, a mixed/quoted page cannot establish which
     # container author/date applies to the extraction. Ask for reconciliation.
-    quoted = any(span.get("relation") == "quoted" for span in (page.get("sourceContext") or {}).get("segments", []))
-    source_date = datetime.fromtimestamp(page["internalDate"] / 1000, timezone.utc).isoformat()
-    return [{"kind": kind, "text": item["text"], "due": item.get("due"), "owner": item.get("owner"),
-             "sourceStatus": item["status"], "sourceDate": source_date,
-             "messageId": page["messageId"], "threadId": page["threadId"], "gmailUrl": page["gmailUrl"],
-             "pageId": page["pageId"], "foundAt": now(), "state": "pending",
-             "findingKey": hashlib.sha256(json.dumps([page["threadId"], page["messageId"], section,
-                 " ".join((item.get("owner") or "").casefold().split()), " ".join(item["text"].casefold().split())], ensure_ascii=False).encode()).hexdigest()[:32],
-             "key": hashlib.sha256(f"{page['pageId']}|{kind}|{item['text']}".encode()).hexdigest()[:32]}
-            for section in ("actions", "memories") for item in value[section]
-            for kind in (["action" if recent and not quoted and item["status"] == "current" else "recheck"] if section == "actions"
-                         else ["memory"] if recent and not quoted and item["status"] == "current" else [])]
+    page_quoted = any(span.get("relation") in ("quoted", "unresolved")
+                      for span in (page.get("sourceContext") or {}).get("segments", []))
+    rows = []
+    for section in ("actions", "memories"):
+        for item in value[section]:
+            attribution = item.get("attribution") or {}
+            located = attribution.get("state") not in (None, "unlocated")
+            held = needs_reconciliation(attribution) if located else page_quoted
+            current = recent and not held and item["status"] == "current"
+            kind = ("action" if current else "recheck") if section == "actions" else "memory" if current else None
+            if kind is None:
+                continue
+            original = attribution.get("state") == "matched-original"
+            message_id = attribution["originalMessageId"] if original else page["messageId"]
+            dated = original and attribution.get("originalInternalDate")
+            source_date = _iso(attribution["originalInternalDate"] if dated else page["internalDate"])
+            proposal = {"kind": kind, "text": item["text"], "due": item.get("due"), "owner": item.get("owner"),
+                        "sourceStatus": item["status"], "sourceDate": source_date,
+                        "messageId": message_id, "threadId": page["threadId"], "gmailUrl": page["gmailUrl"],
+                        "pageId": page["pageId"], "foundAt": now(), "state": "pending",
+                        "findingKey": hashlib.sha256(json.dumps([page["threadId"], message_id, section,
+                            " ".join((item.get("owner") or "").casefold().split()), " ".join(item["text"].casefold().split())], ensure_ascii=False).encode()).hexdigest()[:32],
+                        "key": hashlib.sha256(f"{page['pageId']}|{kind}|{item['text']}".encode()).hexdigest()[:32]}
+            if attribution:
+                proposal["attribution"] = {k: attribution[k] for k in ATTRIBUTION_SUMMARY if k in attribution}
+            rows.append(proposal)
+    return rows
 
 
 def forward_proposals(client, proposals):
@@ -415,7 +449,7 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
             try:
                 if isinstance(raw, Exception):
                     raise raw
-                value = to_review(page, raw)
+                value = attribute_page_review(archive, page, to_review(page, raw))
                 record_page(archive, page, value, export=False)
             except (RuntimeError, ValueError, KeyError, OSError) as exc:
                 errors[page["pageId"]] = {"at": now(), "lane": lane, "threadId": page["threadId"],
@@ -430,7 +464,7 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
                 continue
             consecutive = 0
             unexported += 1
-            new = proposals_for(page, value, clock)
+            new = reconcile_proposals(proposals, proposals_for(page, value, clock), now())
             if new:
                 proposals.extend(new)
                 save(root / PROPOSALS_NAME, proposals)
@@ -442,7 +476,9 @@ def catchup(archive, client, lock, *, max_pages=None, lanes=LANES, instructions=
             hours = max(clock() - started, 1) / 3600
             status["reviewed"] += 1
             status["lanes"][lane]["reviewed"] += 1
-            status["proposals"] += len(new)
+            reconciled = sum(p["state"] == "reconciled" for p in new)
+            status["proposals"] += len(new) - reconciled
+            status["reconciledProposals"] = status.get("reconciledProposals", 0) + reconciled
             status["remaining"] -= 1
             rate = status["reviewed"] / hours
             report(lane=lane, pagesPerHour=round(rate, 1), etaHours=round(status["remaining"] / rate, 1) if rate else None)

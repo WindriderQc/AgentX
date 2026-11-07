@@ -9,8 +9,28 @@ import hashlib
 import json
 
 from evidence_store import load, now, save
+from quote_attribution import attribute_review, thread_messages
 
 SECTIONS = ("actions", "memories", "deliverables", "invoices")
+ATTRIBUTED = ("actions", "memories", "deliverables")
+
+
+def attribute_page_review(archive, page, value, manifest=None):
+    """Attribute each finding from its verbatim excerpt and the archived thread.
+
+    Deterministic and idempotent: the containing page, quoted segment and any
+    matching original message decide, never a caller-supplied attribution.
+    An unreadable original leaves findings unlocated instead of blocking.
+    """
+    if not any(isinstance(value.get(section), list) and value[section] for section in ATTRIBUTED):
+        return value
+    from secretary_evidence import message_text
+    try:
+        manifest = manifest or load(archive.root / "threads" / page["threadId"] / "manifest.json")
+        messages = thread_messages(archive, manifest, load=load, message_text=message_text)
+    except (OSError, KeyError, ValueError, TypeError):
+        messages = []
+    return attribute_review(page, value, messages, ATTRIBUTED)
 
 
 def rebase_review(previous, manifest, page_ids):
@@ -49,6 +69,7 @@ def record_page(archive, page, value, *, export=True):
     manifest = load(root / "threads" / page["threadId"] / "manifest.json")
     if page["evidenceHash"] != manifest["evidenceHash"]:
         raise ValueError("Evidence changed; retrieve a fresh page")
+    value = attribute_page_review(archive, page, value, manifest)
     review = load(root / "reviews" / (page["threadId"] + ".json"), {})
     previous, revision = review, None
     if previous and previous.get("evidenceHash") != manifest["evidenceHash"]:

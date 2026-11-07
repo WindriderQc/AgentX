@@ -13,6 +13,15 @@ attachments, regardless of the people or subject involved.
   Quoted headers are unverified source text: keep the quoted date/author separate,
   or unknown. Attachment authorship is unknown. These reading aids do not prove
   that an action is current; check newer messages and the complete chronology.
+- Mail pages carry `secretary.source-context/v2`: segments follow quotation depth,
+  show `claimedAuthor`/`claimedDate` only when a quoted header splits without a
+  guess, mark text resuming an outer level as `unresolved`, and `boundary` shows
+  bounded text beyond the page edges. Give every action, memory and deliverable
+  an `excerpt` copied verbatim from the page. Secretary then records its
+  `attribution`: the containing message, a quoted claim, the one earlier original
+  message it matches (`matched-original`, with that sender and date), or unknown.
+  Only container text not repeated from earlier mail nor answered later can become
+  a new action; other readings are rechecked or reconciled with an earlier proposal.
 - Read the dated context and later replies before calling an action current.
   Missing proof of completion does not establish an open obligation. A quoted
   older request keeps its original author and date; a new containing message
