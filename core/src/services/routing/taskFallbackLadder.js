@@ -549,6 +549,13 @@ function getTaskFallbackStats() {
   };
 }
 
+// Same owning validator, without refreshing HOSTS or populating the routing
+// execution cache. Observability must not activate configuration changes.
+function getTaskFallbackConfigurationForRead() {
+  const config = parseTaskFallbacks(process.env[CONFIG_ENV] || '', { hosts: { ...HOSTS } });
+  return { configuredTasks: [...config.ladders.keys()], configurationErrors: [...config.errors] };
+}
+
 function resetForTests() {
   cached = { raw: undefined, config: null };
   healthCache.clear();
@@ -579,5 +586,6 @@ module.exports = {
   servedRungMarker,
   fallbackReasonCode,
   getTaskFallbackStats,
+  getTaskFallbackConfigurationForRead,
   _internal: { coordinationBlock, probeTarget, resetForTests },
 };

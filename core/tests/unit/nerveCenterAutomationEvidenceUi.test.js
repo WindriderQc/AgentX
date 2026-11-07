@@ -27,7 +27,8 @@ test('shows disabled configuration, dated result, provenance, gaps and manual li
   const { api, body, shared } = setup({ data: { observedAt: at, scope: 'Read only',
     sources: { alerts: { status: 'unavailable' }, rules: { status: 'available', truncated: true } },
     rows: [{ name: '<script>bad()</script>', mode: 'detection', enabled: false, running: false, configurationSource: 'AlertRule',
-      last: { timestamp: at, outcome: 'detected', source: 'Alert', id: 'synthetic-id', event: 'synthetic_fault', freshness: 'historical' },
+      last: { timestamp: at, outcome: 'detected', source: 'Alert', id: 'synthetic-id', event: 'synthetic_fault', freshness: 'historical',
+        origin: 'autonomous', operationId: 'synthetic-execution' },
       operator: { label: 'Rules', href: '/nerve-center#sectionAlerts' } }],
     manual: [{ name: 'Model reload', operator: { label: 'Pins', href: '/nerve-center#sectionCluster' } }] } });
   await api.loadAutomations();
@@ -38,6 +39,8 @@ test('shows disabled configuration, dated result, provenance, gaps and manual li
   expect(body.innerHTML).toContain(`datetime="${at}"`);
   expect(body.innerHTML).toContain('synthetic-id');
   expect(body.innerHTML).toContain('synthetic_fault');
+  expect(body.innerHTML).toContain('Origin: autonomous');
+  expect(body.innerHTML).toContain('Execution: synthetic-execution');
   expect(body.innerHTML).toContain('historical');
   expect(body.innerHTML).toContain('alerts: unavailable');
   expect(body.innerHTML).toContain('rules: partial coverage');

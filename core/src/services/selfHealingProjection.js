@@ -4,6 +4,7 @@ const { getPinnedEntries } = require('./hostPinPrimitives');
 const { projectHostPreferenceForRead } = require('./hostPreferencePublicProjection');
 const { detectorState } = require('./alertRuleLifecycle');
 const { normalizeHostPreferenceIdentity } = require('./hostPreferenceIdentity');
+const { effectiveAlertChannels } = require('../../models/alertChannels');
 
 const HISTORY_AGE_MS = 24 * 60 * 60 * 1000;
 const link = (label, href) => ({ label, href });
@@ -17,11 +18,14 @@ function iso(value) {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-function evidence({ at, resultAt = null, outcome = 'unknown', source, id = null, event = null, reason = null, subject = null }, now) {
+function evidence({ at, resultAt = null, requiresResult = false, outcome = 'unknown', source, id = null, event = null, reason = null, subject = null, origin = null, operationId = null }, now) {
   const timestamp = iso(at);
+  const resultTimestamp = iso(resultAt);
   const ageMs = timestamp ? now.getTime() - new Date(timestamp).getTime() : null;
-  return { timestamp, resultTimestamp: iso(resultAt), outcome: timestamp && ageMs >= 0 ? outcome : 'unknown', source, id: id ? String(id) : null,
-    event, reason, subject, ageMs,
+  const resultValid = !requiresResult || (resultTimestamp && timestamp
+    && new Date(resultTimestamp) >= new Date(timestamp) && new Date(resultTimestamp) <= now);
+  return { timestamp, resultTimestamp, outcome: timestamp && ageMs >= 0 && resultValid ? outcome : 'unknown', source, id: id ? String(id) : null,
+    event, reason, subject, origin, operationId, ageMs,
     freshness: ageMs === null ? 'not_observed' : ageMs < 0 ? 'unknown' : ageMs > HISTORY_AGE_MS ? 'historical' : 'recent' };
 }
 
@@ -42,7 +46,7 @@ function projectSelfHealing(sources, now = new Date()) {
   const fallback = value('fallback');
   const ladders = value('ladders');
   add('routing-fallbacks', 'Recorded routing fallbacks', 'autonomous', null, 'per-caller routing configuration',
-    fallback && { at: fallback.timestamp, outcome: fallback.status || 'unknown', source: 'InferenceLog',
+    fallback && { at: fallback.timestamp, outcome: fallback.cancelled ? 'cancelled' : fallback.status || 'unknown', source: 'InferenceLog',
       id: fallback._id, event: 'fallbackUsed', reason: fallback.fallbackReason },
     link('Routing diagnostics', '/nerve-center#sectionInference'),
     'No global failover switch. A recorded route is evidence of that request only.');
@@ -60,33 +64,35 @@ function projectSelfHealing(sources, now = new Date()) {
     'Existing probes only; this read sends none. Observations are local to the responding process and reset on restart.', watchdog?.isRunning);
 
   const history = watchdog?.history || [];
-  const jam = latest(history.filter(event => event.type === 'jam_detected'));
-  // Manual unjams share reload events with the daemon. Fence by host and the
-  // next trigger so a manual action can never prove autonomous recovery.
-  const following = jam ? history.slice(history.indexOf(jam) + 1) : [];
-  const nextIndex = following.findIndex(event => event.hostUrl === jam.hostUrl
-    && ['jam_detected', 'force_unjam'].includes(event.type));
-  const episode = (nextIndex < 0 ? following : following.slice(0, nextIndex))
-    .filter(event => event.hostUrl === jam?.hostUrl);
+  const jam = latest(history.filter(event => event.type === 'jam_detected' && event.origin !== 'manual'));
+  // Concurrent manual operations can finish after a new automatic jam starts.
+  // Chronology alone cannot attribute them: require the producer's exact scope.
+  const episode = jam?.origin === 'autonomous' && typeof jam.operationId === 'string' && jam.operationId && jam.hostUrl
+    ? history.slice(history.indexOf(jam) + 1).filter(event => event.hostUrl === jam.hostUrl
+      && event.operationId === jam.operationId && event.origin === 'autonomous') : [];
   const unjam = latest(episode.filter(event => /^unjam_(success|failed|deferred)$/.test(event.type)));
   add('watchdog-unjam', 'Watchdog jam recovery', 'autonomous', null, 'ollamaWatchdogService',
-    jam && { at: jam.timestamp, resultAt: unjam?.timestamp, source: 'watchdog process history', event: 'jam_detected', id: jam.hostId,
+    jam && { at: jam.timestamp, resultAt: unjam?.timestamp, requiresResult: true, origin: jam.origin, operationId: jam.operationId,
+      source: 'watchdog process history', event: 'jam_detected', id: jam.hostId,
       outcome: unjam?.type === 'unjam_success' ? 'unload_completed' : unjam?.type === 'unjam_failed' ? 'failed' : unjam?.type === 'unjam_deferred' ? 'deferred' : 'unknown',
       reason: unjam?.type }, link('Inspect watchdog evidence', INFERENCE),
-    'Only a retained jam_detected episode qualifies. Completed unload does not prove reload or GPU recovery.', watchdog?.isRunning);
+    'Automatic results require matching execution identity and origin. Legacy or ambiguous history stays unknown. Completed unload does not prove reload or GPU recovery.', watchdog?.isRunning);
   const reloads = episode.filter(event => ['reload_success', 'reload_failed', 'pin_restore_triggered', 'pin_restore_failed'].includes(event.type));
   const reload = latest(reloads);
   add('watchdog-reload', 'Watchdog reload after unjam', 'autonomous', watchdog?.config?.reloadAfterUnjam,
-    'ollamaWatchdogService.config.reloadAfterUnjam', reload && { at: jam.timestamp, resultAt: reload.timestamp, subject: reload.model || null,
+    'ollamaWatchdogService.config.reloadAfterUnjam', reload && { at: jam.timestamp, resultAt: reload.timestamp, requiresResult: true,
+      origin: reload.origin, operationId: reload.operationId, subject: reload.model || null,
       source: 'watchdog process history', event: 'jam_detected', id: jam?.hostId,
       outcome: reload.type === 'reload_success' ? 'model_reload_completed' : reload.type.endsWith('failed') ? 'failed' : 'unknown',
       reason: reload.type }, link('Pins and models', PINS),
     'A pin_restore_triggered event alone has no verified result. Other models in the episode may have different outcomes.', watchdog?.isRunning);
 
-  const recovery = latest(history.filter(event => ['probe_recovered', 'caller_abort_recovered', 'runtime_disconnect_recovered', 'recovery_required'].includes(event.type)));
+  const recovery = latest(history.filter(event => event.origin !== 'manual'
+    && ['probe_recovered', 'caller_abort_recovered', 'runtime_disconnect_recovered', 'recovery_required'].includes(event.type)));
   add('watchdog-quarantine', 'Watchdog quarantine reconciliation', 'autonomous', null, 'ollamaWatchdogService',
     recovery && { at: recovery.timestamp, source: 'watchdog process history', id: recovery.hostId,
-      event: recovery.type, outcome: recovery.type === 'recovery_required' ? 'unknown' : 'quarantine_released' },
+      origin: recovery.origin, operationId: recovery.operationId,
+      event: recovery.type, outcome: recovery.type === 'recovery_required' || recovery.origin !== 'autonomous' || !recovery.operationId ? 'unknown' : 'quarantine_released' },
     link('Runtime recovery', INFERENCE), 'Release evidence does not establish model or GPU health.', watchdog?.isRunning);
 
   const pinData = value('pins');
@@ -106,7 +112,8 @@ function projectSelfHealing(sources, now = new Date()) {
   for (const rule of value('rules')?.rows || []) {
     const state = detectorState(rule);
     const alert = alertByRule.get(rule.ruleId);
-    add(`rule:${rule.ruleId}`, rule.name || rule.ruleId, 'detection', state === 'active', 'AlertRule',
+    add(`rule:${rule.ruleId}`, rule.name || rule.ruleId, 'detection', state === 'retired_by_design' ? false
+      : typeof rule.enabled === 'boolean' ? rule.enabled : null, 'AlertRule',
       alert && { at: alert.timestamp, source: 'Alert', id: alert._id, event: alert.context?.metric || rule.ruleId,
         outcome: 'detected', reason: alert.status }, link('Alert rules', RULES),
       state === 'retired_by_design' ? 'Retired producer; historical rule retained.'
@@ -114,11 +121,14 @@ function projectSelfHealing(sources, now = new Date()) {
   }
 
   const delivery = value('delivery');
-  const localConfigured = available('rules') ? (value('rules').rows.some(rule => rule.enabled
-    && (rule.channels || []).includes('local_log')) ? true : value('rules').truncated ? null : false) : null;
+  const localRules = (value('rules')?.rows || []).filter(rule => detectorState(rule) !== 'retired_by_design'
+    && effectiveAlertChannels(rule.channels).includes('local_log'));
+  const localConfigured = available('rules') ? (localRules.some(rule => rule.enabled === true) ? true
+    : value('rules').truncated || localRules.some(rule => typeof rule.enabled !== 'boolean') ? null : false) : null;
   add('local-notification', 'Local alert notifications', 'notification', localConfigured, 'AlertRule.channels',
     delivery && { at: delivery.delivery?.local_log?.sentAt, source: 'Alert.delivery.local_log', id: delivery._id,
-      event: delivery.ruleId, outcome: delivery.delivery.local_log.sent === true ? 'logged' : 'failed' },
+      event: delivery.ruleId, outcome: delivery.delivery.local_log.sent === true ? 'logged'
+        : delivery.delivery.local_log.sent === false ? 'failed' : 'unknown' },
     link('Alert rules', RULES), 'Core local logging receipt only; external delivery is independently owned.');
   for (const [channel, config] of Object.entries(value('notifications') || {})) {
     add(`notification:${channel}`, `${channel} notifications`, 'notification', config.enabled, 'notificationService', null,
@@ -129,9 +139,10 @@ function projectSelfHealing(sources, now = new Date()) {
   const watch = value('watch');
   add('ops-watch', 'Operations watch', 'detection', watchSettings?.enabled, `opsWatchSettings:${watchSettings?.source || 'unavailable'}`,
     watch?.latest && { at: watch.latest.at, source: 'opsWatch process report', event: 'operations_check',
-      outcome: watch.latest.findingCount === 0 ? 'no_findings' : 'findings_recorded' },
+      outcome: watch.latest.findingCount === 0 ? 'no_findings'
+        : Number.isInteger(watch.latest.findingCount) && watch.latest.findingCount > 0 ? 'findings_observed' : 'unknown' },
     link('Operations watch settings', '/nerve-center#sectionOpsWatch'),
-    'The report does not repair findings. It may come from a manual check; automatic origin is not retained.', watch?.state?.scheduled);
+    'The local report does not prove publication or repair. It may come from a manual check; automatic origin is not retained.', watch?.state?.scheduled);
 
   return {
     observedAt: now.toISOString(), readOnly: true, historyAgeMs: HISTORY_AGE_MS, rows,

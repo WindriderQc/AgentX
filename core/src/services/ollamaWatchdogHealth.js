@@ -1,5 +1,18 @@
 'use strict';
 
+const { AsyncLocalStorage } = require('node:async_hooks');
+const { randomUUID } = require('node:crypto');
+const observation = new AsyncLocalStorage();
+
+// Correlation only: this identity conveys no execution or runtime authority.
+function runObserved(origin, work) {
+  return observation.run({ origin, operationId: randomUUID() }, work);
+}
+
+function runCycleObserved(work) {
+  return observation.getStore() ? work() : runObserved('autonomous', work);
+}
+
 // Process-local evidence, collected by the existing watchdog cycle only.
 const stats = {
   probesSent: 0, probesOk: 0, probesFailed: 0, jamsDetected: 0, unjamsDone: 0,
@@ -10,7 +23,7 @@ const observations = new Map();
 function recordEvent(type, host, details) {
   const event = {
     type, hostId: host.id, hostName: host.name, hostUrl: host.url,
-    timestamp: new Date().toISOString(), ...details
+    timestamp: new Date().toISOString(), ...details, ...observation.getStore()
   };
   stats.history.push(event);
   if (stats.history.length > 50) stats.history.shift();
@@ -51,4 +64,4 @@ function hostSnapshots(hosts) {
   });
 }
 
-module.exports = { stats, recordEvent, observeHost, hostSnapshots };
+module.exports = { stats, recordEvent, observeHost, hostSnapshots, runObserved, runCycleObserved };

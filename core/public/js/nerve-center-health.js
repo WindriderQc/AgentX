@@ -29,7 +29,8 @@
                     · ${esc(last.freshness || 'not_observed')}${last.reason ? ` · ${esc(last.reason)}` : ''}</div>
                 ${last.resultTimestamp ? `<div>Result recorded: ${date(last.resultTimestamp)}${last.subject ? ` · ${esc(last.subject)}` : ''}</div>` : ''}
                 <div class="nc-muted">Evidence: ${esc(last.source || 'unavailable')}${last.id ? ` · ID ${esc(last.id)}` : ''}
-                    ${last.event ? ` · Event / alert rule: ${esc(last.event)}` : ''}</div>
+                    ${last.event ? ` · Event / alert rule: ${esc(last.event)}` : ''}
+                    ${last.origin ? ` · Origin: ${esc(last.origin)}` : ''}${last.operationId ? ` · Execution: ${esc(last.operationId)}` : ''}</div>
                 <p class="nc-muted" style="margin:6px 0 0;">${esc(row.limit || '')}</p>
             </article>`;
         };

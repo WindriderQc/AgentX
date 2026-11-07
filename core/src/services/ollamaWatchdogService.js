@@ -241,7 +241,7 @@ const _consecutiveFails = new Map();  // hostUrl → count
 const _lastProbeStatus = new Map();   // hostUrl → 'ok' | 'fail' (previous cycle)
 const _graceWindowEndsAt = new Map(); // hostUrl → timestamp (ms since epoch)
 const _recoveryRequired = new Map(); // last cycle's durable quarantine projection
-const { stats: _stats, recordEvent, observeHost, hostSnapshots } = require('./ollamaWatchdogHealth');
+const { stats: _stats, recordEvent, observeHost, hostSnapshots, runObserved, runCycleObserved } = require('./ollamaWatchdogHealth');
 
 // ── Core Logic ──────────────────────────────────────────────
 
@@ -773,7 +773,7 @@ function getStats() {
 async function runNow() {
   if (!_cycle) {
     const generation = _generation;
-    _cycle = probeCycle(() => generation !== _generation)
+    _cycle = runCycleObserved(() => probeCycle(() => generation !== _generation))
       .finally(() => { _cycle = null; });
   }
   await _cycle;
@@ -824,10 +824,10 @@ async function forceUnjam(hostUrl) {
 module.exports = {
   WATCHDOG_OPERATIONS,
   checkMeta,
-  forceUnjam,
+  forceUnjam: (hostUrl) => runObserved('manual', () => forceUnjam(hostUrl)),
   getStats,
   probeHost,
-  runNow,
+  runNow: () => runObserved('manual', runNow),
   start,
   stop,
   _setFetch,
