@@ -11,7 +11,7 @@ const logger = require('../../config/logger');
 const Alert = require('../../models/Alert');
 const AlertRule = require('../../models/AlertRule');
 const alertService = require('../../src/services/alertService');
-const { ALERT_CHANNELS, sanitizeAlertChannels } = require('../../models/alertChannels');
+const { ALERT_CHANNELS, sanitizeAlertChannels, effectiveAlertChannels } = require('../../models/alertChannels');
 
 describe('alert channels', () => {
   afterEach(async () => {
@@ -31,6 +31,15 @@ describe('alert channels', () => {
   it('falls back to the local log when nothing known is left', () => {
     expect(sanitizeAlertChannels(['dataapi_log'])).toEqual(['local_log']);
     expect(sanitizeAlertChannels(undefined)).toEqual(['local_log']);
+  });
+
+  it('projects the same effective channels without logging or mutating input', () => {
+    logger.warn.mockClear();
+    const channels = Object.freeze(['legacy-channel', 'local_log', 'local_log']);
+    expect(effectiveAlertChannels(channels)).toEqual(['local_log']);
+    expect(effectiveAlertChannels([])).toEqual(['local_log']);
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(channels).toEqual(['legacy-channel', 'local_log', 'local_log']);
   });
 
   it('shares one list between rules and alerts', () => {

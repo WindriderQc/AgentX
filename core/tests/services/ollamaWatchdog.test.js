@@ -107,6 +107,26 @@ beforeEach(() => {
 
 afterAll(() => watchdog.stop());
 
+test('manual and periodic cycles publish distinct observation origins without changing probe behavior', async () => {
+  hostGate._resetForTests();
+  watchdog._setFetch(makeMockFetch({
+    '/api/ps': () => ({ ok: true, json: async () => ({ models: [{ name: 'synthetic-resident', ...STAYS }] }) })
+  }));
+  await watchdog.runNow();
+  const manual = watchdog.getStats().history.at(-1);
+  expect(manual).toMatchObject({ type: 'context_skip', origin: 'manual', operationId: expect.any(String) });
+  jest.useFakeTimers();
+  try {
+    watchdog.start();
+    await jest.advanceTimersByTimeAsync(watchdog.getStats().config.probeIntervalMs);
+    await watchdog.stop();
+    const automatic = watchdog.getStats().history.at(-1);
+    expect(automatic).toMatchObject({ type: 'context_skip', origin: 'autonomous', operationId: expect.any(String) });
+    expect(automatic.operationId).not.toBe(manual.operationId);
+    expect(mockBeginInferenceAdmission).not.toHaveBeenCalled();
+  } finally { await watchdog.stop(); jest.useRealTimers(); }
+});
+
 describe('probeHost', () => {
   it('probes the loaded model so a false-ready worker cannot pass on a sentinel 404', async () => {
     let requestBody;
@@ -599,6 +619,7 @@ describe('forceUnjam + hostGate in-flight guard', () => {
     const result = await watchdog.forceUnjam(MOCK_HOST.url);
     expect(result.unloaded.sort()).toEqual(['a', 'b']);
     expect(result.skipped).toEqual([]);
+    expect(watchdog.getStats().history.at(-1)).toMatchObject({ origin: 'manual', operationId: expect.any(String) });
   });
 });
 

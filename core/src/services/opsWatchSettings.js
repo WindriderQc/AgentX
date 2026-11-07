@@ -27,8 +27,10 @@ function fromEnvironment(env = process.env) {
   };
 }
 
-async function effective({ Model = require('../../models/OpsWatchSettings'), env = process.env } = {}) {
-  const stored = await Model.findOne({ key: KEY }).lean();
+async function effective({ Model = require('../../models/OpsWatchSettings'), env = process.env, maxTimeMS } = {}) {
+  const query = Model.findOne({ key: KEY });
+  if (maxTimeMS) query.maxTimeMS(maxTimeMS);
+  const stored = await query.lean();
   if (!stored) return fromEnvironment(env);
   return { enabled: stored.enabled === true, intervalMs: stored.intervalMs, language: stored.language, source: 'saved' };
 }
