@@ -8,6 +8,7 @@ const WC = { w: 1, j: true };
 async function enroll(op, config, body) {
   const prior = (await queue.list())?.jobs || [];
   for (const item of prior) {
+    if (item.id === body.queueRequestId) continue;
     if (item.kind !== 'image' || !['dispatching', 'running', 'uncertain'].includes(item.state)) continue;
     try { await evidence.reconcile(item.id, 'core-images'); } catch { /* Existing uncertainty remains fenced. */ }
   }
@@ -40,7 +41,14 @@ async function dispatch(op, launch) {
     return false;
   }
   if (op.queueDispatchId) {
-    await queue.assertDispatch(job.id, op.queueDispatchId);
+    try { await queue.assertDispatch(job.id, op.queueDispatchId); }
+    catch (error) {
+      // A concurrent dispatcher may already own this exact image. A loser
+      // observes it without starting work or overwriting its live state.
+      const current = await queue.get(job.id);
+      if (current.dispatchId === op.queueDispatchId && current.operation?.id === op._id) return false;
+      throw error;
+    }
   } else {
     if (['requested', 'reserved'].includes(job.state) && job.startBefore && Date.now() >= Date.parse(job.startBefore)) {
       await queue.cancel(job.id, { expectedRevision: job.revision }, 'core-images');
