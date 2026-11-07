@@ -55,6 +55,8 @@ function createPersonaTurnHandler({
   MEMORY_RECALL_LIMIT, PERSONAL_OPERATOR_SURFACE_CONTRACT, VOIX_FAMILY_PACK_ID
 }) {
   const pagesFor = pack => pack.childSafe ? screenPages.family || require('../../public/js/screen-pages').createCatalog([]) : screenPages;
+  // The Math Lab card (#1270): Super Dad and Famille; the KidX reader stays words only.
+  const mathFor = pack => !pack.childSafe || pack.id === VOIX_FAMILY_PACK_ID;
   // The instructions of a native turn. They hold only what stays the same for the
   // whole conversation, so the model's prompt cache keeps them; the opening
   // warm-up (voice-warmup.js) builds its own through this same function.
@@ -62,7 +64,7 @@ function createPersonaTurnHandler({
     agentInstructions(turnSession, pack.childSafe ? {...turnSession.persona, identity: familyIdentity(turnSession.persona)} : turnSession.persona,
       pack.childSafe ? FAMILY_SURFACE_CONTRACT : PERSONAL_OPERATOR_SURFACE_CONTRACT, selectedMode, { soundPlayback, channel })
     + addressed + workshopPrompt(workshop) + scene
-    + (llmxTurn ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) })
+    + (llmxTurn ? '' : '\n\n' + replyChannels.contract({ family: pack.childSafe, math: mathFor(pack), pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) })
       + (imagesEnabled && conversationImages ? '\n' + conversationImages.contract(imageSession, imageBackend) : ''));
   // What an ordinary spoken turn of the conversation's own agent sends, in a personal session nobody has spoken in yet.
   const openingInstructions = (session, pack, selectedMode) => nativeInstructionsFor({ turnSession: session, pack, selectedMode,
@@ -83,7 +85,8 @@ function createPersonaTurnHandler({
       return fail(res, 400, 'language must be fr or en', 'VOICE_PERSONA_INVALID_LANGUAGE');
     }
     if (!consult && activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
-    let clientTurnId = consult ? consult.turnId : (isLlmX || (access === 'private' && req.body?.channel === 'text') || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
+    // A typed Famille browser turn keeps its id like a voice one, so a math card's sliders (#1270) are saved with it.
+    let clientTurnId = consult ? consult.turnId : (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'text') || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
       && (req.body?.stream === true || ['read', 'observe'].includes(conversationEnv.PERSONAL_CONVERSATION_WORK_MODE))))
       && validClientTurnId(req.body?.turnId) ? req.body.turnId : '';
     const startedAt = Date.now();
@@ -204,7 +207,8 @@ function createPersonaTurnHandler({
       const assessedSafety = assessSafety(userText, { adult: !pack.childSafe });
       const safety = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyPages.navigationSafety(userText, assessedSafety, assessSafety) : assessedSafety;
       const childBoundary = childBoundaryReply(pack, safety, userText);
-      // #131 Famille answers a math question itself; #1270 Super Dad shows the picture beside the model's answer.
+      // #131 Famille answers a counting or addition question itself; #1270 Super Dad shows the
+      // cubes beside the model's answer. Both spaces draw the model's own math cards.
       const mathPicture = !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathPictureFor(userText, { childSafe: pack.childSafe, language: preferredSpeechLanguage }) : null;
       const mathTurn = mathPicture?.answeredBy === 'core' ? mathPicture : null;
       let replyText, afterSoundText = '', sceneProposal = null, display = [];
@@ -406,7 +410,7 @@ function createPersonaTurnHandler({
           entry.ephemeral ? 'This is an ephemeral conversation. Use only its supplied active dialogue and attachments. Persistent personal memory and RAG are unavailable; no memory save or later recollection is confirmed.' : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,
           familyTools ? familyTools.instructions : 'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
-          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) }),
+          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, math: mathFor(pack), pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) }),
           isLlmX || member ? '' : conversationImages?.contract(session, backend)].filter(Boolean).join('\n\n');
         const hermesInstructions = [session.persona?.identity,
           member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
@@ -417,7 +421,7 @@ function createPersonaTurnHandler({
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: !pack.childSafe, allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
+        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: mathFor(pack), allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
           canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target,
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },
