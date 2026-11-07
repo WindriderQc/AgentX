@@ -33,9 +33,11 @@ async function invalidateResource(record, options = {}) {
   }
   options.assertActive?.();
   if (record.kind === 'workload_invalidation') {
-    const batchId = record.batchId || null;
+    // Standalone campaigns have no BenchmarkBatch or typed batch projections.
+    // Legacy guards can carry their non-ObjectId campaign ID in batchId.
+    const batchId = isValidObjectId(record.batchId) ? record.batchId : null;
     const [batch, results, matrices, governance, groundTruth] = await Promise.all([
-      batchId && isValidObjectId(batchId)
+      batchId
         ? BenchmarkBatch.findOneAndUpdate(
           { _id: objectId(batchId) },
           batchInvalidationUpdate(record),

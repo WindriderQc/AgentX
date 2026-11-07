@@ -2,7 +2,15 @@
 
 jest.mock('../../../models/BenchmarkBatch', () => ({ findOneAndUpdate: jest.fn() }));
 for (const name of ['BenchmarkResult', 'JudgeAccuracyMatrix', 'JudgeGovernanceRun', 'JudgeGroundTruth']) {
-  jest.doMock(`../../../models/${name}`, () => ({ updateMany: jest.fn(async () => ({ modifiedCount: 0 })) }));
+  jest.doMock(`../../../models/${name}`, () => {
+    const actual = jest.requireActual(`../../../models/${name}`);
+    return { updateMany: jest.fn(async filter => {
+      // Exercise real schema casting without connecting to MongoDB: a UUID
+      // sent to BenchmarkResult.batch_id must reproduce the production error.
+      actual.find(filter).cast(actual);
+      return { modifiedCount: 0 };
+    }) };
+  });
 }
 const Batch = require('../../../models/BenchmarkBatch');
 const children = ['BenchmarkResult', 'JudgeAccuracyMatrix', 'JudgeGovernanceRun', 'JudgeGroundTruth']
@@ -11,15 +19,15 @@ const { invalidateResource } = require('../../../src/services/benchmark/authorit
 
 beforeEach(() => jest.clearAllMocks());
 
-it('reconciles a legacy standalone campaign ID without casting it to a batch ObjectId or creating a batch', async () => {
+it('reconciles a legacy standalone campaign ID without querying any typed batch projection', async () => {
   const record = { kind: 'workload_invalidation', resourceType: 'BenchmarkWorkload',
     workloadId: 'toolcall-synthetic', resultId: 'workload:toolcall-synthetic', batchId: 'toolcall-synthetic' };
   const receipt = await invalidateResource(record);
   expect(Batch.findOneAndUpdate).not.toHaveBeenCalled();
   expect(receipt).toMatchObject({ contract: 'agentx.authority-compensation/v1',
-    state: 'authority_invalidated', workloadId: record.workloadId,
+    state: 'authority_invalidated', workloadId: record.workloadId, batchId: null,
     affected: { batch: 0, results: 0, matrices: 0, governance: 0, groundTruth: 0 } });
-  for (const model of children) expect(model.updateMany).toHaveBeenCalledTimes(1);
+  for (const model of children) expect(model.updateMany).not.toHaveBeenCalled();
 });
 
 it('preserves invalidation of an actual batch and its linked projections', async () => {
