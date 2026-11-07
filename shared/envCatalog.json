@@ -1195,7 +1195,7 @@
       "default": null,
       "category": "bridges",
       "secret": false,
-      "description": "HTTPS origin (HTTP on loopback) of DSH Studio, same hostname as CORE_PUBLIC_URL. Unset: DSH Studio is not configured and its launcher is hidden."
+      "description": "HTTPS URL (HTTP on loopback) of DSH Studio, same hostname as CORE_PUBLIC_URL. A proxy path prefix is supported; configure the same URL in the Studio launcher. Unset: DSH Studio is not configured and its launcher is hidden."
     },
     "DSH_STUDIO_SESSION_TTL_SECONDS": {
       "services": [

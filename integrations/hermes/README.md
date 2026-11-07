@@ -103,6 +103,10 @@ an external management link with the `imagex` profile selected. Its fallback is
 `HERMES_DASHBOARD_URL`; no credentials or query tokens enter the link. Hermes
 retains its native authentication and profile management. The Atelier's saved
 conversations remain in Core; Hermes's dashboard shows native execution sessions.
+The shared full-profile navigation also exposes Hermes through
+`/api/hermes/control-launch`, which redirects to that public URL without query
+tokens. An internal `HERMES_DASHBOARD_URL` alone enables status probes, not a
+browser launcher. Core, Benchmark and RAG consume the same launcher catalogue.
 
 Run `python3 -m unittest discover -s integrations/hermes/test` and
 `npm test --prefix integrations/openclaw/imagex`, along with the personal harness

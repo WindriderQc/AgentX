@@ -48,8 +48,13 @@ admission and verified completion for each streamed generation, including tool
 turns and disconnects. Native uncertain outcomes remain fenced; no Studio
 restart clears them. The older bounded headless claim wrapper is unchanged.
 
-Configure `DSH_STUDIO_PUBLIC_URL` in Core as an HTTPS origin on the same hostname
-as AgentX; a different port is supported. Keep the existing secret and signed
+Configure `DSH_STUDIO_PUBLIC_URL` in Core as an HTTPS URL on the same hostname
+as AgentX. A path such as `/dsh/` and a different port are supported. For a path,
+strip the prefix in the proxy and pass the same URL in Studio's environment;
+the launcher forwards it to native `dsh web --public-url` and adds its authority
+to `--trusted-host` alongside the existing configured authority. Core normalizes the
+mount to a trailing slash so native authentication, assets, RPC and WebSockets
+stay beneath that path. Keep the existing secret and signed
 launch cookie. The private LAN reverse proxy protects Studio with Core's
 `/api/dsh/access-check`. Launch through `/api/dsh/control-launch` (the AgentX
 Studio entry) to obtain the cookie; a direct URL without that cookie refuses.

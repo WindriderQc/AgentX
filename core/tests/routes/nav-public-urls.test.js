@@ -153,6 +153,7 @@ describe('shared navigation public URL contract', () => {
   const runtimeLaunchers = normalizeTrustedRuntimeNavItems([
     { id: 'openclaw-runtime', label: 'OpenClaw', href: '/api/openclaw/control-launch/overview', icon: 'fa-paw', owner: 'AIOps', description: 'Protected agent desk.' },
     { id: 'dsh-studio', label: 'DSH Studio', href: '/api/dsh/control-launch', icon: 'fa-terminal', owner: 'AIOps' },
+    { id: 'hermes-runtime', label: 'Hermes', href: '/api/hermes/control-launch', icon: 'fa-feather', owner: 'AIOps' },
   ]);
 
   function externalRuntimeAnchors(html) {
@@ -161,15 +162,17 @@ describe('shared navigation public URL contract', () => {
       .map((match) => ({ href: match[1], owner: match[2], label: match[3].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() }));
   }
 
-  test('full navigation exposes validated trusted runtime launchers as two distinct, provider-tagged doors', async () => {
+  test('full navigation exposes validated trusted runtime launchers as distinct, provider-tagged doors', async () => {
     const core = await renderNav('core', 'full', 'nerve-center', runtimeLaunchers);
     expect(core).toContain('External runtimes');
     expect(hrefFor(core, 'OpenClaw')).toBe('/api/openclaw/control-launch/overview');
     expect(hrefFor(core, 'DSH Studio')).toBe('/api/dsh/control-launch');
+    expect(hrefFor(core, 'Hermes')).toBe('/api/hermes/control-launch');
     expect(core).toMatch(/href="\/api\/openclaw\/control-launch\/overview"[^>]*target="_blank" rel="noopener"[^>]*data-nav-owner="AIOps"[^>]*title="Protected agent desk\."/);
     expect(core).toContain('<span class="nav-owner-tag">AIOps</span>');
 
     expect(await renderNav('core', 'demo', 'demo', runtimeLaunchers)).not.toContain('DSH Studio');
+    expect(await renderNav('core', 'demo', 'demo', runtimeLaunchers)).not.toContain('Hermes');
   });
 
   test('Benchmark and RAG render exactly the launchers Core renders, through the configured Core authority', async () => {
@@ -177,12 +180,13 @@ describe('shared navigation public URL contract', () => {
     const benchmark = externalRuntimeAnchors(await renderNav('benchmark', 'full', 'benchmark', runtimeLaunchers));
     const rag = externalRuntimeAnchors(await renderNav('rag', 'full', 'rag', runtimeLaunchers));
 
-    expect(core.map((a) => a.label)).toEqual(['OpenClaw AIOps', 'DSH Studio AIOps']);
+    expect(core.map((a) => a.label)).toEqual(['OpenClaw AIOps', 'DSH Studio AIOps', 'Hermes AIOps']);
     const absolute = (anchors) => anchors.map((a) => ({ ...a, href: new URL(a.href, 'https://core.example').href }));
     expect(absolute(benchmark)).toEqual(absolute(core));
     expect(absolute(rag)).toEqual(absolute(core));
     expect(benchmark[0].href).toBe('https://core.example/api/openclaw/control-launch/overview');
     expect(rag[1].href).toBe('https://core.example/api/dsh/control-launch');
+    expect(benchmark[2].href).toBe('https://core.example/api/hermes/control-launch');
 
     // Without launchers, no service invents a section.
     for (const service of ['core', 'benchmark', 'rag']) {

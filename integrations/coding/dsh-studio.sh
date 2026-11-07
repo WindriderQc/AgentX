@@ -21,6 +21,7 @@ browser_bin="${DSH_STUDIO_BROWSER_EXECUTABLE:-}"
 # Studio's own token for Core's OpenAI gateway (client `dsh-studio`).
 gateway_token="${AGENTX_LLM_DSH_STUDIO_TOKEN:-}"
 launch=()
+public_url_args=()
 if [[ -n "${DSH_STUDIO_LAUNCH_FILE:-}" ]]; then
   [[ "$DSH_STUDIO_LAUNCH_FILE" == /* ]] || fail 'Native launch file must be absolute'
   launch=("$node_bin" "$integration_root/dsh-studio-launch.cjs")
@@ -34,6 +35,12 @@ fi
 [[ "$workspace_root" == /* && "$state_root" == /* ]] || fail 'DSH Studio paths must be absolute'
 [[ ! -L "$workspace_root" && ! -L "$state_root" ]] || fail 'DSH Studio roots must not be symbolic links'
 [[ "$node_bin" == /* && -x "$node_bin" ]] || fail "Node runtime is unavailable at ${node_bin}"
+if [[ -n "${DSH_STUDIO_PUBLIC_URL:-}" ]]; then
+  # Native publicUrl advertises the mount but does not admit its authority.
+  # Preserve the existing trusted host while admitting the explicit proxy URL.
+  public_host="$("$node_bin" -e 'process.stdout.write(new URL(process.env.DSH_STUDIO_PUBLIC_URL).host)')"
+  public_url_args=(--public-url "$DSH_STUDIO_PUBLIC_URL" --trusted-host "$public_host")
+fi
 [[ -r "$settings_helper" ]] || fail 'DSH Studio settings helper is unavailable'
 [[ "$gateway_token" =~ ^[A-Za-z0-9._~+/=-]{16,}$ ]] || fail 'AGENTX_LLM_DSH_STUDIO_TOKEN is missing or invalid'
 if [[ -n "$browser_bin" ]]; then
@@ -80,7 +87,7 @@ if [[ "$isolation" == 'host' ]]; then
   export AGENTX_CORE_API_KEY="$api_key"
   export DSH_HOME="${studio_home}/.dsh"
   cd -- "$workspace_root"
-  exec "${launch[@]}" "$dsh_bin" web --patch "$DSH_HOME/agentx.patch.json" --host 127.0.0.1 --port "$port" --no-open --trusted-host "$trusted_host"
+  exec "${launch[@]}" "$dsh_bin" web --patch "$DSH_HOME/agentx.patch.json" --host 127.0.0.1 --port "$port" --no-open --trusted-host "$trusted_host" "${public_url_args[@]}"
 fi
 
 [[ -x /usr/bin/bwrap ]] || fail 'Bubblewrap is unavailable'
@@ -130,4 +137,5 @@ exec "${launch[@]}" /usr/bin/bwrap \
     --host 127.0.0.1 \
     --port "$port" \
     --no-open \
-    --trusted-host "$trusted_host"
+    --trusted-host "$trusted_host" \
+    "${public_url_args[@]}"
