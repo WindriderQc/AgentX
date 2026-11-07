@@ -8,6 +8,46 @@ never silently truncated. OCR, office formats and family uploads are not
 implemented. [Playground screen capture](../PLAYGROUND_ATTACHMENTS.md) uses the
 same Core attachment service through its own conversation owner scope.
 
+## Screen capture requested by Nestor
+
+The owner MCP bus exposes `screen_capture` with `action: request | status`, an
+exact personal `sessionId` and a stable UUID `requestId`. A request also needs a
+short `purpose`. Nestor receives the current session binding in its turn
+context. Requesting returns immediately with `awaiting_consent`; it starts no
+capture, inference or waiting loop. The current personal browser conversation
+shows **Choose screen or window** and **Decline**. The person's click invokes
+the browser's `getDisplayMedia` chooser with audio off, using the same snapshot
+implementation as Playground. Every returned track stops after one PNG frame,
+including late grants after cancellation or a conversation change.
+
+The preview remains local until the person sends a message. The existing
+attachment endpoint stores it, the browser acknowledges its reference against
+the request, and the ordinary turn sends its attachment ID to Nestor. Captures
+never enter the independent photo archive. The 2 MiB image and three-file turn
+limits apply; oversized captures are refused, with no silent resizing. Removing
+a preview allows another selection; declining also removes that local preview.
+
+`GET /api/voice-personas/private/sessions/:sessionId/screen-capture` reads the
+pending card. `POST` accepts only `{ requestId, status: attached | declined,
+attachmentId? }`. Only an existing image in that exact conversation can resolve
+a request as attached. Responses and downloads are private/no-store. A receipt
+contains metadata, never pixels; `attached` confirms an upload, not submission
+of a turn or visual analysis. The model receives the image through the next
+submitted turn, including Hermes' existing multimodal attachment transport.
+
+Requests expire after five minutes, with at most one pending and 32 recorded
+identities per conversation. Retrying the same identity returns its original
+state, even after expiry or decline; it cannot reopen consent. Requests are
+canonical conversation metadata, survive Core restarts and disappear with
+conversation erasure. Family, ephemeral contexts and the LLMx surface do not
+offer this tool flow. The owner bus remains separate from shared/family tools;
+knowing a session ID does not authenticate a person on the private LAN.
+
+The isolated Chromium journey uses synthetic browser capture devices, a real
+composer and fixture HTTP responses; service/Mongo tests separately exercise
+the owner tool, scoping, receipts and erasure. These do not attest deployment,
+a real user-operated browser chooser or a live native model turn.
+
 Files stay in the browser draft until Send. A message is required. On success,
 the draft clears; on failure it remains available for correction/retry. Repeating
 an identical upload in the same conversation reuses the stored attachment. Image

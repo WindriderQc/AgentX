@@ -160,6 +160,18 @@ Before recommending a change to an existing personal action, use
 
 ## What is on screen
 
+For a screen or window outside Core's display context, use the owner tool
+`screen_capture` when advertised. Use the exact personal `sessionId` supplied
+with the turn, a fresh UUID `requestId`, `action: request` and a short `purpose`.
+This shows a card in that conversation; it captures nothing by itself. The
+person clicks, consents in the browser, reviews the preview and sends it with
+a message. Continue talking while consent is pending; never wait or poll in a
+loop. `action: status` reconciles that same identity after a lost response.
+An `attached` receipt proves an upload, not that a turn submitted it or that you
+saw its pixels. Describe only the image actually supplied to your turn. The
+flow is unavailable in family, ephemeral and LLMx conversations, or without a
+supported HTTPS/localhost browser. It grants no continuous screen access.
+
 - For "this page, chart or image", use the current presentation selection, not
   an old show block in history. `read_presentation` reads its exact id and
   revision; an expired one needs a refreshed view. Loading, external and

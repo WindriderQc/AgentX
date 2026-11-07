@@ -202,49 +202,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const stopPreview = () => { previewAbort?.abort(); previewAbort = null; };
   let enteringSpace = autoStart;
   let textBusy = false, partial = null, previewAbort = null, activeBrowserTurn = null, degradedReply = false;
-  let draftFiles = [];
+  const drafts = family ? { hasFiles: () => false, render() {}, clear() {}, upload: async () => [] }
+    : window.NestorConversationAttachments.mount({ el, api, base: sessionBase, busy: () => textBusy });
+  const renderDraftFiles = () => drafts.render();
+  const uploadDraftFiles = (session, signal) => drafts.upload(session, signal);
   const attachmentUrl = (sessionId, id) => `${sessionBase}/${encodeURIComponent(sessionId)}/attachments/${encodeURIComponent(id)}`;
-  function renderDraftFiles() {
-    if (family) return;
-    const host = el('conversationDraftFiles'); host.replaceChildren();
-    draftFiles.forEach((file, index) => {
-      const row = document.createElement('div'); row.className = 'conversation-attachment';
-      const label = document.createElement('span'); label.textContent = file.name;
-      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'button'; remove.textContent = 'Remove';
-      remove.disabled = textBusy; remove.setAttribute('aria-label', `Remove ${file.name}`);
-      remove.onclick = () => { draftFiles.splice(index, 1); renderDraftFiles(); };
-      row.append(label, remove); host.append(row);
-    });
-  }
-  if (!family) el('conversationFiles').onchange = event => {
-    const files = Array.from(event.target.files || []);
-    if (files.length + draftFiles.length > 3 || !files.every(NestorAttachmentImages.accepts)) {
-      el('conversationStatus').textContent = 'Choose at most 3 files: photos up to 50 MB, documents up to 2 MB.';
-    } else { draftFiles.push(...files); renderDraftFiles(); }
-    event.target.value = '';
-  };
-  async function uploadDraftFiles(session, signal) {
-    const refs = [];
-    for (const original of draftFiles) {
-      const image = NestorAttachmentImages.isImage(original);
-      const file = image ? await NestorAttachmentImages.reduce(original) : original;
-      const types = { txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json', pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg' };
-      const mimeType = types[file.name.split('.').at(-1).toLowerCase()] || file.type;
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader(); reader.onload = () => resolve(`data:${mimeType};base64,${String(reader.result).split(',')[1]}`);
-        reader.onerror = () => reject(new Error('The file cannot be read.')); reader.readAsDataURL(file);
-      });
-      const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/attachments`, {
-        method: 'POST', signal, body: JSON.stringify({ name: file.name, dataUrl }) });
-      refs.push(data.attachment);
-      // The archive keeps the photo as taken; a missing archive never blocks the turn.
-      if (image && !session.ephemeral) await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/attachments/${encodeURIComponent(data.attachment.id)}/original`, {
-        method: 'POST', signal, body: original,
-        headers: { 'Content-Type': original.type || 'application/octet-stream', 'X-Original-Name': encodeURIComponent(original.name) } })
-        .catch(error => { if (signal?.aborted) throw error; console.warn('Original photo not archived', error.message); });
-    }
-    return refs;
-  }
   const interruptedTurns = new Set();
   const openHold = new HouseholdOpen.OpenHold(hold => {
     el('conversationOpenStatus').hidden = backendPicker.value === 'hermes' || !openHold.active && !openHold.restoreUntil;
@@ -863,13 +825,13 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     return startVoice();
   };
   el('conversationNew').onclick = () => {
-    privacyChoice.reset(open.checked); privacyBackend = null;
+    captureRequests?.reset(); privacyChoice.reset(open.checked); privacyBackend = null;
     recap?.clear();
     el('conversationResume').hidden = true; setHistoryOpen(false); conversation.stop(); work?.reset(); workflow?.reset(); void releaseOpen(); partial = null;
     transcript.innerHTML = '<p class="empty">Our conversation will appear here.</p>'; clearBoard(); brain.reset(); showExecution(null);
     personalNotes.show(null);
     showTools(null); if (!privacyChoice.snapshot().ephemeral) void recap?.refresh();
-    el('conversationMessage').value = ''; composer.sync(); draftFiles = []; renderDraftFiles(); restoreProfile(); describe(); el('conversationMessage').focus();
+    el('conversationMessage').value = ''; composer.sync(); drafts.clear(); restoreProfile(); describe(); el('conversationMessage').focus();
   };
   el('conversationMessage').addEventListener('input', () => {
     if (el('conversationMessage').value.trim()) window.dispatchEvent(new CustomEvent('nestor-question-start'));
@@ -883,7 +845,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationText').onsubmit = async event => {
     event.preventDefault();
     const typed = el('conversationMessage');
-    if (!draftFiles.length && screenCommand?.(typed.value)) { typed.value = ''; composer.sync(); return; }
+    if (!drafts.hasFiles() && screenCommand?.(typed.value)) { typed.value = ''; composer.sync(); return; }
     if (!textBusy && conversation.canType()) return typedDuringVoice();
     if (textBusy || !['idle', 'paused', 'error'].includes(conversation.state)) return;
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
@@ -904,7 +866,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       // The message now lives in the transcript: empty the composer at once,
       // unless the person already started typing the next one.
       shown = true; if (input.value.trim() === text) input.value = '';
-      draftFiles = []; renderDraftFiles();
+      drafts.clear();
       const reply = await streamedTurn(conversation.session, text, conversation.abort.signal, undefined, { attachmentIds: attachments.map(item => item.id), requestPolicy: submittedPrivacy });
       if (conversation.current(epoch)) { message('assistant', reply.text, false, reply.sound); conversation.show('paused'); }
     } catch (error) {
@@ -927,15 +889,19 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     textBusy = false;
     if (!attachments) { conversation.show(conversation.state, failure); return; }
     if (input.value.trim() === text) input.value = '';
-    draftFiles = []; renderDraftFiles();
+    drafts.clear();
     if (!await conversation.typed(text, { attachments, requestPolicy: submittedPrivacy }) && !input.value.trim()) input.value = text;
     composer.sync();
   }
   // A hidden page stops listening; a typed turn already sent is left to finish.
+  const captureRequests = family ? null : window.NestorScreenCapture.mount({ host: el('conversationText'), api, base: sessionBase,
+    getSession: () => conversation.session, busy: () => textBusy || !(conversation.canType() || ['idle', 'paused', 'error'].includes(conversation.state)),
+    addCapture: (snapshot, request, sessionId) => drafts.addCapture(snapshot, request, sessionId),
+    hasCapture: drafts.hasCapture, removeCapture: drafts.removeCapture });
   const visit = family ? null : window.NestorGuidedVisit.mount({ host: app.querySelector('.conversation-toolbar'),
     onExpire: () => { if (document.hidden && !textBusy) { conversation.stop(true); void releaseOpen(); } } });
   document.addEventListener('visibilitychange', () => { if (document.hidden && !visit?.active()) { if (!textBusy) { conversation.stop(true); void releaseOpen(); } } });
-  window.addEventListener('pagehide', () => { disposeVoiceListeners(); progress?.dispose(); visit?.dispose(); pagePicker?.dispose(); work?.dispose(); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
+  window.addEventListener('pagehide', () => { disposeVoiceListeners(); captureRequests?.dispose(); drafts.clear(); progress?.dispose(); visit?.dispose(); pagePicker?.dispose(); work?.dispose(); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
   conversation.show('idle');
   const performance = family ? null : ConversationPreferences.mount({ button: el('conversationPerformance'), api, endpoint: '/api/voice-personas/preferences',
@@ -965,7 +931,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   };
   // Opens a saved conversation from Core: the same on every device (#120).
   async function resumeSession(session, button) {
-    recap?.clear();
+    captureRequests?.reset(); recap?.clear();
     el('conversationResume').hidden = true; conversation.stop();
     void releaseOpen();
     const epoch = conversation.epoch;
@@ -975,7 +941,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       const data = await api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/history`);
       if (epoch !== conversation.epoch) return;
       conversation.session = data.session; privacyChoice.restore(data.session); privacyBackend = null; renderPrivacy(); workflow?.follow(data.session.sessionId); work?.follow(data.session.sessionId);
-      draftFiles = []; renderDraftFiles();
+      drafts.clear();
       const saved = data.session;
       if (saved.persona && !personas.some(p => p.id === saved.persona.id)) { personas.push(saved.persona); picker.add(new Option(saved.persona.name, saved.persona.id)); }
       if (!agents.some(agent => agent.id === (saved.agentId || 'main'))) {
