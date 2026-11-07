@@ -190,7 +190,7 @@ class SessionArchiveTests(unittest.TestCase):
 
     def test_command_line_validates_labels_and_destination(self):
         with self.assertRaises(SystemExit):
-            module.main(["send", "--host-label", "dev-host", "--source", "a=/tmp", "--destination-host", "h",
+            module.main(["send", "--host-label", "DevHost", "--source", "a=/tmp", "--destination-host", "h",
                          "--destination-root", "/srv", "--state-dir", str(self.state)])
         with self.assertRaises(ValueError):
             module.SshArchive("-oProxyCommand=x", "/srv")
