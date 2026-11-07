@@ -19,12 +19,16 @@ async function load(value, visited = new Set()) {
     || parent.modelReceipts.some(row => !['completed', 'refused'].includes(row.state)))
     throw claim.fail('The prior report scope, source or native termination is unverified', 'REPORT_CHECKPOINT_CONFLICT');
   const checkpoint = parent.result.partial || parent.result;
-  if (value.parentSha256 === null && !checkpoint.deliverableId && !checkpoint.sha256 && parent.result.kind === 'blocked') {
+  if (!checkpoint.deliverableId && !checkpoint.sha256 && parent.result.kind === 'blocked') {
     if (parent.parentRequestId) {
-      const inherited = await load({ ...parent, sourceCommit: value.sourceCommit }, visited);
+      // A refused continuation retains its original (possibly invalid) intent.
+      // A new explicit intent may name the exact ancestral artifact digest;
+      // validate it at the first saved checkpoint without rewriting that receipt.
+      const inherited = await load({ ...parent, sourceCommit: value.sourceCommit,
+        parentSha256: value.parentSha256 ?? parent.parentSha256 }, visited);
       return { ...inherited, parent, contentRequestId: inherited.contentRequestId || inherited.parent._id, inherited: true };
     }
-    return { parent, receipt: null, data: null };
+    if (value.parentSha256 === null) return { parent, receipt: null, data: null };
   }
   if (!checkpoint.deliverableId || checkpoint.sha256 !== value.parentSha256)
     throw claim.fail('The original report checkpoint changed', 'REPORT_CHECKPOINT_CONFLICT');
