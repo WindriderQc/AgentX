@@ -4,6 +4,7 @@
 const storageAgents = require('./storageAgentService');
 const { aggregateVolumes } = require('./storageVolumes');
 const { aggregateCopyCoverage } = require('./dedupScanner');
+const { buildStorageAdvice } = require('./storageAdvice');
 
 const MAX_SOURCES = 32;
 const MAX_VOLUMES = 64;
@@ -90,7 +91,7 @@ async function readStorageAssessment(db, { now = new Date() } = {}) {
     };
   });
 
-  return {
+  const assessment = {
     schemaVersion: 1, generatedAt: now.toISOString(), readFrom: 'stored_index_and_collector_reports',
     filesystemMutationAllowed: false, executionAuthorized: false,
     coverage: { scope: 'configured_storage_sources_only', declaredSources: declared.length,
@@ -120,6 +121,8 @@ async function readStorageAssessment(db, { now = new Date() } = {}) {
       'Logical indexed bytes and statfs free space do not establish physical savings or a suitable destination.'
     ]
   };
+  assessment.advice = buildStorageAdvice(assessment);
+  return assessment;
 }
 
 module.exports = { MAX_SOURCES, MAX_VOLUMES, dated, readStorageAssessment };

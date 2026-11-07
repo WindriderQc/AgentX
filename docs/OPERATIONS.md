@@ -745,7 +745,7 @@ the agent relays:
 
 | Core tool on `/mcp` | Nestor plugin tool | Answers | Bounds |
 |---|---|---|---|
-| `storage_summary` | `nestor_storage` | Indexed files and size, each storage root, scan outcome and age, hash coverage, collector alive or not; dated capacity/copy observations and arithmetic placement compatibility, with unknown freshness and withheld recommendations | No argument; 8 roots, 8 collectors; assessment: 8 sources, 8 volumes, 64 pairs, omitted counts |
+| `storage_summary` | `nestor_storage` | Indexed files and size, each storage root, scan outcome and age, hash coverage, collector alive or not; dated observations plus policy-based reserve, backup-verification and conditional copy advice | No argument; 8 roots, 8 collectors; assessment/advice: 8 sources, 8 volumes, at most 64 pairs each, omitted counts |
 | `find_files` | `nestor_files` | Files whose name contains a fragment: name, folder, size, modified date, newest first, with the total matched and a `truncated` flag | `query` 2-80 characters; `extension` or `category`; `root` must be a source Data declares; `limit` 10 by default, 25 at most |
 | `gpu_status` | `nestor_gpus` | Per host its freshness and sample age; per GPU its name, utilisation, video memory, temperature and power; on request the busy share over 24 hours | Optional `host`; 8 hosts, 8 GPUs each |
 | `janitor_report_view` | `nestor_janitor_report` | The latest stored shared-drive strategy report: status and age, verified duplicate groups and files, proven logical savings, executable actions, pending policy decisions, the survivor rule, and the DiskX link (`/diskx?janitor=latest[&group=…]`, absolute under `CORE_PUBLIC_URL` when set) | Optional `group` (one SHA-256); counts and bytes only, no path |
@@ -771,7 +771,15 @@ bound, never an independent or complete backup. A capacity fit assumes an
 additional full logical copy, one pair at a time, with no reserve or growth;
 it is not a suitable or recommended destination. Dates and ages do not choose
 an acceptable-freshness policy. Recommendations stay withheld with the missing
-evidence; this read neither launches a scan nor changes any instance setting.
+evidence. Optional explicit Data policy adds a separate bounded `advice` view:
+reserve deficits, independent-copy/restoration/retention evidence to verify, and
+conditional candidates for an additional full logical copy. Candidates require
+complete fresh source evidence, fresh target capacity, explicit reserve/growth,
+an allowed destination and distinct declared failure domains. Reasons and
+missing inputs are retained; declarations do not certify physical independence,
+destination access or restoration. No threshold, retention or priority is
+inferred, and no definitive destination or backup coverage is certified. This
+read neither launches a scan nor changes any instance setting.
 See [Data's assessment contract](../data/README.md).
 
 `find_files` returns the owner's file names and paths and `janitor_report_view`
