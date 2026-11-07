@@ -518,7 +518,7 @@ class RunnerAssemblyAdapter:
         return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-def execute(runtime, args, progress, *, manifest=None, adapter=None) -> int:
+def execute(runtime, args, progress, *, manifest=None, adapter=None, finish_progress=True) -> int:
     """Callable by the root coordinator; CLI assembly is only an exact-manifest seam."""
     endpoint = f"/api/pipeline/coding-autonomy/tasks/{args.task_id}/runs/{args.request_id}"
     core = protocol.HttpCore(runtime.CORE)
@@ -534,5 +534,9 @@ def execute(runtime, args, progress, *, manifest=None, adapter=None) -> int:
         progress.write()
         return 0
     progress.checkpoint = result.get("headCommit")
-    progress.finish("verified", checkpoint=progress.checkpoint)
+    if finish_progress:
+        progress.finish("verified", checkpoint=progress.checkpoint)
+    else:
+        progress.set_stage('checkpoint')
+        progress.write()
     return 0

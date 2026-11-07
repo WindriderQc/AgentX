@@ -568,6 +568,9 @@ def reconcile(pipeline_id, key):
         raise ControlError("CODING_DISPATCH_REQUEST_CONFLICT", "No matching autonomous receipt.")
     path = RECEIPTS / f"{key}.verdict.json"
     publication = RECEIPTS / f"{key}.publication.json"
+    if not path.is_file() and (RECEIPTS / f'{key}.distributed-plan.json').is_file():
+        runner = load_runner()
+        runner.coding_autonomous.coding_distributed_root.coding_distributed_completion.recover(runner, pipeline_id, key)
     if not path.is_file() and publication.is_file() and publication.stat().st_size <= 65536:
         intent = json.loads(publication.read_text())
         if intent.get('requestId') != key or intent.get('pipelineId') != pipeline_id:

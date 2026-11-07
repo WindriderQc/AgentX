@@ -655,6 +655,8 @@ def execute(r, args, progress):
 
 def native_verdict(r, task_id, key, lease, current, progress, result, verification, reason):
     receipts = current['codingAutonomy']['runs'][-1].get('modelReceipts', [])
+    if result == 'review' and current.get('codeStepDag'):
+        receipts = coding_distributed_root.coding_distributed_completion.settled_calls(current, key)
     verified = bool(receipts) and all(entry['state'] == 'completed' for entry in receipts)
     evidence = {'schema': 'agentx.pipeline-automation-evidence/v1', 'verification': {'status': verification},
                 'changes': {}, 'usage': {'durationMs': int(progress.usage()['workSeconds'] * 1000)},
