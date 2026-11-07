@@ -7,9 +7,11 @@
   'use strict';
   // v2 (phase 2): one to four functions per block, compared on the same axes.
   // v3 (phase 3): derivatives, tangents, areas, and functions that use other functions.
-  const SCHEMA = 'agentx.math-plot.v3';
+  // v4 (phase 3): parametric curves c(t) = (x(t), y(t)) beside the functions, and surfaces z = f(x, y).
+  const SCHEMA = 'agentx.math-plot.v4';
   const LIMITS = Object.freeze({ body: 1200, expression: 240, tokens: 160, nodes: 200, depth: 24, parameters: 6,
-    functions: 4, magnitude: 1e6, samples: 480, tangents: 4, areas: 4, expanded: 4000, derivative: 20000, integral: 1000 });
+    functions: 4, magnitude: 1e6, samples: 480, tangents: 4, areas: 4, expanded: 4000, derivative: 20000, integral: 1000,
+    surfaces: 2, grid: 40 });
   const FUNCTIONS = Object.freeze({ sin: Math.sin, cos: Math.cos, tan: Math.tan, exp: Math.exp, log: Math.log, ln: Math.log,
     sqrt: Math.sqrt, abs: Math.abs });
   const CONSTANTS = Object.freeze({ pi: Math.PI, e: Math.E });
@@ -23,7 +25,13 @@
   const TANGENT_LINE = /^tangente?\s+(?:to\s+|à\s+)?(?:([a-z])(?:\s*\(\s*x\s*\))?\s+)?(?:at|en)\s+(?:x\s*=\s*)?(.+)$/i;
   // area f from a to b, area under f from 0 to 2, aire sous f de a à b
   const AREA_LINE = /^(?:area|aire)\s+(?:(?:under|of|sous|de)\s+)?(?:([a-z])(?:\s*\(\s*x\s*\))?\s+)?(?:from|de)\s+(.+?)\s+(?:to|à)\s+(.+)$/i;
+  // c(t) = (cos(t), sin(t)): a parametric curve, its two coordinates in t.
+  const CURVE_LINE = /^([a-z])\s*\(\s*t\s*\)\s*=\s*\((.+)\)$/i;
+  // z = x^2 - y^2 or f(x, y) = …: a surface over the x, y window.
+  const SURFACE_LINE = /^(?:(z)|([a-z])\s*\(\s*x\s*,\s*y\s*\))\s*=\s*(.+)$/i;
   const DEFAULT_X = Object.freeze([-10, 10]);
+  const DEFAULT_T = Object.freeze([0, 2 * Math.PI]);
+  const DEFAULT_SURFACE = Object.freeze([-5, 5]);
   const WORDS = Object.freeze([...Object.keys(FUNCTIONS), 'pi'].sort((a, b) => b.length - a.length));
 
   const failure = (code, message) => ({ ok: false, error: { code, message } });
@@ -392,6 +400,52 @@
     return { ok: true, functions: rows.map(row => ({ name: row.name, tree: parsed.get(row.name), expanded: expanded.get(row.name) })) };
   }
 
+  /**
+   * `tree` with its references to the block's functions replaced by their formulas, as
+   * parseFunctions does for a function: a parametric curve's coordinates may use f(t) or f'(t).
+   * `functions` are parseFunctions' rows. Returns { ok, tree } or a failure.
+   */
+  function expandCalls(tree, functions) {
+    const bodies = new Map(functions.map(row => [row.name, row.expanded])), slopes = new Map(), memo = new WeakMap();
+    const stop = (code, message) => { const error = new Error(message); error.code = code; return error; };
+    function inline(node) {
+      let result;
+      if (node.op === 'apply') {
+        let body = bodies.get(node.name);
+        if (node.prime) {
+          if (!slopes.has(node.name)) {
+            const slope = derive(body);
+            if (weight(slope, memo) > LIMITS.derivative) throw stop('too_complex', `The derivative of ${node.name}(x) is too large to use`);
+            slopes.set(node.name, slope);
+          }
+          body = slopes.get(node.name);
+        }
+        result = substitute(body, inline(node.args[0]));
+      } else result = node.args ? { ...node, args: node.args.map(inline) } : node;
+      if (weight(result, memo) > LIMITS.expanded) throw stop('too_complex', 'Using the other functions makes this formula too large to draw');
+      return result;
+    }
+    try {
+      return { ok: true, tree: inline(tree) };
+    } catch (error) {
+      if (!error.code) throw error;
+      return failure(error.code, error.message);
+    }
+  }
+
+  // "cos(t), sin(t)" → its two formulas, split at the one comma outside parentheses; null otherwise.
+  function splitPair(text) {
+    let depth = 0;
+    const cuts = [];
+    for (let i = 0; i < text.length; i += 1) {
+      if (text[i] === '(') depth += 1;
+      else if (text[i] === ')') depth -= 1;
+      else if (text[i] === ',' && depth === 0) cuts.push(i);
+      if (depth < 0) return null;
+    }
+    return cuts.length === 1 && depth === 0 ? [text.slice(0, cuts[0]).trim(), text.slice(cuts[0] + 1).trim()] : null;
+  }
+
   // A bound or value may itself be a constant formula: -2*pi, pi/2, sqrt(2).
   function constant(source, label) {
     const parsed = parseExpression(source, []);
@@ -422,22 +476,40 @@
    *   f'(x)                 draw the derivative of f, computed from its formula
    *   tangent f at p        the tangent to f at x = p (a parameter or a number inside the window)
    *   area f from a to b    the area under f between two bounds (parameters or numbers)
+   *   c(t) = (cos(t), sin(t))  a parametric curve beside the functions (they count together, four at most);
+   *                         t in [0, 2*pi] is its parameter's range (the default)
+   * or a surface block, with nothing else but parameters and windows:
+   *   z = x^2 - y^2         or f(x, y) = …: one or two surfaces
+   *   x in [-5, 5]          y in [-5, 5]: the ground window (default [-5, 5] each)
+   *   z in [-10, 10]        optional height window (default: fitted to the surface)
    */
   function parsePlot(body) {
     const text = String(body ?? '');
     if (text.length > LIMITS.body) return failure('too_long', 'The math block is too long');
     const lines = text.split('\n').map(line => line.trim().replace(/^`+|`+$/g, '').replace(/^[-*•]\s+/, '').replace(/[.;]\s*$/, '').trim())
       .filter(line => line && !/^```/.test(line));
-    let xWindow = null, yWindow = null;
-    const parameters = [], sources = [], derivativeLines = [], tangentLines = [], areaLines = [];
+    const windows = {};
+    const parameters = [], sources = [], derivativeLines = [], tangentLines = [], areaLines = [], curveLines = [], surfaceLines = [];
+    const taken = name => sources.some(row => row.name === name) || curveLines.some(row => row.name === name) || surfaceLines.some(row => row.name === name);
+    const tooMany = () => (curveLines.length ? failure('functions', `At most ${LIMITS.functions} functions and curves per block`)
+      : failure('functions', `At most ${LIMITS.functions} functions per block`));
     for (const line of lines) {
       let match;
-      if ((match = /^([xy])\s*(?:in\b|∈)\s*(.+)$/i.exec(line))) {
-        const window = range(match[2], `${match[1]} window`);
+      if ((match = /^([xyzt])\s*(?:in\b|∈)\s*(.+)$/i.exec(line))) {
+        const axis = match[1].toLowerCase();
+        const window = range(match[2], `${axis} window`);
         if (!window.ok) return window;
         const width = window.value[1] - window.value[0];
         if (width < 1e-6) return failure('range', 'The window is too narrow');
-        if (match[1].toLowerCase() === 'x') xWindow = window.value; else yWindow = window.value;
+        windows[axis] = window.value;
+      } else if ((match = CURVE_LINE.exec(normalize(line)))) {
+        const name = match[1].toLowerCase();
+        if (['x', 'y', 't', 'e'].includes(name)) return failure('reserved', `"${name}" cannot name a curve; use c(t), d(t)…`);
+        if (taken(name)) return failure('duplicate', `The name ${name} is used twice`);
+        const pair = splitPair(match[2]);
+        if (!pair) return failure('curve', `Write the curve as ${name}(t) = (x(t), y(t)): two formulas in t, separated by a comma, between parentheses`);
+        curveLines.push({ name, x: pair[0], y: pair[1] });
+        if (sources.length + curveLines.length > LIMITS.functions) return tooMany();
       } else if ((match = DERIVATIVE_LINE.exec(normalize(line)))) {
         const name = match[1].toLowerCase();
         if (match[2]) return failure('derivative', `Write ${derivativeLabel(name)} alone: Core computes the derivative from ${label(name)}`);
@@ -452,8 +524,9 @@
         const name = (match[1] || match[2]).toLowerCase();
         if (['x', 't', 'e'].includes(name)) return failure('reserved', `"${name}" cannot name a function; use f(x), g(x)…`);
         if (sources.some(row => row.name === name)) return failure('duplicate', `Function ${name} is declared twice`);
+        if (taken(name)) return failure('duplicate', `The name ${name} is used twice`);
         sources.push({ name, source: match[3] });
-        if (sources.length > LIMITS.functions) return failure('functions', `At most ${LIMITS.functions} functions per block`);
+        if (sources.length + curveLines.length > LIMITS.functions) return tooMany();
       } else if ((match = /^([a-z])\s*=\s*(.+?)\s*(?:in|∈)?\s*(\[[^\]]*\]|\S+\s*\.\.\s*\S+)$/i.exec(line))) {
         const name = match[1].toLowerCase();
         if (RESERVED.has(name)) return failure('reserved', `"${name}" is reserved and cannot be a parameter`);
@@ -465,15 +538,25 @@
         if (value.value < bounds.value[0] || value.value > bounds.value[1]) return failure('range', `Parameter ${name} must lie inside its range`);
         parameters.push({ name, value: value.value, min: bounds.value[0], max: bounds.value[1] });
         if (parameters.length > LIMITS.parameters) return failure('parameters', `At most ${LIMITS.parameters} parameters`);
+      } else if ((match = SURFACE_LINE.exec(line))) {
+        const name = (match[1] || match[2]).toLowerCase();
+        if (['x', 'y', 't', 'e'].includes(name)) return failure('reserved', `"${name}" cannot name a surface; use z = … or f(x, y) = …`);
+        if (taken(name)) return failure('duplicate', `The name ${name} is used twice`);
+        surfaceLines.push({ name, source: match[3] });
+        if (surfaceLines.length > LIMITS.surfaces) return failure('surfaces', `At most ${LIMITS.surfaces} surfaces per block`);
       } else if ((match = /^([a-z])\s*=/i.exec(line))) {
         return failure('range', `Parameter ${match[1].toLowerCase()} needs a slider range, for example: ${match[1].toLowerCase()} = 1 in [-5, 5]`);
       } else return failure('line', `Unrecognised line "${line.slice(0, 60)}". Use y = …, a = 1 in [-5, 5], x in [-10, 10]`);
     }
-    if (!sources.length) return failure('no_function', 'Write the function as y = …');
-    const clash = sources.find(row => parameters.some(parameter => parameter.name === row.name));
+    if (surfaceLines.length) return surfacePlot(surfaceLines, parameters, windows,
+      sources.length || curveLines.length || derivativeLines.length || tangentLines.length || areaLines.length);
+    if (windows.z) return failure('line', 'A "z in […]" window goes with a surface z = f(x, y)');
+    if (windows.t && !curveLines.length) return failure('line', 'A "t in […]" range goes with a curve c(t) = (x(t), y(t))');
+    if (!sources.length && !curveLines.length) return failure('no_function', 'Write the function as y = …');
+    const clash = [...sources, ...curveLines].find(row => parameters.some(parameter => parameter.name === row.name));
     if (clash) return failure('duplicate', `"${clash.name}" names both a function and a parameter`);
     const names = ['x', ...parameters.map(row => row.name)];
-    const read = parseFunctions(sources, names);
+    const read = sources.length ? parseFunctions(sources, names) : { ok: true, functions: [] };
     if (!read.ok) {
       if (read.error.code === 'unknown_name' && read.error.message.startsWith('Unknown name "y"') && sources.some(row => row.name === 'y')) {
         return failure('unknown_name', 'To use a function in another one, name it f(x), g(x)…; y cannot be called');
@@ -482,10 +565,32 @@
     }
     const functions = read.functions.map(row => ({ name: row.name, label: label(row.name), expression: format(row.tree) }));
     const trees = read.functions.map(row => row.expanded);
-    const x = xWindow || DEFAULT_X.slice();
+    // Curves: both coordinates in t and the parameters, and they may use the block's functions.
+    const curveNames = ['t', ...parameters.map(row => row.name)], callable = sources.filter(row => row.name !== 'y').map(row => row.name);
+    const curves = [], curveTrees = [];
+    for (const row of curveLines) {
+      const pair = [];
+      for (const [axis, source] of [['x', row.x], ['y', row.y]]) {
+        const parsed = parseExpression(source, curveNames, callable);
+        if (!parsed.ok) {
+          const message = parsed.error.code === 'unknown_name' && /^Unknown name "x"/.test(parsed.error.message)
+            ? 'A curve is written in t: c(t) = (cos(t), sin(t))' : parsed.error.message;
+          return failure(parsed.error.code, `${row.name}(t), ${axis}: ${message}`);
+        }
+        const expanded = expandCalls(parsed.tree, read.functions);
+        if (!expanded.ok) return failure(expanded.error.code, `${row.name}(t): ${expanded.error.message}`);
+        pair.push({ tree: parsed.tree, expanded: expanded.tree });
+      }
+      curves.push({ name: row.name, label: `${row.name}(t)`, x: format(pair[0].tree), y: format(pair[1].tree) });
+      curveTrees.push({ x: pair[0].expanded, y: pair[1].expanded });
+    }
+    // With functions, x keeps its default window; curves alone are framed around themselves.
+    const xWindow = windows.x || null, yWindow = windows.y || null;
+    const x = xWindow || (sources.length ? DEFAULT_X.slice() : null);
 
     // Derivatives, tangents and areas name a function of the block; their points lie in the window.
     const which = (name, what) => {
+      if (name && curveLines.some(row => row.name === name)) return failure('line', `${what}: works on functions of x, not on the curve ${name}(t)`);
       if (name) return sources.some(row => row.name === name) ? { ok: true, name } : failure('unknown_name', `${what}: no function named ${name} in this block`);
       return sources.length === 1 ? { ok: true, name: sources[0].name } : failure('line', `${what}: name the function, for example: ${what.toLowerCase()} f …`);
     };
@@ -532,18 +637,42 @@
       if (weight(tree) > LIMITS.derivative) return failure('too_complex', `The derivative of ${label(name)} is too large to draw`);
       slopes[name] = tree;
     }
-    const plot = { schema: SCHEMA, kind: 'functions', variable: 'x', functions, parameters, x, ...(yWindow ? { y: yWindow } : {}),
-      ...(derivatives.length ? { derivatives } : {}), ...(tangents.length ? { tangents } : {}), ...(areas.length ? { areas } : {}) };
-    return { ok: true, plot, trees, slopes, references: read.functions.some(row => usesFunctions(row.tree)), text: plotText(plot) };
+    const plot = { schema: SCHEMA, kind: 'functions', variable: 'x', functions, parameters, ...(x ? { x } : {}), ...(yWindow ? { y: yWindow } : {}),
+      ...(derivatives.length ? { derivatives } : {}), ...(tangents.length ? { tangents } : {}), ...(areas.length ? { areas } : {}),
+      ...(curves.length ? { curves, t: windows.t || DEFAULT_T.slice() } : {}) };
+    return { ok: true, plot, trees, slopes, curveTrees, references: read.functions.some(row => usesFunctions(row.tree)), text: plotText(plot) };
+  }
+
+  // A surface block: surfaces z = f(x, y) over the ground window, and parameters; nothing else.
+  function surfacePlot(rows, parameters, windows, mixed) {
+    if (mixed) return failure('surface', 'A surface block holds only surfaces z = f(x, y), parameters and the x, y, z windows; draw curves in another block');
+    if (windows.t) return failure('line', 'A "t in […]" range goes with a curve c(t) = (x(t), y(t))');
+    const clash = rows.find(row => parameters.some(parameter => parameter.name === row.name));
+    if (clash) return failure('duplicate', `"${clash.name}" names both a surface and a parameter`);
+    if (parameters.some(row => row.name === 'z')) return failure('reserved', '"z" is the height in a surface block and cannot be a parameter');
+    const names = ['x', 'y', ...parameters.map(row => row.name)];
+    const surfaces = [], trees = [];
+    for (const row of rows) {
+      const parsed = parseExpression(row.source, names);
+      if (!parsed.ok) return failure(parsed.error.code, rows.length > 1 ? `${surfaceLabel(row.name)}: ${parsed.error.message}` : parsed.error.message);
+      surfaces.push({ name: row.name, label: surfaceLabel(row.name), expression: format(parsed.tree) });
+      trees.push(parsed.tree);
+    }
+    const plot = { schema: SCHEMA, kind: 'surfaces', surfaces, parameters, x: (windows.x || DEFAULT_SURFACE).slice(), y: (windows.y || DEFAULT_SURFACE).slice(),
+      ...(windows.z ? { z: windows.z } : {}) };
+    return { ok: true, plot, trees, slopes: {}, curveTrees: [], references: false, text: plotText(plot) };
   }
 
   const label = name => (name === 'y' ? 'y' : `${name}(x)`);
+  const surfaceLabel = name => (name === 'z' ? 'z' : `${name}(x, y)`);
   const derivativeLabel = name => (name === 'y' ? "y'" : `${name}'(x)`);
   const pointText = value => (typeof value === 'string' ? value : formatNumber(value));
 
   /** The canonical body for a plot, with `values` replacing the parameters' current values. */
   function plotText(plot, values = {}) {
-    const lines = plot.functions.map(fn => `${fn.label} = ${fn.expression}`);
+    const window = (axis, value) => `${axis} in [${formatNumber(value[0])}, ${formatNumber(value[1])}]`;
+    const lines = plot.kind === 'surfaces' ? plot.surfaces.map(row => `${row.label} = ${row.expression}`)
+      : [...plot.functions.map(fn => `${fn.label} = ${fn.expression}`), ...(plot.curves || []).map(row => `${row.label} = (${row.x}, ${row.y})`)];
     for (const name of plot.derivatives || []) lines.push(derivativeLabel(name));
     for (const row of plot.tangents || []) lines.push(`tangent ${row.of} at ${pointText(row.at)}`);
     for (const row of plot.areas || []) lines.push(`area ${row.of} from ${pointText(row.from)} to ${pointText(row.to)}`);
@@ -551,8 +680,10 @@
       const value = Number.isFinite(values[row.name]) ? values[row.name] : row.value;
       lines.push(`${row.name} = ${formatNumber(value)} in [${formatNumber(row.min)}, ${formatNumber(row.max)}]`);
     }
-    lines.push(`x in [${formatNumber(plot.x[0])}, ${formatNumber(plot.x[1])}]`);
-    if (plot.y) lines.push(`y in [${formatNumber(plot.y[0])}, ${formatNumber(plot.y[1])}]`);
+    if (plot.t) lines.push(window('t', plot.t));
+    if (plot.x) lines.push(window('x', plot.x));
+    if (plot.y) lines.push(window('y', plot.y));
+    if (plot.z) lines.push(window('z', plot.z));
     return lines.join('\n');
   }
 
@@ -591,6 +722,72 @@
     if (high - low < 1e-9) { low -= 1; high += 1; }
     const pad = (high - low) * 0.1;
     return [low - pad, high + pad];
+  }
+
+  /**
+   * A window around every value (parametric coordinates, surface heights), so a narrow peak is
+   * never cut off; only when a few values run far away (an asymptote) does it keep the middle
+   * 96% instead. A little room is added on both sides.
+   */
+  function fitRange(values) {
+    const sorted = values.filter(value => value !== null && Number.isFinite(value)).sort((a, b) => a - b);
+    if (!sorted.length) return [-10, 10];
+    let low = sorted[0], high = sorted[sorted.length - 1];
+    if (sorted.length >= 20) {
+      const at = q => sorted[Math.round(q * (sorted.length - 1))];
+      const middle = at(0.98) - at(0.02);
+      if (middle > 1e-9 && high - low > middle * 10) { low = at(0.02); high = at(0.98); }
+    }
+    if (high - low < 1e-9) { low -= 1; high += 1; }
+    const pad = (high - low) * 0.08;
+    return [low - pad, high + pad];
+  }
+
+  /** Points of a parametric curve over its t range: [x, y], or null where undefined. */
+  function sampleCurve(trees, plot, values = {}, count = LIMITS.samples) {
+    const scope = scopeOf(plot, values), [t0, t1] = plot.t, points = [];
+    for (let i = 0; i <= count; i += 1) {
+      scope.t = t0 + (t1 - t0) * i / count;
+      const x = evaluate(trees.x, scope), y = evaluate(trees.y, scope);
+      points.push(Number.isFinite(x) && Number.isFinite(y) && Math.abs(x) < 1e12 && Math.abs(y) < 1e12 ? [x, y] : null);
+    }
+    return points;
+  }
+
+  /** Heights of a surface on a grid over the x, y window: rows[j][i] at (xs[i], ys[j]), null where undefined. */
+  function sampleSurface(tree, plot, values = {}, count = LIMITS.grid) {
+    const scope = scopeOf(plot, values), xs = [], ys = [], rows = [];
+    for (let i = 0; i <= count; i += 1) {
+      xs.push(plot.x[0] + (plot.x[1] - plot.x[0]) * i / count);
+      ys.push(plot.y[0] + (plot.y[1] - plot.y[0]) * i / count);
+    }
+    for (const y of ys) {
+      rows.push(xs.map(x => {
+        const z = evaluate(tree, { ...scope, x, y });
+        return Number.isFinite(z) && Math.abs(z) < 1e12 ? z : null;
+      }));
+    }
+    return { xs, ys, rows };
+  }
+
+  /**
+   * The windows drawn with the current values: declared ones as written, the others fitted.
+   * Functions: x declared or default, y fitted to every curve (fitY); curves alone: x and y
+   * fitted around them (fitRange). Surfaces: x and y as declared, z fitted to the heights.
+   */
+  function windowsOf(parsed, values = {}) {
+    const { plot } = parsed;
+    if (plot.kind === 'surfaces') {
+      const z = plot.z ? plot.z.slice() : fitRange(parsed.trees.flatMap(tree => sampleSurface(tree, plot, values).rows.flat()));
+      return { x: plot.x.slice(), y: plot.y.slice(), z };
+    }
+    const curvePoints = (parsed.curveTrees || []).flatMap(trees => sampleCurve(trees, plot, values)).filter(Boolean);
+    if (!plot.functions.length) {
+      return { x: plot.x ? plot.x.slice() : fitRange(curvePoints.map(point => point[0])),
+        y: plot.y ? plot.y.slice() : fitRange(curvePoints.map(point => point[1])) };
+    }
+    const inside = curvePoints.filter(([px]) => px >= plot.x[0] && px <= plot.x[1]);
+    return { x: plot.x.slice(), y: fitY([...curves(parsed).flatMap(tree => sample(tree, plot, values)), ...inside], plot) };
   }
 
   const pointValue = (value, scope) => (typeof value === 'string' ? scope[value] : value);
@@ -634,11 +831,30 @@
     const { plot, trees } = parsed;
     const parameters = plot.parameters.map(row => ({ ...row, value: Number.isFinite(values[row.name]) ? values[row.name] : row.value }));
     const current = Object.fromEntries(parameters.map(row => [row.name, row.value]));
-    // Floating-point residue such as sin(pi) = 1.2e-16 reads as 0.
-    const round = value => (value === null ? null : Math.abs(value) < 1e-10 ? 0 : Number(formatNumber(value)));
-    const y = fitY(curves(parsed).flatMap(tree => sample(tree, plot, current)), plot).map(round);
+    // Floating-point residue reads as 0: sin(pi) = 1.2e-16, or cos(t) a quarter of a t range written to ten digits (1e-10).
+    const round = value => (value === null ? null : Math.abs(value) < 1e-9 ? 0 : Number(formatNumber(value)));
+    const drawn = windowsOf(parsed, current);
+    if (plot.kind === 'surfaces') {
+      // A coarse grid of heights: enough to say where it rises and falls, never a table to read out.
+      const grid = tree => {
+        const { xs, ys, rows } = sampleSurface(tree, plot, current, 4);
+        return rows.flatMap((row, j) => row.map((z, i) => [round(xs[i]), round(ys[j]), round(z)]));
+      };
+      return { schema: SCHEMA, kind: 'surfaces', surfaces: plot.surfaces.map((row, index) => ({ ...row, points: grid(trees[index]) })),
+        parameters, x: drawn.x.map(round), y: drawn.y.map(round), z: drawn.z.map(round) };
+    }
+    const y = drawn.y.map(round);
     const points = tree => sample(tree, plot, current, count).map(([px, py]) => [round(px), round(py)]);
+    const curvePoints = trees => {
+      const scope = scopeOf(plot, current), [t0, t1] = plot.t;
+      return Array.from({ length: count + 1 }, (_, i) => {
+        const t = t0 + (t1 - t0) * i / count, at = { ...scope, t };
+        const px = evaluate(trees.x, at), py = evaluate(trees.y, at), defined = Number.isFinite(px) && Number.isFinite(py);
+        return [round(t), defined ? round(px) : null, defined ? round(py) : null];
+      });
+    };
     return { schema: SCHEMA, functions: plot.functions.map((fn, index) => ({ ...fn, points: points(trees[index]) })),
+      ...(plot.curves ? { curves: plot.curves.map((row, index) => ({ ...row, points: curvePoints(parsed.curveTrees[index]) })), t: plot.t.map(round) } : {}),
       ...(plot.derivatives ? { derivatives: plot.derivatives.map(name => ({ of: name, label: derivativeLabel(name),
         expression: format(parsed.slopes[name]), points: points(parsed.slopes[name]) })) } : {}),
       ...(plot.tangents ? { tangents: plot.tangents.map(row => {
@@ -649,7 +865,7 @@
         const a = areaOf(parsed, row, current);
         return { of: row.of, from: round(a.from), to: round(a.to), value: round(a.value) };
       }) } : {}),
-      parameters, x: plot.x.slice(), y };
+      parameters, x: plot.x ? plot.x.slice() : drawn.x.map(round), y };
   }
 
   /**
@@ -671,9 +887,9 @@
     return { ok: true, values: Object.fromEntries(names.map(name => [name, values[name]])) };
   }
 
-  const api = Object.freeze({ SCHEMA, LIMITS, FUNCTIONS: Object.keys(FUNCTIONS), parseExpression, parseFunctions, evaluate, format,
-    formatNumber, derive, parsePlot, plotText, sample, curves, fitY, tangentAt, integrate, areaOf, describe, checkValues,
-    derivativeLabel });
+  const api = Object.freeze({ SCHEMA, LIMITS, FUNCTIONS: Object.keys(FUNCTIONS), parseExpression, parseFunctions, expandCalls, evaluate, format,
+    formatNumber, derive, parsePlot, plotText, sample, sampleCurve, sampleSurface, curves, fitY, fitRange, windowsOf, tangentAt, integrate,
+    areaOf, describe, checkValues, derivativeLabel });
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.AgentXMathExpression = api;
 })(typeof window === 'undefined' ? globalThis : window);

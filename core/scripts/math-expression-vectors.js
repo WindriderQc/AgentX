@@ -38,6 +38,27 @@ const SYSTEMS = [
   [['f', 'x'], ['g', 'q(x)']],
   [['y', 'x'], ['g', 'y + 1']],
 ];
+// Phase 3, v4: parametric curves (in t, with the parameter a), which may use the block's functions.
+const CURVES = [
+  [[], 'cos(t)', 'sin(t)'],
+  [[], 'a*cos(3t)', '2sin(2t) + a'],
+  [[['f', 'x^2']], 't', 'f(t) + 1'],
+  [[['f', 'x^3 - 3x']], "f'(t)", 'f(t)'],
+  [[['f', 'sqrt(x)']], 't - 1', 'f(t - 1)'],
+  [[], 'cos(x)', 'sin(t)'],
+  [[], 'q*t', 't'],
+  [[['y', 'x^2']], 't', 'y(t)'],
+];
+const TS = [-2, 0, 0.5, Math.PI];
+// Windows fitted around values (curve coordinates, surface heights): spread, peaked, asymptote, flat.
+const RANGES = [
+  [1, 2, 3],
+  Array.from({ length: 41 }, (_, i) => Math.exp(-(((i - 20) / 4) ** 2))),
+  Array.from({ length: 41 }, (_, i) => Math.tan(-1.56 + 3.12 * i / 40)),
+  Array.from({ length: 30 }, () => 2),
+  [null, 4, null, -1],
+  [],
+];
 
 // Non-finite answers are written as text: "NaN", "Infinity", "-Infinity".
 const answer = value => (Number.isFinite(value) ? value : String(value));
@@ -66,6 +87,24 @@ function systemRow(functions) {
     evaluations: scopes(names).map(scope => ({ scope, values: read.functions.map(row => answer(math.evaluate(row.expanded, scope))) })) };
 }
 
+function curveRow([functions, x, y]) {
+  const names = ['t', 'a'];
+  const rows = functions.map(([name, source]) => ({ name, source }));
+  const row = { functions: rows, names, x, y };
+  const read = math.parseFunctions(rows, ['x', 'a']);
+  if (!read.ok) return { ...row, error: read.error.code };
+  const callable = rows.filter(fn => fn.name !== 'y').map(fn => fn.name), trees = [];
+  for (const source of [x, y]) {
+    const parsed = math.parseExpression(source, names, callable);
+    if (!parsed.ok) return { ...row, error: parsed.error.code };
+    const expanded = math.expandCalls(parsed.tree, read.functions);
+    if (!expanded.ok) return { ...row, error: expanded.error.code };
+    trees.push({ tree: parsed.tree, expanded: expanded.tree });
+  }
+  return { ...row, formats: trees.map(item => math.format(item.tree)),
+    evaluations: TS.map(t => ({ scope: { t, a: PARAMETERS.a }, values: trees.map(item => answer(math.evaluate(item.expanded, { t, a: PARAMETERS.a }))) })) };
+}
+
 function fitRow(row) {
   const parsed = math.parseExpression(row.expression, ['x', ...row.parameters.map(p => p.name)]);
   const plot = { parameters: row.parameters, x: row.x, ...(row.declared ? { y: row.declared } : {}) };
@@ -85,6 +124,8 @@ function build(previous) {
     expressions: expressions.map(([source, names]) => expressionRow(source, names)),
     systems: systems.map(systemRow),
     fits: previous.fits.map(fitRow),
+    curves: CURVES.map(curveRow),
+    ranges: RANGES.map(values => ({ values, fitted: math.fitRange(values) })),
   };
 }
 
