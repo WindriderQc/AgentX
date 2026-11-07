@@ -360,3 +360,37 @@ and labels the result **operator attestation**, distinct from a native executor
 receipt. Core refuses while overlapping native workloads/inferences remain
 held. This never releases their authority or clears their quarantine. An
 uncertain custom check stays fenced until its operator can provide this evidence.
+
+### Load-test results
+
+An operator executor that runs Artillery includes `loadTest` in its existing
+terminal receipt. `finish-operator` forwards it with the hash of that exact
+receipt; Core uses the same Artillery validator and parser as
+`POST /api/performance/load-tests`:
+
+```json
+{
+  "loadTest": {
+    "name": "Synthetic load test",
+    "scenario": "synthetic-load",
+    "timestamp": "2026-01-02T03:04:05Z",
+    "raw_report": { "aggregate": { "counters": {}, "summaries": {} } }
+  }
+}
+```
+
+This fragment supplements the terminal receipt fields above. `timestamp` is
+the test's actual execution time, with an explicit offset, supplied by its
+executor; Core refuses a missing date rather than substituting import time.
+The existing 1 MiB receipt limit applies. Native execution and release evidence
+remain the operator executor's responsibility; a parsed report proves neither.
+
+Core validates the report before accepting completion, records its content
+hash in the terminal release receipt, then stores a `PerformanceLoadTest` with
+`queueJobId`. Server performance reads it through its existing load-test table.
+A unique job index prevents duplicates during concurrent delivery or restart.
+If the result write fails after termination, read the original job and repeat
+`finish-operator` with its current revision and the same receipt file. This
+repairs only the result, including after queue archive; it starts no work and
+adds no second terminal event. A changed receipt, actor or report refuses.
+Manual imports remain available and have no queue job identity.

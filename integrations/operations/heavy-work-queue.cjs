@@ -172,6 +172,7 @@ async function main(argv = process.argv.slice(2), deps = {}) {
       || !['completed', 'failed', 'cancelled'].includes(receipt.state)) throw new Error('Receipt differs from this operator dispatch or lacks terminal/release evidence');
     return client(`/${job.id}/operator-finish`, { expectedRevision: job.revision, dispatchId: job.dispatchId,
       state: receipt.state, receiptRef: receipt.receiptRef,
+      ...(receipt.loadTest !== undefined && { loadTest: receipt.loadTest }),
       receiptSha256: require('node:crypto').createHash('sha256').update(bytes).digest('hex'),
       confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED' });
   }
