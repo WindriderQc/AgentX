@@ -85,12 +85,12 @@ export function selectedHostPreference(elements, state, defaults) {
 }
 
 export function getHostRunningModels(pref) {
-  const liveModels = Array.isArray(pref?.live?.runningModels)
+  if (pref?.live?.online === false
+    || (pref?.live?.observation && pref.live.observation.status !== 'fresh')) return [];
+  // Persisted loadedModel(s) are unverified hints, including when live is absent.
+  return Array.isArray(pref?.live?.runningModels)
     ? pref.live.runningModels.map((model) => model.name || model.model).filter(Boolean)
     : [];
-  if (liveModels.length) return liveModels;
-  if (Array.isArray(pref?.loadedModels) && pref.loadedModels.length) return pref.loadedModels.filter(Boolean);
-  return pref?.loadedModel ? [pref.loadedModel] : [];
 }
 
 export function getHostPinnedModels(pref) {
@@ -204,15 +204,8 @@ export function getHostChatState(elements, state, defaults) {
     };
   }
 
-  const sessionLoadedModel = normalizeHostUrl(state.sessionLoadedModel?.host) === normalizeHostUrl(host)
-    ? state.sessionLoadedModel?.model
-    : null;
-  const observedRunningModels = getHostRunningModels(pref);
-  const runningModels = observedRunningModels.length
-    ? observedRunningModels
-    : sessionLoadedModel
-      ? [sessionLoadedModel]
-      : [];
+  // A previous successful exchange does not observe current residency.
+  const runningModels = getHostRunningModels(pref);
   const pinnedModels = getHostPinnedModels(pref);
   const selectedModel = elements?.modelSelect?.value || '';
   const primaryPin = pinnedModels[0] || null;

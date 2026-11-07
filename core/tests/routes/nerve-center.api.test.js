@@ -272,7 +272,9 @@ describe('Nerve Center API Routes', () => {
 
       // hostPreferences reflects our mock
       expect(res.body.data.hostPreferences).toEqual([
-        { hostUrl: 'http://primary:11434', preferredModel: 'qwen3-2507-30b-long-48k:latest' }
+        expect.objectContaining({ hostUrl: 'http://primary:11434', preferredModel: 'qwen3-2507-30b-long-48k:latest',
+          declaredMetadata: expect.objectContaining({ kind: 'operator_notes', freshness: 'unverified', declaredAt: null }),
+          persistedState: expect.objectContaining({ freshness: 'unverified', observedAt: null }) })
       ]);
 
       // alerts reflect our mock
