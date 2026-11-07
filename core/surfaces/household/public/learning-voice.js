@@ -56,7 +56,7 @@
   function mount({ button, micToggle, soundToggle, status, turn, transcribe, synthesize,
     language, muted, setMuted, stopPlayback, wakeWord = true }) {
     const labels = { idle: 'Microphone off · enable voice to start', paused: 'Microphone off',
-      starting: 'Opening the microphone…', listening: 'Listening · Hey/Eille/Oh/Ah Nestor to activate',
+      starting: 'Opening the microphone…', listening: 'Listening · Hey/Eille/Oh/Ah/Yo Nestor to activate',
       hearing: 'Listening…', transcribing: 'Transcribing…', thinking: 'Preparing the answer…',
       waiting: 'Waiting for the current request…', preparing: 'Preparing speech…',
       speaking: 'Nestor is speaking · say Stop to interrupt', reviewing: 'Transcription failed · Resume to continue',

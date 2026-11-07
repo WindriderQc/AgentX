@@ -71,7 +71,7 @@
         this.arm(); return { text: '', activated: false };
       }
       // Local STT can hear « Eille Nestor » as « Hey, Nesta » or similar variants.
-      const prefix = /^(?:(?:eille|heille|hey|hei|he|eh|ey|oh|ah)(?:\s+|\s*[,!:.–—-]+\s*)nest(?:or|er|ore|a|o|ar)s?|einestor|heynestor)\b[\s,!?.:–—-]*/i.exec(value);
+      const prefix = /^(?:(?:eille|heille|hey|hei|he|eh|ey|oh|ah|yo)(?:\s+|\s*[,!:.–—-]+\s*)nest(?:or|er|ore|a|o|ar)s?|einestor|heynestor)\b[\s,!?.:–—-]*/i.exec(value);
       if (prefix) { this.extend(); return { text: text.trim().slice(prefix[0].length).trim(), activated: true }; }
       return { text: followup ? text.trim() : '', activated: false };
     }

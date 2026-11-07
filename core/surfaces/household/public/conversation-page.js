@@ -32,7 +32,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const agents = agentCatalog?.agents?.length ? agentCatalog.agents : [{ id: 'main', name: 'Main', personalNotes: true }];
   if (!personas?.length) throw new Error('No style is available. Choose one in Prompts.');
   app.innerHTML = `<section class="conversation-shell">
-    <header class="conversation-heading"><p class="eyebrow">${family ? 'Nestor · Family' : 'Super Dad · Personal'}</p><h1>With Nestor.</h1><p id="conversationListeningHint">${family ? "Say “Hey/Eille/Oh/Ah Nestor”, then speak naturally." : "Open conversation: speak freely while the mic is on."}</p></header>
+    <header class="conversation-heading"><p class="eyebrow">${family ? 'Nestor · Family' : 'Super Dad · Personal'}</p><h1>With Nestor.</h1><p id="conversationListeningHint">${family ? "Say “Hey/Eille/Oh/Ah/Yo Nestor”, then speak naturally." : "Open conversation: speak freely while the mic is on."}</p></header>
     <nav class="conversation-toolbar" aria-label="Conversation actions">
       <button id="conversationSettingsToggle" class="button space-settings-toggle" type="button" aria-expanded="false" aria-controls="conversationSettings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Settings</span><span id="conversationSettingsSummary" class="space-settings-summary"></span><svg class="space-settings-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       <button id="conversationNew" class="button" type="button">New conversation</button>
@@ -275,7 +275,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   if (!family) { try { backendPicker.value = engines.choose(runtime, false, storage?.getItem(backendKey)); } catch {} }
   try { const savedListening = storage?.getItem(listeningKey); wake.checked = (['wake', 'open'].includes(savedListening) ? savedListening : defaultListening) === 'wake'; } catch {}
   const describeListening = () => {
-    el('conversationListeningHint').textContent = wake.checked ? 'Say “Hey/Eille/Oh/Ah Nestor”, then speak naturally.' : 'Open conversation: speak freely while the mic is on.';
+    el('conversationListeningHint').textContent = wake.checked ? 'Say “Hey/Eille/Oh/Ah/Yo Nestor”, then speak naturally.' : 'Open conversation: speak freely while the mic is on.';
     el('conversationWakeHint').textContent = wake.checked ? 'Nestor waits for its name, then listens until Pause.' : 'Nestor hears everything while the mic is on.';
     summarize();
   };
@@ -489,7 +489,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const stateLabel = state => (language.value === 'fr' ? frenchLabels : labels)[state];
   const listeningStatus = () => language.value === 'fr'
     ? conversation.wake.active() ? 'Écoute ouverte · Pause coupe le micro.' : 'En veille · dites « Hey Nestor ».'
-    : conversation.wake.active() ? 'Listening · conversation continues until Pause.' : 'Standby · say “Hey/Eille/Oh/Ah Nestor”.';
+    : conversation.wake.active() ? 'Listening · conversation continues until Pause.' : 'Standby · say “Hey/Eille/Oh/Ah/Yo Nestor”.';
   // The voice ladder and the VoiX backup (X-Voix-Upstream) share one notice.
   let ladderNotice = '', voixUpstream = '';
   // What the page measured on the last turn: slow recognition, a slow answer, choppy speech.
