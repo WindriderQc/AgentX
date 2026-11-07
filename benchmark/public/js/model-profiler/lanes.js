@@ -7,13 +7,85 @@
  */
 
 import { renderLaneCard, renderLaneSummary, buildMeasureRequest, campaignTargets, campaignText,
-  renderCampaignPlan, campaignResultText, clock, setCoreBase } from './components/lane-capability.js?v=lane-auto-start-20261019';
+  renderCampaignPlan, campaignResultText, clock, setCoreBase } from './components/lane-capability.js?v=pinned-fit-1130';
 
 const LANES_API = '/benchmark/api/profiler/evidence/lanes';
 const MEASURE_API = '/benchmark/api/profiler/evidence/lanes/measure';
 const CAMPAIGN_API = '/benchmark/api/profiler/evidence/lanes/campaign';
 
 let current = [];
+const fitRequests = new Map();
+
+async function requestFit(lane, button, status, root) {
+  const key = `${lane.capability.hostId}:${lane.pinIndex}`;
+  // Retain the same intent across clicks, refresh and a lost HTTP reply.
+  const storageKey = `profiler-pinned-fit:${key}`;
+  let requestId = fitRequests.get(key) || sessionStorage.getItem(storageKey);
+  button.disabled = true;
+  status.textContent = 'Recording a manual fit request…';
+  try {
+    const persisted = lane.pinnedFit;
+    let original = persisted?.id === requestId ? persisted : null;
+    let requestHostId = lane.capability.hostId, requestPinIndex = lane.pinIndex;
+    if (requestId) {
+      if (!original) {
+        // Another tab may have completed a newer request. Its receipt says
+        // nothing about this tab's original, potentially uncertain intent.
+        const response = await fetch(`/benchmark/api/profiler/fit-checks/${encodeURIComponent(requestId)}`, { cache: 'no-store' });
+        if (response.ok) {
+          const answer = await response.json();
+          if (answer.status !== 'success' || answer.data?.id !== requestId) throw new Error('Original fit receipt is incomplete');
+          original = answer.data;
+        } else if (response.status !== 404) throw new Error('Original fit receipt is unavailable');
+        // A missing record does not establish termination. Retry the same UUID.
+      }
+      if (original?.runtimeReleased === true && ['completed', 'failed', 'cancelled'].includes(original.state)) {
+        requestId = null;
+        original = null;
+      }
+    }
+    if (!requestId && persisted?.id && !(persisted.runtimeReleased === true
+      && ['completed', 'failed', 'cancelled'].includes(persisted.state))) {
+      // Adopt the persisted intent after resolving a cached predecessor too.
+      requestId = persisted.id;
+      original = persisted;
+      sessionStorage.setItem(storageKey, requestId);
+      fitRequests.set(key, requestId);
+    }
+    if (original && original.state !== 'requested') {
+      status.textContent = `Original fit ${requestId} is ${original.state || 'unknown'}; inspect its native receipt in Calendar. No new request was recorded.`;
+      button.disabled = false;
+      return;
+    }
+    if (original?.state === 'requested') {
+      if (!original.hostId || !Number.isInteger(original.pinIndex)) {
+        status.textContent = `Original fit ${requestId} has incomplete scope; inspect its receipt. No new request was recorded.`;
+        button.disabled = false;
+        return;
+      }
+      requestHostId = original.hostId;
+      requestPinIndex = original.pinIndex;
+    }
+    if (!requestId) {
+      requestId = crypto.randomUUID();
+      sessionStorage.setItem(storageKey, requestId);
+      fitRequests.set(key, requestId);
+    }
+    const response = await fetch('/benchmark/api/profiler/fit-checks/request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId, hostId: requestHostId, pinIndex: requestPinIndex })
+    });
+    const answer = await response.json();
+    if (!response.ok || answer.status !== 'success') throw new Error(answer.error || `Benchmark answered ${response.status}`);
+    status.textContent = answer.data?.state === 'requested'
+      ? 'Manual request recorded. Plan its slot and use Run now in Automations → Calendar.'
+      : `Original fit receipt: ${answer.data?.state || 'unknown'}. Inspect it in Calendar; no new request was recorded.`;
+    await renderLanes(root);
+  } catch (error) {
+    status.textContent = `Receipt unavailable: ${error.message}. Retry this same request; inspect Calendar before starting anything.`;
+    button.disabled = false;
+  }
+}
 
 function setBusy(grid, busy) {
   grid.setAttribute('aria-busy', busy ? 'true' : 'false');
@@ -133,6 +205,13 @@ export function initLanes() {
   if (!root) return;
   setCoreBase(root.dataset.corePublicUrl);
   root.addEventListener('click', event => {
+    const fitButton = event.target.closest('[data-lane-action="fit"]');
+    if (fitButton) {
+      const lane = current[Number(fitButton.dataset.laneIndex)];
+      const status = fitButton.parentElement.querySelector('.lc-action-status');
+      if (lane && status) requestFit(lane, fitButton, status, root);
+      return;
+    }
     const button = event.target.closest('[data-lane-action="measure"]');
     if (!button) return;
     const lane = current[Number(button.dataset.laneIndex)];

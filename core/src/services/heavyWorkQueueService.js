@@ -275,7 +275,12 @@ async function cancel(id, body, actor) {
 async function assertDispatch(id, dispatchId) {
   const job = await get(id);
   const now = new Date().toISOString();
-  if (job.state !== 'dispatching' || job.dispatchId !== dispatchId || !executionWindowOpen(job, now)) {
+  // A fit acknowledges its durable receipt before its one load finishes.
+  // Only that original operation may re-attest the remaining execution window;
+  // its native receipt CAS prevents another dispatch or a replacement run.
+  const fitContinuation = job.state === 'running' && job.kind === 'profiler'
+    && job.executor?.mode === 'pinned-fit' && job.operation?.id === job.executor.fitCheckId;
+  if (!(job.state === 'dispatching' || fitContinuation) || job.dispatchId !== dispatchId || !executionWindowOpen(job, now)) {
     throw fail('Dispatch identity or execution window is no longer valid', 409, 'HEAVY_QUEUE_WINDOW_CLOSED');
   }
   const state = await Queue.findById('heavy-work').lean();
@@ -287,7 +292,8 @@ async function settle(id, observation, actor) {
     const job = jobIn(state, id);
     if (TERMINAL.includes(job.state)) return { readOnly: true, value: job };
     if (!job.operation || observation.operationId !== job.operation.id || !TERMINAL.includes(observation.state)) throw fail('Exact terminal executor observation required', 409);
-    if (job.preparationRefusal || job.launchRefusal || job.preparationReceipt || require('./heavyWorkQueueCoverage').requiresRelease(job)) {
+    if (job.preparationRefusal || job.launchRefusal || job.preparationReceipt || job.executor?.mode === 'pinned-fit'
+      || require('./heavyWorkQueueCoverage').requiresRelease(job)) {
       // Recheck on every CAS attempt, including a holder acquired since the
       // observer read the outcome. This transition releases no native owner.
       const runtime = await require('../../models/RuntimeCoordination').findById('runtime').lean();

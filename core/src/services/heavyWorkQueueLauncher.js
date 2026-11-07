@@ -18,7 +18,8 @@ const START_TIMEOUT_MS = 5 * 60000;
 async function startProfile(body) {
   try {
     const answer = await requestJson({ baseUrl: process.env.BENCHMARK_SERVICE_URL || 'http://localhost:3081',
-      path: '/api/profiler/pipeline/profile-host', method: 'POST', body, timeoutMs: START_TIMEOUT_MS, serviceName: 'benchmark' });
+      path: body.mode === 'pinned-fit' ? '/api/profiler/fit-checks/start' : '/api/profiler/pipeline/profile-host',
+      method: 'POST', body, timeoutMs: START_TIMEOUT_MS, serviceName: 'benchmark' });
     return answer?.data ?? answer;
   } catch (error) {
     const refusal = require('../../../shared/queueLaunchReceipt.cjs').readRefusal(error.body, { id: body.queueRequestId, kind: 'profiler' });
@@ -51,7 +52,7 @@ const STARTERS = {
       }
       return (start || startProfile)({ ...begun.executor, queueRequestId: begun.id, queueDispatchId: begun.dispatchId });
     },
-    operationId: result => result?.queueId,
+    operationId: result => result?.queueId || result?.id,
     name: 'Profiler'
   },
   'embedding-reindex': {
@@ -75,7 +76,7 @@ function starterFor(job) {
   return STARTERS[job.executor?.mode === 'pipeline-report' ? 'pipeline-report' : job.kind];
 }
 function startable(job) {
-  const starter = queue.autoStartable(job) && starterFor(job);
+  const starter = require('./heavyWorkQueueCapabilities').manuallyStartable(job) && starterFor(job);
   if (!starter) {
     throw fail('Core launches Profiler, embedding reindex, topology, local transcription and report campaign requests only; use the request\'s own executor protocol', 409, 'HEAVY_QUEUE_LAUNCH_UNSUPPORTED');
   }

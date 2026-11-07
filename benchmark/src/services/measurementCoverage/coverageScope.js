@@ -44,10 +44,11 @@ async function resolveScope(deps = {}) {
   }
 
   for (const preference of preferences || []) {
-    for (const pin of preference.pinnedModels || []) {
+    for (const [pinIndex, pin] of (preference.pinnedModels || []).entries()) {
       const entry = cell(preference.hostUrl || preference.host, typeof pin === 'string' ? pin : pin?.model);
       if (entry) {
         entry.pinned = true;
+        entry.pinIndex = pinIndex;
         entry.pinContext = Number(pin?.contextSize) > 0 ? Number(pin.contextSize) : 0;
       }
     }

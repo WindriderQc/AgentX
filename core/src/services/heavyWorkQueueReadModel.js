@@ -1,6 +1,6 @@
 'use strict';
 
-const { autoStartable } = require('./heavyWorkQueueCapabilities');
+const { autoStartable, manuallyStartable } = require('./heavyWorkQueueCapabilities');
 const PHASES = ['automatic_queue', 'action_required', 'dispatching', 'running', 'uncertain', 'finished', 'unknown'];
 const TERMINAL = ['completed', 'failed', 'cancelled'];
 const instant = value => value == null ? null : Date.parse(value);
@@ -19,17 +19,17 @@ function schedule(job, now) {
 /** Observation only: never probes an executor, grants authority or writes state. */
 function presentation(job, { now = Date.now() } = {}) {
   const slot = schedule(job, now);
-  const supported = autoStartable(job);
+  const supported = manuallyStartable(job);
   const nativeImage = job.kind === 'image' && job.executor?.mode === 'image-operation';
   const nativePlant = job.kind === 'other' && job.executor?.mode === 'plant-identify';
-  const automatic = nativeImage || nativePlant || (supported && job.reservation?.autoStart === true);
+  const automatic = nativeImage || nativePlant || (autoStartable(job) && job.reservation?.autoStart === true);
   const editable = ['requested', 'reserved'].includes(job.state);
   const base = {
     schema: 'agentx.heavy-work-presentation/v1', observedAt: new Date(now).toISOString(),
     authority: 'core.heavy-work-queue', authorization: 'not_granted_by_projection',
     startMode: automatic ? 'automatic' : job.executor ? 'manual' : 'unconfigured',
     schedule: slot,
-    capabilities: { configureAutoStart: supported && editable,
+    capabilities: { configureAutoStart: autoStartable(job) && editable,
       runNow: supported && job.state === 'reserved' && slot.state === 'open' },
   };
   const describe = (phase, label, code, actor, detail) => ({ ...base, phase, label, nextAction: { code, actor, detail } });

@@ -161,6 +161,46 @@ a rollback, is recorded with the decision. When Core gives no HTTP answer the
 decision is `apply_outcome_unknown`: Core may have applied the pin, so the next
 read compares against the live pin and the operator checks it before retrying.
 
+## Pinned context fit after Ollama drift
+
+The lane card's **Request pinned fit check** records a manual Core heavy-work
+request for an exact pinned completion model whose context profile records a
+different Ollama version. It starts nothing. Plan its slot in Automations →
+Calendar and explicitly choose **Run now**. This executor refuses `autoStart`;
+an upgrade, a page read and a restart never launch it.
+
+`POST /api/profiler/fit-checks/request` takes `{ requestId, hostId, pinIndex }`.
+The UUID binds one intent, frozen pin set, artifact digest, physical runtime,
+Ollama version and context. Reuse it after a lost reply. Core's existing queue
+owns the window and dispatch; the existing Profiler admission, host claims,
+`profile_run` journal, cancel/stop proof and restoration own the runtime. The
+fit performs one empty-prompt allocation at the pin's context, checks the native
+two-observation runtime receipt and pinned-set residency, and records its
+observation before native restoration/release. The five-minute queue estimate
+is planning metadata, not a measured duration or a promise of completion.
+The response records elapsed time including restoration; the load request has a
+60-second deadline with the existing native stop-proof backstop.
+
+The lane projection and `GET /api/profiler/fit-checks/:id` retain the exact
+identity, effective context, observation time, result and release status.
+Missing/partial evidence is unknown; CPU spill or a changed pin, artifact,
+runtime or effective context fails. Every failure requires revalidation while
+preserving the pin. A pass proves allocation and full GPU residency only at
+that exact context with the frozen pinned set. It does not qualify throughput,
+quality, tools, the driver or other windows, change native profile levels or
+thresholds, rewrite historical proofs, or erase general runtime drift warnings.
+
+Cancellation uses `POST /api/profiler/fit-checks/:id/cancel`: unstarted work is
+cancelled in Core; running work uses the existing native Profiler cancellation.
+After writer loss, inspect the same receipt and native recovery, never another
+ID. `POST /api/profiler/fit-checks/:id/reconcile` settles an interrupted fit as
+failed only when the matching native journal records restoration and Core
+release. If admission's response was lost before that journal existed, the
+native operator can supply `{ nativeIdentity: { admissionId, generation,
+principal, recoveryId } }` for read-back of the original Core release receipt.
+This action restores/releases nothing. Missing proof keeps replacements fenced;
+a recovered release never turns an incomplete observation into a pass.
+
 ## HTTP deadlines
 
 Long non-streaming probes can spend several minutes before response headers.

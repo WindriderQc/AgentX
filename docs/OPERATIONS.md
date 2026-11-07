@@ -700,6 +700,10 @@ stays in use and the drift is shown: `qualification.runtimeDrift`
 (`{measured, installed}`) in the inference contract, a badge on the Profiler
 model, and a warning on the lane card, whose "Measure tonight" queues a Full
 profile. `measured: null` marks evidence written before versions were recorded.
+A [manual pinned-context fit](PROFILER_CONTEXT.md#pinned-context-fit-after-ollama-drift)
+can observe allocation and full GPU residency at the exact current pin through
+Core's queue. It preserves the pin on failure and keeps its dated receipt
+separate from historical qualification and general runtime drift warnings.
 A retired host-report agent still
 running on a GPU host is removed by hand on that host; Core has no
 host-report route.

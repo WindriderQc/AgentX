@@ -190,6 +190,18 @@ export function renderRuntimeDrift(drift) {
   return `<p class="lc-warning lc-warning--runtime" role="note"><i class="fas fa-code-compare" aria-hidden="true"></i> ${escAttr(text)}</p>`;
 }
 
+export function renderPinnedFit(fit) {
+  if (!fit) return '';
+  const historical = fit.matchesCurrent === false ? 'Historical fit; the pin or runtime has changed. ' : '';
+  const text = fit.status === 'pass' && fit.matchesCurrent === true
+    ? `GPU residency passed at ${fmtCtx(fit.numCtx)} on Ollama ${fit.ollamaVersion}.`
+    : `Pinned context fit: ${fit.state || 'unknown'}; revalidation required. The pinned context is preserved.`;
+  const date = fit.checkedAt ? ` Observed ${fit.checkedAt}.` : '';
+  const duration = Number.isFinite(fit.durationMs) ? ` Elapsed ${(fit.durationMs / 1000).toFixed(1)} s, including native restoration.` : '';
+  return `<p class="lc-warning lc-warning--fit" role="note">${escAttr(historical + text + date + duration)}
+    ${escAttr(fit.limit || 'Residency only; other runtime warnings and qualifications remain.')} ${fit.queueRequestId ? calendarLink('Plan or inspect in Calendar') : ''}</p>`;
+}
+
 export function renderLaneCard(lane, index = 0) {
   const cap = lane?.capability || {};
   const t = cap.throughput || {};
@@ -221,6 +233,7 @@ export function renderLaneCard(lane, index = 0) {
     </div>
     ${warnings}
     ${renderRuntimeDrift(cap.runtimeDrift)}
+    ${renderPinnedFit(lane.pinnedFit)}
     ${renderRemeasure(cap.remeasure)}
     <section class="lc-block" aria-label="Context">
       <h4>Context</h4>
@@ -244,6 +257,10 @@ export function renderLaneCard(lane, index = 0) {
       ${gapList}
       ${renderMeasurement(lane.measurement)}
       <div class="lc-actions">
+        ${lane.pinned && lane.residency !== 'cpu' && Number.isInteger(lane.pinIndex) && lane.pinContext > 0 && cap.runtimeDrift?.measured
+          && !['dispatching', 'unknown'].includes(lane.pinnedFit?.state)
+          && !(lane.pinnedFit?.state === 'requested' && lane.pinnedFit?.queueRequestId)
+          ? `<button type="button" class="lc-measure" data-lane-action="fit" data-lane-index="${index}">Request pinned fit check</button>` : ''}
         ${open ? '' : `<button type="button" class="lc-measure" data-lane-action="measure" data-lane-index="${index}"${canQueue ? ' title="Plans a Full profile tonight; Core starts it at its time"' : ' disabled title="The host of this lane is not configured in the Profiler"'}>
           <i class="fas fa-moon" aria-hidden="true"></i> Measure tonight
         </button>`}
