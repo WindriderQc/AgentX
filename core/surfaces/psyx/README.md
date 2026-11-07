@@ -1,6 +1,6 @@
 # PsyX in AgentX
 
-The full profile serves the PsyX 2.12.0 conversation UI at `/psyx`. Psychological
+The full profile serves the PsyX 2.12.1 conversation UI at `/psyx`. Psychological
 domain rules and longitudinal state live in `core/src/domains/psyx`; generic
 conversation persistence/lifecycle and admitted inference are Core capabilities.
 No separate PsyX server, database client or inference router starts here.
@@ -37,6 +37,40 @@ Proposals stay pending and outside the prompt until the user accepts (optionally
 edited) or rejects them; settled proposals are not proposed again. The interface
 always shows when a review runs and what it proposed. `PSYX_AUTO_REVIEW=false`
 disables it.
+
+The same review critiques the exact last completed reply against emotion before
+analysis, at most one question, length, applied stance and lecture avoidance.
+Core binds the note to the canonical assistant message ID, transcript ordinal
+and SHA-256 of the complete reply. Stance and spoken/typed mode come from the
+saved turn, not the reviewer. Older turns without these controls retain unknown
+mode. Whole-message coverage is explicit; a reply exceeding the review's 24k
+character transcript budget fails before inference instead of being cut.
+
+PsyX state retains at most 100 supervision notes across conversations, without
+another transcript. Each note separates code measurements (whitespace-delimited
+word count, question-mark count and the known mode's usual word range) from
+fallible model observations, with met, missed, uncertain and not_applicable
+statuses. Literal reply quotations are matched for provenance only; neither
+matching nor a model judgment establishes clinical truth or independent quality
+verification. Missing and invalid model findings stay explicit and never count
+as success. The existing state API and export, under the current access boundary, expose notes and
+`supervisionSummary`: counts over the same retained window, including missing,
+invalid, uncertain and non-applicable observations, never lifetime totals,
+clinical outcomes or coverage of every completed reply.
+
+A valid note is available to the next reply only while its ID, ordinal and full
+text hash still match the preceding canonical reply in the same conversation.
+It stays outside durable user memory, cannot override explicit controls or
+safety, and is omitted when background review or history context is disabled.
+It shares the existing system-context budget, including a frontier-to-local
+fallback. A reply already in flight never waits for supervision. The existing
+delay and coalescing still apply: rapid completions can skip intermediate
+replies, and no extra inference or new scheduler is added. Late superseded
+results are discarded; rescheduling or recreating the reviewer reuses a retained
+note without inference, including missing/invalid notes. Evicted notes have no
+lifetime deduplication guarantee. Reset clears notes and counts; permanent
+conversation deletion removes its notes. Memory proposal acceptance, correction
+and rejection keep their existing semantics.
 
 The review also recommends the stance (talk, analyze, challenge, plan) and depth
 (normal, deep) of the conversation's next turn, with a one-sentence reason. A

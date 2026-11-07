@@ -1,6 +1,7 @@
 'use strict';
 
-const { reviewMessages, readReview } = require('../../../src/domains/psyx/review');
+const { REVIEW_PROMPT_VERSION, selectReviewTurns, reviewMessages, readReview } = require('../../../src/domains/psyx/review');
+const { replyTarget, sameTarget, supervisionNote } = require('../../../src/domains/psyx/supervision');
 
 // Runs the background review after completed turns. At most one review runs per
 // conversation; turns that complete meanwhile coalesce into a single follow-up.
@@ -14,28 +15,49 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
   const key = (userId, conversationId) => `${userId}:${conversationId}`;
 
   async function run(userId, conversationId, job) {
+    const sequence = job.sequence;
     const preferences = preferencesFor ? await preferencesFor(userId) : null;
     if (preferences && !preferences.values.backgroundReview) return { added: 0, digest: null };
-    const turns = await conversationRepository.context(userId, conversationId, 40);
+    const snapshot = await conversationRepository.context(userId, conversationId, 40, { timestamps: true, withIdentity: true, withCoverage: true });
+    const turns = Array.isArray(snapshot) ? snapshot : snapshot?.messages;
     if (!turns?.length) return { added: 0, digest: null };
+    const target = replyTarget(conversationId, turns);
+    const selected = selectReviewTurns(turns);
+    if (target && !selected.length) throw Object.assign(new Error('The complete reply does not fit the review context'), { code: 'PSYX_REVIEW_TARGET_TOO_LARGE' });
+    const availableMessages = snapshot.availableMessages ?? turns.length;
+    const coverage = { availableMessages, includedMessages: selected.length,
+      omittedMessages: availableMessages - selected.length, complete: availableMessages === selected.length };
     const state = await stateRepository.read(userId);
     const resetAt = state.resetAt;
-    if (jobs.get(key(userId, conversationId)) !== job || (preferencesFor && (await preferencesFor(userId)).revision !== preferences.revision)) return { added: 0, digest: null };
+    // Process restart or duplicate scheduling reuses the retained note, including
+    // missing/invalid results. It does not launch a second review for that reply.
+    if (target && state.supervisionNotes?.some(note => sameTarget(note, target))) return { added: 0, digest: null };
+    const stillWanted = async () => {
+      if (jobs.get(key(userId, conversationId)) !== job || job.sequence !== sequence) return false;
+      if (preferencesFor && (await preferencesFor(userId)).revision !== preferences.revision) return false;
+      const latest = await conversationRepository.context(userId, conversationId, 1, { withIdentity: true });
+      return Boolean(latest) && (!target || sameTarget(target, replyTarget(conversationId, latest)))
+        && jobs.get(key(userId, conversationId)) === job && job.sequence === sequence;
+    };
+    if (!await stillWanted()) return { added: 0, digest: null };
     const result = await provider.complete({
-      messages: reviewMessages({ state: preferences ? require('../../../src/services/conversationPreferences/catalog').selectPsyxState(state, preferences.values) : state, turns }),
+      messages: reviewMessages({ state: preferences ? require('../../../src/services/conversationPreferences/catalog').selectPsyxState(state, preferences.values) : state, turns: selected, target, coverage }),
       taskType: config.review?.taskType || 'deep_reasoning',
       timeoutMs: config.requestTimeoutMs,
       location: locationFor(state)
     });
     const openExperimentIds = state.experiments.filter(item => ['planned', 'active'].includes(item.status)).map(item => item.id);
-    const review = readReview(result.content, { conversationId, settled: state.settledProposals, openExperimentIds });
-    if (!review) throw Object.assign(new Error('The background review returned no usable result'), { code: 'PSYX_REVIEW_UNUSABLE' });
+    const review = readReview(result?.content, { conversationId, settled: state.settledProposals, openExperimentIds });
+    if (!review && !target) throw Object.assign(new Error('The background review returned no usable result'), { code: 'PSYX_REVIEW_UNUSABLE' });
     // The conversation may have been deleted or archived, or memory reset, while the model was thinking.
-    if (jobs.get(key(userId, conversationId)) !== job || !await conversationRepository.context(userId, conversationId, 1)) return { added: 0, digest: null };
-    const stillWanted = () => jobs.get(key(userId, conversationId)) === job && (!preferencesFor
-      || preferencesFor(userId).then(current => current.revision === preferences.revision));
-    const recorded = await stateRepository.recordReview(userId, { conversationId, ...review, resetAt, stillWanted });
-    return { added: recorded.added, digest: Boolean(review.digest), model: result.model || null };
+    if (!await stillWanted()) return { added: 0, digest: null };
+    const supervision = target ? supervisionNote(review ? review.supervision : {}, {
+      target, reply: turns.at(-1).content, model: result?.model, promptVersion: REVIEW_PROMPT_VERSION, coverage
+    }) : null;
+    const recorded = await stateRepository.recordReview(userId, { conversationId, digest: review?.digest,
+      proposals: review?.proposals, supervision, resetAt, stillWanted });
+    if (!review) throw Object.assign(new Error('The background review returned no usable result'), { code: 'PSYX_REVIEW_UNUSABLE' });
+    return { added: recorded.added, digest: Boolean(recorded.digest), model: result?.model || null };
   }
 
   async function queue(userId, conversationId) {

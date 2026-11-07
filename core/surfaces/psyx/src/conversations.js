@@ -10,7 +10,8 @@ function createConversationAdapter({ conversationLifecycle: core }) {
   const view = row => row ? { ...row,
     provider: row.messages?.at(-1)?.metadata?.provider || null,
     ...(row.messages ? { messages: row.messages.map(message => ({
-      role: message.role, content: message.content, action: message.metadata?.action,
+      id: message.id, role: message.role, content: message.content, action: message.metadata?.action,
+      control: message.metadata?.routing?.psyxControl || null,
       createdAt: message.timestamp
     })) } : {})
   } : null;
@@ -40,16 +41,21 @@ function createConversationAdapter({ conversationLifecycle: core }) {
       for (const row of await all(userId)) { const session = await getSession(userId, row.id); if (session) items.push(session); }
       return items;
     },
-    async context(userId, id, limit = 40, { timestamps = false, withCoverage = false } = {}) {
+    async context(userId, id, limit = 40, { timestamps = false, withCoverage = false, withIdentity = false } = {}) {
       const session = await getSession(userId, id);
       if (!session || session.lifecycle.status === 'archived') return null;
-      const eligible = session.messages.filter(m => ['user', 'assistant', 'action'].includes(m.role));
+      const eligible = session.messages.map((message, index) => ({ ...message, ordinal: index + 1 }))
+        .filter(m => ['user', 'assistant', 'action'].includes(m.role));
       const messages = eligible.slice(-limit)
-        .map(m => ({ role: m.role === 'action' ? 'user' : m.role, content: m.content, ...(timestamps ? { createdAt: m.createdAt } : {}) }));
+        .map(m => ({ role: m.role === 'action' ? 'user' : m.role, content: m.content,
+          ...(withIdentity ? { id: m.id, ordinal: m.ordinal, control: m.control } : {}),
+          ...(timestamps ? { createdAt: m.createdAt } : {}) }));
       return withCoverage ? { messages, availableMessages: eligible.length } : messages;
     },
     async saveCompletedTurn(input) {
-      return view(await core.recordCompletedTurn({ ...input, ...scope(input.userId), surface: 'psyx', promptVersion: PROMPT_VERSION }));
+      return view(await core.recordCompletedTurn({ ...input,
+        routing: { ...input.routing, psyxControl: input.control || null },
+        ...scope(input.userId), surface: 'psyx', promptVersion: PROMPT_VERSION }));
     },
     rename: mutate('renameConversation'), archive: mutate('archiveConversation'), restore: mutate('restoreConversation'),
     async permanentlyDelete(userId, id) {

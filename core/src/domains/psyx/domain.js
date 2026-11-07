@@ -5,6 +5,7 @@ const { SAFETY_INSTRUCTION } = require('./safety');
 const { portraitSystemMessage } = require('./dream');
 const { assessmentSystemMessage } = require('./assessments');
 const { techniquesSystemMessage } = require('./techniques');
+const { supervisionSystemMessage } = require('./supervision');
 const { familyTimeZone } = require('../household/family');
 const { SPOKEN_REPLY_INSTRUCTION } = require('../../services/voice/presentation');
 
@@ -176,7 +177,7 @@ function longitudinalSystemMessage(state, { conversationId = null, budget = 'loc
 
 const SESSION_OPENING = 'This is the first message of a new session. Acknowledge what the user brings first. Then, if recent sessions or active experiments in the longitudinal state relate to it, connect in one sentence and ask how a planned experiment went. Never force it.';
 
-function composeSystemContext(state, control, { conversationId = null, safety = null, voice = false, voiceLanguage = 'fr', budget = 'local', time = null, features = {} } = {}) {
+function composeSystemContext(state, control, { conversationId = null, safety = null, voice = false, voiceLanguage = 'fr', budget = 'local', time = null, features = {}, supervision = null } = {}) {
   // AgentX's external contract caps an individual local message at 16k
   // characters: persona and controls first, then the profile, then fallible
   // longitudinal memory in what remains. A frontier model takes a wide budget.
@@ -187,13 +188,14 @@ function composeSystemContext(state, control, { conversationId = null, safety = 
   // The frontier agent cuts its instructions at 60,000 characters: the whole context stays well under, so control and safety at the end always arrive.
   const measures = assessmentSystemMessage(state, time?.now);
   const techniques = features.techniqueContext === false ? '' : techniquesSystemMessage({ full: wide });
-  const memory = longitudinalSystemMessage(state, { conversationId, budget, maxCharacters: (wide ? 40000 : 6000 - profile.length - measures.length) - portrait.length });
+  const supervisionContext = supervisionSystemMessage(supervision);
+  const memory = longitudinalSystemMessage(state, { conversationId, budget, maxCharacters: (wide ? 40000 : 6000 - profile.length - measures.length) - portrait.length - supervisionContext.length });
   const opening = !conversationId && (state.sessionDigests?.length || state.experiments?.some(item => ['planned', 'active'].includes(item.status)))
     ? SESSION_OPENING : '';
   const system = voice ? SYSTEM_PROMPT.replace(TYPED_LANGUAGE_INSTRUCTION, voiceLanguage === 'en'
     ? 'The browser explicitly selected English for this spoken turn. Reply in English.'
     : 'The spoken language is français québécois. Réponds en français québécois et tutoie la personne, même si des mots anglais figurent dans sa transcription.') : SYSTEM_PROMPT;
-  return [system, profile, portrait, measures, memory, techniques, controlSystemMessage(control), time ? timeSystemMessage(time) : '', opening,
+  return [system, profile, portrait, measures, memory, techniques, supervisionContext, controlSystemMessage(control), time ? timeSystemMessage(time) : '', opening,
     voice ? `${SPOKEN_REPLY_INSTRUCTION} This is a spoken turn. Usually use 30 to 90 words without lists; explicit readings may be longer. Ask at most one question.` : '',
     safety ? SAFETY_INSTRUCTION : ''].filter(Boolean).join('\n\n');
 }

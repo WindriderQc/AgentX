@@ -8,6 +8,7 @@ const { createReviewer } = require('./reviewer');
 const { createDreamer } = require('./dreamer');
 const { cleanText, stateForPrompt } = require('../../../src/domains/psyx/stateRepository');
 const domain = require('../../../src/domains/psyx/domain');
+const { nextReplyNote } = require('../../../src/domains/psyx/supervision');
 const { detectRecentCrisis, RESOURCES } = require('../../../src/domains/psyx/safety');
 const assessments = require('../../../src/domains/psyx/assessments');
 const { TECHNIQUES } = require('../../../src/domains/psyx/techniques');
@@ -351,13 +352,15 @@ function createApp({ config, database, provider, voice = null, logger = console,
     if (!input) return res.status(400).json({ ok: false, status: 'error', message: 'message is required' });
 
     const conversationId = cleanText(req.body?.conversationId, 80) || null;
-    const history = conversationId ? await conversationRepository.context(userId, conversationId, domain.CONTEXT_BUDGETS.frontier.maxMessages, { timestamps: true, withCoverage: true }) : [];
+    const history = conversationId ? await conversationRepository.context(userId, conversationId, domain.CONTEXT_BUDGETS.frontier.maxMessages, { timestamps: true, withCoverage: true, withIdentity: true }) : [];
     const context = Array.isArray(history) ? history : history?.messages;
     const availableMessages = Array.isArray(history) ? history.length : history?.availableMessages;
     if (conversationId && !context) return res.status(404).json({ ok: false, status: 'error', message: 'PsyX session not found' });
     const longitudinal = await stateRepository.read(userId);
     const preferences = await readPreferences(userId), features = preferences.values;
     const selectedState = selectPsyxState(longitudinal, features);
+    const supervision = features.backgroundReview && features.historyContext
+      ? nextReplyNote(longitudinal, conversationId, context) : null;
     const recommendation = features.autoRecommendations && conversationId ? longitudinal.sessionDigests?.find(item => item.conversationId === conversationId)?.next : null;
     // A crisis signal overrides any stance: stay with the person, answer promptly.
     // Actions carry no words of their own, but a crisis in the last messages still holds.
@@ -377,7 +380,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
       const selected = domain.selectConversationContext(context || [], { ...domain.CONTEXT_BUDGETS[lane], availableMessages,
         ...(features.historyContext === false ? { maxMessages: 0 } : {}) });
       return {
-        system: domain.composeSystemContext(selectedState, control, { conversationId, safety, voice: voiceTurn, voiceLanguage, budget: lane, features,
+        system: domain.composeSystemContext(selectedState, control, { conversationId, safety, voice: voiceTurn, voiceLanguage, budget: lane, features, supervision,
           time: features.timeContext ? { now: new Date(), lastTurnAt: (context || []).at(-1)?.createdAt || null, lastSessionAt } : null }) + (recapContext ? `\n\n${recapContext}` : ''),
         messages: selected.messages, contextCoverage: selected.coverage
       };
@@ -424,6 +427,7 @@ function createApp({ config, database, provider, voice = null, logger = console,
         userMessage: input,
         assistantMessage: assistant,
         action: control.action,
+        control: { mode: control.mode, depth: control.depth, voice: voiceTurn },
         model: result.model,
         provider: provider.id,
         routing: result.routing

@@ -521,3 +521,98 @@ test('the profile is the user\'s own text and survives a memory reset; goals are
   const reset = await harness.repository.reset('default');
   assert.deepEqual([reset.profile.about, reset.goals], ['Père seul de deux enfants.', []]);
 });
+
+function syntheticSupervision(conversationId, ordinal = 2, content = 'Réponse synthétique?') {
+  const { replyTarget, supervisionNote, CRITERIA } = require('../../../src/domains/psyx/supervision');
+  const target = replyTarget(conversationId, [{ id: 'reply-' + ordinal, ordinal, role: 'assistant', content,
+    control: { mode: 'talk', voice: false } }]);
+  return supervisionNote({ replyId: target.replyId, replyHash: target.replyHash,
+    observations: Object.fromEntries(CRITERIA.map(key => [key, { status: 'uncertain', reason: 'Contexte limité.' }])) },
+  { target, reply: content, promptVersion: 3 });
+}
+
+test('supervision and existing review arrays commit together once across concurrent writes and repository restart', async () => {
+  const harness = createHarness();
+  const supervision = syntheticSupervision('c');
+  const input = { conversationId: 'c', supervision };
+  const writes = await Promise.all(Array.from({ length: 4 }, () => harness.repository.recordReview('default', input)));
+  assert.equal(writes.filter(result => !result.skipped).length, 1);
+  let state = await harness.repository.read('default');
+  assert.equal(state.supervisionNotes.length, 1);
+  assert.equal(state.supervisionSummary.replies, 1);
+  assert.equal(state.revision, 1);
+  const restarted = createStateRepository({ collection: harness.collection });
+  assert.equal((await restarted.recordReview('default', input)).skipped, 'duplicate');
+  assert.equal((await restarted.read('default')).revision, 1);
+  const newer = await restarted.recordReview('default', { conversationId: 'c', supervision: syntheticSupervision('c', 6) });
+  assert.equal(newer.state.supervisionSummary.replies, 2);
+  const stale = await restarted.recordReview('default', { conversationId: 'c', supervision: syntheticSupervision('c', 4),
+    digest: { conversationId: 'c', summary: 'Stale digest' } });
+  assert.equal(stale.skipped, 'superseded');
+  assert.equal(stale.state.sessionDigests.length, 0);
+  assert.equal(stale.state.supervisionSummary.replies, 2);
+});
+
+test('supervision retention and summary share the same explicit bounded window and erasure scope', async () => {
+  const { NOTE_LIMIT } = require('../../../src/domains/psyx/supervision');
+  const harness = createHarness();
+  for (let i = 0; i < NOTE_LIMIT + 3; i++) {
+    await harness.repository.recordReview('default', { conversationId: 'c', supervision: syntheticSupervision('c', 2 * (i + 1)) });
+  }
+  let state = await harness.repository.read('default');
+  assert.equal(state.supervisionNotes.length, NOTE_LIMIT);
+  assert.equal(state.supervisionNotes[0].replyOrdinal, 8);
+  assert.equal(state.supervisionSummary.replies, NOTE_LIMIT);
+  assert.equal(state.supervisionSummary.modelObservations.criteria.stance.uncertain, NOTE_LIMIT);
+  assert.equal(state.supervisionSummary.modelObservations.criteria.stance.met, 0);
+  await harness.repository.recordReview('other-owner', { conversationId: 'c', supervision: syntheticSupervision('c') });
+  await harness.repository.recordReview('default', { conversationId: 'other-session', supervision: syntheticSupervision('other-session') });
+  await harness.repository.forgetConversation('default', 'c');
+  state = await harness.repository.read('default');
+  assert.deepEqual(state.supervisionNotes.map(item => item.conversationId), ['other-session']);
+  assert.equal(state.supervisionSummary.replies, 1);
+  assert.equal((await harness.repository.read('other-owner')).supervisionSummary.replies, 1);
+  await harness.repository.reset('default');
+  state = await harness.repository.read('default');
+  assert.deepEqual(state.supervisionNotes, []);
+  assert.equal(state.supervisionSummary.replies, 0);
+  assert.equal((await harness.repository.read('other-owner')).supervisionSummary.replies, 1);
+});
+
+test('reset and rejection during the supervision write retain the existing memory semantics', async () => {
+  const { readReview } = require('../../../src/domains/psyx/review');
+  const harness = createHarness();
+  const review = readReview({ digest: { summary: 'Digest' }, proposals: [
+    { kind: 'notes', text: 'Proposition synthétique', evidence: ['source synthétique'] }
+  ] }, { conversationId: 'c' });
+  const first = await harness.repository.recordReview('default', { conversationId: 'c', ...review });
+  const proposal = first.state.proposals[0];
+  const update = harness.collection.updateOne.bind(harness.collection);
+  let intercept = true;
+  harness.collection.updateOne = async (filter, change, options) => {
+    if (intercept && change.$set?.supervisionNotes) {
+      intercept = false;
+      await harness.repository.rejectProposal('default', proposal.id);
+    }
+    return update(filter, change, options);
+  };
+  const recorded = await harness.repository.recordReview('default', { conversationId: 'c', ...review, supervision: syntheticSupervision('c') });
+  assert.equal(recorded.state.supervisionNotes.length, 1);
+  assert.deepEqual(recorded.state.proposals, []);
+  assert.ok(recorded.state.settledProposals.includes(proposal.fingerprint));
+  assert.deepEqual(recorded.state.notes, [], 'supervision never becomes accepted memory');
+  intercept = true;
+  harness.collection.updateOne = async (filter, change, options) => {
+    if (intercept && change.$set?.supervisionNotes) {
+      intercept = false;
+      await harness.repository.reset('default');
+    }
+    return update(filter, change, options);
+  };
+  const resetRace = await harness.repository.recordReview('default', { conversationId: 'c', ...review, supervision: syntheticSupervision('c', 4) });
+  assert.equal(resetRace.skipped, 'reset');
+  assert.deepEqual(resetRace.state.supervisionNotes, []);
+  assert.equal(resetRace.state.supervisionSummary.replies, 0);
+  assert.deepEqual(resetRace.state.sessionDigests, []);
+  assert.deepEqual(resetRace.state.proposals, []);
+});
