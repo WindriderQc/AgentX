@@ -244,7 +244,14 @@ host, then where to change it:
   machine, with the next one. Below, side by side: the heavy-work queue for the
   next 24 hours, and **Live requests**: requests running through Core now that
   are not heavy work (caller, machine, age), completed requests per minute with
-  heavy-work periods shaded, and the busiest callers. Machine state refreshes
+  heavy-work periods shaded, and the busiest callers. The queue card's
+  "waiting for a slot" line expands, read-only, every request with no usable
+  slot (never planned, or its slot or start window has passed): title, hosts,
+  estimated duration, permitted start window, submitter (session, task,
+  issue), the start of its purpose and why it waits, from the queue's own next
+  action. A machine card's "N waiting in the queue · show which" opens that
+  list. Planning, reordering and cancelling stay with the queue's owner
+  (calendar view). Machine state refreshes
   every 20 s, requests and power every 10 s, from
   `GET /api/nerve-center/live-activity` (read-only; admission proofs are never
   returned).
