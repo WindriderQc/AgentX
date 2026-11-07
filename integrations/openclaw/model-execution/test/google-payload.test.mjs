@@ -7,7 +7,8 @@ const model = { provider: 'google', id: 'synthetic', api: 'google-generative-ai'
 const descriptor = { model: 'google/synthetic', maxTokens: 1024, contextWindow: 8192, fingerprint: 'fixed',
   isolation: { singleCallQualified: true }, billing: { kind: 'free' } };
 
-test('Google payload validation rejects provider state, retry overrides, hidden parts and undeclared tools', async () => {
+for (const api of ['google-generative-ai', 'google-vertex']) {
+test(`${api} payload validation rejects provider state, retry overrides, hidden parts and undeclared tools`, async () => {
   for (const [patch, code] of [
     [{ cachedContent: 'synthetic-cache' }, 'OPENCLAW_NATIVE_STATE_FORBIDDEN'],
     [{ config: { cachedContent: 'synthetic-cache' } }, 'OPENCLAW_NATIVE_STATE_FORBIDDEN'],
@@ -18,7 +19,7 @@ test('Google payload validation rejects provider state, retry overrides, hidden 
     [{ config: { tools: [{ googleSearch: {} }] } }, 'OPENCLAW_NATIVE_TOOLS_FORBIDDEN']
   ]) {
     let dispatched = 0;
-    const backend = { catalogue: async () => ({ models: [descriptor] }), prepare: async () => ({ model, descriptor,
+    const backend = { catalogue: async () => ({ models: [descriptor] }), prepare: async () => ({ model: { ...model, api }, descriptor,
       stream: (context, options) => (async function* () {
         options.onPayload({ contents: [{ role: 'user', parts: [{ text: 'Exact context' }] }],
           config: { maxOutputTokens: 64 }, ...patch });
@@ -31,3 +32,4 @@ test('Google payload validation rejects provider state, retry overrides, hidden 
     assert.equal(dispatched, 0);
   }
 });
+}

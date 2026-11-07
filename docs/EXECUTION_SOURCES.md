@@ -106,8 +106,8 @@ The plugin compares the final payload with the submitted context on each call,
 and refuses provider-held state, server-side model fallback and any prompt the
 SDK adds, such as the agent identity sent with an Anthropic subscription token.
 
-`google-generative-ai` additionally requires the exact executable SDK/dependency
-fingerprint in `native.mjs`. It covers the OpenClaw distribution, `@openclaw/ai`
+`google-generative-ai` and the API-key path of `google-vertex` additionally
+require the exact executable SDK/dependency fingerprint in `native.mjs`. It covers the OpenClaw distribution, `@openclaw/ai`
 2026.9.4 and `@google/genai` 2.19.0. The native Google client makes one attempt
 when its retry options are absent; the intercepted transport tests prove this
 on the pinned code. Missing or changed code closes this API, including changes
@@ -117,17 +117,27 @@ Resolution from the SDK and AI transport code must select those same hashed
 packages. A nested dependency shadow or an unvisited `dist` symlink closes
 qualification instead of inheriting the shared package's digest.
 
+Vertex qualifies only its native API-key (Express) client. The native provider
+must explicitly declare `auth: "api-key"`; the catalogue publishes the bounded
+`nativeAuthMode` and includes it in target identity. Preparation also checks the
+actual public SDK auth result, refusing other modes, absent keys, ADC markers
+and placeholders before a provider client runs. ADC, OAuth and service-account
+clients remain unavailable. The tests use the public native auth resolver with
+synthetic configuration and intercept the real model transport, including when
+synthetic ADC environment settings are present; they perform no credential setup.
+
 | Native API | Applied | Refused before dispatch |
 | --- | --- | --- |
 | `openai-completions` | output limit, temperature, seed, topP, JSON, thinking | numeric reasoning budget when unapplied |
 | `anthropic-messages` | output limit, thinking on/off and level, temperature where the model accepts it | seed, topP, JSON, numeric reasoning budget |
 | `openai-responses` | output limit, thinking on/off and level, temperature where the model accepts it | seed, topP, JSON, numeric reasoning budget |
 | `google-generative-ai` (pinned SDK code) | output limit, temperature, thinking on/off, level and numeric budget | seed, topP, JSON; thinking off where the native model cannot disable it |
+| `google-vertex` (pinned SDK code, explicit API-key mode) | output limit, temperature, thinking on/off, level and numeric budget | seed, topP, JSON; unqualified auth/client modes; thinking off where the native model cannot disable it |
 
 A target without JSON and seed cannot be a judge. `openai-chatgpt-responses`
 (subscription) stays unavailable in model mode: its native payload carries no
-output limit, so the requested bound cannot be applied. Google Vertex and other
-Google APIs remain unavailable in model mode. Google qualification uses a
+output limit, so the requested bound cannot be applied. Other Google APIs remain
+unavailable in model mode. Google qualification uses a
 synthetic native provider configuration and intercepts the actual SDK network;
 it does not install a provider, enable instance targets or make a live call.
 Configured native agents on these APIs remain accessible. This is a runtime capability gate, with
