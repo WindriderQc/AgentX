@@ -67,6 +67,20 @@ class RetentionLabelTests(unittest.TestCase):
         self.assertEqual(intent["held"], {IDS[2]: "already_in_trash", IDS[3]: "draft", IDS[4]: "gone_at_gmail"})
         self.assertEqual(self.gmail.writes, [])
 
+    def test_v2_review_proposals_are_refused_before_any_provider_access(self):
+        manifest = load(self.manifest)
+        manifest.update(schema="agentx.secretary-retention-plan/v2", reviewProposal=True,
+                        candidateForOwnerReview=True, cleanupStatus="ready")
+        save(self.manifest, manifest)
+
+        def forbidden(_command):
+            self.fail("A review-only v2 report must never contact the provider")
+
+        with self.assertRaisesRegex(SystemExit, "review-only"):
+            rl.prepare(self.manifest, "2024-1", self.out, read=forbidden)
+        self.assertFalse(self.out.exists())
+        self.assertEqual(self.gmail.writes, [])
+
     def test_apply_needs_the_approved_fingerprint_and_a_fresh_check(self):
         intent = self.prepared()
         with self.assertRaises(SystemExit):

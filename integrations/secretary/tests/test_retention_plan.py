@@ -12,9 +12,9 @@ sys.path.insert(0, str(ROOT))
 from evidence_record import record_page
 from evidence_store import load, save
 from history_coverage import content_hash, cutoff_date, coverage
-from retention_plan import ANALYSIS_CONTRACT, QUALIFICATION_CASES, plan, review_packet, qualification_valid, main
+from retention_plan import ANALYSIS_CONTRACT, QUALIFICATION_CASES, NATIVE_GAPS, plan, review_packet, qualification_valid, main
 from secretary_evidence import Archive, sha
-from verify_archive import verify
+from verify_archive import verify, restore_sample
 from compound_sources import index_attachment
 from test_compound_sources import zipped
 
@@ -70,7 +70,9 @@ class RetentionPlanTests(unittest.TestCase):
         tree_index = {"files": {p.relative_to(self.root).as_posix(): {"sha256": sha(p.read_bytes()), "bytes": p.stat().st_size}
                                  for p in self.root.rglob("*") if p.is_file()}}
         self.primary = verify(self.root, with_sources=True, tree_index=tree_index)[0]["verificationProof"]
-        self.mirror = verify(copy, with_sources=True, tree_index=tree_index)[0]["verificationProof"]
+        mirror_report, receipts = verify(copy, with_sources=True, tree_index=tree_index)
+        self.mirror = mirror_report["verificationProof"]
+        self.mirror["restoreSample"] = restore_sample(copy, receipts, len(receipts), seed=1)
         self.mirror["host"] = "independent-synthetic-host"
         self.inventory = {"query": f"in:anywhere before:{int(self.before.timestamp())}", "complete": True,
                           "next": None, "updatedAt": self.clock.isoformat(),
@@ -112,10 +114,16 @@ class RetentionPlanTests(unittest.TestCase):
         self.assertIn("analysis_missing_or_ambiguous", self.target(result)["blockers"])
         self.assertFalse(result["executionAllowed"])
 
-    def test_qualified_exact_review_only_prepares_an_owner_candidate_and_preserves_mixed_thread(self):
+    def test_local_exact_review_only_proposes_review_and_preserves_mixed_thread(self):
         result = self.result([self.decision(), self.decision("1234567890abcde1")])
-        self.assertEqual(result["counts"]["candidatesForOwnerReview"], 1)
-        self.assertTrue(self.target(result)["candidateForOwnerReview"])
+        self.assertEqual(result["schema"], "agentx.secretary-retention-plan/v2")
+        self.assertEqual(result["counts"]["candidatesForOwnerReview"], 0)
+        self.assertEqual(result["counts"]["proposalsForOwnerReview"], 1)
+        self.assertTrue(self.target(result)["reviewProposal"])
+        for row in result["messages"]:
+            self.assertFalse(row["candidateForOwnerReview"])
+            self.assertEqual(row["cleanupStatus"], "blocked")
+            self.assertTrue(set(NATIVE_GAPS).issubset(row["blockers"]))
         self.assertTrue(result["requiresNativeApproval"])
         self.assertFalse(any(r["executionAllowed"] for r in result["messages"]))
         self.assertNotIn("1234567890abcde0", [r["messageId"] for r in result["messages"]])
@@ -128,7 +136,7 @@ class RetentionPlanTests(unittest.TestCase):
                         {"updatedAt": (self.clock + timedelta(hours=1)).isoformat()}):
             with self.subTest(changes=changes):
                 self.inventory = {**original, **changes}
-                self.assertFalse(self.target(self.result([self.decision()]))["candidateForOwnerReview"])
+                self.assertFalse(self.target(self.result([self.decision()]))["reviewProposal"])
 
     def test_same_host_or_corrupt_copy_cannot_be_waived_by_analysis(self):
         self.mirror["host"] = self.primary["host"]
@@ -237,7 +245,8 @@ class RetentionPlanTests(unittest.TestCase):
         self.inventory["ids"].append("abcdef1234567890")
         result = self.result([self.decision()])
         self.assertEqual(result["providerMessagesWithoutHistoricalArchive"], ["abcdef1234567890"])
-        self.assertEqual(result["counts"]["candidatesForOwnerReview"], 1)
+        self.assertEqual(result["counts"]["candidatesForOwnerReview"], 0)
+        self.assertEqual(result["counts"]["proposalsForOwnerReview"], 1)
 
     def compound(self, indexed=False):
         data = zipped([("statement.txt", b"An amount and date"), ("inner.zip", zipped([("letter.txt", b"A request")]))])
@@ -258,7 +267,9 @@ class RetentionPlanTests(unittest.TestCase):
         tree = {"files": {p.relative_to(self.root).as_posix(): {"sha256": sha(p.read_bytes()), "bytes": p.stat().st_size}
                           for p in self.root.rglob("*") if p.is_file()}}
         self.primary = verify(self.root, with_sources=True, tree_index=tree)[0]["verificationProof"]
-        self.mirror = verify(mirror, with_sources=True, tree_index=tree)[0]["verificationProof"]
+        mirror_report, receipts = verify(mirror, with_sources=True, tree_index=tree)
+        self.mirror = mirror_report["verificationProof"]
+        self.mirror["restoreSample"] = restore_sample(mirror, receipts, len(receipts), seed=1)
         self.mirror["host"] = "independent-synthetic-host"
 
     def compound_decision(self):
@@ -285,9 +296,9 @@ class RetentionPlanTests(unittest.TestCase):
         self.assertIn("compound_member_dispositions_incomplete", target["blockers"])
         self.assertIn("compound_metadata_dispositions_incomplete", target["blockers"])
         decision = self.compound_decision()
-        self.assertTrue(self.target(self.result([decision]))["candidateForOwnerReview"])
+        self.assertTrue(self.target(self.result([decision]))["reviewProposal"])
         decision["compoundMembers"].pop(next(iter(decision["compoundMembers"])))
-        self.assertFalse(self.target(self.result([decision]))["candidateForOwnerReview"])
+        self.assertFalse(self.target(self.result([decision]))["reviewProposal"])
 
     def test_current_member_bytes_and_independent_copies_cannot_be_waived(self):
         self.compound(indexed=True)

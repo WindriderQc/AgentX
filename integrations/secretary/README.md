@@ -339,12 +339,33 @@ python3 integrations/secretary/souvenir_candidates.py --root "$GMAIL_SECRETARY_R
 
 ### Preparing exact-message cleanup review
 
-`retention_plan.py` combines chronological coverage, a fresh completed Gmail ID
-inventory, independent-copy proofs, a triage qualification and exact-message
-analysis/disposition receipts. The inventory query uses the cutoff's epoch
-seconds, including Spam and Trash with `in:anywhere`; ambiguous dates, duplicate
-IDs, unfinished pagination and observations older than 24 hours hold candidates.
-This is an observed inventory, not an atomic mailbox snapshot.
+`retention_plan.py` prepares a private `agentx.secretary-retention-plan/v2`
+report from chronological coverage, a completed Gmail ID inventory, copy/restore
+observations and local qualification/analysis/disposition attestations. It
+preserves those attestations as review information and hashes its exact inputs.
+Attestation text and source rows stay in that private file. Standard output
+contains only the fixed summary fields, counts, blockers and input hashes.
+The inventory query uses the cutoff's epoch seconds, including Spam and Trash
+with `in:anywhere`; ambiguous dates, duplicate IDs, unfinished pagination and
+observations older than 24 hours remain local review blockers. This is an
+observed inventory, not an atomic mailbox snapshot.
+
+Each message separates `reviewProposal` and `reviewBlockers` from cleanup
+eligibility. `reviewProposal: true` means only that the supplied local records
+meet the report's consistency checks. It proves no native acceptance or current
+owner decision. `cleanupStatus` remains `blocked`, the legacy
+`candidateForOwnerReview` stays false and `executionAllowed` stays false.
+The report retains four native gaps on every row and at its root:
+
+- `native_semantic_acceptance_unavailable`;
+- `native_decision_reconciliation_unavailable`;
+- `native_preservation_acceptance_unavailable`;
+- `native_manifest_approval_binding_unavailable`.
+
+No local JSON flag, qualification, disposition or restoration report can clear
+these gaps. The report creates no ready cleanup manifest or native approval.
+Existing v1 reports, analysis receipts and archive history remain unchanged;
+their former candidate flags do not establish native cleanup authority.
 
 The qualification uses `agentx.secretary-retention-qualification/v1`, requires
 an explicit boolean `qualified: true`, identifies
@@ -371,19 +392,22 @@ changed source or review invalidates the old decision; conflicting decisions hol
 the message. Missing originals/copies, drafts, unknown dates and stale thread
 reviews cannot be waived by an analysis receipt.
 
-`retention_dispositions.py` writes owner dispositions
-(`agentx.secretary-retention-disposition/v1`) as an alternative to an exact
-analysis: per message, its value lane and the owner's decisions in Core's
-historical review for each of its findings, including consolidated souvenir
-candidates through their private manifests. The planner (`--dispositions`)
-accepts bulk mail whose actions, deliverables and invoices are decided, or
-person/important mail whose every finding the owner decided (kept, souvenir,
-dismissed, resolved); mail with no finding to decide waits for a separate owner
-validation (`no_owner_decision_yet`); a finding the owner never saw keeps the message held, and
-no entry citing it may still be a candidate. Integrity, copies, provider,
-draft, date and unread-page blockers still apply; only bulk mail also waives
-attachment images and thread questions. The exact-analysis qualification is not
-required for this path. `--older-than-days` sets a rolling cutoff (midnight UTC).
+`retention_dispositions.py` writes `agentx.secretary-retention-disposition/v2`
+snapshots for review: each message's value lane and saved Core decisions for
+its findings, including consolidated souvenir candidates through their private
+manifests. It pins the review packet, value-lane version and each Core entry's
+hash/revision and decision date. Forgotten entries contribute no decision.
+These snapshots do not revalidate a later Core state or substitute for native
+semantic acceptance. Prior v1 snapshots remain review inputs without v2 pins.
+
+Every finding needs a disposition even for bulk mail. Retained actions and
+deliverables remain open (`retained_action_still_open`); local review only
+considers them addressed when resolved or dismissed. Bulk mail cannot waive
+thread questions, attachment images, unread pages or informational findings.
+Person/important mail with no finding to decide keeps `no_owner_decision_yet`.
+Missing or conflicting snapshots, changed value lanes, and changed page
+receipts remain explicit blockers. `--older-than-days` sets a rolling cutoff
+(midnight UTC).
 
 Use `verify_archive.py --tree-index <pinned-native-mirror-state>` on both copies
 to rehash the complete indexed archive, including metadata. Incremental mirrors
@@ -393,10 +417,17 @@ The planner also checks that the current manifest, provider projection, raw
 receipt and review metadata match both copies; an older snapshot holds changed
 metadata until it is preserved and verified too.
 
-The private output contains `candidateForOwnerReview`, never execution permission.
-It has no provider transport or mailbox mutation. An actual cleanup still needs
-a fresh exact-message provider/metadata check, a concrete manifest, the native
-one-time approval, reversible Trash first and reconciliation of each effect.
+The report also requires a mirror restore observation naming this exact message
+ID, raw hash, size and path, with successful MIME decoding. It exposes this only
+as `mirrorRestoreObservation: reported`, never as native preservation acceptance.
+A count-only sample, a sample of other messages, a changed source version or a
+failed read leaves `restore_evidence_missing_or_wrong_source`. No sample covers
+messages absent from its source list or proves restoration of the whole corpus.
+The review packet pins metadata and page-receipt bytes; concurrent changes leave
+`source_changed_during_preparation`.
+
+The planner has no provider transport or mailbox mutation. Actual cleanup still
+requires its own complete native acceptance and exact-message approval contract.
 Newer members of a mixed-date thread stay outside the selected message scope.
 Keep manifests and all qualification/analysis receipts outside Git.
 The planner creates its output exclusively and flushes it durably. A concurrent
@@ -408,9 +439,11 @@ python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" 
 
 ### Labelling an approved retention batch
 
-`retention_label.py` is the first mailbox step of a cleanup and the only one it
-performs: it puts the Gmail label `AgentX/À retirer` on the messages of one batch
-of a retention manifest, so the owner can browse them in Gmail before any Trash.
+`retention_label.py` remains a separate legacy label-only operation. It rejects
+v2 retention reports before any provider access and does not consume
+`reviewProposal` as a mailbox batch or permission. With an independently approved
+legacy batch it puts the Gmail label `AgentX/À retirer` on those exact messages
+so the owner can browse them in Gmail before any Trash.
 `prepare` reads each message again at Gmail (read-only) and holds drafts,
 messages already in Trash, gone messages and changed threads. `apply` requires
 the batch fingerprint the owner approved and who approved it, refuses a check
