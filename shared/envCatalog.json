@@ -3369,6 +3369,16 @@
       "secret": false,
       "description": "Silence after which Data drops the latest point of an MQTT sensor topic (sensors live feed). Unset: 30 days."
     },
+    "STORAGE_ADVICE_POLICY_JSON": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "storage",
+      "secret": true,
+      "description": "Optional version-1 JSON policy for read-only storage capacity, backup-verification and conditional copy advice. No thresholds or retention are inferred. Unset: report missing policy inputs. The value is hidden because it contains private source, volume and failure-domain IDs; see data/README.md."
+    },
     "STORAGE_AGENT_SOURCES": {
       "services": [
         "data"

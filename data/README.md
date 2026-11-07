@@ -319,6 +319,7 @@ This synthetic policy illustrates the shape; the values are examples, not
 recommended thresholds. Source keys match configured source IDs; volume keys
 and `allowedVolumeIds` match exact IDs returned by the assessment. Keep real
 IDs and failure-domain names outside public Git.
+Configuration status reports whether this policy is set and hides its value.
 
 ```json
 {
