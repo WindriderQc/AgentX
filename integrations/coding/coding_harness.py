@@ -72,6 +72,8 @@ def opencode_runtime() -> tuple[Path, str]:
 
 
 def opencode_config(model: str, context_size: int | None, relay_port=8377, *, read_only=False) -> str:
+    if context_size is not None and (type(context_size) is not int or context_size <= 0):
+        raise RuntimeError('Coding context is unavailable')
     limits = {'output': 32768}
     if context_size:
         limits['context'] = context_size
