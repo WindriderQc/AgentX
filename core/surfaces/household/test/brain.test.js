@@ -40,7 +40,7 @@ test('a scheduled review is delivered to a waiting page and informs the next tur
   const calls = [];
   const brain = createBrain({ inference: inferenceReturning(REVIEW, calls), loadTurns: async () => TURNS, delayMs: 0,
     env: { HOUSEHOLD_BRAIN_ENABLED: 'true', HOUSEHOLD_BRAIN_MODEL: 'ollama/synthetic:32b', HOUSEHOLD_BRAIN_HOST_URL: 'http://gpu.example.test:11434' } });
-  assert.equal(brain.contextFor(SESSION.sessionId), '');
+  assert.equal((await brain.contextFor(SESSION.sessionId)), '');
   assert.equal(brain.schedule({ session: SESSION, pack: { childSafe: false }, traceId: 'trace-1' }), true);
   const review = await brain.wait(SESSION.sessionId, 'trace-1');
   assert.equal(review.traceId, 'trace-1');
@@ -51,11 +51,11 @@ test('a scheduled review is delivered to a waiting page and informs the next tur
   assert.equal(calls[0].options.hostUrl, 'http://gpu.example.test:11434');
   assert.equal(calls[0].options.signal, undefined, 'a dedicated host request is never cancelled');
   assert.equal(calls[0].body.think, false);
-  const context = brain.contextFor(SESSION.sessionId);
+  const context = (await brain.contextFor(SESSION.sessionId));
   assert.match(context, /advisory/);
   assert.match(context, /huit pattes, pas six/);
   assert.match(review.adviceId, /^[a-f0-9-]{36}$/);
-  assert.deepEqual(brain.contextWithRefs(SESSION.sessionId), { text: context, refs: [{ source: 'brain',
+  assert.deepEqual((await brain.contextWithRefs(SESSION.sessionId)), { text: context, refs: [{ source: 'brain',
     adviceId: review.adviceId, version: 1, sourceTurnId: 'trace-1', coverage: ['corrections', 'interjection'] }] });
   assert.equal(await brain.wait(SESSION.sessionId, 'another-trace', { timeoutMs: 10 }), null, 'a review of another turn is not delivered');
 });
@@ -190,7 +190,7 @@ test('an oversized complete review refuses before inference and discloses the mi
   brain.schedule({ session: SESSION, pack: {}, traceId: 'oversized' });
   const refusal = await brain.wait(SESSION.sessionId, 'oversized');
   assert.equal(refusal.status, 'context_required'); assert.equal(calls.length, 0);
-  assert.equal(brain.contextFor(SESSION.sessionId), '', 'a refused review cannot become advice');
+  assert.equal((await brain.contextFor(SESSION.sessionId)), '', 'a refused review cannot become advice');
 });
 
 test('a refused later review preserves the last completed feedback and identifies its older coverage', async () => {
@@ -202,7 +202,7 @@ test('a refused later review preserves the last completed feedback and identifie
   turns = [{ inputText: 'x'.repeat(100000) }];
   brain.schedule({ session: SESSION, pack: {}, traceId: 'refused' });
   assert.equal((await brain.wait(SESSION.sessionId, 'refused')).status, 'context_required');
-  const context = brain.contextWithRefs(SESSION.sessionId);
+  const context = (await brain.contextWithRefs(SESSION.sessionId));
   assert.match(context.text, /huit pattes/); assert.match(context.text, /does not validate newer turns/);
   assert.equal(context.refs[0].adviceId, completed.adviceId);
   assert.equal(context.refs[0].sourceTurnId, 'completed');
@@ -221,4 +221,81 @@ test('live preferences enable the optional brain, block disabled work, and disca
   prefs = { revision: 3, values: { backgroundReview: false, reviewDelaySeconds: 0 } }; brain.reconfigure(false);
   assert.equal(calls[0].aborted, false, 'settings do not abort admitted runtime work'); release();
   assert.equal(await wait, null); await new Promise(resolve => setTimeout(resolve, 5)); assert.equal(brain.latest(SESSION.sessionId), null);
+});
+
+// A synthetic stand-in for Core's conversation service: conditional session writes by turn count.
+function storeFor(session, { failWrites = false } = {}) {
+  const row = { ...session, turnCount: 1 }, writes = [];
+  return { row, writes, getSession: async ({ sessionId }) => (sessionId === row.sessionId ? structuredClone(row) : null),
+    updateSession: async (query, update) => {
+      if (failWrites) throw Object.assign(new Error('synthetic storage outage'), { code: 'SYNTHETIC' });
+      if (query.sessionId !== row.sessionId || query.packId !== row.packId || query.scopeId !== row.scopeId || query.turnCount !== row.turnCount) return null;
+      writes.push(update);
+      row.backgroundReview = { ...row.backgroundReview };
+      for (const [path, value] of Object.entries(update.$set || {})) row.backgroundReview[path.split('.')[1]] = value;
+      for (const path of Object.keys(update.$unset || {})) delete row.backgroundReview[path.split('.')[1]];
+      return structuredClone(row);
+    } };
+}
+const LIVE = { revision: 4, values: { backgroundReview: true, reviewDelaySeconds: 0 } };
+
+test('a cancelled review writes nothing, and only the newest of two rapid turns is stored', async () => {
+  const conversations = storeFor(SESSION), gates = [], calls = [];
+  const brain = createBrain({ conversations, env: {}, preferencesFor: async () => structuredClone(LIVE), loadTurns: async () => TURNS,
+    inference: { execute: async (body, options) => { calls.push(options.signal); await new Promise(resolve => gates.push(resolve));
+      return { ok: true, body: { response: REVIEW } }; } } });
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'first' });
+  while (!gates.length) await new Promise(resolve => setTimeout(resolve, 1));
+  const firstWait = brain.wait(SESSION.sessionId, 'first');
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'second' });
+  assert.equal(calls[0].aborted, true, 'the newer turn cancels the shared-host request');
+  while (gates.length < 2) await new Promise(resolve => setTimeout(resolve, 1));
+  gates[0](); gates[1]();
+  const second = await brain.wait(SESSION.sessionId, 'second');
+  assert.equal(await firstWait, null, 'a waiter for the superseded turn never receives the newer review');
+  assert.equal(second.traceId, 'second');
+  assert.equal(conversations.writes.length, 1);
+  assert.equal(conversations.row.backgroundReview.review.traceId, 'second');
+});
+
+test('a private deeper review thinks and writes more only when configured; Famille stays standard', async () => {
+  const calls = [];
+  let prefs = { revision: 1, values: { backgroundReview: true, deepReview: true, reviewDelaySeconds: 0 } };
+  const brain = createBrain({ inference: inferenceReturning(REVIEW, calls), env: {}, preferencesFor: async () => structuredClone(prefs), loadTurns: async () => TURNS });
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'deep' });
+  assert.equal((await brain.wait(SESSION.sessionId, 'deep')).depth, 'deep');
+  assert.equal(calls[0].body.think, true); assert.equal(calls[0].body.max_tokens, 4000); assert.equal(calls[0].body.timeoutMs, 300000);
+  assert.match(calls[0].body.messages[0].content, /deeper review/); assert.match(calls[0].body.callerDetail, /private\/deep$/);
+  brain.schedule({ session: { ...SESSION, sessionId: 'family-1' }, pack: { childSafe: true }, traceId: 'child' });
+  assert.equal((await brain.wait('family-1', 'child')).depth, 'standard');
+  assert.equal(calls[1].body.think, false); assert.equal(calls[1].body.max_tokens, 700);
+  assert.doesNotMatch(calls[1].body.messages[0].content, /deeper review/);
+  prefs = { revision: 2, values: { backgroundReview: true, deepReview: false, reviewDelaySeconds: 0 } };
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'standard' });
+  await brain.wait(SESSION.sessionId, 'standard');
+  assert.equal(calls[2].body.think, false);
+});
+
+test('a storage outage keeps the advisory result in this process and says so', async () => {
+  const warnings = [];
+  const brain = createBrain({ conversations: storeFor(SESSION, { failWrites: true }), env: {}, preferencesFor: async () => structuredClone(LIVE),
+    loadTurns: async () => TURNS, inference: inferenceReturning(REVIEW), logger: { warn: (message, data) => warnings.push({ message, data }) } });
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'trace-1' });
+  assert.equal((await brain.wait(SESSION.sessionId, 'trace-1')).traceId, 'trace-1');
+  assert.deepEqual(warnings, [{ message: 'Household brain review was not stored', data: { error: 'synthetic storage outage', code: 'SYNTHETIC' } }]);
+});
+
+test('the stored record holds only the bounded review shape', async () => {
+  const conversations = storeFor(SESSION);
+  const oversized = JSON.stringify({ suggestions: Array(20).fill('q'.repeat(900)), corrections: Array(20).fill('c'.repeat(900)),
+    revisions: Array(20).fill({ title: 't'.repeat(900), body: 'b'.repeat(90000) }), interjection: { text: 'i'.repeat(9000), urgent: 'yes' }, extra: 'x'.repeat(9000) });
+  const brain = createBrain({ conversations, env: {}, preferencesFor: async () => structuredClone(LIVE), loadTurns: async () => TURNS, inference: inferenceReturning(oversized) });
+  brain.schedule({ session: SESSION, pack: {}, traceId: 'trace-1' });
+  await brain.wait(SESSION.sessionId, 'trace-1');
+  const stored = conversations.row.backgroundReview.review;
+  assert.equal(stored.extra, undefined);
+  assert.equal(stored.suggestions.length, 3); assert.equal(stored.corrections.length, 3); assert.equal(stored.revisions.length, 2);
+  assert.ok(stored.revisions.every(item => item.body.length <= 2000 && item.title.length <= 80));
+  assert.equal(stored.interjection.text.length, 220); assert.equal(stored.interjection.urgent, false);
+  assert.ok(JSON.stringify(conversations.row.backgroundReview).length < 12000);
 });

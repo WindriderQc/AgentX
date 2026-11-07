@@ -129,7 +129,7 @@ interface has an independent persisted preference scope:
 | Interface | Entry | Optional work |
 | --- | --- | --- |
 | Playground | Conversation header | Profile and model history; its existing precision controls hold RAG, web search, thinking and model parameters. |
-| Nestor | Private conversation settings | Core history, selected notes, confirmed point, approved documents, family context, review advice, recap drafts and background review with its delay. |
+| Nestor | Private conversation settings | Core history, selected notes, confirmed point, approved documents, family context, review advice, recap drafts and background review with its delay and optional deeper review. |
 | Famille | Performance settings in Nestor's private parental space | Separate Core history, notes, approved documents, routines, review advice and background review with its delay. |
 
 **Allégé** disables the applicable optional switches; **Par défaut** removes
@@ -1303,6 +1303,19 @@ endpoints must be separate from the spoken model. A busy or reserved primary can
 use a CPU reviewer; a failure after dispatch is never replayed on another model.
 Reviews disclose their actual model and any fallback marker. Deliberate
 `master_brain` and `deep_reasoning` requests remain strict.
+The latest completed review and the latest context refusal of each conversation
+are also kept on its canonical conversation record (`backgroundReview`), one of
+each, replaced by the next and erased or exported with the conversation. After a
+restart the next turn uses that record until a new review settles; a record from
+an earlier settings revision is ignored. A review is stored only while no newer
+turn has been recorded since it started, so a superseded or stale result never
+overwrites a newer one. A storage failure keeps the result in the running
+process only and logs a warning. A review running at a restart is not resumed.
+The personal **Deeper review** setting (off by default, never offered to
+Famille) lets the same review lane think and write up to 4,000 tokens with a
+five-minute limit instead of 700 tokens and two minutes; each review records its
+`depth`. It runs after replies; on a host shared with the voice, a longer review
+occupies it longer until a new turn supersedes it, as described above.
 
 Plant cards use two routed tasks:
 
