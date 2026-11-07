@@ -2,6 +2,7 @@
 // Read-only disclosures: no worker initialization, recovery or runtime claim.
 const ImageOperation = require('../../../models/ImageOperation');
 const { loadConfig } = require('./config');
+const { workerFor, workersOf } = require('./workers');
 const { MIN_EDGE, MULTIPLE, limits, recommended } = require('./sizes');
 const { declaredRecipe, executionDetails } = require('./recipeExecution');
 const constraints = require('../../../public/js/image-brief-constraints');
@@ -10,8 +11,9 @@ const text = value => typeof value === 'string' ? value.trim().slice(0,240) : nu
 function workerInfo(workerUrl, config) {
   let address;
   try { address = new URL(workerUrl).hostname; } catch { return null; }
-  const sameWorker = workerUrl === config?.workerUrl;
-  const display = sameWorker ? config.presentation || {} : {};
+  const current = config ? workerFor(config, workerUrl) : null;
+  const sameWorker = Boolean(current);
+  const display = sameWorker ? current.presentation || {} : {};
   return { address, label: text(display.hostLabel) || address,
     gpu: text(display.gpuLabel), vramGiB: Number.isFinite(display.vramGiB) && display.vramGiB > 0 ? display.vramGiB : null,
     source: sameWorker ? 'current-worker-configuration' : 'recorded-worker-address' };
@@ -31,7 +33,8 @@ function recipeInfo(id, profile = {}) {
 }
 function describe(config) {
   const profiles = Object.entries(config?.profiles || {}).map(([id, profile]) => recipeInfo(id, profile));
-  return { worker: config ? workerInfo(config.workerUrl, config) : null, profiles,
+  const workers = workersOf(config).map(w => ({ id: w.id, ...workerInfo(w.url, config), ...(w.profiles && { profiles: w.profiles }) }));
+  return { worker: workers[0] || null, workers, profiles,
     dimensions: { minEdge: MIN_EDGE, maxEdge: Math.max(limits().maxEdge, ...profiles.map(p => p.maxEdge)), multiple: MULTIPLE }, maxReferences: 2 };
 }
 function overview() { return describe(loadConfig()); }
@@ -42,7 +45,7 @@ async function details(id) {
     ...(op.expert && { expert: op.expert }),
     ...(op.lineage && { lineage: op.lineage }),
     ...(op.execution && { execution: executionDetails(op.execution) }),
-    worker: workerInfo(op.workerUrl, loadConfig()),
+    worker: (info => info && { ...info, ...(op.workerId && { id: op.workerId }) })(workerInfo(op.workerUrl, loadConfig())),
     request: { prompt: op.request?.prompt, seed: op.request?.seed, width: op.request?.width, height: op.request?.height,
       ...((op.request?.constraints || op.request?.textPolicy) && { visualPrompt: op.request.visualPrompt }),
       ...(op.request?.constraints && { constraints: constraints.validate(op.request.constraints) }),

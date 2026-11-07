@@ -71,7 +71,9 @@ function createComfyClient(base, fetchImpl = fetch) {
     if (!r.ok) throw new Error('Image output is unavailable');
     const bytes = await r.buffer(); decode(bytes, MAX_OUTPUT_PIXELS); return bytes;
   }
-  async function free(assertOwned, requireEmptyGpu = true) {
+  // releasedRatio: share of the card that must be free once the worker let go,
+  // lower on a desktop whose screen keeps part of the card.
+  async function free(assertOwned, requireEmptyGpu = true, releasedRatio = 0.85) {
     await assertOwned();
     const q = await json('/queue');
     if (q.queue_running?.length || q.queue_pending?.length) throw new Error('Worker has unfinished work');
@@ -81,7 +83,7 @@ function createComfyClient(base, fetchImpl = fetch) {
       const stats = await json('/system_stats');
       const device = stats.devices?.[0];
       if (device && device.torch_vram_total - device.torch_vram_free < 256 * 1024 * 1024
-        && (!requireEmptyGpu || device.vram_free > device.vram_total * 0.85)) return stats;
+        && (!requireEmptyGpu || device.vram_free > device.vram_total * releasedRatio)) return stats;
       await sleep(1000);
     }
     throw new Error('Image worker memory release is unverified');

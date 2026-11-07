@@ -438,6 +438,52 @@ using the same endpoint identities as Core inference. The optional
 also fences Core consumers on configured physical GPU aliases. It does not
 discover devices or stop games, voice workers or other unmanaged consumers.
 
+### Several workers
+
+A manifest may list `workers` instead of `workerUrl` and `ollamaHosts` (never
+both). Each worker names its URL, the Ollama endpoints that share its GPU and,
+optionally, the profiles it accepts. A worker without `profiles` accepts every
+profile. Order is preference:
+
+```json
+{
+  "workers": [
+    { "id": "desk", "url": "http://192.168.1.20:8189",
+      "ollamaHosts": ["http://192.168.1.20:11434"], "profiles": ["klein"],
+      "minFreeVramRatio": 0.65, "releasedVramRatio": 0.7,
+      "presentation": { "hostLabel": "Desk PC", "gpuLabel": "16 GB" } },
+    { "id": "main", "url": "http://192.168.1.30:8188",
+      "ollamaHosts": ["http://192.168.1.30:11434"] }
+  ],
+  "defaultProfile": "klein",
+  "profiles": { "klein": { "...": "..." }, "quality": { "...": "..." } }
+}
+```
+
+Core picks the worker when it accepts a request, before any reservation,
+unload or submission. It tries the profile's workers in order and skips one
+that is unreachable or lacks the profile's models, whose Ollama endpoint does
+not answer, whose hosts other heavy work holds now (running, or reserved for
+this moment), or whose card clearly lacks room even after unloading its own
+Ollama residents. Another image in progress does not count as busy: a short
+wait for the preferred worker is better than evicting another host's models.
+When every worker is reachable but none is clearly free, the first reachable
+one is kept. A request already reserved in the heavy-work queue stays on the
+worker of the hosts it reserved, without fallback.
+
+Once accepted, an operation is bound to its worker: queue hosts, GPU
+reservation, unloads, restoration, recovery and archive retry all use that
+worker only, and a refusal after acceptance is never retried elsewhere. Its
+receipt carries the worker `id`. Each worker reserves only its own hosts, so
+two workers may render at the same time.
+
+`minFreeVramRatio` (default 0.75) is the free share of the card required
+before generation; `releasedVramRatio` (default 0.85) is the free share
+required once the worker has released its memory. Lower them only for a card
+that also drives a desktop screen, after measuring what the desktop keeps. A
+worker that must not take images for a while (a game, another workload that
+owns the card) is simply stopped: an unreachable worker is skipped.
+
 The `qwen21` family supports instance-selected Qwen-Image-2.1 diffusion and
 encoder files (BF16 or qualified quantized weights), its own VAE, Euler/simple
 sampling and lossless CPU prefix caching.

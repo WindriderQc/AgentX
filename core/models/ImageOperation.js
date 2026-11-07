@@ -34,6 +34,7 @@ const schema = new mongoose.Schema({
     referenceInspection: { type: mongoose.Schema.Types.Mixed, default: undefined } }, { _id: false }), default: undefined },
   workerSlot: { type: String },
   workerUrl: { type: String, select: false },
+  workerId: { type: String },
   state: { type: String, required: true, default: 'accepted' },
   request: { type: mongoose.Schema.Types.Mixed, required: true, select: false },
   references: { type: [Buffer], select: false, default: undefined },

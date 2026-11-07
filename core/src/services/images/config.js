@@ -4,6 +4,7 @@ const net = require('node:net');
 const { limits } = require('./sizes');
 const { declaredRecipe } = require('./recipeExecution');
 const { validateSampling } = require('./qwenTurbo');
+const { workersOf, workerFor, candidates, scoped } = require('./workers');
 
 function localUrl(value) {
   const u = new URL(value);
@@ -17,12 +18,49 @@ function localUrl(value) {
   return u.href.replace(/\/$/, '');
 }
 
+const ratio = value => {
+  if (typeof value !== 'number' || !(value >= 0.3 && value <= 0.95)) throw new Error('Image worker VRAM ratios must be between 0.3 and 0.95');
+  return value;
+};
+function consumers(hosts) {
+  if (!Array.isArray(hosts) || !hosts.length) throw new Error('Image GPU consumers must be configured');
+  return [...new Set(hosts.map(localUrl))];
+}
+// One worker per entry, in preference order. A legacy manifest (workerUrl plus
+// ollamaHosts) is a single worker that accepts every profile.
+function normalizeWorkers(c) {
+  if (c.workers !== undefined && (c.workerUrl !== undefined || c.ollamaHosts !== undefined)) {
+    throw new Error('Use either workers or workerUrl/ollamaHosts in the image manifest');
+  }
+  if (c.workers === undefined) {
+    c.workerUrl = localUrl(c.workerUrl);
+    c.ollamaHosts = consumers(c.ollamaHosts);
+    return [{ id: 'default', url: c.workerUrl, ollamaHosts: c.ollamaHosts }];
+  }
+  if (!Array.isArray(c.workers) || !c.workers.length || c.workers.length > 8) throw new Error('The image manifest needs 1 to 8 workers');
+  const ids = new Set(), urls = new Set();
+  return c.workers.map(w => {
+    if (!w || typeof w !== 'object' || !/^[a-z0-9-]{1,40}$/.test(w.id || '') || ids.has(w.id)) throw new Error('Each image worker needs a unique short id');
+    const url = localUrl(w.url);
+    if (urls.has(url)) throw new Error('Two image workers share one URL');
+    ids.add(w.id); urls.add(url);
+    if (w.profiles !== undefined && (!Array.isArray(w.profiles) || !w.profiles.length || w.profiles.some(id => !c.profiles[id]))) {
+      throw new Error('An image worker names an unknown profile');
+    }
+    if (w.presentation !== undefined && (!w.presentation || typeof w.presentation !== 'object' || Array.isArray(w.presentation))) {
+      throw new Error('Invalid image worker presentation');
+    }
+    return { id: w.id, url, ollamaHosts: consumers(w.ollamaHosts),
+      ...(w.profiles && { profiles: [...new Set(w.profiles)] }),
+      ...(w.minFreeVramRatio !== undefined && { minFreeVramRatio: ratio(w.minFreeVramRatio) }),
+      ...(w.releasedVramRatio !== undefined && { releasedVramRatio: ratio(w.releasedVramRatio) }),
+      ...(w.presentation && { presentation: w.presentation }) };
+  });
+}
+
 function loadConfig() {
   if (!process.env.LOCAL_IMAGES_CONFIG) return null;
   const c = JSON.parse(fs.readFileSync(process.env.LOCAL_IMAGES_CONFIG, 'utf8'));
-  c.workerUrl = localUrl(c.workerUrl);
-  if (!Array.isArray(c.ollamaHosts) || !c.ollamaHosts.length) throw new Error('Image GPU consumers must be configured');
-  c.ollamaHosts = [...new Set(c.ollamaHosts.map(localUrl))];
   if (!c.profiles || !c.profiles[c.defaultProfile]) throw new Error('Missing default image profile');
   for (const [id, p] of Object.entries(c.profiles)) {
     if (!/^[a-z0-9-]{1,50}$/.test(id) || !['klein', 'qwen21'].includes(p.family)) throw new Error('Invalid image profile');
@@ -34,9 +72,13 @@ function loadConfig() {
     if (!Number.isInteger(p.maxPixels) || p.maxPixels < 262144 || p.maxPixels > limits(p.family).maxPixels) throw new Error('Invalid image pixel budget');
     if (p.recipe !== undefined) p.recipe = declaredRecipe(p.recipe);
   }
+  c.workers = normalizeWorkers(c);
+  for (const id of Object.keys(c.profiles)) {
+    if (!candidates(c, id).length) throw new Error('An image profile has no worker');
+  }
   c.timeoutMs = Math.max(60000, Math.min(1800000, Number(c.timeoutMs) || 900000));
   c.drainMs = Math.max(0, Math.min(90000, Number(c.drainMs) || 60000));
   return c;
 }
 
-module.exports = { loadConfig, localUrl };
+module.exports = { loadConfig, localUrl, workersOf, workerFor, candidates, scoped };
