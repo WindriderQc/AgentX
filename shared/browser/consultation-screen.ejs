@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title><%= title %> · AgentX</title>
+  <link rel="stylesheet" href="<%= prefix %>/screen-read.css">
+  <script src="<%= prefix %>/screen-read.js" defer></script>
+</head>
+<body data-screen-page="<%= page %>" data-read-prefix="<%= prefix %>">
+  <main>
+    <header id="screen-overview" tabindex="-1">
+      <h1><%= title %></h1>
+      <p>Vue de consultation · les contrôles restent dans la page complète.</p>
+      <p id="screen-status" role="status">Lecture en cours…</p>
+      <button type="button" id="screen-refresh">Actualiser la lecture</button>
+    </header>
+    <% if (page === 'profiler') { %>
+      <section id="screen-hosts" tabindex="-1"><h2>Baselines des hôtes</h2><div data-screen-content="hosts"></div></section>
+      <section id="screen-models" tabindex="-1"><h2>Profils enregistrés</h2><div data-screen-content="models"></div></section>
+    <% } else { %>
+      <section id="screen-timeline" tabindex="-1"><h2>Créneaux planifiés</h2><div data-screen-content="timeline"></div></section>
+      <section id="screen-queue" tabindex="-1"><h2>Travaux lourds</h2><div data-screen-content="queue"></div></section>
+    <% } %>
+  </main>
+</body>
+</html>

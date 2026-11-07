@@ -207,7 +207,8 @@ app.get('/courthouse', (req, res) => {
   });
 });
 
-app.get('/profiler', (req, res) => {
+require('../shared/consultationScreen').registerAssets(app);
+app.get('/profiler', require('./routes/profiler-screen-page'), (req, res) => {
   res.render('layouts/main', {
     pageView: profilerPageView,
     title: 'Agent X Evaluation — Prepare Models',

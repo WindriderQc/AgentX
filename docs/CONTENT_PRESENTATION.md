@@ -80,6 +80,17 @@ The browser sends only the selected card as `agentx.presentation/v1`: local
 card identity/revision, kind, catalogue source, loading/display status and bounded
 observation. A new card instance has a new local revision; a live Analytics view
 also carries its Core snapshot revision. Closed content sends an empty selection.
+On personal conversation resume, page blocks become historical references with
+no frame or source fetch. An exactly matching canonical input observation is
+shown with its original dates and values; missing evidence remains missing.
+The explicit **Ouvrir la vue actuelle** control creates a separate, dated current
+read request through the same catalogue. Old turn/display/read records are not
+rewritten, refreshed or inferred from the new view. The bounded workspace keeps
+one history reference per page, without a parallel history store. Earlier images
+reuse their existing retained asset and scoped operation. These history references
+remain unavailable as current page reads; their original evidence stays in the
+canonical complete conversation as `historicalPresentation`.
+
 Old display/history entries never select the current page. Navigating a frame
 away from its expected origin/path removes its read context. Form values, raw
 DOM, arbitrary URLs and vault data are not collected.

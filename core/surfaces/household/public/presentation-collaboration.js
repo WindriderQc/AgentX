@@ -38,6 +38,7 @@
     return { begin, stop };
   }
   function focus(card, block) {
+    if (root.AgentXScreenPageFocus?.present(card, block)) return true;
     if (!card?._screenFrame || card._screenTarget?.page !== 'ecosystem') return false;
     const target = root.AgentXScreenPages.parse(block.body);
     if (target?.page !== 'ecosystem' || !target.focus.play) return false;

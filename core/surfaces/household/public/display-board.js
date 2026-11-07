@@ -223,7 +223,7 @@
     return holder;
   }
 
-  function render(block, { secrets, space = 'personal' }) {
+  function render(block, { secrets, space = 'personal', history = null, onOpen = null, requestedAt = null }) {
     if (!block || (block.kind === 'scene' ? !block.scene : typeof block.body !== 'string') || (block.kind === 'secret' && !secrets)) return null;
     if (block.kind === 'review' && (space !== 'personal' || block.from !== 'companion')) return null;
     const target = block.kind === 'page' ? pageTarget(block, space) : null;
@@ -236,7 +236,7 @@
     header.append(node('span', 'display-block-kind', KIND_LABELS[block.kind] || KIND_LABELS.text));
     const title = (typeof block.title === 'string' && block.title.trim()) || (target && root.AgentXScreenPages.label(target))
       || ({ text: 'Note', list: 'Liste', table: 'Tableau', code: 'Code', image: 'Image', scene: 'Scène', secret: 'Secret', link: 'Liens', math: 'Graphique' }[block.kind] || 'Contenu');
-    header.append(node('strong', 'display-block-title', title));
+    header.append(node('strong', 'display-block-title', (history ? 'Historique · ' : '') + title));
     if (block.from === 'companion') header.append(node('span', 'display-block-note', 'Suggestion du contexte'));
     if (block.partial) header.append(node('span', 'display-block-note', 'Contenu partiel'));
     const actions = node('div', 'display-block-actions');
@@ -245,7 +245,10 @@
     if (block.kind === 'secret') content = secretBody(block, actions);
     else if (block.kind === 'image') content = imageBody(block, space);
     else if (block.kind === 'scene') content = sceneBody(block, space);
-    else if (block.kind === 'page') content = pageBody(block, target, actions, card.dataset.presentationId);
+    else if (block.kind === 'page') content = history
+      ? root.NestorPageHistory?.create({ block, target, turn: history, onOpen })
+        || node('p', 'display-block-note', 'Référence historique. Cette référence ne charge pas la page actuelle.')
+      : pageBody(block, target, actions, card.dataset.presentationId);
     else if (block.kind === 'math') {
       // #1270: drawn from its validated formula; without the plotter the formula stays readable.
       content = root.NestorMathPlot ? root.NestorMathPlot.create(block) : node('pre', 'display-block-code', block.body);
@@ -265,6 +268,14 @@
     card._dispose = content._dispose;
     card._screenFrame = content._screenFrame;
     card._screenTarget = block.kind === 'page' ? target : null;
+    if (history && block.kind === 'page') card._historicalPage = content._historicalPage || {};
+    if (requestedAt && block.kind === 'page') {
+      const note = node('p', 'display-block-note', `Vue actuelle demandée le ${requestedAt} · lecture distincte de l’historique.`);
+      header.append(note); card.dataset.requestedAt = requestedAt;
+    }
+    if (space === 'personal' && card._screenFrame && target?.focus?.section) {
+      root.AgentXScreenPageFocus?.bind(card);
+    }
     card._screenState = () => content.dataset.state;
     if (content._mathText) card._mathText = content._mathText;
     return card;
@@ -275,9 +286,15 @@
     container.replaceChildren(node('h2', 'display-board-heading', heading), list);
     const update = () => { container.hidden = !list.childElementCount; onChange?.(Array.from(list.children)); };
     const board = {
-      add(block) {
+      add(block, { restoring = false, turn = {}, requestedAt = null } = {}) {
         if (kinds && !kinds.includes(block?.kind)) return false;
-        const card = render(block, { secrets, space });
+        if (!restoring && !requestedAt && space === 'personal' && block?.kind === 'page') {
+          const existing = Array.from(list.children).find(card => card.dataset.selected === 'true' && root.AgentXScreenPageFocus?.present(card, block));
+          if (existing) { update(); return true; }
+        }
+        const history = restoring && space === 'personal' && block?.kind === 'page' ? turn : null;
+        const card = render(block, { secrets, space, history, requestedAt,
+          onOpen: current => board.add(current, { requestedAt: new Date().toISOString() }) });
         if (!card) return false;
         if (space === 'family' && block.kind === 'page') {
           // One guided view at a time: hidden 3D frames must not keep animating.
@@ -289,8 +306,9 @@
         }
         // A keyed block replaces its previous card: one live 3D picture, not one per turn.
         // A page keeps one live frame per page name, refocused by the newest block.
-        const key = block.key || (block.operation?.id ? `image:${block.operation.id}`
-          : block.kind === 'page' ? `page:${String(block.body).split(/\s+/)[0]}` : '');
+        const pageKey = block.kind === 'page' ? `${history ? 'history:' : ''}page:${card._screenTarget.page}` : '';
+        const key = (history || requestedAt) && pageKey ? pageKey
+          : block.key || (block.operation?.id ? `image:${block.operation.id}` : pageKey);
         if (key) {
           card.dataset.key = key;
           Array.from(list.children).filter(child => child.dataset?.key === key).forEach(child => { child._dispose?.(); child.remove(); });
@@ -300,7 +318,7 @@
         update();
         return true;
       },
-      restore(blocks = []) { (Array.isArray(blocks) ? blocks : []).forEach(board.add); },
+      restore(blocks = [], turn = {}) { (Array.isArray(blocks) ? blocks : []).forEach(block => board.add(block, { restoring: true, turn })); },
       has: key => Array.from(list.children).some(child => child.dataset?.key === key),
       context() {
         if (container.hidden) return [];
@@ -310,6 +328,7 @@
         if (root.AgentXPresentationObservation) return visible.slice(0, 1).map(root.AgentXPresentationObservation.observe);
         return visible.filter(card => card._screenTarget).slice(0, 3).map(card => {
           const target = card._screenTarget, base = { page: target.page, status: 'unavailable' };
+          if (card._historicalPage) return base;
           if (!card._screenFrame) return { ...base, status: 'external' };
           try {
             const doc = card._screenFrame.contentDocument;

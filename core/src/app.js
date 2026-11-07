@@ -643,7 +643,7 @@ app.get('/models', (req, res) => {
   });
 });
 
-app.get('/cluster-schedule', (req, res) => res.redirect(302, '/automations?view=calendar'));
+require('../routes/cluster-screen-page')(app);
 
 app.get('/memory-review', (req, res) => {
   res.render('layouts/main', {

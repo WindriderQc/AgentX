@@ -960,7 +960,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         board.restore((turn.display || []).map(block => {
           const card = mathCard(block, data.session, turn.clientTurnId);
           return card !== block && turn.mathValues?.[block.id] ? { ...card, values: turn.mathValues[block.id] } : card;
-        }));
+        }), turn);
       });
       workflow?.restore(data.session.sessionId, data.turns || []);
       if (data.turns?.length >= data.policy?.maximumDisplayedTurns && saved.turnCount > data.turns.length) {
