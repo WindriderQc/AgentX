@@ -2,8 +2,9 @@
 
 // Math Lab in Super Dad (#1270), phase 2: a comparison card drawn by GraphysX's
 // <llmx-stage> (agentx.math-scene.v2) in the "Pages and images" zone, its
-// sliders driving the 3D scene, the 2D view, and what the next turn reports to
-// Core. Shipped page and reply channels, scripted replies only: no model,
+// sliders driving the 3D scene, the 2D view, what the next turn reports to
+// Core, and the released slider positions coming back after a reload.
+// Shipped page and reply channels, scripted replies only: no model,
 // microphone or external HTTP request. The GraphysX module is the built embed
 // (`npm run build:face` in GraphysX-Web), passed by path.
 const { chromium } = require(process.env.AGENTX_PLAYWRIGHT_MODULE || 'playwright');
@@ -28,7 +29,8 @@ const REPLIES = {
     + '<show kind="math" title="Trois ondes">f(x) = sin(x)\ng(x) = sin(2x)\nh(x) = a*sin(3x)\na = 1 in [0, 2]\nx in [-pi, pi]</show>',
   question: 'Regarde où les deux courbes se croisent.'
 };
-const sessions = new Map(), submissions = [], errors = [], cases = [];
+const sessions = new Map(), turns = new Map(), saves = [], submissions = [], errors = [], cases = [];
+let lastSessionId = null;
 let browser, server;
 
 (async () => {
@@ -72,8 +74,25 @@ let browser, server;
       onShow: block => res.write(JSON.stringify({ type: 'show', block }) + '\n') });
     channels.push(REPLIES[key]);
     const value = channels.end();
+    // Kept as Core keeps a turn: its id, its text and the blocks it showed.
+    if (!turns.has(session.sessionId)) turns.set(session.sessionId, []);
+    turns.get(session.sessionId).push({ clientTurnId: req.body.turnId, inputText: req.body.text, replyText: value.say, display: value.display, mathValues: {} });
+    session.lastTurnAt = new Date().toISOString(); lastSessionId = session.sessionId;
     res.end(JSON.stringify({ type: 'done', data: { session, traceId: randomUUID(), reply: { text: value.say }, routing: { backend: 'agentx' } } }) + '\n');
   });
+  // Released slider positions, kept with their turn; Core's own checks are covered by its route test.
+  app.post('/api/voice-personas/:scope/sessions/:id/math-values', (req, res) => {
+    saves.push({ sessionId: req.params.id, ...req.body });
+    const turn = (turns.get(req.params.id) || []).find(row => row.clientTurnId === req.body.turnId);
+    if (!turn) return res.status(404).json({ message: 'This turn is not recorded' });
+    turn.mathValues[req.body.blockId] = req.body.values;
+    res.json({ data: { turnId: req.body.turnId, blockId: req.body.blockId, values: req.body.values } });
+  });
+  app.get('/api/voice-personas/:scope/sessions/recent', (_req, res) => res.json({ data: { sessions: [...sessions.values()]
+    .filter(session => session.turnCount).sort((a, b) => b.lastTurnAt.localeCompare(a.lastTurnAt))
+    .map(session => ({ ...session, lastTurn: { inputPreview: turns.get(session.sessionId).at(-1).inputText } })) } }));
+  app.get('/api/voice-personas/:scope/sessions/:id/history', (req, res) => res.json({ data: {
+    session: sessions.get(req.params.id), turns: turns.get(req.params.id) || [], history: [], policy: { maximumDisplayedTurns: 500 } } }));
   app.use('/api', (req, res) => res.json({ data: req.path.endsWith('/recap/latest') ? null : { destinations: [], sessions: [], works: [], notes: [], active: 'primary', review: null } }));
   server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
   const origin = `http://127.0.0.1:${server.address().port}`;
@@ -141,8 +160,15 @@ let browser, server;
     await card.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-compare-3d-scene.png`) });
 
     // 2. The slider drives the 3D scene; what Nestor reads is recomputed by Core for both curves.
-    await card.locator('input[aria-label="Paramètre a"]').evaluate(input => { input.value = '-1.5'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+    await card.locator('input[aria-label="Paramètre a"]').evaluate(input => {
+      input.value = '-1.5'; input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     assert.deepEqual(await card.locator('llmx-stage').evaluate(stage => stage.parameters), { a: -1.5 });
+    // Released, the position is kept with the turn that showed the card.
+    for (let wait = 0; wait < 20 && !saves.some(row => row.sessionId === lastSessionId); wait += 1) await page.waitForTimeout(100);
+    const compareTurn = turns.get(lastSessionId)[0];
+    assert.deepEqual(saves.filter(row => row.sessionId === lastSessionId),
+      [{ sessionId: lastSessionId, turnId: compareTurn.clientTurnId, blockId: 'b1', values: { a: -1.5 } }]);
     assert.match(await card.locator('.math-plot-values').textContent(), /a = -1\.5/);
     await page.waitForTimeout(300);
     await card.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-compare-3d-slider.png`) });
@@ -182,6 +208,23 @@ let browser, server;
     await waves.scrollIntoViewIfNeeded();
     await page.screenshot({ path: path.join(output, `${label}-waves-3d.png`) });
     assert.ok(await fitsWidth(), `no horizontal page scroll after all cards (${label})`);
+
+    // 5. After a reload, Resume brings the comparison back where its slider was released, in 3D.
+    await page.goto(origin + '/fixture'); await page.waitForFunction(() => window.fixtureReady || window.fixtureError);
+    // The avatar stays hidden: this viewer chose that before the reload.
+    await page.waitForFunction(() => AvatarDock.current?.mode === 'cache');
+    const resume = page.locator('#conversationResume button.primary');
+    await resume.waitFor();
+    await resume.click();
+    const restored = page.locator('.page-presentation .display-block[data-kind=math]', { hasText: 'Parabole et droite' });
+    await restored.locator('.math-plot[data-view="3d"]').waitFor({ timeout: 15000 });
+    assert.equal(await page.locator('.page-presentation .display-block[data-kind=math]').count(), 2);
+    assert.equal(await restored.locator('input[aria-label="Paramètre a"]').inputValue(), '-1.5');
+    assert.match(await restored.locator('.math-plot-values').textContent(), /a = -1\.5/);
+    assert.deepEqual((await restored.locator('llmx-stage').evaluate(stage => stage.scene)).parameters, [{ name: 'a', value: -1.5, min: -3, max: 3 }]);
+    await restored.locator('llmx-stage').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(1800);
+    await restored.locator('.math-plot-view').screenshot({ path: path.join(output, `${label}-compare-restored.png`) });
     cases.push({ label, viewport, cardWidth: box.width, pixels: lit });
     await context.close();
   }

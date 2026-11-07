@@ -325,8 +325,27 @@
       points: sample(trees[index], plot, current, count).map(([px, py]) => [round(px), round(py)]) })), parameters, x: plot.x.slice(), y };
   }
 
+  /**
+   * Slider positions saved for a plot: one finite number per declared parameter, inside its range.
+   * Anything else is refused, never clamped, so a saved card never shows values its block did not allow.
+   */
+  function checkValues(plot, values) {
+    const refuse = message => ({ ok: false, error: { code: 'values', message } });
+    if (!values || typeof values !== 'object' || Array.isArray(values)) return refuse('Values must be an object of parameter names.');
+    const names = plot.parameters.map(row => row.name);
+    if (!names.length) return refuse('This plot has no sliders.');
+    const keys = Object.keys(values);
+    if (keys.length !== names.length || keys.some(key => !names.includes(key))) return refuse(`Values must name exactly: ${names.join(', ')}.`);
+    for (const row of plot.parameters) {
+      const value = values[row.name];
+      if (typeof value !== 'number' || !Number.isFinite(value)) return refuse(`${row.name} must be a finite number.`);
+      if (value < row.min || value > row.max) return refuse(`${row.name} must stay within [${formatNumber(row.min)}, ${formatNumber(row.max)}].`);
+    }
+    return { ok: true, values: Object.fromEntries(names.map(name => [name, values[name]])) };
+  }
+
   const api = Object.freeze({ SCHEMA, LIMITS, FUNCTIONS: Object.keys(FUNCTIONS), parseExpression, evaluate, format, formatNumber,
-    parsePlot, plotText, sample, fitY, describe });
+    parsePlot, plotText, sample, fitY, describe, checkValues });
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.AgentXMathExpression = api;
 })(typeof window === 'undefined' ? globalThis : window);

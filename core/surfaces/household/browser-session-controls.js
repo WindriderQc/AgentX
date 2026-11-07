@@ -10,6 +10,7 @@ const { packById } = require('./packs');
 const { publicSession, loadSessionAuditRows, publicAudit, sessionHistoryMessages } = require('./persona-records');
 const { spokenReplyLanguage } = require('./persona-prompt');
 const { normalizeVoiceTimings } = require('../../src/services/voice/timeline');
+const mathExpression = require('../../public/js/math-expression');
 
 // The most turns one opened conversation shows; the conversation service reads no more at once.
 const DISPLAYED_TURNS = 500;
@@ -189,6 +190,35 @@ function createBrowserSessionControls({
         return fail(res, 404, 'This voice turn is not recorded', 'VOICE_TIMINGS_TURN_NOT_RECORDED');
       } catch (error) {
         return fail(res, 503, error.message || 'Voice timings are unavailable', 'VOICE_TIMINGS_FAILED');
+      }
+    });
+
+    // Slider positions on a math card (#1270), kept with the turn that showed it so
+    // reopening the conversation on any device starts where they were left. Core reads
+    // the stored block again and refuses values its sliders do not allow; nothing is clamped.
+    if (consumer !== 'llmx') router.post(`${prefix}/sessions/:sessionId/math-values`, async (req, res) => {
+      const clientTurnId = req.body?.turnId, blockId = req.body?.blockId, sessionId = cleanText(req.params.sessionId, 64);
+      if (!validClientTurnId(clientTurnId) || typeof blockId !== 'string' || !/^b\d{1,3}$/.test(blockId)) {
+        return fail(res, 400, 'A valid turnId and math block id are required', 'MATH_VALUES_INVALID');
+      }
+      try {
+        const query = { sessionId, clientTurnId, packId, ...(scopeId ? { scopeId } : {}) };
+        const turn = await conversations.getTurn(query);
+        if (!turn) {
+          const active = activePersonaTurns.get(sessionId);
+          if (active?.clientTurnId === clientTurnId) return fail(res, 409, 'This turn is still being recorded', 'MATH_VALUES_TURN_PENDING');
+          return fail(res, 404, 'This turn is not recorded', 'MATH_VALUES_TURN_NOT_RECORDED');
+        }
+        const block = (turn.display || []).find(row => row?.id === blockId && row.kind === 'math');
+        const parsed = block ? mathExpression.parsePlot(block.body) : null;
+        if (!parsed?.ok) return fail(res, 404, 'This turn shows no such math card', 'MATH_VALUES_BLOCK_NOT_FOUND');
+        const checked = mathExpression.checkValues(parsed.plot, req.body?.values);
+        if (!checked.ok) return fail(res, 400, checked.error.message, 'MATH_VALUES_INVALID');
+        const audit = await conversations.updateTurn(query, { $set: { [`mathValues.${blockId}`]: checked.values } });
+        if (!audit) return fail(res, 404, 'This turn is not recorded', 'MATH_VALUES_TURN_NOT_RECORDED');
+        return envelope(res, { turnId: clientTurnId, blockId, values: audit.mathValues?.[blockId] || null });
+      } catch (error) {
+        return fail(res, 503, error.message || 'Slider positions are unavailable', 'MATH_VALUES_FAILED');
       }
     });
   }

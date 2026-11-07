@@ -1257,6 +1257,36 @@ describe('built-in Household surface on Core', () => {
     expect((await Conversation.findOne({ 'messages.turn.clientTurnId': turnId }).lean()).messages.at(-1).turn.voiceTimings).toEqual(stored.voiceTimings);
   });
 
+  test('a math card keeps its released slider positions with its turn, checked by Core (#1270)', async () => {
+    const base = '/api/voice-personas/private/sessions';
+    const id = (await request(app).post(base).send({ packId: 'personal_operator', scopeId: 'personal', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+    executeForTest.mockResolvedValueOnce({ ok: true, metadata: { model: 'synthetic' }, body: { response:
+      'Comparons. <show kind="math" title="Parabole et droite">f(x) = x^2\ng(x) = a*x + 1\na = 2 in [-3, 3]\nx in [-3, 3]</show> <show kind="text" title="Note">Bouge a.</show>' } });
+    const turnId = '22222222-2222-4222-8222-222222222222';
+    await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Compare une parabole et une droite', turnId, channel: 'text' }).expect(200);
+    const save = body => request(app).post(`${base}/${id}/math-values`).send({ turnId, blockId: 'b1', ...body });
+    const stored = (await save({ values: { a: -1.5 } }).expect(200)).body.data;
+    expect(stored).toEqual({ turnId, blockId: 'b1', values: { a: -1.5 } });
+    // A later release replaces the earlier one.
+    expect((await save({ values: { a: 2.5 } }).expect(200)).body.data.values).toEqual({ a: 2.5 });
+    // Out of range, unknown or missing sliders are refused, never clamped.
+    for (const values of [{ a: 3.5 }, { a: 1, b: 2 }, {}, { a: '1' }]) {
+      expect((await save({ values }).expect(400)).body.code).toBe('MATH_VALUES_INVALID');
+    }
+    expect((await save({ blockId: 'b2', values: { a: 1 } }).expect(404)).body.code).toBe('MATH_VALUES_BLOCK_NOT_FOUND');
+    expect((await save({ blockId: 'b1; drop', values: { a: 1 } }).expect(400)).body.code).toBe('MATH_VALUES_INVALID');
+    expect((await request(app).post(`${base}/${id}/math-values`).send({ turnId: '33333333-3333-4333-8333-333333333333', blockId: 'b1', values: { a: 1 } })
+      .expect(404)).body.code).toBe('MATH_VALUES_TURN_NOT_RECORDED');
+    expect((await request(app).post(`/api/voice-personas/family/sessions/${id}/math-values`).send({ turnId, blockId: 'b1', values: { a: 1 } })
+      .expect(404)).body.code).toBe('MATH_VALUES_TURN_NOT_RECORDED');
+    // Reopening the conversation on any device returns the block and where its slider was left.
+    const resumed = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
+    const turn = resumed.turns.find(row => row.clientTurnId === turnId);
+    expect(turn.display.map(block => [block.id, block.kind])).toEqual([['b1', 'math'], ['b2', 'text']]);
+    expect(turn.mathValues).toEqual({ b1: { a: 2.5 } });
+    expect(turn.display[0].body).toContain('a = 2 in [-3, 3]');
+  });
+
   test('an image block is resolved by Core, streamed to the visual zone and kept with the turn (#168)', async () => {
     const base = '/api/voice-personas/family/sessions';
     const previous = process.env.SEARXNG_URL, originalFetch = global.fetch, searches = [];

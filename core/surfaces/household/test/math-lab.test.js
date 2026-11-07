@@ -143,6 +143,19 @@ const channel = (text, options = {}) => {
   return channels.end();
 };
 
+test('saved slider positions must name every slider and stay inside its range; nothing is clamped', () => {
+  const { plot } = math.parsePlot(WAVE);
+  assert.deepEqual(math.checkValues(plot, { b: 3, a: -2.5 }), { ok: true, values: { a: -2.5, b: 3 } });
+  assert.deepEqual(math.checkValues(plot, { a: -3, b: 4 }).ok, true, 'the range ends are allowed');
+  for (const values of [null, [], 'a=1', { a: 1 }, { a: 1, b: 2, c: 3 }, { a: 1, x: 2 }, { a: '1', b: 2 },
+    { a: Number.NaN, b: 2 }, { a: Infinity, b: 2 }, { a: 3.01, b: 2 }, { a: 1, b: 0.4 }]) {
+    const checked = math.checkValues(plot, values);
+    assert.equal(checked.ok, false, JSON.stringify(values));
+    assert.equal(checked.error.code, 'values');
+  }
+  assert.equal(math.checkValues(math.parsePlot('y = x^2').plot, {}).ok, false, 'a plot without sliders keeps nothing');
+});
+
 test('a valid math block reaches the screen as its canonical formula; the explanation stays spoken', () => {
   const result = channel(`Voici une onde. <show kind="math" title="Une onde">${WAVE}</show> Monte a pour l’agrandir.`);
   assert.equal(result.display.length, 1);

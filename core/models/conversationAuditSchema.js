@@ -22,6 +22,8 @@ module.exports = new Schema({
     sceneProposedReplyText: { type: String, default: '' },
     // Blocks shown on screen, never spoken (#167). Secrets are stored redacted.
     display: { type: [Object], default: undefined },
+    // Slider positions the person left on this turn's math cards, by block id (#1270).
+    mathValues: { type: Object, default: undefined },
     interrupted: { type: Boolean, default: false },
     interruptionState: { type: String, enum: ['', 'confirmed', 'failed'], default: '' },
     // A spoken turn's browser timeline: ms from the end of the person's speech.
