@@ -3,6 +3,8 @@
 const { randomUUID } = require('node:crypto');
 const { sameTarget } = require('./supervision');
 const reviewEpoch = state => state.reviewEpoch || state.resetAt || null;
+const sameReviewAttempt = (active, work) => Boolean(active && work && active.requestId === work.requestId
+  && (active.dispatchAttempt || 0) === (work.dispatchAttempt || 0) && sameTarget(active.target, work.target));
 
 // One compact cursor and at most one bounded result per canonical conversation.
 // No transcript copy or list of pending replies: those stay in Core.
@@ -37,10 +39,11 @@ function createReviewProgress({ collection, read, ensureDocument }) {
       if (cursor.active) {
         if (cursor.active.phase !== 'waiting' || !sameTarget(cursor.active.target, target)
           || Date.parse(cursor.active.retryAt) > Date.now()) return { skipped: 'active', work: cursor.active };
-        Object.assign(cursor.active, { phase: 'dispatched', preferencesRevision, startedAt: new Date().toISOString() });
+        Object.assign(cursor.active, { phase: 'dispatched', dispatchAttempt: (cursor.active.dispatchAttempt || 0) + 1,
+          preferencesRevision, startedAt: new Date().toISOString(), error: null, retryAt: null });
         return { work: cursor.active };
       }
-      cursor.active = { requestId, target, phase: 'dispatched', preferencesRevision, resetAt, epoch,
+      cursor.active = { requestId, dispatchAttempt: 1, target, phase: 'dispatched', preferencesRevision, resetAt, epoch,
         startedAt: new Date().toISOString() };
       progress[target.conversationId] = cursor;
       return { work: cursor.active };
@@ -50,7 +53,7 @@ function createReviewProgress({ collection, read, ensureDocument }) {
   async function saveReviewResult(userId, { work, output = null, error = null, retryAt = null }) {
     return mutate(userId, work.resetAt, work.epoch, progress => {
       const active = progress[work.target.conversationId]?.active;
-      if (!active || active.requestId !== work.requestId || !sameTarget(active.target, work.target)) return { skipped: 'gone' };
+      if (!sameReviewAttempt(active, work)) return { skipped: 'gone' };
       if (active.phase === 'result_ready') return { skipped: 'duplicate', work: active };
       Object.assign(active, output ? { phase: 'result_ready', output, error: null }
         : retryAt ? { phase: 'waiting', retryAt, error }
@@ -62,4 +65,4 @@ function createReviewProgress({ collection, read, ensureDocument }) {
   return { claimReview, saveReviewResult };
 }
 
-module.exports = { normalizeProgress, createReviewProgress, reviewEpoch };
+module.exports = { normalizeProgress, createReviewProgress, reviewEpoch, sameReviewAttempt };

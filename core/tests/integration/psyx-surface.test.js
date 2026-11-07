@@ -211,6 +211,31 @@ describe('PsyX built into Core with private scope', () => {
     } finally { workers.forEach(worker => worker.stop()); }
   });
 
+  test('Mongo fences a resumed review against writes and projection from its earlier dispatch attempt', async () => {
+    const { createStateRepository } = require('../../src/domains/psyx/stateRepository');
+    const { createConversationLifecycleService } = require('../../src/services/conversationLifecycleService');
+    const { createConversationAdapter } = require('../../surfaces/psyx/src/conversations');
+    const { replyTarget, supervisionNote } = require('../../src/domains/psyx/supervision');
+    const repository = createStateRepository({ collection: mongoose.connection.collection('psyxstates') });
+    const first = done(await request(app).post('/api/psyx/chat/stream').send({ message: 'Tour de reprise synthétique.' }).expect(200));
+    const adapter = createConversationAdapter({ conversationLifecycle: createConversationLifecycleService() });
+    const messages = await adapter.context('default', first.conversationId, 40, { withIdentity: true });
+    const target = replyTarget(first.conversationId, messages);
+    const original = (await repository.claimReview('default', { target })).work;
+    await repository.saveReviewResult('default', { work: original, error: 'SYNTHETIC_PROVEN_REFUSAL', retryAt: new Date(0).toISOString() });
+    const resumed = (await repository.claimReview('default', { target })).work;
+    expect(resumed.requestId).toBe(original.requestId);
+    expect(resumed.dispatchAttempt).toBe(original.dispatchAttempt + 1);
+    const output = { supervision: supervisionNote(null, { target, reply: messages.at(-1).content, promptVersion: 3 }) };
+    expect((await repository.saveReviewResult('default', { work: original, output })).skipped).toBe('gone');
+    const ready = (await repository.saveReviewResult('default', { work: resumed, output })).work;
+    expect((await repository.recordReview('default', { conversationId: first.conversationId, ...output, receipt: original })).skipped).toBe('receipt');
+    await repository.recordReview('default', { conversationId: first.conversationId, ...output, receipt: ready });
+    const state = await repository.read('default');
+    expect(state.supervisionNotes).toHaveLength(1);
+    expect(state.reviewProgress[first.conversationId]).toEqual({ throughOrdinal: 2, active: null });
+  });
+
   test('accepted review observations remain correctable with atomic revision and original provenance', async () => {
     const { createStateRepository } = require('../../src/domains/psyx/stateRepository');
     const { readReview } = require('../../src/domains/psyx/review');

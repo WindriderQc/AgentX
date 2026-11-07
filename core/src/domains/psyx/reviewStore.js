@@ -2,20 +2,27 @@
 
 const proposals = require('./proposals');
 const { normalizeNotes, sameTarget, NOTE_LIMIT } = require('./supervision');
-const { normalizeProgress } = require('./reviewProgress');
+const { normalizeProgress, sameReviewAttempt } = require('./reviewProgress');
 
 function createReviewStore({ collection, read, ensureDocument, stateItemKeys, version }) {
   // Background review output: a digest replaces the conversation's previous one;
   // proposals already known (memory, pending or settled by the user) are dropped.
-  async function recordReview(userId, { conversationId, digest = null, proposals: incoming = [], supervision = null, resetAt = null, stillWanted = null, receipt = null, applyConversationReview = true }) {
+  async function recordReview(userId, input) {
+    const { conversationId, resetAt = null, stillWanted = null, receipt = null } = input;
     await ensureDocument(userId);
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const state = await read(userId);
       if ((state.resetAt || null) !== (resetAt || null)) return { added: 0, digest: null, skipped: 'reset', state };
+      // Recompute asynchronous preference/source checks after every CAS
+      // conflict, rather than reusing an already-obsolete projection.
+      const candidate = input.prepare ? await input.prepare() : input;
+      if (!candidate) return { added: 0, digest: null, skipped: 'gone', state };
+      let { digest = null, proposals: incoming = [] } = candidate;
+      const { supervision = null, applyConversationReview = true } = candidate;
       const note = normalizeNotes([supervision]).find(item => item.conversationId === conversationId) || null;
       const progress = normalizeProgress(state.reviewProgress);
       const cursor = progress[conversationId];
-      if (receipt && (!cursor?.active || cursor.active.phase !== 'result_ready' || cursor.active.requestId !== receipt.requestId || !sameTarget(cursor.active.target, note))) {
+      if (receipt && (cursor?.active?.phase !== 'result_ready' || !sameReviewAttempt(cursor.active, receipt) || !sameTarget(cursor.active.target, note))) {
         return { added: 0, digest: null, skipped: 'receipt', state };
       }
       const duplicateNote = note && state.supervisionNotes.some(item => sameTarget(item, note));
@@ -45,12 +52,13 @@ function createReviewStore({ collection, read, ensureDocument, stateItemKeys, ve
       // Reset, erasure and proposal decisions change the revision. Replace the
       // derived arrays together, or reread; stale model output cannot undo them.
       const result = await collection.updateOne({ userId, revision: state.revision }, { $set: set, $inc: { revision: 1 } });
-      if (result.modifiedCount) return { added: fresh.length, digest, state: await read(userId) };
+      if (result.modifiedCount) return { added: fresh.length, digest, state: await read(userId),
+        ...(receipt ? { error: candidate.error || null } : {}) };
     }
     throw Object.assign(new Error('PsyX state changed during review'), { statusCode: 409, code: 'PSYX_REVIEW_STATE_CONFLICT' });
   }
 
-  // A permanently deleted conversation leaves nothing derived from it in PsyX memory.
+  // Remove linked review state; accepted memory retains its existing lifecycle.
   async function forgetConversation(userId, conversationId) {
     for (let attempt = 0; attempt < 8; attempt++) {
       const state = await read(userId);

@@ -20,7 +20,11 @@ function fakes({ complete } = {}) {
   };
   const { repository } = require('./support/state').createHarness();
   const stateRepository = { ...repository,
-    async recordReview(userId, review) { calls.recorded.push({ userId, ...review }); return repository.recordReview(userId, review); }
+    async recordReview(userId, review) {
+      const result = await repository.recordReview(userId, review);
+      if (!result.skipped) calls.recorded.push({ userId, ...review });
+      return result;
+    }
   };
   const messages = [];
   const append = () => {
@@ -216,6 +220,7 @@ test('a review waits while the user is being answered and drops results for a co
   release();
   await tick(20);
   assert.equal(calls.recorded.length, 0, 'nothing recorded for a conversation that disappeared');
+  assert.deepEqual((await stateRepository.read('u')).supervisionNotes, []);
 
   reviewer.schedule('u', 'd');
   reviewer.forget('u', 'd');

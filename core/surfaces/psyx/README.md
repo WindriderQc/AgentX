@@ -51,9 +51,12 @@ PsyX state retains at most 100 supervision notes across conversations. A compact
 cursor per canonical conversation prevents replay after notes leave that window;
 permanent deletion removes the cursor. At most one dispatch/result per
 conversation remains in progress. Before calling the model the worker saves a
-stable dispatch identity. It saves the bounded normalized result before applying
+stable request identity and a fenced dispatch attempt. A proven refusal can
+renew that attempt under the same request; an earlier attempt cannot defer,
+replace or project a newer one. It saves the bounded normalized result before applying
 the note, digest and memory proposals together with the cursor in a revision-
-checked state write. A saved result resumes projection without inference.
+checked state write. Preference and target checks are recomputed after each
+revision conflict. A saved result resumes projection without inference.
 A dispatch whose terminal result is unknown stays visibly uncertain and blocks
 automatic replay, including after restart: recovery needs independent
 reconciliation, since the existing model transport has no idempotent replay
@@ -66,7 +69,11 @@ They never backfill old unmarked transcripts or replies saved with review
 disabled. Reset clears notes, counts and cursors and changes the enrollment
 epoch; earlier replies and in-flight results cannot repopulate it.
 Explicit disabling prevents new model calls, and preference changes discard
-obsolete findings without retrying their completed dispatch.
+obsolete findings without retrying their completed dispatch. Recovery also
+retries interrupted domain cleanup after canonical deletion, including with
+review inference disabled. It confirms owner-scoped absence before removing
+orphaned supervision notes/cursors; an incomplete list or an archived session
+does not authorize cleanup.
 
 Each note separates code measurements (whitespace-delimited word count,
 question-mark count and the known mode's usual word range) from fallible model

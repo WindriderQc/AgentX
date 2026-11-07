@@ -2,7 +2,7 @@
 
 const { REVIEW_PROMPT_VERSION, selectReviewTurns, reviewMessages, readReview } = require('../../../src/domains/psyx/review');
 const { NOTE_LIMIT, replyTarget, sameTarget, supervisionNote } = require('../../../src/domains/psyx/supervision');
-const { reviewEpoch } = require('../../../src/domains/psyx/reviewProgress');
+const { reviewEpoch, sameReviewAttempt } = require('../../../src/domains/psyx/reviewProgress');
 
 // One serial worker per conversation. Core's transcript is the pending queue;
 // PsyX's existing state owns the durable cursor, dispatch fence and bounded
@@ -11,6 +11,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
   isBusy = () => false, locationFor = () => 'local', preferencesFor = null }) {
   const enabled = Boolean(preferencesFor || config.review?.enabled !== false) && typeof provider.complete === 'function';
   const jobs = new Map(), runningRequests = new Set();
+  const workKey = work => work.requestId + ':' + (work.dispatchAttempt || 0);
   let stopped = false;
   const key = (user, conversation) => user + ':' + conversation;
   const preferences = user => preferencesFor ? preferencesFor(user) : Promise.resolve(null);
@@ -51,24 +52,27 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
   }
 
   async function project(userId, conversationId, work) {
-    let output = work.output;
-    const settings = await preferences(userId);
-    if (settings && (settings.revision !== work.preferencesRevision || !settings.values.backgroundReview)) output = discarded(output);
-    const current = await plan(userId, conversationId);
-    if (!current.turns || targetIn(work.target, current.turns) < 0) return { unavailable: true };
-    const latest = sameTarget(work.target, replyTarget(conversationId, current.turns));
-    const result = await stateRepository.recordReview(userId, { conversationId, ...output,
-      applyConversationReview: latest && output.applyConversationReview !== false,
+    const prepare = async () => {
+      const settings = await preferences(userId);
+      const current = await plan(userId, conversationId);
+      if (!current.turns || targetIn(work.target, current.turns) < 0) return null;
+      const output = settings && (settings.revision !== work.preferencesRevision || !settings.values.backgroundReview)
+        ? discarded(work.output) : work.output;
+      return { ...output, applyConversationReview: sameTarget(work.target, replyTarget(conversationId, current.turns))
+        && output.applyConversationReview !== false };
+    };
+    const result = await stateRepository.recordReview(userId, { conversationId, ...work.output, prepare,
       resetAt: work.resetAt, receipt: work,
       stillWanted: () => stillExists(userId, conversationId, work.target) });
-    return { added: result.added, error: output.error || null, skipped: result.skipped };
+    return result.skipped === 'gone' ? { unavailable: true }
+      : { added: result.added, error: result.error || null, skipped: result.skipped };
   }
 
   async function one(userId, conversationId, current, settings, job) {
     let work = current.cursor.active;
     if (work) {
       if (work.phase === 'result_ready') return project(userId, conversationId, work);
-      if (runningRequests.has(work.requestId)) return { waitMs: 1000 };
+      if (runningRequests.has(workKey(work))) return { waitMs: 1000 };
       if (work.phase !== 'waiting') return { uncertain: true, error: work.error || 'PSYX_REVIEW_EXECUTION_UNKNOWN', work };
       const remaining = Date.parse(work.retryAt) - Date.now();
       if (remaining > 0) return { waitMs: remaining };
@@ -91,7 +95,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
     if (claim.skipped) return { retry: true };
     work = claim.work;
     const fresh = await plan(userId, conversationId);
-    if (fresh.cursor.active?.requestId !== work.requestId) return { skipped: 'gone' };
+    if (fresh.cursor.active?.phase !== 'dispatched' || !sameReviewAttempt(fresh.cursor.active, work)) return { skipped: 'gone' };
     const latestSettings = await preferences(userId);
     if (stopped || jobs.get(key(userId, conversationId)) !== job
       || !fresh.turns || targetIn(target, fresh.turns) < 0
@@ -102,7 +106,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
         retryAt: new Date().toISOString() });
       return { waitMs: 1000 };
     }
-    runningRequests.add(work.requestId);
+    runningRequests.add(workKey(work));
     try {
       const result = await provider.complete({
         requestId: work.requestId,
@@ -131,7 +135,7 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
       }
       await stateRepository.saveReviewResult(userId, { work, error: error.code || 'PSYX_REVIEW_EXECUTION_UNKNOWN' });
       return { uncertain: true, error: error.code || 'PSYX_REVIEW_EXECUTION_UNKNOWN', work };
-    } finally { runningRequests.delete(work.requestId); }
+    } finally { runningRequests.delete(workKey(work)); }
   }
 
   async function attempt(userId, conversationId, job) {
@@ -209,9 +213,9 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
       ...(!work && !current.pending.length && report.status === 'uncertain' ? { status: 'done', error: null } : {}),
       ...((work?.phase === 'waiting' || work?.phase === 'result_ready') ? { status: 'queued' } : {}),
       ...(work?.phase === 'waiting' ? { error: work.error, retryAt: work.retryAt } : {}),
-      ...(work && !runningRequests.has(work.requestId) && !['result_ready', 'waiting'].includes(work.phase)
+      ...(work && !runningRequests.has(workKey(work)) && !['result_ready', 'waiting'].includes(work.phase)
       ? { status: 'uncertain', error: work.error || 'PSYX_REVIEW_EXECUTION_UNKNOWN' } : {}), coverage: coverage(current),
-      ...(work ? { requestId: work.requestId, target: work.target, execution: work.phase } : {}) };
+      ...(work ? { requestId: work.requestId, dispatchAttempt: work.dispatchAttempt || 0, target: work.target, execution: work.phase } : {}) };
   }
   function forget(userId, conversationId) {
     const id = key(userId, conversationId), job = jobs.get(id);
@@ -229,9 +233,22 @@ function createReviewer({ config, provider, stateRepository, conversationReposit
     try {
       const users = new Set(['default', ...await stateRepository.dreamUserIds?.() || []]);
       for (const userId of users) {
+        const sessions = await conversationRepository.listSessionMetadata(userId);
+        if (conversationRepository.getSession) {
+          const state = await stateRepository.read(userId);
+          const known = new Set(sessions.map(session => session.id));
+          const tracked = new Set([...Object.keys(state.reviewProgress || {}),
+            ...(state.supervisionNotes || []).map(note => note.conversationId)]);
+          for (const id of tracked) if (!known.has(id) && await conversationRepository.getSession(userId, id) === null) {
+            // A canonical deletion can finish before its domain cleanup. Only
+            // a confirmed absent owner-scoped session authorizes reconciliation.
+            forget(userId, id);
+            await stateRepository.forgetConversation(userId, id);
+          }
+        }
         const settings = await preferences(userId);
         if (settings && !settings.values.backgroundReview) continue;
-        for (const session of await conversationRepository.listSessionMetadata(userId)) {
+        for (const session of sessions) {
           if (session.lifecycle?.status === 'archived') continue;
           const current = await plan(userId, session.id);
           if (current.pending.length || current.cursor.active) schedule(userId, session.id);
