@@ -123,9 +123,11 @@ describe('built-in Household surface on Core', () => {
   test('the panel stays ready when optional OpenClaw evidence is absent', async () => {
     const previousEvidence = app.locals.aioOpsRuntimeEvidence;
     const previousVoixUrl = process.env.VOIX_BASE_URL;
+    const previousCoreUrl = process.env.CORE_INTERNAL_URL;
     const originalFetch = global.fetch;
     delete app.locals.aioOpsRuntimeEvidence;
     process.env.VOIX_BASE_URL = 'http://voix.example.test';
+    process.env.CORE_INTERNAL_URL = 'http://core.example.test';
     const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async url => {
       const pathname = new URL(String(url)).pathname;
       if (pathname === '/api/nerve-center/ecosystem') {
@@ -149,12 +151,15 @@ describe('built-in Household surface on Core', () => {
       app.locals.aioOpsRuntimeEvidence = previousEvidence;
       if (previousVoixUrl === undefined) delete process.env.VOIX_BASE_URL;
       else process.env.VOIX_BASE_URL = previousVoixUrl;
+      if (previousCoreUrl === undefined) delete process.env.CORE_INTERNAL_URL;
+      else process.env.CORE_INTERNAL_URL = previousCoreUrl;
     }
   });
   test('optional Data down degrades AgentX without marking AgentX or Nestor down', async () => {
-    const previous = { voix: process.env.VOIX_BASE_URL, data: process.env.DATAAPI_BASE_URL };
+    const previous = { voix: process.env.VOIX_BASE_URL, data: process.env.DATAAPI_BASE_URL, core: process.env.CORE_INTERNAL_URL };
     process.env.VOIX_BASE_URL = 'http://voix.example.test';
     process.env.DATAAPI_BASE_URL = 'http://data.example.test';
+    process.env.CORE_INTERNAL_URL = 'http://core.example.test';
     const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async url => {
       const { hostname, pathname } = new URL(String(url));
       if (hostname === 'data.example.test') throw new Error('fetch failed');
@@ -177,7 +182,7 @@ describe('built-in Household surface on Core', () => {
       expect(data.status).toBe('degraded');
     } finally {
       fetchMock.mockRestore();
-      for (const [name, value] of [['VOIX_BASE_URL', previous.voix], ['DATAAPI_BASE_URL', previous.data]]) {
+      for (const [name, value] of [['VOIX_BASE_URL', previous.voix], ['DATAAPI_BASE_URL', previous.data], ['CORE_INTERNAL_URL', previous.core]]) {
         if (value === undefined) delete process.env[name];
         else process.env[name] = value;
       }
