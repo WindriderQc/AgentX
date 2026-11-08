@@ -4,7 +4,7 @@
 // briefing and desk, mail routes and email-action readiness.
 
 const deviceAcceptance = require('./device-acceptance');
-const { cachedProjectedJson } = require('./panel-sources');
+const { createBriefingCoreSources } = require('./briefing-core-sources');
 const { dadBriefing, dadDesk } = require('./briefing');
 const { householdActivation } = require('./readiness');
 const { registerSecretaryMailRoutes } = require('./secretary-mail-routes');
@@ -34,11 +34,12 @@ async function lifeAtlasPending() {
 }
 
 function registerSecretaryRoutes(app, {
-  express, standardJsonParser, envelope, personalTasks, fail, CORE_SELF_URL,
+  express, standardJsonParser, envelope, personalTasks, fail, CORE_SELF_URL, coreBriefingReads,
   bridgeProjection, secretaryMail, familyTasks, models, knowledgeState, mongoose, dossiers
 }) {
   const secretary = express.Router();
   secretary.use(standardJsonParser);
+  const core = createBriefingCoreSources({ CORE_SELF_URL, coreBriefingReads });
   secretary.get('/tasks', async (req, res) => {
     try {
       return envelope(res, await personalTasks.list(req.query));
@@ -49,12 +50,7 @@ function registerSecretaryRoutes(app, {
   secretary.get('/briefing', async (_req, res) => {
     try {
       const [report, tasks] = await Promise.all([
-        cachedProjectedJson(
-          `${CORE_SELF_URL()}/api/reports/morning-brief`,
-          (body) => body,
-          { unavailable: true },
-          8000
-        ),
+        core.morningBrief(),
         personalTasks.snapshot()
       ]);
       return envelope(res, { ...dadBriefing(report, tasks), lifeAtlas: await lifeAtlasPending() });
@@ -65,12 +61,7 @@ function registerSecretaryRoutes(app, {
   secretary.get('/desk', async (_req, res) => {
     try {
       const [report, tasks, cron, mailBacklog, family, latestDevice, budget, mailCatchup] = await Promise.all([
-        cachedProjectedJson(
-          `${CORE_SELF_URL()}/api/reports/morning-brief`,
-          (body) => body,
-          { unavailable: true },
-          8000
-        ),
+        core.morningBrief(),
         personalTasks.snapshot(),
         bridgeProjection(
           'getOpenClawCronProjection',
@@ -85,12 +76,7 @@ function registerSecretaryRoutes(app, {
           familyTasks.list().then(result => result.chores)
         ]).then(([profiles, chores]) => ({ profiles, chores })),
         models.DeviceAcceptance.findOne({ phase: deviceAcceptance.PHASE }).sort({ completedAt: -1 }).lean(),
-        cachedProjectedJson(
-          `${CORE_SELF_URL()}/api/budget/status`,
-          (body) => body?.data || body,
-          { unavailable: true },
-          8000
-        ),
+        core.budget(),
         hostRead(async () => progress.reconcile(await secretaryMail().catchup()), 'The archive catch-up status is still being read.')
       ]);
       const activation = householdActivation({

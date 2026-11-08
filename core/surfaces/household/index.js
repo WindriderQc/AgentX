@@ -568,6 +568,7 @@ function register(api) {
 
   registerSecretaryRoutes(app, {
     express, standardJsonParser, envelope, personalTasks, fail, CORE_SELF_URL,
+    coreBriefingReads: api.coreBriefingReads,
     bridgeProjection, secretaryMail, familyTasks, models, knowledgeState, mongoose
   });
   const plantAssistant = runtimeServices.household?.plants
