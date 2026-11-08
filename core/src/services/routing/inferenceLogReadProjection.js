@@ -25,6 +25,8 @@ const { sanitizeRetry } = require('./inferenceWaitTelemetry');
 const CALLERS = new Set(['chat', 'council', 'benchmark', 'embedding', 'classification', 'proxy', 'unknown']);
 const RUNTIMES = new Set(['agentx', 'codex', 'claude-code', 'external', 'other']);
 const STATUSES = new Set(['success', 'error', 'timeout']);
+const EXECUTION_SOURCES = new Set(['local', 'openclaw']);
+const EXECUTION_MODES = new Set(['model', 'agent']);
 const LANES = new Set(['direct', 'interactive', 'automated']);
 const MODES = new Set(Object.values(DECISION_MODES));
 const CANCELLATION_PATTERN = /caller_disconnected|\bcancel(?:ed|led|lation)\b/i;
@@ -144,6 +146,11 @@ function projectInferenceLog(row) {
     ...(Object.prototype.hasOwnProperty.call(row, 'callerDetail') && { callerDetail: null }),
     ...(Object.prototype.hasOwnProperty.call(row, 'consumerContract') && { consumerContract: operationalIdentifier(row.consumerContract, 160) }),
     ...(Object.prototype.hasOwnProperty.call(row, 'runtime') && { runtime: enumValue(row.runtime, RUNTIMES) }),
+    ...(Object.hasOwn(row, 'executionSource') && { executionSource: enumValue(row.executionSource, EXECUTION_SOURCES) }),
+    ...(Object.hasOwn(row, 'executionMode') && { executionMode: enumValue(row.executionMode, EXECUTION_MODES) }),
+    ...(Object.hasOwn(row, 'executionReceiptFingerprint') && { executionReceiptFingerprint:
+      typeof row.executionReceiptFingerprint === 'string' && /^[a-f0-9]{64}$/.test(row.executionReceiptFingerprint)
+        ? row.executionReceiptFingerprint : null }),
     ...(Object.hasOwn(row, 'source') && { source: enumValue(row.source, new Set(['declared-receipt', 'core-observed'])) }),
     ...(row.source === 'declared-receipt' && { declaredUsage: {
       runtime: enumValue(row.declaredUsage?.runtime, new Set(['hermes', 'openclaw'])),
