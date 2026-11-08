@@ -24,3 +24,25 @@ test('stopping voice does not submit again or destroy the native chat',async()=>
  const {b,sent,ws}=await setup();const abort=new AbortController();const p=b.turn('Hello',abort.signal);const stopped=assert.rejects(p,{name:'AbortError'});abort.abort();await stopped;
  ws.frame('message.complete','native-1',{text:'The native answer still exists',status:'complete'});assert.deepEqual(sent,['Hello']);b.close();
 });
+test('an asynchronously refused paste acknowledgement fails once without replay',async()=>{
+ let attempts=0;const b=new Bridge({channel:'chat-a',submitText:()=>{attempts++;return Promise.reject(new Error('paste not acknowledged'));}},{sdk:{buildWsUrl:async()=> 'wss://agent.test/events'},WebSocketImpl:Socket});
+ await b.connect();await assert.rejects(b.turn('Bonjour',new AbortController().signal),/paste not acknowledged/);
+ assert.equal(attempts,1);b.close();
+});
+test('native visible commentary reaches speech before tools while the final response keeps its own text',async()=>{
+ const {b,ws}=await setup();const deltas=[];const p=b.turn('Bonjour',new AbortController().signal,t=>deltas.push(t));
+ ws.frame('message.start','native-1');ws.frame('message.interim','other-session',{text:'Other conversation'});
+ ws.frame('message.interim','native-1',{text:'Je consulte les travaux.',already_streamed:false});
+ assert.deepEqual(deltas,['Je consulte les travaux.\n\n']);
+ ws.frame('tool.start','native-1',{text:'Private tool arguments'});ws.frame('message.delta','native-1',{text:'Voici le résultat.'});
+ ws.frame('message.complete','native-1',{text:'Voici le résultat.',status:'complete'});
+ assert.deepEqual(await p,{text:'Voici le résultat.'});assert.deepEqual(deltas,['Je consulte les travaux.\n\n','Voici le résultat.']);b.close();
+});
+test('already-streamed interim and private reasoning cannot be spoken twice or exposed',async()=>{
+ const {b,ws}=await setup();const deltas=[];const p=b.turn('Bonjour',new AbortController().signal,t=>deltas.push(t));
+ ws.frame('message.start','native-1');ws.frame('message.delta','native-1',{text:'Je consulte les travaux.'});
+ ws.frame('message.interim','native-1',{text:'Je consulte les travaux.',already_streamed:true});
+ ws.frame('message.interim','native-1',{text:'private reasoning',reasoning:true});ws.frame('thinking.delta','native-1',{text:'private thought'});
+ ws.frame('message.complete','native-1',{text:'Terminé.',status:'complete'});await p;
+ assert.deepEqual(deltas,['Je consulte les travaux.']);b.close();
+});
