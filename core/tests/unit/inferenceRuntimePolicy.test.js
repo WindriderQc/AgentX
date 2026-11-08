@@ -82,7 +82,7 @@ describe('caller runtime compatibility', () => {
       } }
     });
     const result = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435',
-      tools: [{}], think: true, options: { temperature: 1 }, ...(policy === 'direct' && { claimed: true }) }, policy,
+      tools: [{}], includeArtifactIdentity: false, think: true, options: { temperature: 1 }, ...(policy === 'direct' && { claimed: true }) }, policy,
       { ...deps, pinNumThread: async () => 6 });
     expect(result.options.temperature).toBe(policy === 'direct' ? 1 : 0);
     if (policy !== 'direct') {
@@ -110,6 +110,13 @@ describe('caller runtime compatibility', () => {
     expect(result.options.num_predict).toBe(numPredict);
     expect(result.think).toBe(think);
     expect(input.options).toEqual({});
+  });
+
+  test('a tool-result continuation resolves exact evidence even without schemas', async () => {
+    const deps = makeDeps();
+    await prepareInferenceRuntime({ model: 'example:latest', includeArtifactIdentity: false,
+      messages: [{ role: 'tool', content: 'synthetic result' }] }, 'chat', deps);
+    expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.any(Object), { includeArtifactIdentity: true });
   });
 
   test.each(['generate', 'direct', 'extension', 'embed'])('%s refuses load options that differ from the pin', async policy => {
@@ -169,7 +176,7 @@ describe('caller runtime compatibility', () => {
     const tools = [{ type: 'function', function: { name: 'read', description: 'Full schema' } }];
     await prepareInferenceRuntime({ model: 'example:latest', tools,
       messages: [{ role: 'user', content: 'hello' }], options: { num_ctx: 8192 } }, policy, deps);
-    expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.objectContaining({ tools }));
+    expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.objectContaining({ tools }), { includeArtifactIdentity: true });
   });
 });
 
