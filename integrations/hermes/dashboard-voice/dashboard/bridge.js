@@ -34,6 +34,15 @@
       if (type === 'message.start') { this.busy = true; if (this.pending && !this.pending.sid) { this.pending.sid = sid; clearTimeout(this.pending.timer); } this.changed(); }
       const p = this.pending;
       if (p && (!p.sid || p.sid === sid)) {
+        // Native commentary before a tool round is user-visible assistant
+        // text, not reasoning. It may arrive only as a sealed interim event.
+        // The native final text remains the turn result; do not speak an
+        // interim again when the provider already delivered it as deltas.
+        if (type === 'message.interim' && typeof payload.text === 'string'
+          && payload.text.trim() && payload.already_streamed !== true
+          && !payload.reasoning && payload.kind !== 'reasoning') {
+          p.delta?.(payload.text + '\n\n');
+        }
         if (type === 'message.delta' && typeof payload.text === 'string') {
           // Reasoning/tool events never become speech.
           if (!payload.reasoning && payload.kind !== 'reasoning') { p.text += payload.text; p.delta?.(payload.text); }

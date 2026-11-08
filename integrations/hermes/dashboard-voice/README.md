@@ -19,6 +19,11 @@ while a reply plays. Native keyboard interruption remains available. The
 terminal's own `/voice` controls still describe server-side terminal audio;
 the browser controls are the toolbar above it.
 
+Visible native assistant commentary before a tool call is also spoken when
+Hermes emits it as `message.interim` rather than text deltas. Already-streamed
+commentary is not repeated. Reasoning/thinking and tool output stay excluded;
+the final answer remains the native turn result.
+
 ## Installation boundary
 
 The plugin consumes Core on the same browser origin (`/api/voix/*`,
