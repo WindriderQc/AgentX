@@ -82,7 +82,7 @@ describe('caller runtime compatibility', () => {
       } }
     });
     const result = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435',
-      tools: [{}], options: { temperature: 1 }, ...(policy === 'direct' && { claimed: true }) }, policy,
+      tools: [{}], think: true, options: { temperature: 1 }, ...(policy === 'direct' && { claimed: true }) }, policy,
       { ...deps, pinNumThread: async () => 6 });
     expect(result.options.temperature).toBe(policy === 'direct' ? 1 : 0);
     if (policy !== 'direct') {

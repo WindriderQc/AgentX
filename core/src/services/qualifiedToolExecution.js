@@ -16,7 +16,7 @@ function qualifiedToolExecution(body, target) {
       statusCode: 409, code: 'TOOL_EXECUTION_PROFILE_UNAVAILABLE'
     });
   }
-  if (body.think === true || (body.reasoning_effort && body.reasoning_effort !== 'none')) {
+  if (body.reasoning_effort && body.reasoning_effort !== 'none') {
     throw Object.assign(new Error('This tool profile requires thinking disabled; use a separate chat turn for reasoning.'), {
       statusCode: 409, code: 'TOOL_EXECUTION_PROFILE_MISMATCH'
     });
