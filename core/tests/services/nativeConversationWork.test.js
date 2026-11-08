@@ -430,7 +430,8 @@ test.each(['pause', 'cancel'])('a late Guardian interruption does not undo an ow
   await works.prepare(accepted.row._id, 'Shared context.');
   const beforeControl = await works.repo.get(accepted.row._id);
   const controlled = await createWorkControl(works)(current.sessionId, accepted.row._id,
-    { action, revision: beforeControl.revision });
+    { version: 2, action, revision: beforeControl.revision, workId: beforeControl._id,
+      requestSha256: beforeControl.requestSha256, requestId: randomUUID() });
   await conversations.settleTurn({ ...works.query(current.sessionId), traceId: accepted.row.turnId,
     replyText: '', outcome: 'cancelled', interrupted: true });
   const settled = await works.guardianSettled(accepted.row._id, 'cancelled');

@@ -17,6 +17,7 @@ const env = { PERSONAL_CONVERSATION_WORK_MODE: 'read', PERSONAL_CONVERSATION_WOR
   PERSONAL_CONVERSATION_WORK_TOKEN: 'synthetic-private-work-binding-token' };
 const native = () => 'resp_' + randomUUID();
 let tasks, works, current;
+const controlInput = (action, row, extra = {}) => ({ version: 2, action, revision: row.revision, workId: row._id, requestSha256: row.requestSha256, requestId: randomUUID(), ...extra });
 const input = (text = 'Regarde mes tâches.', extra = {}) => ({ session: current, turnId: randomUUID(), text, ...extra });
 async function startWork(text) {
   const accepted = await works.intake(input(text));
@@ -334,7 +335,7 @@ test.each(['pause', 'resume', 'cancel'])('background %s cannot change or dispatc
   works = createConversationWorks({ conversations, tasks, env, nativeOnly: () => true });
   const accepted = await works.intake(input('Consult the specialist.'));
   const control = require('../../src/services/conversationWorks/control').createWorkControl(works);
-  await expect(control(current.sessionId, accepted.row._id, { action, revision: accepted.row.revision }))
+  await expect(control(current.sessionId, accepted.row._id, controlInput(action, accepted.row)))
     .rejects.toMatchObject({ code: 'CONVERSATION_WORK_ALREADY_DISPATCHED' });
   expect((await createWorkDelivery(works).snapshot(current.sessionId)).items[0]).toMatchObject({ controllable: false, state: 'received' });
   expect((await works.repo.get(accepted.row._id)).revision).toBe(accepted.row.revision);
@@ -407,15 +408,15 @@ test('queued work can be paused/resumed/cancelled by its exact owner revision, w
   const control = require('../../src/services/conversationWorks/control').createWorkControl(works);
   const accepted = await works.intake(input()); await works.prepare(accepted.row._id, 'context');
   let row = await works.repo.get(accepted.row._id);
-  await expect(control(current.sessionId, row._id, { action: 'pause', revision: row.revision - 1 })).rejects.toMatchObject({ code: 'CONVERSATION_WORK_CONTROL_STALE' });
-  const paused = await control(current.sessionId, row._id, { action: 'pause', revision: row.revision });
+  await expect(control(current.sessionId, row._id, controlInput('pause', row, { revision: row.revision - 1 }))).rejects.toMatchObject({ code: 'CONVERSATION_WORK_CONTROL_STALE' });
+  const paused = await control(current.sessionId, row._id, controlInput('pause', row));
   expect(paused.state).toBe('paused');
-  const resumed = await control(current.sessionId, row._id, { action: 'resume', revision: paused.revision });
+  const resumed = await control(current.sessionId, row._id, controlInput('resume', row, { revision: paused.revision }));
   expect(resumed.state).toBe('queued');
-  const cancelled = await control(current.sessionId, row._id, { action: 'cancel', revision: resumed.revision });
+  const cancelled = await control(current.sessionId, row._id, controlInput('cancel', row, { revision: resumed.revision }));
   expect(cancelled.state).toBe('cancelled');
   const admitted = await startWork();
-  await expect(control(current.sessionId, admitted.row._id, { action: 'cancel', revision: admitted.row.revision })).rejects.toMatchObject({ code: 'CONVERSATION_WORK_ALREADY_DISPATCHED' });
+  await expect(control(current.sessionId, admitted.row._id, controlInput('cancel', admitted.row))).rejects.toMatchObject({ code: 'CONVERSATION_WORK_ALREADY_DISPATCHED' });
 });
 
 test('cursor pages cover more than 64 old results without advancing past an omitted work', async () => {

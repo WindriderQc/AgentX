@@ -22,6 +22,8 @@
       pause: 'Pause this request', resume: 'Resume this request', cancel: 'Cancel this request',
       pauseBusy: 'Pausing…', resumeBusy: 'Resuming…', cancelBusy: 'Cancelling…',
       checking: 'Command not confirmed. Checking this request before allowing another command.',
+      commandConfirmed: 'Confirmed command',
+      storageUnavailable: 'The pending command cannot be retained on this browser. No command was sent.',
       stale: 'Status unavailable. Showing the last received state; controls are disabled until it refreshes.',
       listen: 'Listen to this answer', requested: 'Playback requested at the next pause',
       playback: 'Answer kept · playback not confirmed', summary: 'Nestor’s requests', updated: 'Last update', unknownTime: 'time unavailable'
@@ -46,13 +48,16 @@
       pause: 'Mettre cette demande en pause', resume: 'Reprendre cette demande', cancel: 'Annuler cette demande',
       pauseBusy: 'Mise en pause…', resumeBusy: 'Reprise…', cancelBusy: 'Annulation…',
       checking: 'Commande non confirmée. Vérification de cette demande avant de permettre une autre commande.',
+      commandConfirmed: 'Commande confirmée',
+      storageUnavailable: 'Ce navigateur ne peut pas conserver la commande en attente. Aucune commande envoyée.',
       stale: 'État indisponible. Le dernier état reçu est affiché; les commandes sont désactivées jusqu’à son actualisation.',
       listen: 'Écouter cette réponse', requested: 'Lecture demandée à la prochaine pause',
       playback: 'Réponse conservée · lecture non confirmée', summary: 'Demandes de Nestor', updated: 'Dernière mise à jour', unknownTime: 'heure indisponible'
     }
   };
   function create({ host, base, api, getConversation, getLanguage = () => getConversation()?.selection?.language || 'en',
-    maySpeak = () => true, onShow = () => {}, onSnapshot = () => {}, onPollError = () => {}, pollMs = 2000 }) {
+    maySpeak = () => true, onShow = () => {}, onSnapshot = () => {}, onPollError = () => {}, pollMs = 2000,
+    commandStorage = (() => { try { return root.sessionStorage; } catch { return null; } })() }) {
     const deviceSession = root.crypto.randomUUID(), items = new Map(), cards = new Map(), attempted = new Set(), requested = new Set(), commands = new Map();
     let sessionId, cursor = 0, sequence = 0, timer, pollController, presenting = false, disposed = false, generation = 0, stale = false, refreshQueued = false, summary, dispatch;
     const language = () => getLanguage() === 'fr' ? 'fr' : 'en';
@@ -62,6 +67,24 @@
       method: 'POST', keepalive: true, signal: AbortSignal.timeout(10000), body: JSON.stringify({ stage, resultVersion: item.result.version,
         sequence: ++sequence, deviceSession, ...(claimToken && { claimToken }) }) });
     const identity = item => `${item.id}:${item.result?.version || 0}`;
+    const commandKey = () => `agentx.work-controls:${sessionId}`;
+    function retainCommands() {
+      try { commandStorage.setItem(commandKey(), JSON.stringify([...commands])); return true; }
+      catch { return false; }
+    }
+    function restoreCommands() {
+      try {
+        const saved = JSON.parse(commandStorage.getItem(commandKey()) || '[]');
+        if (!Array.isArray(saved) || saved.length > 64) return;
+        for (const [id, command] of saved) if (command?.version === 2 && command.workId === id && typeof command.requestId === 'string'
+          && ['pause', 'resume', 'cancel'].includes(command.action) && Number.isSafeInteger(command.revision)
+          && typeof command.requestSha256 === 'string') commands.set(id, { ...command, unconfirmed: true });
+      } catch { /* An unavailable browser journal cannot authorize a command. */ }
+    }
+    const matchesCommand = (receipt, command) => receipt?.version === 2 && receipt.requestId === command.requestId && receipt.workId === command.workId
+      && receipt.action === command.action && receipt.baseRevision === command.revision && receipt.requestSha256 === command.requestSha256
+      && receipt.revision === command.revision + 1 && (command.action === 'pause' ? receipt.state === 'paused'
+        : command.action === 'cancel' ? receipt.state === 'cancelled' : ['received', 'queued'].includes(receipt.state));
     const node = (tag, className, text) => {
       const element = document.createElement(tag); element.className = className; element.textContent = text; return element;
     };
@@ -110,6 +133,9 @@
       if (detail) card.append(node('p', 'conversation-work-detail', detail));
       if (item.pending && item.updatedAt) card.append(node('p', 'conversation-work-meta', `${c.updated} : ${timestamp(item.updatedAt)}`));
       if (stale || command?.unconfirmed) card.append(node('p', 'conversation-work-notice', stale ? c.stale : c.checking));
+      if (command?.storageUnavailable) card.append(node('p', 'conversation-work-notice', c.storageUnavailable));
+      const confirmed = item.controlReceipts?.at(-1);
+      if (confirmed) card.append(node('p', 'conversation-work-meta', `${c.commandConfirmed} : ${c[confirmed.action]}`));
       if (item.result) {
         const text = node('p', 'conversation-work-answer', item.result.displayText ?? item.result.text);
         const button = node('button', 'button', requested.has(identity(item)) ? c.requested : c.listen); button.type = 'button';
@@ -117,11 +143,12 @@
         button.onclick = () => { requested.add(identity(item)); render(item); void naturalPause(); };
         card.append(text, button);
       }
-      if (item.controllable && request) {
+      if (item.controllable && request && item.controlBasis?.version === 2 && item.controlBasis.workId === item.id && item.controlBasis.revision === item.revision) {
         const actions = document.createElement('div'); actions.className = 'conversation-work-actions';
         for (const action of [item.state === 'paused' ? 'resume' : 'pause', 'cancel']) {
           const button = node('button', 'button', command?.action === action ? c[action + 'Busy'] : c[action]); button.type = 'button';
           button.dataset.action = action; button.disabled = stale || Boolean(command);
+          if (action !== 'cancel' && item.controlReceipts?.length >= 63) button.disabled = true;
           button.setAttribute('aria-label', `${c[action]} : ${request} · ${requestIdentity(item)}`);
           button.onclick = () => control(item, action);
           actions.append(button);
@@ -135,21 +162,30 @@
     async function control(item, action) {
       const currentGeneration = generation;
       if (disposed || stale || item.sessionId !== sessionId || commands.has(item.id) || items.get(item.id) !== item) return;
-      commands.set(item.id, { action }); render(item);
+      if (item.controlBasis?.version !== 2 || item.controlBasis.workId !== item.id || item.controlBasis.revision !== item.revision) return;
+      const command = { ...item.controlBasis, action, requestId: root.crypto.randomUUID() };
+      commands.set(item.id, command);
+      if (!retainCommands()) {
+        commands.set(item.id, { ...command, storageUnavailable: true }); render(item); return;
+      }
+      render(item);
       try {
         const saved = await api(`${base}/${encodeURIComponent(item.sessionId)}/work/${encodeURIComponent(item.id)}/control`, {
-          method: 'POST', signal: AbortSignal.timeout(10000), body: JSON.stringify({ action, revision: item.revision }) });
+          method: 'POST', signal: AbortSignal.timeout(10000), body: JSON.stringify(command) });
         if (currentGeneration !== generation) return;
-        commands.delete(item.id);
+        if (saved.id !== item.id || !matchesCommand(saved.commandReceipt, command)) throw Error('Unrelated control receipt');
+        commands.delete(item.id); retainCommands();
         const latest = items.get(item.id);
         if (saved.revision >= latest.revision) {
           const updated = { ...latest, ...saved, pending: saved.state !== 'cancelled', controllable: saved.state !== 'cancelled' };
           items.set(item.id, updated); render(updated);
         } else render(latest);
-      } catch {
+      } catch (cause) {
         if (currentGeneration !== generation) return;
         // A lost mutation response requires a fresh read, never an automatic retry.
-        commands.set(item.id, { action, revision: item.revision, unconfirmed: true }); render(items.get(item.id));
+        if ([400, 403, 404, 409].includes(cause.status)) commands.delete(item.id);
+        else commands.set(item.id, { ...command, unconfirmed: true });
+        retainCommands(); render(items.get(item.id));
       }
       if (currentGeneration === generation) await poll({ refresh: true });
     }
@@ -194,7 +230,6 @@
       if (disposed || pollController || !sessionId) return;
       let nextCursor = refreshQueued ? 0 : cursor;
       refreshQueued = false;
-      const reconciling = new Set([...commands].filter(([, value]) => value.unconfirmed).map(([id]) => id));
       const currentGeneration = generation, controller = new AbortController();
       pollController = controller;
       const timeout = setTimeout(() => controller.abort(), 10000);
@@ -210,7 +245,11 @@
             const previous = items.get(item.id);
             if (previous && item.revision < previous.revision) continue;
             const command = commands.get(item.id);
-            if (command?.unconfirmed && (reconciling.has(item.id) || item.revision > command.revision)) commands.delete(item.id);
+            // A newer status alone cannot confirm this command. The original
+            // HTTP reply may be lost, or its request still pending at Core.
+            if (command && (item.controlReceipts || []).some(receipt => matchesCommand(receipt, command))) {
+              commands.delete(item.id); retainCommands();
+            }
             items.set(item.id, item); render(item);
             if (item.result && previous?.result?.version !== item.result.version) {
               // Rebuild pages through the current server catalogue, including restored results.
@@ -237,6 +276,7 @@
       if (disposed || !id || id === sessionId) return;
       pollController?.abort(); pollController = null;
       ++generation; sessionId = id; cursor = 0; dispatch = null; stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); attempted.clear(); requested.clear();
+      restoreCommands();
       summary = node('h2', 'conversation-work-summary', '');
       host.replaceChildren(summary); host.hidden = true; clearInterval(timer);
       timer = setInterval(() => { void poll(); }, pollMs); timer.unref?.(); void poll();
