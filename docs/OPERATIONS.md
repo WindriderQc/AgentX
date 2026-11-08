@@ -2343,6 +2343,18 @@ the usual fallback marker. This feature sends nothing to a cloud provider.
 
 ### Inference log timings and prompt cache
 
+Individual log reads (`GET /api/analytics/inference/logs` and the Nerve Center's
+shared log projection) preserve recorded `executionSource` (`local` or
+`openclaw`), `executionMode` (`model` or `agent`) and
+`executionReceiptFingerprint` (a lower-case SHA256 hash). These describe the
+execution mechanism independently of `runtime`: Core can delegate execution
+while still recording `runtime: agentx`. Missing fields remain absent; null or
+invalid values remain null. A legacy row is never inferred to be local from its
+host or runtime. The fingerprint links retained receipt evidence; it does not
+establish success, tool use, quality, model placement or performance. Raw execution receipts,
+native run/session identifiers and transcripts stay outside this projection.
+Reads do not modify historical rows or add instrumentation.
+
 `GET /api/telemetry/timeline` supplies the Nerve Center's hourly latency chart
 (configurable `bucketMinutes`, 1–1440; `hours`, 1–720). In each UTC bucket,
 `calls` and `byHost` count all matching recorded calls; `errors` counts every
