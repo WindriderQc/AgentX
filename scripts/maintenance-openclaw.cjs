@@ -6,20 +6,12 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const execute = promisify(execFile);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-const sameTarget = (a, b) => a?.pid === b?.pid && a?.ownerId === b?.ownerId && a?.port === b?.port;
-
-function readTarget(file) {
-  const value = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (!Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.ownerId !== 'string'
-    || !value.ownerId || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535
-    || value.role && value.role !== 'gateway') throw new Error('Native gateway lock identity is unavailable');
-  return { pid: value.pid, ownerId: value.ownerId, port: value.port };
-}
+const { readTarget, sameTarget, observeReload } = require('./maintenance-openclaw-observation.cjs');
 
 // Native suspension owns the scheduler and admission fence. No local busy
 // registry, systemctl restart, force, cancellation or bounded safe-restart timer.
 async function reloadWithFence({ requestId, waitMs, healthMs = 180000, rpc, target,
-  readTarget: inspect, save, ready, now = Date.now, sleep = pause, ActionError }) {
+  readTarget: inspect, save, ready, now = Date.now, observationNow = () => performance.now(), sleep = pause, ActionError }) {
   const fail = (message, outcome = 'refused') => new ActionError(message,
     { outcome, exitCode: outcome === 'unknown' ? 3 : 4 });
   const deadline = now() + waitMs;
@@ -55,18 +47,10 @@ async function reloadWithFence({ requestId, waitMs, healthMs = 180000, rpc, targ
       throw fail('Native restart acknowledgement is uncertain; reconcile this request', 'unknown');
     }
     await save({ phase: 'accepted', suspensionId, acknowledgement: ack });
-    const healthDeadline = now() + healthMs;
-    do {
-      try {
-        const after = await inspect();
-        if (!sameTarget(target, after) && after.port === target.port && await ready(after)) {
-          await save({ phase: 'completed', targetAfter: after });
-          return { requestId, targetBefore: target, targetAfter: after, runtimeReady: true };
-        }
-      } catch { /* A missing lock during the native handoff is not a retry. */ }
-      if (now() >= healthDeadline) throw fail('Reload accepted but readiness is unconfirmed; do not repeat it', 'unknown');
-      await sleep(Math.min(2000, healthDeadline - now()));
-    } while (true);
+    const observed = await observeReload({ target, readTarget: inspect, ready, waitMs: healthMs, now: observationNow, sleep });
+    if (!observed.runtimeReady) throw fail('Reload accepted but readiness is unconfirmed; do not repeat it', 'unknown');
+    await save({ phase: 'completed', targetAfter: observed.targetAfter });
+    return { requestId, targetBefore: target, ...observed };
   } catch (error) {
     if (dispatched) throw fail(error.message, 'unknown');
     if (suspensionId) {
@@ -117,12 +101,7 @@ async function reloadOpenclaw(config, options, ActionError) {
   };
   try {
     const result = await reloadWithFence({ requestId, waitMs: minutes * 60000, rpc, target: record.target,
-      readTarget: async () => readTarget(lockFile), save, ActionError,
-      ready: async after => {
-        const statuses = await Promise.all(['/healthz', '/readyz'].map(async route =>
-          (await fetch(`http://127.0.0.1:${after.port}${route}`, { signal: AbortSignal.timeout(2000), redirect: 'error' })).status));
-        return statuses.every(status => status === 200);
-      } });
+      readTarget: async () => readTarget(lockFile), save, ActionError });
     return { ...result, receiptRef: file };
   } catch (error) {
     error.details = { ...error.details, file, phase: record.phase };

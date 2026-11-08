@@ -24,6 +24,8 @@ function quietly(fn) {
 
 test('only the closed list of actions and deployable services is accepted', () => {
   assert.deepEqual(actions.parseArgs(['deploy', '--actor', 'tester', '--services', 'core']), { action: 'deploy', options: { actor: 'tester', services: 'core' } });
+  assert.deepEqual(actions.parseArgs(['reload-openclaw-status', '--request-id', 'original-id']),
+    { action: 'reload-openclaw-status', options: { 'request-id': 'original-id' } });
   assert.throws(() => actions.parseArgs(['shell', '--cmd', 'rm']), { exitCode: 2 });
   assert.throws(() => actions.parseArgs(['deploy', 'core']), { exitCode: 2 });
   assert.throws(() => actions.parseArgs(['deploy', '--actor']), { exitCode: 2 });
