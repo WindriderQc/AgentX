@@ -86,6 +86,7 @@ describe('caller runtime compatibility', () => {
       { ...deps, pinNumThread: async () => 6 });
     expect(result.options.temperature).toBe(policy === 'direct' ? 1 : 0);
     if (policy !== 'direct') {
+      expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.any(Object), { includeArtifactIdentity: true });
       expect(result.options).toMatchObject({ top_p: 0.9, top_k: 40, repeat_penalty: 1.1 });
       expect(result.think).toBe(false);
     }
