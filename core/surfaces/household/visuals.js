@@ -134,7 +134,7 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
   async function fromFiles(source, query, { family }) {
     for (const term of searchTerms(query)) {
       const params = new URLSearchParams({ category: 'media', root: settings().roots[source], search: term,
-        includeDirname: 'true', limit: String(LIMITS.candidates) });
+        includeDirname: 'true', extensions: Object.keys(IMAGE_TYPES).join(','), limit: String(LIMITS.candidates) });
       const { response, body } = await dataFetch('/api/v1/storage/files/browse', { query: params.toString(), timeoutMs: LIMITS.timeoutMs });
       if (!response.ok) throw new Error(`Data ${response.status}`);
       const candidates = [...(body?.data?.files || [])].sort((left, right) =>

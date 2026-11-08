@@ -76,6 +76,19 @@ class FileBrowserController {
         return res.status(400).json({ status: 'error', message: scope.error });
       }
       const filter = scope.filter;
+      // Narrow candidates in Mongo before sorting/pagination. In particular,
+      // video rows must not consume Household's bounded image-search window.
+      if (req.query.extensions !== undefined) {
+        const value = req.query.extensions;
+        const extensions = typeof value === 'string' && value.length <= 339
+          ? value.split(',').map(item => item.trim().toLowerCase()) : [];
+        if (!extensions.length || extensions.length > 20 || extensions.some(item => !/^[a-z0-9]{1,16}$/.test(item))) {
+          return res.status(400).json({ status: 'error', message: 'extensions must be 1–20 comma-separated alphanumeric extensions (1–16 characters each)' });
+        }
+        const extensionScope = { ext: { $in: [...new Set(extensions)] } };
+        if (filter.ext) filter.$and = [extensionScope];
+        else Object.assign(filter, extensionScope);
+      }
       if (search) {
         const pattern = { $regex: escapeRegex(search), $options: 'i' };
         if (includeDirname === 'true') {
