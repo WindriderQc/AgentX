@@ -49,6 +49,13 @@ an ordered JSON array of one to 32 entries:
 ]
 ```
 
+`acceptNewWork` defaults to `true`. Set it to `false` to drain new Core work
+without removing an enabled executor from receipt discovery, history, stop or
+recovery. New selection and fallback exclude draining executors; explicit fresh
+launches refuse. A received original request keeps its exact executor, including
+recovery replay. Unreadable original receipts stay uncertain instead of moving
+to another executor. `enabled: false` retains its full-disable behavior.
+
 The host names above are synthetic. Instance host inventories stay outside the
 public repository. If the registry is absent, the existing
 `CODING_DISPATCHER_SSH_TARGET` and `CODING_DISPATCHER_REMOTE_ROOT` values create
