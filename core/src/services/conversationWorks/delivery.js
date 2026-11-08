@@ -13,6 +13,8 @@ function createWorkDelivery(works) {
     const presented = result && result.kind !== 'no_work' && works.presentResult ? await works.presentResult(result, row) : null;
     return { id: row._id, turnId: row.turnId, sessionId: row.sessionId, state: row.state,
       revision: row.revision, receivedAt: row.receivedAt, updatedAt: row.updatedAt, requestText,
+      controlBasis: requestText !== null ? { version: 2, workId: row._id, revision: row.revision, requestSha256: row.requestSha256 } : null,
+      controlReceipts: (row.controlReceipts || []).map(({ fingerprint, ...receipt }) => receipt),
       classification: row.classification, guardianStatus: row.guardian?.state || 'unknown', sequence: row.sequence, reason: row.reason || '',
       // Only execution identities and bounded receipt metadata reach the browser.
       // Session keys, tool payloads, selected context and prompts stay private.
@@ -22,7 +24,7 @@ function createWorkDelivery(works) {
         runId: tool.runId || null, at: tool.at })),
       nativeAdmissions: (row.nativeAdmissions || []).map(call => ({ id: call.id, tool: call.tool, at: call.at })),
       resultDisposition: row.result?.kind || null,
-      controllable: row.classification !== 'native_only' && !row.attempt && ['received', 'queued', 'paused'].includes(row.state),
+      controllable: requestText !== null && row.classification !== 'native_only' && !row.attempt && ['received', 'queued', 'paused'].includes(row.state),
       result: result && result.kind !== 'no_work' ? { ...result,
         ...(presented && { display: presented.display, language: presented.language, spokenText: presented.spokenText, readingText: presented.readingText, displayText: presented.displayText }),
         automaticSpeech: await works.automaticSpeech(row), version: row.result.version,

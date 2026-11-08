@@ -51,6 +51,45 @@ read of that same work, with controls disabled until verification, and never
 resends the mutation. Cancelled requests retain their state on screen. The list
 scrolls independently to keep the dialogue and composer within reach.
 
+### Exact pre-dispatch command receipts
+
+The existing private work-control route accepts only version 2 commands:
+`{ version: 2, requestId, workId, requestSha256, revision, action }`. The browser
+uses the exact `controlBasis` from the work projection and a new UUID for each
+explicit pause, resume or cancel. Core requires the matching conversation,
+work, immutable request fingerprint and current work revision. It also reads
+the complete canonical request under the existing conversation write fence;
+an absent or replaced request refuses the command. Work revision is a concurrency
+fence, not an intent-amendment version or a native approval grant.
+
+The state transition and its `controlReceipts` entry commit atomically in the
+existing work record. The receipt binds the UUID, action, work, request fingerprint,
+base revision and resulting state/revision. An exact duplicate returns that original
+receipt, even after later commands or a Core restart; on that work, the same UUID
+with changed content refuses. The browser never resends an uncertain command. It retains only
+its command identity and basis in that tab's session storage before sending, so
+reload or conversation reselection can read the same receipt from the work
+projection. If the browser cannot retain this pending identity, it sends no command.
+
+A missing or unrelated receipt remains unconfirmed, even if a newer generic status
+is available. Controls stay disabled for that pending command until its exact
+receipt arrives; a definite HTTP refusal clears only that refused command.
+Receipts are never evicted: the journal holds at most 64 commands per work,
+reserving the last slot for pre-dispatch cancellation. Monotonic work revisions
+also prevent reapplying an older basis with a new command UUID. Conversation
+erasure removes these receipts with the existing work metadata.
+
+Older clients without version 2 identities receive
+`CONVERSATION_WORK_CONTROL_INVALID` and an instruction to refresh the conversation;
+they cannot perform a partial or unbound command. Older work records gain their
+first receipt only on a newly accepted version 2 command. No historical receipt
+is inferred from a state or event. The existing private-LAN human access boundary
+is unchanged: model text, declared callers and client approval booleans grant
+no native consent. These receipts control only unadmitted conversation work;
+they cannot amend an admitted request, stop or relaunch a native attempt, or
+perform a business mutation. Native approvals, versioned clarification replies
+and intent amendments remain separate contracts tracked in #664.
+
 ## Contract
 
 Enable `PERSONAL_CONVERSATION_WORK_MODE=native`,
