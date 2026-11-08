@@ -64,7 +64,7 @@ function gateway(execute, clients = parseGatewayClients(JSON.stringify({ codex: 
     logger: {},
     clients,
     runtimeServices: {
-      routing: { getEffectiveSnapshot: async () => currentSnapshot },
+      routing: { getEffectiveSnapshot: async options => typeof currentSnapshot === 'function' ? currentSnapshot(options) : currentSnapshot },
       inference: { execute: async (request, options) => { calls.push({ request, options }); return execute(request, options); } }
     }
   });
@@ -159,7 +159,10 @@ test('tool calls use their measured execution; discovery exposes the compatible 
     } }, thinking: { supported: true }
   } };
   const { calls, handler } = gateway(async () => ({ ok: true, status: 200,
-    body: { message: { content: 'ok' }, done: true }, metadata: {} }), undefined, state);
+    body: { message: { content: 'ok' }, done: true }, metadata: {} }), undefined, options => {
+      assert.equal(options.includeArtifactIdentity, true, 'Tool gates require exact artifact qualification, as discovery does');
+      return state;
+    });
   const body = { model: 'agentx-primary', tools: [{ type: 'function', function: { name: 'lookup', parameters: {} } }],
     temperature: 1, messages: [{ role: 'user', content: 'look up this value' }] };
   const res = new Response();
