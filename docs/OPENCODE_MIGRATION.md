@@ -85,16 +85,34 @@ layout. No Session agent or model provider is created:
 ```bash
 node integrations/coding/dsh_history_check.mjs \
   --runtime-root /reviewed/dsh \
+  --studio-home /private/studio-state \
   --studio-sessions /private/studio-state/sessions \
   --workers-root /private/worker-workspaces
 ```
 
 The checker uses Studio's compressed backend and the workers' plaintext
 backend. A compression mismatch is a reader configuration error, not evidence
-of corrupted history. Failed roots or sessions make the command fail. Compare
+of corrupted history. The optional explicit Studio home enables attachment
+verification through the same runtime's native attachment store. It must own
+the named Studio sessions. Worker stores remain bound to their original private
+homes. Every native image/file reference is read; repeated references in one
+home share verified results. Images retain native digest, media and dimension
+checks; file streams are exhausted before success, including integrity errors
+reported after their last chunk. Unknown references, missing bytes and failed
+integrity checks make the command fail. No agent, provider, model request,
+image projection or session rewrite is created. Without the home option, the
+command retains its history-only coverage. A zero-attachment count is not
+evidence of image/file compatibility for a runtime that has no such history.
+
+Failed roots or sessions make the command fail. Compare
 inventories before and after reading. Retain native DSH access until an archive
 reader with equivalent history and attachment coverage is qualified. A summary,
 Markdown transcript or renamed OpenCode session is not a native migration.
+
+Keeping the reviewed DSH runtime as a native archive reader is independent of
+choosing OpenCode for new work. Such archives still depend on that retained
+reader; they do not establish a DSH-to-OpenCode transcript conversion or justify
+removing the runtime needed for archive access and rollback.
 
 ## Qualify the exact OpenCode runtime
 
