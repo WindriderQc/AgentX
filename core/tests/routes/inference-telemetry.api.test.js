@@ -138,13 +138,13 @@ describe('Inference telemetry API', () => {
     }));
   });
 
-  it('combines host rows while keeping suspected cold starts off the serving-latency axis', async () => {
+  it('combines host samples including long calls on the latency axis', async () => {
     const firstBucket = new Date('2026-07-17T01:00:00.000Z');
     const secondBucket = new Date('2026-07-17T01:15:00.000Z');
     mockAggregate.mockResolvedValueOnce([
       {
         _id: { bucket: firstBucket, host: 'http://primary:11434' },
-        calls: 2,
+        calls: 3,
         avgLatencyMs: 200,
         errors: 1,
         latencies: [100, 300, 80000]
@@ -175,12 +175,17 @@ describe('Inference telemetry API', () => {
     expect(response.body.data).toEqual([
       {
         bucket: firstBucket.toISOString(),
-        calls: 3,
-        avgLatencyMs: 200,
-        p95LatencyMs: 300,
+        calls: 4,
+        avgLatencyMs: 20150,
+        p95LatencyMs: 80000,
+        latencySampleCount: 4,
+        unmeasuredDurationCount: 0,
+        shortCallCount: 3,
+        longCallCount: 1,
+        longCallMaxMs: 80000,
         errors: 1,
         byHost: {
-          'http://primary:11434': 2,
+          'http://primary:11434': 3,
           'http://secondary:11434': 1
         },
         coldStartSuspectedCount: 1,
@@ -191,12 +196,41 @@ describe('Inference telemetry API', () => {
         calls: 1,
         avgLatencyMs: 400,
         p95LatencyMs: 400,
+        latencySampleCount: 1,
+        unmeasuredDurationCount: 0,
+        shortCallCount: 1,
+        longCallCount: 0,
+        longCallMaxMs: null,
         errors: 0,
         byHost: { 'http://primary:11434': 1 },
         coldStartSuspectedCount: 0,
         coldStartSuspectedMaxMs: null
       }
     ]);
+  });
+
+  it('does not fabricate timings from missing, nonnumeric, nonfinite or default-zero durations', async () => {
+    const latencies = [undefined, null, '90000', NaN, Infinity, -Infinity, -10, 0];
+    mockAggregate.mockResolvedValueOnce([{
+      _id: { bucket: new Date('2026-07-17T01:00:00Z'), host: 'http://primary:11434' },
+      calls: latencies.length, errors: 2, latencies
+    }]);
+    const response = await request(app).get('/api/telemetry/timeline').expect(200);
+    expect(response.body.data[0]).toMatchObject({
+      calls: 8, errors: 2, latencySampleCount: 0, unmeasuredDurationCount: 8,
+      shortCallCount: 0, longCallCount: 0, longCallMaxMs: null,
+      avgLatencyMs: null, p95LatencyMs: null,
+      coldStartSuspectedCount: 0, coldStartSuspectedMaxMs: null
+    });
+  });
+
+  it('uses exact nearest-rank P95 at the twenty-sample boundary', async () => {
+    mockAggregate.mockResolvedValueOnce([{
+      _id: { bucket: new Date('2026-07-17T01:00:00Z'), host: 'http://primary:11434' },
+      calls: 20, errors: 0, latencies: Array.from({ length: 20 }, (_, i) => (20 - i) * 1000)
+    }]);
+    const response = await request(app).get('/api/telemetry/timeline').expect(200);
+    expect(response.body.data[0]).toMatchObject({ avgLatencyMs: 10500, p95LatencyMs: 19000, latencySampleCount: 20 });
   });
 
   it('zero-fills empty timeline buckets between observed timestamps', () => {
@@ -208,8 +242,11 @@ describe('Inference telemetry API', () => {
     expect(dense).toHaveLength(3);
     expect(dense[1]).toEqual(expect.objectContaining({
       bucket: '2026-07-17T02:00:00.000Z',
-      calls: 0,
-      avgLatencyMs: null,
+      calls: 0, errors: 0,
+      avgLatencyMs: null, p95LatencyMs: null,
+      latencySampleCount: 0, unmeasuredDurationCount: 0,
+      shortCallCount: 0, longCallCount: 0, longCallMaxMs: null,
+      coldStartSuspectedCount: 0, coldStartSuspectedMaxMs: null,
       byHost: {},
     }));
   });

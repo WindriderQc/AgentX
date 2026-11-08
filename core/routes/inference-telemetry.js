@@ -8,7 +8,27 @@ const DEFAULT_HOURS = 24;
 const MAX_HOURS = 720;
 const DEFAULT_BUCKET_MINUTES = 60;
 const MAX_BUCKET_MINUTES = 1440;
-const COLD_START_SUSPECT_MS = 60000;
+const LONG_CALL_THRESHOLD_MS = 60000;
+
+function timelineLatencyStats(latencies, calls) {
+    // Zero is the historical InferenceLog default, not evidence of a measured call.
+    const sorted = latencies.filter(value => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+    const longCalls = sorted.filter(value => value >= LONG_CALL_THRESHOLD_MS);
+    const longCallMaxMs = longCalls.length ? longCalls[longCalls.length - 1] : null;
+    return {
+        avgLatencyMs: sorted.length ? Math.round(sorted.reduce((sum, value) => sum + value / sorted.length, 0)) : null,
+        // Exact nearest rank, as in modelRegistryQueries: ceil(n * p) - 1.
+        p95LatencyMs: sorted.length ? sorted[Math.ceil(sorted.length * 0.95) - 1] : null,
+        latencySampleCount: sorted.length,
+        unmeasuredDurationCount: calls - sorted.length,
+        shortCallCount: sorted.length - longCalls.length,
+        longCallCount: longCalls.length,
+        longCallMaxMs,
+        // Deprecated descriptive aliases. Duration alone does not establish a cold start.
+        coldStartSuspectedCount: longCalls.length,
+        coldStartSuspectedMaxMs: longCallMaxMs,
+    };
+}
 
 function boundedPositiveInteger(value, fallback, maximum) {
     const parsed = parseInt(value, 10);
@@ -176,7 +196,6 @@ router.get('/timeline', async (req, res) => {
                     host: '$host',
                 },
                 calls: { $sum: 1 },
-                avgLatencyMs: { $avg: '$durationMs' },
                 errors: { $sum: { $cond: [{ $ne: ['$status', 'success'] }, 1, 0] } },
                 latencies: { $push: '$durationMs' },
             }},
@@ -188,7 +207,7 @@ router.get('/timeline', async (req, res) => {
         for (const r of results) {
             const key = r._id.bucket.toISOString();
             if (!bucketMap[key]) {
-                bucketMap[key] = { bucket: key, calls: 0, avgLatencyMs: 0, errors: 0, byHost: {}, _latencies: [] };
+                bucketMap[key] = { bucket: key, calls: 0, errors: 0, byHost: {}, _latencies: [] };
             }
             const b = bucketMap[key];
             b.calls += r.calls;
@@ -198,19 +217,12 @@ router.get('/timeline', async (req, res) => {
         }
 
         const sparseTimeline = Object.values(bucketMap).map(b => {
-            const sorted = b._latencies.filter(n => typeof n === 'number').sort((a, c) => a - c);
-            const serving = sorted.filter(value => value < COLD_START_SUSPECT_MS);
-            const coldStarts = sorted.filter(value => value >= COLD_START_SUSPECT_MS);
-            const p95Idx = Math.floor(serving.length * 0.95);
             return {
                 bucket: b.bucket,
                 calls: b.calls,
-                avgLatencyMs: serving.length ? Math.round(serving.reduce((s, v) => s + v, 0) / serving.length) : null,
-                p95LatencyMs: serving.length ? serving[Math.min(p95Idx, serving.length - 1)] : null,
+                ...timelineLatencyStats(b._latencies, b.calls),
                 errors: b.errors,
                 byHost: b.byHost,
-                coldStartSuspectedCount: coldStarts.length,
-                coldStartSuspectedMaxMs: coldStarts.length ? coldStarts[coldStarts.length - 1] : null,
             };
         });
 
@@ -234,12 +246,9 @@ function densifyTimeline(timeline, bucketMinutes) {
         dense.push(byTimestamp.get(timestamp) || {
             bucket: new Date(timestamp).toISOString(),
             calls: 0,
-            avgLatencyMs: null,
-            p95LatencyMs: null,
+            ...timelineLatencyStats([], 0),
             errors: 0,
             byHost: {},
-            coldStartSuspectedCount: 0,
-            coldStartSuspectedMaxMs: null,
         });
     }
     return dense;
@@ -248,4 +257,5 @@ function densifyTimeline(timeline, bucketMinutes) {
 module.exports = router;
 module.exports.buildFilter = buildFilter;
 module.exports.densifyTimeline = densifyTimeline;
-module.exports.COLD_START_SUSPECT_MS = COLD_START_SUSPECT_MS;
+module.exports.LONG_CALL_THRESHOLD_MS = LONG_CALL_THRESHOLD_MS;
+module.exports.COLD_START_SUSPECT_MS = LONG_CALL_THRESHOLD_MS; // Deprecated alias.
