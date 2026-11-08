@@ -91,6 +91,9 @@ async function personalTaskSnapshot(input = {}, now = new Date()) {
 }
 
 async function listPersonalTasks(input = {}, now = new Date()) {
+  if (Object.hasOwn(input, 'requestId') || Object.hasOwn(input, 'expectedCaptureFingerprint')) {
+    return reconcilePersonalCapture(input, now);
+  }
   const snapshot = await personalTaskSnapshot(input, now);
   const review = snapshot.filter(task => task.needsReview);
   const categoryRows = snapshot.filter(task => input.scope === 'dismissed' ? task.lane === 'dismissed' : !['done', 'dismissed'].includes(task.lane));
@@ -111,6 +114,44 @@ async function listPersonalTasks(input = {}, now = new Date()) {
     overdueCount: all.filter((item) => item.overdue).length,
     dueTodayCount: all.filter((item) => item.dueToday).length,
     tasks: items
+  };
+}
+
+// Read the existing creation identity, including closed or dismissed tasks.
+// This is not a replay of create: missing/erased evidence leaves the outcome unknown.
+async function reconcilePersonalCapture(input, now) {
+  if (Object.keys(input).some(key => !['requestId', 'expectedCaptureFingerprint'].includes(key))
+    || typeof input.requestId !== 'string'
+    || !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(input.requestId)
+    || (Object.hasOwn(input, 'expectedCaptureFingerprint')
+      && (typeof input.expectedCaptureFingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(input.expectedCaptureFingerprint)))) {
+    throw new PersonalTaskError('Capture lookup needs only the original UUID requestId and optional SHA-256 expectedCaptureFingerprint; omit all list filters.', { code: 'PERSONAL_CAPTURE_INVALID' });
+  }
+  const requestId = input.requestId.toLowerCase();
+  const task = await PipelineTask.findOne({ service: 'personal', personalCaptureId: requestId })
+    .select('pipelineId title status priority spec dueAt relevantUntil origin source createdAt updatedAt personalReview personalRepeat personalLastCompletedOccurrence personalDossierDecisions __v personalCaptureId personalCaptureFingerprint').lean();
+  const createdAt = task?.createdAt ? new Date(task.createdAt) : null;
+  const recorded = task?.personalCaptureId === requestId && /^\d+$/.test(task?.pipelineId || '')
+    && /^[a-f0-9]{64}$/.test(task?.personalCaptureFingerprint || '')
+    && createdAt && !Number.isNaN(createdAt.getTime());
+  if (recorded && input.expectedCaptureFingerprint && input.expectedCaptureFingerprint !== task.personalCaptureFingerprint) {
+    throw new PersonalTaskError('This requestId belongs to different task details.', { code: 'PERSONAL_CAPTURE_CONFLICT', status: 409 });
+  }
+  const tasks = recorded ? [publicTask(task, now)] : [];
+  return {
+    authority: 'core.personal-tasks',
+    selection: 'exact_personal_capture',
+    requestId,
+    captureStatus: recorded ? 'recorded' : 'unknown',
+    captureReceipt: recorded ? {
+      contract: 'agentx.personal-task-capture/v1', requestId,
+      taskId: task.pipelineId, fingerprint: task.personalCaptureFingerprint,
+      createdAt: createdAt.toISOString()
+    } : null,
+    taskObservation: recorded ? 'current_state' : 'unavailable',
+    ...(recorded ? {} : { uncertainty: 'No usable capture receipt is available. This does not prove failure or absence of an effect; do not automatically repeat creation.' }),
+    count: tasks.length, totalCount: tasks.length, hasMore: false, nextOffset: null,
+    tasks
   };
 }
 
