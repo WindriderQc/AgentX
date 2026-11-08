@@ -349,6 +349,11 @@ constructs rather than manufacture successful calls or completed work.
 4. Enable only the qualified profiles on the candidate executor. Keep retained
    DSH access and the rollback installation. Route only new work to OpenCode;
    never relabel an existing accepted request or reuse its identity.
+   A retained executor can set `acceptNewWork: false` while remaining enabled:
+   new selection, automatic fallback and explicit new launches exclude it, but
+   original receipt reads, stop, recovery and exact-identity replays stay bound
+   to it. Disabling the whole executor also removes its control/read entry and
+   is not the admission drain used for retained worker visibility.
 5. Receive installed worker, browser, continuation and gateway checks. Verify
    the existing model/context and pin contracts. Add no concrete model name to
    a client configuration.

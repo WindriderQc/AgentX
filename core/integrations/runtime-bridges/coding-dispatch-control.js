@@ -99,6 +99,21 @@ class CodingDispatchControl {
     if (!executor) throw new CodingDispatchControlError('The selected coding executor is unavailable.', { code: 'CODING_EXECUTOR_UNAVAILABLE', statusCode: 503 });
     return executor;
   }
+  async admitExistingOrNew(executor, requestId) {
+    if (executor.acceptNewWork !== false) return executor;
+    if (requestId) {
+      const observed = await this.statusOn(executor, exactRequestId(requestId));
+      if (!observed.run?.phase || observed.run.phase !== 'not_received' && observed.run.requestId !== requestId) {
+        throw new CodingDispatchControlError('The original native request receipt cannot be verified.', {
+          code: 'CODING_DISPATCH_OUTCOME_UNKNOWN', statusCode: 503
+        });
+      }
+      if (observed.run.phase !== 'not_received') return executor;
+    }
+    throw new CodingDispatchControlError('This executor accepts existing requests only; choose an executor accepting new work.', {
+      code: 'CODING_EXECUTOR_DRAINING', statusCode: 409
+    });
+  }
   async call(executor, command, options = {}) {
     let payload;
     try {
@@ -144,13 +159,15 @@ class CodingDispatchControl {
     if (received.length > 1) throw new CodingDispatchControlError('More than one executor has a receipt for this request.', { code: 'CODING_DISPATCH_REQUEST_CONFLICT' });
     if (requestId && !received.length && failed.length) throw new CodingDispatchControlError('Not every executor answered; the request outcome is unknown.', { code: 'CODING_DISPATCH_OUTCOME_UNKNOWN', statusCode: 503 });
     const selected = received[0];
-    const candidates = answered.filter(row => row.available && !row.busy).flatMap(row => row.candidates || []);
-    const status = selected || { contractVersion: 2, available: answered.some(row => row.available),
-      busy: answered.filter(row => row.available).every(row => row.busy), candidates,
+    const accepting = answered.filter(row => row.executor.acceptNewWork !== false);
+    const candidates = accepting.filter(row => row.available && !row.busy).flatMap(row => row.candidates || []);
+    const status = selected || { contractVersion: 2, available: accepting.some(row => row.available),
+      busy: accepting.filter(row => row.available).every(row => row.busy), candidates,
       excluded: answered.flatMap(row => row.excluded || []),
       ...(requestId && { run: { requestId, phase: 'not_received', canCancel: true } }) };
     const active = this.inferenceStatus();
-    return { ...status, contractVersion: 2, candidates: selected ? selected.candidates : candidates,
+    return { ...status, contractVersion: 2, candidates: selected
+      ? selected.executor.acceptNewWork === false ? [] : selected.candidates : candidates,
       executors: answered.map(row => ({ ...row.executor, available: row.available, busy: row.busy,
         observedAt: row.observedAt })), unavailableExecutors: failed,
       ...(active && { inference: { pipelineId: active.pipelineId, attempt: active.attempt, requestCount: active.requestCount, ...active.inference } }) };
@@ -159,16 +176,23 @@ class CodingDispatchControl {
     if (input.executorId) {
       const selected = this.executor(input.executorId);
       if (profile && !selected.profiles.includes(profile)) throw new CodingDispatchControlError('The selected executor does not support this work profile.', { code: 'CODING_EXECUTOR_PROFILE_UNAVAILABLE' });
-      return selected;
+      return profile ? this.admitExistingOrNew(selected, input.requestId) : selected;
     }
-    const compatible = this.executors.filter(item => item.enabled && (!profile || item.profiles.includes(profile)));
+    // Draining keeps original receipts discoverable even when only one other
+    // executor accepts the requested profile. Never reassign that original UUID.
+    if (input.requestId && this.executors.some(item => item.enabled && !item.acceptNewWork)) {
+      const observed = await this.status({ requestId: input.requestId });
+      if (observed.run?.phase !== 'not_received' && observed.run?.executorId)
+        return this.admitExistingOrNew(this.executor(observed.run.executorId), input.requestId);
+    }
+    const compatible = this.executors.filter(item => item.enabled && item.acceptNewWork && (!profile || item.profiles.includes(profile)));
     if (compatible.length === 1) return compatible[0];
     if (input.requestId) {
       const observed = await this.status({ requestId: input.requestId });
       if (observed.run?.phase !== 'not_received' && observed.run?.executorId) return this.executor(observed.run.executorId);
     }
     const { answered } = await this.allStatuses();
-    const available = answered.filter(row => row.available && !row.busy && (!profile || row.executor.profiles.includes(profile)));
+    const available = answered.filter(row => row.executor.acceptNewWork && row.available && !row.busy && (!profile || row.executor.profiles.includes(profile)));
     if (!available.length) throw new CodingDispatchControlError('No compatible coding executor is available.', { code: 'CODING_DISPATCH_BUSY' });
     return this.executor(available[0].executor.id);
   }
@@ -177,6 +201,7 @@ class CodingDispatchControl {
     if (input.executorId) {
       const executor = this.executor(input.executorId);
       if (!executor.profiles.includes(profile)) throw new CodingDispatchControlError('The selected executor does not support this work profile.', { code: 'CODING_EXECUTOR_PROFILE_UNAVAILABLE' });
+      await this.admitExistingOrNew(executor, input.requestId);
       const status = await this.statusOn(executor);
       if (!status.available || status.busy) throw new CodingDispatchControlError('The required coding executor is not available.', { code: 'CODING_DISPATCH_BUSY' });
       return status.executor;
@@ -184,11 +209,11 @@ class CodingDispatchControl {
     if (input.requestId) {
       const observed = await this.status({ requestId: exactRequestId(input.requestId) });
       if (observed.run?.phase !== 'not_received' && observed.run?.executorId)
-        return this.select({ profile, executorId: observed.run.executorId });
+        return this.select({ profile, executorId: observed.run.executorId, requestId: input.requestId });
       throw new CodingDispatchControlError('The original coding executor cannot be identified.', { code: 'CODING_DISPATCH_OUTCOME_UNKNOWN', statusCode: 503 });
     }
     const { answered } = await this.allStatuses();
-    const row = answered.find(status => status.available && !status.busy && status.executor.profiles.includes(profile));
+    const row = answered.find(status => status.executor.acceptNewWork && status.available && !status.busy && status.executor.profiles.includes(profile));
     if (!row) throw new CodingDispatchControlError('No compatible coding executor is available.', { code: 'CODING_DISPATCH_BUSY' });
     return row.executor;
   }

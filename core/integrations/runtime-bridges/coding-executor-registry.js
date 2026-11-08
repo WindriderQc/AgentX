@@ -37,8 +37,10 @@ function normalize(value, index) {
     throw invalid(`Coding executor ${id} has invalid profiles.`);
   const priority = value.priority === undefined ? 100 : value.priority;
   if (!Number.isSafeInteger(priority) || priority < 0 || priority > 10000) throw invalid(`Coding executor ${id} has an invalid priority.`);
+  if (value.acceptNewWork !== undefined && typeof value.acceptNewWork !== 'boolean')
+    throw invalid(`Coding executor ${id} has an invalid admission setting.`);
   return Object.freeze({ id, label, harness, sshTarget, remoteRoot: root(value.remoteRoot), profiles: Object.freeze([...profiles]),
-    priority, enabled: value.enabled !== false, capacity: 1 });
+    priority, enabled: value.enabled !== false, acceptNewWork: value.acceptNewWork !== false, capacity: 1 });
 }
 
 function normalizeAll(values) {
@@ -66,7 +68,7 @@ function fromEnvironment(env = process.env) {
 
 function publicExecutor(executor) {
   return { id: executor.id, label: executor.label, harness: executor.harness, profiles: [...executor.profiles], priority: executor.priority,
-    capacity: executor.capacity, enabled: executor.enabled };
+    capacity: executor.capacity, enabled: executor.enabled, acceptNewWork: executor.acceptNewWork };
 }
 
 module.exports = { DEFAULT_ROOT, DEFAULT_PROFILES, fromEnvironment, normalize, normalizeAll, publicExecutor, root };
