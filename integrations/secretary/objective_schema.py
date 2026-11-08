@@ -70,7 +70,7 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v10.
+Use the source-span grounding contract secretary.objective-grounding/v11.
 Keep useful explicit steps, not only completed milestones. A personal career
 contact, referral, CV submission, application, interview or offer can be retained
 at its stated stage. Choose factType: life-event, career-contact, application,
@@ -99,29 +99,39 @@ remain useful with null dates. Preserve its source wording and occurrence status
 never invent a date or claim realization to make it useful.
 selectionCues are exact source lines with career or nonprofessional reading cues.
 Their kinds are lexical reminders, not facts, actor identity or proof of occurrence.
-Every cue must appear in an observation or in omittedCues. Each omission has
-citationId and reasonRef from omissionReasonCatalog for that same cue. Select only
-source-supported reasons that actually fit the passage; a valid reference alone
-does not prove relevance. Never call a personal activity administrative. An
-administrative document marker elsewhere cannot dismiss a personal reading cue.
-Quoted-speaker reasons retain the nearest literal author header and never prove
-identity or proximity. Do not borrow a later or unrelated header. If context is
-genuinely insufficient, choose only a supported uncertain reason. declarationCatalog
-identifies complete source declarations with their reading context. Unknown calendar
-dates do not make the activity or completed event insufficiently characterized.
-An explicit reported activity or completed move remains useful with null dates;
-retain its exact observation, alone or in the existing related event. Do not
-substitute an actor ambiguity when source reading context already names the owner.
-These cues do not prove identity or occurrence and never create a fact locally.
-Lexical reminders without a complete assertion keep their omission choices.
-Do not invent an event to satisfy a cue, and do not omit
-a useful personal event just because its date is unknown or relative. Unknown
-date alone is never an abstention/omission reason. Use [] when no cue is omitted.
+Every selectionCue has a required property in cueDecisions, keyed by its exact
+citation ID. Give either {retentions:[{momentIndex,qualificationIds}]} or
+{reasonRef}. momentIndex is ZERO-BASED into your moments array and must name an
+existing proposed moment. A cue may support several distinct moments only when
+its full source excerpt actually supports each; give one retention per moment.
+No decision may be skipped. Retentions are the cue's primary observation
+selection: do not repeat a cue in contextObservations. Do not supply omittedCues
+or observations. Each moment has contextObservations, an array of exact
+{citationId,qualificationIds} selections ONLY for non-cue source context.
+Use [] when no extra context is needed. Never create an unsupported moment to
+satisfy a cue. Read every cue before constructing the related moments, then
+assign each retained cue to its appropriate existing moment. Related activity
+excerpts can support one moment without dropping one of those excerpts.
+An omission's reasonRef must come from omissionReasonCatalog for that same cue.
+Select only source-supported reasons that actually fit the passage; a valid
+reference alone does not prove relevance. Never call personal activities
+administrative or borrow a later/unrelated author header. Unknown dates do not
+justify omitting useful reported activities, completed moves or explicit plans.
+declarationCatalog preserves the reading context of complete declarations; this
+is not verified identity or owner confirmation. When its planSpan identifies
+an explicit upcoming activity, retain its occurrenceStatus as planned, never as
+reported attendance. Use separate moments when reported activities and future
+plans have different occurrence statuses. A warning or question AFTER a complete plan does not erase
+the plan, make its actor unknown, or turn it into a conditional realization.
+Retain the whole exact source excerpt, including its separate warning. Choose
+only relevant local qualifications; a warning about getting lost is not doubt
+that the writer announced a plan. Genuine conditional plans, questions,
+negations and unclear speakers keep their supported uncertain decisions.
 Select titleCitationId from this event's own observation excerpts. Do not write
 any title, description, observation text, rationale, ongoing flag, uncertainty
 or event-wide hypotheses. The application copies whole selected source lines,
 including their tense, relative-day wording, negations and reservations.
-Each observations item has exactly citationId and qualificationIds. Select one
+Each contextObservations item and cue retention selects qualificationIds locally. Select one
 citationCatalog ID and at most one relevant uncertaintyCatalog reference belonging
 TO THAT SAME citation. Use [] when no local reservation is needed. A qualification
 cannot move to a different excerpt, qualify the event globally or cast doubt on
@@ -165,7 +175,7 @@ news usually add no personal life event. Empty moments are valid only with a
 structured abstention: {reasonRef}. Select a scope: passage entry from
 omissionReasonCatalog, even when no selectionCue exists. Its exact source
 evidence is retained locally. A cue reason cannot stand for the whole passage.
-A global abstention does not replace the separate decision for every omitted cue.
+A global abstention does not replace cueDecisions for every cue.
 Use emptyAssessment: uncertain when the selected catalog reason is
 ambiguous-actor, insufficient-event-context or no-readable-source. A passage
 with unresolved personal cues cannot receive a confident administrative negative.
