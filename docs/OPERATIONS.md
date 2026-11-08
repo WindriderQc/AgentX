@@ -2363,6 +2363,16 @@ establish success, tool use, quality, model placement or performance. Raw execut
 native run/session identifiers and transcripts stay outside this projection.
 Reads do not modify historical rows or add instrumentation.
 
+`GET /api/nerve-center/inference/activity` keeps its all-call counts and
+non-success rates for the last hour independently of the displayed log limit.
+Its `stats.lastHour.avgLatencyMs` is the rounded mean of finite numeric
+`durationMs` samples strictly above zero, including long calls, errors and
+timeouts. Missing, null, default-zero, negative, nonnumeric and nonfinite
+durations supply no latency sample. With no measured sample the mean is null,
+and both initial activity rendering and refresh display `--`. Filters retain
+their existing scope. This read leaves retained rows and their private
+projection unchanged; the mean establishes no model placement or cold start.
+
 `GET /api/telemetry/timeline` supplies the Nerve Center's hourly latency chart
 (configurable `bucketMinutes`, 1–1440; `hours`, 1–720). In each UTC bucket,
 `calls` and `byHost` count all matching recorded calls; `errors` counts every
