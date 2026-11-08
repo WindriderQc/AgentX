@@ -371,7 +371,7 @@ async function executeRoutedInference(deps, request, options = {}) {
     ...(options.codingCapacity && { includeArtifactIdentity: true }),
   }, request.mode === 'embed' ? 'embed' : 'extension', deps);
   ({ options: runtimeOptions, keepAlive, numCtxSource, inferenceContract } = runtime);
-  payload = buildLocalPayload(request, model, runtimeOptions, keepAlive);
+  payload = buildLocalPayload({ ...request, think: runtime.think }, model, runtimeOptions, keepAlive);
   const metadata = frozenCopy({
     requestedModel: requestedModel || null,
     taskType: taskType || null,

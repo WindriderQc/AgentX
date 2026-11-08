@@ -55,7 +55,11 @@ function metadata(target, selection, selectable) {
     context_window: target?.contextSize > 0 ? target.contextSize : null,
     capabilities: {
       tools: target?.inferenceContract?.capabilities?.tools?.supported ?? null,
-      reasoning: target?.inferenceContract?.capabilities?.thinking?.supported ?? null
+      reasoning: target?.inferenceContract?.capabilities?.tools?.qualifiedExecution?.think
+        ?? target?.inferenceContract?.capabilities?.thinking?.supported ?? null,
+      ...(target?.inferenceContract?.capabilities?.tools?.qualifiedExecution && {
+        tool_execution: target.inferenceContract.capabilities.tools.qualifiedExecution
+      })
     }
   };
 }

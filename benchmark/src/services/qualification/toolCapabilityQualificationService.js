@@ -13,6 +13,7 @@ const {
   FIXTURE_VERSION,
   HARNESS_VERSION,
   SCENARIOS_V1,
+  TOOL_QUALIFICATION_SAMPLING,
   fixtureFingerprint
 } = require('./toolCallFixtures');
 
@@ -179,11 +180,22 @@ function sanitizeRepetitionReport(report, index, now = new Date(), identity = nu
   }
   const sanitized = scenarios.map(sanitizeScenario);
   assertCanonicalScenarioSet(sanitized);
+  const rawExecution = report.execution;
+  const sampling = {};
+  for (const key of ['temperature', 'top_p', 'top_k', 'repeat_penalty']) {
+    if (rawExecution?.think !== false || rawExecution.sampling?.[key] !== TOOL_QUALIFICATION_SAMPLING[key]) {
+      throw new ToolQualificationError('Tool repetition must carry the measured greedy off-mode execution',
+        'TOOL_QUALIFICATION_EXECUTION_MISMATCH');
+    }
+    sampling[key] = rawExecution.sampling[key];
+  }
+  if (Number.isFinite(rawExecution.sampling.seed)) sampling.seed = rawExecution.sampling.seed;
   const graded = sanitized.filter((row) => row.classification !== 'unsupported_no_tool_call_surface').length;
   const passed = sanitized.filter((row) => row.pass).length;
   return {
     index,
     recordedAt: now,
+    execution: { think: false, sampling },
     passed,
     graded,
     ratio: graded ? Number((passed / graded).toFixed(4)) : null,
@@ -448,6 +460,10 @@ function evidenceProjection(row) {
     artifactDigest: row.artifactDigest,
     runtimeFingerprint: row.runtimeFingerprint,
     measuredRuntime: normalizeMeasuredRuntime(row.measuredRuntime),
+    ...(row.repetitions?.[0]?.execution ? { execution: {
+      think: row.repetitions[0].execution.think,
+      sampling: Object.fromEntries(Object.entries(row.repetitions[0].execution.sampling).filter(([key]) => key !== 'seed'))
+    } } : {}),
     ...(row.driverPreparationId && { driverPreparationId: row.driverPreparationId, measuredContext: row.measuredContext }),
     protocolVersion: row.protocolVersion,
     fixtureVersion: row.fixtureVersion,

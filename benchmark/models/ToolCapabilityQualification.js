@@ -25,6 +25,8 @@ const RepetitionEvidenceSchema = new mongoose.Schema({
   passed: { type: Number, required: true, min: 0 },
   graded: { type: Number, required: true, min: 0 },
   ratio: { type: Number, default: null, min: 0, max: 1 },
+  // Absent on historical evidence, preserving its existing integrity digest.
+  execution: { type: mongoose.Schema.Types.Mixed, default: undefined },
   scenarios: { type: [ScenarioOutcomeSchema], default: undefined }
 }, { _id: false });
 

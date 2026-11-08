@@ -214,6 +214,18 @@ fixture prompts, sampling values, scripted errors or success criteria.
 Instance acceptance also exercises a real native tool error and continuation
 in an independent workspace through Core's heavy-work queue.
 
+The v5 tool execution profile uses greedy decoding (temperature zero) with
+thinking disabled. The remaining controlled sampler values come from Benchmark.
+Each repetition records the actual execution, and the integrity digest covers it.
+Core publishes those settings with qualified tool evidence and applies them to
+shared-runtime and gateway tool turns and their final tool-result continuation.
+Owned direct campaigns keep their explicit experimental settings. A client cannot
+silently use a different thinking mode; an explicit incompatible request refuses
+before dispatch. Model discovery exposes the compatible thinking mode and the
+measured tool profile. Ordinary chat and historical evidence without a profile
+keep their existing behavior. A successful measurement alone does not qualify a
+different runtime configuration.
+
 **Reprendre dans une copie indépendante** is available after the original
 invocation exits. In-flight tool parts, reverted sessions, incompatible native
 identifier formats and changed source revisions refuse. It uses the existing

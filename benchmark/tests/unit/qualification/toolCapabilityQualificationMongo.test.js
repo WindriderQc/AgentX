@@ -31,6 +31,7 @@ function report() {
     harnessVersion: contract.harnessVersion,
     fixtureVersion: contract.fixtureVersion,
     fixtureFingerprint: contract.fixtureFingerprint,
+    execution: { think: false, sampling: { ...fixtures.TOOL_QUALIFICATION_SAMPLING } },
     artifact: {
       model: 'owner/model:8b',
       host: 'http://host-a:11434',

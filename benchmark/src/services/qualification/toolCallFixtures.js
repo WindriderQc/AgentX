@@ -17,14 +17,14 @@ const crypto = require('crypto');
 const { DEFAULT_EXECUTION_CONFIG } = require('../benchmark/config');
 
 const FIXTURE_VERSION = 'toolcall-fixtures.v3';
-const HARNESS_VERSION = 'toolcall-harness.v4';
+const HARNESS_VERSION = 'toolcall-harness.v5';
 
-// Reuse Benchmark's controlled distribution, including its repeat-index seed
-// policy. Bind the actual controls into qualification identity, not just a label.
-const TOOL_QUALIFICATION_SAMPLING = Object.freeze(Object.fromEntries(
+// Greedy tool execution reuses Benchmark's other controls and repeat-index
+// seeds. The actual profile is qualified, fingerprinted and enforced by Core.
+const TOOL_QUALIFICATION_SAMPLING = Object.freeze({ ...Object.fromEntries(
   ['temperature', 'top_p', 'top_k', 'repeat_penalty', 'seed', 'seed_policy']
     .map(key => [key, DEFAULT_EXECUTION_CONFIG[key]])
-));
+), temperature: 0 });
 
 // Common execution contract, not a scenario answer or a retry injected after
 // seeing a failed grade. It is sent before every scenario and fingerprinted.

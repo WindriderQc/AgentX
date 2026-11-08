@@ -72,6 +72,25 @@ describe('caller runtime compatibility', () => {
     resolveThinkingPolicy: jest.fn(() => ({ think: false, mode: 'off', source: 'test' })),
   });
 
+  test.each(['chat', 'extension', 'direct'])('%s applies measured tool execution except in owned evaluation', async policy => {
+    const deps = makeDeps();
+    deps.resolveInferenceContract.mockResolvedValue({
+      contextBudget: { output: { reservedTokens: 512 } }, capabilities: { tools: {
+        supported: true, qualified: true, qualifiedExecution: {
+          think: false, sampling: { temperature: 0, top_p: 0.9, top_k: 40, repeat_penalty: 1.1 }
+        }
+      } }
+    });
+    const result = await prepareInferenceRuntime({ model: 'example:latest', host: 'http://ollama.test:11435',
+      tools: [{}], options: { temperature: 1 }, ...(policy === 'direct' && { claimed: true }) }, policy,
+      { ...deps, pinNumThread: async () => 6 });
+    expect(result.options.temperature).toBe(policy === 'direct' ? 1 : 0);
+    if (policy !== 'direct') {
+      expect(result.options).toMatchObject({ top_p: 0.9, top_k: 40, repeat_penalty: 1.1 });
+      expect(result.think).toBe(false);
+    }
+  });
+
   test.each([
     ['generate', 'example:latest', -1, 8192, 512, false],
     ['generate', 'example', -1, 8192, 512, false],

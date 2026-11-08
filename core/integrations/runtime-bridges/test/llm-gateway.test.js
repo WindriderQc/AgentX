@@ -151,6 +151,37 @@ test('chat completions run under the client identity and the principal alias con
   assert.equal(options.hostUrl, 'http://model-host.test:11434');
 });
 
+test('tool calls use their measured execution; discovery exposes the compatible mode', async () => {
+  const state = snapshot();
+  state.tasks.daily_operator.inferenceContract = { capabilities: {
+    tools: { supported: true, qualified: true, qualifiedExecution: {
+      think: false, sampling: { temperature: 0, top_p: 0.9, top_k: 40, repeat_penalty: 1.1 }
+    } }, thinking: { supported: true }
+  } };
+  const { calls, handler } = gateway(async () => ({ ok: true, status: 200,
+    body: { message: { content: 'ok' }, done: true }, metadata: {} }), undefined, state);
+  const body = { model: 'agentx-primary', tools: [{ type: 'function', function: { name: 'lookup', parameters: {} } }],
+    temperature: 1, messages: [{ role: 'user', content: 'look up this value' }] };
+  const res = new Response();
+  await handler('post', '/v1/chat/completions')(new Request({ headers: AUTH, body }), res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(calls[0].request.temperature, 0);
+  assert.equal(calls[0].request.top_p, 0.9);
+  assert.equal(calls[0].request.think, false);
+  assert.deepEqual(calls[0].request.options, { num_ctx: 196608, top_k: 40, repeat_penalty: 1.1 });
+  assert.equal(res.headers['X-AgentX-Tool-Execution-Profile'], 'greedy-off');
+  const refused = new Response();
+  await handler('post', '/v1/chat/completions')(new Request({ headers: AUTH,
+    body: { ...body, reasoning_effort: 'high' } }), refused);
+  assert.equal(refused.statusCode, 409);
+  assert.equal(calls.length, 1);
+  const discovery = new Response();
+  await handler('get', '/v1/models')(new Request({ headers: AUTH }), discovery);
+  const caps = discovery.jsonBody.data.find(row => row.id === 'agentx-primary').agentx.capabilities;
+  assert.equal(caps.reasoning, false);
+  assert.equal(caps.tool_execution.sampling.temperature, 0);
+});
+
 test('host choices bind the exact effective model, machine and context without changing the principal', async () => {
   const state = snapshot();
   state.tasks.utility = { taskType: 'utility', model: 'model-b', hostKey: 'cpu-a',

@@ -121,7 +121,7 @@ async function seedTool(name, artifact, id) {
   await tools.beginQualification({ ...identity, campaignId, contractFingerprint: 'f'.repeat(64), repetitionsRequested: 3,
     measuredRuntime: artifact.runtime, ...(id && { driverPreparationId: id, measuredContext: 8192 }),
     claim: { batchId: campaignId, claimGeneration: randomUUID(), hostUrl } });
-  const report = { harnessVersion: fixtures.HARNESS_VERSION, fixtureVersion: fixtures.FIXTURE_VERSION,
+  const report = { execution: { think: false, sampling: { ...fixtures.TOOL_QUALIFICATION_SAMPLING } }, harnessVersion: fixtures.HARNESS_VERSION, fixtureVersion: fixtures.FIXTURE_VERSION,
     fixtureFingerprint: fixtures.fixtureFingerprint(),
     artifact: { model: name, host: hostUrl, hostId, digest: artifact.digest, runtimeFingerprint: artifact.runtimeFingerprint },
     toolCallOutcomes: { scenarios: fixtures.SCENARIOS_V1.map(row => ({ scenarioId: row.id, classification: 'ok', pass: true })) } };
