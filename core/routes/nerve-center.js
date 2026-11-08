@@ -594,7 +594,7 @@ router.get('/inference/activity', async (req, res) => {
       { $group: {
         _id: null,
         totalCalls: { $sum: 1 },
-        avgLatencyMs: { $avg: '$durationMs' },
+        avgLatencyMs: { $avg: { $cond: [{ $and: [{ $isNumber: '$durationMs' }, { $gt: ['$durationMs', 0] }, { $lte: ['$durationMs', Number.MAX_VALUE] }] }, '$durationMs', null] } },
         errorCount: { $sum: { $cond: [{ $ne: ['$status', 'success'] }, 1, 0] } },
         byHost: { $push: '$host' },
         byModel: { $push: '$model' },
@@ -613,7 +613,7 @@ router.get('/inference/activity', async (req, res) => {
         stats: {
           lastHour: {
             totalCalls: hourStats.totalCalls,
-            avgLatencyMs: hourStats.totalCalls > 0 ? Math.round(hourStats.avgLatencyMs || 0) : null,
+            avgLatencyMs: hourStats.avgLatencyMs != null && Number.isFinite(Number(hourStats.avgLatencyMs)) ? Math.round(Number(hourStats.avgLatencyMs)) : null,
             nonSuccessCount: hourStats.errorCount,
             nonSuccessRate,
             errorRate: nonSuccessRate,
