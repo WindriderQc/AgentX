@@ -57,7 +57,8 @@
         timer = setTimeout(() => this.fail(lost()), 10000);
         this.pending = { resolve, reject, clean, delta, timer, text: '', sid: null };
         signal.addEventListener('abort', abort, { once: true });
-        try { this.chat.submitText(text); } catch (error) { this.fail(error); }
+        try { Promise.resolve(this.chat.submitText(text, signal)).catch(error => this.fail(error)); }
+        catch (error) { this.fail(error); }
       });
     }
     fail(error) { const p = this.pending; this.pending = null; if (p) { p.clean(); p.reject(error); } }

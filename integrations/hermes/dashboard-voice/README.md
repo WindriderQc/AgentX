@@ -9,7 +9,10 @@ second agent or conversation store.
 
 The microphone opens only after **Parler à Nestor**. Captured speech uses the
 saved personal microphone, language and endpointing settings. A transcript
-enters the current native composer as one paste and Enter. Only that chat's
+enters the current native composer as one paste followed by a separate Enter,
+after the terminal acknowledges output. Combining them can leave a draft in
+the native TUI. A missing acknowledgement fails visibly without replay; pause,
+disconnect or a changed chat prevents the pending Enter. Only that chat's
 assistant events become spoken text. Pause closes browser capture and playback;
 it does not erase the native conversation or retry its work. Capture pauses
 while a reply plays. Native keyboard interruption remains available. The
@@ -80,3 +83,14 @@ AGENTX_HERMES_PREVIEW_URL=http://127.0.0.1:9121 \
 Keep preview configuration and reports outside Git. Never point this mocked
 transport journey at a model-enabled personal deployment as a substitute for
 live acceptance. A real speech check has its own queued, bounded receipt.
+
+The native paste check executes only the TUI's local `/help` command, using the
+actual host context against an authorized chat page. It verifies that one
+paste and one acknowledged Enter execute without a second keypress; it opens
+no microphone and requests no model:
+
+```sh
+AGENTX_HERMES_NATIVE_URL=https://example.invalid/hermes/chat \
+  AGENTX_PLAYWRIGHT_MODULE=/path/to/playwright \
+  node integrations/hermes/dashboard-voice/test/native-paste-journey.cjs
+```

@@ -24,3 +24,8 @@ test('stopping voice does not submit again or destroy the native chat',async()=>
  const {b,sent,ws}=await setup();const abort=new AbortController();const p=b.turn('Hello',abort.signal);const stopped=assert.rejects(p,{name:'AbortError'});abort.abort();await stopped;
  ws.frame('message.complete','native-1',{text:'The native answer still exists',status:'complete'});assert.deepEqual(sent,['Hello']);b.close();
 });
+test('an asynchronously refused paste acknowledgement fails once without replay',async()=>{
+ let attempts=0;const b=new Bridge({channel:'chat-a',submitText:()=>{attempts++;return Promise.reject(new Error('paste not acknowledged'));}},{sdk:{buildWsUrl:async()=> 'wss://agent.test/events'},WebSocketImpl:Socket});
+ await b.connect();await assert.rejects(b.turn('Bonjour',new AbortController().signal),/paste not acknowledged/);
+ assert.equal(attempts,1);b.close();
+});
