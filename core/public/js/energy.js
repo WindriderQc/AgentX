@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   const $ = id => document.getElementById(id);
-  const state = { chart: null, window: '24h' };
+  const state = { chart: null, window: '24h', poller: null, read: null, active: false };
   const number = (value, digits = 1) => Number.isFinite(value) ? new Intl.NumberFormat('fr-CA', { maximumFractionDigits: digits }).format(value) : '—';
   const duration = ms => ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60_000)} min`;
   const confidence = { high: 'élevée', medium: 'moyenne', low: 'faible', unavailable: 'indisponible' };
@@ -35,7 +35,62 @@
     $('energyNotice').className='energy-notice'; $('energyNotice').textContent = age == null ? 'Fraîcheur inconnue' : `Données ${data.bucket || ''} · dernière mesure il y a ${age} s`;
     renderChart(data); renderEvents(data); $('energyMethod').textContent = data.methodology.note;
   }
-  async function load() { $('energyNotice').textContent='Lecture de la télémétrie…'; try { const response=await fetch(`/api/analytics/energy?window=${state.window}`); const answer=await response.json(); if(!response.ok) throw new Error(answer.message||'Télémétrie indisponible'); render(answer.data); } catch(error){ $('energyNotice').className='energy-notice error'; $('energyNotice').textContent=error.message; } }
-  document.querySelectorAll('[data-window]').forEach(button=>button.addEventListener('click',()=>{ document.querySelectorAll('[data-window]').forEach(item=>item.setAttribute('aria-pressed','false')); button.setAttribute('aria-pressed','true'); state.window=button.dataset.window; load(); }));
-  load(); setInterval(()=>{ if(!document.hidden) load(); },30_000);
+  async function load() {
+    if (!state.active || document.hidden || state.read) return;
+    const read = new AbortController();
+    state.read = read;
+    const current = () => state.active && !document.hidden && state.read === read && !read.signal.aborted;
+    $('energyNotice').textContent = 'Lecture de la télémétrie…';
+    try {
+      const response = await fetch(`/api/analytics/energy?window=${state.window}`, { signal: read.signal });
+      const answer = await response.json();
+      if (!current()) return;
+      if (!response.ok) throw new Error(answer.message || 'Télémétrie indisponible');
+      render(answer.data);
+    } catch (error) {
+      if (!current()) return;
+      $('energyNotice').className = 'energy-notice error';
+      $('energyNotice').textContent = error.message;
+    } finally {
+      if (state.read === read) state.read = null;
+    }
+  }
+  function stopPolling() {
+    state.poller?.destroy();
+    state.poller = null;
+    const read = state.read;
+    state.read = null;
+    read?.abort();
+  }
+  function startPolling() {
+    if (!state.active || document.hidden || state.poller) return;
+    state.poller = new window.PollingController();
+    state.poller.addTask('energy', load, 30_000);
+    state.poller.start();
+  }
+  function visibilityChanged() {
+    if (document.hidden) stopPolling();
+    else startPolling();
+  }
+  function start() {
+    if (state.active) return;
+    state.active = true;
+    document.addEventListener('visibilitychange', visibilityChanged);
+    startPolling();
+  }
+  function stop() {
+    state.active = false;
+    document.removeEventListener('visibilitychange', visibilityChanged);
+    stopPolling();
+  }
+  document.querySelectorAll('[data-window]').forEach(button => button.addEventListener('click', () => {
+    document.querySelectorAll('[data-window]').forEach(item => item.setAttribute('aria-pressed', 'false'));
+    button.setAttribute('aria-pressed', 'true');
+    state.window = button.dataset.window;
+    stopPolling();
+    startPolling();
+  }));
+  window.addEventListener('pagehide', stop);
+  window.addEventListener('pageshow', start);
+  start();
 })();

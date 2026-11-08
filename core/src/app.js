@@ -694,7 +694,7 @@ app.get('/energy', (req, res) => {
       '<link rel="stylesheet" href="/css/energy.css">',
       '<script src="/vendor/chart.js/4.4.4/chart.umd.js"></script>'
     ].join('\n'),
-    footerJs: '<script src="/js/energy.js" defer></script>'
+    footerJs: '<script src="/js/utils/polling-controller-global.js" defer></script><script src="/js/energy.js" defer></script>'
   });
 });
 
