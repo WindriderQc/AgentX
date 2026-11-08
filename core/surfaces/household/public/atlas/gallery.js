@@ -6,7 +6,7 @@ import {collectMedia} from './projection.js';
 const RAIL_LIMIT=30;
 let cache={events:null,photos:[]};
 export function collectPhotos(events){if(cache.events!==events)cache={events,photos:collectMedia(events)};return cache.photos;}
-export const photoDate=photo=>photo.date?dateLabel({date:photo.date,precision:photo.precision||'day'}):'Date à préciser';
+export const photoDate=photo=>photo.date?`${photo.dateLabel?photo.dateLabel+' · ':''}${dateLabel({date:photo.date,precision:photo.precision||'day'})}`:'Date à préciser';
 export function photosInRange(photos,range){
  return photos.filter(p=>{
   if(!p.date||!range)return false;

@@ -81,6 +81,24 @@ Search items are compact: `id`, `type`, `takenAt`, `fileName`, `city`,
 Immich paths and keys never appear in an answer. Smart search answers come
 from Immich without people; Core adds them with one metadata call.
 
+Search items and asset details include `takenAtSource` and `dateTimeOriginal`.
+`takenAt` keeps the existing library-date order: valid EXIF
+`exifInfo.dateTimeOriginal`, else Immich `localDateTime`, else `fileCreatedAt`.
+`takenAtSource` names that exact upstream field, or is `null` when no valid
+date is available. `dateTimeOriginal` holds only the valid EXIF original date,
+or `null`; a local Immich date or a file date never fills it. Absent, malformed
+or invalid calendar dates remain unknown. Core preserves valid upstream
+strings and never supplies a missing time zone or capture precision.
+
+These dates are library metadata, not independent confirmation of when a photo
+was taken. Atlas labels the displayed date as **date originale EXIF**,
+**date locale Immich** or **date du fichier**, and keeps unknown dates undated.
+Older responses without provenance retain a library date with unknown origin.
+Date filters and ordering keep Immich's existing library-date semantics; they
+do not become verified capture-date filters. This projection adds no upstream
+request, file-content scan, index or reindexing. Data's separate inventory
+`mtime` remains a file-modification date and is never used as capture evidence.
+
 Smart search always returns its best matches, even weak ones: it has no
 "nothing found". Check the details or the thumbnail before asserting that a
 photo shows something.

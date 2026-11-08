@@ -59,8 +59,31 @@ function clip(value, max) {
   return textValue.length > max ? `${textValue.slice(0, max - 1)}…` : textValue;
 }
 
-function takenAt(asset) {
-  return asset?.exifInfo?.dateTimeOriginal || asset?.localDateTime || asset?.fileCreatedAt || null;
+// Preserve valid upstream date strings, including a local time with no zone.
+// Date.parse alone accepts invalid calendar days and non-date strings such as
+// "2025"; neither can establish a photo's date or precision.
+function photoDate(value) {
+  if (typeof value !== 'string' || value.length > 40) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(?:Z|[+-](\d{2}):(\d{2}))?)?$/.exec(value);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second, offsetHour, offsetMinute] = match.map(Number);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1]
+      || hour > 23 || minute > 59 || second > 59 || offsetHour > 23 || offsetMinute > 59) return null;
+  return value;
+}
+
+function photoDates(asset) {
+  const dateTimeOriginal = photoDate(asset?.exifInfo?.dateTimeOriginal);
+  for (const [source, value] of [
+    ['exifInfo.dateTimeOriginal', dateTimeOriginal],
+    ['localDateTime', photoDate(asset?.localDateTime)],
+    ['fileCreatedAt', photoDate(asset?.fileCreatedAt)],
+  ]) {
+    if (value) return { takenAt: value, takenAtSource: source, dateTimeOriginal };
+  }
+  return { takenAt: null, takenAtSource: null, dateTimeOriginal: null };
 }
 
 function visiblePeople(people) {
@@ -242,7 +265,7 @@ function createPhotoService({ client = createImmichClient(), now = () => Date.no
       return {
         id,
         type: asset.type ? String(asset.type).toLowerCase() : null,
-        takenAt: takenAt(asset),
+        ...photoDates(asset),
         fileName: asset.originalFileName || null,
         city: exif.city || null,
         state: exif.state || null,
@@ -409,7 +432,7 @@ function createPhotoService({ client = createImmichClient(), now = () => Date.no
       return {
         id: safeId,
         type: asset?.type ? String(asset.type).toLowerCase() : null,
-        takenAt: takenAt(asset),
+        ...photoDates(asset),
         timeZone: exif.timeZone || null,
         fileName: asset?.originalFileName || null,
         place: { city: exif.city || null, state: exif.state || null, country: exif.country || null, coordinates },

@@ -34,7 +34,7 @@ const PHOTO_TOOLS = [
   {
     name: 'photo_search',
     title: 'Search Household Photos',
-    description: 'Find household photos. With query: ranked by likeness to the words (French works: "à la plage"); it always returns its closest matches, so check photo_details before asserting what a photo shows. Without query: exact filters, newest first, paged with cursor. Answers carry Core thumbnail paths, people names, place and placeCoverage (only photos with GPS have a place).',
+    description: 'Find household photos. With query: ranked by likeness to the words (French works: "à la plage"); it always returns its closest matches, so check photo_details before asserting what a photo shows. Without query: exact filters, newest first, paged with cursor. Answers carry Core thumbnail paths, people names, place and placeCoverage (only photos with GPS have a place). takenAt is a library date: takenAtSource names the Immich field; dateTimeOriginal is nullable EXIF metadata, not a verified capture date. localDateTime is supplied by Immich, fileCreatedAt is a file date; neither proves when the picture was taken.',
     inputSchema: objectSchema({
       query: { type: 'string', minLength: 1, maxLength: 300 },
       ...FILTERS, ...EXACT,
@@ -54,7 +54,7 @@ const PHOTO_TOOLS = [
   {
     name: 'photo_details',
     title: 'Household Photo Details',
-    description: 'One photo: date, place, people, description, tags, text read in the photo, thumbnail and preview paths on Core.',
+    description: 'One photo: library date and its takenAtSource, nullable EXIF dateTimeOriginal, place, people, description, tags, text read in the photo, thumbnail and preview paths on Core. Immich localDateTime and the fileCreatedAt file date do not prove capture time; absent or invalid dates stay unknown. EXIF metadata is not independent confirmation of capture.',
     inputSchema: objectSchema({ id: { type: 'string', pattern: '^[0-9a-fA-F-]{36}$' }, audience: FILTERS.audience }, ['id']),
     annotations: READ_ONLY,
   },
