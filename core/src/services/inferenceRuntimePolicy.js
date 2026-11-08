@@ -77,9 +77,11 @@ async function prepareInferenceRuntime(request, policy, overrides = {}) {
     requestedNumCtx: options.num_ctx, numCtxSource,
     requestedMaxOutputTokens: options.num_predict,
   };
-  const inferenceContract = request.includeArtifactIdentity === undefined
+  const toolTurn = (Array.isArray(request.tools) && request.tools.length > 0) || messages?.at(-1)?.role === 'tool';
+  const exactIdentity = !claimedDirect && toolTurn ? true : request.includeArtifactIdentity;
+  const inferenceContract = exactIdentity === undefined
     ? await deps.resolveInferenceContract(contractInput)
-    : await deps.resolveInferenceContract(contractInput, { includeArtifactIdentity: request.includeArtifactIdentity });
+    : await deps.resolveInferenceContract(contractInput, { includeArtifactIdentity: exactIdentity });
   // Owned direct campaigns keep their explicit experimental controls. Daily
   // tool inference reuses the exact execution qualified for this artifact.
   const toolExecution = claimedDirect ? null : qualifiedToolExecution(request, { inferenceContract });

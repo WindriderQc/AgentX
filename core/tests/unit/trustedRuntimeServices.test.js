@@ -103,7 +103,7 @@ describe('trusted runtime services', () => {
     const payload = JSON.parse(deps.fetch.mock.calls[0][1].body);
     expect(deps.resolveInferenceContract).toHaveBeenCalledWith(expect.objectContaining({
       messages: payload.messages, tools: payload.tools
-    }));
+    }), { includeArtifactIdentity: true });
     expect(payload.tools).toEqual(tools);
   });
 

@@ -233,7 +233,7 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
         error: { message: 'messages must be a non-empty array', type: 'invalid_request_error' }
       });
     }
-    const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
+    const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false, includeArtifactIdentity: true });
     const gatewayTarget = resolveGatewayTarget(snapshot, body.model);
     const toolExecution = qualifiedToolExecution(body, gatewayTarget);
     if (toolExecution) res.set('X-AgentX-Tool-Execution-Profile', 'greedy-off');
