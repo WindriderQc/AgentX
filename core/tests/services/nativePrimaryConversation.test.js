@@ -85,10 +85,16 @@ beforeEach(async () => {
     sent.push({ body, headers: options.headers, signal: options.signal });
     if (lost) throw Error('Synthetic lost dispatch acknowledgment');
     const run = { id: 'resp_' + randomUUID(), agent, key, done: false, text: agent === 'main' ? 'Réponse exacte de Main.' : 'Je garde le relais pendant ce travail.' };
+    if (agent === 'main') {
+      const [owner] = await works.repo.find({ 'attempt.sessionKey': key }, 1);
+      run.workId = owner._id; run.attemptId = owner.attempt.id;
+      run.beforeStarted = works.observer.isExecuting(owner._id, owner.attempt.id, run.id, key);
+    }
     runs.set(run.id, run);
     return { ok: true, body: (async function* () {
       yield wire({ type: 'response.created', response: { id: run.id } });
       if (agent === 'main') {
+        run.afterStarted = works.observer.isExecuting(run.workId, run.attemptId, run.id, key);
         run.initialContext = await nativeContext(run, 'call_initial');
         started?.();
         if (hold) await new Promise(resolve => { release = resolve; });
@@ -124,6 +130,9 @@ test('idle HTTP starts complete Main first with the exact native payload and one
   expect(sent[0].body.instructions).not.toContain('The guardian has finished');
   expect(sent[0].body.input.at(-1).content.at(-1)).toEqual({ type: 'input_text', text: original.text });
   expect(sent[0].body.instructions).toContain('Complete synthetic identity.');
+  const run = [...runs.values()][0];
+  expect(run.beforeStarted).toBe(false); expect(run.afterStarted).toBe(true);
+  expect(works.observer.isExecuting(run.workId, run.attemptId, run.id, run.key)).toBe(false);
   const saved = await works.repo.get(hash(session.sessionId + '\n' + original.turnId));
   expect(saved).toMatchObject({ entryPolicy: 'main-first/v1', foreground: 'primary', guardian: { state: 'not_used' },
     attempt: { agentId: 'main' }, primary: { delivery: 'foreground' } });
@@ -326,6 +335,20 @@ test('an uncertain foreign gate gives only Core status even with a configured gu
   expect(result.tools).toMatchObject({ authority: 'core.conversation-works', status: 'deferred' });
   expect(result.text).toContain('bloquée'); expect(nativeCall).not.toHaveBeenCalled(); expect(sent).toHaveLength(0);
   expect(await works.repo.get(accepted.row._id)).toMatchObject({ foreground: 'primary', guardian: { state: 'not_used' } });
+});
+
+test('a retained running label without an active native transport never admits the guardian', async () => {
+  const occupied = (await works.intake(input('Earlier native request'))).row;
+  const attempt = { id: randomUUID(), agentId: 'main', sessionKey: `agent:main:household:direct:${randomUUID()}`, runId: 'resp_' + randomUUID() };
+  await works.repo.mutate(occupied._id, () => ({ fields: { state: 'running', attempt }, event: 'synthetic_retained_running' }));
+  await mongoose.connection.collection('conversation_work_dispatch').insertOne({ _id: OWNER, workId: occupied._id, phase: 'dispatching', attempt });
+  // Model the native owner's pending result observation after the transport
+  // has returned. This label is not fresh evidence of an occupied Main.
+  const original = input(), accepted = await works.intake(original); await works.prepare(accepted.row._id, 'Selected context.');
+  const foreground = createPrimaryForeground(works, { tick: async () => {}, isExecuting: () => false });
+  expect(await foreground.reply(accepted.row._id)).toEqual({ statusOnly: true });
+  expect(await works.repo.get(accepted.row._id)).toMatchObject({ foreground: 'primary', guardian: { state: 'not_used' } });
+  expect(sent).toHaveLength(0);
 });
 
 test('a lost intake row recovers the frozen primary policy after restart with new intake disabled', async () => {

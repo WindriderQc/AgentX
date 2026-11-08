@@ -31,7 +31,11 @@ remain absent; foreground polling time is not a model timing measurement.
 
 Only another work holding the exact native dispatch gate with a matching Main
 attempt, observed run identity, `running` state and no terminal result permits a
-temporary dedicated guardian. The current work cannot be its own busy owner.
+temporary dedicated guardian while that original native transport is still
+in flight in its observer. A retained running label after the transport returns
+or after restart cannot establish that condition. This process-local observation
+does not admit work, release a fence or prove business completion.
+The current work cannot be its own busy owner.
 Queued, uncertain, missing or mismatched native identities permit only an honest
 Core status, without another model call. An absent dedicated guardian likewise
 uses that status while leaving available Main work intact. The guardian retains

@@ -30,6 +30,7 @@ function createPrimaryForeground(works, observer, { pollMs = 50 } = {}) {
       // text, client flag or caller header participates in this decision.
       if (owner?.state !== 'running' || owner.result || owner.attempt?.settledAt
           || owner.attempt?.agentId !== 'main' || owner.attempt.id !== gate.attempt?.id
+          || observer.isExecuting?.(owner._id, owner.attempt.id, owner.attempt.runId, owner.attempt.sessionKey) !== true
           || !/^resp_[a-f0-9-]{36}$/.test(owner.attempt.runId || '')
           || owner.attempt.sessionKey !== gate.attempt.sessionKey
           || !current.guardian?.sessionId || ['main', 'family'].includes(current.guardian.agentId)) return null;
