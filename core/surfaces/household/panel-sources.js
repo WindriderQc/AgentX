@@ -50,7 +50,7 @@ async function cachedProjection(key, readBody, projector, fallback, ttlMs = 60_0
   if (!pending) pending = (async () => {
     const startedAt = Date.now();
     try {
-      const body = await readBody();
+      const body = await Promise.resolve().then(readBody);
       projectionCache.set(key, { body, expiresAt: Date.now() + ttlMs });
       return { body, latencyMs: Date.now() - startedAt, cache: 'refreshed' };
     } catch (error) {

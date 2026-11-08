@@ -3,10 +3,11 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createBriefingCoreSources } = require('../briefing-core-sources');
-const { cachedProjectedJson, projectionCache, projectionInFlight } = require('../panel-sources');
+const { cachedProjection, cachedProjectedJson, projectionCache, projectionInFlight } = require('../panel-sources');
 
 const report = { ok: true, status: 'success', data: { report: 'morning-brief', period: '24h', alerts: { active: 2 } } };
 const budget = { period: '24h', total_requests: 4, budget_health: 'yellow' };
+const startReads = () => new Promise(setImmediate);
 
 function setup(t, coreBriefingReads, configuredUrl, fetchImpl) {
   projectionCache.clear(); projectionInFlight.clear();
@@ -74,7 +75,7 @@ test('briefing and desk share one in-flight native report and retain the 60s cac
   const { sources, calls } = setup(t, { morningBrief: read });
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'] });
   const first = sources.morningBrief(), second = sources.morningBrief();
-  await Promise.resolve(); assert.equal(read.mock.callCount(), 1);
+  await startReads(); assert.equal(read.mock.callCount(), 1);
   finish(report);
   assert.deepEqual(await first, await second);
   t.mock.timers.tick(59_999);
@@ -82,7 +83,7 @@ test('briefing and desk share one in-flight native report and retain the 60s cac
   assert.equal(read.mock.callCount(), 1);
   t.mock.timers.tick(1);
   const refreshed = sources.morningBrief();
-  await Promise.resolve(); assert.equal(read.mock.callCount(), 2);
+  await startReads(); assert.equal(read.mock.callCount(), 2);
   finish(report); assert.equal((await refreshed).cache, 'refreshed');
   assert.deepEqual(calls, []);
 });
@@ -147,12 +148,12 @@ test('native 8s deadlines ignore late settlements and do not populate the cache'
   });
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'] });
   const pending = Promise.all([sources.morningBrief(), sources.budget()]);
-  await Promise.resolve(); t.mock.timers.tick(8000);
+  await startReads(); t.mock.timers.tick(8000);
   for (const value of await pending) {
     assert.equal(value.cache, 'unavailable'); assert.equal(value.latencyMs, 8000);
     assert.match(value.error, /timed out after 8000ms/);
   }
-  resolveReport(report); rejectBudget(new Error('PRIVATE_LATE_ERROR')); await Promise.resolve(); await Promise.resolve();
+  resolveReport(report); rejectBudget(new Error('PRIVATE_LATE_ERROR')); await startReads();
   assert.equal(projectionCache.size, 0); assert.equal(projectionInFlight.size, 0); assert.deepEqual(calls, []);
 });
 
@@ -165,6 +166,7 @@ test('HTTP cache still coalesces in-flight reads and preserves fresh, stale and 
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'] });
   const read = () => cachedProjectedJson('http://core.example.test/report', body => body, { unavailable: true });
   const first = read(), second = read();
+  await startReads();
   finish(new Response(JSON.stringify(report)));
   assert.deepEqual(await first, await second); assert.equal(calls.length, 1);
   assert.equal((await read()).cache, 'fresh');
@@ -173,4 +175,20 @@ test('HTTP cache still coalesces in-flight reads and preserves fresh, stale and 
   assert.deepEqual(stale.data, report.data);
   projectionCache.clear();
   assert.equal((await read()).cache, 'unavailable');
+});
+
+test('a synchronous callback failure releases in-flight state and a healthy retry coalesces normally', async t => {
+  setup(t);
+  const key = {};
+  const fallback = { unavailable: true };
+  const failed = await cachedProjection(key, () => { throw new Error('temporary failure'); }, body => body, fallback);
+  assert.equal(failed.unavailable, true); assert.equal(failed.cache, 'unavailable');
+  assert.equal(projectionInFlight.has(key), false); assert.equal(projectionCache.has(key), false);
+  const recovery = t.mock.fn(() => ({ healthy: true }));
+  const first = cachedProjection(key, recovery, body => body, fallback);
+  const second = cachedProjection(key, () => assert.fail('concurrent read must coalesce'), body => body, fallback);
+  const healthy = await first;
+  assert.equal(healthy.healthy, true); assert.equal(healthy.cache, 'refreshed');
+  assert.deepEqual(healthy, await second); assert.equal(recovery.mock.callCount(), 1);
+  assert.equal(projectionInFlight.has(key), false); assert.equal(projectionCache.has(key), true);
 });
