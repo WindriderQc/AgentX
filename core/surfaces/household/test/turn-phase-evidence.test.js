@@ -6,6 +6,7 @@ const { observedTurnPhases } = require('../turn-phase-evidence');
 const { publicAudit } = require('../persona-records');
 const { createConversationExecutor } = require('../conversation-executor');
 const { VoiceTimeline } = require('../../../public/js/voice/voice-timeline');
+const { createGuardianReply, MAIN_REQUIRED } = require('../guardian-reply');
 const { harness } = require('./fixtures/persona-journey.cjs');
 
 const session = { sessionId: 'synthetic-session', packId: 'personal_operator', backend: 'openclaw' };
@@ -94,6 +95,22 @@ test('only an explicit guardian result qualifies a relay, without making it the 
   assert.equal(result.phaseEvidence.workId, undefined);
   assert.equal(result.phaseEvidence.execution.identity.model, undefined);
   assert.equal(observedTurnPhases({}, { metadata: { guardianDisposition: 'invented' } }).phaseEvidence.responseKind, 'conversation_reply');
+});
+
+test('a native text transport delta can precede visible words without supplying browser or acoustic evidence', () => {
+  let now = 0;
+  const browser = new VoiceTimeline(() => now);
+  const words = [];
+  const presentation = createGuardianReply(delta => { words.push(delta); browser.mark('firstDelta'); });
+  now = 10; presentation.push(MAIN_REQUIRED);
+  const observed = observedTurnPhases({ agent: { firstDelta: 5 } }, { metadata: { guardianDisposition: 'awaiting_main' } });
+  assert.deepEqual(words, []);
+  assert.equal(browser.values().firstDelta, undefined, 'the protocol prefix is not visible reply text');
+  assert.equal(observed.voiceTimings, undefined, 'server deltas never populate the browser timeline');
+  now = 50; presentation.push('Je vérifie.');
+  assert.equal(browser.values().firstDelta, 50);
+  assert.equal(observed.serverTimings.agent.firstDelta, 5, 'preserve its separate native-request origin');
+  assert.equal(browser.values().firstAudio, undefined);
 });
 
 test('retransmitted and cancelled browser snapshots retain qualification without creating audio or work completion', async () => {

@@ -5,7 +5,7 @@
 // and the model or agent is about to be called, then its answer is back. For a
 // native agent run, `agent` holds the steps of that run from its own request:
 // accepted by the gateway, run created, first generation or tool event, first
-// forwarded reply delta when reported, end of
+// text delta forwarded to the presentation parser when reported, end of
 // the stream (or `streamOverdue`: the answer was read while the gateway still
 // held the stream open), final answer read. Numbers only; a missing step stays absent.
 const AGENT_PHASES = Object.freeze(['accepted', 'runCreated', 'generating', 'firstDelta', 'streamEnd', 'streamOverdue', 'answer']);

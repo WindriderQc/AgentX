@@ -531,9 +531,11 @@ aliases, and missing identity stays absent. Only bounded identity tags are kept;
 connection URLs, objects and credential-shaped values are excluded. Historical and early-cancelled turns
 without that evidence receive no inferred qualification.
 
-`serverTimings.agent.firstDelta` retains the native client's first forwarded
-reply-text observation when reported by the explicit streaming relay. Generation
-events, reasoning, tool events and first-token timings do not substitute for it.
+`serverTimings.agent.firstDelta` retains the native client's first text delta
+forwarded to the presentation parser when reported by the explicit streaming
+relay. It can contain a routing prefix before visible reply text; it is separate
+from the browser's `voiceTimings.firstDelta`. Generation events, reasoning, tool
+events and first-token timings do not substitute for either observation.
 The outer server marks start at the turn request, agent marks at the native
 request, and voice marks at the browser's endpoint decision. Server and agent
 offsets are Core-observed on the Core clock; voice offsets are browser-reported
