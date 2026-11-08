@@ -82,7 +82,7 @@ function register(api) {
   }
   validateEnvironment();
   const { app, express, logger, mongoose, runtimeServices, standardJsonParser } = api;
-  const evidence = createAioOpsEvidenceService();
+  const evidence = createAioOpsEvidenceService({ productReads: api.coreProductReads });
   const conversationHosts = createConversationHostResolver(process.env.OPENCLAW_CONVERSATION_HOSTS);
   const noThinkModels = parseNoThinkModels(process.env.OPENCLAW_CONVERSATION_NO_THINK_MODELS);
   const pipelineAttribution = new PipelineAttributionLeaseManager({

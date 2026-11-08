@@ -1,6 +1,7 @@
 'use strict';
 
-const { buildAgentOpsProjection, fetchJson } = require('./agent-ops/projection');
+const { buildAgentOpsProjection } = require('./agent-ops/projection');
+const { createProductReads } = require('./agent-ops/product-reads');
 const { buildPipelineProjection } = require('./agent-ops/pipeline-projection');
 const { getHermesStatusEvidence } = require('./operations');
 const {
@@ -71,7 +72,9 @@ function createAioOpsEvidenceService(options = {}) {
     cronTtlMs
   );
   const productBaseUrl = String(options.productBaseUrl || `http://127.0.0.1:${process.env.PORT || 3080}`).replace(/\/+$/, '');
-  const productFetch = options.productFetch || ((route) => fetchJson(productBaseUrl, route, options));
+  const explicitTransport = 'productBaseUrl' in options || 'productFetch' in options;
+  const productFetch = options.productFetch || createProductReads({ baseUrl: productBaseUrl, options,
+    nativeReads: explicitTransport ? null : options.productReads });
 
   async function projectionFetch(route) {
     if (route !== '/api/hermes/status') return productFetch(route);

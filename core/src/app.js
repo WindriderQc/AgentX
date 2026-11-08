@@ -265,7 +265,7 @@ if (!isDemoProfile(agentxProfile)) {
   // Instance configuration and native harness processes remain external.
   const integrationApi = { contractVersion: 2, app, express, mongoose, logger, standardJsonParser, runtimeServices };
   if (process.env.AGENTX_RUNTIME_BRIDGES_ENABLED === 'true') {
-    require('../integrations/runtime-bridges').register(integrationApi);
+    require('../integrations/runtime-bridges').register({ ...integrationApi, coreProductReads: require('./ui/agentOpsCoreReads') });
   }
   if (process.env.AGENTX_PRINTER_VISION_ENABLED === 'true') {
     require('../integrations/printer-vision').register(integrationApi);
