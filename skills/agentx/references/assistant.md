@@ -41,6 +41,14 @@ needs her tools, not for an ordinary task or calendar entry.
 - `add_personal_task` with a fresh UUID `requestId`, optional `dueAt` and
   `repeat` (daily, weekly with optional days, monthly, yearly; an interval;
   optional `count` or `until`). A due date alone schedules no notification.
+- If the capture response is lost or uncertain, use `list_personal_tasks` with
+  only that original `requestId`, plus `expectedCaptureFingerprint` if already
+  known. Omit all list filters, including defaults. This reads the existing
+  capture without repeating creation. `captureReceipt` is the original receipt;
+  `tasks` is its current state, including later changes or closure. A mismatched
+  fingerprint is refused. `captureStatus: unknown` (missing, erased or incomplete
+  evidence) proves neither failure nor absence of an effect: do not automatically
+  create again. Reading a mail proposal never accepts it.
 - To complete a repeating task, read it first and pass its exact `dueAt` as
   `expectedDueAt`; keep that value across retries. Completion advances once to
   the next future occurrence, skipping missed dates (and monthly dates a month

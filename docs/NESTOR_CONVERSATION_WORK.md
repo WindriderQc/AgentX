@@ -70,6 +70,29 @@ The default mode remains `off`; text, Open, addressed specialists, Family and
 Hermes retain their existing routes. This change grants no native consent or
 business authority. Native clarification/approval bridging remains separate.
 
+### Reconcile an uncertain personal capture
+
+Main uses the existing Core personal task tools. After an uncertain
+`add_personal_task` response, `list_personal_tasks` accepts only the original
+UUID `requestId` and, if already known, `expectedCaptureFingerprint`. The same
+read is available through `GET /api/secretary/tasks`. Exact capture lookup
+rejects list filters (including default pagination/scope fields) and incompatible
+identities. Ordinary task listing keeps its existing filters.
+
+Core reads the existing personal capture identity and fingerprint from the
+personal task, without replaying creation or allocating an id. A `recorded`
+`captureStatus` supplies `captureReceipt` with the original UUID, task id,
+fingerprint and creation date. `taskObservation: current_state` describes the
+separate `tasks` entry, including later edits, completion or dismissal. That
+receipt does not reconstruct the original payload or prove current source
+reconciliation. A provided fingerprint must match the stored capture.
+
+Missing, erased or incomplete evidence returns `captureStatus: unknown` and no
+receipt or task. This proves neither failure nor absence of an effect and
+permits no automatic second creation. Lookup changes no task or mail proposal
+approval. It adds no native confirmation grant, mutation journal or alternate
+business owner; native approval bridging remains separate.
+
 ### Relay attribution in Main's context
 
 The complete canonical context labels a received dedicated guardian reply with
