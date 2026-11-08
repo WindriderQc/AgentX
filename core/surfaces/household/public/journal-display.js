@@ -63,8 +63,10 @@
     // What explains the transcription: its recognition share (the rest is upload and transport) and the clip length.
     const recognition = [seconds(timings.sttServer) && `recognition ${seconds(timings.sttServer)}`, seconds(timings.audioMs) && `clip ${seconds(timings.audioMs)}`]
       .filter(Boolean).join(', ');
-    const parts = [['transcribed', timings.sttDone, recognition], ['first words', timings.firstDelta],
-      ['playback requested', timings.firstAudio], ['first frame scheduled', timings.firstFrameScheduled],
+    const kind = entry.phaseEvidence?.responseKind;
+    const qualifier = kind === 'work_acknowledgment' ? 'acknowledgment ' : kind === 'guardian_relay' ? 'relay ' : '';
+    const parts = [['transcribed', timings.sttDone, recognition], [qualifier + 'first words', timings.firstDelta],
+      [qualifier + 'playback requested', timings.firstAudio], ['first frame scheduled', timings.firstFrameScheduled],
       ['first signal scheduled', timings.firstSignalScheduled]]
       .filter(([, value]) => seconds(value)).map(([label, value, detail]) => `${label} ${seconds(value)}${detail ? ` (${detail})` : ''}`);
     // The marks start once the end of speech is decided: the silence waited before comes on top.

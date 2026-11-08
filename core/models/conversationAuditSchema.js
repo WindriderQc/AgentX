@@ -30,6 +30,8 @@ module.exports = new Schema({
     voiceTimings: { type: Object, default: undefined },
     // Where the turn's server time went (prepared, executed, native run steps), in ms.
     serverTimings: { type: Object, default: undefined },
+    // Source/response qualification for the existing timelines; not acoustic evidence.
+    phaseEvidence: { type: Object, default: undefined },
     // Exact advisory references placed in this turn's selected context, not proof of influence.
     adviceRefs: { type: [Object], default: undefined },
     // Selected presentation and its bounded Core read on this turn, historical
