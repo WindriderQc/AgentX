@@ -2,6 +2,7 @@
 
 const { buildAgentOpsProjection } = require('./agent-ops/projection');
 const { createProductReads } = require('./agent-ops/product-reads');
+const { buildPipelineProjection } = require('./agent-ops/pipeline-projection');
 const { getHermesStatusEvidence } = require('./operations');
 const {
   collectOpenClawCronEvidence,
@@ -104,10 +105,16 @@ function createAioOpsEvidenceService(options = {}) {
     }),
     options.agentOpsTtlMs || 15_000
   );
+  const pipelineProvider = cachedProvider(
+    () => buildPipelineProjection({ fetchJson: productFetch }), options.pipelineTtlMs || 5_000
+  );
 
   return Object.freeze({
     contractVersion: 1,
     getAgentOpsProjection: agentOpsProvider,
+    getEcosystemProjection(readOptions = {}) {
+      return (readOptions.mode === 'pipeline' ? pipelineProvider : agentOpsProvider)(readOptions);
+    },
     getHermesStatusEvidence: hermesProvider,
     getOpenClawRuntimeEvidence: openClawProvider,
     async getOpenClawCronEvidence({ includeDisabled = false, refresh = false } = {}) {

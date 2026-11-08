@@ -98,6 +98,24 @@ test('other product routes retain the original transport', async () => {
   assert.equal(result.body.count, 2); assert.deepEqual(calls, ['http://core.example.test/api/pipeline/tasks?view=summary']);
 });
 
+test('compact Pipeline mode keeps its single HTTP read without native product or inventory work', async () => {
+  const calls = [];
+  const service = createAioOpsEvidenceService({
+    productReads: { ecosystem: () => assert.fail(), budget: () => assert.fail() },
+    agentOpsBuilder: () => assert.fail('compact mode must not build the full projection'),
+    openClawProvider: () => assert.fail('compact mode must not collect inventory'),
+    hermesProvider: () => assert.fail('compact mode must not collect runtime status'),
+    fetchImpl: async url => {
+      calls.push(url);
+      return new Response(JSON.stringify({ status: 'success', data: { tasks: [], count: 0 } }));
+    }
+  });
+  const result = await service.getEcosystemProjection({ mode: 'pipeline' });
+  await service.getEcosystemProjection({ mode: 'pipeline' });
+  assert.equal(result.sources.pipeline.status, 'ok'); assert.equal(result.work.countsComplete, true);
+  assert.equal(calls.length, 1); assert.match(calls[0], /\/api\/pipeline\/tasks\?view=summary&includeDone=true&limit=1000$/);
+});
+
 test('native bodies preserve the HTTP JSON boundary without mutating canonical objects', async () => {
   const original = { ...ecosystem, generatedAt: new Date('2026-11-08T00:00:00Z'), omitted: undefined, number: NaN };
   const read = createProductReads({ nativeReads: { ecosystem: async () => original } });
