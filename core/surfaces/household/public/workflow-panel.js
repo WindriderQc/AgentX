@@ -215,6 +215,7 @@
     }
     if (stage === 'guardian') {
       const status = work?.guardianStatus;
+      if (status === 'not_used') return ['Not used', 'No guardian turn was admitted for this request'];
       if (row.telemetryStale && ['pending', 'running', 'uncertain'].includes(status)) return ['Uncertain', 'Latest Core state not refreshed'];
       if (status && status !== 'unknown') return [{ pending: 'Waiting', running: 'Active', completed: 'Done', cancelled: 'Interrupted', failed: 'Failed', uncertain: 'Uncertain' }[status] || 'Unknown', work.guardianRunId ? `Run ${work.guardianRunId}` : 'Run not observed'];
       if (row.done) return ['Unknown', 'Answer received, Guardian run not attested'];

@@ -18,6 +18,8 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
   agentFor = () => env.PERSONAL_CONVERSATION_WORK_AGENT_ID, env = process.env, logger, intervalMs = 1000, now = Date.now }) {
   let running = false, timer, closed = false;
   let recoverAfter = 0, recoverDelay = 30000;
+  let passWorkId, passSettled = Promise.resolve();
+  let executing;
   const gate = () => mongoose.connection.collection('conversation_work_dispatch');
   const clear = (id, processId) => gate().updateOne({ _id: OWNER, workId: id, ...(processId && { processId }) }, { $set: { workId: null },
     $unset: { claimedAt: '', processId: '', phase: '', attempt: '' } }, acknowledged);
@@ -107,6 +109,7 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
       { $set: { phase: 'dispatching', lastClassification: row.classification } }, acknowledged);
     if (dispatch.matchedCount !== 1) return;
     try {
+      executing = { workId: row._id, attemptId: id, sessionKey: attempt.sessionKey };
       await execute({ ...prepared, row,
         onTerminalFailure: async receipt => {
           await works.repo.mutate(row._id, current => {
@@ -120,9 +123,12 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
           if (sessionKey !== row.attempt.sessionKey) throw new Error('Native work session mismatch');
           if (runId) await works.repo.mutate(row._id, saved => ({ fields: { state: saved.result ? 'result_ready' : 'running',
             attempt: { ...saved.attempt, runId } }, event: 'native_started' }));
+          if (runId && executing?.attemptId === id && !executing.runId) executing.runId = runId;
         } });
     } catch (cause) {
       logger?.warn?.('Conversation work native dispatch unsettled', { workId: row._id, code: cause.code || 'NATIVE_DISPATCH_UNSETTLED' });
+    } finally {
+      executing = null;
     }
     // A returned promise is not the receipt. Observe native settlement and the
     // separately published Core result, including when the HTTP response was lost.
@@ -144,6 +150,8 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
   async function tick() {
     if (closed || running || mongoose.connection.readyState !== 1) return;
     running = true;
+    let settlePass;
+    passWorkId = null; passSettled = new Promise(resolve => { settlePass = resolve; });
     try {
       if (now() >= recoverAfter) {
         try {
@@ -161,15 +169,16 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
       }
       const occupied = await gate().findOne({ _id: OWNER });
       if (occupied?.workId) {
+        passWorkId = occupied.workId;
         const row = await works.repo.getIncludingErased(occupied.workId);
         if (['preparing', 'abandoned'].includes(occupied.phase)) await recoverPreparation(occupied, row);
         else if (row) await reconcile(row);
         return;
       }
       const row = await selectQueuedWork(works.repo, { now: now(), lastClassification: occupied?.lastClassification });
-      if (row) await run(row);
+      if (row) { passWorkId = row._id; await run(row); }
     } catch (cause) { logger?.warn?.('Conversation work observer unavailable', { code: cause.code || 'WORK_OBSERVER_UNAVAILABLE' }); }
-    finally { running = false; }
+    finally { running = false; settlePass(); }
   }
   function start() {
     if (timer || closed) return;
@@ -178,6 +187,8 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
     void tick();
   }
   function stop() { closed = true; clearInterval(timer); works.wakeWith(() => {}); }
-  return { start, stop, tick, reconcile };
+  return { start, stop, tick, reconcile, settled: id => passWorkId === id ? passSettled : Promise.resolve(),
+    isExecuting: (workId, attemptId, runId, sessionKey) => Boolean(executing && runId && executing.workId === workId
+      && executing.attemptId === attemptId && executing.runId === runId && executing.sessionKey === sessionKey) };
 }
 module.exports = { createWorkObserver };

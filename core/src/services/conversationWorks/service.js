@@ -13,7 +13,7 @@ const { isNativeToolCallId } = require('../../../../shared/nativeToolCallId.cjs'
 const { replyAttribution, resultAttribution } = require('./relay-context');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
-  nativeBudget = () => null, nativeForeground = () => true, nativeTaskRead = () => false, guardianNeedsMain = () => false,
+  nativeBudget = () => null, nativeForeground = () => true, nativeTaskRead = () => false, guardianNeedsMain = () => false, nativePrimary = false,
   presentResult = null, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
@@ -34,7 +34,8 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     if (row) return row;
     const receipt = await exchangeStore.read(EXCHANGE_SCOPE, hash(EXCHANGE_SCOPE + '\n' + turnId));
     return receipt?.request?.body?.sessionId === current.sessionId && MODES.includes(receipt.request.body.mode)
-      ? { mode: receipt.request.body.mode, ...(receipt.request.body.performance && { performance: receipt.request.body.performance }) } : null;
+      ? { mode: receipt.request.body.mode, entryPolicy: receipt.request.body.entryPolicy,
+        ...(receipt.request.body.performance && { performance: receipt.request.body.performance }) } : null;
   }
   async function intake({ session: current, turnId, text, attachments = [], channel = 'voice', speechLanguage, performanceProfile }) {
     const previousWork = await retained(current, turnId, channel);
@@ -47,8 +48,9 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     // A duplicate or recovered intake retains its original routes, including
     // legacy records without a profile. New preferences never rewrite a dispatch.
     const performance = previousWork ? previousWork.performance : mode === 'native' ? resolveProfile(performanceProfile, env) : undefined;
+    const entryPolicy = previousWork ? previousWork.entryPolicy : mode === 'native' && nativePrimary ? 'main-first/v1' : undefined;
     const snapshot = { text, attachments, sessionId: current.sessionId, channel, clientTurnId: turnId,
-      mode, ...(performance && { performance }) };
+      mode, ...(entryPolicy && { entryPolicy }), ...(performance && { performance }) };
     const accepted = await exchangeStore.accept(EXCHANGE_SCOPE, { body: snapshot }, turnId, current.conversationId);
     const taken = await conversations.acceptTurn({ ...query(current.sessionId), modeId: current.modeId,
       traceId: turnId, clientTurnId: turnId, channel, inputText: text, attachments,
@@ -67,11 +69,12 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: current.conversationId, sessionId: current.sessionId, turnId,
       exchangeId: accepted.receipt._id, requestSha256: hash(text), mode: snapshot.mode,
       ...(performance && { performance }),
-      state: 'received', classification: classification(text, snapshot.mode),
+      state: 'received', classification: entryPolicy ? 'native_work' : classification(text, snapshot.mode),
+      ...(entryPolicy && { entryPolicy, primary: { delivery: 'foreground' } }),
       revision: 0, receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
-      ...(snapshot.mode === 'native' && { foreground: nativeForeground(text) && !simple(text) ? 'acknowledge' : 'guardian' }),
+      ...(snapshot.mode === 'native' && { foreground: entryPolicy ? 'primary' : nativeForeground(text) && !simple(text) ? 'acknowledge' : 'guardian' }),
       guardian: { agentId: guardianAgentId, ...(guardianAgentId !== 'main' && { sessionId: randomUUID() }),
-        state: accepted.duplicate ? taken.turn.outcome === 'pending' ? 'uncertain' : 'completed' : 'pending' }, erased: false });
+        state: entryPolicy ? 'not_used' : accepted.duplicate ? taken.turn.outcome === 'pending' ? 'uncertain' : 'completed' : 'pending' }, erased: false });
     return { row, turn: taken.turn, duplicate: accepted.duplicate || taken.duplicate };
   }
   async function prepare(id, context) {
@@ -93,6 +96,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       throw fail('CONVERSATION_WORK_GUARDIAN_DISPOSITION_INVALID', 'A native guardian disposition is required.');
     }
     const row = await repo.mutate(id, current => {
+      if (current.entryPolicy === 'main-first/v1' && current.guardian?.state === 'not_used') return null;
       // Recovery can mark a long native consultation uncertain before its
       // original guardian returns. Its exact settlement still owns that intake.
       const nativeIntake = current.classification === 'native_only' && ['received', 'uncertain'].includes(current.state)
@@ -180,11 +184,16 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       if (!row.result?.version || row.result.kind === 'no_work') continue;
       if (!turn) throw fail('CONVERSATION_WORK_CONTEXT_UNAVAILABLE', 'A background answer has no canonical conversation turn.', 503);
       const result = await repo.read(row, row.result.payloadRef);
+      const primaryResult = turn.toolEvidence?.primaryResult;
+      const represented = row.entryPolicy === 'main-first/v1' && turn.replyAttribution.role === 'leading'
+        && turn.replyText === result.text && primaryResult?.workId === row._id && primaryResult.version === row.result.version
+        && primaryResult.fingerprint === row.result.fingerprint && hash(JSON.stringify(result)) === row.result.fingerprint;
       const evidence = [];
       for (const tool of row.tools) evidence.push({ id: tool.id, tool: tool.tool, status: tool.status,
         runId: tool.runId, data: await repo.read(row, tool.payloadRef) });
       (turn.workResults ||= []).push({ authority: 'core.conversation-works', workId: row._id,
-        version: row.result.version, publishedAt: row.result.publishedAt, kind: result.kind, text: result.text,
+        version: row.result.version, publishedAt: row.result.publishedAt, kind: result.kind,
+        ...(represented ? { sameAsReply: true } : { text: result.text }),
         attribution: resultAttribution(row, evidence),
         receiptIds: result.receiptIds, toolEvidence: evidence,
         presentation: { state: row.delivery?.state || 'unknown',
@@ -343,6 +352,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     return { authority: 'core.conversation-works', accepted: true, id: row._id,
       sessionId: row.sessionId, turnId: row.turnId, requestSha256: row.requestSha256,
       state: row.state, resultReady: Boolean(row.result), mode: row.mode,
+      ...(row.entryPolicy && { entryPolicy: row.entryPolicy }),
       blocked: row.state === 'queued' && Boolean(await dispatchStatus()), reason: row.reason || '',
       foreground: row.foreground || (row.mode === 'native' && !nativeForeground(turn.inputText) ? 'guardian' : 'acknowledge') };
   }
@@ -353,6 +363,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       execution: row.result ? 'completed' : ['failed', 'cancelled'].includes(row.state) ? row.state : 'pending' };
   }
   async function automaticSpeech(row, evidence) {
+    if (row.entryPolicy === 'main-first/v1' && row.foreground === 'primary') return row.primary?.delivery === 'background';
     if (row.mode === 'native' && (row.guardian?.disposition === 'awaiting_main'
         || row.guardian?.state === 'failed')) return true;
     if (row.classification === 'native_review' || row.foreground === 'guardian') {
@@ -401,10 +412,11 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
         const at = now();
         row = await repo.insert({ _id: id, owner: OWNER, surface: 'household', conversationId: current.conversationId,
           sessionId: input.sessionId, turnId: input.clientTurnId, exchangeId: item.id, requestSha256: hash(input.text),
-          mode: input.mode, ...(input.performance && { performance: input.performance }), state: 'received', revision: 0,
+          mode: input.mode, ...(input.entryPolicy && { entryPolicy: input.entryPolicy, foreground: 'primary', primary: { delivery: 'background' } }),
+          ...(input.performance && { performance: input.performance }), state: 'received', revision: 0,
           receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
-          guardian: { state: taken.turn.outcome === 'pending' ? 'uncertain' : taken.turn.outcome }, erased: false,
-          classification: classification(input.text, input.mode) });
+          guardian: { state: input.entryPolicy ? 'not_used' : taken.turn.outcome === 'pending' ? 'uncertain' : taken.turn.outcome }, erased: false,
+          classification: input.entryPolicy ? 'native_work' : classification(input.text, input.mode) });
       }
       // A live intake can still be collecting context. Recovery never steals it.
       // After restart, stale pre-dispatch input is safe to dispatch only as a new
@@ -441,6 +453,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       return { authority: 'core.conversation-works', id: row._id, sessionId: row.sessionId }; },
     admitNativeTool: require('./native-budget').createNativeBudget({ repo, conversations, session, query, policy: nativeBudget, now }),
     publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now, automaticSpeech }), automaticSpeech, presentResult,
+    relayClassification: text => classification(text, 'native'),
     recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, dispatchStatus, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
 }
 module.exports = { createConversationWorks };

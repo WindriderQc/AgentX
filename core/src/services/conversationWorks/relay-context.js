@@ -7,6 +7,15 @@ const { hash, nativeWork } = require('./contract');
 function replyAttribution(row, turn) {
   const unknown = { role: 'unknown' };
   const guardian = row?.guardian, evidence = turn.toolEvidence;
+  if (row?.entryPolicy === 'main-first/v1' && row.foreground === 'primary'
+      && row.turnId === turn.turnId && row.requestSha256 === hash(turn.inputText)
+      && row.result && row.attempt?.agentId === 'main' && turn.outcome === 'completed'
+      && evidence?.authority === 'openclaw/main' && evidence.status === 'observed'
+      && evidence.runId === row.attempt.runId && evidence.run?.runId === row.attempt.runId
+      && evidence.run.sessionKey === row.attempt.sessionKey && evidence.run.status === 'completed') {
+    return { role: 'leading', authority: 'core.conversation-works', workId: row._id,
+      requestSha256: row.requestSha256, agentId: 'main', sessionKey: row.attempt.sessionKey, runId: row.attempt.runId };
+  }
   if (row?.mode !== 'native' || row.turnId !== turn.turnId || row.requestSha256 !== hash(turn.inputText)
       || !guardian?.sessionId || !guardian.agentId || ['main', 'family'].includes(guardian.agentId)
       || guardian.sessionKey !== `agent:${guardian.agentId}:household:direct:${guardian.sessionId}`

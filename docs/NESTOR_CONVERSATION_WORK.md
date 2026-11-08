@@ -5,12 +5,70 @@ continue while the complete native Nestor Main works in an isolated session.
 In `native` mode, every accepted work request uses Main, including personal tasks,
 reasoning, web, specialists and authorized actions. Capability keywords never
 select a restricted agent. Main retains its installed tools, memory, model,
-permissions and approval contracts. The live guardian continues ordinary
-conversation and support while Main works.
+permissions and approval contracts. New native intakes start with Main; a dedicated
+guardian can relay conversation only while another exact Main request is occupied.
 Nestor remains the single visible identity.
 Core owns acceptance, complete requests, execution metadata, verified task reads,
 structured results and presentation receipts. OpenClaw owns the native agent/tool
 loop. Polling the browser projection never starts inference.
+
+### Main first on new personal native requests
+
+The personal OpenClaw surface freezes `entryPolicy=main-first/v1` in each new
+native acceptance and work record. The original complete request, attachments,
+profile and turn identity remain immutable. Core queues every such request for
+complete Main through the existing native dispatch owner, including ordinary
+dialogue. The foreground HTTP request reads that original work's verified result;
+it never calls another Main or constructs a second native attempt. Main receives
+its complete native instructions, selected memory and canonical conversation,
+without the legacy directive that assumes a guardian already answered. Its tools,
+permissions and installed approval contracts remain native.
+
+When Main is available, its received native answer returns through the ordinary
+voice response with `openclaw/main` evidence, provider, model and exact run. A
+Core acknowledgment remains a separate response kind. Missing native timings
+remain absent; foreground polling time is not a model timing measurement.
+
+Only another work holding the exact native dispatch gate with a matching Main
+attempt, observed run identity, `running` state and no terminal result permits a
+temporary dedicated guardian while that original native transport is still
+in flight in its observer. A retained running label after the transport returns
+or after restart cannot establish that condition. This process-local observation
+does not admit work, release a fence or prove business completion.
+The current work cannot be its own busy owner.
+Queued, uncertain, missing or mismatched native identities permit only an honest
+Core status, without another model call. An absent dedicated guardian likewise
+uses that status while leaving available Main work intact. The guardian retains
+its tool-free role. A received ordinary relay reply can use the existing Main
+review contract; an explicit requested work keeps its complete Main owner.
+
+Barge-in or voice Stop releases the foreground wait without aborting the admitted
+Main transport. The existing work keeps its attempt and native reconciliation.
+An uncertain start never authorizes a replacement. Versioned pre-dispatch work
+controls remain separate from stopping speech. Conversation erasure revokes the
+context and payloads while retaining an admitted native fence until its exact
+terminal evidence arrives.
+
+Foreground publication and detachment arbitrate under the existing conversation
+write fence. Detachment before publication selects the existing durable result
+delivery. Publication first retains a foreground result with automatic work-feed
+speech disabled. A lost final HTTP response leaves its original result available
+for explicit Listen after reconnect; neither a duplicate turn nor polling replays
+it automatically. Neither result availability nor HTTP completion proves that
+audio played. Existing display/playback receipts keep their own meaning.
+
+Main's canonical reply and its retained work result are linked as `sameAsReply`
+only when exact text, work identity, result version, fingerprint and native run
+proof match. That context entry keeps the original result receipts without
+repeating the answer text as a second reply. A missing, changed or mismatched
+canonical reply leaves the complete received result visible. No result or native
+evidence is rewritten to achieve this projection.
+
+Accepted records without this policy retain their guardian-first contract, model
+profile and execution identity, including after a restart or disabling new intake.
+The default mode remains `off`; text, Open, addressed specialists, Family and
+Hermes retain their existing routes. This change grants no native consent or
+business authority. Native clarification/approval bridging remains separate.
 
 ### Relay attribution in Main's context
 
@@ -38,15 +96,15 @@ the original relay text, through the existing result delivery. Supplying context
 or requesting review does not prove that a review occurred or that its result was
 displayed or spoken. Those observations retain their own receipts.
 
-This attribution applies to the optional existing personal OpenClaw guardian/Main
-path. That path remains guardian-first; attribution does not implement the
+This attribution applies to the optional personal OpenClaw Main/guardian path,
+including its retained guardian-first records. It does not implement the
 Nestor-first temporary relay for Family or Hermes tracked in
 [issue #1266](https://github.com/WindriderQc/AgentX/issues/1266). Family remains
 excluded from personal work and the owner bus. The guardian remains tool-free;
 attribution changes no runtime, model, route, worker or tool allowlist.
 
 When the native dispatch owner is free, queued awaited work precedes queued
-background reviews. A native review whose guardian has explicitly completed and
+background reviews. New Main-first dialogue is awaited work. A native review whose guardian has explicitly completed and
 answered waits for 30 seconds of quiet after its own preparation/settlement and
 the latest accepted turn's intake/preparation/settlement. A pending latest
 guardian also defers that review. Requested work and an explicit Main handoff do
@@ -152,7 +210,7 @@ context remain canonical in Core and available to Main. Only this tool-free
 guardian streams spoken text before native completion; final evidence must
 match the spoken prefix, or the turn fails without playing a replacement.
 
-Core accepts complete work requests before any model inference. An immediate
+For accepted guardian-first records, Core accepts complete work requests before any model inference. An immediate
 canonical acknowledgment handles clear work requests. Ordinary dialogue receives
 a real guardian response even while another Main work is active; its request
 still reaches complete Main. Selectors only choose this foreground reply style,

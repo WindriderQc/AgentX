@@ -8,6 +8,7 @@ const schema = new mongoose.Schema({
   conversationId: String, sessionId: String, turnId: String, exchangeId: String,
   requestSha256: String, mode: String, state: String, revision: Number,
   performance: mongoose.Schema.Types.Mixed,
+  entryPolicy: String, primary: mongoose.Schema.Types.Mixed,
   receivedAt: Date, updatedAt: Date, contextReady: Boolean,
   contextRef: mongoose.Schema.Types.Mixed, attempt: mongoose.Schema.Types.Mixed,
   guardian: mongoose.Schema.Types.Mixed, result: mongoose.Schema.Types.Mixed,

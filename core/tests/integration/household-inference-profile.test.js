@@ -7,18 +7,28 @@ const config = { PERSONAL_CONVERSATION_WORK_MODE: 'native', PERSONAL_CONVERSATIO
   OPENCLAW_GATEWAY_URL: 'http://native.invalid', OPENCLAW_GATEWAY_TOKEN: 'synthetic-gateway-token' };
 const previous = Object.fromEntries(Object.keys(config).map(key => [key, process.env[key]]));
 Object.assign(process.env, config);
-jest.mock('../../surfaces/household/personal-continuity', () => ({ createNestorClient: () => async () => ({
-  agents: [{ id: 'main', personalNotes: true }, { id: 'synthetic-guardian', internal: true }],
-  capabilities: { isolatedWork: true, nativeConversation: true, nativeReadBudget: true }
-}) }));
+const mockNativeRuns = new Map();
+jest.mock('../../surfaces/household/personal-continuity', () => ({ createNestorClient: () => async query => {
+  if (query.operation === 'agents') return {
+    agents: [{ id: 'main', personalNotes: true }, { id: 'synthetic-guardian', internal: true }],
+    capabilities: { isolatedWork: true, nativeConversation: true, nativeReadBudget: true }
+  };
+  const evidence = mockNativeRuns.get(query.sessionKey);
+  if (query.operation === 'work_attempt') return evidence ? { sessionKey: query.sessionKey, runId: evidence.run.runId } : {};
+  return evidence || {};
+} }));
 jest.mock('../../surfaces/household/conversation-agent', () => {
   const actual = jest.requireActual('../../surfaces/household/conversation-agent');
   const agent = jest.fn(async request => {
     const { randomUUID } = require('node:crypto');
     const sessionKey = actual.sessionKeyFor(request.session), runId = 'resp_' + randomUUID();
-    await request.onStarted(sessionKey, runId); request.onDelta('Bonjour !');
-    await request.onSettled(sessionKey, runId);
-    return { text: 'Bonjour !', sessionKey, runId, metadata: { model: 'synthetic-native', guardianDisposition: 'answered' },
+    await request.onStarted(sessionKey, runId);
+    mockNativeRuns.set(sessionKey, { ok: true, authority: 'openclaw.nestor', operation: 'turn',
+      run: { sessionKey, runId, status: 'completed', model: request.model || 'synthetic-native', provider: 'synthetic' },
+      answer: { status: 'ready', runId, text: 'Bonjour !' }, receipts: [], progress: [],
+      toolChecks: { status: 'observed', runId, completedTools: [], loop: null } });
+    request.onDelta?.('Bonjour !'); await request.onSettled?.(sessionKey, runId);
+    return { text: 'Bonjour !', sessionKey, runId, metadata: { model: 'synthetic-native' },
       tools: { status: 'observed', receipts: [], run: { runId, sessionKey, model: 'synthetic-native' } } };
   });
   return { ...actual, createAgentClient: () => agent, agentForTest: agent };
@@ -36,10 +46,10 @@ const select = async inferenceProfile => {
     memoryContext: false, knowledgeContext: false, householdContext: false, backgroundReview: false } }).expect(200);
 };
 const create = async () => (await request(app).post(sessions).send({ packId: 'personal_operator', backend: 'openclaw' }).expect(201)).body.data.session;
-beforeEach(async () => { await Preferences.deleteMany({}); agentForTest.mockClear(); process.env.PERSONAL_CONVERSATION_WORK_MODE = 'native'; });
+beforeEach(async () => { await Preferences.deleteMany({}); mockNativeRuns.clear(); agentForTest.mockClear(); process.env.PERSONAL_CONVERSATION_WORK_MODE = 'native'; });
 afterAll(() => { for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
 
-test('saved profiles reach the dedicated guardian while requests cannot choose models or alter the Main owner', async () => {
+test('saved profiles reach complete Main first while requests cannot choose models or alter its owner', async () => {
   await select('full_cloud');
   const session = await create(), firstTurn = randomUUID();
   await request(app).post(`${sessions}/${session.sessionId}/turns/text`).send({ text: 'Bonjour.', channel: 'voice', turnId: firstTurn,
@@ -47,9 +57,12 @@ test('saved profiles reach the dedicated guardian while requests cannot choose m
   const first = await Work.findOne({ sessionId: session.sessionId, turnId: firstTurn }).lean();
   expect(first.performance).toMatchObject({ profile: 'full_cloud', boss: { model: 'synthetic-cloud/deep-model' } });
   const sent = agentForTest.mock.calls.at(-1)[0];
-  expect(sent.session.agentId).toBe('synthetic-guardian'); expect(sent.model).toBe('synthetic-cloud/fast-model');
-  expect(sent.instructions).toContain('You have no tools');
-  expect(sent.canonicalSession.sessionId).toBe(session.sessionId);
+  expect(sent.session.agentId).toBe('main'); expect(sent.model).toBe('synthetic-cloud/deep-model');
+  expect(sent.instructions).toContain('leading this owner conversation');
+  expect(sent.instructions).not.toContain('You have no tools');
+  expect(sent.session.sessionId).not.toBe(session.sessionId);
+  expect(sent.turnContext).toContain(session.sessionId);
+  expect(first).toMatchObject({ entryPolicy: 'main-first/v1', foreground: 'primary', guardian: { state: 'not_used' } });
   await select('local');
   const nextTurn = randomUUID();
   await request(app).post(`${sessions}/${session.sessionId}/turns/text`).send({ text: 'Bonjour.', channel: 'voice', turnId: nextTurn }).expect(200);

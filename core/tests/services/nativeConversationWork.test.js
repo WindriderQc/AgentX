@@ -4,7 +4,9 @@ const express = require('express');
 const request = require('supertest');
 const { randomUUID } = require('node:crypto');
 const { forSurface } = require('../../src/services/surfaceConversationService');
-const capability = require('../../src/services/conversationWorks/capability');
+const coreCapability = require('../../src/services/conversationWorks/capability');
+// Retained guardian-first records keep their original acceptance contract.
+const capability = { ...coreCapability, create: options => coreCapability.create({ ...options, nativePrimary: false }) };
 const { registerWorkRuntime } = require('../../surfaces/household/conversation-work-runtime');
 const { createConversationExecutor } = require('../../surfaces/household/conversation-executor');
 const { createWorkDelivery } = require('../../src/services/conversationWorks/delivery');

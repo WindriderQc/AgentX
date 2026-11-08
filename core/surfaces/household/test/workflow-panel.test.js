@@ -80,6 +80,13 @@ test('a waiting-host signal never masks terminal or stale Gardien evidence', () 
   assert.equal(stageState('guardian', { ...model.snapshot().turns[0], telemetryStale: true })[0], 'Uncertain');
 });
 
+test('a Core Main-first turn with no admitted guardian never invents a guardian run', () => {
+  assert.deepEqual(stageState('guardian', { works: [{ state: 'running', guardianStatus: 'not_used' }] }),
+    ['Not used', 'No guardian turn was admitted for this request']);
+  assert.deepEqual(stageState('guardian', { done: true, works: [{ state: 'completed', guardianStatus: 'not_used' }] }),
+    ['Not used', 'No guardian turn was admitted for this request']);
+});
+
 test('failed, cancelled and paused review work reports its canonical state and safe reason', () => {
   const model = createModel(); model.begin('session-1', 'turn-a', 'voice');
   model.review('turn-a', { adviceId: 'older-advice', version: 1 });
