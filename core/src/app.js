@@ -10,9 +10,8 @@ const logger = require('../config/logger');
 const { requestLogger, errorLogger } = require('./middleware/logging');
 const systemHealth = require('./systemHealth');
 const { getHostHomeLink } = require('./helpers/hostHomeLink');
-const { refreshOllamaHealth } = require('./services/ollamaHealthProbe');
+const { readCoreHealth } = require('./services/coreHealthService');
 const { normalizePublicUrls } = require('../../shared/browserPublicUrls');
-const { createServiceIdentity } = require('../../shared/serviceIdentity');
 const { registerLocalStyleVendorAssets } = require('../../shared/localStyleVendorAssets');
 const {
   currentAgentXProfile,
@@ -48,12 +47,7 @@ app.locals.hostHome = getHostHomeLink();
 app.locals.agentxProfile = agentxProfile;
 const IN_PROD = process.env.NODE_ENV === 'production';
 const IN_TEST = process.env.NODE_ENV === 'test';
-// Service identity for the canonical health envelope. Read once at
-// load; falls back gracefully if package.json is ever unreadable.
-const SERVICE_VERSION = (() => {
-  try { return require('../package.json').version || '0.0.0'; }
-  catch { return '0.0.0'; }
-})();
+const readHealth = () => readCoreHealth(systemHealth, { publicUrl: app.locals.publicUrls.core });
 
 // EventEmitter for system events (SSE broadcasting)
 const EventEmitter = require('events');
@@ -258,6 +252,8 @@ if (!isDemoProfile(agentxProfile)) {
   require('../surfaces/household').register({
     contractVersion: 2,
     app, express, mongoose, logger, standardJsonParser, runtimeServices,
+    corePanelReads: { health: readHealth,
+      ecosystem: () => require('../routes/nerve-center').buildEcosystemSnapshot() },
     extensionRoot: path.join(__dirname, '../surfaces/household')
   });
   require('../surfaces/data-toolbox').register({ contractVersion: 2, app, express });
@@ -492,20 +488,8 @@ app.get('/favicon.ico', (_req, res) => {
 // reports the browser-reachable publicUrl, never the in-container port, so
 // clients do not mistake the container port for an address to call.
 app.get('/health', async (_req, res) => {
-  const ollamaHealth = await refreshOllamaHealth(systemHealth);
-  const isHealthy = systemHealth.mongodb.status === 'connected';
-
-  res.status(isHealthy ? 200 : 503).json({
-    ok: isHealthy,
-    ...createServiceIdentity({ service: 'agentx-core', version: SERVICE_VERSION }),
-    // Legacy fields: retained for backward compatibility.
-    status: isHealthy ? 'ok' : 'degraded',
-    publicUrl: app.locals.publicUrls.core,
-    details: {
-      mongodb: systemHealth.mongodb.status,
-      ollama: ollamaHealth.status
-    }
-  });
+  const body = await readHealth();
+  res.status(body.ok ? 200 : 503).json(body);
 });
 
 // Public browser configuration; inference may be unconfigured.

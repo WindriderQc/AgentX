@@ -868,7 +868,13 @@ pages and APIs retain the parental gateway guard.
 
 - `core/surfaces/household`: Nestor, Family, Reader and
   animal-sound UI. Its HTTP and MCP handlers call Core capabilities and declare
-  no session, audit, task or profile models of their own. The server derives a
+  no session, audit, task or profile models of their own. The panel reads Core's
+  basic health and ecosystem through the same in-process producers as the HTTP
+  routes, with bounded independent deadlines and the existing fleet projection.
+  An explicit `CORE_INTERNAL_URL` retains HTTP; mounts without native readers
+  retain HTTP for each missing capability. A native read failure stays partial
+  and does not select another Core. Basic health keeps Mongo readiness separate
+  from Ollama details and fleet observations. The server derives a
   new session's agent from a personality's declared agent binding; a tone-only
   personality overlays the selected agent. A conflicting explicit agent or a
   later personality bound to another agent returns 400 with

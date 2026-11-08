@@ -3,21 +3,23 @@
 // The Household panel API (/api/panel): service, fleet, crew and readiness
 // projections for the operator panel.
 
-const { serviceHealth, projectedJson, fleetSummary } = require('./panel-sources');
+const { serviceHealth } = require('./panel-sources');
+const { createPanelCoreSources } = require('./panel-core-sources');
 const { upstreamJson } = require('./voix-client');
 const { agentxCrew, openClawPanelStatus, panelCrewReady } = require('./panel-status');
 const { createVoiceStatus, voiceLine } = require('./voice-status');
 
 function registerPanelRoutes(app, {
-  express, standardJsonParser, CORE_SELF_URL, knowledgeState, cleanText, envelope
+  express, standardJsonParser, CORE_SELF_URL, corePanelReads, knowledgeState, cleanText, envelope
 }) {
   const panel = express.Router();
   panel.use(standardJsonParser);
+  const core = createPanelCoreSources({ CORE_SELF_URL, corePanelReads });
   const voiceStatus = createVoiceStatus({ readCatalog: () => upstreamJson('/api/voices') });
   panel.get('/status', async (_req, res) => {
     const [services, voixStatus, openclaw, fleet, voices] = await Promise.all([
       Promise.all([
-        serviceHealth('Core', `${CORE_SELF_URL()}/health`),
+        core.health(),
         serviceHealth('Benchmark', String(process.env.BENCHMARK_SERVICE_URL || 'http://benchmark:3081').replace(/\/+$/, '') + '/health'),
         serviceHealth('RAG', String(process.env.RAG_SERVICE_URL || 'http://rag:3082').replace(/\/+$/, '') + '/health'),
         // Data is optional: its row shows its real state, marked optional.
@@ -28,11 +30,7 @@ function registerPanelRoutes(app, {
         .then((health) => ({ status: health?.status === 'ok' ? 'ok' : 'down', health }))
         .catch((error) => ({ status: 'down', error: error.message })),
       openClawPanelStatus(app.locals?.aioOpsRuntimeEvidence),
-      projectedJson(
-        `${CORE_SELF_URL()}/api/nerve-center/ecosystem`,
-        fleetSummary,
-        fleetSummary({})
-      ),
+      core.ecosystem(),
       voiceStatus()
     ]);
     const agentx = agentxCrew(services);

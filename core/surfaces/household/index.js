@@ -587,7 +587,8 @@ function register(api) {
   });
 
   registerPanelRoutes(app, {
-    express, standardJsonParser, CORE_SELF_URL, knowledgeState, cleanText, envelope
+    express, standardJsonParser, CORE_SELF_URL, knowledgeState, cleanText, envelope,
+    corePanelReads: api.corePanelReads
   });
 
   app.get('/api/household/status', (_req, res) => envelope(res, {
