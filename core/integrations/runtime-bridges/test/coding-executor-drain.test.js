@@ -9,7 +9,7 @@ const executors = [
   { id: 'archive', harness: 'dsh', sshTarget: 'worker@archive', priority: 1, acceptNewWork: false },
   { id: 'candidate', harness: 'opencode', sshTarget: 'worker@candidate', priority: 2 }
 ];
-function fixture({ candidateBusy = false, archiveUnreadable = false, rows = executors } = {}) {
+function fixture({ candidateBusy = false, archiveUnreadable = false, originalReplyId = original, rows = executors } = {}) {
   const calls = [];
   const control = new CodingDispatchControl({ executors: rows, sshRunner: async (target, command) => {
     calls.push({ target, command });
@@ -18,7 +18,7 @@ function fixture({ candidateBusy = false, archiveUnreadable = false, rows = exec
     if (command.includes(' status')) return { stdout: JSON.stringify({ status: 'success', data: {
       harness: archived ? 'dsh' : 'opencode', available: true, busy: !archived && candidateBusy,
       candidates: [{ pipelineId: '0700' }],
-      ...(command.endsWith(original) ? { run: { requestId: original, phase: archived ? 'finished' : 'not_received' } }
+      ...(command.endsWith(original) ? { run: { requestId: archived ? originalReplyId : original, phase: archived ? 'finished' : 'not_received' } }
         : command.endsWith(fresh) ? { run: { requestId: fresh, phase: 'not_received' } } : {})
     } }) };
     return { stdout: JSON.stringify({ status: 'success', data: { accepted: true,
@@ -81,6 +81,14 @@ test('explicit read/stop control still reaches a draining executor before a laun
   assert.equal(stopped.run.requestId, fresh);
   assert.equal(calls.at(-1).target, 'worker@archive');
   assert.ok(calls.at(-1).command.includes(' cancel-waiting '));
+});
+
+test('a mismatched native receipt never grants a draining executor a fresh launch', async () => {
+  const { control, calls } = fixture({ originalReplyId: fresh });
+  await assert.rejects(control.owner({ requestId: original }, 'code'), error => error.code === 'CODING_DISPATCH_OUTCOME_UNKNOWN');
+  await assert.rejects(control.launch({ pipelineId: '0700', requestId: original, expectedAttemptCount: 0,
+    confirm: true, executorId: 'archive' }), error => error.code === 'CODING_DISPATCH_OUTCOME_UNKNOWN');
+  assert.ok(calls.every(x => x.command.includes(' status')));
 });
 
 test('a sole visible draining executor remains readable but cannot accept new work', async () => {

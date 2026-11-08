@@ -103,7 +103,12 @@ class CodingDispatchControl {
     if (executor.acceptNewWork !== false) return executor;
     if (requestId) {
       const observed = await this.statusOn(executor, exactRequestId(requestId));
-      if (observed.run?.phase && observed.run.phase !== 'not_received') return executor;
+      if (!observed.run?.phase || observed.run.phase !== 'not_received' && observed.run.requestId !== requestId) {
+        throw new CodingDispatchControlError('The original native request receipt cannot be verified.', {
+          code: 'CODING_DISPATCH_OUTCOME_UNKNOWN', statusCode: 503
+        });
+      }
+      if (observed.run.phase !== 'not_received') return executor;
     }
     throw new CodingDispatchControlError('This executor accepts existing requests only; choose an executor accepting new work.', {
       code: 'CODING_EXECUTOR_DRAINING', statusCode: 409
@@ -177,7 +182,8 @@ class CodingDispatchControl {
     // executor accepts the requested profile. Never reassign that original UUID.
     if (input.requestId && this.executors.some(item => item.enabled && !item.acceptNewWork)) {
       const observed = await this.status({ requestId: input.requestId });
-      if (observed.run?.phase !== 'not_received' && observed.run?.executorId) return this.executor(observed.run.executorId);
+      if (observed.run?.phase !== 'not_received' && observed.run?.executorId)
+        return this.admitExistingOrNew(this.executor(observed.run.executorId), input.requestId);
     }
     const compatible = this.executors.filter(item => item.enabled && item.acceptNewWork && (!profile || item.profiles.includes(profile)));
     if (compatible.length === 1) return compatible[0];
