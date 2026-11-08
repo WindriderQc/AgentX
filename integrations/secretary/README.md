@@ -364,6 +364,9 @@ The report retains four native gaps on every row and at its root:
 
 No local JSON flag, qualification, disposition or restoration report can clear
 these gaps. The report creates no ready cleanup manifest or native approval.
+Core's [source-text review](../../docs/SECRETARY_DOSSIER_REVIEW.md#historical-source-text-reviews)
+records a bounded human observation on the existing historical assertion;
+it does not clear these planner gaps or authorize cleanup.
 Existing v1 reports, analysis receipts and archive history remain unchanged;
 their former candidate flags do not establish native cleanup authority.
 
