@@ -70,7 +70,7 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v11.
+Use the source-span grounding contract secretary.objective-grounding/v12.
 Keep useful explicit steps, not only completed milestones. A personal career
 contact, referral, CV submission, application, interview or offer can be retained
 at its stated stage. Choose factType: life-event, career-contact, application,
@@ -100,48 +100,40 @@ never invent a date or claim realization to make it useful.
 selectionCues are exact source lines with career or nonprofessional reading cues.
 Their kinds are lexical reminders, not facts, actor identity or proof of occurrence.
 Every selectionCue has a required property in cueDecisions, keyed by its exact
-citation ID. Give either {retentions:[{momentIndex,qualificationIds}]} or
-{reasonRef}. momentIndex is ZERO-BASED into your moments array and must name an
-existing proposed moment. A cue may support several distinct moments only when
-its full source excerpt actually supports each; give one retention per moment.
-No decision may be skipped. Retentions are the cue's primary observation
-selection: do not repeat a cue in contextObservations. Do not supply omittedCues
-or observations. Each moment has contextObservations, an array of exact
-{citationId,qualificationIds} selections ONLY for non-cue source context.
-Use [] when no extra context is needed. Never create an unsupported moment to
-satisfy a cue. Read every cue before constructing the related moments, then
-assign each retained cue to its appropriate existing moment. Related activity
-excerpts can support one moment without dropping one of those excerpts.
-An omission's reasonRef must come from omissionReasonCatalog for that same cue.
-Select only source-supported reasons that actually fit the passage; a valid
-reference alone does not prove relevance. Never call personal activities
-administrative or borrow a later/unrelated author header. Unknown dates do not
-justify omitting useful reported activities, completed moves or explicit plans.
-declarationCatalog preserves the reading context of complete declarations; this
-is not verified identity or owner confirmation. When its planSpan identifies
-an explicit upcoming activity, retain its occurrenceStatus as planned, never as
-reported attendance. Use separate moments when reported activities and future
-plans have different occurrence statuses. A warning or question AFTER a complete plan does not erase
-the plan, make its actor unknown, or turn it into a conditional realization.
-Retain the whole exact source excerpt, including its separate warning. Choose
-only relevant local qualifications; a warning about getting lost is not doubt
-that the writer announced a plan. Genuine conditional plans, questions,
-negations and unclear speakers keep their supported uncertain decisions.
-Select titleCitationId from this event's own observation excerpts. Do not write
-any title, description, observation text, rationale, ongoing flag, uncertainty
-or event-wide hypotheses. The application copies whole selected source lines,
-including their tense, relative-day wording, negations and reservations.
-Each contextObservations item and cue retention selects qualificationIds locally. Select one
-citationCatalog ID and at most one relevant uncertaintyCatalog reference belonging
-TO THAT SAME citation. Use [] when no local reservation is needed. A qualification
-cannot move to a different excerpt, qualify the event globally or cast doubt on
-other observations. A conditional offer of future help stays local to that offer;
-it does not make completed hours of work hypothetical. Select the offer as a
-separate observation/context only if useful; never claim it was realized.
-Select only useful observations for the proposed event, retaining enough source
-author and addressee context for attribution. A source quotation is not proof of
-truth or occurrence. The application labels these source excerpts for human review.
-Dates and fact types still follow their complete schema alternatives.
+citation ID. Give either {retainedMoments:[...]} or {reasonRef}. Each retained
+moment is a COMPLETE model-proposed fact with its own metadata and its own
+anchorCitationId, equal to that cue ID. Do not assign a cue to an existing
+moment index. Distinct facts keep their own actor, category, type, occurrence
+status and dates. A completed move is a reported home life-event with unknown
+event dates when none are explicit; it must not borrow a work fact or message date.
+Do not skip or invent a decision. An omission selects only that cue's own
+supported reasonRef from omissionReasonCatalog. Dates unknown or relative do
+not justify dismissing useful explicit activities, completed moves or plans.
+For facts anchored in non-cue excerpts, use the root additionalMoments array.
+Each additional moment also selects its own anchorCitationId. The schema
+conditions proposed fact types on that primary excerpt's lexical support.
+There is no factTypeCitationIds selector: the application retains only the
+primary anchor as proposed type evidence. Lexical support does not prove the
+interpretation; choose a type that actually fits that excerpt in context.
+Never supply moments, titleCitationId, factTypeCitationIds, observations,
+omittedCues, arbitrary indices or generated observation wording.
+Every proposed moment has qualificationIds for its OWN PRIMARY anchor and
+contextObservations for useful NON-CUE context only. Each context item is
+{citationId,qualificationIds}; do not repeat the anchor there or borrow another
+cue. Use [] when no extra context or reservation is needed. The primary anchor
+is already the selected observation and supplies the literal title. Choose at
+most one relevant uncertaintyCatalog reference for each SAME source excerpt.
+Do not move a qualification across excerpts or qualify unrelated observations.
+declarationCatalog preserves reading context, never verified identity. An
+explicit upcoming activity with planSpan stays planned, never reported attendance.
+Keep separate facts when reported activities and future plans have different
+occurrence statuses. A later warning or question does not erase an earlier
+complete plan or make its actor unknown. Preserve the whole exact excerpt,
+including the separate warning. A warning about getting lost does not mean
+that the writer failed to announce the plan. Genuine conditional plans,
+questions, negations, promotional wording and unknown speakers retain their
+supported uncertain decisions. Another speaker's activity must keep its own
+preceding literal header when omitted, never a later or unrelated header.
 Do not generate a summary, a global excerpt selector or per-observation summary
 flags. The application summarizes at most three retained facts using their own
 selected title excerpts, copied whole in source order. An omitted cue or unrelated

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import objective_cue_decisions as decisions
@@ -45,7 +46,7 @@ def positive(body, ids=('q1',), context=SENT):
 
 
 def project(value, body, context=SENT):
-    result, changes = normalize_representation(value, body, grounding.CONTRACT,
+    result, changes = normalize_representation(value, body, grounding.CUE_CONTRACT,
         {'end': len(body), 'totalChars': len(body), **context})
     validate(result, body)
     return result, changes
@@ -54,7 +55,7 @@ def project(value, body, context=SENT):
 class CueDecisionTests(unittest.TestCase):
     def test_schema_requires_each_cue_and_protects_complete_personal_activities(self):
         body = "J'ai pratiqué le snorkeling.\nJe débute la boxe.\nObjet : copies PDF"
-        schema = grounding.schema_for(body, source_context=SENT)
+        schema = grounding.schema_for(body, grounding.CUE_CONTRACT, source_context=SENT)
         self.assertEqual(len(schema['anyOf']), 1)
         props = schema['anyOf'][0]['properties']
         self.assertEqual(props['cueDecisions']['required'], ['q1', 'q2'])
@@ -218,7 +219,10 @@ class CueDecisionTests(unittest.TestCase):
 
 
 class CueDecisionWorkerTests(unittest.TestCase):
-    setUp = worker_fixtures.SourceLanguageWorkerTests.setUp
+    def setUp(self):
+        worker_fixtures.SourceLanguageWorkerTests.setUp(self)
+        frozen = patch.object(worker, "SCHEMA", grounding.SCHEMA_V11)
+        frozen.start(); self.addCleanup(frozen.stop)
     mail = worker_fixtures.SourceLanguageWorkerTests.mail
     prepare = worker_fixtures.SourceLanguageWorkerTests.prepare
     run_worker = worker_fixtures.SourceLanguageWorkerTests.run_worker
@@ -226,7 +230,7 @@ class CueDecisionWorkerTests(unittest.TestCase):
     def test_explicit_native_decisions_replay_and_tamper_detection_needs_no_new_call(self):
         body = "J'ai fait du snorkeling.\nJe débute la boxe.";self.mail('message01', body)
         def output(prompt, reply):
-            self.assertEqual(prompt['groundingContract'], grounding.CONTRACT)
+            self.assertEqual(prompt['groundingContract'], grounding.CUE_CONTRACT)
             reply['response'] = json.dumps(positive(body, ('q1', 'q2')));return reply
         client, calls = disposition_fixtures.DispositionTests.client(self, output)
         self.assertEqual(self.run_worker(client)['newlyReviewedPages'], 1)
