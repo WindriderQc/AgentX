@@ -217,8 +217,9 @@
             // ── Latency: avg + p95 lines ──
             const avgLatencies = buckets.map(b => b.avgLatencyMs ?? b.avgLatency ?? null);
             const p95Latencies = buckets.map(b => b.p95LatencyMs ?? b.p95Latency ?? null);
-            const coldStartCount = buckets.reduce((sum, bucket) => sum + (bucket.coldStartSuspectedCount || 0), 0);
-            const coldStartMaxMs = Math.max(0, ...buckets.map(bucket => bucket.coldStartSuspectedMaxMs || 0));
+            const longCallCount = buckets.reduce((sum, bucket) => sum + (bucket.longCallCount || 0), 0);
+            const longCallMaxMs = Math.max(0, ...buckets.map(bucket => bucket.longCallMaxMs || 0));
+            const unmeasuredCount = buckets.reduce((sum, bucket) => sum + (bucket.unmeasuredDurationCount || 0), 0);
 
             // ── Render HTML ──
             container.innerHTML = `
@@ -235,9 +236,12 @@
                             <canvas id="nc-latency-chart" height="200" role="img" aria-label="Average and P95 latency per hour over the last 24 hours"></canvas>
                         </div>
                         <div class="nc-muted" style="font-size:0.72rem;margin-top:5px;">
-                            ${coldStartCount > 0
-                                ? `${coldStartCount} suspected cold start${coldStartCount === 1 ? '' : 's'} excluded from the serving-latency axis (max ${Number(coldStartMaxMs).toLocaleString('en-US')}ms).`
-                                : 'No ≥60s cold-start candidates in this window.'}
+                            All measured call durations, including errors and timeouts.
+                            ${longCallCount > 0
+                                ? `${longCallCount} call${longCallCount === 1 ? '' : 's'} ≥60s included (max ${Number(longCallMaxMs).toLocaleString('en-US')}ms).`
+                                : 'No measured calls ≥60s in this window.'}
+                            ${unmeasuredCount} call${unmeasuredCount === 1 ? '' : 's'} without measured duration.
+                            Duration alone does not establish a cold start.
                         </div>
                     </div>
                 </div>

@@ -2343,6 +2343,38 @@ the usual fallback marker. This feature sends nothing to a cloud provider.
 
 ### Inference log timings and prompt cache
 
+`GET /api/telemetry/timeline` supplies the Nerve Center's hourly latency chart
+(configurable `bucketMinutes`, 1–1440; `hours`, 1–720). In each UTC bucket,
+`calls` and `byHost` count all matching recorded calls; `errors` counts every
+non-success, including timeouts. Unless `status` is filtered, successful calls,
+errors and timeouts all contribute their measured `durationMs` to latency.
+`latencySampleCount` counts finite numeric durations strictly above zero;
+`unmeasuredDurationCount` counts the remaining calls. Missing, nonnumeric,
+nonfinite, negative and historical default-zero durations supply no latency
+sample. The reader cannot distinguish a legacy default zero from a measured
+zero. It changes neither stored rows nor collection behavior.
+
+`avgLatencyMs` is the rounded arithmetic mean of **all** those samples, with
+no upper cutoff. `p95LatencyMs` is the exact nearest-rank sample at
+`ceil(0.95 * n) - 1` in ascending order, consistent with model-registry
+performance. The timeline computes this order statistic locally rather
+than importing another domain's reader or using `/distribution`'s approximate
+MongoDB percentiles. This corrects the previous upper-index convention, which
+selected the next sample when `0.95 * n` was an integer. Both latency statistics
+are null with no samples. Interior empty buckets have zero counts and null
+statistics; the reader adds no leading/trailing buckets or empty-window data.
+
+`shortCallCount` counts measured calls below 60000 ms; `longCallCount` counts
+those at or above it; `longCallMaxMs` is their maximum, or null. These cohorts
+partition the latency samples; long calls remain in the published mean/P95.
+The existing `coldStartSuspectedCount` and `coldStartSuspectedMaxMs` fields
+remain as deprecated aliases of the long-call fields for client compatibility.
+Their names describe an old heuristic, not measured cold-start evidence.
+Duration alone never establishes model loading; reported `loadMs` is a separate
+measurement. The Nerve Center labels long calls as included, not as cold starts.
+These statistics describe retained call durations, not GPU occupancy, a
+placement decision or qualification of an instance's performance.
+
 Each `inferencelogs` row keeps Core's wall clock in `durationMs` (routing and
 queueing included) next to the phases Ollama reports for the call, in
 milliseconds: `loadMs` (model load), `promptEvalMs` (prompt evaluation) and
