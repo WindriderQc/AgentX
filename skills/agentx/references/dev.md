@@ -137,6 +137,15 @@ chapter. Check every link after a rename.
 
 ## Pipeline tasks
 
+For a status/priority overview, `ecosystem_snapshot` with `mode: "pipeline"`
+and `maxChars: 5000` reads canonical Pipeline summaries without runtime or
+health collectors. Counts, private-row exclusions and incomplete coverage
+remain explicit. Read the queue summary independently when compute status
+matters; neither a queue state nor an unrelated platform alert is a task blocker.
+Keep `mode: "full"` and health tools for ecosystem/health questions. Read a
+dossier when reviewing a particular task or decision, rather than opening
+several full dossiers before an ordinary status answer.
+
 Pipeline holds engineering and report work; Core renders briefs, follows
 workers and keeps evidence. Writing a brief, following the local worker and
 reporting what evidence proves: [coding-work](coding-work.md). Documentation
