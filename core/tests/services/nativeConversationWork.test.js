@@ -713,7 +713,9 @@ test('the dedicated guardian uses a compact per-turn session, preserves Main his
       expect(body.guardianStreaming).toBe(true); expect(body.history.length).toBeLessThanOrEqual(6);
       const runId = 'resp_' + randomUUID(), key = `agent:nestor-guardian:household:direct:${body.session.sessionId}`;
       await body.onStarted(key, runId);
-      return { text: 'Il était une fois un renard.', sessionKey: key, runId, metadata: { model: 'voice-model' }, tools: { status: 'observed', receipts: [] } };
+      return { text: 'Il était une fois un renard.', sessionKey: key, runId, metadata: { model: 'voice-model' },
+        tools: { status: 'observed', authority: 'openclaw/nestor-guardian', runId,
+          run: { sessionKey: key, runId, status: 'completed' }, receipts: [] } };
     });
     const app = await personalHttp(createConversationExecutor({ env, inference: {}, agentClient: guardian }));
     const turnId = randomUUID();
@@ -737,6 +739,11 @@ test('the dedicated guardian uses a compact per-turn session, preserves Main his
     const reviewed = await works.repo.get(row._id);
     expect(reviewed.attempt.agentId).toBe('main');
     expect((await works.contextForNative(context(reviewed))).guardianReply).toBe('Il était une fois un renard.');
+    const sent = execute.mock.calls[0][0];
+    expect(sent.text).toBe('Raconte-moi une histoire.');
+    expect(JSON.parse(sent.turnContext.split('\n')[1]).turns[0].replyAttribution).toMatchObject({
+      role: 'relay', workId: row._id, agentId: 'nestor-guardian', runId: row.guardian.runId, sessionKey: row.guardian.sessionKey });
+    expect(sent.instructions).toContain('explicitly identify what you are correcting');
   } finally { delete env.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID; }
 });
 
