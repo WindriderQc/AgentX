@@ -41,28 +41,26 @@ async function projectedJson(url, projector, fallback, timeoutMs = 8000) {
 const projectionCache = new Map();
 const projectionInFlight = new Map();
 
-async function cachedProjectedJson(url, projector, fallback, timeoutMs = 8000, ttlMs = 60_000) {
-  const cached = projectionCache.get(url);
+async function cachedProjection(key, readBody, projector, fallback, ttlMs = 60_000) {
+  const cached = projectionCache.get(key);
   if (cached && Date.now() < cached.expiresAt) {
     return { ...projector(cached.body), latencyMs: 0, cache: 'fresh' };
   }
-  let pending = projectionInFlight.get(url);
+  let pending = projectionInFlight.get(key);
   if (!pending) pending = (async () => {
     const startedAt = Date.now();
     try {
-      const response = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } }, timeoutMs);
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
-      projectionCache.set(url, { body, expiresAt: Date.now() + ttlMs });
+      const body = await readBody();
+      projectionCache.set(key, { body, expiresAt: Date.now() + ttlMs });
       return { body, latencyMs: Date.now() - startedAt, cache: 'refreshed' };
     } catch (error) {
       if (cached) return { body: cached.body, latencyMs: Date.now() - startedAt, cache: 'stale', error: error.message };
       return { body: null, latencyMs: Date.now() - startedAt, cache: 'unavailable', error: error.message };
     } finally {
-      projectionInFlight.delete(url);
+      projectionInFlight.delete(key);
     }
   })();
-  if (!projectionInFlight.has(url)) projectionInFlight.set(url, pending);
+  if (!projectionInFlight.has(key)) projectionInFlight.set(key, pending);
   const result = await pending;
   const metadata = {
     latencyMs: result.latencyMs,
@@ -72,6 +70,15 @@ async function cachedProjectedJson(url, projector, fallback, timeoutMs = 8000, t
   return result.body === null
     ? { ...fallback, ...metadata }
     : { ...projector(result.body), ...metadata };
+}
+
+function cachedProjectedJson(url, projector, fallback, timeoutMs = 8000, ttlMs = 60_000) {
+  return cachedProjection(url, async () => {
+    const response = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } }, timeoutMs);
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.message || body?.error || `HTTP ${response.status}`);
+    return body;
+  }, projector, fallback, ttlMs);
 }
 
 function hermesCrew(body = {}) {
@@ -136,6 +143,7 @@ module.exports = {
   projectionCache,
   projectionInFlight,
   cachedProjectedJson,
+  cachedProjection,
   hermesCrew,
   fleetSummary
 };

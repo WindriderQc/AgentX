@@ -150,3 +150,4 @@ router.get('/escalation-recommendation', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.buildBudgetStatus = buildBudgetStatus;

@@ -874,7 +874,16 @@ pages and APIs retain the parental gateway guard.
   An explicit `CORE_INTERNAL_URL` retains HTTP; mounts without native readers
   retain HTTP for each missing capability. A native read failure stays partial
   and does not select another Core. Basic health keeps Mongo readiness separate
-  from Ollama details and fleet observations. The server derives a
+  from Ollama details and fleet observations. Private briefing and desk reads
+  similarly compose the canonical morning report and 24-hour budget producers.
+  They retain the existing 60-second projection cache, in-flight coalescing,
+  8-second deadlines and stale-on-error disclosure. Failed refreshes retain
+  cached evidence with its error, so the existing projections still mark that
+  source unavailable. Native cache entries are isolated by mount, domain,
+  reader identity and the fixed read arguments; explicit HTTP destinations
+  retain their URL-based cache. The morning report retains its digest without
+  memory statements, and family-pinned devices cannot reach these private reads.
+  The server derives a
   new session's agent from a personality's declared agent binding; a tone-only
   personality overlays the selected agent. A conflicting explicit agent or a
   later personality bound to another agent returns 400 with

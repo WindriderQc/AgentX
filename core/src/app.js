@@ -20,6 +20,7 @@ const {
 } = require('../../shared/agentxRuntimeProfile');
 const { loadTrustedExtensions } = require('./extensions/trustedExtensionLoader');
 const { createTrustedRuntimeServices } = require('./extensions/trustedRuntimeServices');
+const { createHouseholdCoreReads } = require('./extensions/householdCoreReads');
 const { normalizeTrustedRuntimeNavItems } = require('./extensions/trustedRuntimeNavigation');
 const { conversationLifecycle } = require('./services/conversationLifecycleService');
 
@@ -252,8 +253,7 @@ if (!isDemoProfile(agentxProfile)) {
   require('../surfaces/household').register({
     contractVersion: 2,
     app, express, mongoose, logger, standardJsonParser, runtimeServices,
-    corePanelReads: { health: readHealth,
-      ecosystem: () => require('../routes/nerve-center').buildEcosystemSnapshot() },
+    ...createHouseholdCoreReads(readHealth),
     extensionRoot: path.join(__dirname, '../surfaces/household')
   });
   require('../surfaces/data-toolbox').register({ contractVersion: 2, app, express });

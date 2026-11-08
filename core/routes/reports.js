@@ -209,8 +209,7 @@ function composeMorningBriefSummary(alerts, analytics, performance, memoryReview
  * Query params:
  *   - period (string, default "24h") — e.g. "24h", "12h", "7d"
  */
-router.get('/morning-brief', async (req, res) => {
-  const { period = '24h' } = req.query;
+async function buildMorningBrief(period = '24h') {
   const ms = parsePeriod(period);
   const since = new Date(Date.now() - ms);
 
@@ -230,7 +229,7 @@ router.get('/morning-brief', async (req, res) => {
 
   logger.info(`[reports] morning-brief generated (period=${period})`);
 
-  res.json({
+  return {
     status: 'success',
     data: {
       report: 'morning-brief',
@@ -242,7 +241,11 @@ router.get('/morning-brief', async (req, res) => {
       memoryReview,
       summary
     }
-  });
+  };
+}
+
+router.get('/morning-brief', async (req, res) => {
+  res.json(await buildMorningBrief(req.query.period));
 });
 
 /**
@@ -627,3 +630,4 @@ router.get('/system-status', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.buildMorningBrief = buildMorningBrief;
