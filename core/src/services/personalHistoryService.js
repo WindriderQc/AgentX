@@ -98,6 +98,7 @@ function project(row, options) {
     archiveUrl: !forgotten && row.source?.system === 'gmail'
       ? `/api/secretary/archive/${encodeURIComponent(row.source.messageId)}?sha256=${row.source.sourceSha256}` : null,
     decision: forgotten ? null : row.decision, souvenirNoteId: forgotten ? '' : row.souvenirNoteId || '', createdAt: row.createdAt, updatedAt: row.updatedAt,
+    sourceReview: require('./personalHistorySourceReview').summary(row),
     ...projectContext(row, options) };
 }
 
@@ -226,7 +227,7 @@ async function review(id, input = {}) {
     contextRevision: entry.context?.revision || null, contextHash: entry.context?.inputHash || '', reason, at: changes.decision.at };
   else if (input.assertionState !== undefined) changes.confirmation = null;
   if (state === 'forgotten') Object.assign(changes, { text: '', actor: '', sourceStatus: '', eventDate: '', people: [], places: [], relatedSources: [],
-    context: null, confirmation: null, eventDateAsWritten: '', eventDatePrecision: 'unknown', reviewHistory: [], forgottenAt: new Date(), decision: { reason: '', at: new Date() } });
+    context: null, confirmation: null, sourceReviews: [], eventDateAsWritten: '', eventDatePrecision: 'unknown', reviewHistory: [], forgottenAt: new Date(), decision: { reason: '', at: new Date() } });
   const decision = { revision: input.revision + 1, state, assertionState: assertion, eventDate: when,
     eventDatePrecision: precision, reason, at: changes.decision.at,
     ...(confirmsContext ? { contextRevision: entry.context.revision, contextHash: entry.context.inputHash } : {}) };

@@ -2,14 +2,23 @@
 
 const history = require('../../src/services/personalHistoryService');
 const context = require('../../src/services/personalHistoryContextService');
+const sourceReview = require('../../src/services/personalHistorySourceReview');
 
-function registerSecretaryHistoryRoutes({ router, envelope, fail }) {
+function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' } }) {
   const respond = async (res, action) => {
     try { return envelope(res, await action()); }
     catch (error) { return fail(res, error.statusCode || 500, error.message, error.code || 'PERSONAL_HISTORY_FAILED'); }
   };
+  const sourceResponse = (res, action) => { res.set('Cache-Control', 'private, no-store'); return respond(res, action); };
   router.get('/history', (req, res) => respond(res, () => history.list(req.query)));
   router.get('/history/timeline', (_req, res) => respond(res, () => history.timeline()));
+  // The existing private LAN human surface owns this domain. Caller headers,
+  // profile names and model tools cannot supply its audience or a decision.
+  router.post('/history/:id/source-review', (req, res) => sourceResponse(res, () => sourceReview.prepare(req.params.id, req.body, sourceReviewDeps)));
+  router.get('/history/:id/source-review/:requestId', (req, res) => sourceResponse(res, () => sourceReview.get(req.params.id, req.params.requestId, sourceReviewDeps)));
+  router.get('/history/:id/source-review/:requestId/page', (req, res) => sourceResponse(res, () => sourceReview.page(req.params.id, req.params.requestId,
+    { source: Number(req.query.source), part: Number(req.query.part), offset: Number(req.query.offset) }, sourceReviewDeps)));
+  router.post('/history/:id/source-review/:requestId/decision', (req, res) => sourceResponse(res, () => sourceReview.decide(req.params.id, req.params.requestId, req.body, sourceReviewDeps)));
   router.post('/history/import', (req, res) => respond(res, async () => {
     const entries = req.body?.entries;
     if (!Array.isArray(entries) || !entries.length || entries.length > 50) {

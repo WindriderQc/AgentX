@@ -111,6 +111,81 @@ The MCP tool has no apply operation. A proposal, its state, and its source
 content grant no authority to send mail, invite, reschedule or notify anyone.
 The dossier workflow performs none of those external mutations.
 
+## Historical source-text reviews
+
+The existing `/dad/history` assertion has a separate source-review panel. It
+records a person's explicit review of an exact text scope without confirming a
+fact or context, closing a follow-up, accepting a personal commitment or granting
+mailbox permission. Ordinary history decisions retain their existing meanings.
+Core owns the bounded observations, served-page coverage and decision receipts
+on that same `PersonalHistoryEntry`; there is no parallel register or copied mail
+store. An entry retains at most 20 snapshots, each at most 256 KiB, without
+automatic eviction of its earlier reviews.
+
+`POST /api/secretary/history/:id/source-review` takes the displayed `revision`
+and a stable UUID `requestId`. Core derives the source set from the stored
+assertion and its related sources, rather than accepting client-supplied source
+hashes or coverage. The native `secretary.archive-reader/v3` checks each pinned
+Gmail original's bytes. The snapshot binds message/thread identities, original
+hashes, reader contract, text-part hashes and lengths, attachment/reading gaps,
+assertion revision and context revision/hash. Only metadata and fingerprints are
+stored; mail bodies remain in their existing archive.
+
+`GET .../source-review/:requestId` retrieves that receipt and rechecks its native
+sources. An unavailable reader remains unknown, never a substituted source or
+proof of disappearance. Unsupported sources, including selected Outlook exports,
+remain explicit gaps; this workflow imports nothing. `GET .../:requestId/page`
+accepts the exact `source`, `part` and continuation `offset`. It rechecks native
+identity and versions, serves one bounded text page and advances coverage under
+a version check. Repeated pages are safe, skipped pages refuse, and Unicode
+offsets retain the native reader's character units. Coverage means pages served,
+never comprehension. Attachments, HTML supplements, unreadable or extracted-text
+limits and compound members remain gaps even when all readable text is served.
+
+`POST .../:requestId/decision` takes `snapshotHash`, the original `revision`,
+`decision: reviewed_scope|needs_follow_up` and a reason. `reviewed_scope` requires
+all readable text parts to have been served; `needs_follow_up` retains partial
+or unknown coverage. Neither is global semantic acceptance. Core rereads the
+same native scope before atomically recording the decision on the assertion.
+The decision increments its revision, invalidating other drafts and stale
+history forms, while leaving its fact, context and follow-up states unchanged.
+The same intent replays its exact receipt after a lost response; different
+content under that identity refuses. Core reserves the sealed decision intent
+on the same review before native revalidation; this reservation is not an
+accepted review. A retry containing only `intentHash` can resume that retained
+intent but cannot supply a new choice or reason. The browser durably journals
+only UUIDs and fingerprints, never reasons or mail bodies. Unavailable storage
+blocks a new write. Before Core acknowledges the intent, its content stays in
+browser RAM only; closing the page cannot reconstruct content Core never
+received. That outcome stays unknown and locked to the same identity. Refresh
+reconciles that same intent; a still-current GET without a decision does not
+prove the previous POST cannot arrive later. The user sees the actual recorded
+choice, reason and date, or an immutable pending intent to retry. Terminal
+receipts clear that temporary decision journal. Earlier receipt identities
+remain discoverable on the same assertion, without a client-side registry.
+
+Changed native bytes, assertion/context revisions and concurrent decisions
+refuse late updates. Explicit forgetting and existing source-note erasure clear
+all embedded source reviews together with the assertion; pending native reads
+cannot write a late receipt or return their page after the erasure fence.
+Only opaque request-key hashes survive as transport suppression fences; they
+contain no source snapshot, message body or decision reason.
+For a known request key, the read route can confirm that canonical erasure with
+an empty `erased` acknowledgement, allowing the browser to remove its pending
+transport journal without treating an unknown response as an erasure receipt.
+Old decisions remain historical observations, not claims that sources stayed
+current. Native availability is rechecked on opening a review, not inferred from
+a stored decision. Source replies use private, non-cacheable HTTP responses and
+the browser renders text inertly.
+
+These are existing owner human-surface routes, not an MCP apply operation. A
+server-selected family audience refuses before source access. Private LAN
+access does not authenticate a person or establish an independent reviewer;
+the receipt records that limitation. Names, model text, headers and client
+`verified` flags provide no consent or authority. The retention planner v2 keeps
+all four native acceptance gaps and its blocked/false execution flags. This
+source-text review supplies no cleanup manifest, grant or executor.
+
 ## Catch-up and duplicate candidates
 
 Future catch-up findings retain their actor, source status and date. Resolved,
