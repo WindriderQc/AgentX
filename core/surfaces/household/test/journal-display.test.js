@@ -76,6 +76,17 @@ test('a spoken turn shows its main delays compactly; a turn without a timeline s
   assert.equal(voiceTimings({ voiceTimings: { silenceMs: 1000 } }), '');
 });
 
+test('acknowledgment and relay playback are labelled separately from a conversation reply', () => {
+  const voiceTimings = { firstDelta: 100, firstAudio: 200, holdingPhrase: 50 };
+  for (const [responseKind, label] of [['work_acknowledgment', 'acknowledgment'], ['guardian_relay', 'relay']]) {
+    const html = row({ ...BASE, voiceTimings, phaseEvidence: { responseKind } }, { esc });
+    assert.match(html, new RegExp(label + ' first words 0\\.1 s, ' + label + ' playback requested 0\\.2 s'));
+    assert.match(html, /holding phrase 0\.1 s/);
+    assert.doesNotMatch(html, /work completed|audible|heard/);
+  }
+  assert.match(row({ ...BASE, voiceTimings, phaseEvidence: { responseKind: '<script>' } }, { esc }), /first words 0\.1 s/);
+});
+
 test('the page loads the journal view before the app that renders it', () => {
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
   assert.ok(html.indexOf('journal-display.js') > 0 && html.indexOf('journal-display.js') < html.indexOf('/app.js'));

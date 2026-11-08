@@ -507,6 +507,7 @@ cancellation remain part of the audio contract.
 | `promptPrefix.divergence` | First structural change between observed agent calls on the same host/model | Hashes/counts, not token-level cache evidence; unobserved callers can interfere |
 | Household `voiceTimings` | Browser endpoint decision to transcription, request, reply text, holding and playback requested (`firstAudio`, legacy name); first frame scheduled and first non-silent frame scheduled are separate player callbacks. Also the trailing silence waited (`silenceMs`), clip length (`audioMs`) and service recognition time (`sttServer`) | A nonzero sample distinguishes a signal frame from padding; it does not identify speech. Marks start after trailing silence and do not attest acoustic output |
 | Household `serverTimings` | From the turn request: context prepared, answer back; for a native agent run, gateway accepted, run created, generation or tool started, stream ended, final answer read | Server clock only; a deterministic reply has none, the direct lane has no run steps |
+| Household `phaseEvidence` | Qualifies the existing canonical turn timelines: input channel, selected backend, observed execution source, reported provider/model/run identity, conversation reply, work acknowledgment or explicit guardian relay | A selected backend does not attest native execution. A conversation reply or acknowledgment is not a verified business result or acoustic evidence |
 | Device acceptance | Actual capture, interruption, reconnect and audible reply | Must be checked on the intended device |
 
 `firstFrameScheduled` is the first successful player scheduling callback;
@@ -518,6 +519,40 @@ available to this player. None of these marks proves a first audible word.
 Unreported phases stay absent rather than becoming zero. Prefix observations
 apply to instrumented OpenClaw/Hermes calls; they are not universal direct-lane
 traces. Household persists timing by the browser's turn id within its session.
+
+New completed Household turns retain `phaseEvidence` in that same audit and
+response. `consumer: household` identifies the composing surface, with its pack;
+it is not an authenticated caller or proof of a native runtime's installed tools.
+`inputChannel` is browser-reported and describes the submitted request: reading a typed answer aloud does
+not make it microphone capture. The selected backend and Core-observed execution
+source remain separate. Provider, model and run ID come only from returned
+metadata as runtime-declared identity, including on the direct lane; aliases remain
+aliases, and missing identity stays absent. Only bounded identity tags are kept;
+connection URLs, objects and credential-shaped values are excluded. Historical and early-cancelled turns
+without that evidence receive no inferred qualification.
+
+`serverTimings.agent.firstDelta` retains the native client's first text delta
+forwarded to the presentation parser when reported by the explicit streaming
+relay. It can contain a routing prefix before visible reply text; it is separate
+from the browser's `voiceTimings.firstDelta`. Generation events, reasoning, tool
+events and first-token timings do not substitute for either observation.
+The outer server marks start at the turn request, agent marks at the native
+request, and voice marks at the browser's endpoint decision. Server and agent
+offsets are Core-observed on the Core clock; voice offsets are browser-reported
+on the browser-local clock. These origins are labelled in `phaseEvidence.clocks`;
+they are definitions for available marks, not evidence that missing phases ran.
+No cross-origin or remote-clock subtraction establishes an end-to-end delay.
+
+`responseKind: conversation_reply` is the normal Nestor response. An explicit
+guardian disposition qualifies a `guardian_relay`; it does not select a guardian
+or change routing. A `core.conversation-works` response is a
+`work_acknowledgment`, including when it announces a ready result. Its work ID
+links to the existing canonical acceptance, verified result and delivery events.
+The journal labels its first words and playback request as acknowledgment or
+relay evidence. Work acceptance, verified result, display, scheduled playback
+and completed playback retain their separate work/delivery receipts. Neither
+that announcement nor browser scheduling proves the result was heard. Reposting
+browser timings updates only those timings; it creates no new work or playback.
 
 The browser also records first speakable clause, speech request dispatch, speech
 response headers, first response bytes and an estimated first nonzero output

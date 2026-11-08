@@ -35,6 +35,28 @@ describe('surface conversations in the canonical Core store', () => {
     await expect(conversations.recordTurn(turn(session, { scopeId: 'family' }))).rejects.toMatchObject({ statusCode: 404 });
   });
 
+  test('phase qualification survives canonical storage and repeated browser timing updates', async () => {
+    const { observedTurnPhases } = require('../../surfaces/household/turn-phase-evidence');
+    const { publicAudit } = require('../../surfaces/household/persona-records');
+    const evidence = observedTurnPhases({ prepared: 5, executed: 15, agent: { firstDelta: 4 } }, {
+      session: { ...session, backend: 'openclaw' }, channel: 'voice', metadata: { routingSource: 'openclaw/main',
+        provider: 'synthetic-provider', model: 'synthetic-native', runId: 'synthetic-run' }, toolEvidence: { authority: 'openclaw/main' }
+    });
+    const recorded = await conversations.recordTurn(turn(session, { ...evidence, channel: 'voice', clientTurnId: 'synthetic-evidence-turn' }));
+    const query = { sessionId: session.sessionId, clientTurnId: recorded.clientTurnId, channel: 'voice' };
+    for (const voiceTimings of [{ requestSent: 100, firstAudio: 200 }, { requestSent: 100, interrupted: true, playbackOutcome: 'interrupted' }]) {
+      await conversations.updateTurn(query, { $set: { voiceTimings } });
+      await conversations.updateTurn(query, { $set: { voiceTimings } });
+      const audit = publicAudit(await conversations.getTurn(query));
+      expect(audit.phaseEvidence).toEqual(evidence.phaseEvidence);
+      expect(audit.serverTimings).toEqual(evidence.serverTimings);
+      expect(audit.voiceTimings).toEqual(voiceTimings);
+    }
+    expect(await conversations.countTurns({ sessionId: session.sessionId })).toBe(1);
+    const root = await Conversation.findById(session.conversationId).lean();
+    expect(root.messages.filter(message => message.role === 'assistant')[0].turn.phaseEvidence).toEqual(evidence.phaseEvidence);
+  });
+
   test('retains the selected read with its answer as historical evidence in the canonical conversation', async () => {
     const presentationContext = { contract: 'agentx.presentation/v1', kind: 'page', page: 'analytics', status: 'visible',
       read: { status: 'available', revision: 'a'.repeat(64), filters: { window: '24h' }, totals: { calls: 42 } } };

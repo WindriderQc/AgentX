@@ -1262,7 +1262,11 @@ test('the dedicated tool-free guardian streams before completion and never repea
     onDelta(delta) { deltas.push(delta); started(); } });
   try { await first; assert.deepEqual(deltas, ['Il était une fois']); }
   finally { release(); }
-  assert.equal((await pending).text, 'Il était une fois un renard.');
+  const result = await pending;
+  assert.equal(result.text, 'Il était une fois un renard.');
+  const { serverTimingsOf } = require('../turn-phases');
+  assert.equal(serverTimingsOf({ agent: result.metadata.phases }).serverTimings.agent.firstDelta, result.metadata.phases.firstDelta);
+  assert.ok(Number.isFinite(result.metadata.phases.firstDelta), 'the observed delta survives normalization');
   assert.equal(deltas.join(''), 'Il était une fois un renard.');
 });
 

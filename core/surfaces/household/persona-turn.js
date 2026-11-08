@@ -25,7 +25,7 @@ const { scoreSpeechLanguage, speechText } = require('../../public/js/voice/speec
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
 const teamAddress = require('./team-address');
-const { serverTimingsOf } = require('./turn-phases');
+const { observedTurnPhases } = require('./turn-phase-evidence');
 const { turnDirective, localTimeContext } = require('./persona-prompt');
 const { interruptedRequestContext } = require('./persona-records');
 const dedicatedGuardian = require('./dedicated-guardian');
@@ -496,7 +496,7 @@ function createPersonaTurnHandler({
         if (['openclaw', 'hermes'].includes(backend) && !pack.childSafe) knowledge = { ...knowledge, status: 'agent-managed', enabled: true,
           used: toolEvidence?.receipts?.some(receipt => /rag_search|memory_search|wiki_search/.test(receipt.tool)) || false };
         entry.auditContext = { model: metadata.model || '', routingSource: metadata.routingSource || '', routeTier, toolEvidence,
-          ...(adviceRefs.length ? { adviceRefs } : {}), ...turnUsage(metadata),
+          ...(adviceRefs.length ? { adviceRefs } : {}), ...turnUsage(metadata), ...observedTurnPhases(serverPhases, { metadata, toolEvidence, session, channel: req.body?.channel }),
           knowledgeStatus: knowledge.status, knowledgeSourceCount: knowledge.sourceCount, knowledgeUsed: knowledge.used === true,
           knowledgeCorpusFingerprint: knowledge.corpusFingerprint, safetyFlags: safety.flagIds,
           parentAttention: safety.requiresParentAttention, soundId: sound?.id || '' };
@@ -561,7 +561,7 @@ function createPersonaTurnHandler({
         speakerAgentId: speaker?.agentId || '',
         ...(adviceRefs.length ? { adviceRefs } : {}),
         ...(speaker ? { speaker: { ...speaker, personaVersion: memberPersona?.version ?? null } } : {}),
-        ...serverTimingsOf(serverPhases),
+        ...observedTurnPhases(serverPhases, { metadata, toolEvidence, session, channel: req.body?.channel }),
         durationMs: Date.now() - startedAt
       }, { sessionPatch: isOpening ? {
         'llmx.opening.status': 'completed', 'llmx.opening.completedAt': new Date(),
@@ -640,7 +640,7 @@ function createPersonaTurnHandler({
           corpusFingerprint: knowledge.corpusFingerprint
         },
         continuity, tools: toolEvidence,
-        ...serverTimingsOf(serverPhases),
+        ...observedTurnPhases(serverPhases, { metadata, toolEvidence, session, channel: req.body?.channel }),
         timings: { totalMs: Date.now() - startedAt },
         audit: { id: String(audit._id), traceId, createdAt: audit.createdAt }
       };

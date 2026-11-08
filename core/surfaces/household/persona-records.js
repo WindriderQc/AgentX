@@ -114,6 +114,7 @@ function publicAudit(doc) {
     interrupted: doc?.interrupted === true,
     ...(doc?.voiceTimings ? { voiceTimings: doc.voiceTimings } : {}),
     ...(doc?.serverTimings ? { serverTimings: doc.serverTimings } : {}),
+    ...(doc?.phaseEvidence ? { phaseEvidence: doc.phaseEvidence } : {}),
     ...(doc?.adviceRefs?.length ? { adviceRefs: doc.adviceRefs.map(ref => ({ source: ref.source,
       ...(ref.adviceId ? { adviceId: ref.adviceId } : {}), ...(ref.workId ? { workId: ref.workId } : {}),
       version: ref.version, sourceTurnId: ref.sourceTurnId, coverage: ref.coverage })) } : {}),
