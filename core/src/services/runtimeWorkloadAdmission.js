@@ -1,6 +1,7 @@
 'use strict';
 
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
+const { admitsHosts, blocksHosts } = require('./hostControlFence');
 const { resourceTopology, resourcesFor, topologyGuard, topologyMatches, resourceFailure } = require('./runtimePhysicalResources');
 const {
   clean, ttlMs, secret, canonicalHost, normalizedHosts, reapExpired
@@ -91,6 +92,7 @@ async function acquireWorkload({ principal, requestId, workloadId, kind, batchId
       _id: 'runtime',
       ...topologyGuard(topology),
       maintenance: null,
+      ...admitsHosts(hosts, resourceIds),
       // Workload admission is exclusive for every unshared host. This veto
       // lives in the same CAS as the workload insert so inference/workload
       // acquisition is linearizable in both directions. UNKNOWN inference
@@ -131,7 +133,9 @@ async function acquireWorkload({ principal, requestId, workloadId, kind, batchId
   }
   return {
     acquired: false,
-    reason: 'active maintenance lease, inference admission, or conflicting workload blocks workload admission'
+    reason: blocksHosts(raced?.hostControls, hosts, resourceIds)
+      ? 'AgentX host control is paused; finish direct work and press Play before starting a workload'
+      : 'active maintenance lease, inference admission, or conflicting workload blocks workload admission'
   };
 }
 

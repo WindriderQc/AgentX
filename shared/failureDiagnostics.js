@@ -92,6 +92,7 @@ register('evidence', ['worker_snapshot_receipt_failed', 'attribution_lease_evide
   'local_energy_evidence_unavailable', 'RECEIPT_SELECTION_MISMATCH', 'RECEIPT_ENVELOPE_MISMATCH',
   'RECEIPT_FINGERPRINT_MISMATCH', 'SUCCESS_MISSING_EVIDENCE']);
 register('policy', ['protected_scope', 'risk_not_low', 'out_of_scope_edits',
+  'host_control_paused',
   'paid_execution_disabled', 'fallback_used_for_explicit_model', 'local_zero_cost_nonzero',
   'local_zero_has_billed_origin']);
 register('budget', ['attempt_budget_exhausted', 'cost_budget_exceeded', 'SUCCESS_EXCEEDS_BUDGET',

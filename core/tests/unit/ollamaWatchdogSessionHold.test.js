@@ -38,6 +38,23 @@ const logger = require('../../config/logger');
 const watchdog = require('../../src/services/ollamaWatchdogService');
 
 describe('watchdog and session holds', () => {
+  test('a durable Pause skips the entire host cycle before metadata, probe or repair', async () => {
+    const RuntimeCoordination = require('../../models/RuntimeCoordination');
+    await RuntimeCoordination.updateOne({ _id: 'runtime' }, { $set: { hostControls: [
+      { active: true, hostnames: ['held.test'], hosts: [mockHosts[0].url], resourceIds: [] }
+    ] } }, { upsert: true });
+    const originalFetch = global.fetch;
+    global.fetch = jest.fn();
+    try {
+      const before = watchdog.getStats();
+      await watchdog.runNow();
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(watchdog.getStats().probesSent).toBe(before.probesSent);
+    } finally {
+      global.fetch = originalFetch;
+      await RuntimeCoordination.updateOne({ _id: 'runtime' }, { $set: { hostControls: [] } });
+    }
+  });
   test('skips a held host before any metadata or inference probe', async () => {
     mockIsHostHeld.mockReturnValueOnce({
       holdId: 'hold-1', owner: 'extension/open', model: 'held-model:27b',

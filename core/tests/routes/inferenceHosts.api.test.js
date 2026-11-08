@@ -9,6 +9,7 @@ const { startTestHttpHarness } = require('../helpers/testHttpServer');
 const InferenceHost = require('../../models/InferenceHost');
 const HostPreference = require('../../models/HostPreference');
 const RouterTaskConfig = require('../../models/RouterTaskConfig');
+const RuntimeCoordination = require('../../models/RuntimeCoordination');
 const hostConfig = require('../../src/helpers/ollamaHostConfig');
 const { HOSTS } = require('../../src/services/modelRouterDefaults');
 const registry = require('../../src/services/inferenceHostRegistry');
@@ -24,7 +25,7 @@ describe('inference host registry API', () => {
   afterAll(async () => { await http.close(); });
   beforeEach(async () => {
     global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ version: '0.30.10' }) }));
-    await Promise.all([InferenceHost.deleteMany({}), HostPreference.deleteMany({}), RouterTaskConfig.deleteMany({})]);
+    await Promise.all([InferenceHost.deleteMany({}), HostPreference.deleteMany({}), RouterTaskConfig.deleteMany({}), RuntimeCoordination.deleteMany({})]);
     await registry.load();
   });
   afterEach(async () => {
@@ -59,6 +60,23 @@ describe('inference host registry API', () => {
       .send({ id: 'later', url: '192.168.50.12:11434' });
     expect(created.status).toBe(201);
     expect(created.body.data.reachability).toMatchObject({ reachable: false });
+  });
+
+  it('pauses and resumes through the same human host API with revision and request identity', async () => {
+    const route = '/api/nerve-center/inference-hosts/primary/control';
+    const paused = await http.request.post(route).send({ action: 'pause', requestId: 'pause-http', expectedRevision: 0 });
+    expect(paused.status).toBe(200);
+    expect(paused.body.data.control).toMatchObject({ state: 'paused', revision: 1 });
+    expect(paused.headers['cache-control']).toBe('no-store');
+    const listed = await http.request.get('/api/nerve-center/inference-hosts');
+    expect(listed.body.data.hosts.find(host => host.id === 'primary').control.state).toBe('paused');
+    expect(global.fetch).not.toHaveBeenCalled();
+    const invalid = await http.request.post(route).send({ action: 'play' });
+    expect(invalid.status).toBe(400);
+    const stale = await http.request.post(route).send({ action: 'play', requestId: 'stale-http', expectedRevision: 0 });
+    expect(stale.status).toBe(409);
+    const played = await http.request.post(route).send({ action: 'play', requestId: 'play-http', expectedRevision: 1 });
+    expect(played.body.data.control).toMatchObject({ state: 'playing', revision: 2 });
   });
 
   it.each([

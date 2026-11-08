@@ -120,6 +120,12 @@ const RuntimeCoordinationSchema = new mongoose.Schema({
   _id: { type: String, default: 'runtime' },
   resourceTopologyHash: { type: String, default: null },
   maintenance: { type: MaintenanceLeaseSchema, default: null },
+  // One revisioned control per machine group. It persists across Core restarts
+  // and has no TTL: only an explicit Play gives control back to AgentX.
+  hostControls: { type: [new mongoose.Schema({
+    key: String, pauseId: String, hosts: [String], hostnames: [String], resourceIds: [String],
+    active: Boolean, action: String, requestId: String, revision: Number, acquiredAt: Date
+  }, { _id: false })], default: [] },
   workloads: { type: [WorkloadAdmissionSchema], default: [] },
   inferences: { type: [InferenceAdmissionSchema], default: [] },
   releaseReceipts: {

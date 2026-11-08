@@ -23,7 +23,7 @@ function control(extra = {}) {
   return node;
 }
 
-const ENV_HOST = { id: 'primary', name: 'Tower', url: 'http://192.168.1.20:11434', residency: 'gpu', maxInflight: null, source: 'env', removable: false };
+const ENV_HOST = { id: 'primary', name: 'Tower', url: 'http://192.168.1.20:11434', residency: 'gpu', maxInflight: null, source: 'env', removable: false, control: { state: 'playing', revision: 0 } };
 const CPU_HOST = { id: 'frank-cpu', name: 'Tower CPU', url: 'http://192.168.1.20:11435', residency: 'cpu', maxInflight: 1, source: 'registry', removable: true };
 
 // `respond` answers every change request; a GET always lists `hosts`.
@@ -37,14 +37,16 @@ async function harness({ hosts = [ENV_HOST, CPU_HOST], respond = async () => ({ 
   });
   const inflight = control({ dataset: { hostId: 'frank-cpu' }, value: '8' });
   const removeButton = control({ dataset: { hostId: 'frank-cpu' } });
+  const pauseButton = control({ dataset: { hostId: 'primary', action: 'pause', revision: '0' } });
   const body = {
     innerHTML: '',
-    querySelectorAll: selector => ({ '.nc-host-inflight': [inflight], '.nc-host-remove': [removeButton] }[selector] || []),
+    querySelectorAll: selector => ({ '.nc-host-inflight': [inflight], '.nc-host-remove': [removeButton], '.nc-host-control': [pauseButton] }[selector] || []),
     querySelector: selector => (selector === '.nc-host-add' ? form : null)
   };
   const fetchJson = jest.fn(async (url, options) => (options ? respond(url, options) : { status: 'success', data: { hosts } }));
   const loadCluster = jest.fn();
   const window = {
+    clearTimeout: jest.fn(), setTimeout: jest.fn(), crypto: { randomUUID: () => 'test-request-id' },
     NerveCenterShared: { fetchJson, escapeHtml, renderSectionError(_body, message) { throw new Error(message); }, finishSectionLoad() {} },
     NerveCenterCluster: { loadCluster },
     AgentXTypedConfirmation: { confirm: confirm || (async () => ({ 'X-AgentX-Confirm': 'REMOVE HOST frank-cpu' })) }
@@ -60,10 +62,30 @@ async function harness({ hosts = [ENV_HOST, CPU_HOST], respond = async () => ({ 
   vm.runInNewContext(source, { window, document, FormData });
   await window.NerveCenterHosts.loadHosts();
   const lists = () => fetchJson.mock.calls.filter(([, options]) => !options).length;
-  return { body, summary, status, submitButton, form, inflight, removeButton, fetchJson, loadCluster, lists };
+  return { body, summary, status, submitButton, form, inflight, removeButton, pauseButton, fetchJson, loadCluster, lists, window };
 }
 
 describe('Nerve Center inference hosts UI', () => {
+  it('sends a revisioned Pause request and reuses its identity after a lost response', async () => {
+    const h = await harness({ respond: async () => { throw new Error('response lost'); } });
+    await h.pauseButton.listeners.click();
+    await h.pauseButton.listeners.click();
+    const writes = h.fetchJson.mock.calls.filter(([, options]) => options);
+    expect(writes[0][0]).toBe(`${API}/primary/control`);
+    expect(JSON.parse(writes[0][1].body)).toEqual({ action: 'pause', expectedRevision: 0, requestId: 'test-request-id' });
+    expect(writes[1][1].body).toBe(writes[0][1].body);
+    expect(h.body.innerHTML).toContain('Control outcome needs checking');
+  });
+
+  it('distinguishes draining from manual use and refreshes until the host is free', async () => {
+    const h = await harness({ hosts: [{ ...ENV_HOST, control: { state: 'draining', revision: 1, blockers: [{ type: 'inference' }] } }] });
+    expect(h.body.innerHTML).toContain('Draining — wait before manual use');
+    expect(h.body.innerHTML).toContain('data-action="play"');
+    expect(h.window.setTimeout).toHaveBeenCalledWith(expect.any(Function), 3000);
+    const paused = await harness({ hosts: [{ ...ENV_HOST, control: { state: 'paused', revision: 1, blockers: [] } }] });
+    expect(paused.body.innerHTML).toContain('Paused — manual use');
+    expect(paused.window.setTimeout).not.toHaveBeenCalled();
+  });
   it('lists each host with its id, origin and the controls it allows', async () => {
     const { body, summary } = await harness();
     expect(body.innerHTML).toContain('<strong>Tower</strong><span class="nc-host-key-badge">primary</span>');

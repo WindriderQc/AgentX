@@ -1,10 +1,10 @@
 /**
  * Nerve Center — Live view.
  *
- * One read-only card per physical machine: its GPUs right now, the models each
+ * One card per physical machine: its GPUs right now, the models each
  * Ollama endpoint holds (pinned or not), endpoints parked by the runtime
  * topology, and the heavy-work reservations and Benchmark claims that hold it.
- * Endpoints are grouped by the address they share. Editing stays in Host settings.
+ * Endpoints share a machine card with Pause/Play; pin editing stays in Host settings.
  * Each machine takes the full width; power gauges, power history and the live
  * requests card come from nerve-center-live-charts.js when it is loaded.
  */
@@ -369,6 +369,7 @@
                 <div class="nc-live-col nc-live-card-foot">
                     <div class="nc-live-col-title">Work holding it</div>
                     ${workBlock(work, now)}
+                    <div class="nc-live-host-control" data-host-id="${esc(machine.mainHostId)}"></div>
                     <button type="button" class="nc-link-btn nc-live-manage" data-host="${esc(machine.mainHostId)}">Manage pins <i class="fas fa-chevron-right" aria-hidden="true"></i></button>
                 </div>
             </div>
@@ -632,6 +633,7 @@
             }
             model?.place?.();
             charts?.attach?.({ machines, jobs, machineNameFor });
+            window.NerveCenterHosts?.refreshLiveControls?.({ reload: true });
             renderStatusLine(statusSummary(machines, works), now);
         } catch (err) {
             if (load !== liveLoad) return;

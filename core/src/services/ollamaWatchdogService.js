@@ -506,7 +506,7 @@ async function probeCycle(isStopped = () => false) {
   await collectRecoveryRequired({ hosts, coordination, previous: previousRecovery, target: _recoveryRequired, recordEvent,
     readPs: async (url) => { const meta = await checkMeta(hosts.find(h => h.url === url)); return meta.ok ? meta.rawModels : null; } });
 
-  for (const host of hosts) {
+  for (const host of hosts.filter(host => !require('./hostControlFence').observePausedHost(host, coordination, observeHost, _consecutiveFails))) {
     if (isStopped()) return;
     if (_recoveryRequired.has(host.url)) {
       observeHost(host, { reason: _recoveryRequired.get(host.url).reason }, false);

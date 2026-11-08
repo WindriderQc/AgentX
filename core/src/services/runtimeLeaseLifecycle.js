@@ -228,6 +228,8 @@ async function listActive() {
   }
   return {
     physicalResources,
+    hostControls: (state?.hostControls || []).map(item => ({ active: item.active,
+      hostnames: item.hostnames, hosts: item.hosts, resourceIds: item.resourceIds })),
     maintenance: state?.maintenance ? {
       active: (state.maintenance.state || 'ACTIVE') === 'ACTIVE',
       quarantined: state.maintenance.state === 'UNKNOWN',
