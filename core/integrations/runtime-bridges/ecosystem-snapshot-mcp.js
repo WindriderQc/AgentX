@@ -555,7 +555,7 @@ async function callEcosystemSnapshot(args, { projectionProvider }) {
     if (typeof projectionProvider !== 'function') {
       throw new EcosystemSnapshotMcpError('Agent Ops projection provider is unavailable', 'ECOSYSTEM_SNAPSHOT_UNAVAILABLE');
     }
-    const projection = validateProjection(await projectionProvider());
+    const projection = validateProjection(await projectionProvider({ mode }));
     const full = buildFullSnapshot(projection);
     if (mode === 'pipeline') {
       const active = programmeTasks(projection.work.active).sort((a, b) =>
