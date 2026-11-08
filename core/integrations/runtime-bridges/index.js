@@ -172,7 +172,7 @@ function register(api) {
   registerEcosystemSnapshotMcp({
     app,
     standardJsonParser,
-    projectionProvider: evidence.getAgentOpsProjection
+    projectionProvider: evidence.getEcosystemProjection
   });
 
   app.use('/api/openclaw-ollama', registerOpenClawProtocol({

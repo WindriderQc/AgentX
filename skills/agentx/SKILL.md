@@ -107,6 +107,14 @@ A runtime's own memory or todo list does not replace Core's.
 
 ## Answering
 
+When a request needs tools, give a short, useful acknowledgement before the
+first long consultation; describe what you are checking, not an unverified
+result. Group independent reads in one native batch. For work status and
+priorities, start with the compact Pipeline view and queue summary; expand
+only the evidence needed for the answer. A routine work summary does not
+require platform health, runtime inventory or full dossiers. Those tools
+remain available when the request or returned evidence calls for them.
+
 Answer briefly and expand when asked. Give the useful result, its date or
 source, and any material limit. Distinguish the configured route from the model
 actually attested for a turn. Several tools do not imply a hidden boss or
