@@ -119,6 +119,18 @@ describe('Nerve Center hourly measured latency', () => {
     expect(rounded.stats.lastHour).toMatchObject({ totalCalls: 1, avgLatencyMs: 0 });
   });
 
+  test('preserves a finite BSON numeric average without admitting stored objects or numeric strings', async () => {
+    const { Decimal128, Long } = require('mongodb');
+    await InferenceLog.collection.insertMany([
+      row({ durationMs: Decimal128.fromString('90000') }), row({ durationMs: Long.fromNumber(120000) }),
+      row({ durationMs: '5000' }), row({ durationMs: { value: 5000 } })
+    ]);
+    const before = await InferenceLog.find().sort({ _id: 1 }).lean();
+    const { body: { data } } = await read();
+    expect(data.stats.lastHour).toMatchObject({ totalCalls: 4, avgLatencyMs: 105000 });
+    expect(await InferenceLog.find().sort({ _id: 1 }).lean()).toEqual(before);
+  });
+
   test('empty hourly activity stays unknown even when old log rows are listed', async () => {
     for (const withOldRow of [false, true]) {
       if (withOldRow) await InferenceLog.create(row({ durationMs: 5000, timestamp: new Date(Date.now() - 2 * 3600000) }));

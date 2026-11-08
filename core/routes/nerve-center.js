@@ -613,7 +613,7 @@ router.get('/inference/activity', async (req, res) => {
         stats: {
           lastHour: {
             totalCalls: hourStats.totalCalls,
-            avgLatencyMs: Number.isFinite(hourStats.avgLatencyMs) ? Math.round(hourStats.avgLatencyMs) : null,
+            avgLatencyMs: hourStats.avgLatencyMs != null && Number.isFinite(Number(hourStats.avgLatencyMs)) ? Math.round(Number(hourStats.avgLatencyMs)) : null,
             nonSuccessCount: hourStats.errorCount,
             nonSuccessRate,
             errorRate: nonSuccessRate,
