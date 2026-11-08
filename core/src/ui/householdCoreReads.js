@@ -2,7 +2,7 @@
 
 const { addCanonicalEnvelope } = require('../middleware/responseEnvelopeCompatibility');
 
-// Built-in composition only. External mounts can omit any reader and retain
+// Built-in surface composition. External mounts can omit any reader and retain
 // their existing HTTP transport. These readers confer no identity or authority.
 function createHouseholdCoreReads(readHealth) {
   return {

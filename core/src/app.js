@@ -20,7 +20,7 @@ const {
 } = require('../../shared/agentxRuntimeProfile');
 const { loadTrustedExtensions } = require('./extensions/trustedExtensionLoader');
 const { createTrustedRuntimeServices } = require('./extensions/trustedRuntimeServices');
-const { createHouseholdCoreReads } = require('./extensions/householdCoreReads');
+const { createHouseholdCoreReads } = require('./ui/householdCoreReads');
 const { normalizeTrustedRuntimeNavItems } = require('./extensions/trustedRuntimeNavigation');
 const { conversationLifecycle } = require('./services/conversationLifecycleService');
 
