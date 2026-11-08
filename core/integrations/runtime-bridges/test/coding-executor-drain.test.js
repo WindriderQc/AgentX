@@ -75,10 +75,12 @@ test('an unreadable original executor never permits a new owner for the same ide
 });
 
 test('explicit read/stop control still reaches a draining executor before a launch receipt exists', async () => {
-  const { control } = fixture();
+  const { control, calls } = fixture();
   assert.equal((await control.owner({ requestId: fresh, executorId: 'archive' })).id, 'archive');
   const stopped = await control.cancel({ pipelineId: '0700', requestId: fresh, executorId: 'archive' });
-  assert.equal(stopped.run.executorId, 'archive');
+  assert.equal(stopped.run.requestId, fresh);
+  assert.equal(calls.at(-1).target, 'worker@archive');
+  assert.ok(calls.at(-1).command.includes(' cancel-waiting '));
 });
 
 test('a sole visible draining executor remains readable but cannot accept new work', async () => {
