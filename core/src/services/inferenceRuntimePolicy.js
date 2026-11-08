@@ -6,6 +6,7 @@ const { modelsMatch } = require('../helpers/modelNameNormalization');
 const { resolveInferenceContract } = require('./inferenceContractService');
 const { resolveThinkingPolicy } = require('./thinkingPolicy');
 const { enforceHostPin } = require('./hostPinGuard');
+const { qualifiedToolExecution } = require('./qualifiedToolExecution');
 
 /**
  * Runtime preparation shared by HTTP generation, chat and injected consumers.
@@ -79,11 +80,16 @@ async function prepareInferenceRuntime(request, policy, overrides = {}) {
   const inferenceContract = request.includeArtifactIdentity === undefined
     ? await deps.resolveInferenceContract(contractInput)
     : await deps.resolveInferenceContract(contractInput, { includeArtifactIdentity: request.includeArtifactIdentity });
+  // Owned direct campaigns keep their explicit experimental controls. Daily
+  // tool inference reuses the exact execution qualified for this artifact.
+  const toolExecution = claimedDirect ? null : qualifiedToolExecution(request, { inferenceContract });
+  if (toolExecution) Object.assign(options, toolExecution.options,
+    { temperature: toolExecution.temperature, top_p: toolExecution.top_p });
   if (policy !== 'chat' && policy !== 'embed') {
     deps.applyContractOutputLimit({ routed: policy !== 'direct', options, inferenceContract });
   }
   const thinkingPolicy = ['extension', 'embed'].includes(policy) ? null : deps.resolveThinkingPolicy({
-    requestedThink: request.think,
+    requestedThink: toolExecution?.think ?? request.think,
     thinkingMode: request.thinkingMode,
     capabilityContract: inferenceContract,
     taskType: request.taskType,
@@ -93,7 +99,7 @@ async function prepareInferenceRuntime(request, policy, overrides = {}) {
     stream: request.stream,
   });
   return { options, keepAlive, numCtxSource, inferenceContract, thinkingPolicy, ignoredPinOptions,
-    think: thinkingPolicy ? thinkingPolicy.think : request.think };
+    think: toolExecution ? toolExecution.think : thinkingPolicy ? thinkingPolicy.think : request.think };
 }
 
 /**

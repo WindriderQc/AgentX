@@ -83,6 +83,7 @@ function report(classification = 'ok', pass = classification === 'ok', overrides
     harnessVersion: contract.harnessVersion,
     fixtureVersion: contract.fixtureVersion,
     fixtureFingerprint: contract.fixtureFingerprint,
+    execution: { think: false, sampling: { ...fixtures.TOOL_QUALIFICATION_SAMPLING } },
     artifact: {
       model: 'owner/model:8b',
       host: 'http://host-a:11434',
@@ -113,6 +114,25 @@ async function begin(Model, overrides = {}) {
 }
 
 describe('ToolCapabilityQualification persistence', () => {
+  it('binds the measured execution into evidence and rejects unmeasured settings', async () => {
+    const Model = makeModel();
+    await begin(Model);
+    const wrong = report(); wrong.execution.sampling.temperature = 0.2;
+    await expect(service.recordRepetition('toolcall-campaign-a', identity(), wrong, { Model }))
+      .rejects.toMatchObject({ code: 'TOOL_QUALIFICATION_EXECUTION_MISMATCH' });
+    for (let index = 0; index < 3; index += 1) {
+      await service.recordRepetition('toolcall-campaign-a', identity(), report(), { Model });
+    }
+    await service.finalizeQualification('toolcall-campaign-a', identity(),
+      { completedAt: '2026-09-04T01:00:00Z', ttlMs: 60_000 }, { Model });
+    const now = new Date('2026-09-04T01:00:30Z');
+    expect(await service.resolveQualification(identity(), { Model, now }))
+      .toMatchObject({ state: 'supported', evidence: { execution: { think: false,
+        sampling: { temperature: 0, top_p: 0.9, top_k: 40, repeat_penalty: 1.1 } } } });
+    Model.rows[0].repetitions[0].execution.sampling.temperature = 0.7;
+    expect(await service.resolveQualification(identity(), { Model, now }))
+      .toMatchObject({ state: 'stale', reasons: ['evidence_integrity_mismatch'] });
+  });
   it('declares immutable campaign identity and exact-artifact lookup indexes', () => {
     const indexes = ToolCapabilityQualification.schema.indexes();
     expect(indexes).toEqual(expect.arrayContaining([

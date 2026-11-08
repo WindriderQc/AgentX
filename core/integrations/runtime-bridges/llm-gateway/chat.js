@@ -19,6 +19,7 @@ const { settledStream } = require('../openclaw/settled-stream');
 const { isPreRoutingValidationRefusal } = require('../../../src/extensions/trustedRuntimeServices');
 const { approvedModels, modelCatalog, resolveGatewayTarget } = require('./model-catalog');
 const { busyMessage, claimOf } = require('../openclaw/busy-reply');
+const { qualifiedToolExecution } = require('../../../src/services/qualifiedToolExecution');
 
 const HARNESS_VERSION = '1.2.0';
 
@@ -234,6 +235,8 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
     }
     const snapshot = await runtimeServices.routing.getEffectiveSnapshot({ includeCatalog: false });
     const gatewayTarget = resolveGatewayTarget(snapshot, body.model);
+    const toolExecution = qualifiedToolExecution(body, gatewayTarget);
+    if (toolExecution) res.set('X-AgentX-Tool-Execution-Profile', 'greedy-off');
     // A report escalation call is authorized by its report execution's own
     // recorded models (#835), checked in prepare(); not by the routing table.
     const escalating = req.headers['x-agentx-report-escalation'] !== undefined && req.headers['x-agentx-report-request'] !== undefined;
@@ -269,18 +272,18 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
     const execute = () => runtimeServices.inference.execute({
       mode: 'chat',
       model,
-      ...(gatewayTarget && { options: { num_ctx: gatewayTarget.numCtx } }),
+      ...(gatewayTarget && { options: { num_ctx: gatewayTarget.numCtx, ...(toolExecution?.options || {}) } }),
       messages,
       stream: body.stream === true,
       tools: body.tools,
       tool_choice: body.tool_choice,
-      temperature: body.temperature,
-      top_p: body.top_p,
+      temperature: toolExecution?.temperature ?? body.temperature,
+      top_p: toolExecution?.top_p ?? body.top_p,
       max_tokens: body.max_tokens,
       max_completion_tokens: body.max_completion_tokens,
       response_format: body.response_format,
       reasoning_effort: body.reasoning_effort,
-      ...(body.reasoning_effort === 'none' && { think: false }),
+      ...(toolExecution ? { think: toolExecution.think } : body.reasoning_effort === 'none' ? { think: false } : {}),
       stop: body.stop,
       seed: body.seed,
       presence_penalty: body.presence_penalty,

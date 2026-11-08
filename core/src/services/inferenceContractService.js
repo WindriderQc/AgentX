@@ -244,6 +244,8 @@ function resolveToolCapability(toolQualification, artifact, now = new Date()) {
       state,
       source,
       evidenceDigest: toolQualification.evidence.evidenceDigest || null,
+      ...(state === 'supported' && toolQualification.evidence.execution
+        && { qualifiedExecution: toolQualification.evidence.execution }),
       completedAt: toolQualification.evidence.completedAt || null,
       validUntil: toolQualification.evidence.validUntil || null,
       reasons: []
