@@ -11,7 +11,7 @@ const snapshot = {
   operationalAttention: { issues: [] }, recentRouting: [{ prompt: 'PRIVATE_PROMPT' }]
 };
 
-function setup(t, corePanelReads, configuredUrl) {
+function setup(t, corePanelReads, configuredUrl, fetchImpl) {
   const previous = process.env.CORE_INTERNAL_URL;
   if (configuredUrl === undefined) delete process.env.CORE_INTERNAL_URL;
   else process.env.CORE_INTERNAL_URL = configuredUrl;
@@ -20,8 +20,9 @@ function setup(t, corePanelReads, configuredUrl) {
     else process.env.CORE_INTERNAL_URL = previous;
   });
   const calls = [];
-  t.mock.method(global, 'fetch', async url => {
+  t.mock.method(global, 'fetch', async (url, options) => {
     calls.push(String(url));
+    if (fetchImpl) return fetchImpl(url, options);
     throw new Error('synthetic transport unavailable');
   });
   return { calls, sources: createPanelCoreSources({ corePanelReads,
@@ -42,9 +43,7 @@ for (const configuredUrl of ['http://remote-core.example.test:9080/base/', 'http
     const { sources, calls } = setup(t, {
       health: () => assert.fail('native health must not replace a configured destination'),
       ecosystem: () => assert.fail('native ecosystem must not replace a configured destination')
-    }, configuredUrl);
-    t.mock.method(global, 'fetch', async url => {
-      calls.push(String(url));
+    }, configuredUrl, async url => {
       return new Response(JSON.stringify(String(url).endsWith('/health') ? { ok: false } : { data: snapshot }),
         { status: String(url).endsWith('/health') ? 503 : 200 });
     });
@@ -63,6 +62,18 @@ test('an unavailable explicit destination is not replaced by local evidence', as
   assert.equal(core.status, 'down');
   assert.equal(fleet.status, 'degraded');
   assert.equal(calls.length, 2);
+});
+
+test('an invalid configured URL keeps its factual transport error without using native readers', async t => {
+  const actualFetch = global.fetch;
+  const { sources, calls } = setup(t, { health: () => assert.fail(), ecosystem: () => assert.fail() },
+    'invalid-url', actualFetch);
+  const [core, fleet] = await Promise.all([sources.health(), sources.ecosystem()]);
+  assert.equal(core.status, 'down');
+  assert.equal(fleet.status, 'degraded');
+  assert.match(core.error, /Failed to parse URL/);
+  assert.match(fleet.error, /Failed to parse URL/);
+  assert.deepEqual(calls, ['invalid-url/health', 'invalid-url/api/nerve-center/ecosystem']);
 });
 
 test('mounts without native readers retain both HTTP reads', async t => {
