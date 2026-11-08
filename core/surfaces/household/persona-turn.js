@@ -176,9 +176,11 @@ function createPersonaTurnHandler({
           sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
         entry.guardianAgentId = intake.row.guardian?.agentId;
         entry.guardianSessionId = intake.row.guardian?.sessionId;
-        entry.performance = intake.row.performance;
+        entry.performance = intake.row.performance; entry.primaryWork = intake.row.entryPolicy === 'main-first/v1';
+        if (entry.primaryWork) entry.readPrimaryWork = require('./persona-primary-wait').primaryWait({ entry, works: conversationWorks, sessionId: session.sessionId, res, activePersonaTurns });
         if (intake.duplicate) { entry.auditWritten = true; return envelope(res, { accepted: true, turnId: clientTurnId, workId: entry.workId,
-          outcome: intake.turn.outcome, reply: intake.turn.outcome === 'completed' ? { text: intake.turn.replyText } : null,
+          outcome: intake.turn.outcome, ...(entry.primaryWork && { recovery: 'explicit_listen' }),
+          reply: !entry.primaryWork && intake.turn.outcome === 'completed' ? { text: intake.turn.replyText } : null,
           replayed: false }, 202); }
         event('accepted', { turnId: clientTurnId, workId: entry.workId, state: intake.row.state });
       }
@@ -281,7 +283,7 @@ function createPersonaTurnHandler({
           // Heard at once: the member's first words can be many seconds away.
           event('status', { phase: 'activity', activity: { kind: 'member_addressed', agentId: member.agentId } });
         }
-        if (backend === 'openclaw') await requireNativeAgent(agentIdFor(turnSession));
+        if (backend === 'openclaw') await requireNativeAgent(entry.primaryWork ? 'main' : agentIdFor(turnSession));
         let history = [], interruptedContext = '', mathContext = '', repairContext = '';
         const recoverInterrupted = backend === 'openclaw' && !member && personalVoice(session, 'voice');
         const recoverMath = pack.childSafe && !isLlmX;
@@ -450,6 +452,8 @@ function createPersonaTurnHandler({
           ...(preferredSpeechLanguage ? { speechLanguage: preferredSpeechLanguage } : {}),
           ...(acceptedTaskWork ? { readAcceptedTaskWork: () => conversationWorks.taskAcceptance(entry.workId) } : {}),
           ...(acceptedNativeWork ? { readAcceptedNativeWork: () => conversationWorks.nativeAcceptance(entry.workId) } : {}),
+          ...(entry.primaryWork ? { readPrimaryWork: entry.readPrimaryWork,
+            requirePrimaryRelay: () => requireNativeAgent(agentIdFor(turnSession)) } : {}),
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
           instructions: nativeInstructions, agentxInstructions, ...(familyTools ? { familyTools } : {}), ...(turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
@@ -457,21 +461,7 @@ function createPersonaTurnHandler({
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
           signal: abort.signal, onWaiting: () => event('status', { phase: 'waiting_host' }), onActivity: activity => event('status', { phase: 'activity', activity }),
-          onStarted: async (key, runId) => {
-            if (entry.workId && runId) await conversationWorks.guardianStarted(entry.workId, key, runId, agentIdFor(turnSession));
-            if (runId) entry.auditContext = { ...entry.auditContext,
-              toolEvidence: { authority: backend === 'hermes' ? 'hermes' : `openclaw/${agentIdFor(turnSession)}`, sessionKey: key, runId } };
-            if (member || guardianSession) {
-              // The member's own native session; the conversation agent's key is never replaced.
-              const keys = { ...(session.agentSessionKeys || {}), [agentIdFor(turnSession)]: key };
-              await conversations.updateSession({ sessionId: session.sessionId }, { $set: { agentSessionKeys: keys } });
-              session.agentSessionKeys = keys;
-            } else {
-              await conversations.updateSession({ sessionId: session.sessionId }, { $set: { agentSessionKey: key } });
-              session.agentSessionKey = key;
-            }
-            turnSession.agentSessionKey = key;
-          },
+          onStarted: require('./persona-native-start').nativeTurnStarted({ entry, session, turnSession, member, guardianSession, backend, conversations, conversationWorks }),
           onSettled: () => { entry.executionSettled = true; },
           onDelta: delta => { entry.generated = (entry.generated + delta).slice(0, 5000); if (channels) channels.push(delta); else if (!isOpening && !sceneEnabled) event('delta', { delta }); }
         });
@@ -479,7 +469,8 @@ function createPersonaTurnHandler({
         const result = await run;
         serverPhases.executed = Date.now() - startedAt; serverPhases.agent = result.metadata?.phases;
         entry.executionSettled = true;
-        metadata = result.metadata; if (metadata?.routing?.degraded) { fallbackUsed = true; fallbackReason = `task_fallback_${metadata.routing.reason}`; } // #135 degraded fallback
+        metadata = result.metadata; if (metadata.primaryWorkId) adviceRefs = [...brainAdvice.refs, ...workAdvice.refs];
+        if (metadata?.routing?.degraded) { fallbackUsed = true; fallbackReason = `task_fallback_${metadata.routing.reason}`; } // #135 degraded fallback
         routeTier = ['openclaw', 'hermes'].includes(backend) ? 'agent' : 'router';
         continuity = result.tools?.authority === 'core.conversation-works' ? { status: 'accepted', source: 'core.conversation-works' }
           : backend === 'hermes' ? { status: 'ready', source: 'hermes', sessionKey: result.sessionKey }
@@ -647,7 +638,7 @@ function createPersonaTurnHandler({
       if (streaming) { if (isOpening || (sceneEnabled && !sceneProposal)) event('delta', { delta: replyText }); event('done', { data: resultPayload }); return res.end(); }
       return envelope(res, resultPayload);
     } catch (error) {
-      entry.error = abort.signal.aborted && !entry.dispatched ? null : error;
+      entry.error = abort.signal.aborted && (!entry.dispatched || entry.primaryDetached) ? null : error;
       if (entry.detached) {
         logger?.error?.('Household detached member turn failed', { error: error.message });
         memberWork.fail(req.params.sessionId, clientTurnId, error.message);
@@ -659,14 +650,14 @@ function createPersonaTurnHandler({
       return fail(res, error.statusCode || 502, error.message || 'Voice persona turn failed', error.code || 'VOICE_PERSONA_INFERENCE_FAILED');
     } finally {
       try {
-        if (entry.completion) { const error = await entry.completion; entry.error ||= error; }
+        if (entry.completion) { const error = await entry.completion; if (!entry.primaryDetached) entry.error ||= error; }
         if ((entry.workId || (isOpening ? entry.openingReserved : entry.interrupted || (sceneEnabled && entry.dispatched))) && entry.snapshot && !entry.auditWritten) {
           const reply = sceneEnabled ? entry.naturalReply || '' : plainReply(entry.channels ? entry.channels.end().say : entry.generated, 5000);
           entry.traceId = entry.workId ? clientTurnId : crypto.randomUUID();
           await conversations[entry.workId ? 'settleTurn' : 'recordTurn']({
             ...entry.snapshot, traceId: entry.traceId, clientTurnId, interrupted: entry.interrupted,
             ...(isLlmX ? { source: 'graphysx-llmx', origin: isOpening ? 'application_opening' : 'human', outcome: abort.signal.aborted ? 'cancelled' : 'failed', applicationEvent: entry.applicationEvent || null } : {}),
-            interruptionState: entry.error && !entry.executionSettled ? 'failed' : 'confirmed',
+            interruptionState: entry.primaryDetached ? '' : entry.error && !entry.executionSettled ? 'failed' : 'confirmed',
             channel: req.body?.channel === 'voice' ? 'voice' : 'text', inputText: userText, replyText: reply, ...(entry.channels?.end().display.length ? { display: replyChannels.storedDisplay(entry.channels.end().display) } : {}),
             attachments: entry.attachments,
             inputSha256: crypto.createHash('sha256').update(userText).digest('hex'),

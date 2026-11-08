@@ -81,6 +81,8 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
     const stopWaiting = interactivePriority.onWaiting(info => request.onWaiting?.(info));
     try {
       if (request.session?.ephemeral && request.backend !== 'agentx') throw Object.assign(new Error('This native engine cannot guarantee ephemeral memory and history.'), { code: 'CONVERSATION_EPHEMERAL_UNSUPPORTED', statusCode: 409 });
+      const primary = await require('./native-primary-turn').nativePrimaryReply(request);
+      if (primary) return primary;
       const accepted = await require('./native-work-acceptance').nativeWorkAcknowledgment(request);
       if (accepted) return accepted;
       if (personalRecaps && !request.session?.ephemeral && request.session?.packId === 'personal_operator' && request.conversationFeatures?.recapContext !== false) {

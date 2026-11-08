@@ -22,7 +22,6 @@ function createNativeResultReceiver({ repo, session, now, automaticSpeech }) {
     const receiptId = hash(attempt.id + '\n' + attempt.runId + '\nnative_answer');
     const noWork = row.mode === 'native' && answer.text.trim() === NO_WORK;
     const result = { kind: noWork ? 'no_work' : 'answer', text: noWork ? '' : answer.text.trim(), receiptIds: [receiptId] };
-    const speak = await automaticSpeech(row, evidence);
     const fingerprint = hash(JSON.stringify(result));
     const saved = await repo.mutate(id, async (current, fence) => {
       if (current.attempt?.id !== attempt.id || current.attempt.runId !== attempt.runId) throw notFound();
@@ -31,6 +30,8 @@ function createNativeResultReceiver({ repo, session, now, automaticSpeech }) {
         return null;
       }
       if (!['running', 'dispatching', 'uncertain'].includes(current.state)) throw notFound();
+      // Publication and foreground detachment share the same owner fence.
+      const speak = await automaticSpeech(current, evidence);
       return { fields: { state: 'result_ready', reason: '', tools: [...current.tools, {
         id: receiptId, tool: 'native.consultation', status: 'observed', runId: attempt.runId, at: now(),
         payloadRef: await repo.payload(current, evidence, fence) }],

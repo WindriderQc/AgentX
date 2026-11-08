@@ -20,7 +20,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     if (MODES.includes(env.PERSONAL_CONVERSATION_WORK_MODE)) throw new Error('Core conversation work capability unavailable');
     return null;
   }
-  const works = capability.create({ conversations, tasks, env, classify: requestsTaskCheck,
+  const works = capability.create({ conversations, tasks, env, classify: requestsTaskCheck, nativePrimary: true,
     presentResult: async (result, row) => {
       const turn = await conversations.getTurn({ sessionId: row.sessionId, packId: 'personal_operator', scopeId: 'personal', traceId: row.turnId });
       const language = turn?.speechLanguage || require('./persona-prompt').spokenReplyLanguage(result.text, turn?.inputText || '');
@@ -58,6 +58,8 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     execute: async ({ row, onStarted, ...request }) => agentClient({ ...request, onStarted }) });
   if (env.PERSONAL_CONVERSATION_WORK_AGENT_ID && env.PERSONAL_CONVERSATION_WORK_TOKEN
       && env.OPENCLAW_GATEWAY_URL && process.env.NODE_ENV !== 'test') observer.start();
-  return { ...works, observer, guardianInstructions: env.PERSONAL_CONVERSATION_WORK_MODE === 'native' ? NATIVE_GUARDIAN : GUARDIAN };
+  const primary = require('../../src/services/conversationWorks/primary-foreground').createPrimaryForeground(works, observer);
+  return { ...works, observer, primaryReply: primary.reply,
+    guardianInstructions: env.PERSONAL_CONVERSATION_WORK_MODE === 'native' ? NATIVE_GUARDIAN : GUARDIAN };
 }
 module.exports = { registerWorkRuntime, GUARDIAN, WORKER };

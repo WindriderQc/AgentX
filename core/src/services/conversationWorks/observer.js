@@ -18,6 +18,7 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
   agentFor = () => env.PERSONAL_CONVERSATION_WORK_AGENT_ID, env = process.env, logger, intervalMs = 1000, now = Date.now }) {
   let running = false, timer, closed = false;
   let recoverAfter = 0, recoverDelay = 30000;
+  let passWorkId, passSettled = Promise.resolve();
   const gate = () => mongoose.connection.collection('conversation_work_dispatch');
   const clear = (id, processId) => gate().updateOne({ _id: OWNER, workId: id, ...(processId && { processId }) }, { $set: { workId: null },
     $unset: { claimedAt: '', processId: '', phase: '', attempt: '' } }, acknowledged);
@@ -144,6 +145,8 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
   async function tick() {
     if (closed || running || mongoose.connection.readyState !== 1) return;
     running = true;
+    let settlePass;
+    passWorkId = null; passSettled = new Promise(resolve => { settlePass = resolve; });
     try {
       if (now() >= recoverAfter) {
         try {
@@ -161,15 +164,16 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
       }
       const occupied = await gate().findOne({ _id: OWNER });
       if (occupied?.workId) {
+        passWorkId = occupied.workId;
         const row = await works.repo.getIncludingErased(occupied.workId);
         if (['preparing', 'abandoned'].includes(occupied.phase)) await recoverPreparation(occupied, row);
         else if (row) await reconcile(row);
         return;
       }
       const row = await selectQueuedWork(works.repo, { now: now(), lastClassification: occupied?.lastClassification });
-      if (row) await run(row);
+      if (row) { passWorkId = row._id; await run(row); }
     } catch (cause) { logger?.warn?.('Conversation work observer unavailable', { code: cause.code || 'WORK_OBSERVER_UNAVAILABLE' }); }
-    finally { running = false; }
+    finally { running = false; settlePass(); }
   }
   function start() {
     if (timer || closed) return;
@@ -178,6 +182,6 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
     void tick();
   }
   function stop() { closed = true; clearInterval(timer); works.wakeWith(() => {}); }
-  return { start, stop, tick, reconcile };
+  return { start, stop, tick, reconcile, settled: id => passWorkId === id ? passSettled : Promise.resolve() };
 }
 module.exports = { createWorkObserver };
