@@ -1238,8 +1238,10 @@ https image directly without a referrer). Household photos and media need both a
 read-only mount and the Data file index: `HOUSEHOLD_PHOTOS_DIR` /
 `HOUSEHOLD_MEDIA_DIR` are the host folders mounted at `/mnt/household/<source>`,
 and `HOUSEHOLD_IMAGE_ROOTS_JSON` maps each source to the canonical root Data
-indexes for it. A picture is found by file or folder name, so named folders work
-better than camera names. `HOUSEHOLD_IMAGE_FAMILY_SOURCES` lists what Famille may
+indexes for it. A picture is found by file or folder name; Data filters the
+servable image extensions before its 25-result limit, so videos cannot hide a
+photo in the same album. Named folders work better than camera names.
+`HOUSEHOLD_IMAGE_FAMILY_SOURCES` lists what Famille may
 show (default all four). A picture the OpenClaw agent generates with its own image
 tool (cited in its reply as `MEDIA:<path>`) is relayed from the Nestor plugin's
 gateway route `/api/nestor/media`, which serves only image files inside OpenClaw's

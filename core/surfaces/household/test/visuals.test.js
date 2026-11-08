@@ -115,6 +115,7 @@ test('a household photo is found by name under its root and served only from the
   assert.equal(calls[0].route, '/api/v1/storage/files/browse');
   assert.equal(calls[0].query.get('root'), '/mnt/indexed/photos');
   assert.equal(calls[0].query.get('includeDirname'), 'true');
+  assert.equal(calls[0].query.get('extensions'), 'jpg,jpeg,png,gif,webp');
   assert.deepEqual(calls.map(call => call.query.get('search')), ['notre cabane dans l’arbre', 'cabane']);
 
   const ok = await served(visuals, { source: 'photos', path: 'Vacances 2024/cabane.jpg' }, true);

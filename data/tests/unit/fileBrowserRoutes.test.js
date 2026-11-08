@@ -124,6 +124,41 @@ describe('File Browser Routes', () => {
       expect(res.body.data.files).toHaveLength(0);
     });
 
+    test('filters several extensions before pagination and preserves category, root and folder search', async () => {
+      const app = buildApp();
+      await request(app).get('/api/v1/storage/files/browse').query({
+        root: '/mnt/photos', category: 'media', search: 'Camping (Rivière)',
+        includeDirname: 'true', extensions: ' JPG, jpeg,png,jpg ', limit: 25
+      }).expect(200);
+      const files = app.locals.db.collection('nas_files');
+      const filter = files.find.mock.calls[0][0];
+      expect(filter).toMatchObject({ category: 'media', ext: { $in: ['jpg', 'jpeg', 'png'] } });
+      expect(new RegExp(filter.path.$regex).test('/mnt/photos/album/a.jpg')).toBe(true);
+      expect(new RegExp(filter.path.$regex).test('/mnt/photos-private/album/a.jpg')).toBe(false);
+      expect(filter.$and[0].$or).toHaveLength(2);
+      expect(files.countDocuments).toHaveBeenCalledWith(filter);
+    });
+
+    test('the existing exact extension remains an intersecting constraint', async () => {
+      const app = buildApp();
+      await request(app).get('/api/v1/storage/files/browse').query({ ext: 'pdf', extensions: 'jpg,png' }).expect(200);
+      expect(app.locals.db.collection('nas_files').find.mock.calls[0][0])
+        .toMatchObject({ ext: 'pdf', $and: [{ ext: { $in: ['jpg', 'png'] } }] });
+    });
+
+    test.each(['', 'jpg,', '.*', '../jpg', 'a'.repeat(17), Array(21).fill('jpg').join(','), 'a'.repeat(340)])(
+      'rejects malformed or excessive extension lists: %s', async extensions => {
+        const app = buildApp();
+        await request(app).get('/api/v1/storage/files/browse').query({ extensions }).expect(400);
+        expect(app.locals.db.collection('nas_files').find).not.toHaveBeenCalled();
+      }
+    );
+
+    test('rejects structured extension query values', async () => {
+      await request(buildApp()).get('/api/v1/storage/files/browse?extensions[ext]=jpg').expect(400);
+      await request(buildApp()).get('/api/v1/storage/files/browse?extensions=jpg&extensions=png').expect(400);
+    });
+
     test('searches folder names only when requested and keeps root and hash filters', async () => {
       const app = buildApp();
       const query = { root: '/mnt/photos', category: 'media', search: 'Camping (Rivière)', hasHash: 'false' };

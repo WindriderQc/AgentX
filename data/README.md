@@ -44,6 +44,15 @@ a bounded file-name search and GPU status
 ([operations](../docs/OPERATIONS.md)). They use the `GET` storage and hardware
 routes below and change nothing here.
 
+`GET /api/v1/storage/files/browse` accepts an optional `extensions` filter:
+1–20 comma-separated alphanumeric extensions, each 1–16 characters, with no dot
+(for example `jpg,jpeg,png,gif,webp`). Case and surrounding whitespace are
+normalized. The filter intersects existing filters and applies before sorting,
+counting and pagination. Without it, browse keeps its existing behavior.
+Household requests only the image formats it can serve, so newer videos in an
+album do not fill its 25-candidate window. It still searches file and folder
+names in the same inventory; no image content or EXIF is indexed.
+
 Enable Compose profile `data` when needed. Data does not read `AGENTX_PROFILE`:
 it starts in either profile and reads only its own collections of the shared
 database, and its database browser lists only its allowlisted collections. Core uses `DATAAPI_BASE_URL`; the
