@@ -12,6 +12,39 @@ Core owns acceptance, complete requests, execution metadata, verified task reads
 structured results and presentation receipts. OpenClaw owns the native agent/tool
 loop. Polling the browser projection never starts inference.
 
+### Relay attribution in Main's context
+
+The complete canonical context labels a received dedicated guardian reply with
+`replyAttribution.role=relay` only when its accepted work/request fingerprint,
+guardian session/run, completed guardian state and observed native turn receipt
+match. The label retains the work, agent, native session and run identities.
+Historical turns without this proof have `role=unknown`; a model name, declared
+speaker, browser field, missing receipt or uncertain settlement cannot establish
+a relay. Received native Main results have `workResults.attribution.role=leading`
+when their exact completed native evidence matches. The original human request,
+guardian reply, result, tool evidence and presentation receipts remain separate.
+
+Initial Main preparation and its host-bound context refresh use this same
+projection, including relay turns received while Main works. A reconnect reads
+the original work and native identities. Attribution grants no tool access,
+consent, new request or authority to replay work. Main keeps its native tools,
+memory and permission contracts; uncertain executions retain their existing
+dispatch fence. The complete projection still counts toward the declared context
+budget, and conversation erasure revokes it with the original content.
+
+Main's instructions ask it to review relevant relay replies and explicitly name
+any necessary correction in its returned answer. Core retains that answer beside
+the original relay text, through the existing result delivery. Supplying context
+or requesting review does not prove that a review occurred or that its result was
+displayed or spoken. Those observations retain their own receipts.
+
+This attribution applies to the optional existing personal OpenClaw guardian/Main
+path. That path remains guardian-first; attribution does not implement the
+Nestor-first temporary relay for Family or Hermes tracked in
+[issue #1266](https://github.com/WindriderQc/AgentX/issues/1266). Family remains
+excluded from personal work and the owner bus. The guardian remains tool-free;
+attribution changes no runtime, model, route, worker or tool allowlist.
+
 When the native dispatch owner is free, queued awaited work precedes queued
 background reviews. A native review whose guardian has explicitly completed and
 answered waits for 30 seconds of quiet after its own preparation/settlement and

@@ -10,6 +10,7 @@ const { shareToolEvidence } = require('../conversations/sharedToolEvidence');
 const { referenceEarlierToolEvidence } = require('../conversations/toolEvidenceReferences');
 const { resolveProfile } = require('./performance');
 const { isNativeToolCallId } = require('../../../../shared/nativeToolCallId.cjs');
+const { replyAttribution, resultAttribution } = require('./relay-context');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
   nativeBudget = () => null, nativeForeground = () => true, nativeTaskRead = () => false, guardianNeedsMain = () => false,
@@ -167,12 +168,16 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     await session(sessionId);
     const conversation = await readTurnContext(conversations, query(sessionId));
     const turns = new Map(conversation.turns.map(turn => [turn.turnId, turn]));
+    for (const turn of turns.values()) turn.replyAttribution = { role: 'unknown' };
     // Published background answers are part of Nestor's dialogue even though
     // they do not replace the guardian's immutable assistant slot. No UI or
     // guardian-feedback window limits this trusted context read (Mongo limit 0).
-    const rows = await repo.find({ sessionId, 'result.version': { $exists: true }, 'result.kind': { $ne: 'no_work' } }, 0);
+    const rows = await repo.find({ sessionId }, 0);
+    let workResultCount = 0;
     for (const row of rows) {
       const turn = turns.get(row.turnId);
+      if (turn) turn.replyAttribution = replyAttribution(row, turn);
+      if (!row.result?.version || row.result.kind === 'no_work') continue;
       if (!turn) throw fail('CONVERSATION_WORK_CONTEXT_UNAVAILABLE', 'A background answer has no canonical conversation turn.', 503);
       const result = await repo.read(row, row.result.payloadRef);
       const evidence = [];
@@ -180,11 +185,13 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
         runId: tool.runId, data: await repo.read(row, tool.payloadRef) });
       (turn.workResults ||= []).push({ authority: 'core.conversation-works', workId: row._id,
         version: row.result.version, publishedAt: row.result.publishedAt, kind: result.kind, text: result.text,
+        attribution: resultAttribution(row, evidence),
         receiptIds: result.receiptIds, toolEvidence: evidence,
         presentation: { state: row.delivery?.state || 'unknown',
           receipts: (row.delivery?.receipts || []).map(({ stage, at }) => ({ stage, at })) } });
+      workResultCount++;
     }
-    conversation.coverage.workResultCount = rows.length;
+    conversation.coverage.workResultCount = workResultCount;
     return conversation;
   }
   // Read-only recall of one earlier evidence value, limited to the caller's own
