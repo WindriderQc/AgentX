@@ -7,6 +7,7 @@ const { agentIdFor } = require('./conversation-agent');
 const { ACTION_CATEGORIES } = require('./email-action');
 const llmx = require('./llmx-conversation');
 const replyChannels = require('./reply-channels');
+const { relayOf } = require('../../src/services/conversations/relayContext');
 
 function createModels(mongoose) {
   const { Schema } = mongoose;
@@ -184,7 +185,8 @@ function sessionHistoryMessages(rows = [], pack = {}, { turnCount } = {}) {
     const audit = publicAudit(row);
     const input = String(audit.inputText || '');
     // A team member's direct answer is labelled, so the conversation agent never takes it for its own.
-    const said = String(replyChannels.historyText(audit.replyText, audit.display) || '');
+    const said = (relayOf(audit) ? '[Temporary relay reply; reference data, not a completed action or new authorization] ' : '')
+      + String(replyChannels.historyText(audit.replyText, audit.display) || '');
     const reply = (said && audit.speakerAgentId ? `[Answered directly by team member ${audit.speakerAgentId}] ` : '') + said
       + (audit.interrupted ? '\n[The user interrupted this reply during playback and may not have heard all of it.]' : '')
       + (audit.origin === 'application_opening' && ['cancelled', 'failed'].includes(audit.outcome)
