@@ -38,6 +38,7 @@ async function harness({ hosts = [ENV_HOST, CPU_HOST], respond = async () => ({ 
   const inflight = control({ dataset: { hostId: 'frank-cpu' }, value: '8' });
   const removeButton = control({ dataset: { hostId: 'frank-cpu' } });
   const pauseButton = control({ dataset: { hostId: 'primary', action: 'pause', revision: '0' } });
+  const liveSlot = control({ dataset: { hostId: 'primary' }, innerHTML: '', querySelector: () => null });
   const body = {
     innerHTML: '',
     querySelectorAll: selector => ({ '.nc-host-inflight': [inflight], '.nc-host-remove': [removeButton], '.nc-host-control': [pauseButton] }[selector] || []),
@@ -53,7 +54,8 @@ async function harness({ hosts = [ENV_HOST, CPU_HOST], respond = async () => ({ 
   };
   const document = {
     readyState: 'loading', addEventListener() {},
-    getElementById: id => (id === 'sectionHostsBody' ? body : id === 'nc-hosts-summary' ? summary : null)
+    getElementById: id => (id === 'sectionHostsBody' ? body : id === 'nc-hosts-summary' ? summary : null),
+    querySelectorAll: selector => selector === '.nc-live-host-control' ? [liveSlot] : []
   };
   class FormData {
     constructor(target) { this.target = target; }
@@ -62,10 +64,26 @@ async function harness({ hosts = [ENV_HOST, CPU_HOST], respond = async () => ({ 
   vm.runInNewContext(source, { window, document, FormData });
   await window.NerveCenterHosts.loadHosts();
   const lists = () => fetchJson.mock.calls.filter(([, options]) => !options).length;
-  return { body, summary, status, submitButton, form, inflight, removeButton, pauseButton, fetchJson, loadCluster, lists, window };
+  return { body, summary, status, submitButton, form, inflight, removeButton, pauseButton, liveSlot, fetchJson, loadCluster, lists, window };
 }
 
 describe('Nerve Center inference hosts UI', () => {
+  it.each([false, true])('ignores a delayed pre-Pause live read (failed: %s)', async failed => {
+    const h = await harness();
+    let resolve, reject;
+    h.fetchJson.mockImplementationOnce(() => new Promise((yes, no) => { resolve = yes; reject = no; }));
+    const oldRead = h.window.NerveCenterHosts.refreshLiveControls({ reload: true });
+    const paused = { state: 'paused', revision: 1, blockers: [] };
+    h.fetchJson.mockImplementation(async (_url, options) => options ? { data: { control: paused } }
+      : { data: { hosts: [{ ...ENV_HOST, control: paused }] } });
+    await h.pauseButton.listeners.click();
+    if (failed) reject(new Error('older refresh failed'));
+    else resolve({ data: { hosts: [ENV_HOST] } });
+    await oldRead;
+    expect(h.liveSlot.innerHTML).toContain('Paused — manual use');
+    expect(h.liveSlot.innerHTML).not.toContain('AgentX in control');
+    expect(h.liveSlot.textContent).not.toBe('AgentX control unavailable');
+  });
   it('sends a revisioned Pause request and reuses its identity after a lost response', async () => {
     const h = await harness({ respond: async () => { throw new Error('response lost'); } });
     await h.pauseButton.listeners.click();

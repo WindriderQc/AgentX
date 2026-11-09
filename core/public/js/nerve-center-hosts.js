@@ -20,6 +20,27 @@
     let drainRefresh = null;
     const requests = new Map();
     let listedHosts = [];
+    let hostReadVersion = 0;
+    let changingControl = false;
+
+    async function readHosts() {
+        const version = ++hostReadVersion;
+        try {
+            const json = await shared.fetchJson(API);
+            if (version !== hostReadVersion) return null;
+            listedHosts = json.data?.hosts || [];
+            return listedHosts;
+        } catch (error) {
+            if (version !== hostReadVersion) return null;
+            listedHosts = [];
+            throw error;
+        }
+    }
+
+    function scheduleDrainRefresh() {
+        window.clearTimeout(drainRefresh);
+        if (listedHosts.some(host => host.control?.state === 'draining')) drainRefresh = window.setTimeout(loadHosts, 3000);
+    }
 
     function controlCell(host, tag = 'td') {
         const state = host.control?.state;
@@ -37,7 +58,8 @@
 
     async function refreshLiveControls({ reload = false } = {}) {
         if (reload) {
-            try { listedHosts = (await shared.fetchJson(API)).data.hosts; }
+            if (changingControl) return;
+            try { if (!(await readHosts())) return; scheduleDrainRefresh(); }
             catch { listedHosts = []; }
         }
         document.querySelectorAll?.('.nc-live-host-control').forEach(slot => {
@@ -50,10 +72,13 @@
     }
 
     async function changeControl(button) {
+        if (changingControl) return;
         const { hostId, action, revision } = button.dataset;
         const key = `${hostId}:${action}:${revision}`;
         if (!requests.has(key)) requests.set(key, { action, expectedRevision: Number(revision), requestId: window.crypto.randomUUID() });
         button.disabled = true;
+        changingControl = true;
+        hostReadVersion++;
         try {
             const json = await shared.fetchJson(`${API}/${encodeURIComponent(hostId)}/control`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requests.get(key))
@@ -64,6 +89,8 @@
                 : action === 'pause' ? 'Paused until Play. You can use the machine directly.' : 'AgentX has control again. Saved pins resume through the reconciler.' };
         } catch (err) {
             notice = { tone: 'error', text: `Control outcome needs checking: ${err.message}. The list below reads the saved state.` };
+        } finally {
+            changingControl = false;
         }
         return refreshAll();
     }
@@ -202,14 +229,14 @@
     }
 
     async function loadHosts() {
+        if (changingControl) return;
         window.clearTimeout(drainRefresh);
         const body = document.getElementById('sectionHostsBody');
         if (!body) return;
         shared.trackSectionFocus?.(body);
         try {
-            const json = await shared.fetchJson(API);
-            const hosts = json.data?.hosts || [];
-            listedHosts = hosts;
+            const hosts = await readHosts();
+            if (!hosts) return;
             body.innerHTML = `<p class="nc-section-note">Pause gives you every CPU/GPU lane of the machine for direct use. Wait for “Paused — manual use”. AgentX resumes only when you press Play; stop your direct test first. Resident models stay loaded until you change them.</p>
                 <div class="nc-hosts"><table class="nc-table nc-hosts-table">
                     <thead><tr><th scope="col">Host</th><th scope="col">Address</th><th scope="col">Residency</th><th scope="col">Concurrent requests</th><th scope="col">AgentX control</th><th scope="col" aria-label="Actions"></th></tr></thead>
@@ -221,7 +248,7 @@
             attach(body);
             refreshLiveControls();
             shared.restoreSectionFocus?.(body);
-            if (hosts.some(host => host.control?.state === 'draining')) drainRefresh = window.setTimeout(loadHosts, 3000);
+            scheduleDrainRefresh();
         } catch (err) {
             listedHosts = [];
             refreshLiveControls();

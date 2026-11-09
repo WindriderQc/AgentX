@@ -301,6 +301,9 @@ read the host state and retry only the same intent/identity/revision. A stale
 revision returns 409 rather than undoing another control change. Existing
 proof-bound workloads finish before the host becomes paused. Host runtime
 mutations also wait; a Core-only recreate preserves the durable pause fence.
+Play releases the stored pause even after physical resource configuration drift;
+it preserves existing admissions, quarantine and their resource mapping. Normal
+admission still requires valid configuration and native owner reconciliation.
 
 In **Pins and models**, each endpoint distinguishes **Ollama reachable** from
 the residency of its configured pins:

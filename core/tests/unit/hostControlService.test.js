@@ -127,6 +127,25 @@ describe('host Pause/Play with real runtime coordination', () => {
       failure: { cause: 'runtime_resource_configuration_changed' } });
   });
 
+  test.each(['[]', 'invalid-config'])('Play releases only its stored fence after mapping drift: %s', async mapping => {
+    await pause();
+    const active = await inference(B, 'other-machine');
+    const before = await RuntimeCoordination.findById('runtime').lean();
+    process.env.AGENTX_RUNTIME_RESOURCES_JSON = mapping;
+    expect(await play()).toMatchObject({ state: 'playing', revision: 2 });
+    expect(await play()).toMatchObject({ state: 'playing', revision: 2 });
+    const after = await RuntimeCoordination.findById('runtime').lean();
+    expect(after.resourceTopologyHash).toBe(before.resourceTopologyHash);
+    expect(after.inferences[0].admissionId).toBe(active.admissionId);
+    expect(after.inferences).toHaveLength(1);
+  });
+
+  test('an active fence takes precedence over historical overlapping control records', () => {
+    const history = { active: false, hostnames: ['machine-a.test'], resourceIds: [] };
+    const active = { active: true, hostnames: ['machine-a.test'], resourceIds: [] };
+    expect(fence.matchingControl([history, active], [A])).toBe(active);
+  });
+
   test('multiple machines pause independently and a host lease on another machine still works', async () => {
     await pause();
     await pause('b', 0, 'pause-b');

@@ -17,10 +17,15 @@ function fail(message, code = 'HOST_CONTROL_CONFLICT', statusCode = 409) {
 
 // Include every configured lane of a machine, and aliases connected by physical
 // resources. Recompute transitively: a pooled endpoint may use several devices.
-function hostGroup(hostId) {
+function hostGroup(hostId, { controls, release = false } = {}) {
   const configured = getConfiguredHosts();
   const target = configured.find(host => host.id === hostId);
   if (!target) fail('Unknown inference host.', 'HOST_NOT_FOUND', 404);
+  if (release) {
+    const held = matchingControl(controls, [target.url]);
+    return { hosts: held?.hosts || [target.url], hostnames: held?.hostnames || [hostname(target.url)],
+      resourceIds: held?.resourceIds || [], topology: null };
+  }
   const topology = resourceTopology();
   const hosts = new Set([target.url]);
   let previous;
@@ -86,17 +91,18 @@ async function changeHostControl(hostId, body = {}) {
     || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
     fail('action, requestId and a non-negative expectedRevision are required.', 'HOST_CONTROL_INVALID', 400);
   }
-  const group = hostGroup(hostId);
   await ensureDocument();
   const state = await RuntimeCoordination.findById('runtime').lean();
+  const group = hostGroup(hostId, { controls: state.hostControls, release: action === 'play' });
   const current = matchingControl(state.hostControls, group.hosts, group.resourceIds);
   if (current?.requestId === requestId) {
     if (current.action !== action || current.revision !== expectedRevision + 1) fail('Request identity already has another intent.');
-    return (await listHostControls([{ id: hostId, url: group.hosts[0] }]))[0].control;
+    const { state: fresh, preferences } = await readControls();
+    return projectControl(fresh.hostControls.find(row => row.key === current.key), fresh, preferences);
   }
   if ((current?.revision || 0) !== expectedRevision) fail('Host control changed. Refresh before trying again.');
   if (Boolean(current?.active) === (action === 'pause')) fail('Host is already in the requested state.');
-  if (!topologyMatches(state, group.topology)) fail('Physical resource mapping changed while work remains held.');
+  if (action === 'pause' && !topologyMatches(state, group.topology)) fail('Physical resource mapping changed while work remains held.');
   // A retained request identity cannot be reused on another host.
   if ((state.hostControls || []).some(row => row.requestId === requestId)) fail('Request identity already belongs to another host.');
   const next = { key: current?.key || crypto.randomUUID(), pauseId: action === 'pause' ? crypto.randomUUID() : current.pauseId,
@@ -106,10 +112,10 @@ async function changeHostControl(hostId, body = {}) {
   // Pause stores only a dispatch fence: it neither unloads a model nor cancels
   // another owner. Existing proof-bound work drains through its native owner.
   const updated = await RuntimeCoordination.findOneAndUpdate({
-    _id: 'runtime', ...topologyGuard(group.topology),
+    _id: 'runtime', ...(action === 'pause' ? topologyGuard(group.topology) : {}),
     hostControls: state.hostControls || { $exists: false }
   }, { $set: { hostControls: [...(state.hostControls || []).filter(row => row.key !== next.key), next],
-    resourceTopologyHash: group.topology.hash } }, { new: true }).lean();
+    ...(action === 'pause' ? { resourceTopologyHash: group.topology.hash } : {}) } }, { new: true }).lean();
   if (!updated) fail('Host control changed. Refresh to reconcile the original request.');
   if (action === 'play') require('./hostHealthDaemon').requestReconcile();
   const { state: fresh, preferences } = await readControls();

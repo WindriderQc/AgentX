@@ -8,9 +8,10 @@ function hostname(host) {
 
 function matchingControl(controls, hosts, resourceIds = []) {
   const names = hosts.map(hostname).filter(Boolean);
-  return (controls || []).find(item =>
+  const matches = (controls || []).filter(item =>
     (item.hostnames || []).some(name => names.includes(name))
     || (item.resourceIds || []).some(id => resourceIds.includes(id)));
+  return matches.find(item => item.active) || matches[0];
 }
 
 function pausedControl(controls, hosts, resourceIds = []) {
