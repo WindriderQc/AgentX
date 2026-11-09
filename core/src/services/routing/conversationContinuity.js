@@ -70,10 +70,10 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
     try {
       target = options.taskRoute ? snapshot.tasks?.[request.taskType] : resolvePrincipalAlias(snapshot, request.model) || target;
       if (options.taskRoute) {
-        const principal = resolvePrincipalAlias(snapshot, PRINCIPAL_MODEL_ALIAS);
-        if (!target?.pinAligned || !(target.contextSize > 0) || !target.hostUrl
-            || (!policy.models.includes(target.model) && !(policy.models.includes(PRINCIPAL_MODEL_ALIAS)
-              && target.model === principal.model && hostUrlKey(target.hostUrl) === hostUrlKey(principal.hostUrl)))) return null;
+        // In this trusted surface path the selected task is Family's principal.
+        // Its pinned route does not depend on the adult daily_operator route.
+        if (!target?.model || !target.pinAligned || !(target.contextSize > 0) || !target.hostUrl
+            || (!policy.models.includes(target.model) && !policy.models.includes(PRINCIPAL_MODEL_ALIAS))) return null;
         target = { ...target, numCtx: target.contextSize };
       }
       if (!target) {

@@ -69,7 +69,7 @@ async function fixture(backend = 'hermes', enabled = true) {
   });
   const continuity = createConversationContinuity({ execute: local, readPolicy: () => JSON.stringify({ hosts: ['guardian'] }),
     readSnapshot: async () => ({ hosts: { primary: PRIMARY, guardian: GUARDIAN }, tasks: Object.fromEntries(
-      ['daily_operator', 'voice_persona_chat', 'nestor_answer_light'].map(name => [name,
+      ['daily_operator', 'voice_persona_chat', 'nestor_answer_light'].filter(name => !state.familyOnly || name !== 'daily_operator').map(name => [name,
         { model: 'synthetic-main', hostUrl: PRIMARY, pinAligned: true, contextSize: 32768 }])) }),
     deps: { hostPreferenceService: { getByHost: async () => ({ pinnedModels: state.backup ? [{ model: 'synthetic-guardian', contextSize: 8192 }] : [] }) },
       assertHostAvailableForConsumer: async () => {}, modelsMatch: (a, b) => a === b,
@@ -367,4 +367,14 @@ test('a partial Hermes terminal receipt remains unconfirmed and never admits a r
   expect(history.body.data.turns[0].outcome).toBe('pending');
   await world.send('Nouvelle question.').expect(502);
   expect(world.state.runs).toHaveLength(0); expect(world.state.inference).toHaveLength(0);
+});
+
+test('Family remains usable with a valid family-only route and no personal daily_operator', async () => {
+  world = await fixture('agentx'); world.state.familyOnly = true; world.state.busy = false;
+  const primary = await world.send('Explique les nuages.').expect(200);
+  expect(done(primary).reply.text).toBe('Réponse du principal.');
+  world.state.busy = true;
+  const backup = await world.send('Et la pluie ?').expect(200);
+  expect(done(backup).tools.conversationRelay).toMatchObject({ role: 'relay', completed: true });
+  expect(world.state.inference.map(input => input.model)).toEqual(['synthetic-main', 'synthetic-main', 'synthetic-guardian']);
 });

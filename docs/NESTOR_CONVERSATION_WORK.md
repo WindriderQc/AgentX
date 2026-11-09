@@ -134,6 +134,7 @@ changes no pin, model context, route or installed agent permission. This mode is
 independent of the optional second-brain/reviewer scheduling preferences.
 
 Family first tries its exact configured voice/text task route and pinned context.
+It does not require the personal `daily_operator` route to exist.
 Its atomic exclusive admission treats an already active shared inference as an
 occupied lane. Only a pre-dispatch refusal with an active native holder permits
 a tool-free guardian reply; queue labels, expired ownership, quarantine and
