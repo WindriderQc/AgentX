@@ -278,6 +278,33 @@ host, then where to change it:
 - **Diagnostics**, behind **Show diagnostics**: platform signals, routing,
   inference health, embeddings, alert rules, configuration, RAG and performance.
 
+Each main machine card and **Inference endpoints** offers **Pause / Play** for
+AgentX host control. Pause fences all lanes on that machine, including configured
+physical aliases. **Draining** means existing inference, workloads, maintenance
+or session owners still need to finish; only **Paused — manual use** means Core
+has no remaining owner on the machine. Core refuses new inference and workloads,
+and the pin reconciler and watchdog leave its runtime alone. Other machines
+continue serving. Pause does not unload resident models or stop Ollama.
+
+Pause persists across Core restarts until **Play**; no timer gives control back
+in the middle of a direct test. Stop the direct test before pressing Play. Core
+then resumes its saved pin policy through the reconciler. Unknown operations
+remain with their native recovery owner; neither control clears quarantine.
+The heavy-work queue continues to govern direct shared-compute tests.
+
+The existing private LAN API exposes the same state on
+`GET /api/nerve-center/inference-hosts` (`hosts[].control`) and accepts
+`POST /api/nerve-center/inference-hosts/:hostId/control` with
+`{ "action": "pause", "requestId": "<stable-id>", "expectedRevision": 0 }`.
+Use `play` with the revision just read to return control. After a lost response,
+read the host state and retry only the same intent/identity/revision. A stale
+revision returns 409 rather than undoing another control change. Existing
+proof-bound workloads finish before the host becomes paused. Host runtime
+mutations also wait; a Core-only recreate preserves the durable pause fence.
+Play releases the stored pause even after physical resource configuration drift;
+it preserves existing admissions, quarantine and their resource mapping. Normal
+admission still requires valid configuration and native owner reconciliation.
+
 In **Pins and models**, each endpoint distinguishes **Ollama reachable** from
 the residency of its configured pins:
 

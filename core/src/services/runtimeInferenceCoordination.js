@@ -7,6 +7,7 @@ const { WORKLOAD_INFERENCE_MAINTENANCE_FILTER, fencesHost, maintenanceAdmitsHost
 const { clean, ttlMs, secret, canonicalHost, reapExpired } = require('./runtimeCoordinationState');
 const { buildInferenceResidencySpec, buildInferenceResidencyKey } = require('./runtimeInferenceResidency');
 const { modelIdentityKey } = require('../../../shared/modelNames');
+const { admitsHosts } = require('./hostControlFence');
 
 // Several models may run on one host at once. The same model under another
 // residency (context, runner options, keep-alive) would make Ollama reload it
@@ -130,6 +131,7 @@ async function acquireInference({
       { yieldedAt: null, sharedHosts: { $ne: host } }, { drainingHosts: host, sharedHosts: { $ne: host } }] }) }] : [];
   const ordinaryFilter = {
     _id: 'runtime',
+    ...admitsHosts([host], resourceIds),
     ...topologyGuard(topology),
     ...maintenanceAdmitsHost(host, resourceIds),
     inferences: { $not: { $elemMatch: {

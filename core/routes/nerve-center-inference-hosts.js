@@ -14,6 +14,7 @@ const registry = require('../src/services/inferenceHostRegistry');
 const { requireTypedConfirmation } = require('../src/helpers/typedConfirmation');
 
 const router = express.Router();
+router.use(require('./nerve-center-host-control'));
 
 function fail(res, error) {
   if (error instanceof registry.RegistryError) {
@@ -27,7 +28,9 @@ function fail(res, error) {
 
 router.get('/inference-hosts', async (req, res) => {
   try {
-    return res.json({ status: 'success', data: { hosts: await registry.list() } });
+    const hosts = await require('../src/services/hostControlService').listHostControls(await registry.list());
+    res.set('Cache-Control', 'no-store');
+    return res.json({ status: 'success', data: { hosts } });
   } catch (error) {
     return fail(res, error);
   }

@@ -4,6 +4,7 @@ const { overlaps } = require('./runtimePhysicalResources');
 const { fencesHost } = require('./runtimeDeployGate');
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const { describeFailure } = require('../../../shared/failureDiagnostics');
+const { pausedControl } = require('./hostControlFence');
 
 function clean(value, max = 160) {
   const text = typeof value === 'string' ? value.trim() : '';
@@ -38,6 +39,9 @@ function holderOf(type, item) {
 function inferenceConflict(state, request, now) {
   const failure = (cause, retryable = false, holder = null) => ({ cause, retryable, safeToRetry: true,
     retryAfterMs: retryable ? 2000 : null, holder, diagnostic: describeFailure(cause) });
+  if (!request.workloadAdmissionId && pausedControl(state?.hostControls, [request.host], request.resourceIds)) {
+    return failure('host_control_paused', false, { type: 'operator', kind: 'manual-use' });
+  }
   if (state?.maintenance && fencesHost(state.maintenance, request.host, request.resourceIds || [])) {
     const unknown = state.maintenance.state === 'UNKNOWN';
     // A topology switch (#360) drains its host group: say so, not "maintenance".

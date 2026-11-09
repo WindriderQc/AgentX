@@ -326,6 +326,8 @@ select.nc-input { cursor: pointer; }
 
 .nc-hosts-table tbody td { padding: 10px 14px; }
 .nc-hosts-table tbody tr:last-child { border-bottom: 0; }
+.nc-host-control-cell { min-width: 150px; }
+.nc-host-control-cell > span, .nc-host-control-cell > small { display: block; margin-bottom: 6px; white-space: normal; }
 
 .nc-hosts-name {
     display: flex;
@@ -387,7 +389,7 @@ select.nc-input { cursor: pointer; }
 
 /* ── Responsive ───────────────────────────────────────────────── */
 
-/* Below the width a five-column table needs, each host is one block: name
+/* Below the width a six-column table needs, each host is one block: name
    and address on the left, its controls on the right. */
 @media (max-width: 1000px) {
     .nc-section-body .nc-hosts-table {
@@ -424,6 +426,7 @@ select.nc-input { cursor: pointer; }
 
     .nc-hosts-table tbody td:nth-child(1) { grid-area: 1 / 1; }
     .nc-hosts-table tbody td:nth-child(2) { grid-area: 2 / 1; }
+    .nc-hosts-table tbody td.nc-host-control-cell { grid-area: 3 / 1 / auto / -1; }
     .nc-hosts-table tbody td.nc-hosts-empty { grid-area: 1 / 1 / auto / -1; }
     /* Level with the selects, which sit under a label. */
     .nc-hosts-table tbody td.nc-hosts-actions { padding-top: 18px; }
@@ -467,6 +470,7 @@ select.nc-input { cursor: pointer; }
 
     .nc-hosts-table tbody td { grid-area: auto; }
     .nc-hosts-table tbody td:nth-child(-n+2) { grid-area: auto / 1 / auto / -1; }
+    .nc-hosts-table tbody td.nc-host-control-cell { grid-area: auto / 1 / auto / -1; }
     .nc-hosts-table tbody td.nc-hosts-actions { padding-top: 0; }
 
     .nc-hosts-table .nc-inline-select {

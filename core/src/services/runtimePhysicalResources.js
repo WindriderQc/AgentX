@@ -49,13 +49,15 @@ function topologyGuard(topology) {
   // Old admissions without resource IDs, including UNKNOWN, keep their fence.
   return { $and: [{ $or: [
     { resourceTopologyHash: topology.hash },
-    { 'inferences.0': { $exists: false }, 'workloads.0': { $exists: false } }
+    { 'inferences.0': { $exists: false }, 'workloads.0': { $exists: false },
+      hostControls: { $not: { $elemMatch: { active: true } } } }
   ] }] };
 }
 
 function topologyMatches(state, topology) {
   return (state?.resourceTopologyHash || null) === topology.hash
-    || (!(state?.inferences || []).length && !(state?.workloads || []).length);
+    || (!(state?.inferences || []).length && !(state?.workloads || []).length
+      && !(state?.hostControls || []).some(item => item.active));
 }
 
 function resourceFailure(cause) {

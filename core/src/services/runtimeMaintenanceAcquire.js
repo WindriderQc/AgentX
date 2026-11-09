@@ -1,6 +1,7 @@
 'use strict';
 
 const RuntimeCoordination = require('../../models/RuntimeCoordination');
+const { admitsHosts, blocksHosts } = require('./hostControlFence');
 const {
   CORE_RECREATE_SCOPE, HOST_SCOPE, coreRecreateWorkloadFilter, deployBlockers
 } = require('./runtimeDeployGate');
@@ -101,7 +102,8 @@ function createMaintenanceAcquisition({ clean, ttlMs, secret, reapExpired }) {
       };
     }
     const updated = await RuntimeCoordination.findOneAndUpdate(
-      { _id: 'runtime', maintenance: null, ...idle },
+      { _id: 'runtime', maintenance: null, ...idle,
+        ...(scope === CORE_RECREATE_SCOPE ? {} : admitsHosts(hosts, resourceIds)) },
       { $set: { maintenance: lease } },
       { new: true }
     ).lean();
@@ -120,7 +122,9 @@ function createMaintenanceAcquisition({ clean, ttlMs, secret, reapExpired }) {
     const { blockers } = deployBlockers(blocking, { service: maintenanceService(scope), now: new Date() });
     return {
       acquired: false,
-      reason: hostScoped
+      reason: scope !== CORE_RECREATE_SCOPE && blocksHosts(raced?.hostControls, hosts, resourceIds)
+        ? 'AgentX host control is paused; finish direct work and press Play before runtime maintenance'
+        : hostScoped
         ? 'active workload or inference on these hosts, or a maintenance lease, blocks host maintenance'
         : 'active workload, inference admission, or maintenance lease blocks maintenance',
       blockers
