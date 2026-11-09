@@ -48,7 +48,7 @@ async function fixture(backend = 'hermes', enabled = true) {
     if (state.holdStatus) await new Promise(resolve => { state.releaseStatus = resolve; });
     if (state.nativeUnavailable) return { ok: false, status: 503 };
     return Response.json({ run_id: state.foreignRun ? 'run_foreign' : id, status: run.cancelled ? 'cancelled' : run.done ? 'completed' : 'running',
-      completed: run.done, partial: state.partial === true, output: 'Résultat natif original vérifié.', runtime: { provider: 'synthetic', model: 'synthetic-main' } });
+      completed: run.done, partial: state.partial === true, output: state.nativeOutput || 'Résultat natif original vérifié.', runtime: { provider: 'synthetic', model: 'synthetic-main' } });
   });
   const local = jest.fn(async input => {
     state.inference.push(input);
@@ -377,4 +377,14 @@ test('Family remains usable with a valid family-only route and no personal daily
   const backup = await world.send('Et la pluie ?').expect(200);
   expect(done(backup).tools.conversationRelay).toMatchObject({ role: 'relay', completed: true });
   expect(world.state.inference.map(input => input.model)).toEqual(['synthetic-main', 'synthetic-main', 'synthetic-guardian']);
+});
+
+test.each([16001, 50000])('Hermes opt-in retains its existing %i-character reply contract in the original canonical slot', async size => {
+  world = await fixture(); world.state.held = false; world.state.nativeOutput = 'x'.repeat(size);
+  const id = randomUUID(), response = await world.send('Développe cette explication.', id, 'text', false).expect(200);
+  expect(response.body.data.reply.text).toHaveLength(size);
+  const row = await conversations.getTurn({ sessionId: world.session.sessionId, traceId: id });
+  expect(row.outcome).toBe('completed'); expect(row.replyText).toBe(world.state.nativeOutput);
+  expect(row.toolEvidence.runId).toBe(world.state.runs[0].id);
+  expect(world.state.runs).toHaveLength(1);
 });

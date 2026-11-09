@@ -158,6 +158,8 @@ native run id. It can retain that original terminal receipt and fill the origina
 pending canonical slot; it never posts another native request. Missing identity
 or unavailable status remains unknown. The existing Hermes journal update compares
 its previous key, run and state, so a stale read cannot replace a newer run.
+Finalization retains Household's existing 50,000-character reply bound; the
+separate native conversation-work result contract keeps its 16,000-character bound.
 
 Both paths announce the temporary relay in text and voice. Canonical intake binds
 each stable turn id before inference; a duplicate reads its existing outcome
