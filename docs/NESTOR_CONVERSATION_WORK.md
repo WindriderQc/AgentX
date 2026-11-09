@@ -164,8 +164,11 @@ separate native conversation-work result contract keeps its 16,000-character bou
 Both paths announce the temporary relay in text and voice. Canonical intake binds
 each stable turn id before inference; a duplicate reads its existing outcome
 without a second inference, including after interruption or an uncertain reply.
-Only completed Core inference produces `toolEvidence.conversationRelay` attribution.
-On the next main turn with Core history enabled, Core supplies the complete attributed relay dialogue as
+Completed Core inference produces `toolEvidence.conversationRelay.completed=true`.
+A cancelled or failed reply can retain observed model fragments with
+`completed=false`, a parser-input character count and unverified playback. These
+observations establish neither a complete result nor sound heard by the user.
+On the next main turn with Core history enabled, Core supplies the attributed relay dialogue, including marked fragments, as
 reference data even when native Hermes history is already established. It asks
 the main brain to make any necessary correction explicit. This does not inject
 new instructions into an in-flight Hermes run or prove that review occurred.

@@ -464,6 +464,7 @@ function createPersonaTurnHandler({
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
           signal: abort.signal, onWaiting: () => event('status', { phase: 'waiting_host' }), onActivity: activity => event('status', { phase: 'activity', activity }),
           onStarted: require('./persona-native-start').nativeTurnStarted({ entry, session, turnSession, member, guardianSession, backend, conversations, conversationWorks }),
+          onRelayProgress: progress => { entry.auditContext = { ...entry.auditContext, toolEvidence: { status: 'partial', authority: 'agentx/ollama', receipts: [], conversationRelay: progress } }; },
           onSettled: () => { entry.executionSettled = true; },
           onDelta: delta => { entry.generated = (entry.generated + delta).slice(0, 5000); if (channels) channels.push(delta); else if (!isOpening && !sceneEnabled) event('delta', { delta }); }
         });

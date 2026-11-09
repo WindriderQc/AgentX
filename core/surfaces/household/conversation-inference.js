@@ -22,7 +22,16 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   const receipts = [];
   let conversation = [{ role: 'system', content: agentxInstructions }, ...prepared.map(({ attachments, ...message }) => message)];
   let result, streamed = '', toolCalls = [], toolsOffered = Boolean(toolset), rounds = 0;
-  let relay = null;
+  let relay = null, relaySource = null, emittedModelChars = 0;
+  const fragment = () => ({ ...relaySource, completed: false,
+    fragment: { observation: 'reply_parser_input', modelChars: emittedModelChars, playback: 'unverified' } });
+  const emit = delta => {
+    onDelta?.(delta);
+    if (relaySource && delta && typeof onDelta === 'function') {
+      emittedModelChars += delta.length;
+      request.onRelayProgress?.(fragment());
+    }
+  };
   // Measured counts of every call this reply made, summed into the turn.
   const callUsage = [];
   for (;;) {
@@ -57,6 +66,8 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     if (result?.metadata?.conversationContinuity?.state === 'backup') {
       toolsOffered = false;
       relay = result.metadata.conversationContinuity;
+      relaySource = { authority: 'core.conversation-continuity', role: 'relay', model: relay.model, hostKey: relay.hostKey,
+        requestSha256: fingerprint(request.text), ...(relay.relayFor && { relayFor: relay.relayFor }) };
     }
     if (result?.metadata?.conversationContinuity?.state === 'status_only') toolsOffered = false;
     // A model whose runtime refuses tools answers the turn without them.
@@ -71,7 +82,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     let frames = { text: '', toolCalls: [] };
     if (result.stream && result.conversationNotice) { streamed += result.conversationNotice + '\n\n'; onDelta?.(result.conversationNotice + '\n\n'); }
     try {
-      if (result.stream) frames = await readReplyFrames(result.stream, onDelta, signal);
+      if (result.stream) frames = await readReplyFrames(result.stream, emit, signal);
     } finally {
       if (result.stream) {
         if (!result.completion?.then) throw new Error('Core does not expose verified stream completion. Update the paired Product release.');
@@ -96,10 +107,8 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   if (signal?.aborted) relay = null;
   return { backend, text: streamed,
     metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}), usage: sumUsage(callUsage) },
-    tools: relay ? { status: 'not_supported', authority: 'agentx/ollama', receipts: [],
-      conversationRelay: { authority: 'core.conversation-continuity', role: 'relay', completed: true,
-        model: relay.model, hostKey: relay.hostKey, requestSha256: fingerprint(request.text),
-        ...(relay.relayFor && { relayFor: relay.relayFor }) } }
+    tools: relay ? { status: 'not_supported', authority: 'agentx/ollama', receipts: [], conversationRelay: { ...relaySource, completed: true } }
+      : relaySource && emittedModelChars > 0 ? { status: 'partial', authority: 'agentx/ollama', receipts: [], conversationRelay: fragment() }
       : toolset && toolsOffered
       ? { status: 'observed', authority: 'agentx/core', offered: toolset.names, receipts }
       : { status: 'not_supported', authority: 'agentx/ollama', receipts: [],

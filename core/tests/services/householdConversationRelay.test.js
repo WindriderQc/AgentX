@@ -240,7 +240,7 @@ test('interrupted relay speech settles only its original turn, retains Main and 
   complete({ completed: true, terminalComplete: true });
   await response; expect((await stopped).status).toBe(200);
   const row = await conversations.getTurn({ sessionId: world.session.sessionId, traceId: id });
-  expect(row.outcome).toBe('cancelled'); expect(row.toolEvidence?.conversationRelay).toBeUndefined();
+  expect(row.outcome).toBe('cancelled'); expect(row.toolEvidence?.conversationRelay).toMatchObject({ completed: false, fragment: { playback: 'unverified' } });
   const count = world.state.inference.length;
   await world.send('Explique les nuages.', id).expect(202);
   expect(world.state.inference).toHaveLength(count);
@@ -249,7 +249,7 @@ test('interrupted relay speech settles only its original turn, retains Main and 
   expect(world.state.inference.at(-1).model).toBe('synthetic-main');
 });
 
-test('uncertain streamed completion never publishes a relay proof or retries inference', async () => {
+test('uncertain streamed completion retains fragments without a complete receipt or inference retry', async () => {
   world = await fixture('agentx'); world.state.backupStream = true;
   world.state.streamCompletion = Promise.reject(Object.assign(Error('Unconfirmed native release'), { code: 'RUNTIME_INFERENCE_COMPLETION_FAILED' }));
   void world.state.streamCompletion.catch(() => {});
@@ -257,7 +257,7 @@ test('uncertain streamed completion never publishes a relay proof or retries inf
   expect(events(response).some(event => event.type === 'error')).toBe(true);
   await until(() => world.activePersonaTurns.size === 0);
   const row = await conversations.getTurn({ sessionId: world.session.sessionId, traceId: id });
-  expect(row.outcome).toBe('failed'); expect(row.toolEvidence?.conversationRelay).toBeUndefined();
+  expect(row.outcome).toBe('failed'); expect(row.toolEvidence?.conversationRelay).toMatchObject({ completed: false, fragment: { playback: 'unverified' } });
   await world.send('Explique les nuages.', id).expect(202);
   expect(world.state.inference).toHaveLength(2);
 });
@@ -369,6 +369,7 @@ test('a partial Hermes terminal receipt remains unconfirmed and never admits a r
   expect(world.state.runs).toHaveLength(0); expect(world.state.inference).toHaveLength(0);
 });
 
+// Review regressions: exact Family route and interrupted fragment provenance.
 test('Family remains usable with a valid family-only route and no personal daily_operator', async () => {
   world = await fixture('agentx'); world.state.familyOnly = true; world.state.busy = false;
   const primary = await world.send('Explique les nuages.').expect(200);
@@ -377,6 +378,34 @@ test('Family remains usable with a valid family-only route and no personal daily
   const backup = await world.send('Et la pluie ?').expect(200);
   expect(done(backup).tools.conversationRelay).toMatchObject({ role: 'relay', completed: true });
   expect(world.state.inference.map(input => input.model)).toEqual(['synthetic-main', 'synthetic-main', 'synthetic-guardian']);
+});
+
+test('interrupted guardian fragments keep provenance and unknown playback without claiming a complete reply', async () => {
+  world = await fixture('agentx'); world.state.backupStream = true;
+  let complete; world.state.streamCompletion = new Promise(resolve => { complete = resolve; });
+  const id = randomUUID(), pending = world.send('Explique les nuages.', id).then(value => value);
+  await until(() => world.state.inference.length === 2);
+  await tick();
+  const stopped = request(world.app).post(`/sessions/${world.session.sessionId}/interrupt`).send({ turnId: id, stop: true }).then(value => value);
+  await until(() => world.activePersonaTurns.get(world.session.sessionId)?.abort.signal.aborted);
+  complete({ completed: true, terminalComplete: true });
+  const response = await pending; expect((await stopped).status).toBe(200);
+  expect(events(response).filter(event => event.type === 'delta').map(event => event.delta).join('')).toContain('Je peux continuer la');
+  const row = await conversations.getTurn({ sessionId: world.session.sessionId, traceId: id });
+  expect(row.outcome).toBe('cancelled');
+  expect(row.toolEvidence?.conversationRelay).toMatchObject({ role: 'relay', completed: false,
+    fragment: { observation: 'reply_parser_input', playback: 'unverified' } });
+  const context = await relayContext(conversations, world.session);
+  expect(context).toContain('Je peux continuer la');
+  expect(context).toContain('reply_parser_input');
+  expect(context).toContain('unverified');
+  world.state.busy = false;
+  await world.send('Continuons.').expect(200);
+  const returned = JSON.stringify(world.state.inference.at(-1).messages);
+  expect(returned).toContain('Temporary relay fragment');
+  expect(returned).toContain('reply completion and hearing unverified');
+  expect(returned).toContain('reply_parser_input');
+  expect(returned).toContain('Je peux continuer la');
 });
 
 test.each([16001, 50000])('Hermes opt-in retains its existing %i-character reply contract in the original canonical slot', async size => {
