@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import objective_grounding as grounding
@@ -55,7 +56,7 @@ def raw(cue_facts=None, additional=None):
 
 
 def project(value, body, context=SENT):
-    result, changes = normalize_representation(value, body, grounding.CONTRACT,
+    result, changes = normalize_representation(value, body, grounding.ANCHORED_CONTRACT,
         {'end': len(body), 'totalChars': len(body), **context})
     validate(result, body)
     return result, changes
@@ -65,7 +66,7 @@ class AnchoredFactTests(unittest.TestCase):
     def test_completed_move_has_its_own_home_metadata_and_no_communication_date_choice(self):
         body = 'Mon déménagement étant terminé, je serai disponible plus tard.'
         ctx = {**SENT, 'mailDate': '2020-03-09T12:00:00Z'}
-        schema = grounding.schema_for(body, source_context=ctx)
+        schema = grounding.schema_for(body, grounding.ANCHORED_CONTRACT, source_context=ctx)
         self.assertEqual(len(schema['anyOf']), 1)
         cue = schema['anyOf'][0]['properties']['cueDecisions']['properties']['q1']
         branch = cue['properties']['retainedMoments']['items']['anyOf'][0]['properties']
@@ -108,7 +109,7 @@ class AnchoredFactTests(unittest.TestCase):
         value = raw(additional=[moment('q1', kind='work-correspondence', category='work')])
         value['additionalMoments'][0]['contextObservations'] = [{'citationId': 'q2', 'qualificationIds': []}]
         with self.assertRaisesRegex(ValueError, 'own primary source anchor'): project(value, body)
-        schema = grounding.schema_for(body, source_context=SENT)
+        schema = grounding.schema_for(body, grounding.ANCHORED_CONTRACT, source_context=SENT)
         branches = schema['anyOf'][0]['properties']['additionalMoments']['items']['anyOf']
         correspondence = next(b for b in branches if b['properties']['factType']['enum'] == ['work-correspondence'])
         self.assertEqual(correspondence['properties']['anchorCitationId']['enum'], ['q2'])
@@ -193,7 +194,10 @@ class AnchoredFactTests(unittest.TestCase):
 
 
 class AnchoredFactWorkerTests(unittest.TestCase):
-    setUp = worker_fixtures.SourceLanguageWorkerTests.setUp
+    def setUp(self):
+        worker_fixtures.SourceLanguageWorkerTests.setUp(self)
+        frozen = patch.object(worker, "SCHEMA", grounding.SCHEMA_V12)
+        frozen.start(); self.addCleanup(frozen.stop)
     mail = worker_fixtures.SourceLanguageWorkerTests.mail
     prepare = worker_fixtures.SourceLanguageWorkerTests.prepare
     run_worker = worker_fixtures.SourceLanguageWorkerTests.run_worker
@@ -201,7 +205,7 @@ class AnchoredFactWorkerTests(unittest.TestCase):
     def test_native_home_metadata_and_anchor_proof_replay_and_detect_tampering_without_new_calls(self):
         body = 'Mon déménagement est terminé.';self.mail('message01', body)
         def output(prompt, reply):
-            self.assertEqual(prompt['groundingContract'], grounding.CONTRACT)
+            self.assertEqual(prompt['groundingContract'], grounding.ANCHORED_CONTRACT)
             reply['response'] = json.dumps(raw({'q1': [moment('q1', category='home')]}));return reply
         client, calls = disposition_fixtures.DispositionTests.client(self, output)
         self.assertEqual(self.run_worker(client)['newlyReviewedPages'], 1)

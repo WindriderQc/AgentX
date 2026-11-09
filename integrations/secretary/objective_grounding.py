@@ -23,6 +23,7 @@ import objective_omission_policy as omission_policy
 import objective_explicit_selection as explicit_selection
 import objective_cue_decisions as cue_decisions
 import objective_anchored_facts as anchored_facts
+import objective_claim_typing as claim_typing
 
 LEGACY_CONTRACT = "secretary.objective-grounding/v1"
 WORDING_CONTRACT = "secretary.objective-grounding/v2"
@@ -35,7 +36,8 @@ SELECTION_CONTRACT = "secretary.objective-grounding/v8"
 OMISSION_CONTRACT = "secretary.objective-grounding/v9"
 EXPLICIT_CONTRACT = "secretary.objective-grounding/v10"
 CUE_CONTRACT = "secretary.objective-grounding/v11"
-CONTRACT = "secretary.objective-grounding/v12"
+ANCHORED_CONTRACT = "secretary.objective-grounding/v12"
+CONTRACT = "secretary.objective-grounding/v13"
 CLAIM = {
     "type": "object", "additionalProperties": False,
     "properties": {
@@ -112,11 +114,13 @@ SCHEMA_V10 = SCHEMA
 SCHEMA = cue_decisions.schema(SCHEMA_V10)
 SCHEMA_V11 = SCHEMA
 SCHEMA = anchored_facts.schema(SCHEMA_V11)
+SCHEMA_V12 = SCHEMA
+SCHEMA = claim_typing.schema(SCHEMA_V12)
 
 
 def contract_for(manifest):
     digest = manifest.get("responseSchemaSha256")
-    for contract, schema in ((CONTRACT, SCHEMA), (CUE_CONTRACT, SCHEMA_V11), (EXPLICIT_CONTRACT, SCHEMA_V10), (OMISSION_CONTRACT, SCHEMA_V9), (SELECTION_CONTRACT, SCHEMA_V8), (SOURCE_CONTRACT, SCHEMA_V7), (CONDITIONAL_CONTRACT, SCHEMA_V6), (PROOF_CONTRACT, SCHEMA_V5), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
+    for contract, schema in ((CONTRACT, SCHEMA), (ANCHORED_CONTRACT, SCHEMA_V12), (CUE_CONTRACT, SCHEMA_V11), (EXPLICIT_CONTRACT, SCHEMA_V10), (OMISSION_CONTRACT, SCHEMA_V9), (SELECTION_CONTRACT, SCHEMA_V8), (SOURCE_CONTRACT, SCHEMA_V7), (CONDITIONAL_CONTRACT, SCHEMA_V6), (PROOF_CONTRACT, SCHEMA_V5), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
                              (WORDING_CONTRACT, SCHEMA_V2), (LEGACY_CONTRACT, SCHEMA_V1)):
         if digest == hashed(schema):
             return contract
@@ -125,9 +129,9 @@ def contract_for(manifest):
 
 def extraction_context(record, manifest):
     context = proofs.context_for(record)
-    if contract_for(manifest) in (EXPLICIT_CONTRACT, CUE_CONTRACT, CONTRACT) and isinstance(record, dict) and isinstance(record.get('source'), dict):
+    if contract_for(manifest) in (EXPLICIT_CONTRACT, CUE_CONTRACT, ANCHORED_CONTRACT, CONTRACT) and isinstance(record, dict) and isinstance(record.get('source'), dict):
         context = {**(context or {}), 'direction': record['source'].get('direction', 'unknown')}
-    if contract_for(manifest) in (OMISSION_CONTRACT, EXPLICIT_CONTRACT, CUE_CONTRACT, CONTRACT):
+    if contract_for(manifest) in (OMISSION_CONTRACT, EXPLICIT_CONTRACT, CUE_CONTRACT, ANCHORED_CONTRACT, CONTRACT):
         context = {**(context or {}), 'ownerAliases': manifest['config'].get('ownerAliases', [])}
     from objective_attribution import extraction_context as attributed_context
     return attributed_context(context, record, manifest)
@@ -145,6 +149,8 @@ def catalog(content):
 
 def schema_for(content, contract=CONTRACT, source_context=None):
     if contract == CONTRACT:
+        return claim_typing.schema(schema_for(content, ANCHORED_CONTRACT, source_context), catalog(content), source_context)
+    if contract == ANCHORED_CONTRACT:
         return anchored_facts.schema(schema_for(content, CUE_CONTRACT, source_context), catalog(content), source_context)
     if contract == CUE_CONTRACT:
         return cue_decisions.schema(schema_for(content, EXPLICIT_CONTRACT, source_context), catalog(content), source_context)
@@ -261,10 +267,14 @@ def _project_v1(value, content):
 
 def project(value, content, contract=None, source_context=None):
     items = value.get('moments') if isinstance(value, dict) else None
-    if contract == CONTRACT or not contract and isinstance(value, dict) and 'additionalMoments' in value:
+    if contract == CONTRACT or not contract and claim_typing.uses_wire(value):
         if not isinstance(content, str):
             raise ValueError('Grounded extraction requires the exact supplied passage')
-        return anchored_facts.project(value, content, {r['id']: r for r in catalog(content)}, source_context, SCHEMA_V7, CONTRACT)
+        return claim_typing.project(value, content, {r['id']: r for r in catalog(content)}, source_context, SCHEMA_V7, CONTRACT)
+    if contract == ANCHORED_CONTRACT or not contract and isinstance(value, dict) and 'additionalMoments' in value:
+        if not isinstance(content, str):
+            raise ValueError('Grounded extraction requires the exact supplied passage')
+        return anchored_facts.project(value, content, {r['id']: r for r in catalog(content)}, source_context, SCHEMA_V7, ANCHORED_CONTRACT)
     if contract == CUE_CONTRACT or not contract and isinstance(value, dict) and 'cueDecisions' in value:
         if not isinstance(content, str):
             raise ValueError('Grounded extraction requires the exact supplied passage')

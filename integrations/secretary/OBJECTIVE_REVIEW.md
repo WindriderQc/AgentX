@@ -49,12 +49,30 @@ proposal for them. This gate never merges interpretations or establishes that
 a request is resolved. Objectives under the earlier contract retain their
 existing publication behavior.
 
-New objectives use `secretary.objective-grounding/v12` for model extraction.
+New objectives use `secretary.objective-grounding/v13` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
 evidence rather than transcribing a quote. Unknown or duplicate IDs, missing
 evidence and a response that ignores the frozen contract fail closed.
+
+Each native fact selects `sourceClaimType`: `direct-source` for an explicit source
+report or announced plan, and `interpretation` for a proposed reading beyond what
+the source explicitly states. The canonical `claimType` is the fixed mapping to
+`direct` or `hypothesis`; there is no independent native confidence selector.
+`sourceClaimCatalog` preserves complete declarations and their speaker reading
+context. Those anchors require `direct-source`, in both generation and local
+validation. Unknown dates or pending personal review do not make an explicit
+source statement an interpretation. Genuine questions, conditional plans,
+possibilities and incomplete wording retain their conservative interpretation
+choices. A quoted or unresolved speaker does not make an explicit first-person
+statement an interpretation; actor uncertainty stays in its own fields and source
+context. Reading context does not verify identity. Local reservations, planned
+status, date gaps, human review and lack of personal confirmation remain separate.
+The `claimTyping` proof retains native choices and exact source context; the
+anchored-fact proof distinguishes those choices from its derived legacy inputs.
+Old responses are neither retyped nor repaired, and invalid new choices are
+retained as rejections without another inference call.
 
 Useful facts include explicit personal career steps at their stated stage:
 `career-contact`, `application`, `interview`, `job-offer`, `employment-change`,
@@ -250,7 +268,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10` and `/v11` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10`, `/v11` and `/v12` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.

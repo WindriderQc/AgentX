@@ -70,7 +70,7 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v12.
+Use the source-span grounding contract secretary.objective-grounding/v13.
 Keep useful explicit steps, not only completed milestones. A personal career
 contact, referral, CV submission, application, interview or offer can be retained
 at its stated stage. Choose factType: life-event, career-contact, application,
@@ -115,8 +115,24 @@ conditions proposed fact types on that primary excerpt's lexical support.
 There is no factTypeCitationIds selector: the application retains only the
 primary anchor as proposed type evidence. Lexical support does not prove the
 interpretation; choose a type that actually fits that excerpt in context.
-Never supply moments, titleCitationId, factTypeCitationIds, observations,
+Never supply claimType, moments, titleCitationId, factTypeCitationIds, observations,
 omittedCues, arbitrary indices or generated observation wording.
+Every proposed moment selects sourceClaimType: direct-source when its primary
+excerpt explicitly reports an activity, completed event or announced plan;
+interpretation only when the proposed reading goes beyond what is explicit.
+This field describes SOURCE WORDING, never whether the owner has confirmed it.
+Unknown dates, old messages, historical tense and pending human review do not
+turn an explicit source declaration into an interpretation. sourceClaimCatalog
+retains complete declarations and their reading context; those anchors require
+direct-source. Its reading context is not verified identity or personal truth.
+A stated future plan is direct-source with occurrenceStatus planned, never
+reported attendance. Keep genuine questions, conditional plans, possibilities,
+uncertain actors and local reservations conservative without relabelling an
+explicit statement merely because its speaker is unknown. Local qualificationIds
+stay on the same excerpt independently of sourceClaimType. Never remove a
+condition, infer current continuation or claim owner confirmation because a
+source statement is direct. The canonical claimType is a fixed local mapping;
+do not generate a separate claimType, confidence or confirmation selector.
 Every proposed moment has qualificationIds for its OWN PRIMARY anchor and
 contextObservations for useful NON-CUE context only. Each context item is
 {citationId,qualificationIds}; do not repeat the anchor there or borrow another
@@ -137,8 +153,8 @@ preceding literal header when omitted, never a later or unrelated header.
 Do not generate a summary, a global excerpt selector or per-observation summary
 flags. The application summarizes at most three retained facts using their own
 selected title excerpts, copied whole in source order. An omitted cue or unrelated
-header cannot reappear as a summary claim. Choose a faithful titleCitationId among
-each fact's own observations, retaining decisive temporal/conditional wording.
+header cannot reappear as a summary claim. Retain decisive temporal/conditional
+wording in the whole primary excerpt.
 Empty extractions display their cited abstention locally.
 uncertaintyCatalog IDs bind literal source wording and admissible categories.
 Only select one when its wording matters in the SAME observation excerpt.
