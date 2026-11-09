@@ -310,6 +310,7 @@ describe('photo routes', () => {
     const response = await request(app).get(`/api/photos/assets/${A.beach}`).expect(200);
     expect(response.body.data).toEqual({
       id: A.beach, type: 'image', takenAt: '2025-07-14T19:00:00.000Z', timeZone: 'America/Toronto',
+      takenAtSource: 'exifInfo.dateTimeOriginal', dateTimeOriginal: '2025-07-14T19:00:00.000Z',
       fileName: 'IMG_0001.jpg',
       place: { city: 'Sampleton', state: 'Example State', country: 'Exampleland', coordinates: { latitude: 45.12346, longitude: -73.76543 } },
       people: [{ id: P.alice, name: 'Alice Example' }, { id: P.unnamed, name: null }],

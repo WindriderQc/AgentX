@@ -44,7 +44,9 @@ function createFixture({ truncated = false } = {}) {
       archiveProgress: { reviewedPages: 22, pendingTextPages: 30 }, limits: ['Synthetic scoped coverage.'] } } });
       if (url.pathname === '/api/photos/count') return send(res, { total: 42, exact: true }, 200, true);
       if (url.pathname === '/api/photos/search') { const next = url.searchParams.has('cursor');return send(res, { items: [next ? 2 : 0, ...(next ? [] : [1])].map(i => ({ id: assetId(i), type: 'image', fileName: `synthetic-${i}.svg`,
-        takenAt: '2001-06-12T12:00:00Z', city: 'Synthetic city', description: 'A synthetic landscape.', thumbnail: `/api/photos/assets/${assetId(i)}/thumbnail` })), nextCursor: next ? null : 'second' }, 200, true); }
+        takenAt: '2001-06-12T12:00:00Z', takenAtSource: ['fileCreatedAt', 'localDateTime', 'exifInfo.dateTimeOriginal'][i],
+        dateTimeOriginal: i === 2 ? '2001-06-12T12:00:00Z' : null,
+        city: 'Synthetic city', description: 'A synthetic landscape.', thumbnail: `/api/photos/assets/${assetId(i)}/thumbnail` })), nextCursor: next ? null : 'second' }, 200, true); }
       if (/^\/api\/photos\/assets\/[^/]+\/thumbnail$/.test(url.pathname) || url.pathname === '/api/secretary/files/content') { res.writeHead(200, { 'Content-Type': 'image/svg+xml' });return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="800" height="500" fill="#244d58"/><circle cx="600" cy="100" r="55" fill="#d9bd79"/><path d="M0 500 300 140 620 500" fill="#608a74"/></svg>'); }
       if (/^\/api\/secretary\/history\/[^/]+\/sources\/source$/.test(url.pathname)) return send(res, { source: { id: 'source', kind: 'document', subject: 'Synthetic lease', body, bodySha256: digest(body), nativePath: '/Synthetic/lease.pdf', contentSha256: digest('synthetic pdf') } });
       if (url.pathname === '/api/secretary/files/read') return send(res, { kind: 'document', type: 'pdf', bytes: 100, url: '/api/secretary/files/content?synthetic=1' });

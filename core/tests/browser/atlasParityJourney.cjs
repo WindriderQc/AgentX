@@ -65,9 +65,16 @@ async function chromium() {
     const coverage = await evaluate("document.querySelector('[data-native-coverage]').textContent");assert.match(coverage, /4 textes de source relus au complet sur 20/);assert.doesNotMatch(coverage, /999/);await screenshot('coverage');await close();
     await click('#library-button');await until("document.querySelectorAll('[data-library-photo]').length===2");
     await until("[...document.querySelectorAll('.library-grid img')].every(i=>i.naturalWidth>0)");
+    assert.match(await evaluate("document.querySelectorAll('.library-grid time')[0].textContent"), /^date du fichier · /);
+    assert.match(await evaluate("document.querySelectorAll('.library-grid time')[1].textContent"), /^date locale Immich · /);
     await click('[data-library-more]');await until("document.querySelectorAll('[data-library-photo]').length===3");await screenshot('native-library');
+    assert.match(await evaluate("document.querySelectorAll('.library-grid time')[2].textContent"), /^date originale EXIF · /);
     await click('[data-library-photo]');await until("document.querySelector('.photo-viewer-stage img')?.naturalWidth>0");
     assert.match(await evaluate("document.querySelector('.photo-viewer-body').textContent"), /Bibliothèque native AgentX/);
+    assert.match(await evaluate("document.querySelector('.photo-viewer-date').textContent"), /date du fichier · /);
+    assert.match(await evaluate("document.querySelector('.photo-provenance').textContent"), /date originale EXIF inconnue/);
+    await click('[data-photo-next]');assert.match(await evaluate("document.querySelector('.photo-viewer-date').textContent"), /date locale Immich · /);
+    await click('[data-photo-next]');assert.match(await evaluate("document.querySelector('.photo-viewer-date').textContent"), /date originale EXIF · /);
     await click('[data-photo-back]');await until("document.querySelectorAll('[data-library-photo]').length===3");await close();
     await evaluate("document.getElementById('scope-filter').value='all';document.getElementById('scope-filter').dispatchEvent(new Event('change'))");
     assert.equal(await evaluate("document.querySelector('[data-intro-stat=pending] strong').textContent"),'38');
@@ -104,7 +111,7 @@ async function chromium() {
     assert.equal(await evaluate('document.activeElement.id'),'explore-life-button');
     assert.deepEqual(errors, []);assert.ok(fixture.writes.every(w => !w.path.endsWith('/souvenir')));
     const report = { synthetic: true, entries: 38, subjects: 6, nativePhotoPages: 2, factualConfirmations: 1, souvenirWrites: 0, staleContextRejected: true,
-      sourceDocumentPreserved: true, undatedPhotoAccessibleWithoutInventedDate: true, mobileEntryAndExit: true, selectedDayRetained: true, partialCoverageVisible: true, javascriptErrors: errors, writes: fixture.writes.map(w => ({ path: w.path, revision: w.input.revision, contextRevision: w.input.contextRevision })) };
+      sourceDocumentPreserved: true, photoDateSourcesExplicit: true, undatedPhotoAccessibleWithoutInventedDate: true, mobileEntryAndExit: true, selectedDayRetained: true, partialCoverageVisible: true, javascriptErrors: errors, writes: fixture.writes.map(w => ({ path: w.path, revision: w.input.revision, contextRevision: w.input.contextRevision })) };
     await fs.writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');console.log(JSON.stringify({ passed: true, output, ...report }));
   } finally { ws?.close();browser.kill('SIGTERM');await new Promise(resolve => fixture.server.close(resolve));await new Promise(resolve => browser.exitCode !== null ? resolve() : browser.once('exit', resolve));await fs.rm(profile, { recursive: true, maxRetries: 5, retryDelay: 200 }); }
 })().catch(error => { console.error(error);process.exitCode = 1; });

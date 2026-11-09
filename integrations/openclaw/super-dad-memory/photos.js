@@ -53,6 +53,7 @@ export function registerPhotos(api, { fetchImpl = fetch, name = 'nestor_photos' 
         'filtered by person (a first name works), city/state/country, tag, year or from/to; without query it is an exact, dated search.',
         'Words-based search always returns its closest matches: check details or show before saying what a photo contains.',
         'count answers "how many"; details reads one photo (date, place, people, description, text in the photo); names lists known people, places or tags;',
+        'takenAt is a library date; takenAtSource names the Immich field. dateTimeOriginal is nullable EXIF metadata, not verified capture. localDateTime comes from Immich; fileCreatedAt is a file date. Missing dates stay unknown.',
         'show attaches up to 4 photos to your reply (cite each as MEDIA:<path>). Only photos with GPS have a place: say so when placeCoverage is present.',
         audience === 'family' ? 'This is a family conversation: hidden photos and unreviewed descriptions are already left out.' : '',
       ].join(' ').trim(),

@@ -251,16 +251,26 @@ test('two simultaneous session intakes share one admitted Main; queued or relay 
   const other = await conversations.createSession({ sessionId: randomUUID(), packId: 'personal_operator', scopeId: 'personal',
     modeId: session.modeId, status: 'active', backend: 'openclaw', agentId: 'main', turnCount: 0, persona: session.persona });
   hold = true; const admitted = new Promise(resolve => { started = resolve; });
-  const first = send(input()).then(value => value);
+  const initial = input();
+  const first = send(initial).then(value => value);
   const second = request(app).post(`/sessions/${other.sessionId}/turns/text`)
     .send({ text: 'Bonjour.', turnId: randomUUID(), channel: 'voice', stream: true }).timeout(8000).then(value => value);
-  await admitted;
-  expect(sent.filter(item => item.body.model === 'openclaw/main')).toHaveLength(1);
-  const gate = await works.repo.dispatchOwner();
-  const rows = await works.repo.find({});
-  expect(rows.filter(row => row.attempt)).toHaveLength(1);
-  expect(rows.find(row => row.attempt).attempt.id).toBe(gate.attempt.id);
-  release(); await Promise.all([first, second]);
+  const replies = Promise.all([first, second]);
+  try {
+    await Promise.race([admitted, replies]);
+    expect(sent.filter(item => item.body.model === 'openclaw/main')).toHaveLength(1);
+    const gate = await works.repo.dispatchOwner();
+    // Either HTTP request can win admission. Keep that Main occupied until
+    // the other intake has actually returned its queued/relay response.
+    await (gate.workId === hash(session.sessionId + '\n' + initial.turnId) ? second : first);
+    const rows = await works.repo.find({});
+    expect(rows).toHaveLength(2);
+    expect(rows.filter(row => row.attempt)).toHaveLength(1);
+    expect(rows.find(row => row.attempt).attempt.id).toBe(gate.attempt.id);
+  } finally {
+    release?.();
+    await replies;
+  }
   expect(sent.filter(item => item.body.model === 'openclaw/main')).toHaveLength(1);
 });
 

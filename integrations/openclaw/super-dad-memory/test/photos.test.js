@@ -68,6 +68,19 @@ test('Core refusals reach the agent with their candidates', async () => {
     /PHOTOS_PERSON_AMBIGUOUS: .*Candidates: Jo Example, Jo Sample/);
 });
 
+test('Core date provenance and unknown originals reach owner and child unchanged', async () => {
+  const date = { id: PHOTO, takenAt: '2026-11-01T12:00:00.000Z', takenAtSource: 'fileCreatedAt', dateTimeOriginal: null };
+  const { factory, calls } = setup(() => ok(date));
+  for (const context of [owner, child]) {
+    const tool = factory(context);
+    assert.match(tool.description, /fileCreatedAt is a file date/);
+    const answer = await tool.execute('date', { action: 'details', ids: [PHOTO] });
+    assert.deepEqual(answer.details, date);
+    assert.deepEqual(JSON.parse(answer.content[0].text), date);
+  }
+  assert.deepEqual(calls.map(call => call.url.searchParams.get('audience')), ['owner', 'family']);
+});
+
 test('show copies previews into the media directory and attaches them', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'nestor-photos-'));
   try {
