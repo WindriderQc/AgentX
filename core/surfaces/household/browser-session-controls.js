@@ -17,7 +17,7 @@ const DISPLAYED_TURNS = 500;
 
 function createBrowserSessionControls({
   personas, conversations, envelope, cleanText, fail, activePersonaTurns,
-  validClientTurnId, nestorClient, memberWork = null
+  validClientTurnId, nestorClient, memberWork = null, reconcileConversation = null
 }) {
   // modeId narrows a space to the one mode its turn route accepts, so nothing it
   // lists or resumes is refused on the first turn.
@@ -72,6 +72,8 @@ function createBrowserSessionControls({
         if (!pack.modes.some((mode) => mode.id === session.modeId)) {
           return fail(res, 409, 'This session uses a retired mode and cannot be resumed.', 'VOICE_PERSONA_SESSION_MODE_UNAVAILABLE');
         }
+        const nativeRecovery = reconcileConversation ? await Promise.resolve().then(() => reconcileConversation(session))
+          .catch(() => ({ state: 'unknown' })) : null;
         // `turns` is what the page shows: the saved conversation, not the model window that bounds `history`.
         const rows = await loadSessionAuditRows(conversations, session, pack, { limit: DISPLAYED_TURNS });
         let lastReply = null;
@@ -91,6 +93,7 @@ function createBrowserSessionControls({
           ...(consumer === 'llmx' ? { lastReply } : {}),
           policy: {
             historyAuthority: 'agentx.core.conversations',
+            ...(nativeRecovery && { nativeRecovery }),
             automaticResume: consumer === 'llmx' ? 'exact-client-stored-session-only' : false,
             childResume: packId === 'kidx_nestor',
             maximumMessages: pack.historyTurns,

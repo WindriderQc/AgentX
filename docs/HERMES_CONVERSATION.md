@@ -77,6 +77,14 @@ A completed turn whose stream was lost is recoverable from its terminal receipt.
 Repeating the same latest browser identity returns the saved terminal result.
 No Core-level retry through a different agent loop occurs.
 
+An optional [conversation relay](NESTOR_CONVERSATION_WORK.md#optional-family-and-hermes-conversational-relay)
+lets a new spoken turn use the existing tool-free local guardian while an exact
+detached Hermes run is still transported and freshly observed running. The
+original action, native session and result stay with Hermes. Missing native
+proof gives a status, never a guessed busy state or another dispatch. This is
+separate from a background reviewer. Return context identifies the relay turns
+as historical reference data and asks for visible corrections when necessary.
+
 Hermes retains its own native execution history on the operator's host. Core's
 conversation erasure does not automatically erase that external native store.
 The operator manages that store through Hermes' own lifecycle controls.

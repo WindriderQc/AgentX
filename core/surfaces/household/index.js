@@ -431,7 +431,7 @@ function register(api) {
   const validClientTurnId = value => typeof value === 'string' && /^[a-zA-Z0-9-]{16,80}$/.test(value);
   const registerBrowserSessionControls = createBrowserSessionControls({
     personas, conversations, envelope, cleanText, fail, activePersonaTurns,
-    validClientTurnId, nestorClient, memberWork
+    validClientTurnId, nestorClient, memberWork, reconcileConversation: session => executeConversation.reconcile?.(session)
   });
   registerBrowserSessionControls('/private', 'personal_operator'); visuals.register(personas); brain.register(personas); memberWork.register(personas);
   registerBrowserSessionControls('/family', VOIX_FAMILY_PACK_ID, VOIX_FAMILY_SCOPE_ID, personas, null, VOIX_FAMILY_MODE_ID);

@@ -119,12 +119,68 @@ the original relay text, through the existing result delivery. Supplying context
 or requesting review does not prove that a review occurred or that its result was
 displayed or spoken. Those observations retain their own receipts.
 
-This attribution applies to the optional personal OpenClaw Main/guardian path,
-including its retained guardian-first records. It does not implement the
-Nestor-first temporary relay for Family or Hermes tracked in
-[issue #1266](https://github.com/WindriderQc/AgentX/issues/1266). Family remains
-excluded from personal work and the owner bus. The guardian remains tool-free;
-attribution changes no runtime, model, route, worker or tool allowlist.
+This native attribution applies to the optional personal OpenClaw Main/guardian
+path, including its retained guardian-first records. Family and Hermes compose
+the same tool-free local conversation continuity capability as described below.
+Family remains excluded from personal work and the owner bus.
+
+### Optional Family and Hermes conversational relay
+
+`HOUSEHOLD_CONVERSATION_RELAY_ENABLED=true` opts these surfaces into the existing
+`runtimeServices.inference.conversation` capability. It also requires the existing
+server-owned `AGENTX_CONVERSATION_CONTINUITY_JSON` policy with a resident guardian
+pin on a different local host. Both settings are absent by default. The relay
+changes no pin, model context, route or installed agent permission. This mode is
+independent of the optional second-brain/reviewer scheduling preferences.
+
+Family first tries its exact configured voice/text task route and pinned context.
+It does not require the personal `daily_operator` route to exist.
+Its atomic exclusive admission treats an already active shared inference as an
+occupied lane. Only a pre-dispatch refusal with an active native holder permits
+a tool-free guardian reply; queue labels, expired ownership, quarantine and
+uncertain outcomes cannot establish occupation. The guardian receives the family
+instructions and bounded recent text dialogue, with the complete current human
+message. It receives no selected private memory, tools or owner bus. Deterministic
+child safety runs before this path. The next turn tries the unchanged main route.
+
+Hermes initially owns its ordinary native run and tools. Speaking again can detach
+its foreground through the existing background-member delivery, leaving that
+same transport and durable Hermes journal active. A guardian turn requires a
+different current request, the exact original run/session/key and a fresh native
+`running` observation while that original transport remains in flight. After a
+restart a retained `running` label is insufficient: the surface reports missing
+reconciliation without starting a guardian or another native run. Explicit Stop
+keeps Hermes' existing native cancellation behavior. The original result is saved
+in its original canonical turn and existing delivery; reconnect never executes
+it again. Missing live delivery can be read in history, without automatic replay.
+With the relay enabled, a history read after restart reconciles only the stored
+native run id. It can retain that original terminal receipt and fill the original
+pending canonical slot; it never posts another native request. Missing identity
+or unavailable status remains unknown. The existing Hermes journal update compares
+its previous key, run and state, so a stale read cannot replace a newer run.
+Finalization retains Household's existing 50,000-character reply bound; the
+separate native conversation-work result contract keeps its 16,000-character bound.
+
+Both paths announce the temporary relay in text and voice. Canonical intake binds
+each stable turn id before inference; a duplicate reads its existing outcome
+without a second inference, including after interruption or an uncertain reply.
+Completed Core inference produces `toolEvidence.conversationRelay.completed=true`.
+A cancelled or failed reply can retain observed model fragments with
+`completed=false`, a parser-input character count and unverified playback. These
+observations establish neither a complete result nor sound heard by the user.
+On the next main turn with Core history enabled, Core supplies the attributed relay dialogue, including marked fragments, as
+reference data even when native Hermes history is already established. It asks
+the main brain to make any necessary correction explicit. This does not inject
+new instructions into an in-flight Hermes run or prove that review occurred.
+Selected context and relay dialogue share an explicit context budget; erasure
+revokes their canonical payloads. Results, action permissions and display/speech
+receipts retain their existing owners. A relay cannot execute a later action
+merely because it appears in this reference context.
+
+CPU HTTP fixtures cover occupied shared inference, independent active Hermes
+transport, return, voice streaming, Stop, reconnect, erasure, missing guardian
+and ambiguous native state. They do not establish model quality, microphone
+behavior, acoustic playback or live instance activation.
 
 When the native dispatch owner is free, queued awaited work precedes queued
 background reviews. New Main-first dialogue is awaited work. A native review whose guardian has explicitly completed and

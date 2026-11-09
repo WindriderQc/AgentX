@@ -45,7 +45,7 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
     try { policy = parse(readPolicy()); } catch {
       log.warn('Conversation continuity policy is invalid; strict routing retained'); return null;
     }
-    if (!policy || !policy.models.includes(request.model) || !['chat', 'generate'].includes(request.mode)
+    if (!policy || (!options.taskRoute && !policy.models.includes(request.model)) || !['chat', 'generate'].includes(request.mode)
       || options.benchmarkClaims || options.codingCapacity || options.reportAuthority) return null;
     const signal = options.signal;
     signal?.throwIfAborted();
@@ -60,8 +60,22 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
     }
     let target = options.primaryTarget || null;
     let failure;
+    let occupation = null;
+    if (typeof options.observeOccupation === 'function') {
+      occupation = await options.observeOccupation();
+      if (occupation?.state !== 'running' || occupation.authority !== 'hermes' || !occupation.runId || !occupation.sessionKey) {
+        return statusResult(request, 'Le travail natif attend une réconciliation; son occupation n’est pas prouvée.', 'occupation_unknown');
+      }
+    }
     try {
-      target = resolvePrincipalAlias(snapshot, request.model) || target;
+      target = options.taskRoute ? snapshot.tasks?.[request.taskType] : resolvePrincipalAlias(snapshot, request.model) || target;
+      if (options.taskRoute) {
+        // In this trusted surface path the selected task is Family's principal.
+        // Its pinned route does not depend on the adult daily_operator route.
+        if (!target?.model || !target.pinAligned || !(target.contextSize > 0) || !target.hostUrl
+            || (!policy.models.includes(target.model) && !policy.models.includes(PRINCIPAL_MODEL_ALIAS))) return null;
+        target = { ...target, numCtx: target.contextSize };
+      }
       if (!target) {
         const entry = Object.values(snapshot.tasks || {}).find(row => row.model === request.model && row.hostUrl && row.pinAligned);
         if (!entry) return null; // explicit models keep the existing effective-model gate
@@ -70,22 +84,35 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
       try { localUrl(target.hostUrl); } catch {
         throw Object.assign(new Error('Conversation continuity requires local/LAN inference'), { code: 'INFERENCE_HOST_INVALID', statusCode: 409 });
       }
-      const primary = await execute({ ...request, model: target.model, exclusiveHost: false,
-        options: { ...request.options, ...(target.numCtx && { num_ctx: target.numCtx }) } }, {
-        signal, consumerContract: options.consumerContract, hostUrl: target.hostUrl,
-        ...(target.topology && { topology: target.topology }), retry: { enabled: false },
-        conversationContinuity: { state: 'primary', reason: null, limited: false, contextReduced: false }
+      if (typeof options.observeOccupation === 'function') {
+        failure = { code: 'HERMES_WORK_ACTIVE' };
+      } else {
+        // Family needs one atomic lane admission: another shared inference also
+        // counts as occupied. This never preempts an admitted owner or reroutes it.
+        const primary = await execute({ ...request, model: target.model, exclusiveHost: options.taskRoute && options.requireOccupied ? true : false,
+          options: { ...request.options, ...(target.numCtx && { num_ctx: target.numCtx }) } }, {
+          signal, consumerContract: options.consumerContract, hostUrl: target.hostUrl,
+          ...(target.topology && { topology: target.topology }), retry: { enabled: false },
+          conversationContinuity: { state: 'primary', reason: null, limited: false, contextReduced: false }
       });
       return requireResult(primary);
+      }
     } catch (error) {
       if (signal?.aborted || !safeRefusal(error)) throw error;
       failure = error;
     }
-    const reason = reasonOf(failure);
-    const work = await boundedRead(readWork, 1500, signal).catch(() => null);
+    if (options.requireOccupied && !occupation && !(failure?.failure?.safeToRetry === true
+        && ['inference_active', 'inference_residency_active', 'workload_reserved', 'maintenance_active'].includes(failure.failure.cause)
+        && failure.failure.holder)) {
+      return statusResult(request, 'Le cerveau principal est indisponible; aucune occupation active n’est prouvée.', 'occupation_unknown');
+    }
+    const reason = occupation ? 'hermes_active' : reasonOf(failure);
+    const work = options.requireOccupied ? null : await boundedRead(readWork, 1500, signal).catch(() => null);
     signal?.throwIfAborted();
     const principalEndpoints = primaryHosts(snapshot, target);
-    const status = describe(failure, principalEndpoints, work);
+    const status = occupation ? 'Le travail demandé continue dans son exécution Hermes d’origine. Sa durée restante est inconnue.'
+      : options.familyInstructions ? 'Le cerveau principal traite une autre demande. Sa durée restante est inconnue.'
+        : describe(failure, principalEndpoints, work);
     const visited = new Set(principalEndpoints.map(hostUrlKey));
     for (const hostKey of policy.hosts) {
       signal?.throwIfAborted();
@@ -110,13 +137,24 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         const resident = (await probe.json()).models?.find(row => deps.modelsMatch(row.name || row.model, pin.model));
         if (!resident || Number(resident.context_length) !== Number(pin.contextSize)) continue;
       } catch { if (signal?.aborted) signal.throwIfAborted(); continue; }
-      const notice = `🪶 Nestor en mode de secours local, avec un contexte récent réduit et sans outils d’action. ${status}`;
-      const reduced = reducedRequest(request, { ...policy, model: pin.model, contextSize: Number(pin.contextSize), notice, status });
+      const notice = options.requireOccupied
+        ? 'Nestor assure temporairement le relais, avec un contexte récent réduit et sans outils. Le cerveau principal est occupé.'
+        : `🪶 Nestor en mode de secours local, avec un contexte récent réduit et sans outils d’action. ${status}`;
+      const reduced = reducedRequest(options.relayRequest || request, { ...policy, model: pin.model,
+        contextSize: Number(pin.contextSize), notice, status, familyInstructions: options.familyInstructions });
       if (!reduced) return statusResult(request, status, 'backup_context_unavailable');
-      const continuity = { state: 'backup', reason, limited: true, contextReduced: true };
+      const continuity = { state: 'backup', reason, limited: true, contextReduced: true,
+        model: pin.model, hostKey,
+        ...(occupation && { relayFor: { authority: 'hermes', runId: occupation.runId, sessionKey: occupation.sessionKey, turnId: occupation.turnId } }) };
       const routing = { degraded: true, reason, fallbackFrom: { model: target?.model || null, host: target?.hostKey || null },
         fallbackTo: { model: pin.model, host: hostKey } };
       try {
+        if (occupation) {
+          const current = await options.observeOccupation();
+          if (current?.state !== 'running' || current.runId !== occupation.runId || current.sessionKey !== occupation.sessionKey) {
+            return statusResult(request, 'Le travail natif a changé; reprends avec Nestor au prochain tour.', 'occupation_changed');
+          }
+        }
         const result = await execute(reduced, { signal, consumerContract: options.consumerContract, hostUrl,
           degraded: routing, conversationContinuity: { ...continuity,
             lane: { role: 'conversation', mode: 'continuity', group: null, laneContext: Number(pin.contextSize) } },

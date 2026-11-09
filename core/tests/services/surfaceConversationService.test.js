@@ -124,6 +124,18 @@ describe('surface conversations in the canonical Core store', () => {
       .rejects.toMatchObject({ statusCode: 400 });
   });
 
+  test.each([['household', 50000], ['image-workshop', 16000]])('pending %s intake keeps its surface reply bound of %i', async (surface, limit) => {
+    const store = forSurface(surface);
+    const current = await store.createSession({ sessionId: randomUUID(), packId: 'synthetic', modeId: 'test', scopeId: 'test' });
+    const accepted = await store.acceptTurn(turn(current));
+    const input = { ...turn(current), traceId: accepted.turn.traceId, outcome: 'completed' };
+    await expect(store.settleTurn({ ...input, replyText: 'x'.repeat(limit + 1) })).rejects.toMatchObject({ statusCode: 400 });
+    expect((await store.getTurn({ traceId: input.traceId })).outcome).toBe('pending');
+    await store.settleTurn({ ...input, replyText: 'x'.repeat(limit) });
+    expect((await store.getTurn({ traceId: input.traceId })).replyText).toHaveLength(limit);
+    expect(await store.countTurns({ sessionId: current.sessionId })).toBe(1);
+  });
+
   test('concurrent replay appends exactly one turn and increments the count once', async () => {
     const event = turn(session, { source: 'voix-native' });
     const results = await Promise.allSettled(Array.from({ length: 6 }, () => conversations.recordTurn(event)));

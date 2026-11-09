@@ -1,11 +1,11 @@
 'use strict';
 
-const { readReplyFrames } = require('./persona-catalog');
 const { conversationInput } = require('./llmx-conversation');
 const { selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL } = require('./conversation-agent');
 const interactivePriority = require('../../src/services/interactivePriorityService');
-const { sumUsage } = require('../../src/services/conversations/turnAccounting');
 const { configuredHermes, createHermesTransport } = require('../../src/services/conversations/hermesTransport');
+
+const { voiceTask } = require('./conversation-inference');
 
 const HOST_BUSY_CODES = new Set(['BENCHMARK_CLAIM_ACTIVE', 'RUNTIME_INFERENCE_ADMISSION_DENIED']);
 
@@ -37,12 +37,6 @@ function familyConversationBackend(env = process.env) {
   return ['agentx', 'openclaw'].includes(value) ? value : null;
 }
 
-// Router task of a spoken turn on Core inference; typed turns keep the pack's task.
-function voiceTask(env = process.env) {
-  const value = String(env.HOUSEHOLD_VOICE_TASK || '').trim();
-  return /^[a-z][a-z0-9_]{0,63}$/.test(value) ? value : 'voice_persona_chat';
-}
-
 // These are transports, not two agent loops. OpenClaw runs its native agent;
 // AgentX runs the existing routed inference contract. A started turn is never
 // replayed through the other transport, including after an ambiguous failure.
@@ -50,8 +44,11 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
   const hermes = hermesClient || createHermesTransport({ env,
     recordUsage: recordRuntimeUsage || (receipt => require('../../src/services/runtimeUsageService').ingestRuntimeUsage(receipt)),
     archive: conversations ? async (session, state) => {
+    if (env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && (state.receipt?.partial === true || state.receipt?.completed === false
+        || typeof state.receipt?.output !== 'string' || !state.receipt.output.trim())) throw new Error('The original Hermes result is not fully verified. Native reconciliation is required.');
     const scope = { sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId };
-    const previous = await conversations.getTurn({ ...scope, 'toolEvidence.runId': state.runId });
+    const previous = await conversations.getTurn({ ...scope, 'toolEvidence.runId': state.runId })
+      || (state.turnId ? await conversations.getTurn({ ...scope, traceId: state.turnId }) : null);
     const presentation = require('./reply-channels');
     const channels = presentation.createReplyChannels({ allowSecrets: true });
     channels.push(state.receipt.output || '');
@@ -62,20 +59,24 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
       usage: state.receipt.usage, modelProvider: state.receipt.runtime?.provider,
       knowledgeStatus: 'agent-managed', knowledgeUsed: receipts.some(row => /rag_search|memory_search|wiki_search/.test(row.tool)),
       toolEvidence: { authority: 'hermes', status: 'observed', runId: state.runId, receipts, recovered: true } };
-    if (previous) {
+    if (previous?.outcome === 'pending' && previous.traceId === state.turnId) {
+      if (previous.inputText !== state.requestText) throw new Error('The native receipt does not match its canonical request.');
+      await conversations.settleTurn({ ...scope, traceId: previous.traceId, ...recovered });
+    } else if (previous) {
       const updated = await conversations.updateTurn({ ...scope, traceId: previous.traceId }, { $set: recovered });
       if (!updated) throw new Error('The recovered Hermes answer could not be saved.');
     }
     else await conversations.recordTurn({ ...scope, ...recovered, traceId: 'hermes-' + state.runId,
       modeId: session.modeId, inputText: state.requestText || '', clientTurnId: state.turnId, channel: state.channel || 'text' });
-  } : undefined, persist: conversations ? async (sessionId, state) => {
-    const updated = await conversations.updateSession({ sessionId, status: 'active' }, { $set: { hermesRuntime: state } });
+  } : undefined, persist: conversations ? async (sessionId, state, expected) => {
+    const basis = Object.fromEntries(Object.entries(expected || {}).map(([key, value]) => ['hermesRuntime.' + key, value === undefined ? { $exists: false } : value]));
+    const updated = await conversations.updateSession({ sessionId, status: 'active', ...basis }, { $set: { hermesRuntime: state } });
     if (!updated) throw new Error('The Hermes conversation journal is unavailable.');
   } : undefined });
   const run = runTurn({ agentClient, hermesClient: hermes, inference, consumerContract, env });
   // A household turn outranks evaluation work (#62). If the host stayed
   // reserved past the bounded wait, say so plainly instead of a generic error.
-  return async request => {
+  const execute = async request => {
     const startedAt = Date.now();
     const endTurn = interactivePriority.beginHouseholdTurn();
     const stopWaiting = interactivePriority.onWaiting(info => request.onWaiting?.(info));
@@ -91,6 +92,19 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
         const context = recapContext(confirmed);
         if (context) request = { ...request, turnContext: [request.turnContext, context].filter(Boolean).join('\n\n') };
       }
+      if (env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && conversations?.readTurns && !request.session?.ephemeral
+          && !request.session?.llmx && request.conversationFeatures?.historyContext !== false
+          && (request.backend === 'hermes' || request.backend === 'agentx' && request.pack?.childSafe)) {
+        const relay = require('../../src/services/conversations/relayContext');
+        const context = await relay.relayContext(conversations, request.session);
+        if (context) {
+          const selected = [request.turnContext, context].filter(Boolean).join('\n\n');
+          require('../../src/services/conversations/turnContext').assertContextSize(selected, 96000);
+          request = { ...request, turnContext: selected,
+            hermesInstructions: [request.hermesInstructions, relay.RETURN_INSTRUCTIONS].filter(Boolean).join('\n\n'),
+            agentxInstructions: [request.agentxInstructions, relay.RETURN_INSTRUCTIONS].filter(Boolean).join('\n\n') };
+        }
+      }
       return await run(request);
     } catch (error) {
       if (interactivePriority.busySince(startedAt) || HOST_BUSY_CODES.has(error.code)) {
@@ -102,6 +116,9 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
       endTurn();
     }
   };
+  execute.reconcile = session => env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && session.backend === 'hermes'
+    ? hermes.reconcile?.(session) : null;
+  return execute;
 }
 
 function runTurn({ agentClient, hermesClient, inference, consumerContract, env }) {
@@ -118,6 +135,12 @@ function runTurn({ agentClient, hermesClient, inference, consumerContract, env }
     const messages = [...history, { role: 'user', content, attachments: request.attachments || [] }];
     const prepared = request.attachmentStore ? await request.attachmentStore.prepare(messages, backend === 'hermes' ? 'openclaw' : backend) : messages;
     if (backend === 'hermes') {
+      if (env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && typeof hermesClient.occupation === 'function') {
+        const occupied = await hermesClient.occupation(request);
+        if (occupied) return require('./conversation-inference').runLocalConversation({
+          request: { ...request, relayOccupation: () => hermesClient.occupation(request), familyTools: null },
+          prepared, inference, consumerContract, env });
+      }
       const convert = message => ({ role: message.role, content: Array.isArray(message.content) ? message.content.map(part =>
         part.type === 'input_text' ? { type: 'text', text: part.text } : part.type === 'input_image' && part.source
           ? { type: 'image_url', image_url: { url: `data:${part.source.media_type};base64,${part.source.data}` } } : part) : message.content });
@@ -138,69 +161,7 @@ function runTurn({ agentClient, hermesClient, inference, consumerContract, env }
       const reply = guardian.finish(result.text);
       return { ...result, text: reply.text, metadata: { ...result.metadata, guardianDisposition: reply.disposition }, backend };
     }
-    // A spoken turn takes the instance's voice lane, in any pack. LLMx scene
-    // conversations keep their pack's task: they need its structured replies.
-    const taskType = request.channel === 'voice' && !session.llmx ? voiceTask(env) : pack.taskType;
-    // Famille may call the Core tools the instance turned on: the model's tool
-    // calls run through Core's handlers, then the model answers from their
-    // results. Without a tool call the first reply streams as before.
-    const toolset = request.familyTools || null;
-    const receipts = [];
-    let conversation = [{ role: 'system', content: agentxInstructions }, ...prepared.map(({ attachments, ...message }) => message)];
-    let result, streamed = '', toolCalls = [], toolsOffered = Boolean(toolset), rounds = 0;
-    // Measured counts of every call this reply made, summed into the turn.
-    const callUsage = [];
-    for (;;) {
-      const offerTools = toolsOffered && rounds < toolset.maxRounds;
-      const execute = (withTools) => inference.execute({
-        mode: 'chat', taskType,
-        ...(request.model ? { model: request.model.replace(/^ollama\//, '') } : {}),
-        ...(request.openTarget ? { exclusiveHost: true, options: { num_ctx: request.openTarget.numCtx } } : {}),
-        messages: conversation, ...(withTools ? { tools: toolset.definitions } : {}),
-        stream: request.streaming, think: false, temperature: pack.temperature, max_tokens: pack.maxTokens,
-        callerDetail: `agentx-household/${pack.id}/${session.modeId}`, timeoutMs: 600000
-      }, { signal, consumerContract, ...(session.ephemeral ? { contentRetention: 'ephemeral' } : {}), ...(request.openTarget ? { hostUrl: request.openTarget.hostUrl } : {}) });
-      result = await execute(offerTools);
-      // A model whose runtime refuses tools answers the turn without them.
-      if (offerTools && !result?.ok && /does not support tools/i.test(JSON.stringify(result?.body?.error || ''))) {
-        toolsOffered = false;
-        result = await execute(false);
-      }
-      if (!result?.ok) {
-        const error = result?.body?.error;
-        throw Object.assign(new Error((typeof error === 'string' ? error : error?.message) || 'AgentX inference failed'), { statusCode: result?.status || 502 });
-      }
-      let frames = { text: '', toolCalls: [] };
-      try {
-        if (result.stream) frames = await readReplyFrames(result.stream, onDelta, signal);
-      } finally {
-        if (result.stream) {
-          if (!result.completion?.then) throw new Error('Core does not expose verified stream completion. Update the paired Product release.');
-          callUsage.push(await result.completion);
-        }
-      }
-      if (!result.stream) callUsage.push(result.body);
-      const message = result.body?.message;
-      const text = frames.text || message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '';
-      streamed += text;
-      toolCalls = result.stream ? frames.toolCalls : (Array.isArray(message?.tool_calls) ? message.tool_calls : []);
-      if (!offerTools || !toolsOffered || !toolCalls.length || signal?.aborted) break;
-      rounds += 1;
-      const calls = toolCalls.slice(0, toolset.maxCallsPerRound);
-      conversation = [...conversation, { role: 'assistant', content: text, tool_calls: calls }];
-      for (const call of calls) {
-        const answered = await toolset.execute(call);
-        receipts.push(answered.receipt);
-        conversation.push(answered.message);
-      }
-    }
-    return { backend, text: streamed,
-      metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}), usage: sumUsage(callUsage) },
-      tools: toolset && toolsOffered
-        ? { status: 'observed', authority: 'agentx/core', offered: toolset.names, receipts }
-        : { status: 'not_supported', authority: 'agentx/ollama', receipts: [],
-          reason: toolset ? 'The selected model runtime does not accept tools; the turn used supplied context only.'
-            : 'This inference backend uses supplied context; native agent tools, skills and Dreaming are not running.' } };
+    return require('./conversation-inference').runLocalConversation({ request, prepared, inference, consumerContract, env });
   };
 }
 

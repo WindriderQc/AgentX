@@ -6,7 +6,7 @@ const error = (message, code, statusCode) => Object.assign(new Error(message), {
 
 // The human message and a pending assistant slot are committed together by the
 // existing transcript owner. Completion replaces only that slot, never input.
-function turnIntake({ recordTurn, getTurn, updateTurn, withWrite }) {
+function turnIntake({ recordTurn, getTurn, updateTurn, withWrite, replyTextLimit = 16000 }) {
   async function acceptTurn(input) {
     return withWrite(input.sessionId, async () => {
       const query = { sessionId: input.sessionId, packId: input.packId, scopeId: input.scopeId, traceId: input.traceId };
@@ -26,7 +26,7 @@ function turnIntake({ recordTurn, getTurn, updateTurn, withWrite }) {
 
   async function settleTurn(input) {
     const { inputText, inputSha256, attachments, clientTurnId, createdAt, modeId, channel, traceId, sessionId, packId, scopeId, ...fields } = input;
-    if (typeof fields.replyText !== 'string' || fields.replyText.length > 16000) {
+    if (typeof fields.replyText !== 'string' || fields.replyText.length > replyTextLimit) {
       throw error('Invalid bounded conversation reply.', 'CONVERSATION_INVALID', 400);
     }
     const query = { traceId, sessionId, packId, scopeId };

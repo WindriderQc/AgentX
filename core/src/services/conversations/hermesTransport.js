@@ -41,6 +41,7 @@ async function readEvents(body, consume, signal) {
 
 function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch, persist, archive, recordUsage, pollMs = 150, stopMs = 20000 } = {}) {
   const config = configuration(env);
+  const active = new Map(); // Exact live transports only; durable running labels are insufficient.
   async function http(path, { method = 'GET', body, key, sessionKey, signal } = {}) {
     if (!config) throw fault('Hermes is not configured.', 'HERMES_NOT_CONFIGURED');
     const response = await fetchImpl(config.url + path, { method, redirect: 'error', signal,
@@ -57,7 +58,8 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
   const pathFor = state => '/v1/runs/' + encodeURIComponent(state.runId);
   async function save(request, state) {
     if (!persist) throw fault('Hermes requires durable conversation state.', 'HERMES_JOURNAL_REQUIRED');
-    await persist(request.session.sessionId, state);
+    const previous = request.session.hermesRuntime;
+    await persist(request.session.sessionId, state, { key: previous?.key, runId: previous?.runId, state: previous?.state });
     request.session.hermesRuntime = state;
     return state;
   }
@@ -119,7 +121,7 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
     }
     return terminal(request, state, observed);
   }
-  return async request => {
+  const run = async request => {
     if (request.pack?.childSafe || request.session.packId !== 'personal_operator' || request.session.scopeId !== 'personal' || request.session.llmx) {
       throw fault('Hermes is available only in the personal conversation.', 'HERMES_PERSONAL_ONLY', 403);
     }
@@ -229,6 +231,57 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
       throw error;
     }
   };
+  const transport = async request => {
+    const id = request.session?.sessionId;
+    if (active.has(id)) throw fault('Cette exécution Hermes est encore active; sa demande est conservée.', 'HERMES_TURN_ACTIVE', 409);
+    active.set(id, request);
+    try { return await run(request); }
+    finally { if (active.get(id) === request) active.delete(id); }
+  };
+  transport.occupation = async request => {
+    if (request.pack?.childSafe || request.session.packId !== 'personal_operator'
+        || request.session.scopeId !== 'personal' || request.session.llmx) return null;
+    const current = active.get(request.session.sessionId), saved = request.session.hermesRuntime;
+    if (current?.reconciling) return { state: 'unknown' };
+    const state = current?.session.hermesRuntime || saved;
+    if (!state || TERMINAL.has(state.state)) return null;
+    const unknown = { state: 'unknown' };
+    const key = createHash('sha256').update(request.session.sessionId + ':' + request.turnId).digest('hex');
+    if (!state.runId || state.key === key) return unknown;
+    let observed;
+    try { observed = await status(state, AbortSignal.timeout(3000)); } catch { return unknown; }
+    if (TERMINAL.has(observed.status)) return current ? unknown : null;
+    if (!current || state.state !== 'running' || observed.status !== 'running' || observed.run_id !== state.runId
+        || state.sessionKey !== 'agentx:personal:' + request.session.sessionId
+        || saved?.runId !== state.runId || saved.key !== state.key) return unknown;
+    return { state: 'running', authority: 'hermes', runId: state.runId, sessionKey: state.sessionKey, turnId: state.turnId };
+  };
+  transport.reconcile = async session => {
+    if (session.packId !== 'personal_operator' || session.scopeId !== 'personal' || session.llmx) return null;
+    if (active.has(session.sessionId)) return { state: 'in_flight' };
+    const reader = { session, reconciling: true };
+    active.set(session.sessionId, reader);
+    try {
+      const state = session.hermesRuntime;
+      if (!state) return null;
+      if (!state.runId || state.sessionKey !== 'agentx:personal:' + session.sessionId) return { state: 'unknown' };
+      const request = { session };
+      if (!TERMINAL.has(state.state) || state.receipt?.run_id !== state.runId || typeof state.receipt?.output !== 'string') {
+        const observed = await status(state, AbortSignal.timeout(3000));
+        if (observed.run_id !== state.runId) return { state: 'unknown' };
+        if (!TERMINAL.has(observed.status)) return { state: 'unconfirmed' };
+        await terminal(request, state, observed, false);
+      }
+      const received = session.hermesRuntime;
+      if (received.state === 'completed') {
+        if (received.receipt?.status !== 'completed' || received.receipt.partial === true || received.receipt.completed === false
+            || typeof received.receipt.output !== 'string' || !received.receipt.output.trim()) return { state: 'unconfirmed' };
+        if (archive) await archive(session, received);
+      }
+      return { state: received.state };
+    } finally { if (active.get(session.sessionId) === reader) active.delete(session.sessionId); }
+  };
+  return transport;
 }
 
 module.exports = { configuredHermes, createHermesTransport, readEvents };

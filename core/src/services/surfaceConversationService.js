@@ -326,7 +326,7 @@ function forSurface(surface) {
     });
   }
 
-  const intake = require('./conversations/surfaceTurnIntake').turnIntake({ recordTurn, getTurn, updateTurn,
+  const intake = require('./conversations/surfaceTurnIntake').turnIntake({ recordTurn, getTurn, updateTurn, replyTextLimit,
     withWrite: (sessionId, action) => withSessionWrite(surface, sessionId, action) });
   return Object.freeze({ ...intake, createSession, ensureSession, getSession, listSessions, updateSession,
     recordTurn, getTurn, listTurns, readTurns, countTurns, updateTurn, updateTurns, deleteSession, exportSession });

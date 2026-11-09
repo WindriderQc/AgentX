@@ -2323,6 +2323,15 @@ Set `AGENTX_CONVERSATION_CONTINUITY_JSON` to a bounded policy, for example:
 {"hosts":["secondary","tertiary"],"models":["agentx-primary"],"maxOutputTokens":384,"maxInputChars":12000}
 ```
 
+Household can opt its Family and personal Hermes surfaces into this same local
+guardian capability with `HOUSEHOLD_CONVERSATION_RELAY_ENABLED=true`. The flag
+does not enable the second-brain reviewer or change any pin. Family requires a
+fresh native admission refusal from an active holder; Hermes requires the exact
+detached native run, fresh native status and its still-active transport. Both
+settings remain off/absent by default. See the
+[surface relay contract](NESTOR_CONVERSATION_WORK.md#optional-family-and-hermes-conversational-relay)
+for intake, permissions, interruption, attribution and return behavior.
+
 `hosts` lists one to four registered local/LAN host keys. The first pin of
 each candidate must already be resident at its pinned context. Unregistered,
 cloud, unpinned or context-mismatched candidates are skipped; nothing downloads,
