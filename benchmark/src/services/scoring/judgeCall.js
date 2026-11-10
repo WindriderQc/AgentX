@@ -9,7 +9,7 @@ const { withBenchmarkServiceAuth } = require('../../helpers/coreServiceAuth');
 const { benchmarkFetch: fetch } = require('../benchmark/http');
 const { normalizeJudgeNumCtx } = require('./judgeRuntimeConfig');
 const { judgeRequestIdentity, enterJudgeInference } = require('./judgeRequestIdentity');
-const { assertJudgeInputUnmodified, assertJudgeOutputComplete } = require('./judgeInput');
+const { assertJudgeInputUnmodified, assertJudgeOutputComplete, judgeHttpError } = require('./judgeInput');
 
 // Judge calls always route through the core inference proxy. Lane policy
 // classifies `callerDetail: 'benchmark-judge'`; the scoped Benchmark credential
@@ -77,9 +77,18 @@ function throwIfJudgeCancelled(config = {}) {
 function rethrowIfJudgeCancelled(error, config = {}) {
     // Identity drift is fatal to the whole score, including reference and
     // decomposed sub-verdicts. It must not become a retry or partial score.
-    if (error?.code === 'JUDGE_EXECUTION_CONTRACT_MISMATCH') throw error;
+    if (error?.code === 'JUDGE_EXECUTION_CONTRACT_MISMATCH'
+        || ['RUNTIME_INFERENCE_RECOVERY_REQUIRED', 'RUNTIME_INFERENCE_ADMISSION_LOST',
+            'RUNTIME_INFERENCE_ADMISSION_CLOSED', 'RUNTIME_INFERENCE_ADMISSION_ABORTED',
+            'JUDGE_INFERENCE_TERMINALITY_UNKNOWN'].includes(error?.code)) throw error;
     if (isBenchmarkBatchStoppedError(error) || getJudgeCancelSignal(config)?.aborted) {
         throw createBenchmarkBatchStoppedError();
+    }
+    // Timeout cannot attest that an admitted native generation has stopped.
+    if (error?.name === 'AbortError' && getJudgeCancelSignal(config)?.workloadId) {
+        throw Object.assign(new Error('Judge inference terminal state is unknown'), {
+            code: 'JUDGE_INFERENCE_TERMINALITY_UNKNOWN', statusCode: 503
+        });
     }
 }
 
@@ -439,7 +448,7 @@ async function callJudge(evalPrompt, config = {}, retryCount = 0) {
             const response = await fetch(url, fetchOptions);
 
             if (!response.ok) {
-                throw new Error(`Judge HTTP ${response.status}`);
+                throw await judgeHttpError(response);
             }
             data = await response.json();
         }
@@ -541,6 +550,9 @@ async function fetchWhenJudgeHostFree(send, judgeConfig = {}) {
     let refusals = 0;
     for (;;) {
         const res = await send();
+        if (res.status === 503 && typeof res.clone === 'function') {
+            rethrowIfJudgeCancelled(await judgeHttpError(res.clone()), judgeConfig);
+        }
         if (res.status !== 503 || Date.now() + retryMs > deadline) {
             if (refusals > 0 && res.status !== 503) logger.info('Judge host free again', { host: judgeConfig.host, refusals });
             return res;

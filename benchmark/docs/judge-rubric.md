@@ -182,3 +182,16 @@ The 43 authored references are a smoke test, not independent human ground truth;
 thresholds are to be confirmed on human-graded references. A calibration item with
 `reference_tests` is executed like any coding prompt; without a runner it is
 reported as incomplete, never silently judged.
+
+### Native inference interruption
+
+A managed standalone calibration stops when its inference times out without a
+native completion receipt, or Core reports lost, closed, aborted, or quarantined
+inference admission. These failures propagate through binary votes, reference
+scoring, and calibration cases; they are not unreadable answers or host-busy
+retries. No partial calibration is published as a qualification.
+
+Disconnecting the calibration caller aborts its shared judge signal. The owner
+hands uncertain admission to durable recovery and drains its heartbeat rather
+than releasing the admission without proof. This handoff is not evidence that
+the native generation has stopped or that recovery has completed.

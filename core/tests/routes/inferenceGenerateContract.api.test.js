@@ -301,6 +301,18 @@ describe('POST /api/inference/generate — behaviour contract', () => {
       expect(recordInference).not.toHaveBeenCalled();
     });
 
+
+    test('preserves a native quarantine code for direct judge callers before dispatch', async () => {
+      const { beginInferenceAdmission } = require('../../src/services/inferenceAdmissionService');
+      beginInferenceAdmission.mockRejectedValueOnce(Object.assign(new Error('Native recovery required'), {
+        code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED', statusCode: 503
+      }));
+      const response = await request(app).post('/api/inference/generate')
+        .send({ model: 'test-model', prompt: 'hello' }).expect(503);
+      expect(response.body).toMatchObject({ status: 'error', code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' });
+      expect(fetch.mock.calls.filter(([url]) => /\/api\/(chat|generate)$/.test(url))).toHaveLength(0);
+    });
+
     test('a benchmark-claim dependency error preserves the established response envelope', async () => {
       hostPreferenceService.getByHost.mockRejectedValueOnce(new Error('claim store unavailable'));
 

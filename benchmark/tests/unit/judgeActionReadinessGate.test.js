@@ -89,6 +89,23 @@ describe('judge-required API action gates', () => {
         expect(callJudge).not.toHaveBeenCalled();
     });
 
+
+    test.each(['RUNTIME_INFERENCE_RECOVERY_REQUIRED', 'JUDGE_INFERENCE_TERMINALITY_UNKNOWN'])(
+        'stops accuracy calibration on %s before another case or qualification', async code => {
+            readinessService.resolveReadyJudgeTarget.mockResolvedValue({
+                ready: true, target: { host: 'http://judge:11434', model: 'judge:test' }
+            });
+            const scorer = jest.spyOn(require('../../src/services/qualityScorer'), 'scoreResponse')
+                .mockRejectedValue(Object.assign(new Error('Native terminality unavailable'), { code, statusCode: 503 }));
+            try {
+                const response = await request(app).post('/api/benchmark/judge/calibrate-accuracy').send({});
+                expect(response.status).toBe(503);
+                expect(response.body).toMatchObject({ status: 'error', code });
+                expect(response.body.data).toBeUndefined();
+                expect(scorer).toHaveBeenCalledTimes(1);
+            } finally { scorer.mockRestore(); }
+        });
+
     test('uses the requested context throughout quick calibration', async () => {
         readinessService.resolveReadyJudgeTarget.mockResolvedValue({
             ready: true, target: { host: 'http://judge:11434', model: 'judge:14b' }

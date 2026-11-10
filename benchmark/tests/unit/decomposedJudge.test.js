@@ -791,3 +791,22 @@ describe('think parameter handling', () => {
         expect(body.think).toBe(false);
     });
 });
+
+describe('Terminal native judge admission', () => {
+    it.each([1, 3])('never retries a quarantined admission with %i votes', async voting_count => {
+        mockFetchFn.mockResolvedValue({ ok: false, status: 503,
+            text: async () => JSON.stringify({ code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' }) });
+        await expect(askBinaryQuestion('response', 'question?', { ...JUDGE_CONFIG, voting_count }))
+            .rejects.toMatchObject({ code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' });
+        expect(mockFetchFn).toHaveBeenCalledTimes(voting_count);
+    });
+
+    it('does not replay a managed timeout whose native terminal state is unknown', async () => {
+        const controller = new AbortController();
+        Object.defineProperty(controller.signal, 'workloadId', { value: 'judge-accuracy-calibration:test' });
+        mockFetchFn.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        await expect(askBinaryQuestion('response', 'question?', { ...JUDGE_CONFIG, cancelSignal: controller.signal }))
+            .rejects.toMatchObject({ code: 'JUDGE_INFERENCE_TERMINALITY_UNKNOWN' });
+        expect(mockFetchFn).toHaveBeenCalledTimes(1);
+    });
+});

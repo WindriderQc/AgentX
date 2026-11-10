@@ -153,3 +153,24 @@ describe('judge caller cancellation', () => {
         expect(benchmarkFetch).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('terminal Core admission errors', () => {
+    it('propagates a native quarantine instead of retrying or returning an ungraded result', async () => {
+        benchmarkFetch.mockResolvedValue({ ok: false, status: 503,
+            text: async () => JSON.stringify({ code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' }) });
+        await expect(callJudge('evaluate this', CONFIG))
+            .rejects.toMatchObject({ code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' });
+        expect(benchmarkFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not wait out a quarantined reference judge host', async () => {
+        const { fetchWhenJudgeHostFree } = require('../../src/services/scoring/judgeCall');
+        const response = { status: 503, clone: () => ({
+            status: 503, text: async () => JSON.stringify({ code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' })
+        }) };
+        const send = jest.fn().mockResolvedValue(response);
+        await expect(fetchWhenJudgeHostFree(send, CONFIG))
+            .rejects.toMatchObject({ code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' });
+        expect(send).toHaveBeenCalledTimes(1);
+    });
+});
