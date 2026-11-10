@@ -30,7 +30,9 @@
       "life_atlas",
       "nestor_photos",
       "nestor_read_presentation",
-      "nestor_janitor_report"
+      "nestor_janitor_report",
+      "source_catalogue",
+      "source_read"
     ]
   },
   "toolMetadata": {
@@ -92,6 +94,12 @@
       "optional": true
     },
     "nestor_janitor_report": {
+      "optional": true
+    },
+    "source_catalogue": {
+      "optional": true
+    },
+    "source_read": {
       "optional": true
     }
   },

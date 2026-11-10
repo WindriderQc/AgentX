@@ -28,7 +28,8 @@
     "presentation.js",
     "iss-evidence.js",
     "core-recall.js",
-    "core-atlas.js"
+    "core-atlas.js",
+    "core-sources.js"
   ],
   "scripts": {
     "test": "node --test test/*.test.js"

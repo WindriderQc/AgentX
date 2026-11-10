@@ -366,7 +366,7 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const familyWeatherContext = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? await require('./family-weather').familyWeatherContext(ambient) : '';
+        const familyWeatherContext = await require('./living-source-context').livingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient });
         const contextBase = [familyWeatherContext, systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
         const screen = !isLlmX && !consult ? require('./screen-context') : null;
@@ -410,7 +410,7 @@ function createPersonaTurnHandler({
         // transports. Adult conversations keep their normal style overlay order.
         // Famille on the AgentX engine may call the Core tools the instance turned on (HOUSEHOLD_FAMILY_TOOLS).
         const familyTools = backend === 'agentx' && pack.childSafe && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !isOpening && !member
-          ? familyToolset(conversationEnv, { artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { artx } }) : null;
+          ? familyToolset(conversationEnv, { artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { artx, ambient } }) : null;
         const agentxInstructions = [pack.childSafe ? familyIdentity(session.persona) : '',
           entry.ephemeral ? 'This is an ephemeral conversation. Use only its supplied active dialogue and attachments. Persistent personal memory and RAG are unavailable; no memory save or later recollection is confirmed.' : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,

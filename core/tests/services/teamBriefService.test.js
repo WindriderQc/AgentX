@@ -22,7 +22,7 @@ describe('the standing brief of a collaborator', () => {
     for (const member of members()) {
       const result = await brief({ member }, { sources: sources(), now });
       expect(result).toMatchObject({ ok: true, authority: 'agentx.core', kind: 'team_brief', member, asOf: '2026-03-15T12:00:00.000Z' });
-      expect(Object.keys(result).sort()).toEqual(['asOf', 'authority', 'beyond', 'covers', 'kind', 'member', 'ok', 'sections', 'since', 'title']);
+      expect(Object.keys(result).sort()).toEqual(['asOf', 'authority', 'beyond', 'covers', 'kind', 'member', 'metadata', 'ok', 'sections', 'since', 'title']);
       expect(typeof result.covers).toBe('string');
       expect(typeof result.beyond).toBe('string');
     }
@@ -56,7 +56,7 @@ describe('the standing brief of a collaborator', () => {
   test('a part Core cannot read is marked unavailable and the others still answer', async () => {
     const s = sources({ financeAlerts: { list: async () => { throw new Error('alerts store offline'); } } });
     const { sections } = await brief({ member: 'comptable' }, { sources: s, now });
-    expect(sections.pendingAlerts).toEqual({ unavailable: 'alerts store offline' });
+    expect(sections.pendingAlerts).toEqual({ unavailable: 'Source unavailable', code: 'SOURCE_UNAVAILABLE' });
     expect(sections.balances.accounts).toHaveLength(1);
   });
 
@@ -65,4 +65,15 @@ describe('the standing brief of a collaborator', () => {
     await expect(brief({ member: 'comptable', days: 0 }, { sources: sources(), now })).rejects.toMatchObject({ statusCode: 400 });
     expect(formatCents(5)).toBe('0,05 $');
   });
+});
+
+test('single-section reads pass continuation and freeze the requested window', async () => {
+  const s = sources();
+  const result = await brief({ member: 'secretary', section: 'mail', limit: 7, offset: 14, asOf: '2026-03-15T12:00:00Z' }, { sources: s, now });
+  expect(Object.keys(result.sections)).toEqual(['mail']);
+  expect(s.calls).toEqual([['mail', { since: '2026-03-13T12:00:00.000Z', limit: 7, offset: 14 }]]);
+  expect(result.metadata.mail.freshness).toEqual({ status: 'unknown', sourceUpdatedAt: null });
+  for (const extra of [{ section: 'constructor' }, { offset: -1 }, { offset: 0.5 }, { limit: 0 }, { asOf: 'invalid' }, { asOf: null }, { asOf: 123 }, { asOf: '2026-03-15' }, { asOf: '2026-02-31T12:00:00Z' }]) {
+    await expect(brief({ member: 'secretary', ...extra }, { sources: s, now })).rejects.toMatchObject({ statusCode: 400 });
+  }
 });

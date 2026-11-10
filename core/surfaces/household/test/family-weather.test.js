@@ -30,7 +30,7 @@ test('stale, missing, future and failed weather never become current conditions'
   assert.match(await familyWeatherContext(null), /unavailable/);
 });
 
-for (const backend of ['agentx', 'openclaw']) test('dated family weather reaches the ' + backend + ' turn, never a personal/reader turn', async () => {
+for (const backend of ['agentx', 'openclaw']) test('dated family weather reaches the ' + backend + ' turn and personal principal, never a reader turn', async () => {
   let reads = 0;
   const ambient = { weather: async () => { reads++; return { fetchedAt: new Date().toISOString(), temperatureC: 4.5, condition: 'Nuageux' }; } };
   const family = harness({ packId: 'kidx_nestor', backend, ambient });
@@ -39,9 +39,10 @@ for (const backend of ['agentx', 'openclaw']) test('dated family weather reaches
   assert.doesNotMatch(family.sent[0].prefix, /"temperatureC"/);
   for (const packId of ['personal_operator', 'kidx_reader']) {
     const other = harness({ packId, backend, ambient }); await other.turn('Bonjour', 'voice');
-    assert.doesNotMatch(other.sent[0].request, /Household weather/);
+    if (packId === 'personal_operator') assert.match(other.sent[0].request, /Household weather/);
+    else assert.doesNotMatch(other.sent[0].request, /Household weather/);
   }
-  assert.equal(reads, 1);
+  assert.equal(reads, 2);
 });
 
 test('local guardian keeps the supplied weather and reports actual execution before reply parsing', async () => {
