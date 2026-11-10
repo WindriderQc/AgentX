@@ -93,7 +93,10 @@ parseable observation dates and leave missing, invalid or more than one minute
 future dates null. The same future-date validation applies to import receipts.
 observationAgeMs and an explicit warning separate retrieval availability from
 observation freshness. No observation-age threshold or producer cadence is
-inferred; observationFreshness remains unknown.
+inferred; observationFreshness remains unknown. Automatic personal and family
+principal context uses this same weather projection, includes the observation
+age and warning, and never promotes a recently retrieved old or undated
+observation to a current observation.
 lastSuccessfulRetrievalAt comes from Data, never this read. Retrieval is on
 demand; cache lifetime is not periodic cadence. Data does not expose historical
 failures through this contract, so none are inferred. Conditions

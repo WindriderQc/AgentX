@@ -3,7 +3,8 @@
 // A directory and read capability over existing producers, not a memory store.
 // Audience is bound by trusted server code, never model arguments or content.
 const { createHash } = require('crypto');
-const { producerEvidence, validTimestamp } = require('./livingSourceFreshness');
+const { producerEvidence } = require('./livingSourceFreshness');
+const { projectWeather } = require('./livingSourceWeather');
 const fail = (code, message, statusCode = 400) => Object.assign(new Error(message), { code, statusCode });
 const DEFINITIONS = Object.freeze({
   weather: { title: 'Current household weather', audiences: ['owner', 'household'], producer: 'Data / Environment Canada',
@@ -37,26 +38,7 @@ function stable(value) {
   return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
 }
 async function weatherRead(ambient, now) {
-  const value = await ambient.weather();
-  if (!value) return { status: 'unavailable', data: null, sourceUpdatedAt: null };
-  const sourceUpdatedAt = validTimestamp(value.fetchedAt, now);
-  const observedAt = validTimestamp(value.observedAt, now);
-  const observationAgeMs = observedAt ? Math.max(0, now.getTime() - Date.parse(observedAt)) : null;
-  const age = sourceUpdatedAt ? now.getTime() - Date.parse(sourceUpdatedAt) : NaN;
-  // The named source is the family current-conditions contract, not general Data.
-  const data = { fetchedAt: sourceUpdatedAt, observedAt, source: 'Environnement Canada' };
-  for (const key of ['temperatureC', 'windKmh', 'gustKmh']) {
-    if (typeof value[key] === 'number' && Number.isFinite(value[key])) data[key] = value[key];
-  }
-  for (const [key, max] of [['condition', 80], ['windDirection', 8]]) {
-    if (typeof value[key] === 'string' && value[key].length <= max) data[key] = value[key];
-  }
-  const usable = ['temperatureC', 'windKmh', 'gustKmh', 'condition'].some(key =>
-    typeof data[key] === 'number' || (typeof data[key] === 'string' && data[key].trim()));
-  const status = !usable || !Number.isFinite(age) || age < -60000 ? 'unavailable' : age > 1800000 ? 'stale' : 'available';
-  return { status, data, sourceUpdatedAt, freshness: { timestampMeaning: 'retrieved_at_not_observed_at', maxAgeMs: 1800000,
-    observationAgeMs, observationFreshness: 'unknown',
-    warning: 'Availability describes retrieval age only. Observation age is separate; current observation freshness is not established.' } };
+  return projectWeather(await ambient.weather(), now);
 }
 async function agentxRead(client) {
   const checks = await Promise.allSettled([client.fetchBenchmarkAnalyticsSummary(), client.fetchRagStatus()]);
