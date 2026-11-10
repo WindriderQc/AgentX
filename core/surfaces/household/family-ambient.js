@@ -160,7 +160,7 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
     return { at: at.toISOString(), weather, sun, iss, alerts, paintings: pictures || null, sky };
   }
 
-  return { snapshot, painting: id => (paintings ? paintings.image(id) : null) };
+  return { snapshot, weather: () => cached('weather', WEATHER_TTL_MS, readWeather), painting: id => (paintings ? paintings.image(id) : null) };
 }
 
 function registerFamilyAmbient(router, ambient = createFamilyAmbient({ paintings: createFamilyPaintings() }), artx = null) {
