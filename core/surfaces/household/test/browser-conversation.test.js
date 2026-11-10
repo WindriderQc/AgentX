@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isStopControl, isSpokenEcho, holdingPhrase } = require('../public/browser-conversation');
+const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isStopControl, isSubtitleArtifact, isSpokenEcho, holdingPhrase } = require('../public/browser-conversation');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 10));
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { resolve, promise }; };
@@ -2033,4 +2033,100 @@ test('long conversational explanations and explicit readings are spoken complete
       assert.equal(spoken.join(''), full);
     } finally { h.conversation.stop(); }
   }
+});
+
+test('subtitle artifacts match only complete normalized credits, including repeats', () => {
+  for (const text of ['Sous-titrage ST-501', 'SOUS TITRAGE S.T. 501 !',
+    'Sous-titres ST501', 'Sous titre Radio-Canada...', 'Sous-titrage Société Radio-Canada.',
+    'Sous-titrage Société Radio—Canada', 'Sous-titrage ST 501. Sous-titrage ST 501.',
+    'Sous-titrage ST 501 / Sous-titres Radio Canada']) {
+    assert.equal(isSubtitleArtifact(text), true, text);
+  }
+  for (const text of ['', 'oui', 'non', 'stop', '7', '501', 'ST-501', 'Radio-Canada',
+    'merci', 'Thank you.', 'Bye', 'Mets Radio-Canada', 'Explique le sous-titrage ST-501',
+    'Pourquoi il dit sous-titrage Société Radio-Canada ?', 'Sous-titrage ST-501 puis bonjour',
+    'Hey Nestor, sous-titrage ST-501', 'Sous-titrage ST-502']) {
+    assert.equal(isSubtitleArtifact(text), false, text);
+  }
+});
+
+for (const early of [false, true]) for (const wakeWord of [false, true]) {
+  test('subtitle noise stays reviewable without controls/model: early=' + early + ', wake=' + wakeWord, async () => {
+    const raw = 'Sous-titrage Société Radio-Canada.', recorded = [], outcomes = [];
+    const result = { text: raw, sttMs: 200 };
+    const h = harness({ transcribe: async () => result,
+      transcribeEarly: early ? async () => result : undefined,
+      turn: () => assert.fail('a subtitle credit is not a request'),
+      localControl: () => assert.fail('a subtitle credit is not a local command'),
+      transcriptionEnded: (_id, metadata) => outcomes.push(metadata.outcome) });
+    h.audio.recordTranscription = (...args) => recorded.push(args);
+    await h.conversation.start({ language: 'fr', wakeWord });
+    if (wakeWord) h.conversation.wake.extend();
+    for (let i = 0; i < 2; i++) {
+      h.beginSpeech();
+      if (early) { h.pause(i + 1); await tick(); }
+      await h.say({ earlyId: early ? i + 1 : undefined, audioMs: 512 + i * 85 });
+    }
+    const completed = recorded.filter(row => row[1] === 'transcribed');
+    assert.equal(completed.length, 2);
+    assert.ok(completed.every(row => row[2] === raw), 'raw recognition stays in microphone review');
+    assert.deepEqual(outcomes, ['subtitle_artifact', 'subtitle_artifact']);
+    assert.equal(h.messages.length, 0);
+    assert.equal(h.conversation.state, 'listening');
+    if (wakeWord) assert.equal(h.conversation.wake.active(), true, 'noise does not reset the wake policy');
+    h.conversation.stop();
+  });
+}
+
+test('subtitle noise during playback neither holds nor cancels the current reply', async () => {
+  const playing = deferred(); let transcriptions = 0;
+  const h = harness({ transcribe: async () => (++transcriptions === 1 ? 'Bonjour' : 'Sous-titrage ST 501'),
+    turn: async () => ({ text: 'Une réponse à terminer.' }),
+    interrupt: () => assert.fail('subtitle noise must not interrupt') });
+  h.audio.canInterrupt = true; h.audio.play = () => playing.promise;
+  await h.conversation.start({});
+  const first = h.say(); await tick();
+  h.beginSpeech(); await h.probe(); await h.say();
+  assert.ok(!h.calls.includes('holdPlayback'));
+  assert.equal(h.conversation.state, 'speaking');
+  playing.resolve(); await first;
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
+});
+
+test('a real interruption after an artifact probe still reaches the model', async () => {
+  const playing = deferred(), submitted = []; let transcriptions = 0;
+  const h = harness({
+    transcribe: async () => ['Bonjour', 'Sous-titrage ST 501', 'non'][transcriptions++],
+    turn: async (_session, text) => { submitted.push(text); return { text: 'Compris.' }; },
+    interrupt: async () => { playing.resolve(); }
+  });
+  h.audio.canInterrupt = true;
+  h.audio.play = () => submitted.length === 1 ? playing.promise : Promise.resolve();
+  await h.conversation.start({});
+  const first = h.say(); await tick();
+  h.beginSpeech(); await h.probe(); await h.say(); await first;
+  assert.deepEqual(submitted, ['Bonjour', 'non']);
+  h.conversation.stop();
+});
+
+for (const awake of [false, true]) test('progressive subtitle noise preserves wake state: ' + awake, async () => {
+  const raw = 'Sous-titrage ST 501', recorded = [];
+  const h = harness({
+    transcribeEarly: async () => ({ text: raw }),
+    transcribe: () => assert.fail('the valid progressive offer is reused'),
+    turn: () => assert.fail('subtitle noise must not create a turn')
+  });
+  h.audio.recordTranscription = (...args) => recorded.push(args);
+  await h.conversation.start({ language: 'fr', wakeWord: true });
+  if (awake) h.conversation.wake.extend();
+  h.beginSpeech();
+  h.conversation.recognizeEarly(new Blob(['prefix']), h.conversation.epoch, { id: 1, progressive: true });
+  await tick(); await h.say({ earlyId: 1 });
+  const complete = recorded.find(row => row[1] === 'transcribed');
+  assert.equal(complete[2], raw);
+  assert.equal(complete[3].recognitionMode, 'progressive');
+  assert.equal(h.conversation.wake.active(), awake);
+  assert.equal(h.conversation.state, 'listening');
+  h.conversation.stop();
 });

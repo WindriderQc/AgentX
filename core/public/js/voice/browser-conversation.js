@@ -26,6 +26,15 @@
     return new RegExp('^(?:(?:ok|okay) )?(?:nestor )?' + command + '(?: nestor)?(?: ' + command + '(?: nestor)?)*$').test(controlWords(text));
   }
 
+  // Only complete subtitle credits known to be invented from noise. Do not
+  // reject short replies, digits, thanks, or requests mentioning these credits.
+  // Fold accents, punctuation and spacing, including ST-501 and S.T. 501.
+  function isSubtitleArtifact(text) {
+    const value = String(text || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase().replace(/[\p{P}\p{S}\s]/gu, '');
+    return /^(?:sous(?:titrage|titres?)(?:st501|(?:societe)?radiocanada))+$/.test(value);
+  }
+
   function nextSpeechChunkLength(pending, first = false) {
     // Media paths stay whole for the final speech cleanup, including quoted
     // paths containing punctuation or spaces. Never stream their fragments.
@@ -449,7 +458,7 @@
       try { result = await this.io.transcribe(blob, this.selection.language, this.abort.signal); } catch { /* the whole sound is still recognized when it ends */ }
       let text = typeof result === 'string' ? result : String(result?.text || '');
       const stopControl = result?.control === 'stop' || isStopControl(text);
-      if (!stopControl && isSpokenEcho(text, turn.spoken)) text = '';
+      if (!stopControl && (isSubtitleArtifact(text) || isSpokenEcho(text, turn.spoken))) text = '';
       if (turn.candidate !== candidate || !this.owns(turn)) return;
       if (!(text.trim() || stopControl)) {
         // No words so far: a reply that was waiting for this sound may start.
@@ -561,6 +570,7 @@
         this.audio.recordTranscription?.(excerptId, stopControl ? 'control' : text.trim() ? 'transcribed' : 'empty', text,
           { ...(typeof result === 'object' && result ? result : {}), bytes: offered ? early.bytes : blob.size,
             captureBytes: blob.size, recognitionMode: offered ? early.progressive ? 'progressive' : 'early' : 'complete' });
+        if (!stopControl && isSubtitleArtifact(text)) { text = ''; captureOutcome = 'subtitle_artifact'; }
         if (previous?.candidate && !stopControl && isSpokenEcho(text, previous.spoken)) { text = ''; captureOutcome = 'echo'; }
         // A surface may act on a short command itself (a screen command): no model
         // turn, and a reply under way goes on. On standby it must name Nestor.
@@ -1137,7 +1147,7 @@
     return response.arrayBuffer();
   }
 
-  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isStopControl, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, INTERRUPTION_PROBE_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
+  const api = { WakeWindow, recording, AudioHistory, Endpoint, EchoGuard, wav, Conversation, openAudio, speakWithBrowser, isStopControl, isSubtitleArtifact, isSpokenEcho, holdingPhrase, HOLDING_DELAY_MS, INTERRUPTION_PROBE_MS, MAX_CAPTURE_BYTES, nextSpeechChunkLength };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else { root.AgentXVoice = api; root.NestorConversation = api; }
 })(typeof window === 'undefined' ? globalThis : window);
