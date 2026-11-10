@@ -10,6 +10,14 @@ function voiceTask(env = process.env) {
   return /^[a-z][a-z0-9_]{0,63}$/.test(value) ? value : 'voice_persona_chat';
 }
 
+// The relay keeps the canonical child/mode policy and read-only reply format.
+// Principal-only tools, navigation and image actions are not relay capabilities.
+function familyRelayInstructions(session, pack) {
+  return [require('./family-clock').familyIdentity(session.persona),
+    require('./persona-prompt').systemPromptFor(pack, { modeId: session.modeId }),
+    require('./reply-channels').contract({ family: true, math: false, pages: false })].join('\n\n');
+}
+
 async function runLocalConversation({ request, prepared, inference, consumerContract, env }) {
   const { backend, session, pack, signal, onDelta, agentxInstructions } = request;
   // A spoken turn takes the instance's voice lane, in any pack. LLMx scene
@@ -53,7 +61,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       if (eligible && inference.conversation) {
         const continued = await inference.conversation({ ...body, ...(request.relayOccupation ? { model: 'agentx-primary' } : {}) }, {
           ...options, taskRoute: !request.relayOccupation, requireOccupied: true,
-          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [request.agentxInstructions, request.familyWeatherContext].filter(Boolean).join('\n\n') }),
+          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack), request.familyWeatherContext].filter(Boolean).join('\n\n') }),
           relayRequest: { ...body, messages: [...(request.history || []), { role: 'user', content: request.text }] }
         });
         if (continued) return continued;
