@@ -61,7 +61,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       if (eligible && inference.conversation) {
         const continued = await inference.conversation({ ...body, ...(request.relayOccupation ? { model: 'agentx-primary' } : {}) }, {
           ...options, taskRoute: !request.relayOccupation, requireOccupied: true,
-          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: familyRelayInstructions(session, pack) }),
+          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack), request.familyWeatherContext].filter(Boolean).join('\n\n') }),
           relayRequest: { ...body, messages: [...(request.history || []), { role: 'user', content: request.text }] }
         });
         if (continued) return continued;
@@ -87,6 +87,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       const error = result?.body?.error;
       throw Object.assign(new Error((typeof error === 'string' ? error : error?.message) || 'AgentX inference failed'), { statusCode: result?.status || 502 });
     }
+    request.onExecution?.({ model: result.metadata?.model || '', backend: 'agentx', continuity: result.metadata?.conversationContinuity || null });
     let frames = { text: '', toolCalls: [] };
     if (result.stream && result.conversationNotice) { streamed += result.conversationNotice + '\n\n'; onDelta?.(result.conversationNotice + '\n\n'); }
     try {

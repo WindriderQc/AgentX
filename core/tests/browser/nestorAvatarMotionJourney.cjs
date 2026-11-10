@@ -68,7 +68,7 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
         <main><h1>Famille</h1><button id="micro">Micro simulé</button>
           <button id="settingsToggle" aria-expanded="false" aria-controls="conversationSettings">Réglages</button>
           <section id="conversationSettings" hidden><h2>Regard caméra</h2><div id="conversationCameraSettings"></div></section></main>
-        <script src="/avatar-motion.js"></script><script src="/avatar-dock.js"></script>
+        <script src="/avatar-execution.js"></script><script src="/avatar-motion.js"></script><script src="/avatar-dock.js"></script>
         <script>settingsToggle.onclick=()=>{conversationSettings.hidden=!conversationSettings.hidden;
           settingsToggle.setAttribute('aria-expanded',String(!conversationSettings.hidden));};
           if(new URLSearchParams(location.search).has('noSettings'))document.getElementById('conversationCameraSettings').remove();
@@ -78,7 +78,7 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
       res.setHeader('Content-Type', 'text/javascript');
       return res.end(process.env.AGENTX_FACE_FIXTURE ? fs.readFileSync(process.env.AGENTX_FACE_FIXTURE) : stub);
     }
-    if (['/avatar-motion.js', '/avatar-dock.js', '/avatar-dock.css', '/idle-photos.css'].includes(name)) {
+    if (['/avatar-execution.js', '/avatar-motion.js', '/avatar-dock.js', '/avatar-dock.css', '/idle-photos.css'].includes(name)) {
       res.setHeader('Content-Type', name.endsWith('.css') ? 'text/css' : 'text/javascript');
       return res.end(fs.readFileSync(path.join(publicDir, name.slice(1))));
     }
@@ -113,6 +113,10 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   await page.goto(origin); await page.waitForSelector('.avatar-dock[data-renderer=face]');
   assert.equal(await page.evaluate(() => mediaCalls.length), 0, 'no camera on load');
   assert.ok(await page.locator('.avatar-camera').isHidden(), 'camera setup is hidden with settings on load');
+  await page.evaluate(() => dispatchEvent(new CustomEvent('persona-activity', { detail: { space: 'family', kind: 'execution', completed: false,
+    data: { execution: { backend: 'agentx', model: 'synthetic-guardian', continuity: { state: 'backup', reason: 'primary_busy' } } } } })));
+  assert.match(await page.locator('.avatar-scene-execution').textContent(), /Gardien.*synthetic-guardian.*autre demande/);
+  assert.ok(await page.locator('.avatar-scene-execution').isVisible());
   await capture('camera-off');
   await settings();
   assert.equal(await page.locator('#conversationSettings .avatar-camera').count(), 1, 'camera setup belongs to settings');
@@ -120,6 +124,7 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   assert.equal(await page.evaluate(() => mediaCalls.length), 0, 'opening settings does not request a camera');
   await page.evaluate(() => { const photo = document.createElement('section'); photo.className = 'nestor-idle-photos'; document.body.append(photo); });
   assert.ok(await page.locator('.avatar-camera').isHidden(), 'inactive setup never covers photos, even with settings open');
+  assert.ok(await page.locator('.avatar-scene-execution').isHidden(), 'execution status never covers photos');
   await capture('photos-camera-off');
   await page.evaluate(() => document.querySelector('.nestor-idle-photos').remove());
   await page.setViewportSize({ width: 360, height: 780 });

@@ -125,6 +125,7 @@
     clock.className = 'avatar-scene-clock';
     clock.innerHTML = '<time class="avatar-scene-time"></time><div class="avatar-scene-line"><span class="avatar-scene-date"></span></div>';
     doc.body.append(dock, sceneBar, clock);
+    const execution = root.AvatarExecution?.mount({ container: sceneBar, space, documentRef: doc });
     const sceneStatus = sceneBar.querySelector('.avatar-scene-status');
     const sceneReply = sceneBar.querySelector('.avatar-scene-reply');
     const sceneInput = sceneBar.querySelector('#avatarSceneMessage');
@@ -349,7 +350,7 @@
       dispose() {
         if (disposed) return;
         disposed = true;
-        motion?.dispose();
+        motion?.dispose(); execution?.dispose();
         finishReady('orb');
         clearInterval(tick);
         clearInterval(clockTimer);

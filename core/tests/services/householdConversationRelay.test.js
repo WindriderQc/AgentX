@@ -88,7 +88,7 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
     personalAttachments: () => ({ prepare: async messages => messages }), knowledgeState: { config: null, status: { status: 'disabled' } },
     openHold: {}, openingPayload: () => ({}), sounds: { select: () => null, get: () => null }, visuals: { sources: () => richFamilyPresentation ? ['web', 'photos'] : [] },
     brain: { cancel() {}, schedule() { state.reviews = (state.reviews || 0) + 1; }, contextFor: () => '' }, memberWork, activePersonaTurns,
-    ...(richFamilyPresentation && { screenPages: require('../../surfaces/household/screen-services').createScreenServices({ env }),
+    ...(richFamilyPresentation && { ambient: { weather: async () => ({ condition: 'Nuageux', temperatureC: 4.5, fetchedAt: new Date().toISOString() }) }, screenPages: require('../../surfaces/household/screen-services').createScreenServices({ env }),
       conversationImages: require('../../surfaces/household/conversation-images').createConversationImages({ conversations,
         service: { status: () => ({ configured: true, conversationProfile: 'synthetic' }) } }) }),
     validClientTurnId: id => /^[a-zA-Z0-9-]{16,80}$/.test(id), envelope, fail, cleanText: value => String(value || '').trim(),
@@ -392,6 +392,8 @@ test('Family relay fits the unchanged budget with real view, image and tool pres
   const backup = world.state.inference.at(-1);
   expect(backup.model).toBe('synthetic-guardian');
   expect(backup.messages[0].content).toContain(packs.packById('kidx_nestor').systemPrompt);
+  expect(backup.messages[0].content).toContain('"temperatureC":4.5');
+  expect(backup.messages[0].content).toContain('Environnement Canada');
   expect(backup.messages[0].content).not.toContain('iss_passes');
   expect(backup.messages[0].content).not.toContain('source="draw"');
   expect(backup.messages[0].content).not.toContain('destination-id');
