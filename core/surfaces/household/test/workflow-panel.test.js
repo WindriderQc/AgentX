@@ -640,3 +640,13 @@ test('each submitted message carries a compact copy of its own turn path', () =>
     assert.match(trailOf(asked)[0].title, /^Answer delivered\./);
   } finally { global.document = previousDocument; }
 });
+
+test('filtered subtitle artifacts remain captures, never submitted turns', () => {
+  const model = createModel();
+  model.capture('session-1', 'subtitle');
+  model.captureEnd('subtitle', { outcome: 'subtitle_artifact' });
+  const view = model.snapshot();
+  assert.equal(view.turns.length, 0);
+  assert.equal(view.captures[0].captureOutcome, 'subtitle_artifact');
+  assert.equal(view.captures[0].live, false);
+});
