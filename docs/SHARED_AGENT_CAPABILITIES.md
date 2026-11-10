@@ -112,6 +112,7 @@ new model-supplied audience. Do not configure it for a family runtime.
 | --- | --- |
 | Current local collaboration | `collaboration_context`, scoped selected display and sourced research excerpts; no work dispatch or business effect |
 | Owner notes, mail journal and archive | Existing Core note, journal and owner-private recall services; `mail_recall` results add bounded links to records sharing an exact message or thread id |
+| Suggestions on request | `context_suggestions`: bounded proposals with evidence from tasks, souvenirs and Life Atlas; no push, digest, task creation or feedback store |
 | Life history moments | `life_history`: the existing Nestor history contract (search, get, status; propose and add stay proposals the owner decides in Life Atlas) |
 | Secretary and Accountant records | `team_brief`, including freshness and unavailable sections |
 | Live specialist actions | `consult_team` with the installed native collaborator |
