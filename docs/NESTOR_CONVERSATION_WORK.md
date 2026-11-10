@@ -140,7 +140,10 @@ occupied lane. Only a pre-dispatch refusal with an active native holder permits
 a tool-free guardian reply; queue labels, expired ownership, quarantine and
 uncertain outcomes cannot establish occupation. The guardian receives the family
 instructions and bounded recent text dialogue, with the complete current human
-message. It receives no selected private memory, tools or owner bus. Deterministic
+message. Its instructions reuse the complete canonical family/mode policy and
+the read-only reply format, without the principal's tool, navigation or image
+action contracts. These extra contracts cannot consume the relay's existing
+input budget. It receives no selected private memory, tools or owner bus. Deterministic
 child safety runs before this path. The next turn tries the unchanged main route.
 
 Hermes initially owns its ordinary native run and tools. Speaking again can detach

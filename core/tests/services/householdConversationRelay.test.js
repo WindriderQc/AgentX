@@ -18,12 +18,13 @@ const PRIMARY = 'http://127.0.0.1:11434', GUARDIAN = 'http://127.0.0.2:11434';
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 async function until(fn) { for (let i = 0; i < 400; i++) { if (await fn()) return; await tick(); } throw Error('Fixture did not reach its expected boundary'); }
 let world, originalFetch;
-async function fixture(backend = 'hermes', enabled = true) {
+async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentation = false } = {}) {
   const pack = packs.packById(backend === 'hermes' ? 'personal_operator' : 'kidx_nestor');
   const session = await conversations.createSession({ sessionId: randomUUID(), packId: pack.id, scopeId: pack.defaultScopeId,
     modeId: pack.defaultMode, backend, status: 'active', agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
     persona: { id: 'nestor', version: 1, name: 'Nestor', identity: 'Synthetic personality.', voice: {} }, voice: { language: 'fr' } });
   const env = { HOUSEHOLD_HERMES_URL: 'http://hermes.fixture', HOUSEHOLD_HERMES_TOKEN: 'synthetic-private-relay-token',
+    ...(richFamilyPresentation && { HOUSEHOLD_FAMILY_TOOLS: 'iss_passes,web_search,network_devices' }),
     ...(enabled && { HOUSEHOLD_CONVERSATION_RELAY_ENABLED: 'true' }) };
   const state = { busy: true, failure: null, backup: true, held: true, runs: [], inference: [], releases: [], completed: new Set(), active: new Map() };
   global.fetch = jest.fn(async (url, options = {}) => {
@@ -85,8 +86,11 @@ async function fixture(backend = 'hermes', enabled = true) {
     familyTasks: { listProfileDetails: async () => ({ profiles: [] }), listProfiles: async () => ({ profiles: [] }), room: async () => ({ room: { available: [] } }) },
     ownerMemory: {}, familyMemory: {}, notesFor: () => ({ search: async () => ({ notes: [] }) }),
     personalAttachments: () => ({ prepare: async messages => messages }), knowledgeState: { config: null, status: { status: 'disabled' } },
-    openHold: {}, openingPayload: () => ({}), sounds: { select: () => null, get: () => null }, visuals: { sources: () => [] },
+    openHold: {}, openingPayload: () => ({}), sounds: { select: () => null, get: () => null }, visuals: { sources: () => richFamilyPresentation ? ['web', 'photos'] : [] },
     brain: { cancel() {}, schedule() { state.reviews = (state.reviews || 0) + 1; }, contextFor: () => '' }, memberWork, activePersonaTurns,
+    ...(richFamilyPresentation && { screenPages: require('../../surfaces/household/screen-services').createScreenServices({ env }),
+      conversationImages: require('../../surfaces/household/conversation-images').createConversationImages({ conversations,
+        service: { status: () => ({ configured: true, conversationProfile: 'synthetic' }) } }) }),
     validClientTurnId: id => /^[a-zA-Z0-9-]{16,80}$/.test(id), envelope, fail, cleanText: value => String(value || '').trim(),
     assessSafety: prompt.assessSafety, childBoundaryReply: prompt.childBoundaryReply, escalationReply: prompt.escalationReply,
     detectMemoryRequest: prompt.detectMemoryRequest, packById: packs.packById, packSummary: packs.packSummary, modeSummary: packs.modeSummary,
@@ -378,6 +382,24 @@ test('Family remains usable with a valid family-only route and no personal daily
   const backup = await world.send('Et la pluie ?').expect(200);
   expect(done(backup).tools.conversationRelay).toMatchObject({ role: 'relay', completed: true });
   expect(world.state.inference.map(input => input.model)).toEqual(['synthetic-main', 'synthetic-main', 'synthetic-guardian']);
+});
+
+test('Family relay fits the unchanged budget with real view, image and tool presentation contracts', async () => {
+  world = await fixture('agentx', true, { richFamilyPresentation: true });
+  const text = 'Dans cet exercice fictif, décris une luciole en une phrase.';
+  const response = await world.send(text).expect(200);
+  expect(done(response).tools.conversationRelay).toMatchObject({ role: 'relay', completed: true });
+  const backup = world.state.inference.at(-1);
+  expect(backup.model).toBe('synthetic-guardian');
+  expect(backup.messages[0].content).toContain(packs.packById('kidx_nestor').systemPrompt);
+  expect(backup.messages[0].content).not.toContain('iss_passes');
+  expect(backup.messages[0].content).not.toContain('source="draw"');
+  expect(backup.messages[0].content).not.toContain('destination-id');
+  expect(backup.messages.at(-1)).toEqual({ role: 'user', content: text });
+  expect(backup.messages.reduce((size, row) => size + row.content.length, 0)).toBeLessThanOrEqual(12000);
+  expect(backup.options.num_ctx).toBe(8192);
+  expect(backup.options.num_predict).toBe(384);
+  expect(backup.tools).toBeUndefined();
 });
 
 test('interrupted guardian fragments keep provenance and unknown playback without claiming a complete reply', async () => {
