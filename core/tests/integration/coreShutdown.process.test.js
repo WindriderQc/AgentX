@@ -10,7 +10,12 @@ const net = require('node:net');
 const path = require('node:path');
 
 const CORE_ROOT = path.join(__dirname, '../..');
+// Cold production startup creates MongoDB collections and indexes in the
+// disposable database. That preparation is separate from the shutdown bound.
+const STARTUP_BOUND_MS = 60000;
+const HELD_READ_BOUND_MS = 5000;
 const EXIT_BOUND_MS = 5000; // well under the 15 s post-drain linger
+const startedRuns = new Set();
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -57,6 +62,7 @@ function startCore({ profile, port, ollamaUrl }) {
     }
   });
   const run = { child, output: '', exit: null };
+  startedRuns.add(run);
   child.stdout.on('data', data => { run.output += data; });
   child.stderr.on('data', data => { run.output += data; });
   run.exited = new Promise(resolve => child.on('exit', (code, signal) => {
@@ -64,7 +70,7 @@ function startCore({ profile, port, ollamaUrl }) {
     resolve(run.exit);
   }));
   run.ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Core did not start:\n${run.output.slice(-2000)}`)), 15000);
+    const timer = setTimeout(() => reject(new Error(`Core did not start:\n${run.output.slice(-2000)}`)), STARTUP_BOUND_MS);
     const check = () => {
       if (run.output.includes('AgentX Core server started')) { clearTimeout(timer); resolve(); }
     };
@@ -83,6 +89,14 @@ async function terminate(run) {
   const exit = await run.exited;
   clearTimeout(guard);
   return { ...exit, elapsedMs: exit.at - sentAt };
+}
+
+async function waitForHeldRead(heldTags, before) {
+  const deadline = Date.now() + HELD_READ_BOUND_MS;
+  while (heldTags() <= before) {
+    if (Date.now() >= deadline) throw new Error('Synthetic Ollama did not receive the held catalog read');
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
 }
 
 function expectNaturalExit(result, output) {
@@ -105,6 +119,15 @@ afterAll(async () => {
   await new Promise(resolve => ollama.server.close(resolve));
 });
 beforeEach(() => { ollama.state.hung = false; ollama.state.held = []; });
+afterEach(async () => {
+  // Startup assertions can fail before the explicit shutdown step. Always
+  // reap this test's own children, without relaxing the shutdown contract.
+  try {
+    await Promise.all([...startedRuns].filter(run => !run.exit).map(terminate));
+  } finally {
+    startedRuns.clear();
+  }
+}, 25000);
 
 test('full Core exits by itself after SIGTERM while a departed caller waits on a jammed host (#17)', async () => {
   const port = await freePort();
@@ -118,12 +141,15 @@ test('full Core exits by itself after SIGTERM while a departed caller waits on a
   // Background pollers may also be held; wait for the caller's own read.
   const heldTags = () => ollama.state.held.filter(url => url === '/api/tags').length;
   const before = heldTags();
-  while (heldTags() <= before) await new Promise(resolve => setTimeout(resolve, 20));
-  caller.destroy();
+  try {
+    await waitForHeldRead(heldTags, before);
+  } finally {
+    caller.destroy();
+  }
 
   const result = await terminate(run);
   expectNaturalExit(result, run.output);
-}, 30000);
+}, STARTUP_BOUND_MS + HELD_READ_BOUND_MS + 25000);
 
 test('full Core exits by itself after SIGTERM while a departed /routing caller waits on a jammed host (#189)', async () => {
   const port = await freePort();
@@ -137,12 +163,15 @@ test('full Core exits by itself after SIGTERM while a departed /routing caller w
   caller.on('error', () => {});
   const heldTags = () => ollama.state.held.filter(url => url === '/api/tags').length;
   const before = heldTags();
-  while (heldTags() <= before) await new Promise(resolve => setTimeout(resolve, 20));
-  caller.destroy();
+  try {
+    await waitForHeldRead(heldTags, before);
+  } finally {
+    caller.destroy();
+  }
 
   const result = await terminate(run);
   expectNaturalExit(result, run.output);
-}, 30000);
+}, STARTUP_BOUND_MS + HELD_READ_BOUND_MS + 25000);
 
 test('demo Core exits by itself after SIGTERM', async () => {
   const port = await freePort();
@@ -150,4 +179,4 @@ test('demo Core exits by itself after SIGTERM', async () => {
   await run.ready;
   const result = await terminate(run);
   expectNaturalExit(result, run.output);
-}, 30000);
+}, STARTUP_BOUND_MS + HELD_READ_BOUND_MS + 25000);

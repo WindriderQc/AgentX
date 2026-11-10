@@ -68,7 +68,7 @@ test('the pass view carries the drawn geometry of the next naked-eye pass', () =
 test('the snapshot reads each owner once per cache period and drops failures to null', async () => {
   let clock = Date.parse('2026-11-03T23:00:00Z'), weatherReads = 0, issReads = 0;
   const fetchData = async () => { weatherReads += 1; return { response: { ok: true, status: 200 },
-    body: { status: 'success', data: { fetchedAt: 'f', current: { condition: 'Neige faible', iconCode: '16', temperatureC: -2, windKmh: 20, gustKmh: null } } } }; };
+    body: { status: 'success', data: { fetchedAt: 'f', current: { observedAt: '2026-11-03T22:30:00Z', condition: 'Neige faible', iconCode: '16', temperatureC: -2, windKmh: 20, gustKmh: null } } } }; };
   const service = ambient.createFamilyAmbient({
     fetchData, now: () => new Date(clock),
     observer: async () => ({ lat: 46.81, lon: -71.21 }),
@@ -79,6 +79,8 @@ test('the snapshot reads each owner once per cache period and drops failures to 
   assert.equal(first.weather.kind, 'snow');
   assert.equal(first.weather.strength, 'light');
   assert.equal(first.weather.temperatureC, -2);
+  assert.equal(first.weather.observedAt, '2026-11-03T22:30:00Z');
+  assert.equal(first.weather.fetchedAt, 'f');
   assert.equal(first.iss, null, 'an unreadable pass is unknown, not "no pass"');
   assert.equal(first.alerts.count, 0);
   assert.equal(typeof first.sun.elevationDeg, 'number');

@@ -72,7 +72,34 @@ is null when the producer does not expose a reliable timestamp. Brief metadata
 marks that unknown and preserves domain dates and coverage within sections.
 A fixed asOf anchors the query window; it is not a producer observation time.
 
-Weather retains fetchedAt as retrieval time, not observation time. Conditions
+producerEvidence distinguishes native retrieval evidence from producer runs.
+Unknown run history, last failures and effective cadence remain null with
+explicit missing evidence. It is a read-only projection, not a receipt store.
+A successful scheduler job does not establish complete source coverage.
+
+Secretary recordUpdatedAt/recordCreatedAt describe only records already returned
+on the current page and window, without extra queries. They do not establish the
+latest mailbox receipt or complete journal freshness. Finance's freshness section
+reads the existing personal-ledger finance_ingestions receipt.appliedAt with a
+one-second database execution limit; timeout or an unavailable journal remains
+explicit. lastAttestedImportAt covers journaled imports, not legacy imports,
+repairs or the transaction date. Rejected imports have no reliable terminal
+timestamp, so lastFailedAt stays unknown. This runs only on an explicit source
+or brief freshness read, never directory injection.
+
+Weather retains fetchedAt as retrieval time, not observation time. Native
+current.observedAt is preserved by the ambient projection; source reads normalize
+parseable observation dates and leave missing, invalid or more than one minute
+future dates null. The same future-date validation applies to import receipts.
+observationAgeMs and an explicit warning separate retrieval availability from
+observation freshness. No observation-age threshold or producer cadence is
+inferred; observationFreshness remains unknown. Automatic personal and family
+principal context uses this same weather projection, includes the observation
+age and warning, and never promotes a recently retrieved old or undated
+observation to a current observation.
+lastSuccessfulRetrievalAt comes from Data, never this read. Retrieval is on
+demand; cache lifetime is not periodic cadence. Data does not expose historical
+failures through this contract, so none are inferred. Conditions
 older than 30 minutes are stale, missing/invalid or materially future timestamps
 are unavailable. AgentX checks are request-time probes, not whole-machine health.
 A partial or failed section remains explicit; raw exception messages are not

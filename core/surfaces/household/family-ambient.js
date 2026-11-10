@@ -135,6 +135,7 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
       gustKmh: finite(current.gustKmh),
       windDirection: typeof current.windDirection === 'string' ? current.windDirection.slice(0, 8) : null,
       fetchedAt: result.body.data.fetchedAt || null,
+      observedAt: typeof current.observedAt === 'string' ? current.observedAt.slice(0, 100) : null,
       source: 'Environnement Canada'
     };
   }

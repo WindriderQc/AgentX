@@ -84,3 +84,43 @@ test('zero and partial measurements remain usable and timestamps mean retrieval 
     assert.doesNotMatch(context, /no usable/);
   }
 });
+
+test('automatic context uses the exact source_read observation projection', async () => {
+  const { forAudience } = require('../../../src/services/livingSourceService');
+  const now = new Date('2026-03-15T12:00:00Z');
+  for (const observedAt of ['2026-03-14T12:00:00Z', '2099-01-01T00:00:00Z', 'invalid', null]) {
+    const ambient = { weather: async () => ({ fetchedAt: now.toISOString(), observedAt, temperatureC: 4 }) };
+    const context = await familyWeatherContext(ambient, { now });
+    const explicit = await forAudience('household', { ambient, now: () => now }).read({ source: 'weather' });
+    assert.ok(context.includes(JSON.stringify({ ...explicit.data, freshness: explicit.freshness })));
+    assert.match(context, /Do not present an old or undated observation as current/);
+    assert.match(context, /current observation freshness is not established/);
+    assert.doesNotMatch(context, /These are current conditions/);
+    if (observedAt === '2026-03-14T12:00:00Z') assert.match(context, /"observationAgeMs":86400000/);
+    else {
+      assert.match(context, /"observedAt":null/);
+      assert.match(context, /"observationAgeMs":null/);
+    }
+  }
+});
+
+for (const packId of ['personal_operator', 'kidx_nestor']) {
+  for (const backend of ['agentx', 'openclaw']) {
+    test(packId + ' ' + backend + ' receives old or unknown observation evidence without current-weather claims', async () => {
+      for (const observedAt of ['2000-01-01T00:00:00Z', '2099-01-01T00:00:00Z', 'invalid']) {
+        const ambient = { weather: async () => ({ fetchedAt: new Date().toISOString(), observedAt, temperatureC: 4 }) };
+        const journey = harness({ packId, backend, ambient });
+        await journey.turn('Quelle est la meteo?', 'voice');
+        const request = journey.sent[0].request;
+        assert.match(request, /"observationFreshness":"unknown"/);
+        assert.match(request, /Do not present an old or undated observation as current/);
+        assert.match(request, /current observation freshness is not established/);
+        assert.doesNotMatch(request, /These are current conditions/);
+        if (observedAt === '2000-01-01T00:00:00Z') {
+          assert.match(request, /"observedAt":"2000-01-01T00:00:00.000Z"/);
+          assert.match(request, /"observationAgeMs":[1-9][0-9]+/);
+        } else assert.match(request, /"observedAt":null/);
+      }
+    });
+  }
+}
