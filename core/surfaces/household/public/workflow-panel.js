@@ -66,7 +66,7 @@
     function captureEnd(id, receipt = {}) {
       const row = turns.get(id);
       if (row?.captureOnly) { row.phase = 'capture_ended'; row.live = false;
-        row.captureOutcome = ['stop', 'local', 'activation', 'not_addressed', 'empty', 'echo', 'failed', 'cancelled', 'recognized'].includes(receipt.outcome) ? receipt.outcome : 'not_submitted'; }
+        row.captureOutcome = ['stop', 'local', 'activation', 'not_addressed', 'empty', 'echo', 'subtitle_artifact', 'failed', 'cancelled', 'recognized'].includes(receipt.outcome) ? receipt.outcome : 'not_submitted'; }
     }
     function stream(id, event) {
       const row = turn(id);
@@ -576,7 +576,7 @@
       canvas.append(now);
       const lastCapture = view.captures.at(-1);
       const captureLabels = { stop: 'Stop recognized · no new request', local: 'Screen command handled on this page · no request', activation: 'Activation recognized · conversation open',
-        not_addressed: 'Not addressed · no request', empty: 'No recognized words · no request', echo: 'Playback echo filtered · no request',
+        not_addressed: 'Not addressed · no request', empty: 'No recognized words · no request', echo: 'Playback echo filtered · no request', subtitle_artifact: 'Subtitle artifact filtered · no request',
         failed: 'Transcription failed · no request', cancelled: 'Capture cancelled · no request', recognized: 'Capture recognized · no Core request',
         not_submitted: 'Capture ended · no Core request' };
       // The line keeps its place before the first capture so the drawing below never shifts.
