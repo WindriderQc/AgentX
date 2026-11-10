@@ -58,3 +58,28 @@ test('local guardian keeps the supplied weather and reports actual execution bef
   assert.equal(evidence.model, 'synthetic-guardian'); assert.equal(evidence.continuity.reason, 'primary_busy');
   assert.equal(result.tools.conversationRelay.role, 'relay');
 });
+
+
+test('fresh but empty or direction-only readings disclose missing conditions', async () => {
+  const now = new Date();
+  for (const current of [{}, { condition: '   ' }, { windDirection: 'N' },
+    { temperatureC: null, windKmh: NaN, gustKmh: Infinity }]) {
+    const ambient = createFamilyAmbient({ now: () => now, fetchData: async () => ({
+      response: { ok: true }, body: { status: 'success', data: { fetchedAt: now.toISOString(), current } }
+    }) });
+    const context = await familyWeatherContext(ambient, { now });
+    assert.match(context, /no usable current conditions/);
+    assert.doesNotMatch(context, /supplied conditions/);
+  }
+});
+
+test('zero and partial measurements remain usable and timestamps mean retrieval only', async () => {
+  const now = new Date();
+  for (const current of [{ temperatureC: 0 }, { windKmh: 0 }, { gustKmh: 0 }, { condition: 'Nuageux' }]) {
+    const context = await familyWeatherContext({ weather: async () => ({ fetchedAt: now.toISOString(), ...current }) }, { now });
+    assert.match(context, /supplied conditions/);
+    assert.match(context, /retrieval timestamp/);
+    assert.match(context, /not an observation time/);
+    assert.doesNotMatch(context, /no usable/);
+  }
+});
