@@ -35,7 +35,10 @@ const rate = data => (Number(data?.eval_count) > 0 && Number(data?.eval_duration
   ? Number((data.eval_count / (data.eval_duration / 1e9)).toFixed(2)) : null);
 const reloaded = data => Number(data?.load_duration) / 1e6 > RELOAD_MS;
 const slowdown = (solo, together) => (solo && together ? Number((((solo - together) / solo) * 100).toFixed(1)) : null);
-const worst = (pairs, key) => (pairs.length ? Math.max(...pairs.map(pair => pair[key] ?? 0)) : null);
+const worst = (pairs, key) => {
+  const values = pairs.map(pair => pair[key]).filter(Number.isFinite);
+  return values.length ? Math.max(...values) : null;
+};
 
 function residents(running, modelName) {
   const models = Array.isArray(running?.models) ? running.models : [];
@@ -87,7 +90,9 @@ async function measurePair(hostUrl, modelName, selfCtx, other, { timeoutFor, sig
   result.selfSlowdownPct = slowdown(result.selfSoloTokensPerSec, result.selfTogetherTokensPerSec);
   // On a much slower sibling the faster call ends first, so this covers only the overlap.
   result.otherSlowdownPct = slowdown(result.otherSoloTokensPerSec, result.otherTogetherTokensPerSec);
-  result.status = reload ? 'reloaded' : 'measured';
+  const complete = [selfSolo, otherSolo, selfTogether, otherTogether]
+    .every(samples => samples.length === REPEATS && samples.every(value => Number.isFinite(value) && value > 0));
+  result.status = reload ? 'reloaded' : complete ? 'measured' : 'unmeasured';
   return result;
 }
 

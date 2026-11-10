@@ -1,7 +1,7 @@
 'use strict';
 
 const { verifyProfilerAuthorityReceipt } = require('./profilerAuthorityReceipt');
-const { completeRepeatedStatistics } = require('./profilerStatistics');
+const { completeRepeatedStatistics, measuredNonNegative } = require('./profilerStatistics');
 
 function _buildProfilerCapabilities(depth, hardwareTelemetry) {
   const hardwareCapability = hardwareTelemetry?.capability
@@ -78,21 +78,24 @@ function profileQualificationFailures(profileData) {
   const maxCv = Number(profileData.fullMaxCoefficientOfVariation ?? 0.12);
   const maxRelativeCi95Width = Number(profileData.fullMaxRelativeCi95Width ?? 0.30);
   if (profileData.profileDepth === 'full'
-    && (!(Number(quality.coefficientOfVariation) <= maxCv)
+    && (!measuredNonNegative(quality.coefficientOfVariation)
+      || !(Number(quality.coefficientOfVariation) <= maxCv)
       || !(mainMean > 0)
-      || !Number.isFinite(mainLow)
-      || !Number.isFinite(mainHigh)
+      || !measuredNonNegative(quality.confidenceInterval95?.low)
+      || !measuredNonNegative(quality.confidenceInterval95?.high)
+      || mainHigh < mainLow
       || ((mainHigh - mainLow) / mainMean) > maxRelativeCi95Width)) {
     failures.push('full_primary_measurement_uncertain');
   }
   if (profileData.ttftMeasurement !== 'streamed_wall_clock'
-    || !Number.isFinite(Number(profileData.ttftMs))
+    || !measuredNonNegative(profileData.ttftMs)
     || Number(profileData.ttftMs) < 0) failures.push('streamed_ttft_missing');
   const requiredTtftSamples = Number(profileData.requiredTtftSamples) || required;
   if (requiredTtftSamples > 0 && Number(quality.ttftSampleCount) < requiredTtftSamples) {
     failures.push('streamed_ttft_sample_minimum_not_met');
   }
-  if (profileData.spill?.verified !== true) failures.push('gpu_residency_unverified');
+  if (profileData.spill?.verified !== true || typeof profileData.spill?.spillDetected !== 'boolean') failures.push('gpu_residency_unverified');
+  if (profileData.spill?.spillDetected === true) failures.push('gpu_spill_detected');
 
   if (profileData.profileDepth === 'full') {
     const requiredFullSamples = Math.max(5, Number(profileData.requiredFullPhaseSamples) || 5);
