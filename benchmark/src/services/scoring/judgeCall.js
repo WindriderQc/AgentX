@@ -84,8 +84,12 @@ function rethrowIfJudgeCancelled(error, config = {}) {
     if (isBenchmarkBatchStoppedError(error) || getJudgeCancelSignal(config)?.aborted) {
         throw createBenchmarkBatchStoppedError();
     }
-    // Timeout cannot attest that an admitted native generation has stopped.
-    if (error?.name === 'AbortError' && getJudgeCancelSignal(config)?.workloadId) {
+    // A transport interruption or gateway failure cannot attest that an
+    // admitted native generation has stopped. Do not replay uncertain work.
+    const uncertainTransport = error?.name === 'AbortError' || error?.name === 'FetchError'
+        || ['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ERR_STREAM_PREMATURE_CLOSE'].includes(error?.code)
+        || [502, 504].includes(error?.statusCode);
+    if (uncertainTransport && getJudgeCancelSignal(config)?.workloadId) {
         throw Object.assign(new Error('Judge inference terminal state is unknown'), {
             code: 'JUDGE_INFERENCE_TERMINALITY_UNKNOWN', statusCode: 503
         });

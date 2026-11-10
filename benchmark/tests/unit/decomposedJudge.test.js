@@ -810,3 +810,20 @@ describe('Terminal native judge admission', () => {
         expect(mockFetchFn).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('managed binary transport interruption', () => {
+    it.each([503, 502, 504])('does not retry an aborted HTTP %i error body', async status => {
+        const controller = new AbortController();
+        Object.defineProperty(controller.signal, 'workloadId', { value: 'judge-accuracy-calibration:body' });
+        const calls = [];
+        mockFetchFn.mockResolvedValue({ ok: false, status, text: async () => {
+            throw Object.assign(new Error('body timed out'), { name: 'AbortError' });
+        } });
+        await expect(askBinaryQuestion('response', 'question?', {
+            ...JUDGE_CONFIG, cancelSignal: controller.signal, judgeCallEvidence: calls
+        })).rejects.toMatchObject({ code: 'JUDGE_INFERENCE_TERMINALITY_UNKNOWN' });
+        expect(controller.signal.aborted).toBe(false);
+        expect(mockFetchFn).toHaveBeenCalledTimes(1);
+        expect(calls[0].http_error_body_error).toBe('body timed out');
+    });
+});

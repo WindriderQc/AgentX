@@ -186,7 +186,8 @@ reported as incomplete, never silently judged.
 ### Native inference interruption
 
 A managed standalone calibration stops when its inference times out without a
-native completion receipt, or Core reports lost, closed, aborted, or quarantined
+native completion receipt, an error body is interrupted, a transport connection
+fails, an unclassified gateway 502/504 is returned, or Core reports lost, closed, aborted, or quarantined
 inference admission. These failures propagate through binary votes, reference
 scoring, and calibration cases; they are not unreadable answers or host-busy
 retries. No partial calibration is published as a qualification.

@@ -103,6 +103,11 @@ async function judgeHttpError(response, call = null) {
             } catch (_) { /* Unreadable bodies are not authority receipts. */ }
         } catch (readError) {
             if (call) call.http_error_body_error = String(readError.message || readError);
+            // An interrupted body has no usable authority receipt. Preserve
+            // the transport failure so the caller's managed-workload guard
+            // can stop rather than reclassifying a 503 as ordinary host busy.
+            if (readError?.name === 'AbortError' || readError?.name === 'FetchError'
+                || ['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ERR_STREAM_PREMATURE_CLOSE'].includes(readError?.code)) throw readError;
         }
     }
     return error;
