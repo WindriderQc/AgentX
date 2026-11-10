@@ -31,7 +31,7 @@ const target = { ...base, runtimeFingerprint: 'driver-runtime', driverPreparatio
 const data = () => ({ profileDepth: 'standard', maxVerifiedContext: 8192,
   recommendedInteractiveContext: 8192, recommendedDocumentContext: 8192,
   requiredRetainedSamples: 2, requiredTtftSamples: 2, ttftMeasurement: 'streamed_wall_clock', ttftMs: 10,
-  measurementQuality: { reliability: 'medium', passingSampleCount: 2, ttftSampleCount: 2 }, spill: { verified: true },
+  measurementQuality: { reliability: 'medium', passingSampleCount: 2, ttftSampleCount: 2 }, spill: { verified: true, spillDetected: false },
   thinking: { supported: true, visibleFinalAnswerOk: true, finalAnswerContractOk: true, recommendedPolicy: 'metered' } });
 let mongo;
 
