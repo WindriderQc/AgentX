@@ -13,6 +13,7 @@ const { TOOLS, callTool } = require('./family-tool-registry');
 // Each eligible tool with the arguments Famille may not set: iss_passes always
 // answers for the household location, never for coordinates a model supplies.
 const FAMILY_TOOL_VIEWS = Object.freeze({ iss_passes: Object.freeze({ omit: Object.freeze(['lat', 'lon']) }),
+  source_catalogue: Object.freeze({ omit: [] }), source_read: Object.freeze({ omit: [] }),
   web_search: Object.freeze({ omit: [] }), network_devices: Object.freeze({ omit: [] }),
   artx_read: Object.freeze({ omit: ['displayId'] }), artx_present: Object.freeze({ omit: ['displayId', 'requestId'] }) });
 const FAMILY_ELIGIBLE_TOOLS = Object.freeze(Object.keys(FAMILY_TOOL_VIEWS));

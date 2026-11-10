@@ -167,16 +167,24 @@ async function store(found) {
 // Lists alerts. Without `current`: pending ones (not acknowledged). With `current`
 // (the keys holding now): pending ones plus standing conditions that still hold,
 // acknowledged or not, so a stale account stays visible until its data comes in.
-async function list({ includeAcknowledged = false, current = null } = {}) {
+async function list({ includeAcknowledged = false, current = null, limit: requestedLimit = 100, offset: requestedOffset = 0 } = {}) {
+  const limit = Math.max(1, Math.min(100, Math.trunc(Number(requestedLimit)) || 100));
+  const offset = Number(requestedOffset);
+  if (!Number.isSafeInteger(offset) || offset < 0) throw Object.assign(new Error('offset must be a nonnegative safe integer'), { statusCode: 400, code: 'FINANCE_QUERY_INVALID' });
   let filter = {};
   if (!includeAcknowledged) {
     filter = current
       ? { $or: [{ acknowledgedAt: null, kind: { $nin: STANDING } }, { kind: { $in: STANDING }, key: { $in: current } }] }
       : { acknowledgedAt: null };
   }
-  const rows = await FinanceAlert.find(filter).sort({ createdAt: -1 }).limit(100).lean();
+  const [rows, total] = await Promise.all([
+    FinanceAlert.find(filter).sort({ createdAt: -1, _id: -1 }).skip(offset).limit(limit).lean(),
+    FinanceAlert.countDocuments(filter)
+  ]);
   return { alerts: rows.map(({ _id, key, kind, severity, title, facts, createdAt, acknowledgedAt }) => ({
-    id: String(_id), key, kind, severity, title, facts, createdAt, acknowledgedAt })) };
+    id: String(_id), key, kind, severity, title, facts, createdAt, acknowledgedAt })), total, truncated: offset + rows.length < total,
+    pagination: { limit, offset, returned: rows.length, hasMore: offset + rows.length < total,
+      nextOffset: offset + rows.length < total ? offset + rows.length : null, consistency: 'live', order: ['createdAt:desc', '_id:desc'] } };
 }
 
 // Stores the current alerts and returns those listed now.

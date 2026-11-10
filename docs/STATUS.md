@@ -9,6 +9,12 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## Available capabilities
 
+- **Living sources.** Personal and family conversations share an audience-bound
+  source directory and dated weather context. Native reads reuse producer records,
+  with explicit freshness, coverage and pagination. Mail and finance remain private;
+  shared AgentX reads cover service reachability only. Installation and runtime
+  acceptance remain separate. See [living sources](LIVING_SOURCES.md).
+
 - **Nestor ArtX.** The family standby screen supplies its current and recent
   render receipts to the dialogue, using Core’s source snapshots and the
   renderer’s panorama geometry. A silent routed Nestor task chooses a scene

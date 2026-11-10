@@ -23,3 +23,13 @@ test('refuses a brief Core did not sign for that collaborator, and reports refus
   await assert.rejects(() => down({}), /Name the collaborator/);
   assert.throws(() => createCoreBriefClient({}), /Configure/);
 });
+
+test('forwards section and stable record continuation unchanged', async () => {
+  const input = { member: 'secretary', section: 'mail', days: 7, limit: 50, offset: 100, asOf: '2026-11-10T00:00:00Z' };
+  const client = createCoreBriefClient({ baseUrl: 'http://core.invalid', fetchImpl: async (_url, options) => {
+    assert.deepEqual(JSON.parse(options.body), input);
+    assert.equal(options.redirect, 'error');
+    return reply(200, brief('secretary'));
+  } });
+  await client(input);
+});

@@ -138,12 +138,17 @@ async function balances({ ledger } = {}) {
   return { accounts: require('./financeBalanceProjection').projectBalances(statements), coverage: await assessCoverage({ ledger }) };
 }
 
-async function statements({ status, ledger } = {}) {
+async function statements({ status, ledger, limit: requestedLimit = MAX_ROWS, offset: requestedOffset = 0 } = {}) {
+  const limit = Math.max(1, Math.min(MAX_ROWS, Math.trunc(Number(requestedLimit)) || MAX_ROWS));
+  const offset = Number(requestedOffset);
+  if (!Number.isSafeInteger(offset) || offset < 0) throw new FinanceQueryError('offset must be a nonnegative safe integer');
   const filter = { ...ledgerFilter(ledger), ...(status ? { status: String(status) } : {}) };
-  const rows = await FinanceStatement.find(filter).sort({ periodEnd: -1, ingestedAt: -1 }).limit(MAX_ROWS)
+  const [rows, total] = await Promise.all([FinanceStatement.find(filter).sort({ periodEnd: -1, ingestedAt: -1, _id: -1 }).skip(offset).limit(limit)
     .select('status issuer periodStart periodEnd fileName accounts.code accounts.transactionCount problems attempts model ingestedAt')
-    .lean();
-  return { statements: rows.map(({ _id, ...rest }) => ({ id: String(_id), ...rest })) };
+    .lean(), FinanceStatement.countDocuments(filter)]);
+  return { statements: rows.map(({ _id, ...rest }) => ({ id: String(_id), ...rest })), total, truncated: offset + rows.length < total,
+    pagination: { limit, offset, returned: rows.length, hasMore: offset + rows.length < total,
+      nextOffset: offset + rows.length < total ? offset + rows.length : null, consistency: 'live', order: ['periodEnd:desc', 'ingestedAt:desc', '_id:desc'] } };
 }
 
 const DAY_MS = 86400000;

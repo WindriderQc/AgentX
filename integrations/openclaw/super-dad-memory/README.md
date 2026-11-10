@@ -27,13 +27,26 @@ file. List/search coverage and Core receipts are returned to the native tool.
 message). It is offered to the owner context and to the configured
 `secretarySessionKeys`; `personal_memory` keeps lasting facts only and its
 description sends mail summaries to the journal.
-`team_brief` is the one way a collaborator shares what it knows with the main
+`source_catalogue` and `source_read` are optional private-owner tools for
+Core's living sources. They use fixed GET `/api/consumers/nestor/v1/sources`
+and POST `/api/consumers/nestor/v1/sources/read` routes; no URL from source
+content is followed. Core receipts must identify `agentx.core`, the expected
+kind, owner audience and requested source. Core owns the source selection,
+freshness, coverage and pagination; the adapter neither starts producers nor
+stores another memory. Continue content pages with `nextReadArgs`,
+`nextOffset` and `contentHash`; `SOURCE_CHANGED` requires a fresh read.
+Record pages use `recordOffset` and the retained `asOf`. Grant these tools
+explicitly to `main`; family, specialist and scheduled contexts do not gain
+them through this adapter.
+
+`team_brief` shares a collaborator's standing records with the main
 agent: `/api/consumers/nestor/v1/team-brief` returns the same read-only
 envelope for each of them (`covers`, `sections`, `beyond`), computed by Core
 from that collaborator's own records: the Secretary's mail journal, the
 accountant's ledger. It is offered to the owner context only. A new
 collaborator is one entry in Core's `teamBriefService` and one value in the
-tool's `member` list.
+tool's `member` list. `section`, `limit`, `offset` and `asOf` are relayed
+unchanged for stable record pagination.
 `personal_identifier` lists the owner's sealed identifiers (labels and last
 digits) through `/api/consumers/nestor/v1/identifiers` and reveals one value
 only in the owner's Household session; on Telegram it says the value can be
