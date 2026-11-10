@@ -34,3 +34,21 @@ test('the existing enabled policy records why coverage stopped', async () => {
     }) });
     expect(timeline).toHaveBeenCalledWith('model_early_stopped', expect.objectContaining({ judged_count: 5 }));
 });
+
+test('early stop reads and updates only the active host of a repeated model tag', async () => {
+    BenchmarkResult.find.mockImplementation(filter => ({ select: () => ({ lean: async () =>
+        Array.from({ length: 5 }, () => ({ quality_score: filter.host === 'http://weak.local' ? 1 : 9 })) }) }));
+    const modelStartedAt = new Date('2026-01-01T00:00:00Z');
+    const base = { batchId: 'synthetic', model: 'same-tag', modelStartedAt, executionConfig: { early_stop_enabled: true } };
+    expect(await evaluateAndPersistEarlyStop({ ...base, hostUrl: 'http://strong.local' })).toBe(false);
+    expect(BenchmarkBatch.updateOne).not.toHaveBeenCalled();
+    expect(await evaluateAndPersistEarlyStop({ ...base, hostUrl: 'http://weak.local' })).toBe(true);
+    expect(BenchmarkResult.find).toHaveBeenLastCalledWith(expect.objectContaining({
+        batch_id: 'synthetic', model: 'same-tag', host: 'http://weak.local'
+    }));
+    expect(BenchmarkBatch.updateOne).toHaveBeenCalledWith({
+        _id: 'synthetic', model_timings: { $elemMatch: {
+            model: 'same-tag', host: 'http://weak.local', started_at: modelStartedAt, completed_at: null
+        } }
+    }, expect.anything());
+});
