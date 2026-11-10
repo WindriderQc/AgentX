@@ -3,6 +3,8 @@
 // A directory and read capability over existing producers, not a memory store.
 // Audience is bound by trusted server code, never model arguments or content.
 const { createHash } = require('crypto');
+const { producerEvidence } = require('./livingSourceFreshness');
+const { projectWeather } = require('./livingSourceWeather');
 const fail = (code, message, statusCode = 400) => Object.assign(new Error(message), { code, statusCode });
 const DEFINITIONS = Object.freeze({
   weather: { title: 'Current household weather', audiences: ['owner', 'household'], producer: 'Data / Environment Canada',
@@ -29,9 +31,6 @@ function integer(value, fallback, min, max, name) {
   if (!Number.isSafeInteger(value) || value < min || value > max) throw fail('SOURCE_ARGUMENT_INVALID', 'Invalid ' + name);
   return value;
 }
-function date(value) {
-  return typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
-}
 function stable(value) {
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) return value.map(stable);
@@ -39,22 +38,7 @@ function stable(value) {
   return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
 }
 async function weatherRead(ambient, now) {
-  const value = await ambient.weather();
-  if (!value) return { status: 'unavailable', data: null, sourceUpdatedAt: null };
-  const sourceUpdatedAt = date(value.fetchedAt);
-  const age = sourceUpdatedAt ? now.getTime() - Date.parse(sourceUpdatedAt) : NaN;
-  // The named source is the family current-conditions contract, not general Data.
-  const data = { fetchedAt: sourceUpdatedAt, source: 'Environnement Canada' };
-  for (const key of ['temperatureC', 'windKmh', 'gustKmh']) {
-    if (typeof value[key] === 'number' && Number.isFinite(value[key])) data[key] = value[key];
-  }
-  for (const [key, max] of [['condition', 80], ['windDirection', 8]]) {
-    if (typeof value[key] === 'string' && value[key].length <= max) data[key] = value[key];
-  }
-  const usable = ['temperatureC', 'windKmh', 'gustKmh', 'condition'].some(key =>
-    typeof data[key] === 'number' || (typeof data[key] === 'string' && data[key].trim()));
-  const status = !usable || !Number.isFinite(age) || age < -60000 ? 'unavailable' : age > 1800000 ? 'stale' : 'available';
-  return { status, data, sourceUpdatedAt, freshness: { timestampMeaning: 'retrieved_at_not_observed_at', maxAgeMs: 1800000 } };
+  return projectWeather(await ambient.weather(), now);
 }
 async function agentxRead(client) {
   const checks = await Promise.allSettled([client.fetchBenchmarkAnalyticsSummary(), client.fetchRagStatus()]);
@@ -119,7 +103,7 @@ function forAudience(audience, deps = {}) {
     return { authority: 'agentx.core', kind: 'living_source', version: 1, source: input.source, audience,
       producer: definition.producer, coverage: definition.coverage, update: definition.update, deepen: definition.deepen,
       readAt: now.toISOString(), lastSuccessfulReadAt: result.status === 'unavailable' ? null : now.toISOString(),
-      sourceUpdatedAt: result.sourceUpdatedAt, freshness: result.freshness || null, status: result.status,
+      sourceUpdatedAt: result.sourceUpdatedAt, producerEvidence: producerEvidence(input.source, result, now), freshness: result.freshness || null, status: result.status,
       ...(result.error ? { error: result.error } : {}),
       nextReadArgs, contentHash, totalChars: serialized.length, offset, nextOffset: end < serialized.length ? end : null,
       complete, encoding: 'json', ...(complete ? { data: content } : { text: serialized.slice(offset, end) }),

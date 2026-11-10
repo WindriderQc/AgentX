@@ -55,7 +55,8 @@ function defaultSources() {
     emailActions,
     mailJournal: require('./mailJournalService'),
     financeQuery: require('./finance/financeQueryService'),
-    financeAlerts: require('./finance/financeAlerts')
+    financeAlerts: require('./finance/financeAlerts'),
+    financePublication: require('./finance/financePublicationEvidence')
   };
 }
 
@@ -82,7 +83,8 @@ const BRIEFS = Object.freeze({
         const { rows = [] } = await sources.financeQuery.transactions({ limit: 1 });
         const latestTransactionDate = rows[0]?.date || null;
         const currentMonth = now.toISOString().slice(0, 7);
-        return { latestTransactionDate, currentMonth,
+        const publication = sources.financePublication ? await sources.financePublication.read() : { status: 'unknown', lastAppliedAt: null };
+        return { latestTransactionDate, currentMonth, publication,
           currentMonthHasData: Boolean(latestTransactionDate && latestTransactionDate.slice(0, 7) === currentMonth),
           note: 'Say this date with any figure. Each balance carries its own date. A month after latestTransactionDate has no data yet: say so instead of answering with another month.' };
       },

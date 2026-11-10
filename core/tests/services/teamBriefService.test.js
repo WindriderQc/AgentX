@@ -77,3 +77,14 @@ test('single-section reads pass continuation and freeze the requested window', a
     await expect(brief({ member: 'secretary', ...extra }, { sources: s, now })).rejects.toMatchObject({ statusCode: 400 });
   }
 });
+
+test('only the finance freshness section reads native publication evidence', async () => {
+  const read = jest.fn(async () => ({ status: 'attested', lastAppliedAt: '2026-03-14T00:00:00Z' }));
+  const s = sources({ financePublication: { read } });
+  await brief({ member: 'comptable', section: 'balances' }, { sources: s, now });
+  await brief({ member: 'secretary' }, { sources: s, now });
+  expect(read).not.toHaveBeenCalled();
+  const result = await brief({ member: 'comptable', section: 'freshness' }, { sources: s, now });
+  expect(result.sections.freshness.publication.lastAppliedAt).toBe('2026-03-14T00:00:00Z');
+  expect(read).toHaveBeenCalledTimes(1);
+});
