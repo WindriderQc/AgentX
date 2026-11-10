@@ -203,4 +203,41 @@ describe('managed benchmark workload admission lifecycle', () => {
         expect(mockReleaseWorkloadAdmission).not.toHaveBeenCalled();
         expect(heartbeat.drain).toHaveBeenCalledTimes(1);
     });
+    test('caller disconnect aborts judging and hands off without releasing uncertain admission', async () => {
+        const { EventEmitter } = require('events');
+        const req = Object.assign(new EventEmitter(), { body: {} });
+        const res = Object.assign(new EventEmitter(), responseHarness());
+        const send = res.json;
+        let signal;
+        const wrapped = withManagedWorkloadRoute('judge-accuracy-calibration', () => ({}), async (request) => {
+            signal = request.workloadAdmissionSignal;
+            res.emit('close');
+            expect(signal.aborted).toBe(true);
+        });
+        await wrapped(req, res, jest.fn());
+        expect(mockReleaseWorkloadAdmission).not.toHaveBeenCalled();
+        expect(mockTransitionWorkloadRecovery).toHaveBeenCalledWith(
+            expect.stringMatching(/^judge-accuracy-calibration:/), 'UNKNOWN', expect.any(Object));
+        expect(heartbeat.drain).toHaveBeenCalledTimes(1);
+        expect(send).not.toHaveBeenCalled();
+        expect(req.listenerCount('aborted')).toBe(0);
+        expect(res.listenerCount('close')).toBe(0);
+    });
+
+    test('a completed response is not a caller cancellation', async () => {
+        const { EventEmitter } = require('events');
+        const req = Object.assign(new EventEmitter(), { body: {} });
+        const res = Object.assign(new EventEmitter(), responseHarness());
+        const wrapped = withManagedWorkloadRoute('judge-health', () => ({}), async (request, response) => {
+            res.writableFinished = true;
+            res.emit('close');
+            expect(request.workloadAdmissionSignal.aborted).toBe(false);
+            response.json({ status: 'success' });
+        });
+        await wrapped(req, res, jest.fn());
+        expect(mockReleaseWorkloadAdmission).toHaveBeenCalledTimes(1);
+        expect(mockTransitionWorkloadRecovery).not.toHaveBeenCalled();
+        expect(res.listenerCount('close')).toBe(0);
+    });
+
 });

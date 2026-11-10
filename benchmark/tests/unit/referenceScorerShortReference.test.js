@@ -286,3 +286,27 @@ describe('reference scoring with short references', () => {
     expect(result.quality_score).toBe(7);
   });
 });
+
+describe('managed reference error body interruption', () => {
+  it.each([
+    ['key point', checkKeyPoint, false],
+    ['contradiction', checkContradictions, false],
+    ['similarity', checkOverallSimilarity, false],
+    ['busy-response clone', checkOverallSimilarity, true]
+  ])('stops %s without retry or a partial verdict', async (_label, check, clone) => {
+    const controller = new AbortController();
+    Object.defineProperty(controller.signal, 'workloadId', { value: 'judge-accuracy-calibration:reference-body' });
+    const response = { ok: false, status: 503, text: async () => {
+      throw Object.assign(new Error('body timed out'), { name: 'AbortError' });
+    } };
+    if (clone) response.clone = () => ({ ...response });
+    mockFetch.mockResolvedValue(response);
+    await expect(check('answer', 'reference', {
+      model: 'judge', host: 'http://judge:11434', cancelSignal: controller.signal,
+      // The no-clone cases reach the final error-body reader immediately.
+      host_busy_wait_ms: 0
+    })).rejects.toMatchObject({ code: 'JUDGE_INFERENCE_TERMINALITY_UNKNOWN' });
+    expect(controller.signal.aborted).toBe(false);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});

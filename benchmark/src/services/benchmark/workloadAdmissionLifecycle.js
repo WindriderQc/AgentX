@@ -74,6 +74,9 @@ async function beginManagedWorkload(workloadId, options = {}) {
         workloadId: id,
         signal: controller.signal,
         assertActive: heartbeat.assertActive,
+        cancel(reason) {
+            if (!controller.signal.aborted) controller.abort(reason);
+        },
         async abandon() {
             if (closed) return;
             closed = true;
@@ -186,6 +189,14 @@ function withManagedWorkloadRoute(kind, resolveOptions, handler) {
         let lifecycle = null;
         const originalJson = res.json.bind(res);
         let pendingJson = null;
+        let disconnected = req.aborted === true || res.destroyed === true;
+        const onDisconnect = () => {
+            if (res.writableFinished) return;
+            disconnected = true;
+            lifecycle?.cancel(new Error('Managed workload caller disconnected'));
+        };
+        req.once?.('aborted', onDisconnect);
+        res.once?.('close', onDisconnect);
         try {
             const options = typeof resolveOptions === 'function' ? (resolveOptions(req) || {}) : {};
             const workloadId = `${kind}:${crypto.randomUUID()}`;
@@ -196,6 +207,10 @@ function withManagedWorkloadRoute(kind, resolveOptions, handler) {
                 hosts: options.hosts || [],
                 ttlMs: options.ttlMs || null
             });
+            if (disconnected) {
+                lifecycle.cancel(new Error('Managed workload caller disconnected'));
+                throw new Error('Managed workload caller disconnected');
+            }
             req.workloadAdmissionSignal = lifecycle.signal;
             req.workloadAdmissionId = workloadId;
             req.assertWorkloadAdmissionActive = lifecycle.assertActive;
@@ -211,6 +226,7 @@ function withManagedWorkloadRoute(kind, resolveOptions, handler) {
                 return res;
             };
             await handler(req, res, next);
+            if (disconnected) throw new Error('Managed workload caller disconnected');
             if (res.statusCode >= 500) {
                 await lifecycle.retainForRecovery(req.workloadAdmissionReconciliationError
                     || Object.assign(new Error('Managed route failed after durable authority guard'), { retainAdmission: true }));
@@ -231,7 +247,7 @@ function withManagedWorkloadRoute(kind, resolveOptions, handler) {
                 }
             }
             res.json = originalJson;
-            if (res.headersSent) {
+            if (disconnected || res.headersSent) {
                 logger.error('Managed judge workload failed after response', { kind, error: error.message });
                 return;
             }
@@ -240,6 +256,9 @@ function withManagedWorkloadRoute(kind, resolveOptions, handler) {
                 code: error.code || 'WORKLOAD_ADMISSION_REQUIRED',
                 error: error.message
             });
+        } finally {
+            req.removeListener?.('aborted', onDisconnect);
+            res.removeListener?.('close', onDisconnect);
         }
     };
 }

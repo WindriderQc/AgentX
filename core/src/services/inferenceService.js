@@ -751,7 +751,7 @@ async function executeInferenceOnce(body = {}, {
         });
         setRouteOutcomeHeader(headers, ROUTE_OUTCOME_CODES.PRE_DISPATCH_ERROR);
         return result(Number.isInteger(err?.statusCode) ? err.statusCode : 500, {
-            status: 'error', ...(err?.code === 'HOST_PIN_MISMATCH' && { code: err.code, data: { pin: err.pin } }),
+            status: 'error', ...(/^RUNTIME_INFERENCE_[A-Z_]+$/.test(errorCode) && { code: errorCode }), ...(err?.code === 'HOST_PIN_MISMATCH' && { code: err.code, data: { pin: err.pin } }),
             message: err?.message || 'Internal server error',
         });
     }

@@ -120,6 +120,7 @@ ${answerRule}: ${question}`;
             const error = await judgeHttpError(res, callEvidence);
             // Core answers 503 before dispatch when the judge host is taken:
             // nothing ran, so the same call can simply be asked again.
+            rethrowIfJudgeCancelled(error, judgeConfig);
             if (res.status === 503) error.code = JUDGE_HOST_BUSY;
             throw error;
         }

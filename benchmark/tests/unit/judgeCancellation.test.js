@@ -153,3 +153,53 @@ describe('judge caller cancellation', () => {
         expect(benchmarkFetch).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('terminal Core admission errors', () => {
+    it('propagates a native quarantine instead of retrying or returning an ungraded result', async () => {
+        benchmarkFetch.mockResolvedValue({ ok: false, status: 503,
+            text: async () => JSON.stringify({ code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' }) });
+        await expect(callJudge('evaluate this', CONFIG))
+            .rejects.toMatchObject({ code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' });
+        expect(benchmarkFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not wait out a quarantined reference judge host', async () => {
+        const { fetchWhenJudgeHostFree } = require('../../src/services/scoring/judgeCall');
+        const response = { status: 503, clone: () => ({
+            status: 503, text: async () => JSON.stringify({ code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' })
+        }) };
+        const send = jest.fn().mockResolvedValue(response);
+        await expect(fetchWhenJudgeHostFree(send, CONFIG))
+            .rejects.toMatchObject({ code: 'RUNTIME_INFERENCE_RECOVERY_REQUIRED' });
+        expect(send).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('managed judge failure without a completion receipt', () => {
+    function managedConfig() {
+        const controller = new AbortController();
+        Object.defineProperty(controller.signal, 'workloadId', { value: 'judge-accuracy-calibration:body' });
+        return { ...CONFIG, cancelSignal: controller.signal };
+    }
+    it.each([503, 502, 504])('stops on aborted HTTP %i body consumption', async status => {
+        const config = managedConfig();
+        benchmarkFetch.mockResolvedValue({ ok: false, status, text: async () => { throw abortError(); } });
+        await expect(callJudge('evaluate', config))
+            .rejects.toMatchObject({ code: 'JUDGE_INFERENCE_TERMINALITY_UNKNOWN' });
+        expect(config.cancelSignal.aborted).toBe(false);
+        expect(benchmarkFetch).toHaveBeenCalledTimes(1);
+    });
+    it.each([502, 504])('does not replay an unclassified gateway %i response', async status => {
+        benchmarkFetch.mockResolvedValue({ ok: false, status, text: async () => 'gateway failed' });
+        await expect(callJudge('evaluate', managedConfig()))
+            .rejects.toMatchObject({ code: 'JUDGE_INFERENCE_TERMINALITY_UNKNOWN' });
+        expect(benchmarkFetch).toHaveBeenCalledTimes(1);
+    });
+    it.each(['ECONNRESET', 'EPIPE', 'ETIMEDOUT', 'ERR_STREAM_PREMATURE_CLOSE'])(
+        'does not replay after transport %s', async code => {
+            benchmarkFetch.mockRejectedValue(Object.assign(new Error('connection interrupted'), { code }));
+            await expect(callJudge('evaluate', managedConfig()))
+                .rejects.toMatchObject({ code: 'JUDGE_INFERENCE_TERMINALITY_UNKNOWN' });
+            expect(benchmarkFetch).toHaveBeenCalledTimes(1);
+        });
+});
