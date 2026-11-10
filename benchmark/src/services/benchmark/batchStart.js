@@ -284,7 +284,7 @@ async function startBatch({
         }
         if (!admissionHandedOff) {
             if (error?.retainAdmission === true) {
-                retainAdmissionHeartbeat(creationHeartbeat, workloadTtlMs, {
+                await retainAdmissionHeartbeat(creationHeartbeat, workloadTtlMs, {
                     workloadId: plannedBatchKey,
                     phase: 'batch_creation'
                 });

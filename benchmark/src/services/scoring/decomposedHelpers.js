@@ -10,7 +10,7 @@
  */
 
 const logger = require('../../../config/logger');
-const { ENHANCED_SCORING_CONFIGS, PRIMARY_DIMENSION_CAP_MARGIN } = require('./scoringConfigs');
+const { ENHANCED_SCORING_CONFIGS, PRIMARY_DIMENSION_CAP_MARGIN, DEFAULT_SCORING_CATEGORY } = require('./scoringConfigs');
 
 // Share of the grade the prompt's own criteria take when it carries some.
 const SPECIFIC_CRITERIA_WEIGHT = 0.25;
@@ -92,18 +92,11 @@ function resolveDimensionWeights(callerWeights, category, questions) {
  * over "3", and a bare count matches its option ("3+" reads as "3 or more").
  */
 function parseGradedAnswer(text, options) {
-    const fromHead = parseGradedHead(text, options);
-    if (fromHead) return fromHead;
-    // Some judges reason first and put the count on its own final line. A
-    // truncated reply never reaches here (done_reason length is rejected), so
-    // a last line holding only an answer is the judge's verdict.
     const lines = String(text || '').trim().split(/\r?\n/).map(line => line.trim()).filter(Boolean);
-    const last = (lines[lines.length - 1] || '').toLowerCase()
-        .replace(/^(?:final\s+)?(?:answer|count|total)\s*[:=]\s*/, '')
-        // Quotes too: the prompt lists the options quoted and a judge copies them so.
-        .replace(/[*_`"'\u201c\u201d.\s]+$/, '').replace(/^[*_`"'\u201c\u201d\s]+/, '');
-    if (lines.length < 2 || !/^(\d+(\s*or more|\+)?|[a-z]+)$/.test(last)) return null;
-    return parseGradedHead(last, options);
+    // A final standalone verdict wins over numbered reasoning at the start.
+    // No numeric prefix of prose, a decimal or exponent is itself a count.
+    const verdict = lines[lines.length - 1] || '';
+    return parseGradedHead(verdict, options);
 }
 
 /**
@@ -145,21 +138,23 @@ function matchBinaryVerdict(text) {
 }
 
 function parseGradedHead(text, options) {
-    const head = String(text || '').trim().toLowerCase().replace(/^[^a-z0-9]+/, '');
-    const sorted = [...options].sort((a, b) => b.answer.length - a.answer.length);
-    for (const option of sorted) {
-        const answer = option.answer.toLowerCase();
-        if (head.startsWith(answer) && !/[a-z0-9]/.test(head.charAt(answer.length))) return option;
-    }
-    const count = head.match(/^(\d+)\s*\+?/);
-    if (count) {
-        const n = Number(count[1]);
-        const exact = options.find(option => Number(option.answer) === n);
-        if (exact) return exact;
-        const open = options.find(option => /or more|\+$/.test(option.answer));
-        if (open && n >= Number.parseInt(open.answer, 10)) return open;
-    }
-    return null;
+    const answer = String(text || '').trim().toLowerCase()
+        .replace(/^(?:final\s+)?(?:answer|count|total)\s*[:=]\s*/, '')
+        .replace(/^[*_\x60"'\u201c\u201d\s]+/, '')
+        .replace(/[*_\x60"'\u201c\u201d\s]+$/, '')
+        .replace(/\.$/, '').trim();
+    const exact = options.find(option => option.answer.toLowerCase() === answer);
+    if (exact) return exact;
+    // Retain the established bare/open count and "7 missing" forms, but
+    // reject unlisted prose rather than silently assigning it numeric credit.
+    const count = answer.match(/^(\d+)(?:\s*(?:or more|\+)|\s+missing)?$/);
+    if (!count) return null;
+    const n = Number(count[1]);
+    if (!Number.isSafeInteger(n)) return null;
+    const numeric = options.find(option => Number(option.answer) === n);
+    if (numeric && !/or more|\+/.test(answer)) return numeric;
+    const open = options.find(option => /or more|\+$/.test(option.answer));
+    return open && n >= Number.parseInt(open.answer, 10) ? open : null;
 }
 
 /**
@@ -201,7 +196,7 @@ function buildExplanation(overallScore, category, dimensionScores, dimensionBrea
  * @returns {Array<string>} List of dimension names
  */
 function getDimensions(category) {
-    const questions = DECOMPOSED_QUESTIONS[category] || DECOMPOSED_QUESTIONS[DEFAULT_DECOMPOSED_CATEGORY];
+    const questions = DECOMPOSED_QUESTIONS[category] || DECOMPOSED_QUESTIONS[DEFAULT_SCORING_CATEGORY];
     return Object.keys(questions);
 }
 
@@ -212,7 +207,7 @@ function getDimensions(category) {
  * @returns {Object|Array} Questions object or array
  */
 function getQuestions(category, dimension = null) {
-    const questions = DECOMPOSED_QUESTIONS[category] || DECOMPOSED_QUESTIONS[DEFAULT_DECOMPOSED_CATEGORY];
+    const questions = DECOMPOSED_QUESTIONS[category] || DECOMPOSED_QUESTIONS[DEFAULT_SCORING_CATEGORY];
     if (dimension) {
         return questions[dimension] || [];
     }

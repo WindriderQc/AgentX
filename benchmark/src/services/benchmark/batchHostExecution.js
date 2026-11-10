@@ -15,7 +15,7 @@ const { assertFrozenArtifactDigest, getFrozenModelExecutionConfig } = require('.
 const { pairKey: completionPairKey } = require('./resumeRevalidation');
 
 function createHostBatchRunner(context, executePrompt) {
-    const runModelPromptLoop = async (hostUrl, judgeHostUrl, model) => {
+    const runModelPromptLoop = async (hostUrl, judgeHostUrl, model, modelStartedAt) => {
         const {
             batchId,
             prompts,
@@ -222,7 +222,7 @@ function createHostBatchRunner(context, executePrompt) {
                     // is low enough to halt remaining prompts for this model only.
                     if (!earlyStopped && promptsCompletedForModel >= EARLY_STOP_MIN_JUDGED) {
                         earlyStopped = await evaluateAndPersistEarlyStop({
-                            batchId, model, hostUrl, executionConfig, recordBatchTimelineEvent
+                            batchId, model, hostUrl, modelStartedAt, executionConfig, recordBatchTimelineEvent
                         });
                         if (earlyStopped) break;
                     }
@@ -288,12 +288,12 @@ function createHostBatchRunner(context, executePrompt) {
             const modelStartedAt = new Date();
             await BenchmarkBatch.updateOne(
                 { _id: batchId },
-                { $push: { model_timings: { model, started_at: modelStartedAt, completed_at: null, duration_ms: null } } }
+                { $push: { model_timings: { model, host: hostUrl, started_at: modelStartedAt, completed_at: null, duration_ms: null } } }
             ).catch((err) => logger.warn('Failed to record model start timing', { batchId, model, error: err.message }));
 
             let stopAfterModel = null;
             try {
-                const modelResult = await runModelPromptLoop(hostUrl, judgeHostUrl, model);
+                const modelResult = await runModelPromptLoop(hostUrl, judgeHostUrl, model, modelStartedAt);
                 if (modelResult?.stopped) {
                     stopAfterModel = modelResult;
                 }
@@ -325,7 +325,7 @@ function createHostBatchRunner(context, executePrompt) {
             const modelCompletedAt = new Date();
             const modelDurationMs = modelCompletedAt - modelStartedAt;
             await BenchmarkBatch.updateOne(
-                { _id: batchId, 'model_timings.model': model },
+                { _id: batchId, model_timings: { $elemMatch: { model, host: hostUrl, started_at: modelStartedAt } } },
                 { $set: { 'model_timings.$.completed_at': modelCompletedAt, 'model_timings.$.duration_ms': modelDurationMs } }
             ).catch((err) => logger.warn('Failed to record model complete timing', { batchId, model, error: err.message }));
             if (stopAfterModel) {

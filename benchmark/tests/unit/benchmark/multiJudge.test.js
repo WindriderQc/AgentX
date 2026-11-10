@@ -338,3 +338,32 @@ test('same host/model with different frozen settings remains a separate particip
     expect(result.scores[2].qualification_contract.settings.think).toBe(true);
     expect(result.scores.every(score => score.qualification_contract.escalation.tiebreaker.model === 'tie')).toBe(true);
 });
+
+
+describe('invalid consensus participants', () => {
+    beforeEach(() => scoreResponse.mockReset());
+    test.each([null, undefined, NaN, Infinity, -Infinity, -1, 11, '7'])(
+        'an invalid tiebreaker %s cannot resolve divergence or change the median', async invalid => {
+            scoreResponse.mockResolvedValueOnce({ quality_score: 2 })
+                .mockResolvedValueOnce({ quality_score: 8 })
+                .mockResolvedValueOnce({ quality_score: invalid });
+            const result = await multiJudgeScore({ response: 'Answer', prompt: makePrompt(),
+                judges: [makeJudge(2), makeJudge(8)], tiebreakerJudge: makeJudge(invalid) });
+            expect(result.finalScore).toBe(5);
+            expect(result.consensus).toBe('divergent_unresolved');
+            expect(result.tiebreakerUsed).toBe(false);
+            expect(result.scores[2]).toMatchObject({ quality_score: null, success: false, is_tiebreaker: true });
+        });
+    test.each([null, undefined, NaN, Infinity, -1, 11, '7'])(
+        'invalid primary and seeded scores %s are excluded', async invalid => {
+            scoreResponse.mockResolvedValueOnce({ quality_score: invalid })
+                .mockResolvedValueOnce({ quality_score: 8 });
+            const result = await multiJudgeScore({ response: 'Answer', prompt: makePrompt(),
+                judges: [makeJudge(invalid), makeJudge(8)],
+                seedJudgeResult: { judge_model: 'seed', judge_host: 'http://seed:11434',
+                    quality_score: invalid, success: true } });
+            expect(result.finalScore).toBe(8);
+            expect(result.consensus).toBe('single_judge');
+            expect(result.scores.filter(row => row.success)).toHaveLength(1);
+        });
+});

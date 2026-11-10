@@ -121,3 +121,13 @@ describe('concurrency probe', () => {
     });
   });
 });
+
+test('does not certify concurrency when Ollama omits usable generation measurements', async () => {
+  listRunning.mockResolvedValue(ps([['coder', 32768], ['chat', 16384]]));
+  generate.mockResolvedValue({ eval_count: 0, eval_duration: 0, load_duration: 0 });
+  const result = await runConcurrencyProbe(HOST, 'coder');
+  expect(result.status).toBe('unmeasured');
+  expect(result.pairs[0].status).toBe('unmeasured');
+  expect(result.worstSelfSlowdownPct).toBeNull();
+  expect(result.worstOtherSlowdownPct).toBeNull();
+});

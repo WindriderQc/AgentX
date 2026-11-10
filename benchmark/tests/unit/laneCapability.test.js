@@ -25,7 +25,7 @@ const contextProfile = (over = {}) => ({
 });
 const performanceProfile = (profile = {}, over = {}) => ({
   _id: 'perf1',
-  artifact: { digest: 'sha256:aaa' },
+  artifact: { digest: 'sha256:aaa', runtimeFingerprint: 'rt-1' },
   updatedAt: '2026-10-07T23:02:00Z',
   profile: {
     profileDepth: 'standard',

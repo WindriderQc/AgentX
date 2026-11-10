@@ -1,5 +1,7 @@
 'use strict';
 
+const measuredNonNegative = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
 function _round(n, places = 2) {
   return Number(Number(n || 0).toFixed(places));
 }
@@ -77,12 +79,12 @@ function summarizeThroughputSamples(samples, { minimumRetainedSamples = 2 } = {}
       coefficientOfVariation: null,
       p50: _round(mean),
       p95: _round(mean),
-      ttftP50Ms: Number.isFinite(Number(passing[0]?.ttftMs)) ? _round(passing[0].ttftMs) : null,
-      ttftP95Ms: Number.isFinite(Number(passing[0]?.ttftMs)) ? _round(passing[0].ttftMs) : null,
+      ttftP50Ms: passing[0]?.ttftMeasurement === 'streamed_wall_clock' && measuredNonNegative(passing[0]?.ttftMs) ? _round(passing[0].ttftMs) : null,
+      ttftP95Ms: passing[0]?.ttftMeasurement === 'streamed_wall_clock' && measuredNonNegative(passing[0]?.ttftMs) ? _round(passing[0].ttftMs) : null,
       ttftSampleCount: passing[0]?.ttftMeasurement === 'streamed_wall_clock'
-        && Number.isFinite(Number(passing[0]?.ttftMs)) ? 1 : 0,
-      promptEvalP50Ms: Number.isFinite(Number(passing[0]?.promptEvalDurationMs)) ? _round(passing[0].promptEvalDurationMs) : null,
-      promptEvalP95Ms: Number.isFinite(Number(passing[0]?.promptEvalDurationMs)) ? _round(passing[0].promptEvalDurationMs) : null,
+        && measuredNonNegative(passing[0]?.ttftMs) ? 1 : 0,
+      promptEvalP50Ms: measuredNonNegative(passing[0]?.promptEvalDurationMs) ? _round(passing[0].promptEvalDurationMs) : null,
+      promptEvalP95Ms: measuredNonNegative(passing[0]?.promptEvalDurationMs) ? _round(passing[0].promptEvalDurationMs) : null,
       confidenceInterval95: null,
       reliability: 'unknown'
     };
@@ -92,10 +94,10 @@ function summarizeThroughputSamples(samples, { minimumRetainedSamples = 2 } = {}
   const cv = mean > 0 ? stdDev / mean : null;
   const margin95 = _studentTCritical95(values.length) * stdDev / Math.sqrt(values.length);
   const streamedTtft = passing
-    .filter(sample => sample.ttftMeasurement === 'streamed_wall_clock' && Number.isFinite(Number(sample.ttftMs)))
+    .filter(sample => sample.ttftMeasurement === 'streamed_wall_clock' && measuredNonNegative(sample.ttftMs))
     .map(sample => Number(sample.ttftMs));
   const promptEvalDurations = passing
-    .filter(sample => Number.isFinite(Number(sample.promptEvalDurationMs)))
+    .filter(sample => measuredNonNegative(sample.promptEvalDurationMs))
     .map(sample => Number(sample.promptEvalDurationMs));
   const reliability = values.length < minimumRetainedSamples || cv == null
     ? 'unknown'
@@ -198,7 +200,12 @@ function completeRepeatedStatistics(statistics, minimumSamples, options = {}) {
   const relativeCiWidth = mean > 0 && Number.isFinite(low) && Number.isFinite(high)
     ? (high - low) / mean
     : Infinity;
-  return Number(statistics?.sampleCount) >= minimumSamples
+  return measuredNonNegative(statistics?.mean) && mean > 0
+    && measuredNonNegative(statistics?.confidenceInterval95?.low)
+    && measuredNonNegative(statistics?.confidenceInterval95?.high)
+    && high >= low
+    && measuredNonNegative(statistics?.coefficientOfVariation)
+    && Number(statistics?.sampleCount) >= minimumSamples
     && ['medium', 'high'].includes(statistics?.reliability)
     && Number.isFinite(Number(statistics?.coefficientOfVariation))
     && Number(statistics.coefficientOfVariation) <= maxCv
@@ -208,6 +215,7 @@ function completeRepeatedStatistics(statistics, minimumSamples, options = {}) {
 }
 
 module.exports = {
+  measuredNonNegative,
   _round,
   _median,
   _quantile,

@@ -18,17 +18,18 @@ const coding = (overrides = {}) => ({
 });
 
 describe('carry-over chain', () => {
-    test('an old coding failure needs fresh scoring, while agent grades carry unchanged', () => {
+    test('the historical 2.21 extraction step reopens coding but preserves agent grades', () => {
         expect(carryGrade({ scorer_version: '2.20.0', prompt_category: 'coding',
-            scoring_method: 'executable', quality_score: 1 }))
+            scoring_method: 'executable', quality_score: 1 }, { target: '2.21.0' }))
             .toEqual({ carried: false, reason: expect.stringContaining('requires fresh scoring') });
-        expect(carryGrade({ scorer_version: '2.20.0', prompt_category: 'agent', quality_score: 4.5 }))
+        expect(carryGrade({ scorer_version: '2.20.0', prompt_category: 'agent', quality_score: 4.5 }, { target: '2.21.0' }))
             .toEqual({ carried: true, quality_score: 4.5, changed: false, rules: [] });
     });
 
-    test('the declared chain leads every named version to the current one', () => {
-        expect(carriableVersions()).toEqual(SCORER_CARRY_OVER.map(step => step.from));
-        expect(SCORER_CARRY_OVER.at(-1).to).toBe(SCORER_VERSION);
+    test('the historical chain remains inspectable but cannot bridge the parser correction', () => {
+        expect(carriableVersions('2.21.0')).toEqual(SCORER_CARRY_OVER.map(step => step.from));
+        expect(carriableVersions()).toEqual([]);
+        expect(carryOverSteps('2.21.0', SCORER_VERSION)).toBeNull();
         for (const step of SCORER_CARRY_OVER) {
             for (const category of Object.keys(step.categories)) expect(ENHANCED_SCORING_CONFIGS).toHaveProperty(category);
         }

@@ -128,7 +128,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
             });
         }
         if (error?.retainAdmission === true) {
-            retainAdmissionHeartbeat(admissionHeartbeat, options.execution_config?.estimated_duration_ms || null, {
+            await retainAdmissionHeartbeat(admissionHeartbeat, options.execution_config?.estimated_duration_ms || null, {
                 workloadId: String(batchId),
                 phase: 'execution_lock'
             });
@@ -152,7 +152,7 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
         if (executionAdmission?.idempotent !== true) {
             const released = await releaseWorkloadAdmission(String(batchId));
             if (released?.released !== true) {
-                retainAdmissionHeartbeat(admissionHeartbeat, options.execution_config?.estimated_duration_ms || null, {
+                await retainAdmissionHeartbeat(admissionHeartbeat, options.execution_config?.estimated_duration_ms || null, {
                     workloadId: String(batchId),
                     phase: 'duplicate_execution'
                 });
@@ -624,13 +624,13 @@ async function executeBatch(batchId, defaultHost, models, prompts, options = {})
                     batchId,
                     reason: releaseError.message
                 });
-                retainAdmissionHeartbeat(admissionHeartbeat, options.execution_config?.estimated_duration_ms || null, {
+                await retainAdmissionHeartbeat(admissionHeartbeat, options.execution_config?.estimated_duration_ms || null, {
                     workloadId: String(batchId),
                     phase: 'terminal_release'
                 });
             }
         } else {
-            retainAdmissionHeartbeat(admissionHeartbeat, options.execution_config?.estimated_duration_ms || null, {
+            await retainAdmissionHeartbeat(admissionHeartbeat, options.execution_config?.estimated_duration_ms || null, {
                 workloadId: String(batchId),
                 phase: authorityLost ? 'authority_lost' : 'terminal_reconciliation'
             });

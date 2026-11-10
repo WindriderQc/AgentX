@@ -78,14 +78,6 @@ function restartBenchmark() {
     claimProofByOwner.clear();
 }
 
-async function until(predicate) {
-    for (let attempt = 0; attempt < 200; attempt += 1) {
-        if (await predicate()) return;
-        await new Promise(resolve => setTimeout(resolve, 10));
-    }
-    throw new Error('condition was not reached');
-}
-
 /** A workload Core still quarantines while Benchmark has no journal record of it. */
 async function recordlessQuarantine(batchStatus) {
     const batchId = newBatch(batchStatus);
@@ -122,7 +114,9 @@ describe('a batch that crashes when its runtime dies', () => {
         runBatchOrchestrator.mockRejectedValueOnce(Object.assign(new Error('socket hang up'), { code: 'ECONNRESET' }));
 
         await expect(executeBatch(batchId, HOST, ['model-a'], PROMPTS, {})).rejects.toThrow('socket hang up');
-        await until(() => mockCore.workload(batchId)?.recoveryState === 'UNKNOWN');
+        // The failed execution settles only after its durable handoff, not an
+        // arbitrary polling delay that can race a slow journal write.
+        expect(mockCore.workload(batchId)?.recoveryState).toBe('UNKNOWN');
 
         expect(mockBatches.get(batchId)).toMatchObject({
             status: 'failed', authority_reconciliation_reason: 'execution_crash'

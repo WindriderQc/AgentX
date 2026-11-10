@@ -45,12 +45,15 @@ function markReconciliationPending(authorityError, compensationError, code, deta
     return authorityError;
 }
 
-function retainAdmissionHeartbeat(heartbeat, ttlMs, context = {}) {
+async function retainAdmissionHeartbeat(heartbeat, ttlMs, context = {}) {
     // Core recovery quarantine is durable and deliberately non-reaped. Stop
     // renewing the crashed process proof so a restarted CAS worker can adopt
     // it; the workload itself remains fenced until a verified restore receipt.
+    // The caller must not settle its lifecycle before this durable handoff and
+    // heartbeat drain have settled; an unobserved promise can lose the journal.
     const workloadId = String(context.workloadId || '');
-    Promise.resolve()
+    let handoffCompleted = false;
+    await Promise.resolve()
         // The journal record goes first, while this process still holds the
         // recovery identity. A restart loses that identity, and a quarantine
         // handed over without a record is one no worker can adopt.
@@ -72,6 +75,10 @@ function retainAdmissionHeartbeat(heartbeat, ttlMs, context = {}) {
                 phase: context.phase || null
             }
         }) : null)
+        .then(result => {
+            if (result?.transitioned !== true) throw new Error('Core recovery handoff was not acknowledged');
+            handoffCompleted = true;
+        })
         .catch(error => logger.error('Could not hand batch recovery quarantine to the restart worker; fence remains', {
             ...context,
             error: error.message
@@ -80,8 +87,8 @@ function retainAdmissionHeartbeat(heartbeat, ttlMs, context = {}) {
             ...context,
             error: error.message
         })));
-    logger.error('Workload admission moved to durable Core recovery quarantine', context);
-    return { retained: true, holdMs: null, recoveryRequired: true };
+    if (handoffCompleted) logger.error('Workload admission moved to durable Core recovery quarantine', context);
+    return { retained: true, holdMs: null, recoveryRequired: true, handoffCompleted };
 }
 
 module.exports = { markReconciliationPending, retainAdmissionHeartbeat };

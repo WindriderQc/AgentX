@@ -23,6 +23,8 @@ const {
     throwIfJudgeCancelled
 } = require('../scoring/judgeCall');
 
+const validJudgeScore = score => Number.isFinite(score) && score >= 0 && score <= 10;
+
 /** Max score difference (0-10 scale) before escalation to tiebreaker */
 const DIVERGENCE_THRESHOLD = 2.0;
 const LOW_CONFIDENCE_THRESHOLD = 0.8;
@@ -106,11 +108,11 @@ async function multiJudgeScore({
             judge_host: seedJudgeResult.judge_host,
             execution_contract: seedJudgeResult.execution_contract || null,
             qualification_contract: seedJudgeResult.qualification_contract || null,
-            quality_score: seedJudgeResult.quality_score,
+            quality_score: validJudgeScore(seedJudgeResult.quality_score) ? seedJudgeResult.quality_score : null,
             explanation: seedJudgeResult.explanation,
             scoring_time_ms: seedJudgeResult.scoring_time_ms || 0,
             scoring_method: seedJudgeResult.scoring_method || 'llm_judge',
-            success: !!seedJudgeResult.success
+            success: !!seedJudgeResult.success && validJudgeScore(seedJudgeResult.quality_score)
         });
 
         const seedFingerprint = qualificationContractFingerprint(seedJudgeResult.qualification_contract);
@@ -148,11 +150,11 @@ async function multiJudgeScore({
                 judge_host: judgeConfig.host,
                 execution_contract: judgeConfig.execution_contract || null,
                 qualification_contract: buildJudgeQualificationContract(effectiveJudgeConfig, { escalation: escalationPolicy }),
-                quality_score: scores.quality_score,
+                quality_score: validJudgeScore(scores.quality_score) ? scores.quality_score : null,
                 explanation: scores.explanation,
                 scoring_time_ms: Date.now() - start,
                 scoring_method: scores.scoring_method,
-                success: true
+                success: validJudgeScore(scores.quality_score)
             };
         } catch (err) {
             rethrowIfJudgeCancelled(err, effectiveJudgeConfig);
@@ -180,7 +182,7 @@ async function multiJudgeScore({
 
     // Extract successful scores
     const validScores = results
-        .filter(r => r.success && r.quality_score !== null && r.quality_score !== undefined)
+        .filter(r => r.success && validJudgeScore(r.quality_score))
         .map(r => r.quality_score);
 
     if (validScores.length === 0) {
@@ -238,16 +240,18 @@ async function multiJudgeScore({
                 judge_host: tiebreakerJudge.host,
                 execution_contract: tiebreakerJudge.execution_contract || null,
                 qualification_contract: buildJudgeQualificationContract(effectiveTiebreakerConfig, { escalation: escalationPolicy }),
-                quality_score: tbScores.quality_score,
+                quality_score: validJudgeScore(tbScores.quality_score) ? tbScores.quality_score : null,
                 explanation: tbScores.explanation,
                 scoring_time_ms: Date.now() - start,
                 scoring_method: tbScores.scoring_method,
-                success: true,
+                success: validJudgeScore(tbScores.quality_score),
                 is_tiebreaker: true
             });
 
-            validScores.push(tbScores.quality_score);
-            tiebreakerUsed = true;
+            if (validJudgeScore(tbScores.quality_score)) {
+                validScores.push(tbScores.quality_score);
+                tiebreakerUsed = true;
+            }
         } catch (err) {
             rethrowIfJudgeCancelled(err, effectiveTiebreakerConfig);
             logger.warn('Multi-judge: tiebreaker failed', {

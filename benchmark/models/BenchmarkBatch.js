@@ -276,10 +276,11 @@ const BenchmarkBatchSchema = new mongoose.Schema({
         total_tokens_per_sec_avg: { type: Number, default: null }
     },
 
-    // Per-model wall-clock timing (how long each model took to run all prompts)
+    // Per-model/host wall-clock timing (how long each model took to run all prompts)
     model_timings: {
         type: [{
             model: { type: String, required: true },
+            host: { type: String, default: null },
             started_at: { type: Date, default: null },
             completed_at: { type: Date, default: null },
             duration_ms: { type: Number, default: null },
