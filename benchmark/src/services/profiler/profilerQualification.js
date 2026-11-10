@@ -70,7 +70,7 @@ function profileQualificationFailures(profileData) {
   if (Number(profileData.recommendedDocumentContext) > Number(profileData.maxVerifiedContext)) {
     failures.push('document_context_exceeds_verified_max');
   }
-  if (Number(quality.passingSampleCount) < required) failures.push('retained_sample_minimum_not_met');
+  if (required > 0 && !(Number(quality.passingSampleCount) >= required)) failures.push('retained_sample_minimum_not_met');
   if (!['medium', 'high'].includes(quality.reliability)) failures.push(`reliability_${quality.reliability || 'unknown'}`);
   const mainMean = Number(quality.tokensPerSecMean);
   const mainLow = Number(quality.confidenceInterval95?.low);
@@ -80,6 +80,7 @@ function profileQualificationFailures(profileData) {
   if (profileData.profileDepth === 'full'
     && (!measuredNonNegative(quality.coefficientOfVariation)
       || !(Number(quality.coefficientOfVariation) <= maxCv)
+      || !measuredNonNegative(quality.tokensPerSecMean)
       || !(mainMean > 0)
       || !measuredNonNegative(quality.confidenceInterval95?.low)
       || !measuredNonNegative(quality.confidenceInterval95?.high)
@@ -91,7 +92,7 @@ function profileQualificationFailures(profileData) {
     || !measuredNonNegative(profileData.ttftMs)
     || Number(profileData.ttftMs) < 0) failures.push('streamed_ttft_missing');
   const requiredTtftSamples = Number(profileData.requiredTtftSamples) || required;
-  if (requiredTtftSamples > 0 && Number(quality.ttftSampleCount) < requiredTtftSamples) {
+  if (requiredTtftSamples > 0 && !(Number(quality.ttftSampleCount) >= requiredTtftSamples)) {
     failures.push('streamed_ttft_sample_minimum_not_met');
   }
   if (profileData.spill?.verified !== true || typeof profileData.spill?.spillDetected !== 'boolean') failures.push('gpu_residency_unverified');

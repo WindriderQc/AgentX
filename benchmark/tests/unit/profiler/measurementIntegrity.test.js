@@ -40,6 +40,10 @@ describe('profiler evidence integrity', () => {
     expect(profileQualificationFailures({ spill: { verified: true, spillDetected } }))
       .toContain('gpu_residency_unverified');
   });
+  test('does not accept omitted sample counts', () => {
+    expect(profileQualificationFailures({ requiredRetainedSamples: 5, requiredTtftSamples: 5 }))
+      .toEqual(expect.arrayContaining(['retained_sample_minimum_not_met', 'streamed_ttft_sample_minimum_not_met']));
+  });
   const identity = { digest: 'artifact', runtimeFingerprint: 'runtime' };
   const profile = { qualityContextStatus: 'verified', qualityVerifiedContext: 65536,
     concurrency: { status: 'unmeasured', worstSelfSlowdownPct: null },
