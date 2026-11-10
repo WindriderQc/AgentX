@@ -31,14 +31,22 @@ tools never forward to the owner consumer endpoint or consult_team.
 
 The owner MCP transport exposes source_catalogue and source_read. The equivalent
 owner consumer routes are GET /api/consumers/nestor/v1/sources and POST
-/api/consumers/nestor/v1/sources/read. Personal OpenClaw uses optional tools in
-its existing owner-only adapter. Family AgentX inference can use the same tool
+/api/consumers/nestor/v1/sources/read. OpenClaw uses optional tools in
+its existing adapter. Personal sessions use the owner consumer; direct native
+sessions of the family agent (including Reader) use GET /api/family/sources and
+POST /api/family/sources/read. These routes bind household on the server and
+reuse the family source registry, exposing only weather and AgentX reachability.
+The adapter derives this choice from the host agent/session context, never tool
+arguments, and verifies the audience in every Core receipt. Other owner tools
+remain owner-only. Family AgentX inference can use the same tool
 names when the instance includes them in HOUSEHOLD_FAMILY_TOOLS. Enabling a
 family tool does not expose the owner bus.
 
 Principal personal and family turns receive the same source directory mechanism
 and dated weather context. Reader, specialist and LLMx turns do not receive that
-context. The directory contains metadata, not private records or proof of a
+context automatically. Reader can explicitly call the family agent's shared
+source tools when installed; it receives no owner tools or private sources.
+The directory contains metadata, not private records or proof of a
 completed read. Tool-free guardians use supplied evidence and leave new work
 to the principal; they do not start a duplicate consultation. A runtime without
 an installed source tool must not claim it used one.

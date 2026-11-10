@@ -11,6 +11,7 @@ function registerNativeConsumers(app, {
   createPersonaSession, handlePersonaTurn, registerBrowserSessionControls, openingPayload,
   envelope, fail, cleanText
 }) {
+  require('./family-source-routes').registerFamilySources(app, { standardJsonParser, envelope, fail });
   const llmxConsumer = express.Router();
   llmxConsumer.use(standardJsonParser);
   function registerLlmXProfile(prefix, profile) {
