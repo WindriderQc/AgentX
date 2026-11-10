@@ -34,7 +34,9 @@
 // 2.21.0: CommonJS module extraction excludes separately introduced usage and
 // wiring examples for test-file fixtures. Coding grades need fresh scoring;
 // an old execution failure cannot be corrected from its stored grade alone.
-const SCORER_VERSION = '2.21.0';
+// 2.22.0: require an unambiguous counted verdict and exclude invalid consensus
+// participants. Stored scores cannot reconstruct either correction; rejudge.
+const SCORER_VERSION = '2.22.0';
 
 // What a stored grade needs to stay valid across each version step (#461).
 // A category a step does not name kept its meaning: its grades carry over
@@ -58,9 +60,9 @@ const SCORER_COMPONENTS = Object.freeze({
     routing: 5,
     generalist: 6,
     judge_prompt: 8,
-    judge_parsing: 9,
+    judge_parsing: 10,
     confidence: 6,
-    judges: 4,
+    judges: 5,
     deterministic: 7,
     composite: 4
 });

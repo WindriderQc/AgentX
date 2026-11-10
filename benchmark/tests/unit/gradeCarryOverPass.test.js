@@ -10,6 +10,13 @@ const mongoose = require('mongoose');
 const mongoOptions = require('../../../shared/testing/mongoOptions');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
+// Exercise the declared historical 2.19 -> 2.21 migration. The current
+// parser correction intentionally has no automatic carry-over; that refusal
+// is covered separately in judgingAuditRegression.test.js.
+jest.mock('../../src/services/scoring/scorerVersion', () => ({
+    ...jest.requireActual('../../src/services/scoring/scorerVersion'), SCORER_VERSION: '2.21.0'
+}));
+
 jest.mock('../../config/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 
 const BenchmarkBatch = require('../../models/BenchmarkBatch');

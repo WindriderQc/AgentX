@@ -10,7 +10,7 @@ const JUDGE_IDENTITY_FINGERPRINT_PATTERN = /^[0-9a-f]{64}$/;
 const SCORE_MIN = 0;
 const SCORE_MAX = 10;
 const GROUND_TRUTH_CATEGORIES = Object.freeze([
-    'coding', 'reasoning', 'math', 'knowledge', 'instruction', 'creative', 'translation', 'factual'
+    ...require('../../shared/benchmarkCategories').BENCHMARK_CATEGORY_KEYS, 'factual'
 ]);
 const JUDGE_IDENTITY_IMMUTABLE_ERROR_CODE = 'JUDGE_IDENTITY_FINGERPRINT_IMMUTABLE';
 const QUALIFIED_JUDGE_GROUND_TRUTH_IMMUTABLE_ERROR_CODE = 'QUALIFIED_JUDGE_GROUND_TRUTH_IMMUTABLE';
