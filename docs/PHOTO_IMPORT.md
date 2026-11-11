@@ -40,6 +40,10 @@ live in `<root>/Originals/<hash-prefix>/<full-sha256>/original.<extension>`;
 share one original; equal names with different bytes remain distinct. Original
 names, paths and each import occurrence remain in the manifest and receipts.
 This is an ingestion receipt ledger, not another semantic photo index.
+Verified payloads use readable archive modes (files 0644, directories 0755)
+under the operator's access-controlled root, so existing Media share users can
+read them. State and occurrence receipts retain private modes. Existing
+operator-owned directory permissions are never silently widened on startup.
 
 Publication syncs complete private staging directories before renaming them
 atomically. Concurrent winners are reverified and never replaced. A crash

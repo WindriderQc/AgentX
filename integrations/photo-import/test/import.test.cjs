@@ -33,6 +33,9 @@ test('complete source stream is independently read back and replays one immutabl
   const result = await f.service.receive(f.input, Readable.from([Buffer.from('hello')]));
   assert.equal(result.disposition, 'copied');
   assert.equal(await fs.readFile(result.path, 'utf8'), 'hello');
+  assert.equal((await fs.stat(result.path)).mode & 0o777, 0o644);
+  assert.equal((await fs.stat(path.dirname(result.path))).mode & 0o777, 0o755);
+  assert.equal((await fs.stat(path.join(f.root, '.agentx-import/runs', f.input.runId, 'receipts', f.input.requestId, 'receipt.json'))).mode & 0o777, 0o600);
   assert.deepEqual(await f.service.lookup(f.input), { ...result, reconciled: true });
   assert.equal((await f.service.status(f.input)).state, 'complete');
 });

@@ -52,13 +52,13 @@ async function publishDirectory(temp, target) {
   }
 }
 
-async function safeDirectory(root, relative) {
+async function safeDirectory(root, relative, mode = 0o700) {
   const target = path.resolve(root, relative);
   if (!inside(root, target)) throw fail('UNSAFE_PATH', 'Path leaves the configured import root');
   let current = root;
   for (const component of path.relative(root, target).split(path.sep).filter(Boolean)) {
     current = path.join(current, component);
-    try { await fs.mkdir(current, { mode: 0o700 }); await syncDir(path.dirname(current)); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+    try { await fs.mkdir(current, { mode }); await syncDir(path.dirname(current)); } catch (error) { if (error.code !== 'EEXIST') throw error; }
     const stat = await fs.lstat(current);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw fail('UNSAFE_PATH', 'Import directories cannot be symlinks');
   }

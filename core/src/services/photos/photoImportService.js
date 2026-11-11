@@ -30,7 +30,7 @@ async function createPhotoImportService({ root, findExisting = async () => ({ pa
   if (actualRoot !== path.resolve(root) || !(await fs.lstat(root)).isDirectory()) throw fail('UNSAFE_PATH', 'Import root must be a real directory');
   const state = await safeDirectory(root, '.agentx-import');
   const staging = await safeDirectory(root, '.agentx-import/staging');
-  const originals = await safeDirectory(root, 'Originals');
+  const originals = await safeDirectory(root, 'Originals', 0o755);
   const runs = await safeDirectory(root, '.agentx-import/runs');
 
   async function runRecord(runId) {
@@ -146,8 +146,12 @@ async function createPhotoImportService({ root, findExisting = async () => ({ pa
       if (bytes !== ctx.size || hash.digest('hex') !== ctx.sha256) throw fail('SOURCE_HASH_MISMATCH', 'Incomplete or changed source stream');
       await verify(file, ctx);
       await writeJson(path.join(temp, 'content.json'), { sha256: ctx.sha256, size: ctx.size, file: fileName, requestId: ctx.requestId });
+      // Match a readable Media archive once verified. The configured root
+      // still controls who may traverse it; state/receipts remain private.
+      await fs.chmod(file, 0o644);
+      await fs.chmod(temp, 0o755);
       await syncDir(temp);
-      const parent = await safeDirectory(root, `Originals/${ctx.sha256.slice(0, 2)}`);
+      const parent = await safeDirectory(root, `Originals/${ctx.sha256.slice(0, 2)}`, 0o755);
       const published = await publishDirectory(temp, path.join(parent, ctx.sha256));
       const content = await ownContent(ctx);
       return receipt(ctx, content.path, published || content.requestId === ctx.requestId ? 'copied' : 'duplicate', 'import-library');
