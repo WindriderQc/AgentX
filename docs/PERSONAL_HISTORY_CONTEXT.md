@@ -280,6 +280,29 @@ note, digest or calendar event. The audience is bound by
 `core/src/services/ownerContextLinks.js`, reached only from Nestor's owner HTTP
 and MCP transports.
 
+## Suggestions on request
+
+`context_suggestions` (owner MCP bus only) reads fixed rules over records Core
+already keeps and returns at most ten suggestions (default five):
+
+- `task_evidence_review`: an open personal task whose most recent linked mail
+  evidence signal is newer than its last reviewed dossier (or that has no
+  dossier yet). It proposes reading `personal_task_dossier`; the mail text is
+  not copied.
+- `souvenir_anniversary`: an active, current kept souvenir dated to the exact
+  day whose anniversary falls within `horizonDays` (0-14, default 7) in
+  `PLANNING_TIME_ZONE` (default `America/Toronto`). Year, month and unknown
+  precisions never produce one, nor does the souvenir's own year; a 29 February
+  date only matches in leap years. The sealed note text is not copied.
+- `life_atlas_review`: Nestor's proposals waiting for the owner, with the inbox link.
+
+Each suggestion carries a stable `key`, `reason`, `whyNow`, `evidence`
+(system, id, dates) and `proposedAction` (a read, never executed), with
+`effect: proposal_only`. `status` reports `total`, `truncated`, `complete` and
+the rules that could not be read. Nothing is created, accepted, scheduled or
+sent. There is no push channel, digest, daily budget, quiet hours, snooze or
+feedback ranking: those need an owner decision on delivery before they exist.
+
 ## Deployment
 
 Deploy Core through the instance's existing procedure. The added unique sparse
