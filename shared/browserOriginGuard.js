@@ -3,9 +3,9 @@
 const { getPublicUrls } = require('./browserPublicUrls');
 
 // Browsers on a foreign site must neither read nor mutate AgentX APIs. CORS
-// reflects only AgentX's own browser origins, and a state-changing request a
-// browser marks as cross-site is refused. Requests without these browser
-// headers (curl, harnesses, service-to-service calls) are unaffected.
+// reflects only AgentX's own browser origins. State-changing requests marked
+// cross-site or carrying an unlisted Origin are refused. Requests without these
+// browser headers (curl, harnesses, service-to-service calls) are unaffected.
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 const ALLOWED_METHODS = 'GET,HEAD,PUT,PATCH,POST,DELETE';
@@ -38,20 +38,20 @@ function createBrowserOriginGuard(options = {}) {
   return function browserOriginGuard(req, res, next) {
     const method = String(req.method || 'GET').toUpperCase();
     const fetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
-    if (!SAFE_METHODS.has(method) && fetchSite === 'cross-site') {
+    const origin = req.headers.origin;
+    if (!SAFE_METHODS.has(method) && (fetchSite === 'cross-site' || (origin && !allowed.has(origin)))) {
       res.statusCode = 403;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.end(JSON.stringify({
         ok: false,
         status: 'error',
         code: 'CROSS_SITE_REQUEST_REJECTED',
-        message: 'AgentX refuses state-changing requests sent by a browser from another site.',
+        message: 'AgentX refuses state-changing requests from an unapproved browser origin or site.',
       }));
       return;
     }
 
     appendVary(res, 'Origin');
-    const origin = req.headers.origin;
     if (!origin || !allowed.has(origin)) return next();
 
     res.setHeader('Access-Control-Allow-Origin', origin);
