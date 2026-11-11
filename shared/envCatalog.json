@@ -1772,6 +1772,16 @@
       "secret": false,
       "description": "Comma-separated Core tools a Famille conversation on the AgentX engine may call, among those Core lists as family-eligible (today: iss_passes). Unset: Famille is offered no tool."
     },
+    "HOUSEHOLD_GUARDIAN_TOOLS": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Comma-separated read-only Core tools offered to the temporary Family/Core or personal Hermes local relay: iss_passes, weather, math. Unset or empty: no relay tools. Unknown names disable the relay toolset. This setting changes no native agent grant; reads retain server scopes, occupation checks and bounded per-turn receipts."
+    },
     "HOUSEHOLD_HERMES_TOKEN": {
       "services": [
         "core"
