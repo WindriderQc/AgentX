@@ -27,6 +27,7 @@ function createConversationImages({ conversations, service = images, visuals = n
   function view(operation, session) {
     const base = `/api/voice-personas/${spaceFor(session)}/sessions/${encodeURIComponent(session.sessionId)}/images/${operation.id}`;
     return { id: operation.id, state: operation.state, runtimeRestored: operation.runtimeRestored,
+      ...(operation.retention && { retention: operation.retention }),
       statusUrl: base, studioPath: `/images?operation=${operation.id}`,
       ...(operation.artifact && { artifact: { ...operation.artifact, url: base + '/image' } }) };
   }
@@ -132,7 +133,7 @@ function createConversationImages({ conversations, service = images, visuals = n
     const actionKey = 'household-scene:' + createHash('sha256').update(JSON.stringify([scopeFor(session), turnId, 'scene'])).digest('hex');
     const attempt = Promise.resolve().then(() => service.acceptOpportunistic({ actionKey, profile: plan.profile, width: plan.width, height: plan.height,
       prompt: 'Age-appropriate illustration for children. No text, letters or words in the picture.\n' + description },
-    { workerId: plan.worker, conversation: scopeFor(session), signal: budget }))
+    { workerId: plan.worker, conversation: scopeFor(session), signal: budget, temporary: true }))
       .then(operation => { if (open && !signal.aborted) onShow(card(operation, session, '', description)); })
       .catch(() => { /* The frame keeps its previous picture. */ });
     await Promise.race([attempt, new Promise(resolve => { timer = setTimeout(resolve, illustrationBudgetMs); timer.unref?.(); })]);
@@ -149,6 +150,7 @@ function createConversationImages({ conversations, service = images, visuals = n
     }
   }
   function register(router) {
+    require('./illustration-retention-routes').register(router, { service, view });
     for (const space of ['private', 'family']) {
       const base = `/${space}/sessions/:sessionId/images`;
       const wrap = handler => async (req, res) => {

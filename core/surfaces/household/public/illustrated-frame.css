@@ -10,3 +10,15 @@
 .illustrated-frame img.is-front { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .illustrated-frame img { transition: none; } }
 @media print { .illustrated-frame { display: none; } }
+/* Retention is a native CPU operation, independent of the image worker. */
+.illustrated-frame-caption { position: absolute; z-index: 2; inset: auto 0 0; display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; background: #07131de8; color: #e6f1f8; font-size: .75rem; }
+.illustrated-frame-caption[hidden], .illustrated-frame-caption [hidden] { display: none; }
+.illustrated-frame-caption .button { min-height: 44px; min-width: 0; flex: 1 1 auto; padding: 4px 8px; white-space: normal; font-size: .75rem; }
+.illustrated-frame-caption [role=status] { flex-basis: 100%; overflow-wrap: anywhere; }
+.illustrated-frame-caption [role=status]:empty { display: none; }
+.illustrated-frame-caption button:focus-visible { outline: 3px solid #8be7df; outline-offset: -3px; }
+.illustrated-frame:has(.illustrated-frame-caption:not([hidden])) { width: clamp(144px, 26vw, 220px); }
+.illustrated-frame.is-recovery { aspect-ratio: auto; min-height: 72px; }
+.illustrated-frame.is-recovery .illustrated-frame-caption { position: relative; }
+body[data-avatar-mode=scene][data-avatar-view=plein] .illustrated-frame { z-index: 114; top: max(112px, env(safe-area-inset-top)); bottom: auto; }
+body[data-avatar-mode=scene][data-avatar-view=montre] .illustrated-frame { z-index: 114; }

@@ -36,6 +36,7 @@ module.exports = new Schema({
     // The last direct exchange with a member, given once to the conversation's agent.
     teamExchange: { type: Object, default: undefined },
     // Durable Atelier native-analysis dispatch fence; unknown work requires native-owner reconciliation.
+    illustrationRetention: { type: Object, default: undefined },
     imageInspection: { type: Object, default: undefined },
     llmx: { type: Object, default: null },
     // Household background reviewer: the latest bounded result and latest refusal, each

@@ -68,3 +68,31 @@ test('graphs keep reference order and cap editing pixels independently of upload
   expect(graph.sample.inputs.latent_image).toEqual(['text', 2]);
   expect(graph.cache.inputs).toMatchObject({ device: 'cpu', dtype: 'default' });
 });
+
+
+test.each([undefined, null, {}, [], 'agentx.image-output-removal/v1', { contract: 'foreign/v1' }])(
+  'temporary readiness refuses absent or malformed output removal proof: %j without any effect', async outputRemoval => {
+    const profile = { diffusion: 'diffusion', encoder: 'encoder', vae: 'vae' };
+    const nodes = Object.fromEntries([['UNETLoader', 'unet_name', 'diffusion'], ['CLIPLoader', 'clip_name', 'encoder'], ['VAELoader', 'vae_name', 'vae']]
+      .map(([node, input, value]) => [node, { input: { required: { [input]: [[value]] } } }]));
+    const stats = { devices: [], ...(outputRemoval !== undefined && { outputRemoval }) };
+    const fetcher = jest.fn(async url => ({ ok: true, text: async () => JSON.stringify(url.endsWith('/object_info') ? nodes
+      : url.endsWith('/queue') ? { queue_running: [], queue_pending: [] } : stats) }));
+    const client = createComfyClient('http://127.0.0.1:8188', fetcher);
+    await expect(client.ready(profile, { requireQueueProof: true, requireOutputRemoval: true })).rejects.toThrow('output removal');
+    await expect(client.ready(profile)).resolves.toEqual(stats);
+    expect(fetcher.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+  }
+);
+
+test('temporary readiness accepts the exact advertised native output removal contract using read-only probes', async () => {
+  const profile = { diffusion: 'diffusion', encoder: 'encoder', vae: 'vae' };
+  const nodes = Object.fromEntries([['UNETLoader', 'unet_name', 'diffusion'], ['CLIPLoader', 'clip_name', 'encoder'], ['VAELoader', 'vae_name', 'vae']]
+    .map(([node, input, value]) => [node, { input: { required: { [input]: [[value]] } } }]));
+  const stats = { outputRemoval: { contract: 'agentx.image-output-removal/v1' } };
+  const fetcher = jest.fn(async url => ({ ok: true, text: async () => JSON.stringify(url.endsWith('/object_info') ? nodes
+    : url.endsWith('/queue') ? { queue_running: [], queue_pending: [] } : stats) }));
+  await expect(createComfyClient('http://127.0.0.1:8188', fetcher).ready(profile,
+    { requireQueueProof: true, requireOutputRemoval: true })).resolves.toEqual(stats);
+  expect(fetcher.mock.calls.every(([, options]) => options.method === 'GET')).toBe(true);
+});
