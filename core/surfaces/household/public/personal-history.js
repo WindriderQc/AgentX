@@ -231,7 +231,8 @@
         ? review.decisionIntent.input : state.pendingDecision?.input;
       const names = { attachments_not_reviewed: 'Pièces jointes non examinées', html_supplement_not_reviewed: 'Liens et données HTML à examiner séparément',
         compound_members_not_reviewed: 'Contenu des archives jointes non examiné', no_readable_text: 'Aucun texte lisible',
-        unreadable_text_representation: 'Version de texte illisible', extracted_text_limits: 'Limites de l’extraction du texte' };
+        unreadable_text_representation: 'Version de texte illisible', extracted_text_limits: 'Limites de l’extraction du texte',
+        original_header_length_limit: 'Un en-tête atteint la limite du lecteur ; son contenu complet reste à vérifier' };
       details.querySelector('[data-source-review-content]').innerHTML = `<p role="status" data-source-review-status>${esc(state.error || (review?.decision
         ? 'Votre décision de revue est enregistrée. Elle ne vaut pas validation de tous les documents.' : review ? 'Lisez les versions proposées, puis indiquez votre constat.' : ''))}</p>${state.notice ? `<p>${esc(state.notice)}</p>` : ''}`
         + (review ? `<p>Couverture : ${review.coverage.status === 'served_selected_text' ? 'Les pages des textes sélectionnés ont été servies.' : review.coverage.status === 'unknown' ? 'Sources indisponibles ou périmètre inconnu.' : 'Lecture des textes incomplète.'}</p>
@@ -239,6 +240,9 @@
         ${review.history?.length > 1 ? `<label>Revues conservées<select data-source-review-history>${review.history.map(item => `<option value="${esc(item.requestId)}"${item.requestId === review.requestId ? ' selected' : ''}>${esc(day(item.preparedAt))} · ${esc(decisionNames[item.decision] || 'Lecture en cours')}</option>`).join('')}</select></label>` : ''}
         ${state.pendingDecision ? `<section data-source-review-pending><p>Constat en attente de vérification. Un reçu encore absent ne prouve pas que la demande précédente est terminée.</p>${pendingInput ? `<p>${esc(decisionNames[pendingInput.decision])} — ${esc(pendingInput.reason)}</p>` : '<p>Le contenu n’est pas encore retrouvable dans Core. La même identité reste en attente ; aucun nouveau constat n’est déduit.</p>'}<button type="button" data-source-review-retry-decision>Reprendre exactement ce constat</button></section>` : ''}
         ${gaps.length ? `<ul>${gaps.map(gap => `<li>${esc(names[gap.code] || 'Source indisponible ou non prise en charge')} — source ${gap.source + 1}</li>`).join('')}</ul>` : ''}
+        ${review.sources.map((source, index) => `<section data-source-review-headers><h4>Origine du message · source ${index + 1}</h4>${source.headers
+          ? `<p>En-têtes du message archivé. Ils ne déterminent pas l’auteur d’une citation ni la date du fait.</p><dl>${[['From', 'Expéditeur'], ['To', 'Destinataires'], ['Cc', 'Copie'], ['Date', 'Date déclarée du message'], ['Subject', 'Objet']].map(([key, label]) => `<dt>${label}</dt><dd>${esc(source.headers[key] || 'Non renseigné')}</dd>`).join('')}</dl>`
+          : '<p>En-têtes non conservés dans cette revue. Ils ne sont pas déduits du relevé ni de la date de lecture.</p>'}</section>`).join('')}
         ${!review.entryCurrent || review.nativeState === 'stale' ? '<p>Le relevé ou une source a changé. Cette version ne peut plus recevoir de décision.</p>' : ''}
         ${review.nativeState === 'unknown' ? '<p>La disponibilité actuelle des sources reste inconnue. Aucun constat en attente n’est considéré comme accepté.</p>' : ''}
         ${!state.pendingDecision && (!review.entryCurrent || ['stale', 'unknown'].includes(review.nativeState) || review.decision) ? '<button type="button" data-source-review-new>Préparer une nouvelle revue de la version affichée</button>' : ''}

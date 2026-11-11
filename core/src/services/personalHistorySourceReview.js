@@ -127,7 +127,7 @@ async function get(id, key, deps) {
   }
   const review = find(row, key);
   if (!current(row, review)) return { review: view(row, review, 'stale') };
-  const observed = await collect(row, mail(deps));
+  const observed = await collect(row, mail(deps), review.snapshot.contract);
   const fresh = await latest(row, review);
   return { review: view(fresh, find(fresh, key), digest(observed) === review.snapshotHash ? 'observed' :
     observed.sources.some(source => source.status === 'unavailable') ? 'unknown' : 'stale') };
@@ -147,7 +147,7 @@ async function page(id, key, input, deps) {
   }
   const result = await mail(deps).archived({ messageId: source.reference.messageId, sha256: source.reference.sourceSha256,
     part: input.part, offset: input.offset });
-  if (digest(describe(source.reference, result)) !== digest(source)) throw failure('The native source version changed.');
+  if (digest(describe(source.reference, result, review.snapshot.contract)) !== digest(source)) throw failure('The native source version changed.');
   const part = source.parts.find(part => part.partIndex === input.part);
   const end = result.nextOffset === null ? part.totalChars : result.nextOffset;
   if (result.bodyReadable !== true || result.selectedPartIndex !== input.part || result.offset !== input.offset || result.totalChars !== part.totalChars
@@ -216,7 +216,7 @@ async function decide(id, key, input, deps) {
   if (input.decision === 'reviewed_scope' && coverageOf(review).status !== 'served_selected_text') {
     throw failure('Complete the selected text reading or record the remaining work.', 409, 'HISTORY_SOURCE_REVIEW_INCOMPLETE');
   }
-  const observed = await collect(row, mail(deps));
+  const observed = await collect(row, mail(deps), review.snapshot.contract);
   // Another retry can finish this same reserved intent while the original
   // native read is still pending. Its receipt is terminal for that identity.
   const reconciled = await load(id), prior = find(reconciled, key);
