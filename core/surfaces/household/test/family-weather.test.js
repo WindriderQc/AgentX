@@ -53,11 +53,23 @@ test('local guardian keeps the supplied weather and reports actual execution bef
   const result = await runLocalConversation({ request, prepared: [], env: { HOUSEHOLD_CONVERSATION_RELAY_ENABLED: 'true' },
     inference: { conversation: async (_body, options) => {
       assert.match(options.familyInstructions, /Dated weather: 4.5 C/);
+      assert.match(options.familyInstructions, /Household clock observed/);
       return { ok: true, body: { response: 'Il fait 4,5 degrés.' }, metadata: { model: 'synthetic-guardian',
         conversationContinuity: { state: 'backup', reason: 'primary_busy', model: 'synthetic-guardian' } } };
     } } });
   assert.equal(evidence.model, 'synthetic-guardian'); assert.equal(evidence.continuity.reason, 'primary_busy');
   assert.equal(result.tools.conversationRelay.role, 'relay');
+});
+
+test('weather observation and retrieval get separate local times across a date boundary', async () => {
+  const now = new Date('2026-02-04T03:15:00Z');
+  const ambient = { weather: async () => ({ fetchedAt: now.toISOString(), observedAt: '2026-02-04T02:00:00Z', temperatureC: -2 }) };
+  const context = await familyWeatherContext(ambient, { now, timeZone: 'America/New_York' });
+  assert.match(context, /"timeZone":"America\/New_York"/);
+  assert.match(context, /"observedAtLocal":"2026-02-03 21:00"/);
+  assert.match(context, /"fetchedAtLocal":"2026-02-03 22:15"/);
+  assert.match(context, /"observationAgeMinutes":75/);
+  assert.match(context, /Never read a raw UTC Z timestamp as local time/);
 });
 
 

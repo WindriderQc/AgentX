@@ -12,9 +12,10 @@ function voiceTask(env = process.env) {
 
 // The relay keeps the canonical child/mode policy and read-only reply format.
 // Principal-only tools, navigation and image actions are not relay capabilities.
-function familyRelayInstructions(session, pack) {
+function familyRelayInstructions(session, pack, env) {
   return [require('./family-clock').familyIdentity(session.persona),
     require('./persona-prompt').systemPromptFor(pack, { modeId: session.modeId }),
+    require('./family-clock').familyClockContext({ timeZone: env?.PLANNING_TIME_ZONE }),
     require('./reply-channels').contract({ family: true, math: false, pages: false })].join('\n\n');
 }
 
@@ -63,7 +64,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
         const continued = await inference.conversation({ ...body, ...(request.relayOccupation ? { model: 'agentx-primary' } : {}) }, {
           ...options, taskRoute: !request.relayOccupation, requireOccupied: true, relayTools: request.guardianTools,
           allowUnavailable: !request.relayOccupation,
-          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack), request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext].filter(Boolean).join('\n\n') }),
+          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack, env), request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext].filter(Boolean).join('\n\n') }),
           relayRequest: { ...body, messages: [...(request.history || []), { role: 'user', content: request.text }] }
         });
         if (continued) return continued;

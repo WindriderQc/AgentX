@@ -175,6 +175,11 @@ guardian can accept the turn, the warm, deterministic service notice identifies
 itself as automatic; its technical explanation remains in the turn's evidence.
 It records tools as `not_run`, rather than claiming that a model rejected tools.
 Scripted greetings are marked as automatic in the visible conversation.
+The Family relay retains the server's household clock. Supplied weather keeps
+its original source projection plus separately converted local observation and
+retrieval times and observation age; a recent retrieval never makes the reading
+current. Guardian instructions keep the answer conversational and leave the
+automatic service announcement to Core.
 Canonical intake binds
 each stable turn id before inference; a duplicate reads its existing outcome
 without a second inference, including after interruption or an uncertain reply.
