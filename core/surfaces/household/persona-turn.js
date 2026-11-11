@@ -433,7 +433,7 @@ function createPersonaTurnHandler({
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {
             entry.companion?.explicit();
-            if (block.kind === 'image' && block.source === 'draw' && conversationImages) return;
+            if (block.kind === 'image' && (block.source === 'draw' || block.source === 'scene') && conversationImages) return;
             visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage, ephemeral: entry.ephemeral })
               .then(shown => { if (!res.writableEnded) event('show', { block: shown }); }));
           } });

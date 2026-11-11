@@ -145,7 +145,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   });
   const pagePicker = family ? null : window.NestorScreenPicker.mount({ host: app.querySelector('.conversation-toolbar'), onShow: show });
   window.addEventListener('nestor-review-destination', event => { if (!family && event.detail) show(event.detail); });
-  const clearBoard = () => { companion?.reset(); board.clear(); activity('clear'); };
+  const clearBoard = () => { companion?.reset(); board.clear(); window.IllustratedFrame?.clear(); activity('clear'); };
   window.addEventListener('persona-scene', event => {
     const detail = event.detail || {};
     if (detail.space === (family ? 'family' : 'personal') && detail.scene) show({ key: 'scene', kind: 'scene', title: detail.caption || '', scene: detail.scene });
@@ -394,7 +394,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (event.type === 'speaker') { turnSpeaker = event.speaker || null; if (turnSpeaker) el('conversationStatus').textContent = `${turnSpeaker.name} is replying.`; }
       if (event.type === 'tools') { showTools(event.evidence); activity('tools', { count: event.evidence?.receipts?.length || 1 }); }
       if (event.type === 'scene' && !interruptedTurns.has(turnId)) activity('scene', { scene: event.scene });
-      if (event.type === 'show' && !interruptedTurns.has(turnId)) show(mathCard(event.block, session, turnId));
+      // An illustration goes to its corner frame (#1304), never to the board.
+      if (event.type === 'show' && !interruptedTurns.has(turnId)) {
+        if (event.block?.presentation === 'illustration') { if (family) window.IllustratedFrame?.show(event.block); }
+        else show(mathCard(event.block, session, turnId));
+      }
       if (event.type === 'status' && event.phase === 'activity') voiceHealth.activity();
       if (!interruptedTurns.has(turnId) && event.type === 'status' && event.phase === 'activity') {
         // Nestor says what it is doing (tools, another agent) once per line.

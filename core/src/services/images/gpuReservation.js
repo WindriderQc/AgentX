@@ -91,13 +91,18 @@ async function reserve(config, operation, save, isCancelled) {
       await assertOwned(); snapshots[host] = await captureBenchmarkRuntime(host);
     }
     await save({ snapshot: snapshots });
-    if (operation.admissionPolicy === 'opportunistic'
-      && Object.values(snapshots).some(snapshot => !snapshot?.exact || !Array.isArray(snapshot.residents) || snapshot.residents.length
+    const opportunistic = operation.admissionPolicy === 'opportunistic';
+    const kept = config.worker?.keepResidents || [];
+    if (opportunistic
+      && Object.values(snapshots).some(snapshot => !snapshot?.exact || !Array.isArray(snapshot.residents)
+        || snapshot.residents.some(r => !kept.includes(r.model))
         || snapshot.identityDigest !== benchmarkRuntimeSnapshotIdentity(snapshot))) {
       throw new Error('Opportunistic images never unload GPU residents.');
     }
     await transition('MUTATING', { snapshots }); mutated = true;
-    for (const [host, snap] of Object.entries(snapshots)) {
+    // Residents an immediate image may keep stay loaded; restoration then
+    // only verifies that they are still exactly as captured.
+    for (const [host, snap] of opportunistic ? [] : Object.entries(snapshots)) {
       for (const resident of snap.residents) {
         await assertOwned();
         const r = await unloadModel(host, resident.model);

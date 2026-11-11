@@ -234,3 +234,45 @@ test.each([undefined, null, {}, { queue_running: null, queue_pending: null },
     expect(calls.some(url => url.startsWith(B) || new URL(url).pathname === '/free')).toBe(false);
   }
 );
+
+describe('residents kept by immediate images and the illustrated mode (#1304)', () => {
+  const embed = 'qllama/bge-m3:f16';
+  test('a worker may name residents an immediate image leaves loaded', () => {
+    const config = load(twoWorkers({ keepResidents: [embed, embed] }));
+    expect(config.workers[0].keepResidents).toEqual([embed]);
+    expect(workerFor(config, A).worker.keepResidents).toEqual([embed]);
+    expect(config.workers[1].keepResidents).toBeUndefined();
+  });
+  test.each([['not a list', embed], ['a bad name', ['bad name']], ['too many', Array.from({ length: 9 }, (_, i) => 'm' + i)]])(
+    'keepResidents refuses %s', (_name, keepResidents) => {
+      expect(() => load(twoWorkers({ keepResidents }))).toThrow(/keepResidents/);
+    });
+  test('the illustrated mode names one worker, a quick profile and a qualified size', () => {
+    expect(load(twoWorkers()).illustrated).toBeUndefined();
+    expect(load({ ...twoWorkers(), illustrated: { worker: 'desk', profile: 'fast' } }).illustrated)
+      .toEqual({ worker: 'desk', profile: 'fast', width: 768, height: 768, intervalSeconds: 60 });
+    expect(load({ ...twoWorkers(), illustrated: { worker: 'desk', profile: 'fast', width: 512, height: 640, intervalSeconds: 90 } }).illustrated)
+      .toEqual({ worker: 'desk', profile: 'fast', width: 512, height: 640, intervalSeconds: 90 });
+  });
+  test.each([
+    ['unknown worker', { worker: 'nope', profile: 'fast' }],
+    ['slow profile family', { worker: 'big', profile: 'quality' }],
+    ['profile the worker refuses', { worker: 'desk', profile: 'quality' }],
+    ['unqualified size', { worker: 'desk', profile: 'fast', width: 770 }],
+    ['oversized picture', { worker: 'desk', profile: 'fast', width: 2048, height: 2048 }],
+    ['too short an interval', { worker: 'desk', profile: 'fast', intervalSeconds: 5 }],
+    ['not an object', 'desk']
+  ])('the illustrated mode refuses %s', (_name, illustrated) => {
+    expect(() => load({ ...twoWorkers(), illustrated })).toThrow(/illustrated/i);
+  });
+  test('an immediate image accepts only declared residents on its worker', async () => {
+    const config = load(twoWorkers({ keepResidents: [embed] }));
+    const kept = fakeDeps({ residents: { [A_OLLAMA]: [{ name: embed, size_vram: GiB }] } });
+    expect((await chooseWorker(config, { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', deps: kept.deps })).worker.worker.id).toBe('desk');
+    const other = fakeDeps({ residents: { [A_OLLAMA]: [{ name: embed, size_vram: GiB }, { name: 'horde-model', size_vram: 10 * GiB }] } });
+    const refused = await chooseWorker(config, { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', deps: other.deps });
+    expect(refused.worker).toBeNull();
+    expect(refused.tried).toEqual([{ id: 'desk', reason: 'resident' }]);
+    expect(other.calls.ready).not.toContain(B);
+  });
+});
