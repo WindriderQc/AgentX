@@ -97,6 +97,15 @@ qualification through [the heavy-work procedure](HEAVY_WORK_QUEUE.md). Retain
 native admission, stable request identity and recovery rules. Do not replay a
 possibly executed mutation to compensate for an uncertain transport result.
 
+`integrations/openclaw/super-dad-memory/test/team-brief-runtime-parity.test.js`
+compares the owner MCP transport used by Hermes with OpenClaw's existing HTTP
+brief client through the real Core routes and synthetic Secretary records.
+It checks complete briefs, unavailable sections, record continuation and Core
+failure without a database, model or live runtime. Run it with
+`node --test integrations/openclaw/super-dad-memory/test/team-brief-runtime-parity.test.js`
+after installing Core dependencies; it also runs in the existing integration
+suite. This transport check does not establish live runtime parity.
+
 ## ArtX display capability
 
 Nestor’s [ArtX](ARTX.md) shares its scene selection and source-backed display
