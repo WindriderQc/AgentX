@@ -47,6 +47,13 @@ thereafter uses the existing connection. `AGENTX_CALLER` is the name Core's tool
 
 ## Codex
 
+For existing chats that retain a disabled `mcp_tool_list_changed` feature, use
+the [shared native catalogue watcher](../codex/README.md). It supports hot refresh
+without one relay process per loaded chat. The stdio configuration below applies
+when the client's notification handling is enabled. Setting
+`features.mcp_tool_list_changed = true` in Codex configuration may require a fresh
+connection/chat to take effect; do not restart shared sessions to enable it.
+
 Use stable, absolute paths outside a disposable worktree:
 
 ```toml

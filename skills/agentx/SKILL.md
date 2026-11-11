@@ -31,8 +31,10 @@ This skill is one entry page plus chapters. Read only the chapter you need.
    only launch local commands (Claude Desktop) use `integrations/mcp-relay`.
    The same relay gives clients such as Codex automatic catalogue updates via
    MCP change notifications, polling only the connected bus's tool definitions.
-   New tools then need no URL revision or client restart; see its README for
-   one-time installation and client acceptance.
+   Codex chats that retain disabled notification handling use the shared native
+   watcher in `integrations/codex` instead. Both discover future tools without
+   manual cache revisions or client restarts; their READMEs cover installation
+   and client acceptance.
 2. **Plain HTTPS** when no tool covers the need: [endpoints](references/endpoints.md).
    Send `x-service-caller: <who you are>`. Answers are `{ ok, data | error }`
    (older routes: `{ status, message, data }`).

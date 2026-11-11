@@ -137,6 +137,11 @@ adapter for automatic catalogue discovery: it polls only the configured bus's
 catalogue change. Calls remain unchanged, with no local tool logic or registry;
 the adapter advertises this notification capability in its initialize response.
 See the [relay installation and acceptance](../integrations/mcp-relay/README.md).
+Codex chats whose notification feature remains disabled use the
+[shared native catalogue watcher](../integrations/codex/README.md): it fingerprints
+complete HTTP catalogues and updates only a changed bus's cache revision through
+native configuration CAS and reload. This transport adaptation preserves tool
+restrictions and in-flight bindings, without model calls or daemon restarts.
 Core counts each `tools/call` by day, bus, tool and `x-service-caller`
 (no arguments or results); `GET /api/agent-tools/usage?days=30` reports
 every advertised tool, including unused ones, as evidence for removals.
