@@ -6,11 +6,14 @@ const { CLAIM_FINALIZE_TTL_MS } = require('./benchmarkClaimShared');
 
 // A release request ends dispatch on this host before Core reconciles its
 // closed caller connections. The parent workload remains held throughout.
-function exactParentForHost(state, host, inferences, { draining = false, shared = false } = {}) {
+function exactParentForHost(state, host, inferences, { draining = false, shared = false, cancelledJudge = false } = {}) {
   const covering = (state?.workloads || []).filter(w => (w.hosts || []).includes(host));
   if (covering.length !== 1) return null;
   const parent = covering[0];
-  if (!['benchmark', 'benchmark-cloud'].includes(parent.kind) || parent.principal !== 'benchmark-service'
+  const stoppedJudge = cancelledJudge && !draining && !shared && parent.cancellation?.requestId
+    && ['UNKNOWN', 'VERIFIED', 'RESTORED'].includes(parent.recoveryState)
+    && require('./judgeCalibrationControl').isJudgeCalibration(parent);
+  if ((!['benchmark', 'benchmark-cloud'].includes(parent.kind) && !stoppedJudge) || parent.principal !== 'benchmark-service'
     || parent.yieldedAt || (draining && !(parent.drainingHosts || []).includes(host))
     || (shared && !(parent.sharedHosts || []).includes(host))) return null;
   return inferences.every(i => i.principal === parent.principal
@@ -20,7 +23,10 @@ function exactParentForHost(state, host, inferences, { draining = false, shared 
 
 function parentPredicate(parent, host) {
   return { admissionId: parent.admissionId, generation: parent.generation,
-    principal: parent.principal, kind: parent.kind, hosts: host, yieldedAt: null };
+    principal: parent.principal, kind: parent.kind, hosts: host, yieldedAt: null, ...(parent.kind === 'judge' ? {
+      'cancellation.requestId': parent.cancellation.requestId, recoveryVersion: parent.recoveryVersion,
+      recoveryState: parent.recoveryState
+    } : {}) };
 }
 
 async function deferClaimReleaseForInferences(host, preference, options = {}) {

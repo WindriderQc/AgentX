@@ -38,7 +38,7 @@ const ROOT = path.resolve(process.env.AGENTX_CHECKOUT || path.join(__dirname, '.
 const CONTRACT = 'agentx.maintenance-action/v1';
 const DEPLOYABLE = Object.freeze(['core', 'benchmark', 'benchmark-runner', 'rag', 'data']);
 const REVISION_PORTS = Object.freeze({ core: 3080, benchmark: 3081, rag: 3082, data: 3083 });
-const ACTIONS = Object.freeze(['status', 'lease', 'deploy', 'reload-openclaw', 'reload-openclaw-status', 'recover-quarantine', 'recalibrate-judges', ...Object.keys(benchmarkBatch.ACTIONS)]);
+const ACTIONS = Object.freeze(['status', 'lease', 'deploy', 'reload-openclaw', 'reload-openclaw-status', 'recover-quarantine', 'recalibrate-judges', 'judge-calibration-control', ...Object.keys(benchmarkBatch.ACTIONS)]);
 // Read-only actions need no actor, take no lease and leave no receipt file.
 const READ_ONLY = Object.freeze(['status', 'benchmark-batch-status', 'reload-openclaw-status']);
 // These take the lease themselves, when and if they mutate; a prepared plan mutates nothing.
@@ -537,6 +537,7 @@ async function main(argv = process.argv.slice(2)) {
     if (mutating && !OWN_LEASE.includes(action)) takeLead();
     const handler = { status, lease, deploy, 'reload-openclaw': (cfg, opts) => reloadOpenclaw(cfg, opts, ActionError),
       'reload-openclaw-status': (cfg, opts) => reloadOpenclawStatus(cfg, opts, ActionError),
+      'judge-calibration-control': (cfg, opts) => require('./maintenance-judge-control.cjs').judgeControl(cfg, opts, { run, composeArgs, launcherEnv, ActionError }),
       'recover-quarantine': recoverQuarantine, 'recalibrate-judges': recalibrateJudges }[action] || benchmarkAction(action);
     const result = await handler(config, parsed.options, takeLead);
     const unknownReload = action === 'reload-openclaw-status' && result.operationOutcome === 'unknown';

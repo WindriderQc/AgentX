@@ -132,7 +132,7 @@ async function recoverSettledWatchdogProbes(hostUrl, {
   // worker only restores hosts, and that waits for these quarantines.
   const ownerGone = w => new Date(w.expiresAt).getTime() <= now();
   const goneParent = hasWorkload && !drainingParent && !sharedParent && probes.every(isSettleable)
-    ? [exactParentForHost(state, hostUrl, probes)].find(w => w && ownerGone(w)) || null : null;
+    ? [exactParentForHost(state, hostUrl, probes, { cancelledJudge: true })].find(w => w && ownerGone(w)) || null : null;
   const parent = drainingParent || sharedParent || goneParent;
   if (hasWorkload && !parent) {
     return { recovered: false, reason: 'workload covers host' };
