@@ -112,4 +112,31 @@ body[data-avatar-view=montre] .display-block-figure img { max-height: 72dvh; }
 
 /* Enforce scene boundaries even if settings were left open before the scene. */
 body[data-avatar-view=plein] .avatar-camera, body[data-avatar-view=montre] .avatar-camera { display: none; }
-.avatar-scene-execution { margin: 0; max-width: 100%; color: var(--soft); text-align: center; overflow-wrap: anywhere; font-size: 13px; text-shadow: 0 1px 8px #060d14; }
+/* Who answers (avatar-execution.js): a badge in the top right corner of the full-screen face;
+   a tap opens the detail and the requests still followed. */
+.avatar-scene-brain { --brain-tone: #52cfc5; position: fixed; z-index: 116; top: max(18px, env(safe-area-inset-top)); right: max(18px, env(safe-area-inset-right));
+  display: none; justify-items: end; gap: 8px; max-width: min(360px, calc(100vw - 36px)); }
+body[data-avatar-view=plein] .avatar-scene-brain:not([hidden]) { display: grid; }
+.avatar-scene-brain[data-role=guardian] { --brain-tone: #f0b45a; }
+.avatar-scene-brain[data-role=fallback] { --brain-tone: #ff9a6a; }
+.avatar-scene-brain:is([data-role=status], [data-role=pending]) { --brain-tone: #9fb4c1; }
+.avatar-scene-brain-badge { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 14px 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--brain-tone) 60%, transparent); border-radius: 999px; background: #0b1620cc;
+  color: color-mix(in srgb, var(--brain-tone) 35%, #fff); font: inherit; font-size: 15px; cursor: pointer; backdrop-filter: blur(6px);
+  text-shadow: 0 1px 6px #060d14; transition: border-color .3s, color .3s; }
+.avatar-scene-brain-badge:hover, .avatar-scene-brain-badge:focus-visible { background: #14273a; outline: none; box-shadow: 0 0 0 2px var(--brain-tone); }
+.avatar-scene-brain-badge svg { flex: none; width: 20px; height: 20px; fill: none; stroke: var(--brain-tone); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.avatar-scene-brain[data-role=pending] .avatar-scene-brain-badge svg { animation: avatar-think 1.2s ease-in-out infinite alternate; }
+.avatar-scene-brain-count { min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--brain-tone); color: #061018; font-size: 12px; font-weight: 600; line-height: 20px; text-align: center; text-shadow: none; }
+.avatar-scene-brain-count[hidden], .avatar-scene-brain-panel[hidden], .avatar-scene-brain [hidden] { display: none; }
+.avatar-scene-brain-panel { box-sizing: border-box; width: min(360px, calc(100vw - 36px)); padding: 12px 14px; border: 1px solid #ffffff1f; border-radius: 16px;
+  background: #0b1620eb; color: var(--text); font-size: 14px; line-height: 1.4; box-shadow: 0 12px 40px #000a; }
+.avatar-scene-execution { margin: 0 0 10px; color: var(--soft); overflow-wrap: anywhere; }
+.avatar-scene-brain-title { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
+.avatar-scene-brain-works { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.avatar-scene-brain-works li { display: grid; gap: 2px; padding: 6px 10px; border-left: 3px solid var(--brain-tone); border-radius: 6px; background: #ffffff0a; }
+.avatar-scene-brain-works li[data-state=uncertain] { border-left-color: #ff9a6a; }
+.avatar-scene-brain-works small { color: var(--soft); }
+.avatar-scene-brain-empty { margin: 0; color: var(--soft); }
+.avatar-scene-brain-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .avatar-scene-brain-badge svg { animation: none !important; } }

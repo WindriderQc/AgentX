@@ -377,7 +377,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     let response;
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
-        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, screen: board.context(), ...(ambient?.context() && { artx: ambient.context() }), ...(!family && { ephemeral: session.ephemeral, presentationCompanion, presentationPinned: companion?.pinned() === true }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, screen: board.context(), ...(family && ambient?.context() && { artx: ambient.context() }), ...(!family && { ephemeral: session.ephemeral, presentationCompanion, presentationPinned: companion?.pinned() === true }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) { activity('execution-interrupted'); workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
     if (!session.ephemeral) { work?.follow(session.sessionId); companion?.follow(); }
@@ -525,8 +525,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     onTap: () => { const start = el('conversationStart'); if (start.hidden || start.disabled || !['idle', 'paused', 'error'].includes(conversation.state)) return false; start.click(); return true; },
     // A line typed under the full-screen face goes through the page's own composer.
     onSend: text => { el('conversationMessage').value = text; composer.sync(); el('conversationText').requestSubmit(); return true; } });
-  // Famille: the sky, notes and silent moments behind the full-screen face (nestor-ambient.js).
-  const ambient = family ? window.NestorAmbient?.mount({ space }) : null;
+  // Both spaces: the sky, notes and silent moments behind the full-screen face (nestor-ambient.js).
+  // Only Famille sends what the sky shows with each turn; Super Dad's turn context is unchanged.
+  const ambient = window.NestorAmbient?.mount({ space });
+  // Super Dad: small live frames beside the full-screen face (nestor-frames.js).
+  const frames = family ? null : window.NestorFrames?.mount({ space });
   // Browser speech recognition only with the instance gate and this browser's consent (per space).
   let renderSpeechFallback = () => {};
   async function transcribeLocal(blob, lang, signal) {
@@ -1083,7 +1086,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       'Micro · activer / pause': () => el('conversationStart').click()
     }
   });
-  window.addEventListener('pagehide', event => { if (event.persisted) idlePhotos?.activity(); else { idlePhotos?.dispose(); ambient?.dispose(); } });
+  window.addEventListener('pagehide', event => { if (event.persisted) idlePhotos?.activity(); else { idlePhotos?.dispose(); ambient?.dispose(); frames?.dispose(); } });
   enteringSpace = false;
   conversation.show(conversation.state, el('conversationStatus').textContent);
 

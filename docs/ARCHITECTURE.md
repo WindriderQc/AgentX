@@ -947,7 +947,7 @@ pages and APIs retain the parental gateway guard.
   inference; the dock starts the picture on Nestor's first word and GraphysX's
   `<llmx-stage>` draws it. Its applied/rejected receipt is kept once on the
   family turn (`sceneReceipt`), re-derived from the recorded question.
-  In Famille's full-screen view, Nestor's standby screen reacts to household data
+  In the full-screen view of Famille and Super Dad, Nestor's standby screen reacts to household data
   without speaking (`nestor-ambient.js`, rules in `nestor-ambient-choice.js`). One read,
   `GET /api/family/ambient` (`family-ambient.js`), returns the Environment Canada current
   conditions, a computed sun elevation, the next naked-eye ISS pass and the operations
@@ -955,7 +955,12 @@ pages and APIs retain the parental gateway guard.
   alert text. Each part is cached briefly and becomes null when its owner fails. The sky
   behind the face follows the weather and the light. The temperature and conditions sit
   beside the date under the clock at all times, hidden when the reading is over three
-  hours old; short notes under them rank a critical alert, the ISS and other alerts. Three minutes before a pass the
+  hours old; short notes under them rank a critical alert, the ISS and other alerts. The alert note is the owner's:
+  Super Dad shows it as a link to the operations watch in Nerve Center, Famille never shows it
+  (its silent visit stays). Super Dad also shows small live frames on wide screens
+  (`nestor-frames.js`): model activity and GPU power from Nerve Center live activity and the
+  heavy-work queue's own summary counts, each linking to its page; a failed or old read says so,
+  and nothing is read while the frames are hidden or folded. Three minutes before a pass the
   sky becomes a horizon panorama with the predicted path and the station's real position
   while it passes. An alert naming a known machine opens a silent ecosystem tour to it,
   by day only and once per alert set and machine in six hours. A conversation, typed
@@ -964,7 +969,8 @@ pages and APIs retain the parental gateway guard.
   uses the shared [ArtX capability](ARTX.md) to choose sky, painting, weather or rest.
   Its portable skill guides the routed model; only a completed scene choice enables
   a painting. Core re-derives the browser's current and recent render receipts
-  from issued source snapshots and supplies them to the dialogue, with planet
+  from issued source snapshots and supplies them to Famille's dialogue (Super Dad shows the sky
+  without adding it to its turns), with planet
   directions, panorama orientation and screen positions. A selected task is not
   proof of display. Conversation invalidates pending choices while admitted
   inference settles through its native owner. By day, when Nestor chooses a
