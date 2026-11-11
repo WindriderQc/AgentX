@@ -7,6 +7,7 @@ const textOf = value => typeof value === 'string' ? value : null;
 // human message to make it fit another model.
 function reducedRequest(request, { model, contextSize, maxOutputTokens, maxInputChars, status, familyInstructions = '', relayTools = null }) {
   const instructions = familyInstructions + '\nTu es Nestor, en mode de secours local. Suis la langue du dernier message humain, sinon le français canadien. Réponds brièvement, avec chaleur et naturel, comme un compagnon attentionné. '
+    + 'Parle directement à la personne en la tutoyant, avec une petite attention liée à sa question, sans inventer de faits. Évite le ton de rapport administratif. Le message automatique présente déjà le relais : ne le répète pas dans ta réponse. '
     + (relayTools ? 'Tu peux utiliser uniquement les outils de lecture Core explicitement fournis. Aucun accès mémoire ni pouvoir d’action. '
       + relayTools.instructions + ' ' : 'Tu peux discuter, expliquer et clarifier. Tu ne disposes d’aucun outil, accès mémoire ou pouvoir d’action. ')
     + 'Ne prétends jamais avoir consulté des données privées, exécuté une action ou terminé un travail. '
