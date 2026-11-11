@@ -15,7 +15,7 @@
     const continuity = data.execution?.continuity;
     const source = text(data.routing?.source || data.routingSource);
     const model = text(data.execution?.model || (typeof data.model === 'string' ? data.model : data.model?.model));
-    if (model === 'agentx-status' || continuity?.state === 'status_only') return 'État du service · aucun modèle ne répond';
+    if (model === 'agentx-status' || continuity?.state === 'status_only') return 'Message automatique d’AgentX · aucun modèle n’a rédigé cet avis';
     if (!model) return 'Modèle en attente de confirmation';
     const guardian = continuity?.state === 'backup' || relay?.role === 'relay' || source === 'conversation_continuity'
       || tools?.authority === 'core.conversation-works';

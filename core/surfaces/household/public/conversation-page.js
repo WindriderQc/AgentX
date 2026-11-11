@@ -8,12 +8,22 @@ window.ConversationEngines = {
     return [preferred, runtime?.defaultBackend, 'openclaw', 'agentx'].find(value => available.includes(value));
   },
   label(backend) { return ({ hermes: 'Hermes', openclaw: 'OpenClaw', agentx: 'AgentX / Ollama' })[backend] || 'Conversation engine'; },
+  toolStatus(evidence) {
+    const receipts = evidence?.receipts || [];
+    if (evidence?.status === 'not_run') return 'Message automatique · aucun modèle ni outil n’a rédigé cet avis.';
+    if (evidence?.status === 'not_supported' && !receipts.length) return 'Cette réponse utilise le contexte fourni, sans appel d’outil.';
+    if (evidence?.status === 'unavailable') return 'Les résultats des outils ne sont pas disponibles pour le moment.';
+    return receipts.map(receipt => receipt.tool + (receipt.status === 'failed' ? ' · échec'
+      : ['verified', 'completed'].includes(receipt.status) ? ' · résultat reçu'
+        : receipt.observed ? ' · appel observé, résultat non vérifié' : ' · résultat indisponible')).join(' · ');
+  },
   observed(data) {
     const backend = data?.routing?.backend;
     const source = data?.routing?.source || data?.routingSource;
     const engine = backend || (typeof source === 'string' && source.startsWith('hermes/') ? 'hermes' : null);
     const value = typeof data?.model === 'string' ? data.model : data?.model?.model;
     const model = typeof value === 'string' ? value.slice(0, 160) : '';
+    if (model === 'agentx-status') return 'Message automatique d’AgentX';
     return engine ? this.label(engine) + (model ? ' · ' + model : '') : '';
   }
 };
@@ -95,7 +105,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <details id="conversationPersonalContext" class="personal-context" hidden></details>
       <section id="conversationTools" class="conversation-audio" aria-label="Tools and actions" hidden>
         <p id="conversationToolsStatus" role="status"></p>
-        <details><summary>Tool results</summary><pre id="conversationToolsReceipt"></pre></details>
+        <details><summary>Détails techniques</summary><pre id="conversationToolsReceipt"></pre></details>
       </section>
       <form id="conversationText" class="conversation-text"><label class="sr-only" for="conversationMessage">Message</label><textarea id="conversationMessage" rows="2" placeholder="Write a message…" required maxlength="4000"></textarea><button class="button" type="submit">Send</button></form>
       ${family ? '' : '<details class="conversation-attachments"><summary>Attach an image or document</summary><label class="sr-only" for="conversationFiles">Attachments</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">Up to 3 files · JPEG or PNG photos up to 50 MB (Nestor receives a reduced copy; the original is archived) · text or text PDF up to 2 MB (20 pages, 24,000 characters maximum). Add a message to send them.</p><div id="conversationDraftFiles" aria-live="polite"></div></details>'}
@@ -617,7 +627,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (!family && session?.sessionId) void api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/warm`,
         { method: 'POST', body: JSON.stringify({ greeting: text }) }).catch(() => {});
       const speech = await synthesize(text, lang, session?.persona || selected(), session?.voice || {}, signal, 'Greeting');
-      if (!signal.aborted) message('assistant', text);
+      if (!signal.aborted) message('assistant', (lang === 'en' ? 'Automatic greeting — ' : 'Accueil automatique — ') + text);
       return speech;
     },
     wakeReply() {
@@ -708,13 +718,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   function showTools(evidence) {
     const receipts = evidence?.receipts || [];
-    const box = el('conversationTools'); box.hidden = !receipts.length && !['unavailable', 'not_supported'].includes(evidence?.status);
+    const box = el('conversationTools'); box.hidden = !receipts.length && !['unavailable', 'not_supported', 'not_run'].includes(evidence?.status);
     if (box.hidden) return;
-    el('conversationToolsStatus').textContent = evidence.status === 'not_supported' ? engines.label(conversation.session?.backend || backendPicker.value) + ' · no tool receipts supported for this answer.' : evidence.status === 'unavailable'
-      ? 'Tool receipts are unavailable.'
-      : receipts.map(receipt => receipt.tool + (receipt.status === 'failed' ? ' · failed'
-        : receipt.status === 'verified' ? ' · result received'
-          : receipt.observed ? ' · call observed, result not verified' : ' · result unavailable')).join(' · ');
+    el('conversationToolsStatus').textContent = engines.toolStatus(evidence);
     el('conversationToolsReceipt').textContent = JSON.stringify(evidence, null, 2);
   }
   // The team member this conversation is (or will be) with, and why settings are locked.

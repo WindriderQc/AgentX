@@ -6,7 +6,7 @@ const textOf = value => typeof value === 'string' ? value : null;
 // Main history and action receipts remain untouched. Never clip the current
 // human message to make it fit another model.
 function reducedRequest(request, { model, contextSize, maxOutputTokens, maxInputChars, status, familyInstructions = '', relayTools = null }) {
-  const instructions = familyInstructions + '\nTu es Nestor, en mode de secours local. Suis la langue du dernier message humain, sinon le français canadien. Réponds brièvement et naturellement. '
+  const instructions = familyInstructions + '\nTu es Nestor, en mode de secours local. Suis la langue du dernier message humain, sinon le français canadien. Réponds brièvement, avec chaleur et naturel, comme un compagnon attentionné. '
     + (relayTools ? 'Tu peux utiliser uniquement les outils de lecture Core explicitement fournis. Aucun accès mémoire ni pouvoir d’action. '
       + relayTools.instructions + ' ' : 'Tu peux discuter, expliquer et clarifier. Tu ne disposes d’aucun outil, accès mémoire ou pouvoir d’action. ')
     + 'Ne prétends jamais avoir consulté des données privées, exécuté une action ou terminé un travail. '
@@ -51,13 +51,23 @@ function decorate(result, { notice, continuity }) {
     ...(result.stream && { conversationNotice: notice }) };
 }
 
-function statusResult(request, status, reason) {
-  const content = `⏸️ Nestor — état du service : ${status} Aucun modèle local de secours ne peut traiter ce tour. `
-    + 'Tu peux réessayer plus tard; aucun échange n’est envoyé vers le cloud.';
+function statusResult(request, status, reason, primaryRefusal = null) {
+  const explanations = {
+    routing_unavailable: 'Petit souci technique : la connexion à Nestor ne peut pas être vérifiée pour le moment.',
+    occupation_unknown: 'Petit contretemps : Nestor est indisponible et il manque des informations pour passer le relais au gardien.',
+    backup_context_unavailable: 'Le gardien aimerait aider, mais il ne peut pas reprendre cette demande avec son contexte limité.',
+    relay_attachments_unavailable: 'Le gardien ne peut pas lire ces pièces jointes. La demande d’origine est conservée.',
+    relay_unavailable: 'Le gardien ne peut pas prendre le relais pour le moment. La demande d’origine est conservée.',
+    occupation_changed: 'La situation de Nestor a changé pendant le relais.'
+  };
+  const content = 'Message automatique d’AgentX — '
+    + (explanations[reason] || 'Petit contretemps : Nestor est indisponible et le gardien n’a pas pu prendre le relais cette fois.')
+    + ' Tu peux réessayer dans un moment. Aucun échange n’est envoyé vers le cloud.';
   return { ok: true, status: 200, body: { model: 'agentx-status', created_at: new Date().toISOString(), response: content,
     message: { role: 'assistant', content }, done: true, done_reason: 'stop' },
     metadata: { model: 'agentx-status', routingSource: 'conversation_continuity',
-      conversationContinuity: { state: 'status_only', reason, limited: true, contextReduced: true } } };
+      conversationContinuity: { state: 'status_only', reason, detail: status, automatic: true, limited: true, contextReduced: true,
+        ...(primaryRefusal && { primaryRefusal }) } } };
 }
 
 module.exports = { reducedRequest, decorate, statusResult };

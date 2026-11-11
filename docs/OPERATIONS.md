@@ -2385,7 +2385,8 @@ Set `AGENTX_CONVERSATION_CONTINUITY_JSON` to a bounded policy, for example:
 Household can opt its Family and personal Hermes surfaces into this same local
 guardian capability with `HOUSEHOLD_CONVERSATION_RELAY_ENABLED=true`. The flag
 does not enable the second-brain reviewer or change any pin. Family requires a
-fresh native admission refusal from an active holder; Hermes requires the exact
+proven pre-dispatch refusal; it distinguishes a verified busy holder from other
+unavailability without inferring occupation. Hermes requires the exact
 detached native run, fresh native status and its still-active transport. Both
 settings remain off/absent by default. See the
 [surface relay contract](NESTOR_CONVERSATION_WORK.md#optional-family-and-hermes-conversational-relay)
@@ -2409,11 +2410,14 @@ checked before dispatch and its native terminal/release receipt stays required.
 Timeouts, partial output and uncertain attempts never launch another model.
 The next human turn tries the principal again.
 
-The reply explicitly announces the local backup and reduced context. Its
+An automatic AgentX notice explicitly announces the local backup and reduced context. Its
 operational explanation comes from Core's actual refusal and matching active
 heavy-work records, not the model. Planned jobs are not described as running;
 an absent native completion estimate remains unknown. If no backup can accept
-the turn, a deterministic `agentx-status` answer requires no inference. It also
+the turn, a warm, explicitly automatic `agentx-status` answer requires no inference.
+The diagnostic detail remains in `conversationContinuity.detail`, with the
+original refusal code/cause in `primaryRefusal` when available; Household tool
+evidence uses `not_run` and never describes this notice as a model tool refusal. It also
 works when routing reads are unavailable. `X-AgentX-Conversation-State` is
 `primary`, `backup` or `status_only`; degraded responses also carry
 `X-AgentX-Degraded: true`. Core telemetry retains the continuity state beside
