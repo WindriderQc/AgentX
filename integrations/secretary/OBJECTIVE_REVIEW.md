@@ -49,12 +49,59 @@ proposal for them. This gate never merges interpretations or establishes that
 a request is resolved. Objectives under the earlier contract retain their
 existing publication behavior.
 
-New objectives use `secretary.objective-grounding/v10` for model extraction.
+Native objective workers retain the exact Core queue/dispatch scope. Before a
+page and after worker termination, Core's read-only `operator-release` evidence
+reports physical overlap for that scope, including aliases and uncertain holders.
+Unrelated workloads do not block it; maintenance and announced Core recreation
+still pause it. Missing, mismatched or held scope evidence fails closed. This
+observation grants no execution or release: queue assertion, inference admission
+and the terminal Core recheck remain authoritative. Other workload owners and
+quarantines are never cleared. Unscoped catch-up retains its conservative guard.
+
+New objectives use `secretary.objective-grounding/v14` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
 evidence rather than transcribing a quote. Unknown or duplicate IDs, missing
 evidence and a response that ignores the frozen contract fail closed.
+
+`professionalCueCatalog` enumerates explicit work reports and deliveries beyond
+career milestones. Every listed anchor requires its own `professionalDecisions`
+entry: `retainedMoments` with that anchor's work type, or a `reasonRef` among its
+source-supported omission choices. Complete reports in an owner reading context
+cannot silently disappear or be dismissed for unknown event dates. Other or
+unresolved actors, conditional statements and non-biographical contexts keep
+cited omission paths. Additional facts and context observations cannot bypass
+these decisions. The catalog is a reading aid, not a claim of usefulness or truth.
+
+`actorReadingCatalog` conditions proposed subjects on each primary excerpt's
+reading context. Unresolved speakers require `subject: unknown` and an empty
+`subjectName`; a recipient, familiar greeting or following header supplies no
+owner identity. Complete literal declarations can remain useful with unknown
+actors and are not erased solely for that uncertainty. Other-speaker headers
+permit third-party or unknown readings, never owner attribution. Even an allowed
+owner reading is a proposal, not identity verification. This applies during
+schema generation and local validation, with immutable native choices and
+source context in the `workActorSelection` proof. Rejections are never repaired
+or retried to fill the required decisions.
+
+Each native fact selects `sourceClaimType`: `direct-source` for an explicit source
+report or announced plan, and `interpretation` for a proposed reading beyond what
+the source explicitly states. The canonical `claimType` is the fixed mapping to
+`direct` or `hypothesis`; there is no independent native confidence selector.
+`sourceClaimCatalog` preserves complete declarations and their speaker reading
+context. Those anchors require `direct-source`, in both generation and local
+validation. Unknown dates or pending personal review do not make an explicit
+source statement an interpretation. Genuine questions, conditional plans,
+possibilities and incomplete wording retain their conservative interpretation
+choices. A quoted or unresolved speaker does not make an explicit first-person
+statement an interpretation; actor uncertainty stays in its own fields and source
+context. Reading context does not verify identity. Local reservations, planned
+status, date gaps, human review and lack of personal confirmation remain separate.
+The `claimTyping` proof retains native choices and exact source context; the
+anchored-fact proof distinguishes those choices from its derived legacy inputs.
+Old responses are neither retyped nor repaired, and invalid new choices are
+retained as rejections without another inference call.
 
 Useful facts include explicit personal career steps at their stated stage:
 `career-contact`, `application`, `interview`, `job-offer`, `employment-change`,
@@ -68,13 +115,25 @@ inventory. No place-name dictionary or instance-specific example is required.
 Undated/relative-date travel and planned personal activities can remain useful;
 missing absolute dates alone do not justify omitting them.
 
-Every cue must be cited in an observation or have an `omittedCues` decision:
-`citationId` and its own `reasonRef` from `omissionReasonCatalog`. Unknown,
+Every cue is a required property in `cueDecisions`, keyed by its citation ID.
+It selects either `retainedMoments`, containing complete native fact metadata
+anchored in that cue, or its own `reasonRef` from `omissionReasonCatalog`.
+Each fact selects `anchorCitationId` and `qualificationIds` for its primary
+excerpt; `contextObservations` contains useful non-cue context without repeating
+the primary anchor. Optional facts anchored in non-cue excerpts are in the root
+`additionalMoments` array. There is no arbitrary moment index, independent title
+selector, parallel cue observation list or `omittedCues` model field. Unknown,
 cross-cue, duplicated, overlapping or silently ignored cue decisions fail
 closed. A lexical match can still be omitted with source-backed proposed reasons;
 it never automatically creates a fact. The canonical gaps retain the reason and
 complete source excerpts for review. Career cues retain their frozen legacy
 projection as well; prior results are neither rewritten nor reinterpreted.
+Missing decisions, cross-cue anchors and source-context bypasses are
+rejected without adding an observation, creating a moment or retrying inference.
+`anchoredFacts` in the projection proof preserves the native selections and their
+exact bindings; `derivedCueBindings` explicitly labels the bridge to the frozen
+projection as derived rather than native wire data. A cue can support several model-proposed moments when its source
+excerpt actually supports each; source review still verifies that interpretation.
 
 Every empty extraction also requires `abstention: {reasonRef}` selecting an
 actual whole-passage catalog option, including administrative passages without cues. The
@@ -119,6 +178,15 @@ date does not erase a reported activity or completed event. The model must keep
 the useful exact observation, possibly within an existing event; local code
 never invents a proposal or identifies its actor. These conservative lexical
 guards remain subject to source review and do not cover every possible wording.
+A complete home declaration has its own reported `life-event` in category
+`home`; it cannot borrow a professional fact's type or communication date.
+
+A complete explicit upcoming activity also retains its initial `planSpan`.
+A later sentence warning of a conditional risk does not erase that plan or its
+speaker reading context. Retentions of these plan cues must remain `planned`;
+they cannot become reported attendance. Genuine conditional plans, questions,
+negations, promotional wording and unknown speakers keep their conservative
+omission paths. The whole original source line is retained, including warnings.
 
 Summaries have no independent global excerpt selector or observation flags. The
 application selects at most the first three distinct retained title excerpts,
@@ -128,15 +196,17 @@ a separate summary citation list. Empty extractions still display their cited
 abstention reason locally. `declarationSelection` and `retainedSummary` retain the
 reading cues and selection proof for native-result replay.
 
-The model selects a proposed `factType` and matching `factTypeCitationIds`
-from `factTypeCatalog`, among that moment's own observation citations. Neutral
-`life-event` uses an empty type-evidence list. A code delivery or post-contract
+The model selects a proposed `factType` conditioned on its primary anchor's
+matching `factTypeCatalog` entry. There is no independent model
+`factTypeCitationIds` selector. The local projection derives type evidence only
+from that same explicitly selected primary anchor; neutral `life-event` uses an
+empty derived list. A code delivery or post-contract
 follow-up is not an employment transition. These lexical cues can contain
 questions, negation or third-party wording; they never certify a fact's type.
 Local labels say that the proposed nature requires review.
 
 Each available fact type has a complete, disjoint response-schema alternative.
-Professional alternatives require matching type-evidence IDs and category
+Professional alternatives require matching primary anchor IDs and category
 `work`; neutral `life-event` requires an empty type-evidence list. Communication
 date references appear only in the start choices of contact, application and
 work-correspondence alternatives. End dates and underlying activities cannot
@@ -227,7 +297,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8` and `/v9` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10`, `/v11`, `/v12` and `/v13` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.

@@ -70,7 +70,7 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v10.
+Use the source-span grounding contract secretary.objective-grounding/v14.
 Keep useful explicit steps, not only completed milestones. A personal career
 contact, referral, CV submission, application, interview or offer can be retained
 at its stated stage. Choose factType: life-event, career-contact, application,
@@ -99,44 +99,75 @@ remain useful with null dates. Preserve its source wording and occurrence status
 never invent a date or claim realization to make it useful.
 selectionCues are exact source lines with career or nonprofessional reading cues.
 Their kinds are lexical reminders, not facts, actor identity or proof of occurrence.
-Every cue must appear in an observation or in omittedCues. Each omission has
-citationId and reasonRef from omissionReasonCatalog for that same cue. Select only
-source-supported reasons that actually fit the passage; a valid reference alone
-does not prove relevance. Never call a personal activity administrative. An
-administrative document marker elsewhere cannot dismiss a personal reading cue.
-Quoted-speaker reasons retain the nearest literal author header and never prove
-identity or proximity. Do not borrow a later or unrelated header. If context is
-genuinely insufficient, choose only a supported uncertain reason. declarationCatalog
-identifies complete source declarations with their reading context. Unknown calendar
-dates do not make the activity or completed event insufficiently characterized.
-An explicit reported activity or completed move remains useful with null dates;
-retain its exact observation, alone or in the existing related event. Do not
-substitute an actor ambiguity when source reading context already names the owner.
-These cues do not prove identity or occurrence and never create a fact locally.
-Lexical reminders without a complete assertion keep their omission choices.
-Do not invent an event to satisfy a cue, and do not omit
-a useful personal event just because its date is unknown or relative. Unknown
-date alone is never an abstention/omission reason. Use [] when no cue is omitted.
-Select titleCitationId from this event's own observation excerpts. Do not write
-any title, description, observation text, rationale, ongoing flag, uncertainty
-or event-wide hypotheses. The application copies whole selected source lines,
-including their tense, relative-day wording, negations and reservations.
-Each observations item has exactly citationId and qualificationIds. Select one
-citationCatalog ID and at most one relevant uncertaintyCatalog reference belonging
-TO THAT SAME citation. Use [] when no local reservation is needed. A qualification
-cannot move to a different excerpt, qualify the event globally or cast doubt on
-other observations. A conditional offer of future help stays local to that offer;
-it does not make completed hours of work hypothetical. Select the offer as a
-separate observation/context only if useful; never claim it was realized.
-Select only useful observations for the proposed event, retaining enough source
-author and addressee context for attribution. A source quotation is not proof of
-truth or occurrence. The application labels these source excerpts for human review.
-Dates and fact types still follow their complete schema alternatives.
+Every selectionCue has a required property in cueDecisions, keyed by its exact
+citation ID. Give either {retainedMoments:[...]} or {reasonRef}. Each retained
+moment is a COMPLETE model-proposed fact with its own metadata and its own
+anchorCitationId, equal to that cue ID. Do not assign a cue to an existing
+moment index. Distinct facts keep their own actor, category, type, occurrence
+status and dates. A completed move is a reported home life-event with unknown
+event dates when none are explicit; it must not borrow a work fact or message date.
+Do not skip or invent a decision. An omission selects only that cue's own
+supported reasonRef from omissionReasonCatalog. Dates unknown or relative do
+not justify dismissing useful explicit activities, completed moves or plans.
+For facts anchored in non-cue excerpts, use the root additionalMoments array.
+Each additional moment also selects its own anchorCitationId. The schema
+conditions proposed fact types on that primary excerpt's lexical support.
+There is no factTypeCitationIds selector: the application retains only the
+primary anchor as proposed type evidence. Lexical support does not prove the
+interpretation; choose a type that actually fits that excerpt in context.
+Never supply claimType, moments, titleCitationId, factTypeCitationIds, observations,
+omittedCues, arbitrary indices or generated observation wording.
+professionalCueCatalog requires exactly one professionalDecisions entry per listed
+citation ID. Retain each cue with its own retainedMoments, or choose a reasonRef
+from that cue's omissionChoices. Complete owner-context work reports have no
+missing-date or missing-event omission: retain their reported work at its stated
+stage, with their own qualifications. Do not bypass these decisions through
+additionalMoments or another fact's contextObservations. This is a selection
+decision, never proof that the work happened. No professional cue means {}.
+actorReadingCatalog constrains subject for each fact's PRIMARY anchor. Unresolved
+source speakers require subject unknown and subjectName "". A familiar greeting,
+recipient, named person elsewhere, or later header cannot identify the owner.
+A permitted owner/thirdparty is still a proposed attribution requiring human
+review. Never fill an unknown actor's name. Keep complete source declarations
+with unknown actors rather than erasing them solely for that uncertainty.
+Every proposed moment selects sourceClaimType: direct-source when its primary
+excerpt explicitly reports an activity, completed event or announced plan;
+interpretation only when the proposed reading goes beyond what is explicit.
+This field describes SOURCE WORDING, never whether the owner has confirmed it.
+Unknown dates, old messages, historical tense and pending human review do not
+turn an explicit source declaration into an interpretation. sourceClaimCatalog
+retains complete declarations and their reading context; those anchors require
+direct-source. Its reading context is not verified identity or personal truth.
+A stated future plan is direct-source with occurrenceStatus planned, never
+reported attendance. Keep genuine questions, conditional plans, possibilities,
+uncertain actors and local reservations conservative without relabelling an
+explicit statement merely because its speaker is unknown. Local qualificationIds
+stay on the same excerpt independently of sourceClaimType. Never remove a
+condition, infer current continuation or claim owner confirmation because a
+source statement is direct. The canonical claimType is a fixed local mapping;
+do not generate a separate claimType, confidence or confirmation selector.
+Every proposed moment has qualificationIds for its OWN PRIMARY anchor and
+contextObservations for useful NON-CUE context only. Each context item is
+{citationId,qualificationIds}; do not repeat the anchor there or borrow another
+cue. Use [] when no extra context or reservation is needed. The primary anchor
+is already the selected observation and supplies the literal title. Choose at
+most one relevant uncertaintyCatalog reference for each SAME source excerpt.
+Do not move a qualification across excerpts or qualify unrelated observations.
+declarationCatalog preserves reading context, never verified identity. An
+explicit upcoming activity with planSpan stays planned, never reported attendance.
+Keep separate facts when reported activities and future plans have different
+occurrence statuses. A later warning or question does not erase an earlier
+complete plan or make its actor unknown. Preserve the whole exact excerpt,
+including the separate warning. A warning about getting lost does not mean
+that the writer failed to announce the plan. Genuine conditional plans,
+questions, negations, promotional wording and unknown speakers retain their
+supported uncertain decisions. Another speaker's activity must keep its own
+preceding literal header when omitted, never a later or unrelated header.
 Do not generate a summary, a global excerpt selector or per-observation summary
 flags. The application summarizes at most three retained facts using their own
 selected title excerpts, copied whole in source order. An omitted cue or unrelated
-header cannot reappear as a summary claim. Choose a faithful titleCitationId among
-each fact's own observations, retaining decisive temporal/conditional wording.
+header cannot reappear as a summary claim. Retain decisive temporal/conditional
+wording in the whole primary excerpt.
 Empty extractions display their cited abstention locally.
 uncertaintyCatalog IDs bind literal source wording and admissible categories.
 Only select one when its wording matters in the SAME observation excerpt.
@@ -165,7 +196,7 @@ news usually add no personal life event. Empty moments are valid only with a
 structured abstention: {reasonRef}. Select a scope: passage entry from
 omissionReasonCatalog, even when no selectionCue exists. Its exact source
 evidence is retained locally. A cue reason cannot stand for the whole passage.
-A global abstention does not replace the separate decision for every omitted cue.
+A global abstention does not replace cueDecisions for every cue.
 Use emptyAssessment: uncertain when the selected catalog reason is
 ambiguous-actor, insufficient-event-context or no-readable-source. A passage
 with unresolved personal cues cannot receive a confident administrative negative.

@@ -116,7 +116,7 @@ def read_receipt(file, manifest):
         raise ValueError("Objective receipt integrity does not match its saved identity")
     validate(row["result"], record["body"])
     grounded = grounding.contract_for(manifest)
-    if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.CONTRACT) and any(record.get("nativeRef", {}).get(key) != identity.get(key)
+    if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT) and any(record.get("nativeRef", {}).get(key) != identity.get(key)
                                              for key in ("offset", "end")):
         raise ValueError("Source scope differs from the retained page identity")
     if grounded and "resultProcessing" not in row:
@@ -456,21 +456,30 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                         payload["groundingContract"] = grounded
                         evidence_context = grounding.extraction_context(_source_record(page), manifest)
                         client.schema = grounding.schema_for(page["content"], grounded, evidence_context)
-                        if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.CONTRACT):
+                        if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):
                             payload["selectionCues"] = fact_policy.career_cues(payload["citationCatalog"])
-                            if grounded in (grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.CONTRACT):
+                            if grounded in (grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):
                                 payload["selectionCues"] = grounding.useful_selection.cues(payload["citationCatalog"])
-                            if grounded in (grounding.OMISSION_CONTRACT, grounding.CONTRACT):
+                            if grounded in (grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):
                                 payload["omissionReasonCatalog"] = grounding.omission_policy.catalog(payload["citationCatalog"], evidence_context)
-                                if grounded == grounding.CONTRACT:
+                                if grounded in (grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):
                                     payload["omissionReasonCatalog"] = grounding.explicit_selection.catalog(payload["citationCatalog"], evidence_context)
                                     payload["declarationCatalog"] = grounding.explicit_selection.declarations(payload["citationCatalog"], evidence_context)
-                        if grounded in (grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.CONTRACT):
+                                if grounded in (grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):
+                                    payload["omissionReasonCatalog"] = grounding.cue_decisions.catalog(payload["citationCatalog"], evidence_context)
+                                    payload["declarationCatalog"] = grounding.cue_decisions.declarations(payload["citationCatalog"], evidence_context)
+                                if grounded in (grounding.CLAIM_CONTRACT, grounding.CONTRACT):
+                                    payload["sourceClaimCatalog"] = grounding.claim_typing.catalog(payload["citationCatalog"], evidence_context)
+                                if grounded == grounding.CONTRACT:
+                                    payload["professionalCueCatalog"] = grounding.work_actors.work_catalog(payload["citationCatalog"], evidence_context)
+                                    payload["actorReadingCatalog"] = grounding.work_actors.actors(payload["citationCatalog"], evidence_context)
+                                    payload["omissionReasonCatalog"] = grounding.work_actors.omission_catalog(payload["citationCatalog"], evidence_context)
+                        if grounded in (grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):
                             payload["dateCatalog"] = date_evidence.catalog(payload["citationCatalog"], evidence_context)
                             payload["factTypeCatalog"] = claim_proofs.fact_catalog(payload["citationCatalog"])
                             payload["uncertaintyCatalog"] = (grounding.contextual.catalog(payload["citationCatalog"])
-                                if grounded in (grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.CONTRACT) else claim_proofs.uncertainty_catalog(payload["citationCatalog"]))
-                            if grounded in (grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.CONTRACT):
+                                if grounded in (grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT) else claim_proofs.uncertainty_catalog(payload["citationCatalog"]))
+                            if grounded in (grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):
                                 payload["uncertaintyCatalog"] = grounding.source_observations.qualification_catalog(payload["citationCatalog"])
                     prompt = json.dumps(payload, ensure_ascii=False)
                     saved = result_file(objective, page["pageId"]).is_file() or page["pageId"] in cached_invalid_pages
@@ -562,7 +571,8 @@ def main(argv=None):
         try:
             result = run(args.root, objective, manifest, CoreClient(args.core, task_type=args.task_type, schema=SCHEMA,
                          caller="secretary-objective-review", max_output_tokens=args.max_output_tokens,
-                         thinking=manifest["config"].get("thinking", False)), max_pages=args.max_pages, queue_id=args.queue_request_id,
+                         thinking=manifest["config"].get("thinking", False),
+                         queue_scope=(args.queue_request_id, args.queue_dispatch_id)), max_pages=args.max_pages, queue_id=args.queue_request_id,
                          dispatch_id=args.queue_dispatch_id, per_source_pages=args.max_pages_per_source,
                          max_seconds=args.max_seconds, priority=priority, retain_rejected_pages=args.retain_rejected_pages,
                          stop=lambda: bool(stopping))

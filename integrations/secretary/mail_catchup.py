@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import sys
 import time
@@ -130,11 +131,16 @@ class Busy(Exception):
 
 class CoreClient:
     def __init__(self, base, task_type="analysis", light_model=None, light_host=None, timeout=900,
-                 opener=urllib.request.urlopen, schema=None, caller="secretary-catchup", max_output_tokens=None, thinking=False):
+                 opener=urllib.request.urlopen, schema=None, caller="secretary-catchup", max_output_tokens=None, thinking=False,
+                 queue_scope=None):
         self.base, self.task_type = base.rstrip("/"), task_type
         self.schema, self.caller = schema or REVIEW_SCHEMA, caller
         self.light_model, self.light_host = light_model, light_host
         self.timeout, self.opener = timeout, opener
+        if queue_scope is not None and (not isinstance(queue_scope, tuple) or len(queue_scope) != 2
+                or any(not isinstance(v, str) or not re.fullmatch(r'[a-f0-9-]{36}', v) for v in queue_scope)):
+            raise ValueError('Scoped coordination needs the exact Core queue and dispatch identities')
+        self.queue_scope = queue_scope
         if type(thinking) is not bool:
             raise ValueError("thinking must be an explicit boolean")
         self.thinking = thinking
@@ -195,6 +201,20 @@ class CoreClient:
             return "maintenance"
         if data.get("drain"):
             return "deploy pending"  # a recreate is announced: yield before the next page (#253)
+        if self.queue_scope:
+            queue_id, dispatch_id = self.queue_scope
+            try:
+                _, reply, _ = self._call('GET', '/api/cluster/schedule/work-queue/' + queue_id +
+                                       '/operator-release?dispatchId=' + dispatch_id)
+                release = reply.get('data') or {}
+                if release.get('contract') != 'agentx.operator-release/v1' \
+                        or release.get('authority') != 'core.runtime-coordination' \
+                        or release.get('queueRequestId') != queue_id or release.get('dispatchId') != dispatch_id \
+                        or type(release.get('runtimeReleased')) is not bool:
+                    return 'scoped runtime evidence unavailable'
+                return None if release['runtimeReleased'] else 'native resources held for this dispatch'
+            except (Busy, RuntimeError, ValueError) as exc:
+                return str(exc) or 'scoped runtime evidence unavailable'
         kinds = sorted({w.get("kind") or "workload" for w in data.get("workloads") or []})
         return f"{', '.join(kinds)} running" if kinds else None
 

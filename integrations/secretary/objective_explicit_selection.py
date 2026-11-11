@@ -19,7 +19,7 @@ FINISHED = re.compile(r'\b(?:mon|ma|mes|notre|nos)\s+[^.!?\r\n]{1,100}?\b(?:est|
                       r'(?:(?:bien|d[eé]j[aà]|enfin)\s+)?(?:termin[eé]\w*|fini\w*|achev[eé]\w*)\b', re.I)
 
 
-def declarations(spans, context=None):
+def reading_contexts(spans, context=None):
     context = context if isinstance(context, dict) else {}
     aliases = context.get('ownerAliases', [])
     aliases = aliases if isinstance(aliases, list) else []
@@ -34,6 +34,11 @@ def declarations(spans, context=None):
         elif FORWARDED.match(span['text']) or PARTIAL_REPLY.match(span['text']) or span['text'].lstrip().startswith('>'):
             owner, basis, header = False, 'unresolved-speaker', None
         contexts[span['id']] = (owner, basis, header)
+    return contexts
+
+
+def declarations(spans, context=None):
+    contexts = reading_contexts(spans, context)
     reservations = {r['citationIds'][0] for r in observations.qualification_catalog(spans)}
     result = []
     for cue in selection.cues(spans):
