@@ -82,6 +82,19 @@ test('mail recall keeps its envelope and adds bounded links from the shared Core
   } finally { recall.mockRestore(); }
 });
 
+test('context suggestions stay read-only proposals with bounded arguments (#24)', async () => {
+  const service = require('../../src/services/ownerContextSuggestions');
+  const suggest = jest.spyOn(service, 'suggest').mockResolvedValue({ authority: 'agentx.core', suggestions: [], status: { complete: true, unavailable: [] } });
+  try {
+    expect(TOOLS.find(tool => tool.name === 'context_suggestions').annotations.readOnlyHint).toBe(true);
+    expect((await call('context_suggestions', { limit: 3, horizonDays: 2 })).result.structuredContent.authority).toBe('agentx.core');
+    expect(suggest).toHaveBeenCalledWith({ limit: 3, horizonDays: 2 });
+    for (const refused of [{ limit: 11 }, { horizonDays: 15 }, { create: true }, { audience: 'family' }]) {
+      expect((await call('context_suggestions', refused)).result.isError).toBe(true);
+    }
+    expect(suggest).toHaveBeenCalledTimes(1);
+  } finally { suggest.mockRestore(); }
+});
 test('living source tools bind owner authority and cannot accept a client audience', async () => {
   const source_catalogue = jest.fn(async () => ({ kind: 'living_source_catalogue', audience: 'owner', sources: [] }));
   const source_read = jest.fn(async () => ({ kind: 'living_source', audience: 'owner', source: 'secretary' }));

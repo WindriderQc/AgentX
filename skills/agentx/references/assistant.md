@@ -34,6 +34,10 @@ needs her tools, not for an ordinary task or calendar entry.
 - **Life history** (`life_history`, owner bus): find and read the owner's
   moments with their Atlas link. `propose` and `add` file proposals only; the
   owner accepts or refuses them in Life Atlas. Quote the owner's own words.
+- **Suggestions** (`context_suggestions`, owner bus): on request, or at the
+  start of a personal conversation, read bounded proposals (task evidence to
+  review, near souvenir anniversaries, Atlas proposals waiting). Mention only
+  relevant ones, with their source; they create or schedule nothing.
 - No match does not prove a fact or document never existed.
 
 ## Personal tasks
