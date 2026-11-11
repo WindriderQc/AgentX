@@ -49,6 +49,15 @@ proposal for them. This gate never merges interpretations or establishes that
 a request is resolved. Objectives under the earlier contract retain their
 existing publication behavior.
 
+Native objective workers retain the exact Core queue/dispatch scope. Before a
+page and after worker termination, Core's read-only `operator-release` evidence
+reports physical overlap for that scope, including aliases and uncertain holders.
+Unrelated workloads do not block it; maintenance and announced Core recreation
+still pause it. Missing, mismatched or held scope evidence fails closed. This
+observation grants no execution or release: queue assertion, inference admission
+and the terminal Core recheck remain authoritative. Other workload owners and
+quarantines are never cleared. Unscoped catch-up retains its conservative guard.
+
 New objectives use `secretary.objective-grounding/v14` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;

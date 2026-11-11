@@ -571,7 +571,8 @@ def main(argv=None):
         try:
             result = run(args.root, objective, manifest, CoreClient(args.core, task_type=args.task_type, schema=SCHEMA,
                          caller="secretary-objective-review", max_output_tokens=args.max_output_tokens,
-                         thinking=manifest["config"].get("thinking", False)), max_pages=args.max_pages, queue_id=args.queue_request_id,
+                         thinking=manifest["config"].get("thinking", False),
+                         queue_scope=(args.queue_request_id, args.queue_dispatch_id)), max_pages=args.max_pages, queue_id=args.queue_request_id,
                          dispatch_id=args.queue_dispatch_id, per_source_pages=args.max_pages_per_source,
                          max_seconds=args.max_seconds, priority=priority, retain_rejected_pages=args.retain_rejected_pages,
                          stop=lambda: bool(stopping))
