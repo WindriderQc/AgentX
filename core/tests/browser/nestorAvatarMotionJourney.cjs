@@ -115,8 +115,13 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   assert.ok(await page.locator('.avatar-camera').isHidden(), 'camera setup is hidden with settings on load');
   await page.evaluate(() => dispatchEvent(new CustomEvent('persona-activity', { detail: { space: 'family', kind: 'execution', completed: false,
     data: { execution: { backend: 'agentx', model: 'synthetic-guardian', continuity: { state: 'backup', reason: 'primary_busy' } } } } })));
+  assert.match(await page.locator('.avatar-scene-brain-badge').textContent(), /Gardien/);
+  assert.ok(await page.locator('.avatar-scene-brain-badge').isVisible(), 'the guardian badge shows on the full-screen face');
+  await page.locator('.avatar-scene-brain-badge').click();
   assert.match(await page.locator('.avatar-scene-execution').textContent(), /Gardien.*synthetic-guardian.*autre demande/);
-  assert.ok(await page.locator('.avatar-scene-execution').isVisible());
+  assert.ok(await page.locator('.avatar-scene-execution').isVisible(), 'a tap on the badge opens the detail');
+  await capture('brain-panel');
+  await page.locator('.avatar-scene-brain-badge').click();
   await capture('camera-off');
   await settings();
   assert.equal(await page.locator('#conversationSettings .avatar-camera').count(), 1, 'camera setup belongs to settings');
@@ -124,7 +129,7 @@ HTMLCanvasElement.prototype.getContext=function(kind,...args){
   assert.equal(await page.evaluate(() => mediaCalls.length), 0, 'opening settings does not request a camera');
   await page.evaluate(() => { const photo = document.createElement('section'); photo.className = 'nestor-idle-photos'; document.body.append(photo); });
   assert.ok(await page.locator('.avatar-camera').isHidden(), 'inactive setup never covers photos, even with settings open');
-  assert.ok(await page.locator('.avatar-scene-execution').isHidden(), 'execution status never covers photos');
+  assert.ok(await page.locator('.avatar-scene-brain-badge').isHidden(), 'execution status never covers photos');
   await capture('photos-camera-off');
   await page.evaluate(() => document.querySelector('.nestor-idle-photos').remove());
   await page.setViewportSize({ width: 360, height: 780 });

@@ -1,13 +1,16 @@
-/* Nestor's living full screen on Famille: a sky that follows the real weather behind him
+/* Nestor's living full screen on Famille and Super Dad: a sky that follows the real weather behind him
    (after sunset, the real Moon, planets and stars above the house),
    the weather beside the date, a few short notes under the clock, the ISS drawn across the sky when it passes, now and
    then a silent guided visit of the connected house to the machine an alert names, and,
-   when the kitchen is quiet, Nestor painting one of the family's pictures with particles.
+   when the house is quiet, Nestor painting one of the family's pictures with particles.
+   The system alert note is the owner's: Super Dad shows it as a link to the operations watch,
+   Famille never shows it (the silent visit stays).
    The rules live in nestor-ambient-choice.js. Nothing here speaks, listens or sends a turn:
    talking to Nestor (or typing) removes everything but the background, and Escape closes
    what he shows. Only the full-screen "plein" view is decorated. */
 (function (root) {
   'use strict';
+  const ALERTS_URL = '/nerve-center#sectionOpsWatch';
   const POLL_MS = 2 * 60 * 1000;
   const DECIDE_MS = 5000;
   const FRAME_MS = 1000 / 30;
@@ -84,6 +87,7 @@
     };
     const asleep = () => ['listening', 'hearing'].includes(state) && !!sample?.asleep?.();
     const standby = () => !(ACTIVE_STATES.includes(state) && !asleep()) && !typing();
+    const chipsFor = list => chipsForSpace(list, space);
     const momentId = moment => (moment?.kind === 'iss' ? 'iss:' + moment.pass.start : moment?.kind === 'visit' ? 'visit:' + moment.key
       : moment?.kind === 'paint' ? 'paint:' + moment.id : null);
 
@@ -114,7 +118,7 @@
       if (host && canvas.parentElement !== host) host.prepend(canvas);
       const shown = plein() && !photosShown();
       artx?.tick({ snapshot, quiet, visible: shown && !doc.hidden && !!ctx });
-      renderChips(shown ? next.chips : []);
+      renderChips(shown ? chipsFor(next.chips) : []);
       if (next.moment?.kind === 'visit' && shown) openVisit(next.moment, at); else if (next.moment?.kind !== 'visit') closeVisit();
       if (next.moment?.kind === 'paint' && shown) startPaint(next.moment); else if (painting) endPaint();
       if (next.moment?.kind !== 'iss' && next.background.kind !== particleKind) { particleKind = next.background.kind; particles = []; }
@@ -148,7 +152,14 @@
         const item = doc.createElement('li');
         item.className = 'nestor-ambient-chip';
         item.dataset.tone = chip.tone;
-        item.textContent = chip.text;
+        if (chip.id === 'alert') {
+          const link = doc.createElement('a');
+          link.href = ALERTS_URL;
+          link.title = 'Ouvrir la veille des opérations dans Nerve Center';
+          link.textContent = chip.text;
+          item.dataset.link = 'true';
+          item.append(link);
+        } else item.textContent = chip.text;
         return item;
       }));
       chips.hidden = !list.length;
@@ -651,5 +662,10 @@
       context: () => artx?.context({ visible: !!ctx && plein() && !doc.hidden && !photosShown() }), decide, dispose };
   }
 
-  root.NestorAmbient = { mount };
+  // The system alert note belongs to the owner's space; the kitchen keeps only the silent visit.
+  function chipsForSpace(list, space) {
+    return space === 'family' ? list.filter(chip => chip.id !== 'alert') : list;
+  }
+
+  root.NestorAmbient = { mount, chipsForSpace };
 })(typeof window !== 'undefined' ? window : globalThis);
