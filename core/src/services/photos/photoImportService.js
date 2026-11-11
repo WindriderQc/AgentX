@@ -8,19 +8,21 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { digest, fail, inside, verify, syncDir, writeJson, publishDirectory, safeDirectory } = require('./importFiles');
+const { MEDIA, sourceExtension, prefixBytes } = require('./importFormats');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HASH = /^[0-9a-f]{64}$/;
-const MEDIA = /\.(jpe?g|png|gif|webp|heic|heif|avif|tiff?|bmp|dng|raw|cr2|cr3|nef|arw|rw2|orf|raf|mpo|mp4|mov|m4v|3gp|3gpp|avi|mkv|webm|mts|m2ts|xmp|aae)$/i;
 const validId = (id) => { if (!UUID.test(id || '')) throw fail('INVALID_ID', 'Expected a UUID'); return id.toLowerCase(); };
 const text = (value, max = 4096) => typeof value === 'string' && value.length > 0 && value.length <= max && !value.includes('\0');
 const readJson = async (file) => JSON.parse(await fs.readFile(file, 'utf8'));
 
 function source(value) {
   if (!value || !text(value.key) || !text(value.name, 255) || !text(value.relativePath) ||
-      !Number.isSafeInteger(value.size) || value.size <= 0 || !MEDIA.test(value.name)) throw fail('INVALID_SOURCE', 'Invalid or unsupported media source');
+      !Number.isSafeInteger(value.size) || value.size <= 0 || !sourceExtension(value)) throw fail('INVALID_SOURCE', 'Invalid or unsupported media source');
+  if (value.header !== undefined && !prefixBytes(value.header)?.length) throw fail('INVALID_SOURCE', 'Invalid source signature prefix');
   return { key: value.key, name: value.name, relativePath: value.relativePath, size: value.size,
-    modified: typeof value.modified === 'string' ? value.modified.slice(0, 100) : null };
+    modified: typeof value.modified === 'string' ? value.modified.slice(0, 100) : null,
+    ...(value.header ? { header: value.header } : {}) };
 }
 
 async function createPhotoImportService({ root, findExisting = async () => ({ path: null, coverage: 'import-library-only' }) }) {
@@ -128,22 +130,26 @@ async function createPhotoImportService({ root, findExisting = async () => ({ pa
     const prior = await existingReceipt(ctx);
     if (prior) { for await (const _ of stream) { /* drain this transport */ } return prior; }
     const temp = await fs.mkdtemp(path.join(staging, 'content-'));
-    const fileName = 'original' + path.extname(ctx.source.name).toLowerCase();
+    const fileName = 'original' + sourceExtension(ctx.source);
     const file = path.join(temp, fileName);
     try {
       const handle = await fs.open(file, 'wx', 0o600);
       const hash = crypto.createHash('sha256');
+      let prefix = Buffer.alloc(0);
       let bytes = 0;
       try {
         for await (const chunk of stream) {
-          bytes += chunk.length;
+          const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          bytes += data.length;
           if (bytes > ctx.size) throw fail('SOURCE_SIZE_MISMATCH', 'Source stream exceeds manifest size');
-          hash.update(chunk);
-          await handle.writeFile(chunk);
+          hash.update(data);
+          if (prefix.length < 64) prefix = Buffer.concat([prefix, data.subarray(0, 64 - prefix.length)]);
+          await handle.writeFile(data);
         }
         await handle.sync();
       } finally { await handle.close(); }
       if (bytes !== ctx.size || hash.digest('hex') !== ctx.sha256) throw fail('SOURCE_HASH_MISMATCH', 'Incomplete or changed source stream');
+      if (ctx.source.header && !prefix.equals(prefixBytes(ctx.source.header))) throw fail('SOURCE_FORMAT_CHANGED', 'Source prefix changed since the signature audit');
       await verify(file, ctx);
       await writeJson(path.join(temp, 'content.json'), { sha256: ctx.sha256, size: ctx.size, file: fileName, requestId: ctx.requestId });
       // Match a readable Media archive once verified. The configured root
@@ -168,7 +174,7 @@ async function createPhotoImportService({ root, findExisting = async () => ({ pa
       try { await verify(record.path, record); counts[record.disposition === 'copied' ? 'copied' : 'duplicates']++; }
       catch { counts.failedVerification++; }
     }
-    const libraryCoverageComplete = run.coverage.enumerationComplete === true && !run.coverage.remaining;
+    const libraryCoverageComplete = run.coverage.enumerationComplete === true && !run.coverage.remaining && run.coverage.signatureAuditComplete !== false;
     return { runId: run.runId, state: counts.pending || counts.failedVerification || !libraryCoverageComplete ? 'incomplete' : 'complete', counts, libraryCoverageComplete,
       coverage: run.coverage, phoneReadOnly: true };
   }

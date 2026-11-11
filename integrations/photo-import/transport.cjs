@@ -6,6 +6,7 @@ const { spawn } = require('node:child_process');
 const { pipeline } = require('node:stream/promises');
 const { Readable } = require('node:stream');
 const crypto = require('node:crypto');
+const os = require('node:os');
 
 const quote = (arg) => "'" + String(arg).replace(/'/g, "'\\''") + "'";
 
@@ -93,8 +94,12 @@ function createFileRemote(config, command) {
 function createWpd(cache) {
   const script = path.join(__dirname, 'wpd.ps1');
   async function call(action, request) {
-    let file;
+    let file, releaseReader;
     try {
+      if (request?.deviceId) {
+        const key = crypto.createHash('sha256').update(request.deviceId).digest('hex');
+        releaseReader = await lockCache(path.join(os.tmpdir(), 'agentx-wpd-' + key + '.lock'));
+      }
       const args = ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', script, '-Action', action];
       if (request) {
         file = path.join(cache, `wpd-${require('node:crypto').randomUUID()}.json`);
@@ -102,9 +107,14 @@ function createWpd(cache) {
         args.push('-RequestFile', file);
       }
       return await childResult(spawn('powershell.exe', args, { windowsHide: true }));
-    } finally { if (file) await fs.rm(file, { force: true }); }
+    } finally {
+      try { if (file) await fs.rm(file, { force: true }); }
+      finally { if (releaseReader) await releaseReader(); }
+    }
   }
   return { devices: () => call('devices'), inventory: deviceId => call('inventory', { deviceId }),
+    prefixes: (deviceId, objects, prefixJournal) => call('prefixes', { deviceId, objects, prefixJournal }),
+    spool: (deviceId, items, spoolRoot) => call('spool', { deviceId, items, spoolRoot }),
     read: (deviceId, item, destination) => call('read', { deviceId, objectId: item.objectId, relativePath: item.relativePath, destination }) };
 }
 

@@ -196,6 +196,26 @@ namespace AgentX.PhotoImport {
         return new Dictionary<string,object>{{"sha256",sha},{"size",total},{"source",before},{"phoneReadOnly",true},{"sourceChecksumIndependent",false}};
       } finally { Marshal.FreeCoTaskMem(bytesRead);Release(stream);Release(resources); }
     }
+    public string ReadPrefix(string id) {
+      Resources resources=null;IStream stream=null;IntPtr count=Marshal.AllocCoTaskMem(4);
+      try {
+        content.Transfer(out resources);uint optimal=0;
+        var key=new Key("E81E79BE-34F0-41BF-B53F-F1A06AE87842",0);
+        resources.GetStream(id,ref key,0,ref optimal,out stream);
+        // Drain the resource: some MTP drivers keep the device busy when an
+        // object stream is abandoned after a short read. Retain only 64 bytes.
+        byte[] bytes=new byte[1024*1024];int total=0;
+        using(var output=new MemoryStream()) {
+          while(true) {
+            Marshal.WriteInt32(count,0);stream.Read(bytes,bytes.Length,count);
+            int n=Marshal.ReadInt32(count);if(n==0)break;
+            if(n<0 || n>bytes.Length)throw new IOException("Invalid WPD prefix size");
+            int keep=Math.Min(n,64-total);if(keep>0)output.Write(bytes,0,keep);total+=keep;
+          }
+          return Convert.ToBase64String(output.ToArray());
+        }
+      } finally {Marshal.FreeCoTaskMem(count);Release(stream);Release(resources);}
+    }
     public void Dispose() {
       Release(properties);properties=null;Release(content);content=null;
       if(device!=null) { try {device.Close();}finally{Release(device);device=null;} }

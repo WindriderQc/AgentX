@@ -34,6 +34,13 @@ successful job's own transport files. Failed or uncertain jobs are preserved.
 | `status` | Header: `runId` | Reverified counts of copied, duplicate, pending and failed verification, plus original coverage. A bounded or incomplete inventory remains explicit. |
 | `ping` | No payload | Receiver configuration/filesystem availability. |
 
+File envelopes also accept `batch`: its JSON payload holds the same frozen
+`manifest` and `contents` (`requestId`, `size`, `sha256`). Transported originals
+are named `<requestId>.media` inside that envelope. Core performs the same
+lookup/receive and destination verification for every item; interrupted batches
+retain their original IDs and resume through existing receipts. Missing payloads
+remain pending. Cleanup refuses an incomplete batch.
+
 Run manifests and receipts live under `<root>/.agentx-import/runs`. Originals
 live in `<root>/Originals/<hash-prefix>/<full-sha256>/original.<extension>`;
 `content.json` records publication identity. Different names with equal bytes
@@ -139,6 +146,24 @@ spool. Changed phone content needs a new run; it never changes an existing
 request's hash. Completed sources in the same run need no new phone read.
 The Windows staging lock is a kernel-owned exclusive file handle, released
 when its helper exits even if the importer is killed; its filename is not a lease.
+WPD readers also share one kernel-owned lock per device across cache directories.
+Inventory, signature audit and copying are serialized; two MTP readers are never
+started by the adapter on the same device at once.
+
+Before selection, the signature audit checks unrecognized names and extensionless
+objects for JPEG, PNG, GIF, WebP, TIFF, BMP, JPEG XL and common ISO media signatures.
+Only 64 prefix bytes are retained; object streams are drained before closing
+because some MTP drivers remain busy after an abandoned partial read. Prefix
+checkpoints bind the object ID, persistent key, size and modification marker;
+failed reads are retried rather than cached as non-images. An unreadable prefix
+or an unprobed file keeps coverage incomplete. Signature-selected originals get
+the detected archive extension while retaining the original name/provenance.
+Their full transferred prefix is checked again at publication.
+
+Native adapters expose `prefixes` and `spool` for bounded bulk transport on one
+open WPD reader. They stop after repeated device-unavailable/busy errors, keep
+completed local spools and use the same Core lookup/publication contracts.
+They do not treat a failed USB read as a duplicate or a completed backup.
 
 Large shared I/O/hash campaigns launched by coding sessions follow the
 instance's heavy-work queue and native execution procedure. A small synthetic

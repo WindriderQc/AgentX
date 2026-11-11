@@ -11,6 +11,8 @@ const { createImportInventory } = require('../../../core/src/services/photos/imp
 const { runImport } = require('../import.cjs');
 const { readRequest, execute } = require('../receiver.cjs');
 const { quote } = require('../transport.cjs');
+const { signatureExtension, classifyInventory } = require('../../../core/src/services/photos/importFormats');
+const { executeBatch } = require('../receiver.cjs');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 
 async function fixture(t, options = {}) {
@@ -170,6 +172,46 @@ test('native file envelopes publish a durable response and clean only their own 
   const result = await run({ action: 'receive', ...f.input }, 'hello');
   assert.equal(result.disposition, 'copied');
   assert.equal((await f.service.lookup(f.input)).path, result.path);
+});
+
+test('signatures recover extensionless/cache images without guessing from arbitrary text', async () => {
+  const png = Buffer.from('89504e470d0a1a0a0000000000000000', 'hex').toString('base64');
+  assert.equal(signatureExtension(png), '.png');
+  assert.equal(signatureExtension(Buffer.from('not a picture').toString('base64')), null);
+  assert.equal(signatureExtension('not base64'), null);
+  const files = [{ objectId: '1', key: '1', name: 'cache.file', size: 16 }, { objectId: '2', key: '2', name: 'picture.jpg', size: 16 }, { objectId: '3', key: '3', name: 'noextension', size: 10 }];
+  const audit = classifyInventory(files, [{ objectId: '1', header: png }, { objectId: '3', header: Buffer.from('plain text').toString('base64') }]);
+  assert.equal(audit.selected.length, 2); assert.equal(audit.signatureMatches, 1); assert.equal(audit.nonMedia, 1); assert.equal(audit.signatureAuditComplete, true);
+  assert.equal(classifyInventory(files, []).signatureAuditComplete, false);
+  assert.equal(classifyInventory(files, [{ objectId: '1', header: '' }]).errors.length, 1);
+});
+
+test('a signature-selected original retains its original name in provenance and verifies the prefix', async t => {
+  const f = await fixture(t);
+  const bytes = Buffer.alloc(64); Buffer.from('ffd8ffe1', 'hex').copy(bytes);
+  f.manifest.sources[0] = { ...f.item, name: 'image.file', size: 64, header: bytes.toString('base64') };
+  await f.service.begin(f.manifest);
+  const input = { ...f.input, size: 64, sha256: hash(bytes) };
+  const result = await f.service.receive(input, Readable.from([bytes]));
+  assert.match(result.path, /original\.jpg$/); assert.equal(result.source.name, 'image.file');
+  const g = await fixture(t);g.manifest.sources[0] = { ...g.item, name: 'image.file', size: 64, header: bytes.toString('base64') };
+  await g.service.begin(g.manifest);
+  const changed = Buffer.from(bytes);changed[8] = 1;
+  await assert.rejects(g.service.receive({ ...g.input, size: 64, sha256: hash(changed) }, Readable.from([changed])), { code: 'SOURCE_FORMAT_CHANGED' });
+});
+
+test('batch transfer keeps canonical resume and exact duplicate semantics with missing payloads', async t => {
+  const f = await fixture(t); const directory = path.join(f.dir, 'batch'); await fs.mkdir(directory);
+  const other = { ...f.item, key: 'two', requestId: crypto.randomUUID(), relativePath: 'Pictures/other.jpg' };
+  f.manifest.sources.push(other);
+  const plan = { manifest: f.manifest, contents: [f.input, { ...f.input, requestId: other.requestId }] };
+  await fs.writeFile(path.join(directory, f.input.requestId + '.media'), 'hello');
+  // A duplicate is resolved through Core and needs no second transported file.
+  const result = await executeBatch({ root: f.root }, plan, directory);
+  assert.equal(result.state, 'complete'); assert.equal(result.counts.copied, 1); assert.equal(result.counts.duplicates, 1);
+  await fs.rm(path.join(directory, f.input.requestId + '.media'));
+  const resumed = await executeBatch({ root: f.root }, plan, directory);
+  assert.deepEqual(resumed.counts, result.counts);
 });
 
 function sourceAdapter(files) {

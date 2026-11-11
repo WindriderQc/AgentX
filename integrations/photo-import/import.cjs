@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { MEDIA } = require('../../core/src/services/photos/photoImportService');
+const { classifyInventory } = require('../../core/src/services/photos/importFormats');
 const { hashFile } = require('../../core/src/services/photos/importFiles');
 const { createRemote, createWpd, lockCache } = require('./transport.cjs');
 
@@ -42,12 +43,19 @@ async function runImport(config, { source, remote, deviceId, resume, limit = 100
     log('Lecture de l’inventaire USB en cours; le téléphone reste en lecture seule.');
     const inventory = await source.inventory(deviceId);
     currentInventory = inventory;
-    const selected = inventory.files.filter(item => MEDIA.test(item.name) && Number.isSafeInteger(item.size) && item.size > 0);
+    const unknown = inventory.files.filter(item => item.size > 0 && !MEDIA.test(item.name));
+    const prefixes = unknown.length && source.prefixes ? await source.prefixes(deviceId,
+      unknown.map(({ objectId, key, size, modified }) => ({ objectId, key, size, modified })),
+      path.join(config.cacheRoot, 'wpd-prefix-' + SHA(deviceId) + '.jsonl')) : { entries: [] };
+    const audit = classifyInventory(inventory.files, prefixes.entries);
+    const selected = audit.selected;
     if (!selected.length) throw new Error('No readable media exposed by USB. Check phone unlock/file-transfer mode.');
     const runId = crypto.randomUUID();
     const coverage = { transport: 'windows-wpd-mtp-read-only', enumerationComplete: inventory.complete,
       enumerationErrors: inventory.errors, objectsVisited: inventory.objectsVisited,
       mediaFound: selected.length, selected: Math.min(limit, selected.length), remaining: Math.max(0, selected.length - limit),
+      signatureAuditComplete: audit.signatureAuditComplete, signatureMatches: audit.signatureMatches,
+      signatureErrors: audit.errors, unprobedFiles: audit.unprobed,
       inaccessibleScope: 'App-private and cloud-only originals are not available through this USB inventory.' };
     state = { schema: 'agentx.photo-import-client/v1', runId, deviceId, deviceKey: SHA(deviceId), coverage,
       items: selected.slice(0, limit).map(item => ({ ...item, requestId: crypto.randomUUID() })) };
@@ -57,7 +65,7 @@ async function runImport(config, { source, remote, deviceId, resume, limit = 100
   // Host/configuration are transport choices, never persisted replacements for
   // Core receipts. A retry keeps the frozen run, source and request identities.
   const manifest = { runId: state.runId, deviceKey: state.deviceKey, coverage: state.coverage,
-    sources: state.items.map(({ requestId, key, name, relativePath, size, modified }) => ({ requestId, key, name, relativePath, size, modified })) };
+    sources: state.items.map(({ requestId, key, name, relativePath, size, modified, header }) => ({ requestId, key, name, relativePath, size, modified, ...(header ? { header } : {}) })) };
   log(`Import ${state.runId}: ${state.items.length} fichier(s). Reprise: --resume ${state.runId}`);
   await remote({ action: 'begin' }, { json: manifest });
   // Refuse concurrent local transport sessions without stealing an old lock.

@@ -38,11 +38,15 @@ async function readJsonBody(body) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
-async function execute(config, header, body) {
+async function serviceFor(config) {
   if (config.expectedDevice !== undefined && (await fs.stat(config.root)).dev !== config.expectedDevice) {
     throw fail('MEDIA_VOLUME_MISMATCH', 'Media filesystem identity changed or is unmounted');
   }
-  const service = await createPhotoImportService({ root: config.root, findExisting: createImportInventory(config.inventory || {}) });
+  return createPhotoImportService({ root: config.root, findExisting: createImportInventory(config.inventory || {}) });
+}
+
+async function execute(config, header, body) {
+  const service = await serviceFor(config);
   switch (header.action) {
     case 'begin': return service.begin(await readJsonBody(body));
     case 'lookup': return service.lookup(header);
@@ -51,6 +55,31 @@ async function execute(config, header, body) {
     case 'ping': return { schema: 'agentx.photo-import/v1', ready: true, phoneReadOnly: true };
     default: throw fail('INVALID_ACTION', 'Unknown import action');
   }
+}
+
+async function executeBatch(config, plan, directory) {
+  if (!Array.isArray(plan.contents) || plan.contents.length > 100000) throw fail('INVALID_PROTOCOL', 'Invalid batch content list');
+  const service = await serviceFor(config);
+  await service.begin(plan.manifest);
+  const errors = [];
+  let processed = 0;
+  for (const item of plan.contents) {
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(item.requestId || '')) throw fail('INVALID_ID', 'Invalid batch request identity');
+    const input = { runId: plan.manifest.runId, requestId: item.requestId, size: item.size, sha256: item.sha256 };
+    try {
+      const existing = await service.lookup(input);
+      if (existing.needsUpload) {
+        const file = path.join(directory, item.requestId + '.media');
+        if (await fs.realpath(file) !== file) throw fail('UNSAFE_PATH', 'Batch payload cannot contain symlinks');
+        await service.receive(input, createReadStream(file));
+      }
+    } catch (error) {
+      errors.push({ requestId: item.requestId, code: error.code || 'IMPORT_FAILED', message: error.message });
+      if (['INVENTORY_UNAVAILABLE', 'ENOSPC', 'MEDIA_VOLUME_MISMATCH'].includes(error.code)) break;
+    }
+    if (++processed % 100 === 0) process.stderr.write(`IMPORT_BATCH_PROCESSED ${processed}/${plan.contents.length}\n`);
+  }
+  return { ...await service.status({ runId: plan.manifest.runId }), errors };
 }
 
 async function main() {
@@ -64,6 +93,15 @@ async function main() {
     if (args[2] === '--cleanup') {
       const response = JSON.parse(await fs.readFile(path.join(dir, 'response.json'), 'utf8'));
       if (!response.ok) throw fail('TRANSPORT_UNCERTAIN', 'Only a successful envelope can be cleaned');
+      const header = JSON.parse(await fs.readFile(path.join(dir, 'request.json'), 'utf8'));
+      if (header.action === 'batch') {
+        if (response.data?.state !== 'complete') throw fail('TRANSPORT_UNCERTAIN', 'Incomplete batch payloads remain available for recovery');
+        const plan = await readJsonBody(createReadStream(path.join(dir, 'payload.bin')));
+        for (const item of plan.contents) {
+          if (!/^[a-f0-9-]{36}$/.test(item.requestId || '')) throw fail('INVALID_ID', 'Invalid cleanup identity');
+          await fs.rm(path.join(dir, item.requestId + '.media'), { force: true });
+        }
+      }
       for (const name of ['request.json', 'payload.bin', 'response.json']) await fs.rm(path.join(dir, name), { force: true });
       await fs.rmdir(dir);
       return;
@@ -73,8 +111,9 @@ async function main() {
     const payload = path.join(dir, 'payload.bin');
     let result;
     try {
-      const body = ['begin', 'receive'].includes(header.action) ? createReadStream(payload) : Readable.from([]);
-      result = { ok: true, data: await execute(config, header, body) };
+      const body = ['begin', 'receive', 'batch'].includes(header.action) ? createReadStream(payload) : Readable.from([]);
+      result = { ok: true, data: header.action === 'batch'
+        ? await executeBatch(config, await readJsonBody(body), dir) : await execute(config, header, body) };
     } catch (error) { result = { ok: false, error: { code: error.code || 'IMPORT_FAILED', message: error.message } }; }
     const handle = await fs.open(path.join(dir, 'response.json'), 'wx', 0o600);
     try { await handle.writeFile(JSON.stringify(result) + '\n'); await handle.sync(); } finally { await handle.close(); }
@@ -91,4 +130,4 @@ if (require.main === module) main().catch(error => {
   process.exitCode = 1;
 });
 
-module.exports = { execute, readRequest };
+module.exports = { execute, executeBatch, readRequest };
