@@ -112,11 +112,15 @@ async function search(input = {}) {
     if (input.until !== undefined) filter.occurredAt.$lte = dateOf(input.until, 'until');
   }
   const limit = Math.max(1, Math.min(50, Math.trunc(Number(input.limit)) || 10));
+  const offset = Number(input.offset ?? 0);
+  if (!Number.isSafeInteger(offset) || offset < 0) throw error('offset must be a nonnegative safe integer');
   const [rows, total] = await Promise.all([
-    MailJournalEntry.find(filter).sort({ occurredAt: -1, _id: -1 }).limit(limit).lean(),
+    MailJournalEntry.find(filter).sort({ occurredAt: -1, _id: -1 }).skip(offset).limit(limit).lean(),
     MailJournalEntry.countDocuments(filter)
   ]);
-  return { ok: true, authority: 'agentx.core', entries: rows.map(project), total, truncated: rows.length < total };
+  return { ok: true, authority: 'agentx.core', entries: rows.map(project), total, truncated: offset + rows.length < total,
+    pagination: { limit, offset, returned: rows.length, hasMore: offset + rows.length < total,
+      nextOffset: offset + rows.length < total ? offset + rows.length : null, consistency: 'live', order: ['occurredAt:desc', '_id:desc'] } };
 }
 
 async function operate(input = {}) {

@@ -19,7 +19,7 @@ const capability = (over = {}) => buildLaneCapability({
     performanceKneeContext: 32768, recommendationStatus: 'verified', modelTheoreticalMax: 262144,
     lastValidatedAt: '2026-10-07T23:00:00Z', ...over
   },
-  performanceProfile: { _id: 'p', artifact: { digest: 'sha256:aaa' },
+  performanceProfile: { _id: 'p', artifact: { digest: 'sha256:aaa', runtimeFingerprint: 'rt' },
     profile: { profileDepth: 'standard', tokensPerSec: 53.6, promptEvalTokensPerSec: 1450, ttftP50Ms: 820, comparisonNumCtx: 8192,
       profiledAt: '2026-10-07T23:02:00Z' } },
   now: NOW
@@ -254,4 +254,14 @@ describe('lane card Ollama version drift (#908)', () => {
     expect(html).toContain('data-lane-action="measure"');
     expect(html).toContain('The installed Ollama version differs');
   });
+});
+
+test('shows unknown instead of zero for historical missing concurrency measurements', () => {
+  const item = lane();
+  item.capability.concurrency = { status: 'measured', pairs: [
+    { status: 'measured', model: 'peer', selfSlowdownPct: null, otherSlowdownPct: null }
+  ] };
+  const html = ui.renderLaneCard(item);
+  expect(html).not.toContain('0 %');
+  expect(html).toContain('unknown');
 });

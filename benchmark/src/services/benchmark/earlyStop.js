@@ -18,11 +18,12 @@ const { EARLY_STOP_POLICY } = require('./executionPolicy');
 const MIN_JUDGED = EARLY_STOP_POLICY.minJudged;
 const THRESHOLD = EARLY_STOP_POLICY.threshold; // quality_score is 0–10; <2 = clearly broken
 
-async function evaluateAndPersistEarlyStop({ batchId, model, hostUrl, executionConfig = {}, recordBatchTimelineEvent }) {
+async function evaluateAndPersistEarlyStop({ batchId, model, hostUrl, modelStartedAt, executionConfig = {}, recordBatchTimelineEvent }) {
     if (executionConfig.early_stop_enabled === false) return false;
     const judgedResults = await BenchmarkResult.find({
         batch_id: batchId,
         model,
+        host: hostUrl,
         success: true,
         infra_error: { $ne: true },
         needs_review: { $ne: true },
@@ -44,7 +45,7 @@ async function evaluateAndPersistEarlyStop({ batchId, model, hostUrl, executionC
     });
 
     await BenchmarkBatch.updateOne(
-        { _id: batchId, 'model_timings.model': model },
+        { _id: batchId, model_timings: { $elemMatch: { model, host: hostUrl, started_at: modelStartedAt, completed_at: null } } },
         { $set: {
             'model_timings.$.early_stopped': true,
             'model_timings.$.early_stop_reason': reason,

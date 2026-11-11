@@ -2,7 +2,7 @@
    corner beside what Nestor shows, or the open page), bulle, quart (a quarter of the screen),
    moitie (the right half; the conversation keeps the left), cache (a small reopen tab). */
 /* Camera setup belongs to the conversation settings, outside the face and photo surfaces. */
-.avatar-camera { box-sizing: border-box; padding: 10px 12px; border: 1px solid #647b89;
+.avatar-camera { position: static; box-sizing: border-box; padding: 10px 12px; border: 1px solid #647b89;
   border-radius: 16px; background: #0b1620f5; color: #e5f7fc; font-size: 13px; }
 .avatar-camera p { margin: 0 0 6px; }
 .avatar-camera .avatar-camera-help { font-size: 11px; max-width: 28em; margin: 6px 0 0; }
@@ -109,3 +109,7 @@ body[data-avatar-view=montre] .display-block-figure img { max-height: 72dvh; }
   body[data-avatar-view=montre] .conversation-stage { padding: 108px 12px 96px; }
 }
 @media (prefers-reduced-motion: reduce) { .avatar-dock, .avatar-dock[data-mode=scene], .avatar-dock-orb { transition: none; } }
+
+/* Enforce scene boundaries even if settings were left open before the scene. */
+body[data-avatar-view=plein] .avatar-camera, body[data-avatar-view=montre] .avatar-camera { display: none; }
+.avatar-scene-execution { margin: 0; max-width: 100%; color: var(--soft); text-align: center; overflow-wrap: anywhere; font-size: 13px; text-shadow: 0 1px 8px #060d14; }

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { FAMILY_ELIGIBLE_TOOLS, familyToolNames, familyToolset, parseArguments } = require('../family-tools');
 
 test('Famille is offered only family-eligible Core tools the instance turned on', () => {
-  assert.deepEqual(FAMILY_ELIGIBLE_TOOLS, ['iss_passes', 'web_search', 'network_devices', 'artx_read', 'artx_present']);
+  assert.deepEqual(FAMILY_ELIGIBLE_TOOLS, ['iss_passes', 'source_catalogue', 'source_read', 'web_search', 'network_devices', 'artx_read', 'artx_present']);
   assert.equal(familyToolset({}), null);
   assert.equal(familyToolset({ HOUSEHOLD_FAMILY_TOOLS: 'photo_search, create_todo' }), null);
   assert.deepEqual(familyToolNames({ HOUSEHOLD_FAMILY_TOOLS: ' iss_passes ,create_todo,iss_passes' }), ['iss_passes']);

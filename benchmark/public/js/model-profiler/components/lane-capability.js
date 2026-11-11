@@ -135,7 +135,7 @@ function renderConcurrency(concurrency) {
     return `<p class="lc-concurrency is-dim">${escAttr(messages[concurrency?.status] || messages.not_measured)}</p>`;
   }
   const rows = (concurrency.pairs || []).filter(pair => pair.status === 'measured').map(pair =>
-    `<li><span>with ${escAttr(pair.model)}${pair.endpoint === 'sibling' ? ' (other endpoint, same machine)' : ''}</span><strong>${Math.round(pair.selfSlowdownPct ?? 0)} % slower</strong><span class="lc-concurrency-other">it slows ${Math.round(pair.otherSlowdownPct ?? 0)} %</span></li>`).join('');
+    `<li><span>with ${escAttr(pair.model)}${pair.endpoint === 'sibling' ? ' (other endpoint, same machine)' : ''}</span><strong>${(Number.isFinite(pair.selfSlowdownPct) ? Math.round(pair.selfSlowdownPct) : 'unknown')} % slower</strong><span class="lc-concurrency-other">it slows ${(Number.isFinite(pair.otherSlowdownPct) ? Math.round(pair.otherSlowdownPct) : 'unknown')} %</span></li>`).join('');
   const separate = concurrency.separateEndpoints && concurrency.separateEndpoints !== 'measured'
     ? `<p class="lc-concurrency is-dim">${escAttr(SEPARATE_ENDPOINTS[concurrency.separateEndpoints] || SEPARATE_ENDPOINTS.not_measured)}</p>` : '';
   return `<ul class="lc-concurrency-list">${rows}</ul>${separate}`;

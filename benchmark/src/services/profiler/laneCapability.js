@@ -122,14 +122,14 @@ function agentCapability(profile, rejected) {
   // limits, so a step stays fast, exact and verifiable.
   const limits = [agent.sessionLatencyKneeContext, agent.sessionAccuracyContext, agent.verificationVerifiedContext]
     .filter(limit => Number(limit) > 0);
-  agent.recommendedStepContext = limits.length ? Math.min(...limits) : null;
+  agent.recommendedStepContext = limits.length === 3 ? Math.min(...limits) : null;
   return agent;
 }
 
 function concurrencyCapability(profile) {
   const evidence = profile?.concurrency;
   if (!evidence?.status) return { status: 'not_measured' };
-  const pct = value => (Number.isFinite(Number(value)) ? Number(value) : null);
+  const pct = value => (typeof value === 'number' && Number.isFinite(value) ? value : null);
   return {
     status: evidence.status,
     scope: evidence.scope || 'same_endpoint',
@@ -214,7 +214,7 @@ function buildLaneCapability({
   // a different Ollama build or setting is a different measurement.
   const modelChanged = Boolean(perf) && identified && Boolean(perfDigest) && !digestsMatch(perfDigest, artifact.digest);
   const runtimeChanged = Boolean(perf) && identified && !modelChanged && Boolean(perfRuntime) && perfRuntime !== artifact.runtimeFingerprint;
-  const perfMatches = Boolean(perf) && !modelChanged && !runtimeChanged;
+  const perfMatches = Boolean(perf) && identified && Boolean(perfDigest && perfRuntime) && !modelChanged && !runtimeChanged;
   if (!perf) gaps.push('no_performance_profile');
   else if (!perfMatches) gaps.push('performance_artifact_mismatch');
   const p = perfMatches ? perf.profile : {};

@@ -136,6 +136,20 @@ and `network_devices`. These dispatch the existing Core handlers, retain dated
 source results and tool receipts, and expose no owner memory, mail or mutation.
 Web results are untrusted references with URLs to cite; network reads use the
 existing collector inventory and disclose its freshness, without scanning.
+The family conversation receives the same cached Environment Canada conditions as
+the weather strip, with their source and fetch time. Readings older than thirty
+minutes, missing dates and failed reads are disclosed as unavailable. Conditions
+are not a forecast. This bounded reference also accompanies the local guardian;
+it contains no coordinates or operations snapshot and grants no owner tools.
+
+Full-screen Nestor shows the observed reply model and distinguishes Big Brain,
+the limited guardian relay and other model fallbacks. Until a model receipt
+arrives, it says that confirmation is pending; completed replies are labelled as
+the last reply. Personal pending requests use the existing work projection, with
+stale and uncertain states retained. Camera consent stays in Settings; neither
+its controls nor execution status cover the photo slideshow. An already open
+page needs a reload to use newly deployed scripts.
+
 Core's deterministic family routines, captures, math picture and sounds still
 compose with it. Spoken Core
 turns use the configurable `HOUSEHOLD_VOICE_TASK` (default

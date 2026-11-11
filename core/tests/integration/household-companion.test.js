@@ -14,11 +14,15 @@ jest.mock('../../src/extensions/trustedRuntimeServices', () => {
 });
 const executeInference = mockCompanionInference;
 const originalFetch = global.fetch;
+let hermesDelayMs = 0;
 global.fetch = jest.fn(async url => {
   if (!String(url).startsWith('http://hermes.fixture/')) throw new Error('Unexpected external request in companion fixture');
   const path = new URL(url).pathname;
   if (path === '/v1/runs') return Response.json({ run_id: 'run_companion_fixture' });
-  if (path.endsWith('/events')) return new Response('data: {"event":"message.delta","run_id":"run_companion_fixture","delta":"Voici les éléments de la liste."}\n\n');
+  if (path.endsWith('/events')) {
+    if (hermesDelayMs) await new Promise(resolve => setTimeout(resolve, hermesDelayMs));
+    return new Response('data: {"event":"message.delta","run_id":"run_companion_fixture","delta":"Voici les éléments de la liste."}\n\n');
+  }
   return Response.json({ run_id: 'run_companion_fixture', status: 'completed', completed: true, partial: false,
     output: 'Voici les éléments de la liste.', runtime: { provider: 'synthetic', model: 'synthetic-conversation' } });
 });
@@ -26,22 +30,40 @@ const request = require('supertest');
 const { app } = require('../../src/app');
 const base = '/api/voice-personas/private/sessions';
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function waitFor(assertion, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    try { return await assertion(); } catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await wait(25);
+    }
+  }
+}
 const makeSession = async () => (await request(app).post(base).send({ packId: 'personal_operator', backend: 'hermes' }).expect(201)).body.data.session;
 afterAll(() => { global.fetch = originalFetch; });
-beforeEach(() => { executeInference.mockReset(); mockCompanionSearch.mockReset().mockResolvedValue([{ text: 'A sourced architecture excerpt.', score: .9, metadata: { documentId: 'doc-fixture', title: 'Architecture', source: 'fixture' } }]); });
+beforeEach(() => { hermesDelayMs = 0; executeInference.mockReset(); mockCompanionSearch.mockReset().mockResolvedValue([{ text: 'A sourced architecture excerpt.', score: .9, metadata: { documentId: 'doc-fixture', title: 'Architecture', source: 'fixture' } }]); });
 
-test('real Hermes turn settles while local accompaniment is pending, then exposes the validated result separately', async () => {
+test.each([0, 1200])('Hermes turn (%i ms delay) settles while accompaniment is pending, then exposes the validated result separately', async delayMs => {
+  hermesDelayMs = delayMs;
   let settle;
-  executeInference.mockImplementation(() => new Promise(resolve => { settle = resolve; }));
+  // An early frame can run before Hermes finishes on a slower host. Settle
+  // those obsolete decisions; only hold the completed conversational frame.
+  executeInference.mockImplementation(body => {
+    if (JSON.parse(body.messages[1].content).reply !== 'Voici les éléments de la liste.')
+      return Promise.resolve({ ok: true, body: { message: { content: JSON.stringify({ decision: 'keep' }) } } });
+    return new Promise(resolve => { settle = resolve; });
+  });
   const session = await makeSession(), turnId = require('node:crypto').randomUUID();
   const response = await request(app).post(`${base}/${session.sessionId}/turns/text`).send({
     text: 'Prépare une liste avec les éléments alpha et bêta.', turnId, channel: 'text', stream: true, presentationCompanion: true }).expect(200);
   const events = response.text.trim().split('\n').map(line => JSON.parse(line));
   expect(events.find(row => row.type === 'done').data.routing.backend).toBe('hermes');
   expect(events.filter(row => row.type === 'error')).toEqual([]);
-  await wait(950);
-  expect(executeInference).toHaveBeenCalledTimes(1);
-  const [body, options] = executeInference.mock.calls[0];
+  await waitFor(() => expect(settle).toEqual(expect.any(Function)));
+  const admittedCalls = executeInference.mock.calls.length;
+  expect(admittedCalls).toBeLessThanOrEqual(2);
+  if (delayMs) expect(admittedCalls).toBe(2);
+  const [body, options] = executeInference.mock.calls[admittedCalls - 1];
   expect(body).toMatchObject({ executionSource: 'local', taskType: 'voice_persona_chat', stream: false });
   expect(body.model).toBeUndefined();
   expect(body.format.oneOf).toBeDefined();
@@ -53,8 +75,11 @@ test('real Hermes turn settles while local accompaniment is pending, then expose
   settle({ ok: true, body: { message: { content: JSON.stringify({ decision: 'present', reason: 'La liste demandée reste visible.',
     evidence: { source: 'request', quote: 'éléments alpha et bêta' },
     block: { kind: 'list', title: 'Éléments', body: '- alpha\n- bêta' } }) } } });
-  await wait(25);
-  const result = (await request(app).get(`${base}/${session.sessionId}/companion/${turnId}`).expect(200)).body.data;
+  const result = await waitFor(async () => {
+    const data = (await request(app).get(`${base}/${session.sessionId}/companion/${turnId}`).expect(200)).body.data;
+    expect(data.state).toBe('ready');
+    return data;
+  });
   expect(result).toMatchObject({ state: 'ready', suggestion: { block: { kind: 'list', from: 'companion' } } });
   expect(result.collaboration.research.sources[0]).toMatchObject({ documentId: 'doc-fixture', excerpt: 'A sourced architecture excerpt.' });
   const ownerTool = require('../../src/services/mcpOwnerTools');
@@ -67,7 +92,7 @@ test('real Hermes turn settles while local accompaniment is pending, then expose
   expect(live.state).toBe('paused');
   expect(live.collaboration.selection.text).toBe('A human selected this content.');
   expect((await request(app).post(`${base}/${session.sessionId}/companion/observations`).send({ turnId, sequence: 1, screen: [] }).expect(200)).body.data.accepted).toBe(false);
-  expect(executeInference).toHaveBeenCalledTimes(1);
+  expect(executeInference).toHaveBeenCalledTimes(admittedCalls);
   expect(JSON.stringify(result)).not.toContain('synthetic-companion-server-token');
   await request(app).delete(`${base}/${session.sessionId}`).send({ confirmation: 'DELETE CONVERSATION' }).expect(200);
   await request(app).get(`${base}/${session.sessionId}/companion/${turnId}`).expect(404);

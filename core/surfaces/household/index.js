@@ -468,7 +468,7 @@ function register(api) {
     agentIdFor, logger, instructions: (...args) => handlePersonaTurn.openingInstructions(...args) });
   warmup.register(personas);
   const handlePersonaTurn = createPersonaTurnHandler({
-    logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor, conversationWorks, artx,
+    logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor, conversationWorks, artx, ambient,
     familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
     sounds, visuals, brain, memberWork, conversationImages, screenPages, warmup, presentationCompanion, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,

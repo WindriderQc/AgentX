@@ -6,7 +6,10 @@ export function createCoreBriefClient({ baseUrl, fetchImpl = fetch } = {}) {
   return async input => {
     const member = String(input?.member || '').trim().toLowerCase();
     if (!member) throw new Error('Name the collaborator whose brief you want');
-    const payload = { member, ...(Number.isInteger(input?.days) && { days: input.days }) };
+    const payload = { member };
+    for (const key of ['days', 'section', 'limit', 'offset', 'asOf']) {
+      if (input?.[key] !== undefined) payload[key] = input[key];
+    }
     const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20000),
       headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
     if (response.status === 400) {

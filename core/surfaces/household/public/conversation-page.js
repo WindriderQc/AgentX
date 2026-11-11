@@ -176,7 +176,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const wake = el('conversationWake');
   wake.checked = family;
   const progress = family ? null : NestorProgress.create({ host: el('nestorProgress'), getLanguage: () => language.value });
-  const workflow = family ? null : NestorWorkflow.create({ host: diagnosticFlow, signal: el('conversationWorkflowSignal'), trails: transcript, onSnapshot: view => progress.update(view) });
+  const workflow = family ? null : NestorWorkflow.create({ host: diagnosticFlow, signal: el('conversationWorkflowSignal'), trails: transcript, onSnapshot: view => { progress.update(view); activity('work', { data: view }); } });
   // The background brain (#169): tapping a suggestion asks it; a remark is spoken at a pause
   // when the voice conversation is listening, otherwise shown in the transcript.
   const brain = window.NestorBrain.create(el('conversationBrain'), { base: sessionBase,
@@ -369,7 +369,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
         method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, screen: board.context(), ...(ambient?.context() && { artx: ambient.context() }), ...(!family && { ephemeral: session.ephemeral, presentationCompanion, presentationPinned: companion?.pinned() === true }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
-    } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
+    } catch (error) { activity('execution-interrupted'); workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
     if (!session.ephemeral) { work?.follow(session.sessionId); companion?.follow(); }
     if (response.status === 202) {
       workflow?.stream(turnId, { type: 'deferred' });
@@ -390,6 +390,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       workflow?.stream(turnId, event);
       if (event.type === 'accepted') { workAccepted = true; void work?.poll(); }
       if (event.type === 'error') throw new Error(event.message);
+      if (event.type === 'execution' && !interruptedTurns.has(turnId)) activity('execution', { data: { execution: event.evidence }, completed: false });
       if (event.type === 'speaker') { turnSpeaker = event.speaker || null; if (turnSpeaker) el('conversationStatus').textContent = `${turnSpeaker.name} is replying.`; }
       if (event.type === 'tools') { showTools(event.evidence); activity('tools', { count: event.evidence?.receipts?.length || 1 }); }
       if (event.type === 'scene' && !interruptedTurns.has(turnId)) activity('scene', { scene: event.scene });
@@ -410,13 +411,13 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
       if (!interruptedTurns.has(turnId) && event.type === 'status' && ['loading', 'pending', 'waiting_host'].includes(event.phase)) {
         el('conversationStatus').textContent = event.phase === 'waiting_host'
-          ? 'Nestor is waiting for its computer to finish a running test (less than a minute). Your message is kept.'
+          ? 'Nestor is waiting for available resources. Your message is kept; the wait duration is unknown.'
           : event.phase === 'loading'
           ? 'Loading your Open model… your message is waiting here.'
           : 'Waiting for the current model work on inference-host…';
         // In a voice turn Nestor says it once, before the answer (#62).
         if (event.phase === 'waiting_host' && !noticed) { noticed = true; activity('host-busy'); onNotice?.(turnLanguage === 'en'
-          ? 'One moment, I’m finishing a test on my computer.' : 'Un instant, je termine un test en cours sur mon ordinateur.'); }
+          ? 'One moment, the inference engine is busy. Your message is kept.' : 'Un instant, le moteur est occupé. Ta demande est conservée.'); }
       }
       if (event.type === 'delta' && !interruptedTurns.has(turnId)) {
         answer += event.delta;
@@ -444,7 +445,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       // The agent consulted a team member (#41): its answer is collected and said like a member's late reply.
       if (result.consult) void followMember(session, result.consult.turnId, result.consult.speaker);
       return { ...result.reply, sound: result.sound };
-    } catch (error) { workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
+    } catch (error) { activity('execution-interrupted'); workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
     finally { await reader.cancel().catch(() => {}); }
   }
   const labels = { idle: 'Ready to listen.', starting: 'Turning on the microphone…', listening: 'Listening…', hearing: 'Listening…', transcribing: 'One moment…', waiting: 'Finishing the previous answer…', thinking: 'Thinking…', preparing: 'Preparing the answer…', speaking: 'Nestor is answering…', paused: 'Mic off.', error: 'Conversation paused.', reviewing: 'Mic off for replay.', resuming: 'Resuming after playback…' };
@@ -507,7 +508,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     }
   }
   // The docked avatar (avatar-dock.js) follows these and the persona-presence samplers.
-  const activity = (kind, detail = {}) => window.dispatchEvent(new CustomEvent('persona-activity', { detail: { space, kind, ...detail } }));
+  function activity(kind, detail = {}) { window.dispatchEvent(new CustomEvent('persona-activity', { detail: { space, kind, ...detail } })); }
   let lastGreeting = '', lastWakeReply = '';
   const avatar = window.AvatarDock?.mount({ space: family ? 'family' : 'personal', status: el('conversationStatus'),
     // The same button pauses an active conversation: a tap only ever starts or resumes one.
@@ -700,6 +701,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       onSaved: () => { conversation.stop(true); syncVoicePreferences(); } });
   };
   function showExecution(data) {
+    activity('execution', { data });
     const text = engines.observed(data);
     el('conversationExecution').textContent = text;
     el('conversationExecution').hidden = family || !text;

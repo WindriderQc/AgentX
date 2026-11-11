@@ -95,3 +95,11 @@ test('context suggestions stay read-only proposals with bounded arguments (#24)'
     expect(suggest).toHaveBeenCalledTimes(1);
   } finally { suggest.mockRestore(); }
 });
+test('living source tools bind owner authority and cannot accept a client audience', async () => {
+  const source_catalogue = jest.fn(async () => ({ kind: 'living_source_catalogue', audience: 'owner', sources: [] }));
+  const source_read = jest.fn(async () => ({ kind: 'living_source', audience: 'owner', source: 'secretary' }));
+  expect((await call('source_catalogue', {}, { source_catalogue })).result.structuredContent.audience).toBe('owner');
+  expect((await call('source_read', { source: 'secretary' }, { source_read })).result.isError).toBe(false);
+  expect((await call('source_read', { source: 'secretary', audience: 'owner' }, { source_read })).result.isError).toBe(true);
+  expect(source_read).toHaveBeenCalledTimes(1);
+});

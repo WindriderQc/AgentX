@@ -3,7 +3,7 @@
 How the decomposed judge grades one response, and why each rule exists. The
 question bank is `src/services/decomposedJudgeQuestions.js`; the aggregation is
 `src/services/decomposedJudge.js`; per-category weights and the primary
-dimension are `src/services/scoring/scoringConfigs.js`. Scorer version 2.16.0.
+dimension are `src/services/scoring/scoringConfigs.js`. Scorer version 2.22.0.
 
 ## One question per call
 
@@ -41,7 +41,8 @@ one exists) and the response. The judge answers one word. The prompt states:
   0.66, 0.33 and 0 of the question's weight. Yes/no questions separate wrong
   from right; the count separates "correct but thin" from "correct". A counted
   question never offers NA, and an unreadable count is an error rather than a
-  zero.
+  zero. A standalone final count takes precedence over numbered reasoning;
+  decimals, exponents and numeric prefixes of prose are not count verdicts.
 - **Creative form is primary.** A "haiku" without 5-7-5 or a dialog when a
   story was asked is wrong, not weak; imagery and engagement are judged among
   pieces that are in the requested form.
@@ -147,14 +148,17 @@ ordering. The response names the criteria and which ones a run failed.
 ## Grader qualification and the qualification card
 
 Every completed `calibrate-accuracy` run is recorded (`JudgeQualification`,
-append-only, per-case grades kept). A record qualifies one exact identity: the
-judge model on one host, one scorer version and the current reference set
-(fingerprinted). The newest complete record of that identity decides; a later
-failing run withdraws the qualification, while a run that did not finish (a call
+append-only, per-case grades kept). A record qualifies one exact frozen execution
+contract: the judge model, host, artifact digest, runtime fingerprint, context and generation
+settings, together with the scorer version and current reference set fingerprint.
+The newest complete record of that identity decides; a later failing run withdraws the qualification, while a run that did not finish (a call
 failed, timed out or was cancelled) neither qualifies nor withdraws. Readiness,
 a default selection, completion rate or an older scorer version never qualify a
-judge. The judge digest is recorded as provenance; result rows do not carry the
-judge artifact, so matching uses model and host.
+judge. Result rows carry the qualification contract. Missing or changed artifact,
+runtime or settings never inherit a qualification from the same model name.
+Consensus participants need their own matching contracts; a missing, non-finite
+or out-of-range score does not participate in the median and an unscored
+tiebreaker never resolves a disagreement.
 
 - `GET /api/benchmark/judge/qualifications` lists the newest record per judge
   identity and scorer version with its current status and causes;
@@ -174,7 +178,21 @@ judge artifact, so matching uses model and host.
   evidence (what proof is missing). The Test Inspector renders it; The Bench
   shows each judge's qualification for the running scorer version.
 
-Twenty authored references are a smoke test, not ground truth; thresholds are
-to be confirmed on human-graded references. A calibration item with
+The 43 authored references are a smoke test, not independent human ground truth;
+thresholds are to be confirmed on human-graded references. A calibration item with
 `reference_tests` is executed like any coding prompt; without a runner it is
 reported as incomplete, never silently judged.
+
+### Native inference interruption
+
+A managed standalone calibration stops when its inference times out without a
+native completion receipt, an error body is interrupted, a transport connection
+fails, an unclassified gateway 502/504 is returned, or Core reports lost, closed, aborted, or quarantined
+inference admission. These failures propagate through binary votes, reference
+scoring, and calibration cases; they are not unreadable answers or host-busy
+retries. No partial calibration is published as a qualification.
+
+Disconnecting the calibration caller aborts its shared judge signal. The owner
+hands uncertain admission to durable recovery and drains its heartbeat rather
+than releasing the admission without proof. This handoff is not evidence that
+the native generation has stopped or that recovery has completed.

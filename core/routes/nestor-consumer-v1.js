@@ -320,6 +320,17 @@ function createNestorConsumerV1Routes({ runtimeServices, systemHealth } = {}) {
     envelope.success(res, await require('../src/services/mailJournalService').operate(req.body || {}));
   }));
 
+  // Same source capability as native personal tools. This router already has
+  // the owner boundary; no caller-supplied audience or arbitrary source URL.
+  router.get('/sources', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    envelope.success(res, require('../src/services/livingSourceService').forAudience('owner').catalogue());
+  }));
+  router.post('/sources/read', asyncRoute(async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    envelope.success(res, await require('../src/services/livingSourceService').forAudience('owner').read(req.body || {}));
+  }));
+
   // The standing brief of one collaborator of the main agent: one envelope for all of them, read-only.
   router.post('/team-brief', asyncRoute(async (req, res) => {
     res.set('Cache-Control', 'no-store');

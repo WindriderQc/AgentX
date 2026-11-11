@@ -135,6 +135,7 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
       gustKmh: finite(current.gustKmh),
       windDirection: typeof current.windDirection === 'string' ? current.windDirection.slice(0, 8) : null,
       fetchedAt: result.body.data.fetchedAt || null,
+      observedAt: typeof current.observedAt === 'string' ? current.observedAt.slice(0, 100) : null,
       source: 'Environnement Canada'
     };
   }
@@ -160,7 +161,7 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
     return { at: at.toISOString(), weather, sun, iss, alerts, paintings: pictures || null, sky };
   }
 
-  return { snapshot, painting: id => (paintings ? paintings.image(id) : null) };
+  return { snapshot, weather: () => cached('weather', WEATHER_TTL_MS, readWeather), painting: id => (paintings ? paintings.image(id) : null) };
 }
 
 function registerFamilyAmbient(router, ambient = createFamilyAmbient({ paintings: createFamilyPaintings() }), artx = null) {

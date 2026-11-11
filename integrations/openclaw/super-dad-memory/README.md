@@ -27,13 +27,32 @@ file. List/search coverage and Core receipts are returned to the native tool.
 message). It is offered to the owner context and to the configured
 `secretarySessionKeys`; `personal_memory` keeps lasting facts only and its
 description sends mail summaries to the journal.
-`team_brief` is the one way a collaborator shares what it knows with the main
+`source_catalogue` and `source_read` are optional audience-bound tools for
+Core's living sources. They use fixed GET `/api/consumers/nestor/v1/sources`
+and POST `/api/consumers/nestor/v1/sources/read` routes in private-owner sessions.
+Direct native `family` sessions, including Reader, use only
+`/api/family/sources` and `/api/family/sources/read`, with the reduced weather
+and AgentX reachability schema. Host agent/session identity selects the route;
+arguments cannot switch it. No URL from source content is followed. Core receipts
+must identify `agentx.core`, the expected kind, bound owner/household audience
+and requested source. Core owns the source selection,
+freshness, coverage and pagination; the adapter neither starts producers nor
+stores another memory. Continue content pages with `nextReadArgs`,
+`nextOffset` and `contentHash`; `SOURCE_CHANGED` requires a fresh read.
+Record pages use `recordOffset` and the retained `asOf`. Grant these tools
+explicitly to `main` and/or `family` as needed. Specialist, scheduled, delegated
+and sandboxed contexts do not gain them. Family cannot read Secretary or
+Accountant records and never calls the owner endpoint. Automatic directory
+injection remains limited to principal personal and family turns.
+
+`team_brief` shares a collaborator's standing records with the main
 agent: `/api/consumers/nestor/v1/team-brief` returns the same read-only
 envelope for each of them (`covers`, `sections`, `beyond`), computed by Core
 from that collaborator's own records: the Secretary's mail journal, the
 accountant's ledger. It is offered to the owner context only. A new
 collaborator is one entry in Core's `teamBriefService` and one value in the
-tool's `member` list.
+tool's `member` list. `section`, `limit`, `offset` and `asOf` are relayed
+unchanged for stable record pagination.
 `personal_identifier` lists the owner's sealed identifiers (labels and last
 digits) through `/api/consumers/nestor/v1/identifiers` and reveals one value
 only in the owner's Household session; on Telegram it says the value can be

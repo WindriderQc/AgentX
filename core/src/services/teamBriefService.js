@@ -33,12 +33,20 @@ function withDisplay(value) {
 
 // What the Secretary flagged for the owner: one action per mail thread, written by her triage.
 const emailActions = {
-  async recent({ since, now }) {
-    const rows = await require('mongoose').connection.collection('emailactions')
-      .find({ $or: [{ createdAt: { $gte: since } }, { dueAt: { $gte: now } }] })
-      .sort({ createdAt: -1 }).limit(20)
-      .project({ _id: 0, gmailThreadId: 1, category: 1, action: 1, subject: 1, sender: 1, dueAt: 1, createdAt: 1 }).toArray();
-    return { actions: rows.map(({ gmailThreadId, ...row }) => ({ threadId: gmailThreadId, ...row })) };
+  async recent({ since, now, limit: requestedLimit = 20, offset = 0 }) {
+    const limit = Math.max(1, Math.min(50, Math.trunc(Number(requestedLimit)) || 20));
+    const collection = require('mongoose').connection.collection('emailactions');
+    const filter = { $or: [{ createdAt: { $gte: since } }, { dueAt: { $gte: now } }] };
+    const [rows, total] = await Promise.all([
+      collection.find(filter).sort({ createdAt: -1, _id: -1 }).skip(offset).limit(limit)
+        .project({ _id: 0, gmailThreadId: 1, category: 1, action: 1, subject: 1, sender: 1, dueAt: 1, createdAt: 1 }).toArray(),
+      collection.countDocuments(filter)
+    ]);
+    return { actions: rows.map(({ gmailThreadId, ...row }) => ({ threadId: gmailThreadId, ...row })), total,
+      truncated: offset + rows.length < total,
+      pagination: { limit, offset, returned: rows.length, hasMore: offset + rows.length < total,
+        nextOffset: offset + rows.length < total ? offset + rows.length : null,
+        consistency: 'live', order: ['createdAt:desc', '_id:desc'] } };
   }
 };
 
@@ -47,7 +55,8 @@ function defaultSources() {
     emailActions,
     mailJournal: require('./mailJournalService'),
     financeQuery: require('./finance/financeQueryService'),
-    financeAlerts: require('./finance/financeAlerts')
+    financeAlerts: require('./finance/financeAlerts'),
+    financePublication: require('./finance/financePublicationEvidence')
   };
 }
 
@@ -57,10 +66,10 @@ const BRIEFS = Object.freeze({
     covers: 'What the Secretary flagged for the owner (a reply, something urgent, a deadline), and dated digests of the mail threads she has processed, newest first. Mail of the last few minutes may be missing.',
     beyond: 'The exact text of a mail, the very latest message received, a draft, a reply, sorting or sending: consult the Secretary.',
     defaultDays: 2,
-    sections: ({ sources, since, now }) => ({
-      flaggedForOwner: () => sources.emailActions.recent({ since, now }),
-      mail: () => sources.mailJournal.search({ since: since.toISOString(), limit: 20 })
-        .then(({ entries, total, truncated }) => ({ entries, total, truncated }))
+    sections: ({ sources, since, now, page }) => ({
+      flaggedForOwner: () => sources.emailActions.recent({ since, now, ...page }),
+      mail: () => sources.mailJournal.search({ since: since.toISOString(), limit: 20, ...page })
+        .then(({ entries, total, truncated, pagination }) => ({ entries, total, truncated, ...(pagination && { pagination }) }))
     })
   },
   comptable: {
@@ -68,20 +77,21 @@ const BRIEFS = Object.freeze({
     covers: 'How far the ledger goes (freshness), latest closing balance per account with its date, in/out/net of the recent months without transfers between the owner\'s accounts, pending alerts and statements waiting for review.',
     beyond: 'A merchant, a category, a year, advice, the plan or a correction: consult the accountant.',
     defaultDays: 90,
-    sections: ({ sources, since, now }) => ({
+    sections: ({ sources, since, now, page }) => ({
       // How far the ledger goes: a balance or a month is only as recent as the statements Core has read.
       freshness: async () => {
         const { rows = [] } = await sources.financeQuery.transactions({ limit: 1 });
         const latestTransactionDate = rows[0]?.date || null;
         const currentMonth = now.toISOString().slice(0, 7);
-        return { latestTransactionDate, currentMonth,
+        const publication = sources.financePublication ? await sources.financePublication.read() : { status: 'unknown', lastAppliedAt: null };
+        return { latestTransactionDate, currentMonth, publication,
           currentMonthHasData: Boolean(latestTransactionDate && latestTransactionDate.slice(0, 7) === currentMonth),
           note: 'Say this date with any figure. Each balance carries its own date. A month after latestTransactionDate has no data yet: say so instead of answering with another month.' };
       },
       balances: () => sources.financeQuery.balances({}),
       recentMonths: () => sources.financeQuery.monthly({ from: `${since.toISOString().slice(0, 7)}-01`, excludeCategory: 'Virements internes' }),
-      pendingAlerts: () => sources.financeAlerts.list({}),
-      statementsToReview: () => sources.financeQuery.statements({ status: 'needs_review' })
+      pendingAlerts: () => sources.financeAlerts.list(page),
+      statementsToReview: () => sources.financeQuery.statements({ status: 'needs_review', ...page })
     })
   }
 });
@@ -94,15 +104,30 @@ async function brief(input = {}, { sources = defaultSources(), now = () => new D
   if (!definition) throw error(`Choose a collaborator: ${members().join(', ')}`);
   const days = input.days === undefined || input.days === null || input.days === '' ? definition.defaultDays : Number(input.days);
   if (!Number.isInteger(days) || days < 1 || days > 366) throw error('days must be a whole number from 1 to 366');
-  const asOf = now();
+  const page = {};
+  if (input.limit !== undefined) {
+    page.limit = Number(input.limit);
+    if (!Number.isInteger(page.limit) || page.limit < 1 || page.limit > 500) throw error('limit must be a whole number from 1 to 500');
+  }
+  if (input.offset !== undefined) {
+    page.offset = Number(input.offset);
+    if (!Number.isSafeInteger(page.offset) || page.offset < 0) throw error('offset must be a nonnegative safe integer');
+  }
+  if (input.asOf !== undefined && (typeof input.asOf !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(input.asOf))) throw error('asOf must be a UTC ISO date');
+  const asOf = input.asOf === undefined ? now() : new Date(input.asOf);
+  if (!Number.isFinite(asOf.getTime()) || (input.asOf !== undefined && asOf.toISOString().slice(0, 19) !== input.asOf.slice(0, 19))) throw error('asOf must be a valid ISO date');
   const since = new Date(asOf.getTime() - days * DAY_MS);
   const sections = {};
-  await Promise.all(Object.entries(definition.sections({ sources, since, now: asOf })).map(async ([name, read]) => {
+  const readers = definition.sections({ sources, since, now: asOf, page });
+  if (input.section !== undefined && !Object.hasOwn(readers, input.section)) throw error('Unknown brief section');
+  const metadata = {};
+  await Promise.all(Object.entries(readers).filter(([name]) => input.section === undefined || name === input.section).map(async ([name, read]) => {
+    metadata[name] = { source: 'agentx.core.' + member + '.' + name, windowAsOf: asOf.toISOString(), freshness: { status: 'unknown', sourceUpdatedAt: null } };
     try { sections[name] = withDisplay(await read()); }
-    catch (cause) { sections[name] = { unavailable: String(cause?.message || 'unavailable').slice(0, 200) }; }
+    catch { sections[name] = { unavailable: 'Source unavailable', code: 'SOURCE_UNAVAILABLE' }; }
   }));
   return { ok: true, authority: 'agentx.core', kind: 'team_brief', member, title: definition.title, asOf: asOf.toISOString(),
-    since: since.toISOString(), covers: definition.covers, beyond: definition.beyond, sections };
+    since: since.toISOString(), covers: definition.covers, beyond: definition.beyond, sections, metadata };
 }
 
 module.exports = { brief, members, formatCents, withDisplay };

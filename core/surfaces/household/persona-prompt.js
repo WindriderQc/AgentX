@@ -219,8 +219,8 @@ function childBoundaryReply(pack, safety = {}, userText = '') {
   }
   if (flags.has('home_action_requested')) {
     return likelyEnglish
-      ? 'I can’t control the house or use tools. Ask a trusted adult to help.'
-      : 'Je ne peux pas contrôler la maison ni utiliser des outils. Demande à un adulte de confiance de t’aider.';
+      ? 'I can’t perform that action in the house. Ask a trusted adult to help.'
+      : 'Je ne peux pas effectuer cette action dans la maison. Demande à un adulte de confiance de t’aider.';
   }
   return '';
 }

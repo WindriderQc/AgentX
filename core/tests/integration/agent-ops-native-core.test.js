@@ -52,7 +52,7 @@ describe('integrated Agent Ops Core reads', () => {
     budget = jest.spyOn(budgets, 'buildBudgetStatus');
     jest.spyOn(global, 'fetch').mockRejectedValue(new Error('Synthetic transport unavailable'));
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
   afterAll(() => {
     if (previousEnabled === undefined) delete process.env.AGENTX_RUNTIME_BRIDGES_ENABLED;
     else process.env.AGENTX_RUNTIME_BRIDGES_ENABLED = previousEnabled;
@@ -73,6 +73,14 @@ describe('integrated Agent Ops Core reads', () => {
   });
 
   test('real canonical producers and consumer keep the same projection over native and HTTP bodies', async () => {
+    // Source activity is timestamped before chronological sorting. Freeze only
+    // Date so the two reads have identical observations, not just normalized
+    // timestamps after sorting. MongoDB and transport timers remain real.
+    jest.useFakeTimers({ now: Date.now(), doNotFake: [
+      'hrtime', 'nextTick', 'performance', 'queueMicrotask',
+      'setImmediate', 'clearImmediate', 'setInterval', 'clearInterval',
+      'setTimeout', 'clearTimeout'
+    ] });
     const ecosystemBody = await nativeReads.ecosystem(), budgetBody = await nativeReads.budget();
     expect(ecosystemBody.data.health.status).toBe('degraded');
     const native = createProductReads({ nativeReads });
@@ -85,14 +93,11 @@ describe('integrated Agent Ops Core reads', () => {
     } });
     const nativeProjection = await buildAgentOpsProjection({ ...inputs, fetchJson: native });
     const httpProjection = await buildAgentOpsProjection({ ...inputs, fetchJson: http });
-    // Independent reads have distinct collection durations and observation
-    // timestamps; their data, disclosures and projected fields must agree.
+    // Transport collection durations can differ. All data, timestamps,
+    // disclosures and chronological ordering must agree exactly.
     const stable = value => JSON.parse(JSON.stringify(value, (key, field) => {
       if (key === 'durationMs') return 0;
-      if (key === 'timestamp') {
-        expect(Number.isFinite(Date.parse(field))).toBe(true);
-        return 'observation-time';
-      }
+      if (key === 'timestamp') expect(Number.isFinite(Date.parse(field))).toBe(true);
       return field;
     }));
     expect(stable(nativeProjection)).toEqual(stable(httpProjection));

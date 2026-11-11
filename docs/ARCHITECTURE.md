@@ -35,6 +35,13 @@ runbooks and assets ([ADR 0001](adr/0001-one-repository.md)).
 
 ## Ownership
 
+Core's [living-source directory](LIVING_SOURCES.md) binds source reads to the
+server-selected audience and reuses existing producer records, not another memory
+store. Personal and family turns share its directory and weather context; private
+mail and finance sources remain owner-only. Bounded reads expose freshness,
+coverage and explicit continuation independently of producer update schedules.
+
+
 Native operational jobs use one server supervisor for recurrence and effect
 receipts. Core provides bounded status and controls through its existing SSH
 bridge. The Automations catalogue reads each native scheduler directly; its Calendar

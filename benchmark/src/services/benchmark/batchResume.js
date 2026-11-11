@@ -179,7 +179,7 @@ async function resumeBatch(batchId, options = {}) {
             });
         }
         if (error?.retainAdmission === true) {
-            retainAdmissionHeartbeat(resumeHeartbeat, resumeTtlMs, {
+            await retainAdmissionHeartbeat(resumeHeartbeat, resumeTtlMs, {
                 workloadId: batchId,
                 phase: 'resume_transition'
             });
@@ -194,7 +194,7 @@ async function resumeBatch(batchId, options = {}) {
                 markReconciliationPending(error, releaseError, 'BATCH_RESUME_ADMISSION_RECONCILIATION_PENDING', {
                     workloadId: String(batchId), batchId, resultId: batchId, phase: 'batch resume release'
                 });
-                retainAdmissionHeartbeat(resumeHeartbeat, resumeTtlMs, {
+                await retainAdmissionHeartbeat(resumeHeartbeat, resumeTtlMs, {
                     workloadId: batchId,
                     phase: 'resume_release'
                 });
@@ -246,7 +246,7 @@ async function resumeBatch(batchId, options = {}) {
                     markReconciliationPending(error, releaseError, 'BATCH_RESUME_HANDOFF_RECONCILIATION_PENDING', {
                         workloadId: String(batchId), batchId, resultId: batchId, phase: 'batch resume handoff'
                     });
-                    retainAdmissionHeartbeat(resumeHeartbeat, resumeTtlMs, {
+                    await retainAdmissionHeartbeat(resumeHeartbeat, resumeTtlMs, {
                         workloadId: batchId,
                         phase: 'resume_handoff'
                     });
