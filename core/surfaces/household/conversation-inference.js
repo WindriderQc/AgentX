@@ -26,11 +26,11 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   // Famille may call the Core tools the instance turned on: the model's tool
   // calls run through Core's handlers, then the model answers from their
   // results. Without a tool call the first reply streams as before.
-  const toolset = request.familyTools || null;
+  let toolset = request.familyTools || null;
   const receipts = [];
   let conversation = [{ role: 'system', content: agentxInstructions }, ...prepared.map(({ attachments, ...message }) => message)];
   let result, streamed = '', toolCalls = [], toolsOffered = Boolean(toolset), rounds = 0;
-  let relay = null, relaySource = null, emittedModelChars = 0;
+  let relay = null, relaySource = null, emittedModelChars = 0, relayContinuation = null;
   const fragment = () => ({ ...relaySource, completed: false,
     fragment: { observation: 'reply_parser_input', modelChars: emittedModelChars, playback: 'unverified' } });
   const emit = delta => {
@@ -45,6 +45,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   for (;;) {
     const offerTools = toolsOffered && rounds < toolset.maxRounds;
     const execute = async (withTools) => {
+      if (relayContinuation) return relayContinuation.execute(conversation, withTools ? toolset.definitions : undefined);
       const body = {
         mode: 'chat', taskType,
         ...(request.model ? { model: request.model.replace(/^ollama\//, '') } : {}),
@@ -60,8 +61,8 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
         .statusResult(body, 'Le relais sans outils ne peut pas analyser ces pièces jointes. La demande native d’origine est conservée.', 'relay_attachments_unavailable');
       if (eligible && inference.conversation) {
         const continued = await inference.conversation({ ...body, ...(request.relayOccupation ? { model: 'agentx-primary' } : {}) }, {
-          ...options, taskRoute: !request.relayOccupation, requireOccupied: true,
-          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack), request.familyWeatherContext].filter(Boolean).join('\n\n') }),
+          ...options, taskRoute: !request.relayOccupation, requireOccupied: true, relayTools: request.guardianTools,
+          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack), request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext].filter(Boolean).join('\n\n') }),
           relayRequest: { ...body, messages: [...(request.history || []), { role: 'user', content: request.text }] }
         });
         if (continued) return continued;
@@ -71,8 +72,11 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       return inference.execute(body, options);
     };
     result = await execute(offerTools);
-    if (result?.metadata?.conversationContinuity?.state === 'backup') {
-      toolsOffered = false;
+    if (result?.metadata?.conversationContinuity?.state === 'backup' && !relayContinuation) {
+      relayContinuation = result.relayContinuation || null;
+      toolset = relayContinuation ? request.guardianTools : null;
+      toolsOffered = Boolean(toolset);
+      if (relayContinuation) conversation = relayContinuation.messages;
       relay = result.metadata.conversationContinuity;
       relaySource = { authority: 'core.conversation-continuity', role: 'relay', model: relay.model, hostKey: relay.hostKey,
         requestSha256: fingerprint(request.text), ...(relay.relayFor && { relayFor: relay.relayFor }) };
@@ -103,12 +107,13 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     const text = frames.text || message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '';
     streamed += text;
     toolCalls = result.stream ? frames.toolCalls : (Array.isArray(message?.tool_calls) ? message.tool_calls : []);
-    if (!offerTools || !toolsOffered || !toolCalls.length || signal?.aborted) break;
+    if (!toolsOffered || !toolCalls.length || signal?.aborted || rounds >= toolset.maxRounds) break;
     rounds += 1;
     const calls = toolCalls.slice(0, toolset.maxCallsPerRound);
     conversation = [...conversation, { role: 'assistant', content: text, tool_calls: calls }];
     for (const call of calls) {
-      const answered = await toolset.execute(call);
+      if (relayContinuation) await relayContinuation.assertOccupied();
+      const answered = await toolset.execute(call, { signal });
       receipts.push(answered.receipt);
       conversation.push(answered.message);
     }
@@ -116,7 +121,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   if (signal?.aborted) relay = null;
   return { backend, text: streamed,
     metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}), usage: sumUsage(callUsage) },
-    tools: relay ? { status: 'not_supported', authority: 'agentx/ollama', receipts: [], conversationRelay: { ...relaySource, completed: true } }
+    tools: relay ? { status: toolset ? 'observed' : 'not_supported', authority: toolset ? 'agentx/core' : 'agentx/ollama', receipts, ...(toolset ? { offered: toolset.names } : {}), conversationRelay: { ...relaySource, completed: true } }
       : relaySource && emittedModelChars > 0 ? { status: 'partial', authority: 'agentx/ollama', receipts: [], conversationRelay: fragment() }
       : toolset && toolsOffered
       ? { status: 'observed', authority: 'agentx/core', offered: toolset.names, receipts }
