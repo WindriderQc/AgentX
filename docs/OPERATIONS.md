@@ -224,6 +224,30 @@ validated arguments, a closed subset of actions per agent, and the actor is
 always `openclaw:<agent>`. A batch start passes the runtime's approval hook.
 See its README for the configuration and for what local tests do not prove.
 
+#### Cancel a legacy standalone calibration without restarting
+
+`agentx action judge-calibration-control --actor <owner> --operation cancel|settle
+--file <private prepared-cancellation.json>` applies the same strict cancellation
+as the API, from a disposable Core command container. It builds reviewed `main`
+source under the existing operator lease and never recreates a running service.
+The manifest uses `agentx.prepared-judge-cancellation/v1`, with the exact admission,
+workload, stable request UUID and reason in `scope` and `http.body`, and
+`execution.noRestart: true`. Keep this instance manifest and receipts outside Git.
+
+Use `cancel` when the installed Core predates the cancellation API. After recording
+the stop, Core's existing `MUTATING → UNKNOWN` transition fences the original
+heartbeat and hands authority to native recovery. A cancellation acknowledgement
+is not completion. Repeating the same request observes that original handoff.
+
+`settle` cannot create a cancellation. It keeps a live owner or an unsupported
+unknown outcome fenced. An expired, explicitly cancelled standalone judge may
+use the existing closed-connection recovery proof: the exact parent/child
+generation, the full settle window, two stable runtime-residency reads and an
+atomic guard against other work on that host. Only that child's quarantine is
+released; Benchmark retains its parent journal, restoration and release duties.
+No runtime restart, model invocation, pin change or manual quarantine clearing is
+performed. Wait for native parent release before a normal deployment.
+
 #### Benchmark batches from an action
 
 The three batch actions cover one model on one registered local Ollama host:
