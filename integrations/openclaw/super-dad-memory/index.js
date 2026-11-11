@@ -22,6 +22,7 @@ import { registerPhotos } from './photos.js';
 import { registerPresentation } from './presentation.js';
 import { registerDossier } from './core-dossier.js';
 import { registerSources } from './core-sources.js';
+import { createNativeQuestions } from './native-questions.js';
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
@@ -51,13 +52,17 @@ export default definePluginEntry({
     const morningContext = context => configuredJobContext(context, api.pluginConfig?.briefingSessionKeys);
     const readTasks = () => agentxRead(api.pluginConfig?.agentxUrl,
       "list_personal_tasks", { includeDone: false, includeNotes: false, limit: 12 });
+    const questions = createNativeQuestions({ config: api.pluginConfig || {} });
+    const continuity = continuityOperations({ workspace: workspaceFor(), config: api.config,
+      workAgentId: api.pluginConfig?.conversationWorkAgentId, guardianAgentId: api.pluginConfig?.conversationGuardianAgentId,
+      resolveWorkspace, modelFor: id => resolveAgentEffectiveModelPrimary(api.config, id),
+      readHistory: async sessionKey => ({ sessionKey, ...await api.runtime.subagent.getSessionMessages({ sessionKey, limit: 100 }) }) });
     api.registerHttpRoute({ path: "/api/nestor/continuity", auth: "gateway", match: "exact",
-      handler: continuityHttpHandler(continuityOperations({ workspace: workspaceFor(), config: api.config,
-        workAgentId: api.pluginConfig?.conversationWorkAgentId,
-        guardianAgentId: api.pluginConfig?.conversationGuardianAgentId,
-        resolveWorkspace, modelFor: id => resolveAgentEffectiveModelPrimary(api.config, id),
-        // SDK read only: getSessionMessages invokes sessions.get; it never starts an agent.
-        readHistory: async sessionKey => ({ sessionKey, ...await api.runtime.subagent.getSessionMessages({ sessionKey, limit: 100 }) }) })) });
+      handler: continuityHttpHandler(async (request, options) => {
+        if (['questions', 'question_effect'].includes(request.operation)) return {
+          ok: true, authority: 'openclaw.nestor', operation: request.operation, ...await questions(request, options) };
+        return continuity(request);
+      }) });
     api.registerHttpRoute({ path: "/api/nestor/media", auth: "gateway", match: "exact",
       handler: mediaHttpHandler(mediaRoot(process.env, api.pluginConfig?.mediaRoot)) });
     api.registerTool((context) => {

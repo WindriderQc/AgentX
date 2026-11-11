@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { EventEmitter } from 'node:events';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -60,7 +61,7 @@ test('a failed transcript read is explicit while the HTTP capsule stays fresh an
   const read = async () => {
     const req = [Buffer.from(JSON.stringify({ operation: 'turn', runId, sessionKey }))];
     req.method = 'POST';
-    const res = { setHeader() {}, end(raw) { this.body = JSON.parse(raw); } };
+    const res = Object.assign(new EventEmitter(), { setHeader() {}, end(raw) { this.body = JSON.parse(raw); this.writableEnded = true; } });
     await handler(req, res);
     assert.equal(res.statusCode, 200);
     return res.body;
