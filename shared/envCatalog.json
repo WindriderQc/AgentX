@@ -2949,6 +2949,16 @@
       "secret": false,
       "description": "Optional dedicated tool-free native guardian in personal native voice mode. Bind new accepted turns to this agent, with a fresh native session, short instructions and bounded recent context; complete Main remains the full work owner."
     },
+    "PERSONAL_CONVERSATION_QUESTIONS_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Opt in to ordinary non-secret native questions in personal Nestor work. Requires the explicit questions-only device and conditional incarnation contract; absent or unsupported transport refuses. Disabling blocks new admissions while original uncertain effects remain lookup-only."
+    },
     "PERSONAL_CONVERSATION_WORK_AGENT_ID": {
       "services": [
         "core"

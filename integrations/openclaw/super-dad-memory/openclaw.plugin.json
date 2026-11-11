@@ -139,6 +139,18 @@
         "type": "string",
         "pattern": "^[a-z][a-z0-9_-]{0,63}$",
         "description": "Internal tool-free voice guardian; Main remains the complete native work owner."
+      },
+      "questionGatewayUrl": {
+        "type": "string",
+        "description": "Explicit native WS endpoint for ordinary conditional questions; no HTTP fallback."
+      },
+      "questionDeviceStateDir": {
+        "type": "string",
+        "description": "Absolute existing native client root for the dedicated questions device; read only, never provisioned."
+      },
+      "questionDeviceToken": {
+        "type": "string",
+        "description": "Existing device-token restricted to operator.questions; no other credential is used."
       }
     },
     "additionalProperties": false,
@@ -156,6 +168,10 @@
     },
     "conversationGuardianAgentId": {
       "label": "Internal conversational guardian"
+    },
+    "questionDeviceToken": {
+      "label": "Questions device-token",
+      "sensitive": true
     }
   }
 }

@@ -68,7 +68,8 @@ Accepted records without this policy retain their guardian-first contract, model
 profile and execution identity, including after a restart or disabling new intake.
 The default mode remains `off`; text, Open, addressed specialists, Family and
 Hermes retain their existing routes. This change grants no native consent or
-business authority. Native clarification/approval bridging remains separate.
+business authority. Ordinary native questions use the optional [conditional question bridge](NESTOR_NATIVE_QUESTIONS.md).
+Secret and execution approvals retain their native owners.
 
 ### Reconcile an uncertain personal capture
 

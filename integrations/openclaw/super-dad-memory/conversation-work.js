@@ -3,9 +3,9 @@ import { createGuardianWorkGuard } from './guardian-work.js';
 const key = (context, id) => `${context.sessionKey}:${id}`;
 const household = context => /^[a-z][a-z0-9_-]{0,63}$/.test(context?.agentId || '') && new RegExp(`^agent:${context.agentId}:household:direct:[a-f0-9-]{36}$`).test(context.sessionKey || '');
 export function createConversationWorkClient({ baseUrl, token, fetchImpl = fetch }) {
-  return async (operation, context, input, callId) => {
+  return async (operation, context, input, callId, signal) => {
     const response = await fetchImpl(new URL('/api/voice-personas/native/work', baseUrl), {
-      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15000),
+      method: 'POST', redirect: 'error', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ operation, context: { agentId: context.agentId,
         sessionKey: context.sessionKey, runId: context.runId }, ...(input && { input }), ...(callId && { callId }) })

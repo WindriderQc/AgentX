@@ -179,6 +179,9 @@ export function continuityHttpHandler(operate, unavailableMessage = "Nestor pers
     res.setHeader("Cache-Control", "no-store");
     const send = (status, body) => { res.statusCode = status; res.end(JSON.stringify(body)); return true; };
     if (req.method !== "POST") { res.setHeader("Allow", "POST"); return send(405, { ok: false, message: "Use POST" }); }
+    const controller = new AbortController();
+    const closed = () => { if (!res.writableEnded) controller.abort(); };
+    res.once('close', closed);
     try {
       let bytes = 0;
       const chunks = [];
@@ -190,10 +193,10 @@ export function continuityHttpHandler(operate, unavailableMessage = "Nestor pers
       let body;
       try { body = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
       catch { throw invalid("Invalid JSON"); }
-      return send(200, await operate(body));
+      return send(200, await operate(body, { signal: controller.signal }));
     } catch (error) {
       return send(error.statusCode === 400 ? 400 : 503, { ok: false,
         message: error.statusCode === 400 ? error.message : unavailableMessage });
-    }
+    } finally { res.off('close', closed); }
   };
 }
