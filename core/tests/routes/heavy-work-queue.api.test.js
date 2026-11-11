@@ -36,6 +36,19 @@ it('refuses cross-site browser writes before creating a queue record', async () 
   expect(await Queue.countDocuments()).toBe(0);
 });
 
+it('refuses an unlisted same-site browser write before creating a queue record', async () => {
+  const response = await request(app).post('/queue')
+    .set('Origin', 'http://localhost:9999').set('Sec-Fetch-Site', 'same-site').send(input).expect(403);
+  expect(response.body.code).toBe('CROSS_SITE_REQUEST_REJECTED');
+  expect(await Queue.countDocuments()).toBe(0);
+});
+
+it('accepts a listed same-site browser write', async () => {
+  await request(app).post('/queue')
+    .set('Origin', 'http://localhost:3180').set('Sec-Fetch-Site', 'same-site').send(input).expect(200);
+  expect(await Queue.countDocuments()).toBe(1);
+});
+
 it('refuses stale edits and cannot manufacture a completion through record', async () => {
   const job = await queue.submit(input, 'test');
   const ready = await queue.reserve(job.id, { expectedRevision: job.revision, start: new Date(Date.now() - 1000).toISOString() }, 'test');

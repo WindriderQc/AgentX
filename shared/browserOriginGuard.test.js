@@ -60,10 +60,30 @@ test('rejects a cross-site state-changing request with a JSON 403', () => {
   }
 });
 
-test('lets same-site, same-origin and header-less POSTs through', () => {
+test('rejects unlisted same-site origins before state-changing handlers run', () => {
+  for (const origin of ['https://other.example.invalid', 'http://127.0.0.1:9999']) {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      const { res, passed } = run(guard, { method, headers: { origin, 'sec-fetch-site': 'same-site' } });
+      assert.equal(passed, false, `${method} ${origin}`);
+      assert.equal(res.statusCode, 403);
+      assert.equal(res.ended, true);
+      assert.equal(JSON.parse(res.body).code, 'CROSS_SITE_REQUEST_REJECTED');
+      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    }
+  }
+});
+
+test('rejects an unlisted Origin even without Fetch Metadata', () => {
+  const { res, passed } = run(guard, { method: 'POST', headers: { origin: 'https://other.example.invalid' } });
+  assert.equal(passed, false);
+  assert.equal(res.statusCode, 403);
+});
+
+test('lets listed same-site, same-origin and header-less POSTs through', () => {
   for (const headers of [
     { origin: 'http://127.0.0.1:3181', 'sec-fetch-site': 'same-site' },
     { origin: 'https://household.example.invalid', 'sec-fetch-site': 'same-origin' },
+    { origin: 'https://household.example.invalid' },
     { 'sec-fetch-site': 'none' },
     {},
   ]) {

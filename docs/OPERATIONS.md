@@ -65,9 +65,11 @@ under the prefix and at the root of their own port.
 MongoDB and Qdrant are internal. Browsers on a foreign site cannot read or mutate
 AgentX APIs: Core, Benchmark, RAG and Data answer CORS only for the origins of
 `CORE_PUBLIC_URL`, `BENCHMARK_PUBLIC_URL` and `RAG_PUBLIC_URL` (plus their loopback
-variants), and refuse a non-GET request a browser marks `Sec-Fetch-Site: cross-site`
-with 403. AgentX pages on other local ports are same-site; clients that send no
-browser headers (harnesses, curl, service calls) are unaffected. The checked-in `config/agentx.env` contains only
+variants). Requests other than GET, HEAD and OPTIONS receive 403 when marked
+`Sec-Fetch-Site: cross-site` or carrying an `Origin` outside that list, including
+same-site origins on other ports or subdomains. Configured browser origins and
+clients that send no browser headers (harnesses, curl, service calls) retain
+their existing access. The checked-in `config/agentx.env` contains only
 generic defaults. `AGENTX_ENV_FILE` selects an external instance env file, and
 shell variables override its values. `AGENTX_COMPOSE_OVERRIDE` optionally selects
 one external Compose override for private mounts or additional service settings.
