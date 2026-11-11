@@ -70,7 +70,7 @@ documented means the dated existence of a document, not the underlying activity.
 Drafts remain unsent intent. Source absence and silence prove neither occurrence
 nor nonoccurrence. relative dates lacking safe context stay unknown and uncertain.
 
-Use the source-span grounding contract secretary.objective-grounding/v13.
+Use the source-span grounding contract secretary.objective-grounding/v14.
 Keep useful explicit steps, not only completed milestones. A personal career
 contact, referral, CV submission, application, interview or offer can be retained
 at its stated stage. Choose factType: life-event, career-contact, application,
@@ -117,6 +117,19 @@ primary anchor as proposed type evidence. Lexical support does not prove the
 interpretation; choose a type that actually fits that excerpt in context.
 Never supply claimType, moments, titleCitationId, factTypeCitationIds, observations,
 omittedCues, arbitrary indices or generated observation wording.
+professionalCueCatalog requires exactly one professionalDecisions entry per listed
+citation ID. Retain each cue with its own retainedMoments, or choose a reasonRef
+from that cue's omissionChoices. Complete owner-context work reports have no
+missing-date or missing-event omission: retain their reported work at its stated
+stage, with their own qualifications. Do not bypass these decisions through
+additionalMoments or another fact's contextObservations. This is a selection
+decision, never proof that the work happened. No professional cue means {}.
+actorReadingCatalog constrains subject for each fact's PRIMARY anchor. Unresolved
+source speakers require subject unknown and subjectName "". A familiar greeting,
+recipient, named person elsewhere, or later header cannot identify the owner.
+A permitted owner/thirdparty is still a proposed attribution requiring human
+review. Never fill an unknown actor's name. Keep complete source declarations
+with unknown actors rather than erasing them solely for that uncertainty.
 Every proposed moment selects sourceClaimType: direct-source when its primary
 excerpt explicitly reports an activity, completed event or announced plan;
 interpretation only when the proposed reading goes beyond what is explicit.

@@ -39,42 +39,45 @@ class DispositionTests(unittest.TestCase):
                 if "citationCatalog" in prompt:
                     value["emptyAssessment"] = "no-life-event"
                     value.pop("classification")
-                    if prompt.get("groundingContract", "").endswith(("/v2", "/v3", "/v4", "/v5", "/v6", "/v7", "/v8", "/v9", "/v10", "/v11", "/v12", "/v13")):
+                    if prompt.get("groundingContract", "").endswith(("/v2", "/v3", "/v4", "/v5", "/v6", "/v7", "/v8", "/v9", "/v10", "/v11", "/v12", "/v13", "/v14")):
                         value.pop("summary")
                         value["summaryCitationIds"] = []
                     for item in value["moments"]:
                         text = item.pop("description")
                         item.pop("quotes"); item.pop("rationale"); item.pop("relationHints")
                         item.update(observations=[{"text": text, "citationIds": ["unknown-span"]}], hypotheses=[])
-                    if prompt.get("groundingContract", "").endswith(("/v4", "/v5", "/v6", "/v7", "/v8", "/v9", "/v10", "/v11", "/v12", "/v13")):
+                    if prompt.get("groundingContract", "").endswith(("/v4", "/v5", "/v6", "/v7", "/v8", "/v9", "/v10", "/v11", "/v12", "/v13", "/v14")):
                         value["omittedCueIds"] = []
                         for item in value["moments"]:
                             item.pop("uncertainty")
                             item["factType"] = "life-event"
-                    if prompt.get("groundingContract", "").endswith(("/v5", "/v6", "/v7", "/v8", "/v9", "/v10", "/v11", "/v12", "/v13")):
+                    if prompt.get("groundingContract", "").endswith(("/v5", "/v6", "/v7", "/v8", "/v9", "/v10", "/v11", "/v12", "/v13", "/v14")):
                         from test_objective_claim_proofs import wire_v5
                         value = wire_v5(value, prompt.get("dateCatalog", []))
-                        if prompt.get("groundingContract", "").endswith(("/v7", "/v8", "/v9", "/v10", "/v11", "/v12", "/v13")):
+                        if prompt.get("groundingContract", "").endswith(("/v7", "/v8", "/v9", "/v10", "/v11", "/v12", "/v13", "/v14")):
                             from test_objective_source_observations import wire_v7
                             value = wire_v7(value)
-                            if prompt.get("groundingContract", "").endswith(("/v8", "/v9", "/v10", "/v11", "/v12", "/v13")):
+                            if prompt.get("groundingContract", "").endswith(("/v8", "/v9", "/v10", "/v11", "/v12", "/v13", "/v14")):
                                 from test_objective_useful_selection import wire_v8
                                 value = wire_v8(value, prompt["untrustedContent"])
-                                if prompt.get("groundingContract", "").endswith(("/v9", "/v10", "/v11", "/v12", "/v13")):
+                                if prompt.get("groundingContract", "").endswith(("/v9", "/v10", "/v11", "/v12", "/v13", "/v14")):
                                     from test_objective_omission_policy import wire_v9
                                     value = wire_v9(value, prompt["omissionReasonCatalog"])
-                                    if prompt.get("groundingContract", "").endswith(("/v10", "/v11", "/v12", "/v13")):
+                                    if prompt.get("groundingContract", "").endswith(("/v10", "/v11", "/v12", "/v13", "/v14")):
                                         from test_objective_explicit_selection import wire_v10
                                         value = wire_v10(value)
-                                        if prompt.get("groundingContract", "").endswith(("/v11", "/v12", "/v13")):
+                                        if prompt.get("groundingContract", "").endswith(("/v11", "/v12", "/v13", "/v14")):
                                             from test_objective_cue_decisions import wire_v11
                                             value = wire_v11(value, prompt["untrustedContent"])
-                                            if prompt.get("groundingContract", "").endswith(("/v12", "/v13")):
+                                            if prompt.get("groundingContract", "").endswith(("/v12", "/v13", "/v14")):
                                                 from test_objective_anchored_facts import wire_v12
                                                 value = wire_v12(value, prompt["untrustedContent"])
-                                                if prompt.get("groundingContract", "").endswith("/v13"):
+                                                if prompt.get("groundingContract", "").endswith(("/v13", "/v14")):
                                                     from test_objective_claim_typing import wire_v13
                                                     value = wire_v13(value)
+                                                    if prompt.get("groundingContract", "").endswith("/v14"):
+                                                        from test_objective_work_actors import wire_v14
+                                                        value = wire_v14(value, prompt["untrustedContent"])
                 reply = {"response": json.dumps(value), "done": True, "done_reason": "stop", "eval_count": 200}
                 if output:
                     reply = output(prompt, reply)

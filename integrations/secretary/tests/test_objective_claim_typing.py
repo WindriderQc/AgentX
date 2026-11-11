@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import objective_grounding as grounding
@@ -34,7 +35,7 @@ def moment(anchor, *, category='travel', status='reported', source='direct-sourc
 
 
 def project(value, body, context=SENT):
-    result, changes = normalize_representation(value, body, grounding.CONTRACT,
+    result, changes = normalize_representation(value, body, grounding.CLAIM_CONTRACT,
         {'end': len(body), 'totalChars': len(body), **context})
     validate(result, body)
     return result, changes
@@ -49,7 +50,7 @@ def travel():
 
 class SourceClaimTypingTests(unittest.TestCase):
     def test_all_three_explicit_travel_declarations_require_a_direct_source_choice(self):
-        body, value = travel();schema = grounding.schema_for(body, source_context=SENT)
+        body, value = travel();schema = grounding.schema_for(body, grounding.CLAIM_CONTRACT, source_context=SENT)
         props = schema['anyOf'][0]['properties']['cueDecisions']['properties']
         for key in ('q1', 'q2', 'q3'):
             fields = props[key]['properties']['retainedMoments']['items']['anyOf'][0]['properties']
@@ -101,7 +102,7 @@ class SourceClaimTypingTests(unittest.TestCase):
                      'Je ne suis pas en voyage.', 'Notre brochure : je suis en voyage.'):
             with self.subTest(body=body):
                 self.assertEqual(grounding.claim_typing.catalog(grounding.catalog(body), SENT), [])
-                schema = grounding.schema_for(body, source_context=SENT)
+                schema = grounding.schema_for(body, grounding.CLAIM_CONTRACT, source_context=SENT)
                 cue = schema['anyOf'][0]['properties']['cueDecisions']['properties']['q1']
                 retain = cue.get('anyOf', [cue])[0]
                 fields = retain['properties']['retainedMoments']['items']['anyOf'][0]['properties']
@@ -203,7 +204,10 @@ class SourceClaimTypingTests(unittest.TestCase):
 
 
 class SourceClaimTypingWorkerTests(unittest.TestCase):
-    setUp = worker_fixtures.SourceLanguageWorkerTests.setUp
+    def setUp(self):
+        worker_fixtures.SourceLanguageWorkerTests.setUp(self)
+        frozen = patch.object(worker, "SCHEMA", grounding.SCHEMA_V13)
+        frozen.start();self.addCleanup(frozen.stop)
     mail = worker_fixtures.SourceLanguageWorkerTests.mail
     prepare = worker_fixtures.SourceLanguageWorkerTests.prepare
     run_worker = worker_fixtures.SourceLanguageWorkerTests.run_worker
@@ -211,7 +215,7 @@ class SourceClaimTypingWorkerTests(unittest.TestCase):
     def test_native_typing_replays_exactly_and_tampering_cannot_change_personal_confirmation(self):
         body = 'Je débute la boxe.';self.mail('message01', body)
         def output(prompt, reply):
-            self.assertEqual(prompt['groundingContract'], grounding.CONTRACT)
+            self.assertEqual(prompt['groundingContract'], grounding.CLAIM_CONTRACT)
             self.assertEqual(prompt['sourceClaimCatalog'][0]['citationId'], 'q1')
             self.assertFalse(prompt['sourceClaimCatalog'][0]['ownerConfirmation'])
             reply['response'] = json.dumps(previous.raw({'q1': [moment('q1')]}));return reply

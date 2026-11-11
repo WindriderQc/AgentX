@@ -49,12 +49,32 @@ proposal for them. This gate never merges interpretations or establishes that
 a request is resolved. Objectives under the earlier contract retain their
 existing publication behavior.
 
-New objectives use `secretary.objective-grounding/v13` for model extraction.
+New objectives use `secretary.objective-grounding/v14` for model extraction.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
 evidence rather than transcribing a quote. Unknown or duplicate IDs, missing
 evidence and a response that ignores the frozen contract fail closed.
+
+`professionalCueCatalog` enumerates explicit work reports and deliveries beyond
+career milestones. Every listed anchor requires its own `professionalDecisions`
+entry: `retainedMoments` with that anchor's work type, or a `reasonRef` among its
+source-supported omission choices. Complete reports in an owner reading context
+cannot silently disappear or be dismissed for unknown event dates. Other or
+unresolved actors, conditional statements and non-biographical contexts keep
+cited omission paths. Additional facts and context observations cannot bypass
+these decisions. The catalog is a reading aid, not a claim of usefulness or truth.
+
+`actorReadingCatalog` conditions proposed subjects on each primary excerpt's
+reading context. Unresolved speakers require `subject: unknown` and an empty
+`subjectName`; a recipient, familiar greeting or following header supplies no
+owner identity. Complete literal declarations can remain useful with unknown
+actors and are not erased solely for that uncertainty. Other-speaker headers
+permit third-party or unknown readings, never owner attribution. Even an allowed
+owner reading is a proposal, not identity verification. This applies during
+schema generation and local validation, with immutable native choices and
+source context in the `workActorSelection` proof. Rejections are never repaired
+or retried to fill the required decisions.
 
 Each native fact selects `sourceClaimType`: `direct-source` for an explicit source
 report or announced plan, and `interpretation` for a proposed reading beyond what
@@ -268,7 +288,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10`, `/v11` and `/v12` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10`, `/v11`, `/v12` and `/v13` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.
