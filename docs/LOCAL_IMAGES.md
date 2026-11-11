@@ -576,8 +576,9 @@ are still exactly as captured. Any other resident still refuses the attempt, so
 loading another model on that card (a text model for a heavy phase) pauses
 immediate images without an error.
 
-This admission keeps no image model warm and provides no ephemeral storage. Its
-images retain the ordinary archive behavior.
+This admission keeps no image model warm and itself provides no ephemeral
+storage. Generic opportunistic images retain the ordinary archive behavior.
+Marked Family scenes use the separate [scene retention contract](#family-scene-retention) below.
 
 ### Family's illustrated mode
 
@@ -860,3 +861,55 @@ from them is a lower bound, never a guarantee that a smaller card fits. Compare 
 hosts before changing placement. A file's byte size is not its pipeline's
 minimum VRAM. Passing code tests is separate from container, GPU and
 real-device acceptance.
+
+
+## Family scene retention
+
+Configured illustrated mode keeps its existing scene contract and cold-worker
+admission. New Family scene operations carry a server-owned retention epoch;
+ordinary requested drawings and historical operations without that marker keep
+their original archive behavior. This change does not purge older archives.
+
+Core holds a marked scene only on its image operation in a private buffer (8 MiB,
+the existing qualified output pixel limit; the complete BSON document must remain below 15 MiB). Status and
+list queries never load the buffer. Temporary scenes are excluded in Mongo
+before list limits from Atelier/conversation galleries and the existing Family
+painting pool. Conversation activity extends retention for ten minutes, only
+while the original deadline is still live. An expired epoch cannot be revived.
+Canonical conversation deletion, inactivity or explicit end removes unkept
+bytes and the request/graph text while preserving native job, hash, admission,
+result and release identities. A late renderer cannot recreate that content.
+
+The existing frame receives `operation.retention` with `epoch`, `temporary`,
+`kept`, `expired`, `expiresAt`, and the original `keep` identity/state when any.
+The Family session image endpoints are private and use `Cache-Control:
+private, no-store`:
+
+- `POST .../images/:id/keep {requestId}` accepts one explicit keep intent.
+  Its durable claim precedes archive I/O. Original bytes, hash and acceptance
+  date fix the content-addressed archive location across a crash or lost reply.
+  Existing server housekeeping resumes accepted claims; GET never copies.
+- `GET .../images/:id/keep?requestId=...` returns the exact original receipt or
+  `null`. It remains an opaque reconciliation path after session deletion;
+  the normal image route still requires the canonical session.
+- `POST .../images/retention/end {requestId,epoch}` closes only that epoch.
+  One opaque receipt is anchored to its original image operation before erase.
+  `GET` with `?requestId=...` reads that receipt without another effect.
+  A later request for an already ended epoch identifies the original request,
+  and does not impersonate a receipt for the new UUID. The next scene may
+  atomically create a fresh retention epoch in the existing illustrated mode.
+
+Only a completed keep enters the existing archive and Family painting pool.
+An already accepted keep survives end/expiry/deletion using the same identity;
+new keeps after an end or expiry are refused. UI page hiding has no server
+side effect; explicit conversation replacement uses the exact end endpoint.
+
+Terminal worker output removal is a separate CPU-only native operation keyed
+by the original job UUID, output index and SHA-256. It validates its original
+locator, inode and bytes, journals intent, unlinks and synchronizes the output
+directory before acknowledging removal. Core retries an uncertain removal
+using the same identity through existing housekeeping/recovery. A pending or
+missing receipt never claims the worker file is gone. An older worker lacking
+this endpoint leaves cleanup pending; no release or restore bypass is added.
+All validation for this change uses synthetic CPU fixtures, not a live render
+or measured latency/VRAM acceptance.

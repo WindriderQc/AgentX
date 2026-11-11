@@ -21,6 +21,7 @@ const textPolicy = require('../../../public/js/image-text-policy');
 const { assertSupportedRequest } = require('./labIntent');
 const workQueue = require('./workQueue');
 const resourceReceipt = require('./resourceReceipt');
+const illustrations = require('./illustrationStorage');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const ACTIVE = ['accepted', 'reserving', 'generating', 'archiving', 'restoring'];
@@ -54,12 +55,18 @@ function publicOperation(op) {
   } catch { /* A local deployment may only have relative browser routes. */ }
   return { id: op._id, state: op.state, profile: op.profile.id, label: op.profile.label,
     ...(op.admissionPolicy && { admissionPolicy: op.admissionPolicy }),
+    ...(op.illustration && { retention: { epoch: op.illustration.epoch,
+      temporary: op.illustration.keep?.state !== 'completed', expiresAt: op.illustration.expiresAt,
+      expired: op.illustration.keep?.state !== 'completed' && (Boolean(op.illustration.contentRemovedAt) || op.illustration.expiresAt <= new Date().toISOString()),
+      kept: op.illustration.keep?.state === 'completed',
+      keep: op.illustration.keep ? { requestId: op.illustration.keep.requestId, state: op.illustration.keep.state } : null } }),
     ...(op.queueRequestId && { queueRequestId: op.queueRequestId }),
     studioPath, ...(studioUrl && { studioUrl }), ...(op.workerId && { worker: op.workerId }),
     createdAt: op.createdAt, updatedAt: op.updatedAt, runtimeRestored: op.runtimeRestored,
     cancelRequested: op.cancelRequested, error: op.error || null, timings: op.timings || null, resources: op.resources || null,
     ...(op.expert && { expert: op.expert }),
-    ...(op.artifact && { artifact: { sha256: op.artifact.sha256, mimeType: op.artifact.mimeType,
+    ...(op.artifact && (!op.illustration || op.illustration.keep?.state === 'completed'
+      || op.illustration.contentRetained === true && op.illustration.expiresAt > new Date().toISOString()) && { artifact: { sha256: op.artifact.sha256, mimeType: op.artifact.mimeType,
       width: op.artifact.width, height: op.artifact.height, url: `/api/images/operations/${op._id}/image` } }) };
 }
 async function save(id, changes, unset = {}) {
@@ -104,12 +111,17 @@ function validate(body, config) {
     ...(parent && { parent: { ...parent, transform: TRANSFORM } }), ...(recipe && { recipe }), ...(expert && { expert }), ...(referenceSelection && { referenceSelection }) }));
   return { profile: { ...profile, id }, request, requestHash, originals, parent, recipe, expert, referenceSelection };
 }
-async function accept(body, { conversation, signal, opportunisticWorkerId = null } = {}) {
+async function accept(body, { conversation, signal, opportunisticWorkerId = null, illustration = null } = {}) {
   assertSupportedRequest(body);
   await initialize();
   const config = loadConfig();
   if (!config || !defaultArchive().enabled) throw fail('The local image service is not configured.', 503);
   const input = validate(body, config);
+  if (illustration !== null) {
+    if (opportunisticWorkerId === null) throw fail('Illustrations require immediate admission.');
+    illustration = illustrations.validate(conversation, illustration, body);
+    input.requestHash = hash(JSON.stringify([input.requestHash, illustration.epoch]));
+  }
   if (opportunisticWorkerId !== null) {
     if (typeof opportunisticWorkerId !== 'string' || !/^[a-z0-9-]{1,40}$/.test(opportunisticWorkerId)
       || body.queueRequestId || body.queueDispatchId) throw fail('An opportunistic image needs one configured worker and a fresh immediate request.');
@@ -148,12 +160,15 @@ async function accept(body, { conversation, signal, opportunisticWorkerId = null
   const id = crypto.randomUUID();
   let op;
   try {
-    op = await ImageOperation.create([{ _id: id, actionKey: body.actionKey, requestHash: input.requestHash,
+    const record = { _id: id, actionKey: body.actionKey, requestHash: input.requestHash,
       ...(opportunisticWorkerId !== null && { admissionPolicy: 'opportunistic' }),
+      ...(illustration && { illustration }),
       ...(conversation && { conversation }), workerUrl: worker.workerUrl, workerId: worker.worker.id, state: 'queued', profile: input.profile, request: input.request,
       ...(expert && { expert }),
-      ...(referenceStorage && { referenceStorage }), ...(prepared.lineage && { lineage: prepared.lineage }), jobId: id }], { writeConcern: { w: 1, j: true } });
-    op = op[0].toObject();
+      ...(referenceStorage && { referenceStorage }), ...(prepared.lineage && { lineage: prepared.lineage }), jobId: id };
+    op = illustration ? await illustrations.createOperation(record)
+      : (await ImageOperation.create([record], { writeConcern: { w: 1, j: true } }))[0];
+    op = op.toObject();
     if (referenceStorage) op.referenceStorage = referenceStorage;
     if (prepared.lineage) op.lineage = prepared.lineage;
   } catch (error) {
@@ -177,14 +192,26 @@ async function accept(body, { conversation, signal, opportunisticWorkerId = null
 }
 // Server-side callers select the already configured dedicated worker. This is
 // admission policy, not a new client authority, retention mode or warm cache.
-function acceptOpportunistic(body, { workerId, conversation, signal } = {}) {
+async function acceptOpportunistic(body, { workerId, conversation, signal, temporary = false } = {}) {
   if (typeof workerId !== 'string' || !workerId) throw fail('An opportunistic image requires a configured worker.');
-  return accept(body, { conversation, signal, opportunisticWorkerId: workerId });
+  // Re-observing an existing action keeps its original retention incarnation,
+  // including after end/expiry. It never starts a replacement scene.
+  const prior = temporary ? await ImageOperation.findOne({ actionKey: body.actionKey }).select('illustration').lean() : null;
+  const illustration = temporary ? prior?.illustration || await illustrations.capture(conversation) : null;
+  return accept(body, { conversation, signal, opportunisticWorkerId: workerId, illustration });
 }
 async function dispatchQueued() {
+  await illustrations.expireDue();
+  await illustrations.resumeKeeps();
   const config = loadConfig();
   if (!config) return;
   await initialize();
+  const removals = await ImageOperation.find({ illustration: { $exists: true }, 'illustration.workerRemoval.removed': { $ne: true },
+    output: { $exists: true }, state: { $in: ['completed', 'failed', 'cancelled', 'archive_failed'] } })
+    .select('+workerUrl +output').sort({ 'illustration.workerRemovalAttemptAt': 1 }).limit(20).lean();
+  for (const op of removals) {
+    if (workerFor(config, op.workerUrl)) await illustrations.discardWorkerOutput(op, createComfyClient(op.workerUrl));
+  }
   const pending = await ImageOperation.find({ state: 'queued' }).sort({ createdAt: 1 }).select('+workerUrl').limit(20).lean();
   for (const op of pending) {
     if (op.admissionPolicy === 'opportunistic') {
@@ -199,8 +226,9 @@ async function dispatchQueued() {
     } catch (error) { logger.warn('Image queue awaits admission', { id: op._id, code: error.code || 'QUEUE_UNAVAILABLE' }); }
   }
 }
-async function archive(id, client, output) {
+async function archive(id, client, output, temporary = false) {
   const bytes = await client.read(output);
+  if (temporary) return illustrations.retain(id, bytes);
   const decoded = decode(bytes, MAX_OUTPUT_PIXELS);
   const receipt = await defaultArchive().store({ bytes, name: `${id}.png`, origin: 'generated', context: {} });
   if (!receipt) throw new Error('Image archive is disabled');
@@ -231,20 +259,21 @@ async function execute(op, config, client) {
     }
     if (await cancelled()) throw Object.assign(new Error('Image request cancelled'), { cancelled: true });
     const execution = buildExecution(op.profile, op.request, refs, op._id);
-    enter('generating'); const recorded = await persist({ state: 'generating', execution, dispatchStarted: true });
+    enter('generating'); const changes = { state: 'generating', execution, dispatchStarted: true };
+    const recorded = op.illustration ? await illustrations.persistExecution(op, changes) : await persist(changes);
     if (!recorded?.execution?.graph || recorded.execution.graphSha256 !== execution.graphSha256
       || hash(JSON.stringify(recorded.execution.graph)) !== execution.graphSha256) {
       throw new Error('Image execution snapshot could not be retained');
     }
     op.dispatchStarted = true;
-    await reservation.assertOwned(); terminal = false;
-    await client.submit(op.jobId, execution.graph);
+    const submit = async () => { await reservation.assertOwned(); terminal = false; await client.submit(op.jobId, execution.graph); };
+    if (op.illustration) await illustrations.submit({ ...op, executionSha256: execution.graphSha256 }, submit); else await submit();
     output = await client.observe(op.jobId, { timeoutMs: config.timeoutMs, cancelled,
       assertOwned: reservation.assertOwned, onTerminal: async () => { terminal = true; } });
     enter('archiving'); await persist({ state: 'archiving', output });
-    artifact = await archive(op._id, client, output);
+    artifact = await archive(op._id, client, output, Boolean(op.illustration));
     await persist({ artifact });
-  } catch (error) { if (error.notSubmitted) terminal = true; generationError = error; }
+  } catch (error) { if (error.notSubmitted) terminal = true; else if (error.runtimeUnknown) terminal = false; generationError = error; }
   if (reservation && terminal) {
     try {
       enter('restoring'); await persist({ state: 'restoring' });
@@ -265,6 +294,10 @@ async function execute(op, config, client) {
     await require('../heavyWorkQueueEvidence').reconcile(op.queueRequestId, 'core-images');
     await require('../heavyWorkQueueNotifications').publishJobs([await require('../heavyWorkQueueService').get(op.queueRequestId)]);
   } catch (error) { logger.warn('Image queue awaits terminal receipt', { id: op._id, code: error.code || 'EVIDENCE_UNAVAILABLE' }); }
+  if (op.illustration) {
+    await illustrations.discardWorkerOutput({ ...op, state, output, artifact }, client);
+    await illustrations.expireDue();
+  }
 }
 async function get(id) {
   await initialize();
@@ -281,7 +314,8 @@ async function getForAction(id, actionKey) {
 }
 function normalizeConversation(conversation) {
   const keys = ['surface', 'sessionId', 'packId', 'scopeId'];
-  if (!conversation || !keys.every(key => typeof conversation[key] === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(conversation[key]))) throw fail('Conversation image invalide.');
+  if (!conversation || !keys.every(key => typeof conversation[key] === 'string'
+    && (key === 'sessionId' ? /^[a-zA-Z0-9_.:-]{1,120}$/ : /^[a-zA-Z0-9_-]{1,80}$/).test(conversation[key]))) throw fail('Conversation image invalide.');
   return Object.fromEntries(keys.map(key => [key, conversation[key]]));
 }
 function conversationQuery(conversation) {
@@ -295,7 +329,9 @@ async function getForConversation(id, conversation) {
 }
 async function listForConversation(conversation) {
   await initialize();
-  return (await ImageOperation.find(conversationQuery(conversation)).sort({ createdAt: -1 }).limit(30).lean()).map(publicOperation);
+  return (await ImageOperation.find({ ...conversationQuery(conversation), $or: [
+    { illustration: { $exists: false } }, { 'illustration.keep.state': 'completed' }
+  ] }).sort({ createdAt: -1 }).limit(30).lean()).map(publicOperation);
 }
 async function draft(id) {
   const op = await ImageOperation.findById(id).select('+request').lean();
@@ -314,6 +350,7 @@ async function list() {
 // The stored request itself never leaves Core.
 async function listFinished({ limit = 200 } = {}) {
   const rows = await ImageOperation.find({ state: 'completed', runtimeRestored: true, 'artifact.sha256': { $exists: true },
+    $or: [{ illustration: { $exists: false } }, { 'illustration.keep.state': 'completed' }],
     referenceStorage: { $exists: false }, lineage: { $exists: false }, references: { $exists: false } })
     .select('conversation artifact createdAt request.prompt request.visualPrompt request.constraints request.textPolicy.enabled').sort({ createdAt: -1 }).limit(limit).lean();
   return rows.map(op => ({ id: op._id, createdAt: op.createdAt, conversation: op.conversation || null,
@@ -336,6 +373,7 @@ async function cancel(id) {
 async function image(id) {
   const op = await ImageOperation.findById(id).lean();
   if (!op?.artifact) throw fail('Image non disponible.', 404);
+  if (op.illustration) return illustrations.read(op);
   return defaultArchive().read(op.artifact);
 }
 async function retryArchive(id) {
@@ -343,8 +381,11 @@ async function retryArchive(id) {
   if (op?.state !== 'archive_failed' || !op.runtimeRestored) throw fail('This operation does not allow an archive retry.', 409);
   const worker = workerFor(loadConfig(), op.workerUrl);
   if (!worker) throw fail('The original worker must be configured to recover this image.', 409);
-  const artifact = await archive(id, createComfyClient(worker.workerUrl), op.output);
-  return publicOperation(await save(id, { artifact, state: 'completed', error: null }));
+  const artifact = await archive(id, createComfyClient(worker.workerUrl), op.output, Boolean(op.illustration));
+  const result = await save(id, { artifact, state: 'completed', error: null });
+  await illustrations.discardWorkerOutput({ ...result, output: op.output }, createComfyClient(worker.workerUrl));
+  await illustrations.expireDue();
+  return publicOperation(result);
 }
 async function recover(id) {
   await initialize();
@@ -356,7 +397,9 @@ async function recover(id) {
   if (!worker) throw fail('The original worker must be configured to recover this image.', 409);
   const client = createComfyClient(worker.workerUrl);
   const result = await require('./imageRecovery').recoverOperation(op, client,
-    (changes, unset) => save(id, changes, unset), output => archive(id, client, output));
+    (changes, unset) => save(id, changes, unset), output => archive(id, client, output, Boolean(op.illustration)));
+  const recovered = await ImageOperation.findById(id).select('+output').lean();
+  await illustrations.discardWorkerOutput(recovered, client); await illustrations.expireDue();
   return publicOperation(result);
 }
 function status() {

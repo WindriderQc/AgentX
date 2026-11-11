@@ -64,6 +64,105 @@ describe('durable local image operations', () => {
     await require('../../src/services/heavyWorkQueueEvidence').reconcile(first.queueRequestId, 'fixture');
     expect(await require('../../src/services/heavyWorkQueueService').get(first.queueRequestId)).toMatchObject({ state: 'completed' });
   });
+  test('Family illustrations use the native engine and release receipt while keeping temporary bytes outside the archive', async () => {
+    const { randomUUID } = require('node:crypto');
+    const sessions = require('../../src/services/surfaceConversationService').forSurface('household');
+    const bound = { surface: 'household', sessionId: 'family:engine.' + randomUUID(), packId: 'kidx_nestor', scopeId: 'family' };
+    const epoch = randomUUID(), expiresAt = new Date(Date.now() + 600000).toISOString();
+    await sessions.createSession({ ...bound, modeId: 'family', illustrationRetention: { epoch, expiresAt: new Date(Date.now() + 600000).toISOString() } });
+    client.ready.mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] });
+    client.discardOutput = jest.fn(async (jobId, sha256) => ({ contract: 'agentx.image-output-removal/v1', jobId, sha256, removed: true }));
+    const actionKey = 'illustrated-engine:' + randomUUID();
+    const op = await service.acceptOpportunistic({ actionKey, prompt: 'A fictional moon' },
+      { workerId: 'default', conversation: bound, temporary: true });
+    const done = await waitFor(op.id, 'completed');
+    expect(done).toMatchObject({ runtimeRestored: true, retention: { temporary: true, kept: false } });
+    expect((await service.image(op.id)).bytes).toEqual(bytes);
+    expect(fs.readdirSync(dir)).toEqual([]);
+    for (let i = 0; i < 100 && !(await ImageOperation.findById(op.id).lean()).illustration.workerRemoval?.removed; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    expect((await ImageOperation.findById(op.id).lean()).illustration.workerRemoval.removed).toBe(true);
+    expect(client.discardOutput).toHaveBeenCalledWith(op.id, done.artifact.sha256);
+    expect(reservation.restore).toHaveBeenCalledTimes(1);
+    expect(await service.listFinished()).toEqual([]);
+    await require('../../src/services/images/illustrationStorage').end(bound, { epoch, requestId: randomUUID() });
+    expect(await service.acceptOpportunistic({ actionKey, prompt: 'A fictional moon' },
+      { workerId: 'default', conversation: bound, temporary: true })).toMatchObject({ id: op.id });
+    expect(client.submit).toHaveBeenCalledTimes(1);
+  });
+  test('a renderer returning after canonical conversation deletion cannot restore bytes, graph or scene', async () => {
+    const { randomUUID } = require('node:crypto');
+    const sessions = require('../../src/services/surfaceConversationService').forSurface('household');
+    const bound = { surface: 'household', sessionId: 'family:late.' + randomUUID(), packId: 'kidx_nestor', scopeId: 'family' };
+    const epoch = randomUUID();
+    await sessions.createSession({ ...bound, modeId: 'family', illustrationRetention: { epoch, expiresAt: new Date(Date.now() + 600000).toISOString() } });
+    client.ready.mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] });
+    client.discardOutput = jest.fn(async (jobId, sha256) => ({ contract: 'agentx.image-output-removal/v1', jobId, sha256, removed: true }));
+    let finish; const gate = new Promise(resolve => { finish = resolve; });
+    client.observe.mockImplementationOnce(async (_id, options) => { await gate; await options.onTerminal();
+      return { filename: 'result.png', subfolder: 'agentx', type: 'output' }; });
+    const op = await service.acceptOpportunistic({ actionKey: 'illustrated-late:' + randomUUID(), prompt: 'A fictional moon' },
+      { workerId: 'default', conversation: bound, temporary: true });
+    await waitFor(op.id, 'generating');
+    const { surface, ...sessionQuery } = bound; await sessions.deleteSession(sessionQuery); finish();
+    const done = await waitFor(op.id, 'completed');
+    expect(done).not.toHaveProperty('artifact');
+    const row = await ImageOperation.findById(op.id).select('+temporaryImage +request +execution').lean();
+    expect(row).not.toHaveProperty('temporaryImage'); expect(row.request).not.toHaveProperty('prompt');
+    expect(row.execution).not.toHaveProperty('graph');
+    expect(row.requestHash).toHaveLength(64); expect(row.queueRequestId).toBeTruthy();
+    await expect(service.image(op.id)).rejects.toMatchObject({ statusCode: 404 });
+    expect(reservation.restore).toHaveBeenCalledTimes(1);
+    expect(client.submit).toHaveBeenCalledTimes(1);
+  });
+  test.each(['delete', 'end'])('slow readiness followed by %s cannot recreate the original illustration prompt or queue work', async action => {
+    const { randomUUID } = require('node:crypto');
+    const sessions = require('../../src/services/surfaceConversationService').forSurface('household');
+    const bound = { surface: 'household', sessionId: 'family:preflight.' + randomUUID(), packId: 'kidx_nestor', scopeId: 'family' };
+    const { surface, ...sessionQuery } = bound, epoch = randomUUID();
+    await sessions.createSession({ ...sessionQuery, modeId: 'family', illustrationRetention: { epoch, expiresAt: new Date(Date.now() + 600000).toISOString() } });
+    let entered, release;
+    const ready = new Promise(resolve => { entered = resolve; }), gate = new Promise(resolve => { release = resolve; });
+    client.ready.mockImplementationOnce(async () => { entered(); await gate; return { devices: [{ vram_total: 12e9, vram_free: 11e9 }] }; });
+    const accepting = service.acceptOpportunistic({ actionKey: 'illustrated-probe:' + randomUUID(), prompt: 'A fictional moon' },
+      { workerId: 'default', conversation: bound, temporary: true });
+    await ready;
+    if (action === 'delete') await sessions.deleteSession(sessionQuery);
+    else {
+      await sessions.updateSession(sessionQuery, { $set: { 'illustrationRetention.endedAt': new Date().toISOString() } });
+      await require('../../src/services/images/illustrationStorage').expireConversation(bound);
+    }
+    release(); await expect(accepting).rejects.toMatchObject({ statusCode: 409, notSubmitted: true });
+    expect(await ImageOperation.countDocuments()).toBe(0);
+    expect((await require('../../models/HeavyWorkQueue').findById('heavy-work').lean()).jobs).toEqual([]);
+    expect(client.submit).not.toHaveBeenCalled(); expect(reserve).not.toHaveBeenCalled();
+  });
+  test('a slow admitted image transport does not block canonical erasure and its late reply cannot restore content', async () => {
+    const { randomUUID } = require('node:crypto');
+    const sessions = require('../../src/services/surfaceConversationService').forSurface('household');
+    const bound = { surface: 'household', sessionId: 'family:transport.' + randomUUID(), packId: 'kidx_nestor', scopeId: 'family' };
+    const { surface, ...sessionQuery } = bound, epoch = randomUUID();
+    await sessions.createSession({ ...sessionQuery, modeId: 'family', illustrationRetention: { epoch, expiresAt: new Date(Date.now() + 600000).toISOString() } });
+    client.ready.mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] });
+    client.discardOutput = jest.fn(async (jobId, sha256) => ({ contract: 'agentx.image-output-removal/v1', jobId, sha256, removed: true }));
+    let entered, release; const sent = new Promise(resolve => { entered = resolve; }), gate = new Promise(resolve => { release = resolve; });
+    client.submit.mockImplementationOnce(async () => { entered(); await gate; return {}; });
+    const op = await service.acceptOpportunistic({ actionKey: 'illustrated-slow-transport:' + randomUUID(), prompt: 'A fictional moon' },
+      { workerId: 'default', conversation: bound, temporary: true });
+    await sent;
+    let timeout;
+    try {
+      await Promise.race([sessions.deleteSession(sessionQuery), new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('Erasure blocked by image transport')), 3000);
+      })]);
+    } finally { clearTimeout(timeout); release(); }
+    const done = await waitFor(op.id, 'completed');
+    expect(done).not.toHaveProperty('artifact');
+    const row = await ImageOperation.findById(op.id).select('+temporaryImage +execution +request').lean();
+    expect(row).not.toHaveProperty('temporaryImage'); expect(row.execution).not.toHaveProperty('graph');
+    expect(row.request).not.toHaveProperty('prompt');
+    expect(row.illustration.submission.requestId).toBe(op.id);
+    expect(client.submit).toHaveBeenCalledTimes(1); expect(reservation.restore).toHaveBeenCalledTimes(1);
+  });
   test('opportunistic images refuse an occupied worker without dormant work or fallback', async () => {
     client.ready.mockRejectedValue(new Error('busy'));
     await expect(service.acceptOpportunistic({ actionKey: 'opportunistic-busy', prompt: 'A lake' }, { workerId: 'default' }))

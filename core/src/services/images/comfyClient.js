@@ -94,6 +94,10 @@ function createComfyClient(base, fetchImpl = fetch) {
     }
     throw new Error('Image worker memory release is unverified');
   }
-  return { json, ready, upload, submit, observe, read, free };
+  async function discardOutput(jobId, sha256) {
+    if (!/^[a-f0-9-]{36}$/.test(jobId || '') || !/^[a-f0-9]{64}$/.test(sha256 || '')) throw new Error('Exact output identity required');
+    return json(`/api/jobs/${jobId}/discard-output`, { sha256 });
+  }
+  return { json, ready, upload, submit, observe, read, free, discardOutput };
 }
 module.exports = { createComfyClient };
