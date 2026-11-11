@@ -142,11 +142,13 @@ minutes, missing dates and failed reads are disclosed as unavailable. Conditions
 are not a forecast. This bounded reference also accompanies the local guardian;
 it contains no coordinates or operations snapshot and grants no owner tools.
 
-Full-screen Nestor shows the observed reply model and distinguishes Big Brain,
-the limited guardian relay and other model fallbacks. Until a model receipt
-arrives, it says that confirmation is pending; completed replies are labelled as
-the last reply. Personal pending requests use the existing work projection, with
-stale and uncertain states retained. Camera consent stays in Settings; neither
+Full-screen Nestor shows the observed reply model as a badge in the top right
+corner and distinguishes Big Brain, the limited guardian relay and other model
+fallbacks by name and colour; nothing shows before a turn. A tap opens the detail.
+Until a model receipt arrives, it says that confirmation is pending; completed
+replies are labelled as the last reply. Personal pending requests use the existing
+work projection, with stale and uncertain states retained, and their count shows on
+the badge; Famille has no such projection and never lists an empty one. Camera consent stays in Settings; neither
 its controls nor execution status cover the photo slideshow. An already open
 page needs a reload to use newly deployed scripts.
 

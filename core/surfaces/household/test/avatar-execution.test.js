@@ -18,3 +18,17 @@ test('scene work names come from observed pending requests, with stale and uncer
   assert.match(workText({ works: [{ state: 'uncertain' }] }), /issue non confirmée/);
   assert.equal(workText({ stale: true, works: [{ state: 'running', requestText: 'Stale work' }] }), 'Suivi du travail indisponible');
 });
+
+test('the badge role comes from the same evidence as the detail line', () => {
+  const { classify, openWorks } = require('../public/avatar-execution');
+  assert.equal(classify(null), null);
+  assert.equal(classify({ routing: { backend: 'hermes' } }).role, 'pending', 'a selected backend is not a reply model');
+  assert.equal(classify({ model: { model: 'observed-cloud' } }).role, 'brain');
+  assert.equal(classify({ execution: { model: 'observed-local', continuity: { state: 'backup', reason: 'primary_busy' } } }).role, 'guardian');
+  assert.equal(classify({ model: 'observed-local', tools: { conversationRelay: { role: 'relay' } } }).role, 'guardian');
+  assert.equal(classify({ model: 'observed-local', routing: { fallbackUsed: true } }).role, 'fallback');
+  assert.equal(classify({ model: 'agentx-status' }).role, 'status');
+  assert.deepEqual(openWorks({ works: [{ state: 'running', requestText: 'Vérifier le calendrier' }, { state: 'completed', requestText: 'Fini' }, { state: 'queued' }] }),
+    [{ text: 'Vérifier le calendrier', state: 'running', words: 'en cours' }, { text: 'Demande conservée', state: 'queued', words: 'en attente' }]);
+  assert.deepEqual(openWorks({ stale: true, works: [{ state: 'running', requestText: 'x' }] }), [], 'stale tracking lists nothing as current');
+});
