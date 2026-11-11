@@ -18,12 +18,12 @@ const PRIMARY = 'http://127.0.0.1:11434', GUARDIAN = 'http://127.0.0.2:11434';
 const tick = () => new Promise(resolve => setTimeout(resolve, 5));
 async function until(fn) { for (let i = 0; i < 400; i++) { if (await fn()) return; await tick(); } throw Error('Fixture did not reach its expected boundary'); }
 let world, originalFetch;
-async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentation = false } = {}) {
+async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentation = false, guardianTools = '' } = {}) {
   const pack = packs.packById(backend === 'hermes' ? 'personal_operator' : 'kidx_nestor');
   const session = await conversations.createSession({ sessionId: randomUUID(), packId: pack.id, scopeId: pack.defaultScopeId,
     modeId: pack.defaultMode, backend, status: 'active', agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
     persona: { id: 'nestor', version: 1, name: 'Nestor', identity: 'Synthetic personality.', voice: {} }, voice: { language: 'fr' } });
-  const env = { HOUSEHOLD_HERMES_URL: 'http://hermes.fixture', HOUSEHOLD_HERMES_TOKEN: 'synthetic-private-relay-token',
+  const env = { HOUSEHOLD_GUARDIAN_TOOLS: guardianTools, HOUSEHOLD_HERMES_URL: 'http://hermes.fixture', HOUSEHOLD_HERMES_TOKEN: 'synthetic-private-relay-token',
     ...(richFamilyPresentation && { HOUSEHOLD_FAMILY_TOOLS: 'iss_passes,web_search,network_devices' }),
     ...(enabled && { HOUSEHOLD_CONVERSATION_RELAY_ENABLED: 'true' }) };
   const state = { busy: true, failure: null, backup: true, held: true, runs: [], inference: [], releases: [], completed: new Set(), active: new Map() };
@@ -60,6 +60,9 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
       { host: PRIMARY, mode: input.exclusiveHost ? 'exclusive' : 'shared', resourceIds: [] }, now);
       throw Object.assign(Error('Refused before dispatch'), { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', failure });
     }
+    if (guardianTools && input.model === 'synthetic-guardian' && !input.messages.some(message => message.role === 'tool')) return { ok: true,
+      body: { message: { content: '', tool_calls: [{ function: { name: 'math', arguments: { operation: 'add', a: 8, b: 5 } } },
+        { function: { name: 'weather', arguments: {} } }] } }, metadata: { model: input.model } };
     if (state.backupStream && input.model === 'synthetic-guardian') return { ok: true,
       stream: (async function* () {
         yield Buffer.from(JSON.stringify({ message: { content: 'Je peux continuer la discussion.' }, done: true }) + '\n');
@@ -75,6 +78,7 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
     deps: { hostPreferenceService: { getByHost: async () => ({ pinnedModels: state.backup ? [{ model: 'synthetic-guardian', contextSize: 8192 }] : [] }) },
       assertHostAvailableForConsumer: async () => {}, modelsMatch: (a, b) => a === b,
       fetch: async () => ({ ok: true, json: async () => ({ models: [{ name: 'synthetic-guardian', context_length: 8192 }] }) }) },
+    observeFamilyOccupation: async () => state.busy && !state.failure,
     readWork: async () => { throw Error('A queue label must not establish occupation'); }, log: { warn() {} } });
   const execute = createConversationExecutor({ conversations, env, inference: { execute: local, conversation: continuity },
     recordRuntimeUsage: async () => {}, agentClient: () => { throw Error('No native OpenClaw or owner bus in these paths'); } });
@@ -87,6 +91,7 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
     ownerMemory: {}, familyMemory: {}, notesFor: () => ({ search: async () => ({ notes: [] }) }),
     personalAttachments: () => ({ prepare: async messages => messages }), knowledgeState: { config: null, status: { status: 'disabled' } },
     openHold: {}, openingPayload: () => ({}), sounds: { select: () => null, get: () => null }, visuals: { sources: () => richFamilyPresentation ? ['web', 'photos'] : [] },
+    ...(guardianTools && { ambient: { weather: async () => ({ temperatureC: 4, fetchedAt: new Date().toISOString() }) } }),
     brain: { cancel() {}, schedule() { state.reviews = (state.reviews || 0) + 1; }, contextFor: () => '' }, memberWork, activePersonaTurns,
     ...(richFamilyPresentation && { ambient: { weather: async () => ({ condition: 'Nuageux', temperatureC: 4.5, fetchedAt: new Date().toISOString() }) }, screenPages: require('../../surfaces/household/screen-services').createScreenServices({ env }),
       conversationImages: require('../../surfaces/household/conversation-images').createConversationImages({ conversations,
@@ -440,4 +445,33 @@ test.each([16001, 50000])('Hermes opt-in retains its existing %i-character reply
   expect(row.outcome).toBe('completed'); expect(row.replyText).toBe(world.state.nativeOutput);
   expect(row.toolEvidence.runId).toBe(world.state.runs[0].id);
   expect(world.state.runs).toHaveLength(1);
+});
+
+
+test.each(['agentx', 'hermes'])('%s relay executes only allowlisted Core reads and duplicate intake never repeats them', async backend => {
+  world = await fixture(backend, true, { guardianTools: 'weather,math' });
+  let primary;
+  if (backend === 'hermes') {
+    primary = world.send('Travail natif fictif indépendant.').then(reply => reply);
+    await until(() => world.state.runs.length === 1 && world.state.releases.length === 1);
+    await until(() => [...world.activePersonaTurns.values()][0]?.detach?.());
+  }
+  const id = randomUUID();
+  const reply = await world.send('Explique une lecture météo avec ton outil et un calcul.', id).expect(200);
+  const data = done(reply);
+  if (!data) throw Error('No completed relay: ' + reply.text);
+  expect(data.tools).toMatchObject({ status: 'observed', authority: 'agentx/core', offered: ['weather', 'math'],
+    conversationRelay: { role: 'relay', completed: true } });
+  expect(data.tools.receipts).toHaveLength(2);
+  expect(data.tools.receipts.every(receipt => receipt.status === 'completed' && receipt.resultSha256)).toBe(true);
+  const guardian = world.state.inference.filter(input => input.model === 'synthetic-guardian');
+  expect(guardian).toHaveLength(2);
+  expect(guardian[0].tools.map(tool => tool.function.name).sort()).toEqual(['math', 'weather']);
+  expect(guardian[1].messages.filter(message => message.role === 'tool').map(message => JSON.parse(message.content)))
+    .toEqual([expect.objectContaining({ result: 13 }), expect.objectContaining({ data: expect.objectContaining({ temperatureC: 4 }) })]);
+  expect(guardian[1].options.num_ctx).toBe(8192);
+  const count = world.state.inference.length;
+  await world.send('Explique une lecture météo avec ton outil et un calcul.', id).expect(202);
+  expect(world.state.inference).toHaveLength(count);
+  if (primary) { world.release(); await primary; }
 });

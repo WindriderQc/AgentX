@@ -180,6 +180,29 @@ revokes their canonical payloads. Results, action permissions and display/speech
 receipts retain their existing owners. A relay cannot execute a later action
 merely because it appears in this reference context.
 
+The optional server setting `HOUSEHOLD_GUARDIAN_TOOLS` is an empty allowlist by
+default. Its reviewed catalogue accepts `iss_passes`, `weather` and `math`,
+comma-separated; any unknown name disables the offered relay toolset. This
+setting changes neither native agent grants nor the owner bus. The dedicated
+OpenClaw guardian retains its existing tool-deny fences.
+
+The Family/Core and personal Hermes local relay can use only these bounded
+reads. ISS reuses Core's pass computation and server location, with no model
+coordinates, observer labels or coordinate-bearing viewer URL. Weather reuses
+the family projection and preserves observation/retrieval age separately. Math
+reuses Core's counting (1–100) and non-negative addition (sum 1–20); it evaluates
+no expression or code. Source errors and unavailable conditions remain explicit.
+
+The existing conversation tool loop allows at most two rounds of three calls.
+Each continuation retains the selected local host/context and ordinary native
+admission, with retries disabled. Core rechecks the principal's actual occupation
+before each read and additional model call; an unavailable/foreign observation
+stops the chain. The relay cannot switch back to Main during that chain. Repeated
+identical reads retain the same per-turn result and receipt, including failures.
+Results and the combined context are bounded; erasure and duplicate canonical
+intake retain their existing fences. This opt-in source support does not activate
+an instance tool, prove model quality or confirm that audio was heard.
+
 CPU HTTP fixtures cover occupied shared inference, independent active Hermes
 transport, return, voice streaming, Stop, reconnect, erasure, missing guardian
 and ambiguous native state. They do not establish model quality, microphone

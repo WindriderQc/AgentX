@@ -459,7 +459,7 @@ function createPersonaTurnHandler({
             requirePrimaryRelay: () => requireNativeAgent(agentIdFor(turnSession)) } : {}),
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
-          instructions: nativeInstructions, agentxInstructions, familyWeatherContext, ...(familyTools ? { familyTools } : {}), ...(turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
+          instructions: nativeInstructions, agentxInstructions, familyWeatherContext, guardianTools: require('./guardian-read-tools').forTurn(conversationEnv, { backend, packId: pack.id, blocked: isLlmX || isOpening || Boolean(member), ambient }), ...(familyTools ? { familyTools } : {}), ...(turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
           ...(currentDirective ? { turnDirective: currentDirective } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),

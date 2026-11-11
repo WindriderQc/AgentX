@@ -39,7 +39,7 @@ function requireResult(result) {
 }
 
 function createConversationContinuity({ execute, readSnapshot, deps, validate, readWork = readQueue,
-  readPolicy = () => process.env[ENV], log = require('../../../config/logger') }) {
+  readPolicy = () => process.env[ENV], observeFamilyOccupation, log = require('../../../config/logger') }) {
   return async (request, options = {}) => {
     let policy;
     try { policy = parse(readPolicy()); } catch {
@@ -138,10 +138,10 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         if (!resident || Number(resident.context_length) !== Number(pin.contextSize)) continue;
       } catch { if (signal?.aborted) signal.throwIfAborted(); continue; }
       const notice = options.requireOccupied
-        ? 'Nestor assure temporairement le relais, avec un contexte récent réduit et sans outils. Le cerveau principal est occupé.'
+        ? `Nestor assure temporairement le relais, avec un contexte récent réduit et ${options.relayTools ? 'des lectures Core limitées' : 'sans outils'}. Le cerveau principal est occupé.`
         : `🪶 Nestor en mode de secours local, avec un contexte récent réduit et sans outils d’action. ${status}`;
       const reduced = reducedRequest(options.relayRequest || request, { ...policy, model: pin.model,
-        contextSize: Number(pin.contextSize), notice, status, familyInstructions: options.familyInstructions });
+        contextSize: Number(pin.contextSize), notice, status, familyInstructions: options.familyInstructions, relayTools: options.relayTools });
       if (!reduced) return statusResult(request, status, 'backup_context_unavailable');
       const continuity = { state: 'backup', reason, limited: true, contextReduced: true,
         model: pin.model, hostKey,
@@ -159,7 +159,10 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
           degraded: routing, conversationContinuity: { ...continuity,
             lane: { role: 'conversation', mode: 'continuity', group: null, laneContext: Number(pin.contextSize) } },
           retry: { enabled: false } });
-        return decorate(requireResult(result), { notice, continuity });
+        const received = decorate(requireResult(result), { notice, continuity });
+        if (options.relayTools && reduced.messages && options.requireOccupied) received.relayContinuation = require('./conversationRelayContinuation').createRelayContinuation({
+          reduced, target, execute, options, hostUrl, routing, continuity, maxInputChars: policy.maxInputChars, observeFamilyOccupation, occupation, signal, notice });
+        return received;
       } catch (error) {
         if (signal?.aborted || (!safeRefusal(error) && error.code !== 'LANE_CONTEXT_EXCEEDED')) throw error;
       }
