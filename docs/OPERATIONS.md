@@ -388,6 +388,39 @@ the Profiler panel or `POST /api/profiler/pipeline/profile/:profileId/cancel`,
 `POST /api/benchmark/batch/:id/stop` on Benchmark. Core serves the same verdict
 at `/api/nerve-center/runtime-coordination/deploy-blockers?service=core|benchmark|all`.
 
+#### Cancelling a standalone judge calibration
+
+Core exposes `GET /api/nerve-center/judge-calibrations` and
+`GET /api/nerve-center/judge-calibrations/:admissionId`. The owner MCP tool
+`judge_calibration` offers the same `list`, `show` and `cancel` operations;
+it is absent from general, memory and family tool buses. These reads start
+no model and report native ownership separately from release.
+
+After the owner requests a stop, send
+`POST /api/nerve-center/judge-calibrations/:admissionId/cancel` with
+`{ "workloadId": "<exact ID from the read>", "requestId": "<stable UUID>",
+"reason": "<owner intent, at most 300 characters>" }`.
+Only Benchmark-owned standalone quick, accuracy and matrix calibrations are
+eligible. Batch and Profiler controls retain their existing owners.
+
+HTTP 202 means **cancellation requested**, never that the model stopped or
+resources were released. Core durably fences new inference for that exact
+admission and refuses its next workload heartbeat. Benchmark aborts its
+writer and hands uncertain work to native recovery. Other admissions and
+hosts retain their existing controls. The stop request survives Core
+restarts and is retained in the native release receipt; after a lost reply,
+read the original admission or retry the same UUID and arguments. Reusing
+that UUID for another calibration or changing the reason refuses.
+
+Poll `show` for native release and inspect the linked queue's own result and
+release receipt separately. Expiry, an empty model inventory and an accepted
+stop do not prove terminality. Child inference quarantines remain intact;
+only native verification/restoration can release them. Cancellation neither
+restarts a service nor authorizes a deployment, model load or queue closure.
+An older installation without this route needs the reviewed code installed
+through its normal deployment gate; do not clear coordination or hot-patch a
+running process to make the route available.
+
 When the only blockers are background inference (`inference-automated`, or
 Core's own `watchdog-probe`), the launcher does not refuse at once. It posts a
 drain request (`POST /api/nerve-center/runtime-coordination/drain`), which

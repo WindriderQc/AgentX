@@ -187,6 +187,7 @@ async function assertWorkloadAdmission({ id, generation, principal, workloadId, 
       generation,
       principal,
       workloadId,
+      cancellation: null,
       expiresAt: { $gt: new Date() },
       ...(host ? { hosts: host } : {})
     } }

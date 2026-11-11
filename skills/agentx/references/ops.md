@@ -50,6 +50,17 @@ scope, or asked first). Exact routes: [endpoints](endpoints.md).
 
 ## Benchmark
 
+- To stop a standalone judge calibration at the owner's request, use the owner
+  tool `judge_calibration`: `list`, then `cancel` with its exact `id`
+  (admissionId), `workloadId`, stable UUID `requestId` and `reason`; `show`
+  observes the original admission and its native release. An accepted intent
+  is not a stopped model. It leaves child quarantines and queue receipts to
+  their native owners and restarts nothing. The HTTP equivalents are under
+  `/api/nerve-center/judge-calibrations` (Core). Check the installed catalogue;
+  older versions may not expose this control. See `docs/OPERATIONS.md`,
+  "Cancelling a standalone judge calibration". Never substitute queue cancel
+  for stopping an already-dispatched calibration.
+
 - Results and coverage: `benchmark_results`, `benchmark_coverage`; HTTP under
   `<core>/benchmark/api/benchmark/*` and `/benchmark/api/profiler/*`.
 - `benchmark_request_measurement` records a request; it does not run one.

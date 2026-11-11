@@ -172,7 +172,7 @@ function startBenchmarkClaimHeartbeat(hostUrls, batchId, estimatedDurationMs, op
     const fail = (hostUrl, reason, cause = null) => {
         if (failure) return;
         failure = new Error(`Benchmark claim heartbeat lost for ${hostUrl || batchId}: ${reason}`);
-        failure.code = 'BENCHMARK_CLAIM_LOST';
+        failure.code = cause?.code === 'WORKLOAD_CANCEL_REQUESTED' ? cause.code : 'BENCHMARK_CLAIM_LOST';
         failure.hostUrl = hostUrl || null;
         failure.cause = cause;
         if (typeof options.onFatal === 'function') options.onFatal(failure);
@@ -185,7 +185,7 @@ function startBenchmarkClaimHeartbeat(hostUrls, batchId, estimatedDurationMs, op
             try {
                 const workload = await heartbeatWorkloadAdmission(batchId, estimatedDurationMs);
                 if (workload?.heartbeat === false) {
-                    fail(null, workload.reason || 'workload admission ownership rejected');
+                    fail(null, workload.reason || 'workload admission ownership rejected', workload);
                     return;
                 }
                 if (workload?.expiresAt) confirmedExpiresAt = workload.expiresAt;

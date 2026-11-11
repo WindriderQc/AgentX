@@ -217,7 +217,12 @@ async function heartbeatWorkloadAdmission(workloadId, ttlMs = null) {
     receipt.expiresAt = result.expiresAt || receipt.expiresAt;
     return result;
   } catch (error) {
-    if (error.status === 409) return { heartbeat: false, reason: error.message };
+    if (error.status === 409) {
+      let result;
+      try { result = JSON.parse(error.body)?.data; } catch { /* A refusal without a structured receipt stays refused. */ }
+      return { heartbeat: false, reason: result?.reason || error.message,
+        ...(result?.code === 'WORKLOAD_CANCEL_REQUESTED' && { code: result.code }) };
+    }
     throw error;
   }
 }

@@ -442,6 +442,7 @@ async function resolveWorkloadRecovery({ recoveryId, recoveryGeneration, princip
     recoveryState: owned.recoveryState,
     recoveryVersion: owned.recoveryVersion,
     recoveryReceipt: owned.recoveryReceipt,
+    cancellation: owned.cancellation || null,
     releasedAt
   };
   const prior = await RuntimeCoordination.findOneAndUpdate(
@@ -461,6 +462,7 @@ async function resolveWorkloadRecovery({ recoveryId, recoveryGeneration, princip
         recoveryGeneration,
         recoveryState: 'RESTORED',
         recoveryVersion: owned.recoveryVersion,
+        cancellation: owned.cancellation || null,
         recoveryReceipt: { $ne: null },
         ...(ownerId
           ? { recoveryOwnerId: ownerId, recoveryExpiresAt: { $gt: releasedAt } }

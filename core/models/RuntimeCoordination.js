@@ -53,6 +53,13 @@ const WorkloadAdmissionSchema = new mongoose.Schema({
   // yieldedAt at a prompt boundary. Ordinary shared inference is then admitted.
   yieldRequestedAt: { type: Date, default: null },
   yieldedAt: { type: Date, default: null },
+  // An operator requests a stop; only the native owner/recovery proves release.
+  cancellation: { type: new mongoose.Schema({
+    requestId: { type: String, required: true },
+    requestedAt: { type: Date, required: true },
+    requestedBy: { type: String, required: true },
+    reason: { type: String, required: true, maxlength: 300 }
+  }, { _id: false }), default: null },
   // Recovery quarantine is armed by the Benchmark client immediately after
   // acquisition and before acquireWorkloadAdmission returns to a mutator.
   // It is deliberately not TTL-reaped: an expired process proof must not let

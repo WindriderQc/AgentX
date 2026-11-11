@@ -164,6 +164,7 @@ async function acquireInference({
       principal,
       hosts: host,
       drainingHosts: { $ne: host },
+      cancellation: null,
       expiresAt: { $gt: now }, yieldedAt: null
     } }
   };

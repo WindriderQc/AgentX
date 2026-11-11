@@ -25,12 +25,22 @@ async function heartbeat(kind, { id, generation, principal, ttl } = {}) {
       'maintenance.state': { $in: ['ACTIVE', null] },
       'maintenance.expiresAt': { $gt: now }
     }
-    : { _id: 'runtime', workloads: { $elemMatch: { admissionId: id, generation, principal, expiresAt: { $gt: now } } } };
+    : { _id: 'runtime', workloads: { $elemMatch: { admissionId: id, generation, principal,
+      cancellation: null, expiresAt: { $gt: now } } } };
   const set = isMaintenance
     ? { 'maintenance.heartbeatAt': now, 'maintenance.expiresAt': expiresAt }
     : { 'workloads.$.heartbeatAt': now, 'workloads.$.expiresAt': expiresAt };
   const updated = await RuntimeCoordination.findOneAndUpdate(filter, { $set: set }, { new: true }).lean();
-  if (!updated) return { heartbeat: false, reason: 'lease proof no longer owns coordination state' };
+  if (!updated) {
+    if (!isMaintenance) {
+      const current = await RuntimeCoordination.findOne({ _id: 'runtime', workloads: { $elemMatch: {
+        admissionId: id, generation, principal, cancellation: { $ne: null }
+      } } }).lean();
+      if (current) return { heartbeat: false, code: 'WORKLOAD_CANCEL_REQUESTED',
+        reason: 'Operator requested cancellation of this exact workload; retain native recovery ownership.' };
+    }
+    return { heartbeat: false, reason: 'lease proof no longer owns coordination state' };
+  }
   const owned = isMaintenance
     ? updated.maintenance
     : updated.workloads.find(item => item.admissionId === id && item.generation === generation);
@@ -112,6 +122,7 @@ async function release(kind, { id, generation, principal } = {}) {
     kind: owned.kind,
     batchId: owned.batchId,
     hosts: normalizedHosts(owned.hosts),
+    cancellation: owned.cancellation || null,
     releasedAt
   };
   const filter = isMaintenance
@@ -124,7 +135,7 @@ async function release(kind, { id, generation, principal } = {}) {
       'maintenance.expiresAt': { $gt: releasedAt }
     }
     : { _id: 'runtime', inferences: { $not: { $elemMatch: { workloadAdmissionId: id, workloadGeneration: generation } } }, workloads: { $elemMatch: {
-      admissionId: id, generation, principal, expiresAt: { $gt: releasedAt }
+      admissionId: id, generation, principal, cancellation: owned.cancellation || null, expiresAt: { $gt: releasedAt }
     } } };
   const update = {
     ...(isMaintenance
@@ -252,6 +263,7 @@ async function listActive() {
       hosts: item.hosts,
       resourceIds: item.resourceIds || [],
       recoveryRequired: item.recoveryRequired === true,
+      cancellation: item.cancellation || null,
       acquiredAt: item.acquiredAt,
       heartbeatAt: item.heartbeatAt,
       expiresAt: item.expiresAt
