@@ -231,6 +231,7 @@ test('real canonical human activity extends the current image without another sc
   const op = await retained();
   await Image.updateOne({ _id: op._id }, { $set: { 'illustration.expiresAt': new Date(Date.now() - 1000).toISOString() } });
   await conversations.recordTurn({ ...sessionScope, traceId: randomUUID(), inputText: 'Tell me more', replyText: 'Here is more.' });
+  await withSessionWrite(scope.surface, scope.sessionId, async () => {}); // Observe the queued best-effort extension.
   const current = await Image.findById(op._id).lean();
   expect(Date.parse(current.illustration.expiresAt)).toBeGreaterThan(Date.now() + 590000);
   await storage.expireDue();
@@ -303,4 +304,30 @@ test('temporary retention preserves the existing qualified 4 MP scene size withi
   await Image.updateOne({ _id: op._id }, { $set: { artifact } });
   expect((await images.image(op._id)).bytes).toEqual(large);
   expect(fs.readdirSync(dir)).toEqual([]);
+});
+
+
+test.each([false, true])('canonical Family intake completes under its existing fence with retention=%s', async hasImage => {
+  let op;
+  if (hasImage) {
+    op = await retained();
+    const nearDeadline = new Date(Date.now() + 5000).toISOString();
+    await conversations.updateSession(sessionScope, { $set: { 'illustrationRetention.expiresAt': nearDeadline } });
+    await Image.updateOne({ _id: op._id }, { $set: { 'illustration.expiresAt': nearDeadline } });
+  } else await conversations.updateSession(sessionScope, { $unset: { illustrationRetention: 1 } });
+  let timeout;
+  try {
+    const result = await Promise.race([
+      conversations.acceptTurn({ ...sessionScope, traceId: randomUUID(), inputText: 'Continue the conversation.' }),
+      new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error('Family intake deadlocked on the retention follow-up')), 2000); })
+    ]);
+    expect(result).toMatchObject({ duplicate: false, turn: { inputText: 'Continue the conversation.', outcome: 'pending' } });
+  } finally { clearTimeout(timeout); }
+  // The server's same queue, rather than a second touch or a compensating turn,
+  // proves that the admitted follow-up ran after releasing the intake fence.
+  await withSessionWrite(scope.surface, scope.sessionId, async () => {});
+  if (hasImage) {
+    expect(Date.parse((await Image.findById(op._id).lean()).illustration.expiresAt)).toBeGreaterThan(Date.now() + 590000);
+    expect((await images.image(op._id)).bytes).toEqual(bytes);
+  } else expect((await conversations.getSession(sessionScope)).illustrationRetention).toBeUndefined();
 });

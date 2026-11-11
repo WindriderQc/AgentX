@@ -175,7 +175,10 @@ function forSurface(surface) {
       }
       throw failure('Active conversation not found in this space', 404, 'CONVERSATION_NOT_FOUND');
     }
-    if (inputText) await require('./images/illustrationStorage').touch({ surface, sessionId: event.sessionId, packId: event.packId, scopeId: event.scopeId }, row.surfaceSession.lastTurnAt).catch(() => {
+    // acceptTurn already owns this session's write fence. Queue the optional
+    // TTL extension behind that same fence without waiting for re-entry. The
+    // canonical lastTurnAt above also lets capture/GC repair an interrupted follow-up.
+    if (inputText) void require('./images/illustrationStorage').touch({ surface, sessionId: event.sessionId, packId: event.packId, scopeId: event.scopeId }, row.surfaceSession.lastTurnAt).catch(() => {
       require('../../config/logger').warn('Illustration retention awaits canonical activity reconciliation');
     });
     return turnView(row, row.messages.find(message => String(message._id) === String(messageId)));
