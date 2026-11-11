@@ -1,0 +1,12 @@
+/* Family's illustrated mode (#1304): a small picture in the corner opposite
+   Nestor's face. Only opacity animates, which the browser composites cheaply. */
+.illustrated-frame { position: fixed; z-index: 14; left: 16px; bottom: 16px; margin: 0;
+  width: min(26vw, 220px); aspect-ratio: 1; border: 1px solid var(--line, #2a3a48); border-radius: 18px;
+  overflow: hidden; background: #060d14; box-shadow: var(--shadow, 0 6px 18px rgb(0 0 0 / .25)); cursor: zoom-in; }
+.illustrated-frame[hidden] { display: none; }
+.illustrated-frame.is-large { width: min(70vw, 70vh); cursor: zoom-out; }
+.illustrated-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  opacity: 0; transition: opacity 1.2s ease; }
+.illustrated-frame img.is-front { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .illustrated-frame img { transition: none; } }
+@media print { .illustrated-frame { display: none; } }

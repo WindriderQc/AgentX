@@ -79,7 +79,9 @@
       const data = await response.json();
       if (!response.ok || !data.ok || !current()) return;
       for (const block of (data.blocks || []).slice(0, 30).reverse()) {
-        if (block.kind === 'image' && block.source === 'local' && block.operation?.statusUrl === base + '/images/' + block.operation.id) add(block);
+        // Illustrations belong to the live frame; a reopened conversation does not replay them.
+        if (block.kind === 'image' && block.source === 'local' && block.presentation !== 'illustration'
+          && block.operation?.statusUrl === base + '/images/' + block.operation.id) add(block);
       }
     } catch { /* Existing history remains usable; recovery never creates another image. */ }
   }

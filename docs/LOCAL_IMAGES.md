@@ -569,9 +569,42 @@ worker memory release and runtime restoration receipts. The policy and selected
 worker participate in request identity, so the same action cannot be replayed
 with normal drawing admission or a different worker.
 
-This is an internal admission capability. It does not enable Family's
-illustrated mode, keep an image model warm, provide ephemeral storage or qualify
-render/conversation latency. Its images retain the ordinary archive behavior.
+A worker may list `keepResidents`: Ollama model names, at most 8, that may stay
+loaded during an immediate image, such as a small pinned embedding model that
+leaves enough room. They are never unloaded; restoration only verifies that they
+are still exactly as captured. Any other resident still refuses the attempt, so
+loading another model on that card (a text model for a heavy phase) pauses
+immediate images without an error.
+
+This admission keeps no image model warm and provides no ephemeral storage. Its
+images retain the ordinary archive behavior.
+
+### Family's illustrated mode
+
+An optional `illustrated` block turns on a small picture beside Famille's
+conversation that follows its subject:
+
+```json
+"illustrated": { "worker": "desk", "profile": "klein", "width": 768, "height": 768, "intervalSeconds": 60 }
+```
+
+`worker` names one configured worker and `profile` a klein profile it accepts.
+`width`/`height` default to 768 and must be qualified for the profile;
+`intervalSeconds` (30 to 3600, default 60) is the minimum time between two
+attempts in one conversation. Without the block the mode is off and Famille's
+instructions do not mention it.
+
+When it is on, Famille may end a reply with a hidden
+`<show kind="image" source="scene">` block describing the new subject. It is
+never spoken, shown as a card or stored with the turn. After the reply, Core
+applies Family's drawing safety filter to it and makes one immediate attempt on
+that worker only. The turn waits at most 3 seconds for that admission; past it,
+the attempt stops before creating an operation. A drawing requested in the same turn, a refusal, a busy or
+stopped worker, or a second subject inside the interval simply leaves the
+previous picture; nothing waits or falls back to another worker. The page shows
+the verified result in a corner frame with a short fade, reads its status only
+while it is being prepared (not while the page is hidden), and does not replay
+illustrations when a conversation is reopened.
 
 ## Request and recovery contract
 

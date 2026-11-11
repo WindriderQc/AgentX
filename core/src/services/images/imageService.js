@@ -367,6 +367,7 @@ function status() {
   const p = config?.profiles[quick];
   return { configured: Boolean(config && defaultArchive().enabled), defaultProfile: config?.defaultProfile || null,
     conversationProfile: p ? { id: quick, width: Math.min(1024, Math.floor(Math.sqrt(p.maxPixels) / 32) * 32), height: Math.min(1024, Math.floor(Math.sqrt(p.maxPixels) / 32) * 32) } : null,
+    illustrated: config?.illustrated || null,
     profiles: Object.entries(config?.profiles || {}).map(([id, p]) => ({ id, label: p.label || id, maxPixels: p.maxPixels, license: p.license || null })) };
 }
 module.exports = { accept, acceptOpportunistic, dispatchQueued, get, getForAction, getForConversation, listForConversation, draft, list, listFinished, cancel, image, retryArchive, recover, status, validate, publicOperation };

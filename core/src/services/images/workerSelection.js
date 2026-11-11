@@ -82,8 +82,9 @@ async function chooseWorker(config, profile, { queueHosts: reserved = null, oppo
       const busy = busyKeys(jobs, deps.now(), { includeImages: true });
       if (workerKeys(worker).some(key => busy.has(key))) return { worker: null, tried: [{ id: worker.worker.id, reason: 'reserved' }] };
       const stats = await deps.client(worker.workerUrl).ready(profile, { requireQueueProof: true });
+      const kept = worker.worker.keepResidents || [];
       for (const host of worker.ollamaHosts) {
-        if ((await deps.running(host)).length) return { worker: null, tried: [{ id: worker.worker.id, reason: 'resident' }] };
+        if ((await deps.running(host)).some(r => !kept.includes(r.name || r.model))) return { worker: null, tried: [{ id: worker.worker.id, reason: 'resident' }] };
       }
       const device = stats?.devices?.[0];
       if (!device || !(device.vram_total > 0) || !hasRoom(stats, [], worker.minFreeVramRatio)) {
