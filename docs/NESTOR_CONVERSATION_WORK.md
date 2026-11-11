@@ -68,7 +68,8 @@ Accepted records without this policy retain their guardian-first contract, model
 profile and execution identity, including after a restart or disabling new intake.
 The default mode remains `off`; text, Open, addressed specialists, Family and
 Hermes retain their existing routes. This change grants no native consent or
-business authority. Native clarification/approval bridging remains separate.
+business authority. Ordinary native questions use the optional [conditional question bridge](NESTOR_NATIVE_QUESTIONS.md).
+Secret and execution approvals retain their native owners.
 
 ### Reconcile an uncertain personal capture
 
@@ -136,9 +137,13 @@ independent of the optional second-brain/reviewer scheduling preferences.
 Family first tries its exact configured voice/text task route and pinned context.
 It does not require the personal `daily_operator` route to exist.
 Its atomic exclusive admission treats an already active shared inference as an
-occupied lane. Only a pre-dispatch refusal with an active native holder permits
-a tool-free guardian reply; queue labels, expired ownership, quarantine and
-uncertain outcomes cannot establish occupation. The guardian receives the family
+occupied lane. A proven refusal before dispatch permits a guardian reply even
+when the principal is unavailable without a verified active holder. Only a fresh
+active holder is described as busy; queue labels, expired ownership and quarantine
+do not establish occupation. Another owner's recovery fence remains intact, and
+the guardian must independently pass native admission on a different resident
+host. A timeout, partial reply or uncertain outcome of this turn never permits
+a replacement call. The guardian receives the family
 instructions and bounded recent text dialogue, with the complete current human
 message. Its instructions reuse the complete canonical family/mode policy and
 the read-only reply format, without the principal's tool, navigation or image
@@ -164,7 +169,18 @@ its previous key, run and state, so a stale read cannot replace a newer run.
 Finalization retains Household's existing 50,000-character reply bound; the
 separate native conversation-work result contract keeps its 16,000-character bound.
 
-Both paths announce the temporary relay in text and voice. Canonical intake binds
+Both paths announce the temporary relay in text and voice with an explicit
+automatic AgentX notice, distinct from the guardian's generated reply. When no
+guardian can accept the turn, the warm, deterministic service notice identifies
+itself as automatic; its technical explanation remains in the turn's evidence.
+It records tools as `not_run`, rather than claiming that a model rejected tools.
+Scripted greetings are marked as automatic in the visible conversation.
+The Family relay retains the server's household clock. Supplied weather keeps
+its original source projection plus separately converted local observation and
+retrieval times and observation age; a recent retrieval never makes the reading
+current. Guardian instructions keep the answer conversational and leave the
+automatic service announcement to Core.
+Canonical intake binds
 each stable turn id before inference; a duplicate reads its existing outcome
 without a second inference, including after interruption or an uncertain reply.
 Completed Core inference produces `toolEvidence.conversationRelay.completed=true`.
@@ -195,9 +211,12 @@ no expression or code. Source errors and unavailable conditions remain explicit.
 
 The existing conversation tool loop allows at most two rounds of three calls.
 Each continuation retains the selected local host/context and ordinary native
-admission, with retries disabled. Core rechecks the principal's actual occupation
-before each read and additional model call; an unavailable/foreign observation
-stops the chain. The relay cannot switch back to Main during that chain. Repeated
+admission, with retries disabled. For an occupation-triggered relay, Core rechecks
+the principal's actual occupation before each read and additional model call;
+an unavailable/foreign observation stops the chain. A Family reply triggered by
+a proven pre-dispatch unavailability refusal completes on the same read-only
+guardian without claiming an active principal run. The relay cannot switch back
+to Main during that chain. Repeated
 identical reads retain the same per-turn result and receipt, including failures.
 Results and the combined context are bounded; erasure and duplicate canonical
 intake retain their existing fences. This opt-in source support does not activate

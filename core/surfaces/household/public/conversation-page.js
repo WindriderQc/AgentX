@@ -8,12 +8,22 @@ window.ConversationEngines = {
     return [preferred, runtime?.defaultBackend, 'openclaw', 'agentx'].find(value => available.includes(value));
   },
   label(backend) { return ({ hermes: 'Hermes', openclaw: 'OpenClaw', agentx: 'AgentX / Ollama' })[backend] || 'Conversation engine'; },
+  toolStatus(evidence) {
+    const receipts = evidence?.receipts || [];
+    if (evidence?.status === 'not_run') return 'Message automatique · aucun modèle ni outil n’a rédigé cet avis.';
+    if (evidence?.status === 'not_supported' && !receipts.length) return 'Cette réponse utilise le contexte fourni, sans appel d’outil.';
+    if (evidence?.status === 'unavailable') return 'Les résultats des outils ne sont pas disponibles pour le moment.';
+    return receipts.map(receipt => receipt.tool + (receipt.status === 'failed' ? ' · échec'
+      : ['verified', 'completed'].includes(receipt.status) ? ' · résultat reçu'
+        : receipt.observed ? ' · appel observé, résultat non vérifié' : ' · résultat indisponible')).join(' · ');
+  },
   observed(data) {
     const backend = data?.routing?.backend;
     const source = data?.routing?.source || data?.routingSource;
     const engine = backend || (typeof source === 'string' && source.startsWith('hermes/') ? 'hermes' : null);
     const value = typeof data?.model === 'string' ? data.model : data?.model?.model;
     const model = typeof value === 'string' ? value.slice(0, 160) : '';
+    if (model === 'agentx-status') return 'Message automatique d’AgentX';
     return engine ? this.label(engine) + (model ? ' · ' + model : '') : '';
   }
 };
@@ -95,7 +105,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <details id="conversationPersonalContext" class="personal-context" hidden></details>
       <section id="conversationTools" class="conversation-audio" aria-label="Tools and actions" hidden>
         <p id="conversationToolsStatus" role="status"></p>
-        <details><summary>Tool results</summary><pre id="conversationToolsReceipt"></pre></details>
+        <details><summary>Détails techniques</summary><pre id="conversationToolsReceipt"></pre></details>
       </section>
       <form id="conversationText" class="conversation-text"><label class="sr-only" for="conversationMessage">Message</label><textarea id="conversationMessage" rows="2" placeholder="Write a message…" required maxlength="4000"></textarea><button class="button" type="submit">Send</button></form>
       ${family ? '' : '<details class="conversation-attachments"><summary>Attach an image or document</summary><label class="sr-only" for="conversationFiles">Attachments</label><input id="conversationFiles" type="file" multiple accept="image/png,image/jpeg,.txt,.md,.csv,.json,.pdf"><p class="muted">Up to 3 files · JPEG or PNG photos up to 50 MB (Nestor receives a reduced copy; the original is archived) · text or text PDF up to 2 MB (20 pages, 24,000 characters maximum). Add a message to send them.</p><div id="conversationDraftFiles" aria-live="polite"></div></details>'}
@@ -145,7 +155,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   });
   const pagePicker = family ? null : window.NestorScreenPicker.mount({ host: app.querySelector('.conversation-toolbar'), onShow: show });
   window.addEventListener('nestor-review-destination', event => { if (!family && event.detail) show(event.detail); });
-  const clearBoard = () => { companion?.reset(); board.clear(); activity('clear'); };
+  const clearBoard = () => { companion?.reset(); board.clear(); window.IllustratedFrame?.clear(); activity('clear'); };
   window.addEventListener('persona-scene', event => {
     const detail = event.detail || {};
     if (detail.space === (family ? 'family' : 'personal') && detail.scene) show({ key: 'scene', kind: 'scene', title: detail.caption || '', scene: detail.scene });
@@ -394,7 +404,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (event.type === 'speaker') { turnSpeaker = event.speaker || null; if (turnSpeaker) el('conversationStatus').textContent = `${turnSpeaker.name} is replying.`; }
       if (event.type === 'tools') { showTools(event.evidence); activity('tools', { count: event.evidence?.receipts?.length || 1 }); }
       if (event.type === 'scene' && !interruptedTurns.has(turnId)) activity('scene', { scene: event.scene });
-      if (event.type === 'show' && !interruptedTurns.has(turnId)) show(mathCard(event.block, session, turnId));
+      // An illustration goes to its corner frame (#1304), never to the board.
+      if (event.type === 'show' && !interruptedTurns.has(turnId)) {
+        if (event.block?.presentation === 'illustration') { if (family) window.IllustratedFrame?.show(event.block); }
+        else show(mathCard(event.block, session, turnId));
+      }
       if (event.type === 'status' && event.phase === 'activity') voiceHealth.activity();
       if (!interruptedTurns.has(turnId) && event.type === 'status' && event.phase === 'activity') {
         // Nestor says what it is doing (tools, another agent) once per line.
@@ -585,7 +599,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       partial = null;
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
-    localControl: (text, options) => idlePhotos?.localControl(text, options) || screenCommand?.(text, options) || null,
+    localControl: (text, options) => (family && window.IllustratedFrame?.localControl(text, options)) || idlePhotos?.localControl(text, options) || screenCommand?.(text, options) || null,
     transcriptionStarted: turnId => workflow?.capture(conversation.session?.sessionId, turnId),
     transcriptionDone: (turnId, values) => { latestVoiceTimings = values || {}; workflow?.timings(turnId, values); },
     transcriptionEnded: (turnId, receipt) => workflow?.captureEnd(turnId, receipt),
@@ -617,7 +631,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (!family && session?.sessionId) void api(`${sessionBase}/${encodeURIComponent(session.sessionId)}/warm`,
         { method: 'POST', body: JSON.stringify({ greeting: text }) }).catch(() => {});
       const speech = await synthesize(text, lang, session?.persona || selected(), session?.voice || {}, signal, 'Greeting');
-      if (!signal.aborted) message('assistant', text);
+      if (!signal.aborted) message('assistant', (lang === 'en' ? 'Automatic greeting — ' : 'Accueil automatique — ') + text);
       return speech;
     },
     wakeReply() {
@@ -708,13 +722,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   function showTools(evidence) {
     const receipts = evidence?.receipts || [];
-    const box = el('conversationTools'); box.hidden = !receipts.length && !['unavailable', 'not_supported'].includes(evidence?.status);
+    const box = el('conversationTools'); box.hidden = !receipts.length && !['unavailable', 'not_supported', 'not_run'].includes(evidence?.status);
     if (box.hidden) return;
-    el('conversationToolsStatus').textContent = evidence.status === 'not_supported' ? engines.label(conversation.session?.backend || backendPicker.value) + ' · no tool receipts supported for this answer.' : evidence.status === 'unavailable'
-      ? 'Tool receipts are unavailable.'
-      : receipts.map(receipt => receipt.tool + (receipt.status === 'failed' ? ' · failed'
-        : receipt.status === 'verified' ? ' · result received'
-          : receipt.observed ? ' · call observed, result not verified' : ' · result unavailable')).join(' · ');
+    el('conversationToolsStatus').textContent = engines.toolStatus(evidence);
     el('conversationToolsReceipt').textContent = JSON.stringify(evidence, null, 2);
   }
   // The team member this conversation is (or will be) with, and why settings are locked.
@@ -768,6 +778,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     summarize();
   }
   function describe() {
+    if (family) window.IllustratedFrame?.follow(conversation.session);
     syncStyles(); renderTeam();
     const agent = agents.find(agent => agent.id === (conversation.session?.agentId || agentPicker.value)) || selectedAgent();
     const backend = conversation.session?.backend || backendPicker.value;
@@ -828,6 +839,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     return startVoice();
   };
   el('conversationNew').onclick = () => {
+    if (family) window.IllustratedFrame?.end();
     captureRequests?.reset(); privacyChoice.reset(open.checked); privacyBackend = null;
     recap?.clear();
     el('conversationResume').hidden = true; setHistoryOpen(false); conversation.stop(); work?.reset(); workflow?.reset(); void releaseOpen(); partial = null;
@@ -848,7 +860,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationText').onsubmit = async event => {
     event.preventDefault();
     const typed = el('conversationMessage');
-    if (!drafts.hasFiles() && screenCommand?.(typed.value)) { typed.value = ''; composer.sync(); return; }
+    if (!drafts.hasFiles() && ((family && window.IllustratedFrame?.localControl(typed.value, { followup: true })) || screenCommand?.(typed.value))) { typed.value = ''; composer.sync(); return; }
     if (!textBusy && conversation.canType()) return typedDuringVoice();
     if (textBusy || !['idle', 'paused', 'error'].includes(conversation.state)) return;
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
@@ -934,6 +946,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   };
   // Opens a saved conversation from Core: the same on every device (#120).
   async function resumeSession(session, button) {
+    if (family) window.IllustratedFrame?.end();
     captureRequests?.reset(); recap?.clear();
     el('conversationResume').hidden = true; conversation.stop();
     void releaseOpen();

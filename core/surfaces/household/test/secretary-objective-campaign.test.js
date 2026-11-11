@@ -42,6 +42,8 @@ function fixture(t, { future = false } = {}) {
     unit: async () => data.unit,
     launch: async () => { data.launches++; data.unit = { LoadState: 'loaded', MainPID: '123', ExecMainCode: '0', ExecMainStatus: '0' }; return { status: 0 }; },
     coordination: async () => ({ maintenance: null, drain: null, workloads: [], inferences: [] }),
+    operatorRelease: async job => ({ contract: 'agentx.operator-release/v1', authority: 'core.runtime-coordination',
+      queueRequestId: job.id, dispatchId: job.dispatchId, runtimeReleased: true }),
     publish: async () => { data.publishes++; return { writes: 0, candidates: 1 }; }
   };
   const terminal = phase => {
@@ -293,8 +295,28 @@ test('an uncertain inference outcome retains its queue and prevents a new chunk'
 test('an active native inference prevents release even after the local worker exits', async t => {
   const f = fixture(t); await step(f.config, f.deps); f.terminal('partial');
   f.deps.coordination = async () => ({ inferences: [{ host: 'host.test' }] });
+  const release = f.deps.operatorRelease;
+  f.deps.operatorRelease = async job => ({ ...await release(job), runtimeReleased: false });
   assert.equal((await step(f.config, f.deps)).phase, 'waiting-for-native-release');
   assert.equal(f.data.finishes, 0);
+});
+test('a holder on unrelated resources remains held while Core releases this exact dispatch', async t => {
+  const f = fixture(t); await step(f.config, f.deps); f.terminal('partial');
+  const other = { workloads: [{ kind: 'judge', hosts: ['http://other.test:11434'] }],
+    inferences: [{ host: 'http://other.test:11434', quarantined: true }] };
+  f.deps.coordination = async () => other;
+  assert.equal((await step(f.config, f.deps)).phase, 'chunk-released');
+  assert.equal(f.data.finishes, 1); assert.equal(other.inferences[0].quarantined, true);
+});
+test('missing, mismatched or held native scope never releases a terminated worker', async t => {
+  const f = fixture(t); await step(f.config, f.deps); f.terminal('partial');
+  const native = f.deps.operatorRelease;
+  for (const change of [{ contract: 'other' }, { dispatchId: 'other' }, { queueRequestId: 'other' },
+    { authority: 'other' }, { runtimeReleased: false }, { runtimeReleased: 'true' }]) {
+    f.deps.operatorRelease = async job => ({ ...await native(job), ...change });
+    assert.equal((await step(f.config, f.deps)).phase, 'waiting-for-native-release');
+    assert.equal(f.data.finishes, 0); assert.equal(f.data.launches, 1);
+  }
 });
 test('text coverage plus reconciled Core publication completes only the text scope', async t => {
   const f = fixture(t); f.write(path.join(f.dir, 'coverage.json'), { allTargetTextCovered: true, counts: { sourcesWithGaps: 2 } });

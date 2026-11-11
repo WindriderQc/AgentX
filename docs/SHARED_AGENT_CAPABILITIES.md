@@ -97,6 +97,15 @@ qualification through [the heavy-work procedure](HEAVY_WORK_QUEUE.md). Retain
 native admission, stable request identity and recovery rules. Do not replay a
 possibly executed mutation to compensate for an uncertain transport result.
 
+`integrations/openclaw/super-dad-memory/test/team-brief-runtime-parity.test.js`
+compares the owner MCP transport used by Hermes with OpenClaw's existing HTTP
+brief client through the real Core routes and synthetic Secretary records.
+It checks complete briefs, unavailable sections, record continuation and Core
+failure without a database, model or live runtime. Run it with
+`node --test integrations/openclaw/super-dad-memory/test/team-brief-runtime-parity.test.js`
+after installing Core dependencies; it also runs in the existing integration
+suite. This transport check does not establish live runtime parity.
+
 ## ArtX display capability
 
 Nestor’s [ArtX](ARTX.md) shares its scene selection and source-backed display
@@ -130,8 +139,18 @@ new model-supplied audience. Do not configure it for a family runtime.
 | Heavy-work queue | `work_queue`: read, file a planning request (coding or Nestor source, no executor) and cancel an unstarted one; no reservation, dispatch or resource ownership |
 | Existing coding and assistant workflows | Native Main consultation retains its installed tools and Pipeline policies |
 
-Clients that can only launch local commands, such as Claude Desktop, reach
-either bus through `integrations/mcp-relay`, which forwards messages unchanged.
+Clients that launch local commands, such as Claude Desktop, reach either bus
+through `integrations/mcp-relay`. HTTP clients such as Codex can also use this
+adapter for automatic catalogue discovery: it polls only the configured bus's
+`tools/list` and emits MCP `notifications/tools/list_changed` on a complete
+catalogue change. Calls remain unchanged, with no local tool logic or registry;
+the adapter advertises this notification capability in its initialize response.
+See the [relay installation and acceptance](../integrations/mcp-relay/README.md).
+Codex chats whose notification feature remains disabled use the
+[shared native catalogue watcher](../integrations/codex/README.md): it fingerprints
+complete HTTP catalogues and updates only a changed bus's cache revision through
+native configuration CAS and reload. This transport adaptation preserves tool
+restrictions and in-flight bindings, without model calls or daemon restarts.
 Core counts each `tools/call` by day, bus, tool and `x-service-caller`
 (no arguments or results); `GET /api/agent-tools/usage?days=30` reports
 every advertised tool, including unused ones, as evidence for removals.

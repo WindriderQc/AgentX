@@ -10,7 +10,7 @@ const id = '33333333-3333-4333-8333-333333333333';
 const family = { sessionId: 'family-session', packId: 'kidx_nestor', scopeId: 'family', status: 'active', agentId: 'family' };
 const privateSession = { sessionId: 'private-session', packId: 'personal_operator', scopeId: 'personal', status: 'active', agentId: 'main' };
 const draw = body => ({ id: 'b1', kind: 'image', source: 'draw', title: 'Robots', body });
-function fixture() {
+function fixture(options = {}) {
   const calls = [], events = [], operations = new Map();
   const service = {
     status: () => ({ configured: true, conversationProfile: { id: 'quick', width: 1024, height: 1024 } }),
@@ -24,7 +24,7 @@ function fixture() {
     image: async () => ({ bytes: Buffer.from('verified bytes'), mimeType: 'image/png' })
   };
   const conversations = { getSession: async ({ sessionId }) => [family, privateSession].find(session => session.sessionId === sessionId) };
-  const images = createConversationImages({ conversations, service });
+  const images = createConversationImages({ conversations, service, ...options });
   const complete = (display, overrides = {}) => images.complete({ session: family, pack: packs.packById(family.packId), backend: 'openclaw',
     display, turnId: 'synthetic-turn', signal: new AbortController().signal, onShow: block => events.push(block), ...overrides });
   const app = express(); app.use(express.json()); images.register(app);
@@ -115,4 +115,89 @@ test('private native creation is bound by Core session, defaults to quick, and d
   assert.equal(display[0].source, 'local'); assert.match(display[0].operation.statusUrl, /private-session/);
   await f.complete([draw('A lake')], { session: privateSession });
   assert.equal(f.calls.length, 1, 'native tools own personal creation; a model draw block cannot create a second image');
+});
+
+// Family's illustrated mode (#1304).
+const scene = body => ({ id: 's1', kind: 'image', source: 'scene', title: '', body });
+const plan = { worker: 'desk', profile: 'quick', width: 768, height: 768, intervalSeconds: 60 };
+function illustrated(options = {}) {
+  let clock = 1000000;
+  const f = fixture({ now: () => clock, ...options }), immediate = [];
+  f.service.status = () => ({ configured: true, conversationProfile: { id: 'quick', width: 1024, height: 1024 }, illustrated: plan });
+  f.service.acceptOpportunistic = async (body, opts) => {
+    immediate.push({ body, opts });
+    if (f.refuse) throw Object.assign(new Error('The image PC is unavailable'), { statusCode: 503 });
+    const op = { id, state: 'accepted', runtimeRestored: false, admissionPolicy: 'opportunistic' };
+    f.operations.set(id, { op, scope: opts.conversation }); return op;
+  };
+  return Object.assign(f, { immediate, advance: seconds => { clock += seconds * 1000; } });
+}
+test('a family scene block becomes one immediate picture on the illustrated worker, never a card or stored block', async () => {
+  const f = illustrated(), note = { id: 'b2', kind: 'text', title: '', body: 'A note' };
+  const display = [scene('A cat climbing a snowy fir tree, picture book style'), note];
+  await f.complete(display, { backend: 'agentx' });
+  assert.deepEqual(display, [note]);
+  assert.equal(f.calls.length, 0, 'ordinary drawing admission is not used');
+  assert.equal(f.immediate.length, 1);
+  const [{ body, opts }] = f.immediate;
+  assert.equal(opts.workerId, 'desk'); assert.deepEqual(opts.conversation, scopeFor(family));
+  assert.equal(body.profile, 'quick'); assert.equal(body.width, 768); assert.equal(body.height, 768);
+  assert.match(body.actionKey, /^household-scene:[a-f0-9]{64}$/);
+  assert.match(body.prompt, /^Age-appropriate illustration for children\. No text/);
+  assert.match(body.prompt, /snowy fir tree/);
+  assert.equal(f.events.length, 1);
+  assert.equal(f.events[0].presentation, 'illustration');
+  assert.equal(f.events[0].operation.statusUrl, `/api/voice-personas/family/sessions/family-session/images/${id}`);
+  assert.match(f.images.contract(family, 'agentx'), /source="scene"/);
+  assert.doesNotMatch(storedDisplay(display).map(block => block.source).join(' '), /scene|local/);
+});
+test('illustrations keep their interval, and a refused attempt waits like a success', async () => {
+  const f = illustrated();
+  await f.complete([scene('A red kite over the river')], { turnId: 't1' });
+  f.advance(30); await f.complete([scene('A blue whale')], { turnId: 't2' });
+  assert.equal(f.immediate.length, 1, 'a second subject inside the interval is dropped, not queued');
+  f.advance(31); await f.complete([scene('A blue whale')], { turnId: 't3' });
+  assert.equal(f.immediate.length, 2);
+  const refused = illustrated(); refused.refuse = true;
+  await refused.complete([scene('A volcano')], { turnId: 'r1' });
+  assert.equal(refused.events.length, 0, 'a busy worker leaves the previous picture');
+  refused.advance(10); await refused.complete([scene('A volcano')], { turnId: 'r2' });
+  assert.equal(refused.immediate.length, 1, 'no retry before the interval');
+});
+test('no illustration with a drawing, an unsuitable scene, another space, a team member or the mode off', async () => {
+  const withDraw = illustrated(), display = [draw('Two robots'), scene('Two robots in a park')];
+  await withDraw.complete(display);
+  assert.equal(withDraw.calls.length, 1); assert.equal(withDraw.immediate.length, 0);
+  assert.equal(display.length, 1);
+  for (const body of ['A nude person', 'Graphic gore and dismemberment']) {
+    const f = illustrated(); await f.complete([scene(body)]); assert.equal(f.immediate.length, 0); assert.equal(f.events.length, 0);
+  }
+  const personal = illustrated(), shown = [scene('A lake at dawn')];
+  await personal.complete(shown, { session: privateSession, pack: packs.packById(privateSession.packId), backend: 'agentx' });
+  assert.equal(personal.immediate.length, 0); assert.equal(shown.length, 0, 'a stray scene block is still removed');
+  assert.doesNotMatch(personal.images.contract(privateSession, 'agentx'), /source="scene"/);
+  const member = illustrated(); await member.complete([scene('A lake')], { member: true }); assert.equal(member.immediate.length, 0);
+  const off = illustrated(); off.service.status = () => ({ configured: true, conversationProfile: { id: 'quick', width: 1024, height: 1024 }, illustrated: null });
+  await off.complete([scene('A lake')]); assert.equal(off.immediate.length, 0);
+  assert.doesNotMatch(off.images.contract(family, 'agentx'), /source="scene"/);
+  const stopped = illustrated(), abort = new AbortController(); abort.abort();
+  await stopped.complete([scene('A lake')], { signal: abort.signal }); assert.equal(stopped.immediate.length, 0);
+});
+test('illustrations stay out of the reply context and are marked for the frame when listed', async () => {
+  const f = illustrated(); await f.complete([scene('A lighthouse in a storm')]);
+  assert.doesNotMatch(await f.images.contextFor(family), /receipts/);
+  const list = await request(f.app).get('/family/sessions/family-session/images').expect(200);
+  assert.equal(list.body.blocks[0].presentation, 'illustration');
+  assert.equal(f.immediate.length, 1, 'reads never dispatch');
+});
+test('an unreachable illustrated worker never holds the end of the turn', async () => {
+  const f = illustrated({ illustrationBudgetMs: 20 });
+  let seen;
+  f.service.acceptOpportunistic = (body, opts) => { seen = opts.signal; f.immediate.push(body); return new Promise(() => {}); };
+  const started = Date.now();
+  await f.complete([scene('A dragon kite')]);
+  assert.ok(Date.now() - started < 1000);
+  assert.equal(f.immediate.length, 1); assert.equal(f.events.length, 0);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(seen.aborted, true, 'admission is told to stop before creating anything');
 });

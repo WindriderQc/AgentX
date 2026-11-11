@@ -31,3 +31,9 @@
   .conversation-work-card { padding: .8rem; }
   .conversation-work-actions .button { flex: 1 1 100%; }
 }
+
+.conversation-questions { border-top: 1px solid var(--line, #777); margin-top: .8rem; padding-top: .8rem; }
+.conversation-questions fieldset { display: grid; gap: .5rem; margin: .6rem 0; min-width: 0; }
+.conversation-questions label { display: flex; gap: .5rem; flex-wrap: wrap; align-items: start; }
+.conversation-questions small { width: 100%; }
+.conversation-questions textarea { width: 100%; min-height: 4rem; }

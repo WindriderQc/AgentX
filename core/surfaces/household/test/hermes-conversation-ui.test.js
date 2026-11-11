@@ -51,6 +51,16 @@ test('actual result attribution uses the returned engine and model, including a 
   assert.equal(policy.observed({ routing: { backend: 'agentx', fallbackUsed: true }, model: { model: 'synthetic-local' } }), 'AgentX / Ollama · synthetic-local');
   assert.equal(policy.observed({ routingSource: 'hermes/nestor', model: 'synthetic-history' }), 'Hermes · synthetic-history');
   assert.equal(policy.observed({}), '', 'selection alone is not evidence of execution');
+  assert.equal(policy.observed({ model: 'agentx-status', routing: { backend: 'agentx' } }), 'Message automatique d’AgentX');
+});
+
+test('tool notices distinguish an automatic service message from actual model tool support and verified results', () => {
+  const policy = engines();
+  assert.match(policy.toolStatus({ status: 'not_run' }), /Message automatique.*aucun modèle ni outil/);
+  assert.match(policy.toolStatus({ status: 'not_supported' }), /contexte fourni/);
+  assert.doesNotMatch(policy.toolStatus({ status: 'not_run' }), /Ollama|support/);
+  assert.match(policy.toolStatus({ status: 'observed', receipts: [{ tool: 'weather', status: 'completed' }] }), /weather · résultat reçu/);
+  assert.match(policy.toolStatus({ status: 'not_supported', receipts: [{ tool: 'weather', status: 'completed' }] }), /weather · résultat reçu/);
 });
 
 test('workflow retains observed execution from the stream and from canonical history', () => {

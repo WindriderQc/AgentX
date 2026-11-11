@@ -55,6 +55,7 @@ function dependencies(config, exec = spawnSync) {
     place: job => queue.json(`${config.core}/api/cluster/schedule/work-queue/${job.id}/place`,
       { actor: config.actor, body: { expectedRevision: job.revision, when: config.when, priority: config.priority || 5 } }),
     coordination: () => queue.json(`${config.core}/api/nerve-center/runtime-coordination/active`),
+    operatorRelease: job => queue.json(`${config.core}/api/cluster/schedule/work-queue/${job.id}/operator-release?dispatchId=${job.dispatchId}`),
     unit: showUnit,
     launch(unit, job) {
       return exec('systemd-run', ['--user', `--unit=${unit}`, '--service-type=exec', '--property=RemainAfterExit=yes',
@@ -209,13 +210,19 @@ async function advance(config, deps, { allowStart = true, stopReason = 'Explicit
   }
   if (unit.ExecMainCode !== '1' || Number(unit.ExecMainStatus) !== 0) return report('uncertain', { reason: 'Native worker termination was not cleanly received' });
   const active = await deps.coordination();
-  if (active.maintenance || active.drain || active.workloads?.length || active.inferences?.length) return report('waiting-for-native-release');
+  if (active.maintenance || active.drain) return report('waiting-for-native-release');
+  const released = await deps.operatorRelease(job);
+  if (released?.contract !== 'agentx.operator-release/v1' || released.authority !== 'core.runtime-coordination'
+    || released.queueRequestId !== job.id || released.dispatchId !== job.dispatchId || released.runtimeReleased !== true) {
+    return report('waiting-for-native-release', { reason: 'Exact Core-scoped runtime release is not established' });
+  }
   const success = ['done', 'partial', 'stopped'].includes(status.phase);
   const receipt = { contract: 'agentx.operator-heavy-work/v1', queueRequestId: job.id, dispatchId: job.dispatchId,
     actor: config.actor, receiptRef: job.executor.receiptRef, state: success ? 'completed' : 'failed', runtimeReleased: true,
     observedAt: deps.now().toISOString(), workerUnit: current.unit, workerStatusSha256: hash(fs.readFileSync(statusFile)),
     workerPhase: status.phase, newlyReviewedPages: status.newlyReviewedPages, inferenceCalls: status.inferenceCalls,
     elapsedSeconds: status.elapsedSeconds, qualification: 'Exact bounded text review only; visual/OCR gaps remain explicit' };
+  receipt.nativeReleaseEvidence = released;
   durable(job.executor.receiptRef, receipt);
   await deps.queue('finish-operator', ['--id', job.id, '--revision', String(job.revision), '--file', job.executor.receiptRef]);
   return report(success ? 'chunk-released' : 'needs-source-review');

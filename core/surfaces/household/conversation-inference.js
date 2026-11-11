@@ -12,9 +12,10 @@ function voiceTask(env = process.env) {
 
 // The relay keeps the canonical child/mode policy and read-only reply format.
 // Principal-only tools, navigation and image actions are not relay capabilities.
-function familyRelayInstructions(session, pack) {
+function familyRelayInstructions(session, pack, env) {
   return [require('./family-clock').familyIdentity(session.persona),
     require('./persona-prompt').systemPromptFor(pack, { modeId: session.modeId }),
+    require('./family-clock').familyClockContext({ timeZone: env?.PLANNING_TIME_ZONE }),
     require('./reply-channels').contract({ family: true, math: false, pages: false })].join('\n\n');
 }
 
@@ -62,7 +63,8 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       if (eligible && inference.conversation) {
         const continued = await inference.conversation({ ...body, ...(request.relayOccupation ? { model: 'agentx-primary' } : {}) }, {
           ...options, taskRoute: !request.relayOccupation, requireOccupied: true, relayTools: request.guardianTools,
-          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack), request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext].filter(Boolean).join('\n\n') }),
+          allowUnavailable: !request.relayOccupation,
+          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack, env), request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext].filter(Boolean).join('\n\n') }),
           relayRequest: { ...body, messages: [...(request.history || []), { role: 'user', content: request.text }] }
         });
         if (continued) return continued;
@@ -79,7 +81,8 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       if (relayContinuation) conversation = relayContinuation.messages;
       relay = result.metadata.conversationContinuity;
       relaySource = { authority: 'core.conversation-continuity', role: 'relay', model: relay.model, hostKey: relay.hostKey,
-        requestSha256: fingerprint(request.text), ...(relay.relayFor && { relayFor: relay.relayFor }) };
+        requestSha256: fingerprint(request.text), ...(relay.relayFor && { relayFor: relay.relayFor }),
+        ...(relay.primaryRefusal && { primaryRefusal: relay.primaryRefusal }) };
     }
     if (result?.metadata?.conversationContinuity?.state === 'status_only') toolsOffered = false;
     // A model whose runtime refuses tools answers the turn without them.
@@ -121,7 +124,10 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   if (signal?.aborted) relay = null;
   return { backend, text: streamed,
     metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}), usage: sumUsage(callUsage) },
-    tools: relay ? { status: toolset && toolsOffered ? 'observed' : 'not_supported', authority: toolset && toolsOffered ? 'agentx/core' : 'agentx/ollama', receipts, ...(toolset && toolsOffered ? { offered: toolset.names } : {}),
+    tools: result.metadata?.conversationContinuity?.state === 'status_only'
+      ? { status: 'not_run', authority: 'agentx/core', receipts: [], reason: 'automatic_service_notice',
+        conversationContinuity: result.metadata.conversationContinuity }
+      : relay ? { status: toolset && toolsOffered ? 'observed' : 'not_supported', authority: toolset && toolsOffered ? 'agentx/core' : 'agentx/ollama', receipts, ...(toolset && toolsOffered ? { offered: toolset.names } : {}),
       ...(toolset && !toolsOffered ? { reason: 'The selected relay runtime does not accept tools; the same guardian answered from supplied context only.' } : {}), conversationRelay: { ...relaySource, completed: true } }
       : relaySource && emittedModelChars > 0 ? { status: 'partial', authority: 'agentx/ollama', receipts: [], conversationRelay: fragment() }
       : toolset && toolsOffered

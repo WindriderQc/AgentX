@@ -29,6 +29,12 @@ This skill is one entry page plus chapters. Read only the chapter you need.
    Send `x-service-caller: <who you are>` on the buses too: Core counts each
    tool call by caller (`GET <core>/api/agent-tools/usage`). Clients that can
    only launch local commands (Claude Desktop) use `integrations/mcp-relay`.
+   The same relay gives clients such as Codex automatic catalogue updates via
+   MCP change notifications, polling only the connected bus's tool definitions.
+   Codex chats that retain disabled notification handling use the shared native
+   watcher in `integrations/codex` instead. Both discover future tools without
+   manual cache revisions or client restarts; their READMEs cover installation
+   and client acceptance.
 2. **Plain HTTPS** when no tool covers the need: [endpoints](references/endpoints.md).
    Send `x-service-caller: <who you are>`. Answers are `{ ok, data | error }`
    (older routes: `{ status, message, data }`).

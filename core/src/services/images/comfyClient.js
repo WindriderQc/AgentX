@@ -12,8 +12,11 @@ function createComfyClient(base, fetchImpl = fetch) {
     const text = await r.text();
     return text ? JSON.parse(text) : {};
   }
-  async function ready(profile, { allowBusy = false, requireQueueProof = false } = {}) {
+  async function ready(profile, { allowBusy = false, requireQueueProof = false, requireOutputRemoval = false } = {}) {
     const [stats, queue, nodes] = await Promise.all([json('/system_stats'), json('/queue'), json('/object_info')]);
+    if (requireOutputRemoval && stats?.outputRemoval?.contract !== 'agentx.image-output-removal/v1') {
+      throw new Error('Image worker output removal contract is unavailable');
+    }
     if (requireQueueProof && (!Array.isArray(queue?.queue_running) || !Array.isArray(queue?.queue_pending))) {
       throw new Error('Image worker queue state is unavailable');
     }
@@ -94,6 +97,10 @@ function createComfyClient(base, fetchImpl = fetch) {
     }
     throw new Error('Image worker memory release is unverified');
   }
-  return { json, ready, upload, submit, observe, read, free };
+  async function discardOutput(jobId, sha256) {
+    if (!/^[a-f0-9-]{36}$/.test(jobId || '') || !/^[a-f0-9]{64}$/.test(sha256 || '')) throw new Error('Exact output identity required');
+    return json(`/api/jobs/${jobId}/discard-output`, { sha256 });
+  }
+  return { json, ready, upload, submit, observe, read, free, discardOutput };
 }
 module.exports = { createComfyClient };

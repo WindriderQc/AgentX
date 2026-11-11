@@ -29,6 +29,8 @@ const schema = new mongoose.Schema({
   queueDispatchId: { type: String },
   requestHash: { type: String, required: true },
   admissionPolicy: { type: String, enum: ['opportunistic'] },
+  illustration: { type: mongoose.Schema.Types.Mixed, default: undefined },
+  temporaryImage: { type: Buffer, select: false, default: undefined },
   conversation: { surface: String, sessionId: String, packId: String, scopeId: String },
   expert: { type: new mongoose.Schema({ sessionId: String, turnId: String, agent: String, harness: String,
     reportedModel: String, promptEdited: Boolean, settingsEdited: Boolean,

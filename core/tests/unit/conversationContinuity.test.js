@@ -158,8 +158,53 @@ describe('local conversation continuity', () => {
     w.readSnapshot.mockRejectedValueOnce(new Error('database unavailable'));
     const result = await w.service(request());
     expect(result.metadata.conversationContinuity.state).toBe('status_only');
-    expect(result.body.message.content).toContain('ne peut pas vérifier');
+    expect(result.body.message.content).toContain('Message automatique d’AgentX');
+    expect(result.body.message.content).toContain('ne peut pas être vérifiée');
+    expect(result.metadata.conversationContinuity).toMatchObject({ automatic: true,
+      detail: 'Core ne peut pas vérifier l’état du routage pour le moment.' });
     expect(w.run).not.toHaveBeenCalled();
+  });
+
+  it.each(['inference_recovery_required', 'workload_recovery_required', 'admission_conflict_unclassified'])(
+    'Family can use a resident guardian after a pre-dispatch %s without inventing occupation', async cause => {
+      const w = world();
+      w.run.mockRejectedValueOnce(Object.assign(Error('Refused before dispatch'), {
+        code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', failure: { cause, safeToRetry: true, holder: null }
+      }));
+      const result = await w.service({ ...request(), taskType: 'daily_operator' }, {
+        taskRoute: true, requireOccupied: true, allowUnavailable: true, familyInstructions: 'Family boundary'
+      });
+      expect(result.metadata.conversationContinuity.state).toBe('backup');
+      expect(result.metadata.conversationContinuity.primaryRefusal).toEqual({ code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', cause });
+      expect(result.body.message.content).toContain('Message automatique d’AgentX');
+      expect(result.body.message.content).toContain('indisponible');
+      expect(result.body.message.content).not.toContain('occupé');
+      expect(w.run).toHaveBeenCalledTimes(2);
+      expect(w.run.mock.calls[1][0].messages[0].content).not.toContain('traite une autre demande');
+    });
+
+  it('does not broaden occupation-only consumers or report untried guardians as unavailable', async () => {
+    const w = world();
+    w.run.mockRejectedValueOnce(Object.assign(Error('Unknown occupation'), {
+      code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', failure: { safeToRetry: true, holder: null }
+    }));
+    const result = await w.service(request(), { requireOccupied: true });
+    expect(result.metadata.conversationContinuity.state).toBe('status_only');
+    expect(result.body.message.content).toContain('il manque des informations');
+    expect(result.body.message.content).not.toContain('Aucun modèle local');
+    expect(w.deps.fetch).not.toHaveBeenCalled();
+  });
+
+  it('never accepts an explicit uncertain-outcome refusal even with Family availability fallback', async () => {
+    const w = world();
+    w.run.mockRejectedValueOnce(Object.assign(Error('Uncertain outcome'), {
+      code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', failure: { safeToRetry: false }
+    }));
+    await expect(w.service({ ...request(), taskType: 'daily_operator' }, {
+      taskRoute: true, requireOccupied: true, allowUnavailable: true
+    })).rejects.toThrow('Uncertain outcome');
+    expect(w.run).toHaveBeenCalledTimes(1);
+    expect(w.deps.fetch).not.toHaveBeenCalled();
   });
 
   it('does not truncate the current user turn or continue a pending tool loop on the backup', async () => {

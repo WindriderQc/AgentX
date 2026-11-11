@@ -18,6 +18,8 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import hashlib
+import stat
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qs
 
@@ -227,6 +229,63 @@ class Worker:
         os.replace(temporary, file)
         self.sync_directory()
 
+    def discard_output(self, job_id, expected_hash):
+        """Remove one verified terminal output; retain the original execution receipt."""
+        if not re.fullmatch(r'[a-f0-9]{64}', expected_hash or ''):
+            raise ValueError('Exact output hash required')
+        with self.lock:
+            record_file = self.record_path(job_id)
+            record = json.loads(record_file.read_text())
+            terminal = record.get('terminal', {})
+            if terminal.get('status', {}).get('status_str') != 'success' or terminal.get('status', {}).get('completed') is not True:
+                raise ValueError('Terminal successful output required')
+            outputs = terminal.get('outputs', {}).get('save', {}).get('images', [])
+            if len(outputs) != 1:
+                raise ValueError('One exact output index required')
+            output = outputs[0]
+            if output.get('type') != 'output' or output.get('subfolder') != 'agentx' or not re.fullmatch(re.escape(job_id) + r'_\d+_\.png', output.get('filename', '')):
+                raise ValueError('Output does not belong to this job')
+            prior = record.get('outputRemoval')
+            if prior and (prior.get('sha256') != expected_hash or prior.get('output') != output):
+                raise ValueError('Original output removal identity changed')
+            if prior and prior.get('removed') is True:
+                return {k: v for k, v in prior.items() if k != 'output'}
+            directory = self.root / 'output' / 'agentx'
+            if any(p.is_symlink() for p in [self.root, self.root / 'output', directory]):
+                raise ValueError('Output directory alias refused')
+            target = directory / output['filename']
+            if target.is_symlink():
+                raise ValueError('Output file alias refused')
+            if not prior or target.exists():
+                descriptor = os.open(target, os.O_RDONLY | os.O_NOFOLLOW)
+                try:
+                    before = os.fstat(descriptor)
+                    if not stat.S_ISREG(before.st_mode) or before.st_size > 8 * 1024 * 1024:
+                        raise ValueError('Invalid temporary output')
+                    with os.fdopen(descriptor, 'rb', closefd=False) as source:
+                        digest = hashlib.file_digest(source, 'sha256').hexdigest()
+                    after = target.lstat()
+                    if digest != expected_hash or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
+                        raise ValueError('Original output changed')
+                finally:
+                    os.close(descriptor)
+                if not prior:
+                    prior = {'contract': 'agentx.image-output-removal/v1', 'jobId': job_id, 'sha256': expected_hash,
+                        'outputIndex': 0, 'output': output, 'removed': False,
+                        'fileIdentity': [before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns]}
+                    self.write_record(record_file, {**record, 'outputRemoval': prior})
+                elif prior.get('fileIdentity') != [before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns]:
+                    raise ValueError('Original output file identity changed')
+            target.unlink(missing_ok=True)
+            directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+            receipt = {**prior, 'removed': True}
+            self.write_record(record_file, {**record, 'outputRemoval': receipt})
+            return {k: v for k, v in receipt.items() if k != 'output'}
+
     def submit(self, data):
         job_id = data['prompt_id']
         with self.lock:
@@ -303,7 +362,8 @@ class Worker:
         name, total, free = [x.strip() for x in raw.strip().split(',')]
         return {'devices': [{'name': name, 'index': self.args.gpu, 'type': 'cuda',
             'vram_total': int(total) * 1048576, 'vram_free': int(free) * 1048576,
-            'torch_vram_total': 0, 'torch_vram_free': 0}], 'system': {'supervised': True}}
+            'torch_vram_total': 0, 'torch_vram_free': 0}], 'system': {'supervised': True},
+            'outputRemoval': {'contract': 'agentx.image-output-removal/v1'}}
 
     def object_info(self):
         # The pinned schema is captured during setup; model presence stays live.
@@ -335,7 +395,8 @@ def create_handler(worker, allowed=frozenset()):
             route = urlsplit(self.path)
             if self.command == 'GET':
                 if route.path == '/system_stats':
-                    self.send(worker.call(route.path) if worker.running() else worker.stats())
+                    stats = worker.call(route.path) if worker.running() else worker.stats()
+                    self.send({**stats, 'outputRemoval': {'contract': 'agentx.image-output-removal/v1'}})
                 elif route.path == '/object_info':
                     self.send(worker.object_info())
                 elif route.path == '/queue':
@@ -375,6 +436,8 @@ def create_handler(worker, allowed=frozenset()):
                 self.send(worker.free())
             elif re.fullmatch(r'/api/jobs/[a-f0-9-]{36}/cancel', route.path):
                 self.send(worker.call(route.path, json.loads(body)))
+            elif re.fullmatch(r'/api/jobs/[a-f0-9-]{36}/discard-output', route.path):
+                self.send(worker.discard_output(route.path.split('/')[3], json.loads(body).get('sha256')))
             else:
                 self.send({'error': 'Unknown endpoint'}, 404)
 

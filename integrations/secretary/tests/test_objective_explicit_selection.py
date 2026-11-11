@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import objective_explicit_selection as explicit
@@ -32,7 +33,7 @@ def positive(body, ids=('q1',), context=SENT):
 
 def project(value, body, context=SENT):
     context = {'end': len(body), 'totalChars': len(body), **context}
-    result, changes = normalize_representation(value, body, grounding.CONTRACT, context)
+    result, changes = normalize_representation(value, body, grounding.EXPLICIT_CONTRACT, context)
     validate(result, body)
     return result, changes
 
@@ -46,7 +47,7 @@ class ExplicitSelectionTests(unittest.TestCase):
                 declarations = explicit.declarations(grounding.catalog(body), SENT)
                 self.assertTrue(declarations[0]['ownerReadingContext'])
                 self.assertEqual(explicit.catalog(grounding.catalog(body), SENT), [])
-                schema = grounding.schema_for(body, source_context=SENT)
+                schema = grounding.schema_for(body, grounding.EXPLICIT_CONTRACT, source_context=SENT)
                 self.assertEqual(len(schema['anyOf']), 1)
                 self.assertEqual(schema['anyOf'][0]['properties']['omittedCues']['maxItems'], 0)
                 result, changes = project(positive(body), body)
@@ -153,7 +154,10 @@ class ExplicitSelectionTests(unittest.TestCase):
 
 
 class ExplicitSelectionWorkerTests(unittest.TestCase):
-    setUp=worker_fixtures.SourceLanguageWorkerTests.setUp
+    def setUp(self):
+        worker_fixtures.SourceLanguageWorkerTests.setUp(self)
+        frozen = patch.object(worker, "SCHEMA", grounding.SCHEMA_V10)
+        frozen.start(); self.addCleanup(frozen.stop)
     mail=worker_fixtures.SourceLanguageWorkerTests.mail
     prepare=worker_fixtures.SourceLanguageWorkerTests.prepare
     run_worker=worker_fixtures.SourceLanguageWorkerTests.run_worker
@@ -161,7 +165,7 @@ class ExplicitSelectionWorkerTests(unittest.TestCase):
     def test_native_declarations_and_retained_summary_replay_without_another_call(self):
         body='Mon déménagement est terminé.\nJe débute la boxe.';self.mail('message01',body)
         def output(prompt,reply):
-            self.assertEqual(prompt['groundingContract'],grounding.CONTRACT)
+            self.assertEqual(prompt['groundingContract'],grounding.EXPLICIT_CONTRACT)
             self.assertEqual(prompt['omissionReasonCatalog'],[])
             self.assertEqual([r['citationId'] for r in prompt['declarationCatalog']],['q1','q2'])
             reply['response']=json.dumps(positive(body,('q1','q2')));return reply

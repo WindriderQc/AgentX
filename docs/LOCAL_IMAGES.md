@@ -569,9 +569,43 @@ worker memory release and runtime restoration receipts. The policy and selected
 worker participate in request identity, so the same action cannot be replayed
 with normal drawing admission or a different worker.
 
-This is an internal admission capability. It does not enable Family's
-illustrated mode, keep an image model warm, provide ephemeral storage or qualify
-render/conversation latency. Its images retain the ordinary archive behavior.
+A worker may list `keepResidents`: Ollama model names, at most 8, that may stay
+loaded during an immediate image, such as a small pinned embedding model that
+leaves enough room. They are never unloaded; restoration only verifies that they
+are still exactly as captured. Any other resident still refuses the attempt, so
+loading another model on that card (a text model for a heavy phase) pauses
+immediate images without an error.
+
+This admission keeps no image model warm and itself provides no ephemeral
+storage. Generic opportunistic images retain the ordinary archive behavior.
+Marked Family scenes use the separate [scene retention contract](#family-scene-retention) below.
+
+### Family's illustrated mode
+
+An optional `illustrated` block turns on a small picture beside Famille's
+conversation that follows its subject:
+
+```json
+"illustrated": { "worker": "desk", "profile": "klein", "width": 768, "height": 768, "intervalSeconds": 60 }
+```
+
+`worker` names one configured worker and `profile` a klein profile it accepts.
+`width`/`height` default to 768 and must be qualified for the profile;
+`intervalSeconds` (30 to 3600, default 60) is the minimum time between two
+attempts in one conversation. Without the block the mode is off and Famille's
+instructions do not mention it.
+
+When it is on, Famille may end a reply with a hidden
+`<show kind="image" source="scene">` block describing the new subject. It is
+never spoken, shown as a card or stored with the turn. After the reply, Core
+applies Family's drawing safety filter to it and makes one immediate attempt on
+that worker only. The turn waits at most 3 seconds for that admission; past it,
+the attempt stops before creating an operation. A drawing requested in the same turn, a refusal, a busy or
+stopped worker, or a second subject inside the interval simply leaves the
+previous picture; nothing waits or falls back to another worker. The page shows
+the verified result in a corner frame with a short fade, reads its status only
+while it is being prepared (not while the page is hidden), and does not replay
+illustrations when a conversation is reopened.
 
 ## Request and recovery contract
 
@@ -827,3 +861,61 @@ from them is a lower bound, never a guarantee that a smaller card fits. Compare 
 hosts before changing placement. A file's byte size is not its pipeline's
 minimum VRAM. Passing code tests is separate from container, GPU and
 real-device acceptance.
+
+
+## Family scene retention
+
+Configured illustrated mode keeps its existing scene contract and cold-worker
+admission. New Family scene operations carry a server-owned retention epoch;
+ordinary requested drawings and historical operations without that marker keep
+their original archive behavior. This change does not purge older archives.
+
+Core holds a marked scene only on its image operation in a private buffer (8 MiB,
+the existing qualified output pixel limit; the complete BSON document must remain below 15 MiB). Status and
+list queries never load the buffer. Temporary scenes are excluded in Mongo
+before list limits from Atelier/conversation galleries and the existing Family
+painting pool. Conversation activity extends retention for ten minutes, only
+while the original deadline is still live. An expired epoch cannot be revived.
+Canonical conversation deletion, inactivity or explicit end removes unkept
+bytes and the request/graph text while preserving native job, hash, admission,
+result and release identities. A late renderer cannot recreate that content.
+
+The existing frame receives `operation.retention` with `epoch`, `temporary`,
+`kept`, `expired`, `expiresAt`, and the original `keep` identity/state when any.
+The Family session image endpoints are private and use `Cache-Control:
+private, no-store`:
+
+- `POST .../images/:id/keep {requestId}` accepts one explicit keep intent.
+  Its durable claim precedes archive I/O. Original bytes, hash and acceptance
+  date fix the content-addressed archive location across a crash or lost reply.
+  Existing server housekeeping resumes accepted claims; GET never copies.
+- `GET .../images/:id/keep?requestId=...` returns the exact original receipt or
+  `null`. It remains an opaque reconciliation path after session deletion;
+  the normal image route still requires the canonical session.
+- `POST .../images/retention/end {requestId,epoch}` closes only that epoch.
+  One opaque receipt is anchored to its original image operation before erase.
+  `GET` with `?requestId=...` reads that receipt without another effect.
+  A later request for an already ended epoch identifies the original request,
+  and does not impersonate a receipt for the new UUID. The next scene may
+  atomically create a fresh retention epoch in the existing illustrated mode.
+
+Only a completed keep enters the existing archive and Family painting pool.
+An already accepted keep survives end/expiry/deletion using the same identity;
+new keeps after an end or expiry are refused. UI page hiding has no server
+side effect; explicit conversation replacement uses the exact end endpoint.
+
+Terminal worker output removal is a separate CPU-only native operation keyed
+by the original job UUID, output index and SHA-256. It validates its original
+locator, inode and bytes, journals intent, unlinks and synchronizes the output
+directory before acknowledging removal. Core retries an uncertain removal
+using the same identity through existing housekeeping/recovery. A pending or
+missing receipt never claims the worker file is gone. Before accepting a new
+marked scene, Core requires `/system_stats` to advertise
+`outputRemoval.contract: "agentx.image-output-removal/v1"`, and repeats that
+read-only qualification before dispatch. Missing or foreign proof refuses
+initial acceptance; losing it before dispatch refuses that send. Generic images
+retain their existing readiness contract.
+Already accepted operations keep their own cleanup/recovery identity when a
+worker is replaced or becomes unavailable; no release or restore bypass is added.
+All validation for this change uses synthetic CPU fixtures, not a live render
+or measured latency/VRAM acceptance.

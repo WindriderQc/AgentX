@@ -141,18 +141,24 @@ test.each(['voice', 'text'])('Family %s relays on a real admission conflict, ret
   expect(world.state.runs).toHaveLength(0);
 });
 
-test.each(['inference_recovery_required', 'workload_recovery_required', 'admission_conflict_unclassified'])('Family never infers occupation from %s or repeats the request on another model', async cause => {
+test.each(['inference_recovery_required', 'workload_recovery_required', 'admission_conflict_unclassified'])('Family relays a pre-dispatch %s without claiming occupation', async cause => {
   world = await fixture('agentx'); world.state.failure = { cause, safeToRetry: true, holder: null };
   const response = await world.send('Explique les nuages.').expect(200);
-  expect(done(response).model.model).toBe('agentx-status');
-  expect(world.state.inference).toHaveLength(1);
-  expect(done(response).tools.conversationRelay).toBeUndefined();
+  expect(done(response).model.model).toBe('synthetic-guardian');
+  expect(world.state.inference).toHaveLength(2);
+  expect(done(response).tools.conversationRelay).toMatchObject({ role: 'relay', completed: true });
+  expect(done(response).reply.text).toContain('indisponible');
+  expect(done(response).reply.text).not.toContain('occupé');
 });
 
 test('no resident guardian gives an honest status; normal primary and child deterministic safety stay independent', async () => {
   world = await fixture('agentx'); world.state.backup = false;
   const response = await world.send('Explique les nuages.').expect(200);
   expect(done(response).model.model).toBe('agentx-status');
+  expect(done(response).reply.text).toContain('Message automatique d’AgentX');
+  expect(done(response).tools).toMatchObject({ status: 'not_run', authority: 'agentx/core', receipts: [],
+    conversationContinuity: { state: 'status_only', automatic: true,
+      primaryRefusal: { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', cause: 'inference_active' } } });
   expect(world.state.inference).toHaveLength(1);
   world.state.busy = false;
   await world.send('Peux-tu expliquer la pluie ?').expect(200);
@@ -448,8 +454,9 @@ test.each([16001, 50000])('Hermes opt-in retains its existing %i-character reply
 });
 
 
-test.each(['agentx', 'hermes'])('%s relay executes only allowlisted Core reads and duplicate intake never repeats them', async backend => {
+test.each([['agentx', false], ['agentx', true], ['hermes', false]])('%s relay executes only allowlisted Core reads and duplicate intake never repeats them (unavailable=%s)', async (backend, unavailable) => {
   world = await fixture(backend, true, { guardianTools: 'weather,math' });
+  if (unavailable) world.state.failure = { cause: 'admission_conflict_unclassified', safeToRetry: true, holder: null };
   let primary;
   if (backend === 'hermes') {
     primary = world.send('Travail natif fictif indépendant.').then(reply => reply);
@@ -464,6 +471,8 @@ test.each(['agentx', 'hermes'])('%s relay executes only allowlisted Core reads a
     conversationRelay: { role: 'relay', completed: true } });
   expect(data.tools.receipts).toHaveLength(2);
   expect(data.tools.receipts.every(receipt => receipt.status === 'completed' && receipt.resultSha256)).toBe(true);
+  if (unavailable) expect(data.tools.conversationRelay.primaryRefusal).toEqual({
+    code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', cause: 'admission_conflict_unclassified' });
   const guardian = world.state.inference.filter(input => input.model === 'synthetic-guardian');
   expect(guardian).toHaveLength(2);
   expect(guardian[0].tools.map(tool => tool.function.name).sort()).toEqual(['math', 'weather']);

@@ -5,6 +5,7 @@ const { hostUrlKey } = require('../../../../shared/ollamaHostConfig');
 const { resolvePrincipalAlias, PRINCIPAL_MODEL_ALIAS } = require('./principalAlias');
 const { reducedRequest, decorate, statusResult } = require('./conversationContinuityContext');
 const { reasonOf, primaryHosts, describe, readQueue, boundedRead } = require('./conversationContinuityStatus');
+const { safeOccupation } = require('./conversationRelayContinuation');
 
 const ENV = 'AGENTX_CONVERSATION_CONTINUITY_JSON';
 const SAFE_REFUSALS = new Set(['PRINCIPAL_MODEL_UNAVAILABLE', 'BENCHMARK_CLAIM_ACTIVE',
@@ -29,6 +30,7 @@ function parse(raw) {
 }
 
 function safeRefusal(error) {
+  if (error?.failure?.safeToRetry === false) return false;
   return SAFE_REFUSALS.has(error?.code) || error?.ollamaRequestNotSent === true || error?.cause?.ollamaRequestNotSent === true;
 }
 
@@ -101,17 +103,21 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
       if (signal?.aborted || !safeRefusal(error)) throw error;
       failure = error;
     }
-    if (options.requireOccupied && !occupation && !(failure?.failure?.safeToRetry === true
-        && ['inference_active', 'inference_residency_active', 'workload_reserved', 'maintenance_active'].includes(failure.failure.cause)
-        && failure.failure.holder)) {
-      return statusResult(request, 'Le cerveau principal est indisponible; aucune occupation active n’est prouvée.', 'occupation_unknown');
+    const occupied = Boolean(occupation || safeOccupation(failure?.failure));
+    const primaryRefusal = occupation ? null : { code: failure.code,
+      ...(failure.failure?.cause && { cause: failure.failure.cause }) };
+    // Only Family opts into availability fallback. The refusal above proves
+    // this turn was not dispatched; another owner's uncertain run stays intact.
+    const unavailableRelay = options.allowUnavailable === true && options.taskRoute === true && !options.observeOccupation;
+    if (options.requireOccupied && !occupied && !unavailableRelay) {
+      return statusResult(request, 'Le cerveau principal est indisponible; aucune occupation active n’est prouvée.', 'occupation_unknown', primaryRefusal);
     }
     const reason = occupation ? 'hermes_active' : reasonOf(failure);
     const work = options.requireOccupied ? null : await boundedRead(readWork, 1500, signal).catch(() => null);
     signal?.throwIfAborted();
     const principalEndpoints = primaryHosts(snapshot, target);
     const status = occupation ? 'Le travail demandé continue dans son exécution Hermes d’origine. Sa durée restante est inconnue.'
-      : options.familyInstructions ? 'Le cerveau principal traite une autre demande. Sa durée restante est inconnue.'
+      : options.familyInstructions && occupied ? 'Le cerveau principal traite une autre demande. Sa durée restante est inconnue.'
         : describe(failure, principalEndpoints, work);
     const visited = new Set(principalEndpoints.map(hostUrlKey));
     for (const hostKey of policy.hosts) {
@@ -137,14 +143,15 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         const resident = (await probe.json()).models?.find(row => deps.modelsMatch(row.name || row.model, pin.model));
         if (!resident || Number(resident.context_length) !== Number(pin.contextSize)) continue;
       } catch { if (signal?.aborted) signal.throwIfAborted(); continue; }
-      const notice = options.requireOccupied
-        ? `Nestor assure temporairement le relais, avec un contexte récent réduit et ${options.relayTools ? 'des lectures Core limitées' : 'sans outils'}. Le cerveau principal est occupé.`
-        : `🪶 Nestor en mode de secours local, avec un contexte récent réduit et sans outils d’action. ${status}`;
+      const notice = 'Message automatique d’AgentX — Petit contretemps : '
+        + (options.requireOccupied
+          ? `le cerveau principal est ${occupied ? 'occupé' : 'indisponible'}. Le gardien de Nestor assure temporairement le relais avec un contexte récent limité, ${options.relayTools ? 'avec quelques outils de consultation' : 'sans outils'}.`
+          : `Nestor passe en mode de secours local avec son gardien, avec un contexte récent réduit et sans outils d’action. ${status}`);
       const reduced = reducedRequest(options.relayRequest || request, { ...policy, model: pin.model,
         contextSize: Number(pin.contextSize), notice, status, familyInstructions: options.familyInstructions, relayTools: options.relayTools });
-      if (!reduced) return statusResult(request, status, 'backup_context_unavailable');
+      if (!reduced) return statusResult(request, status, 'backup_context_unavailable', primaryRefusal);
       const continuity = { state: 'backup', reason, limited: true, contextReduced: true,
-        model: pin.model, hostKey,
+        model: pin.model, hostKey, ...(primaryRefusal && { primaryRefusal }),
         ...(occupation && { relayFor: { authority: 'hermes', runId: occupation.runId, sessionKey: occupation.sessionKey, turnId: occupation.turnId } }) };
       const routing = { degraded: true, reason, fallbackFrom: { model: target?.model || null, host: target?.hostKey || null },
         fallbackTo: { model: pin.model, host: hostKey } };
@@ -161,13 +168,14 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
           retry: { enabled: false } });
         const received = decorate(requireResult(result), { notice, continuity });
         if (options.relayTools && reduced.messages && options.requireOccupied) received.relayContinuation = require('./conversationRelayContinuation').createRelayContinuation({
-          reduced, target, execute, options, hostUrl, routing, continuity, maxInputChars: policy.maxInputChars, observeFamilyOccupation, occupation, signal, notice });
+          reduced, target, execute, options, hostUrl, routing, continuity, maxInputChars: policy.maxInputChars, observeFamilyOccupation, occupation, signal, notice,
+          requireOccupation: occupied });
         return received;
       } catch (error) {
         if (signal?.aborted || (!safeRefusal(error) && error.code !== 'LANE_CONTEXT_EXCEEDED')) throw error;
       }
     }
-    return statusResult(request, status, reason);
+    return statusResult(request, status, reason, primaryRefusal);
   };
 }
 

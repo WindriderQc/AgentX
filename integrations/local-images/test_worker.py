@@ -9,6 +9,7 @@ import tempfile
 import types
 import unittest
 import uuid
+import hashlib
 from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location('worker', pathlib.Path(__file__).with_name('worker.py'))
@@ -30,6 +31,139 @@ class WorkerTest(unittest.TestCase):
     def tearDown(self):
         self.worker.log.close()
         self.tmp.cleanup()
+
+    def test_stats_advertise_native_removal_without_starting_or_mutating_a_job(self):
+        self.worker.start = Mock()
+        with patch.object(module.subprocess, 'check_output', return_value='Synthetic GPU, 12000, 11000\n'):
+            result = self.worker.stats()
+        self.assertEqual(result['outputRemoval'], {'contract': 'agentx.image-output-removal/v1'})
+        self.worker.start.assert_not_called()
+        self.assertFalse(self.worker.record_path(self.job_id).exists())
+
+    def test_http_stats_keep_supervisor_removal_proof_while_a_child_is_running(self):
+        self.worker.running = Mock(return_value=True)
+        self.worker.call = Mock(return_value={'devices': [], 'outputRemoval': {'contract': 'foreign-child/v1'}})
+        self.worker.start = Mock()
+        server = ThreadingHTTPServer(('127.0.0.1', 0), module.create_handler(self.worker, []))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urllib.request.urlopen(f'http://127.0.0.1:{server.server_port}/system_stats') as response:
+                result = json.load(response)
+            self.assertEqual(result['outputRemoval'], {'contract': 'agentx.image-output-removal/v1'})
+            self.worker.call.assert_called_once_with('/system_stats')
+            self.worker.start.assert_not_called()
+            self.assertFalse(self.worker.record_path(self.job_id).exists())
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
+    def stored_output(self):
+        folder = self.root / 'output' / 'agentx'
+        folder.mkdir(parents=True, exist_ok=True)
+        target = folder / f'{self.job_id}_00001_.png'
+        target.write_bytes(b'exact synthetic PNG bytes')
+        output = {'filename': target.name, 'subfolder': 'agentx', 'type': 'output'}
+        self.worker.write_record(self.worker.record_path(self.job_id), {'jobId': self.job_id,
+            'terminal': {'status': {'status_str': 'success', 'completed': True}, 'outputs': {'save': {'images': [output]}}}})
+        return target, hashlib.sha256(target.read_bytes()).hexdigest()
+
+    def test_terminal_output_removal_keeps_receipt_and_replays_the_same_result(self):
+        target, digest = self.stored_output()
+        original = self.worker.history(self.job_id)
+        first = self.worker.discard_output(self.job_id, digest)
+        self.assertFalse(target.exists())
+        self.assertEqual(first, self.worker.discard_output(self.job_id, digest))
+        self.assertEqual(original, self.worker.history(self.job_id))
+        self.assertTrue(first['removed'])
+        self.assertNotIn('output', first)
+        with self.assertRaises(ValueError):
+            self.worker.discard_output(self.job_id, 'b' * 64)
+
+    def test_output_removal_refuses_wrong_hash_and_another_job_locator(self):
+        target, digest = self.stored_output()
+        with self.assertRaises(ValueError):
+            self.worker.discard_output(self.job_id, 'b' * 64)
+        self.assertTrue(target.exists())
+        file = self.worker.record_path(self.job_id)
+        record = json.loads(file.read_text())
+        record['terminal']['outputs']['save']['images'][0]['filename'] = f'{uuid.uuid4()}_00001_.png'
+        self.worker.write_record(file, record)
+        with self.assertRaises(ValueError):
+            self.worker.discard_output(self.job_id, digest)
+        self.assertTrue(target.exists())
+
+    def test_output_removal_refuses_pending_job_and_changed_output_index(self):
+        target, digest = self.stored_output()
+        file = self.worker.record_path(self.job_id)
+        original = json.loads(file.read_text())
+        pending = {**original, 'terminal': {'status': {'status_str': 'running'}}}
+        self.worker.write_record(file, pending)
+        with self.assertRaises(ValueError):
+            self.worker.discard_output(self.job_id, digest)
+        original['terminal']['outputs']['save']['images'].append(dict(original['terminal']['outputs']['save']['images'][0]))
+        self.worker.write_record(file, original)
+        with self.assertRaises(ValueError):
+            self.worker.discard_output(self.job_id, digest)
+        self.assertTrue(target.exists())
+
+    def test_output_removal_reconciles_a_lost_final_ack_without_repeating_file_effect(self):
+        target, digest = self.stored_output()
+        write = self.worker.write_record
+        def lose_ack(file, record):
+            write(file, record)
+            if record.get('outputRemoval', {}).get('removed'):
+                raise RuntimeError('Lost final response')
+        with patch.object(self.worker, 'write_record', side_effect=lose_ack):
+            with self.assertRaises(RuntimeError):
+                self.worker.discard_output(self.job_id, digest)
+        self.assertFalse(target.exists())
+        self.assertTrue(self.worker.discard_output(self.job_id, digest)['removed'])
+
+    def test_output_removal_crash_rechecks_hash_and_inode_before_retry(self):
+        for replacement in [b'changed bytes', b'exact synthetic PNG bytes']:
+            target, digest = self.stored_output()
+            with patch.object(pathlib.Path, 'unlink', side_effect=RuntimeError('Crash before unlink')):
+                with self.assertRaises(RuntimeError):
+                    self.worker.discard_output(self.job_id, digest)
+            temporary = target.with_suffix('.replacement')
+            temporary.write_bytes(replacement)
+            temporary.replace(target)
+            with self.assertRaises(ValueError):
+                self.worker.discard_output(self.job_id, digest)
+            self.assertTrue(target.exists())
+
+    def test_output_removal_refuses_a_symlink_without_touching_its_target(self):
+        target, digest = self.stored_output()
+        other = self.root / 'other.png'
+        target.rename(other)
+        target.symlink_to(other)
+        with self.assertRaises(ValueError):
+            self.worker.discard_output(self.job_id, digest)
+        self.assertTrue(other.exists())
+
+    def test_output_removal_fsyncs_the_output_directory_before_completed_receipt(self):
+        target, digest = self.stored_output()
+        events = []
+        unlink, sync, write = pathlib.Path.unlink, module.os.fsync, self.worker.write_record
+        def observe_unlink(file, *args, **kwargs):
+            result = unlink(file, *args, **kwargs)
+            if file == target:
+                events.append('unlink')
+            return result
+        def observe_sync(descriptor):
+            if module.stat.S_ISDIR(module.os.fstat(descriptor).st_mode) and 'unlink' in events:
+                events.append('directory-sync')
+            return sync(descriptor)
+        def observe_write(file, record):
+            if record.get('outputRemoval', {}).get('removed'):
+                events.append('completed-receipt')
+            return write(file, record)
+        with patch.object(pathlib.Path, 'unlink', observe_unlink), patch.object(module.os, 'fsync', observe_sync), patch.object(self.worker, 'write_record', observe_write):
+            self.worker.discard_output(self.job_id, digest)
+        self.assertLess(events.index('unlink'), events.index('directory-sync'))
+        self.assertLess(events.index('directory-sync'), events.index('completed-receipt'))
 
     def test_duplicate_submission_never_reaches_the_cuda_child_twice(self):
         self.worker.start = Mock()

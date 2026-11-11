@@ -1,10 +1,11 @@
 'use strict';
 const fs = require('node:fs');
 const net = require('node:net');
-const { limits } = require('./sizes');
+const { limits, qualified } = require('./sizes');
 const { declaredRecipe } = require('./recipeExecution');
 const { validateSampling } = require('./qwenTurbo');
 const { workersOf, workerFor, candidates, scoped } = require('./workers');
+const MODEL_NAME = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,159}$/;
 
 function localUrl(value) {
   const u = new URL(value);
@@ -54,8 +55,35 @@ function normalizeWorkers(c) {
       ...(w.profiles && { profiles: [...new Set(w.profiles)] }),
       ...(w.minFreeVramRatio !== undefined && { minFreeVramRatio: ratio(w.minFreeVramRatio) }),
       ...(w.releasedVramRatio !== undefined && { releasedVramRatio: ratio(w.releasedVramRatio) }),
-      ...(w.presentation && { presentation: w.presentation }) };
+      ...(w.presentation && { presentation: w.presentation }),
+      ...(w.keepResidents !== undefined && { keepResidents: keptResidents(w.keepResidents) }) };
   });
+}
+// Ollama models an immediate image may leave loaded on its worker, such as a
+// small pinned embedding model. Any other resident still refuses the attempt.
+function keptResidents(value) {
+  if (!Array.isArray(value) || value.length > 8 || value.some(name => typeof name !== 'string' || !MODEL_NAME.test(name))) {
+    throw new Error('keepResidents must list at most 8 Ollama model names');
+  }
+  return [...new Set(value)];
+}
+// Family's illustrated mode: one named worker, one quick profile, one size.
+// Absent means the mode is off.
+function illustrated(c) {
+  const v = c.illustrated;
+  if (v === undefined) return undefined;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Error('Invalid illustrated image settings');
+  const worker = c.workers.find(w => w.id === v.worker);
+  if (!worker) throw new Error('The illustrated mode names an unknown image worker');
+  const profile = c.profiles[v.profile];
+  if (!profile || profile.family !== 'klein' || (worker.profiles && !worker.profiles.includes(v.profile))) {
+    throw new Error('The illustrated mode needs a quick profile its worker accepts');
+  }
+  const width = v.width === undefined ? 768 : v.width, height = v.height === undefined ? width : v.height;
+  if (!qualified(profile, width, height)) throw new Error('The illustrated image size is not qualified for its profile');
+  const intervalSeconds = v.intervalSeconds === undefined ? 60 : v.intervalSeconds;
+  if (!Number.isInteger(intervalSeconds) || intervalSeconds < 30 || intervalSeconds > 3600) throw new Error('The illustrated interval must be 30 to 3600 seconds');
+  return { worker: worker.id, profile: v.profile, width, height, intervalSeconds };
 }
 
 function loadConfig() {
@@ -73,6 +101,8 @@ function loadConfig() {
     if (p.recipe !== undefined) p.recipe = declaredRecipe(p.recipe);
   }
   c.workers = normalizeWorkers(c);
+  c.illustrated = illustrated(c);
+  if (c.illustrated === undefined) delete c.illustrated;
   for (const id of Object.keys(c.profiles)) {
     if (!candidates(c, id).length) throw new Error('An image profile has no worker');
   }

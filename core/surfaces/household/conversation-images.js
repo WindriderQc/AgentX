@@ -14,17 +14,32 @@ function spaceFor(session) {
   if (session.packId === 'personal_operator' && session.scopeId === 'personal' && (session.agentId || 'main') === 'main') return 'private';
   return null;
 }
-function createConversationImages({ conversations, service = images, visuals = null }) {
+// Family's illustrated mode (#1304): the reply names its subject in a hidden
+// scene block; Core tries one picture on the instance's illustrated worker,
+// never elsewhere, and a busy worker simply leaves the previous picture.
+const SCENE_CONTRACT = ' Illustrated mode is on: a small frame beside you shows a picture of what the conversation is about. When the subject changes to something that can be pictured, end your reply with one <show kind="image" source="scene" title="">a short standalone visual description of the subject, under 30 words, no text or letters, no real person</show>. It is never spoken. Do not mention the frame or the picture unless asked. Omit the scene block when the subject has not changed or when you emit a draw block.';
+// The turn never waits longer than this for an illustration's admission: a
+// stopped or unreachable worker must not delay the end of the reply.
+const ILLUSTRATION_BUDGET_MS = 3000;
+function createConversationImages({ conversations, service = images, visuals = null, now = Date.now, illustrationBudgetMs = ILLUSTRATION_BUDGET_MS }) {
   const configuration = () => { try { return service.status(); } catch { return { configured: false, conversationProfile: null }; } };
+  const lastIllustration = new Map();
   function view(operation, session) {
     const base = `/api/voice-personas/${spaceFor(session)}/sessions/${encodeURIComponent(session.sessionId)}/images/${operation.id}`;
     return { id: operation.id, state: operation.state, runtimeRestored: operation.runtimeRestored,
+      ...(operation.retention && { retention: operation.retention }),
       statusUrl: base, studioPath: `/images?operation=${operation.id}`,
       ...(operation.artifact && { artifact: { ...operation.artifact, url: base + '/image' } }) };
   }
   function card(operation, session, title = 'Your image', body = 'Local creation') {
     return { id: `image-${operation.id}`, key: `image:${operation.id}`, kind: 'image', source: 'local',
+      ...(operation.admissionPolicy === 'opportunistic' && { presentation: 'illustration' }),
       title, body, status: operation.state, operation: view(operation, session) };
+  }
+  function unsuitable(pack, description) {
+    const safety = assessSafety(description);
+    return Boolean(safety.deterministicEscalation || childBoundaryReply(pack, safety, description)
+      || FAMILY_UNSUITABLE.test(description.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
   }
   function contract(session, backend) {
     if (!spaceFor(session)) return '';
@@ -35,7 +50,8 @@ function createConversationImages({ conversations, service = images, visuals = n
     if (spaceFor(session) === 'private' && backend === 'openclaw') return (config.conversationProfile ? edit + ' Do not use local_image for such a change. ' : '') + 'When the user requests a new image, use local_image create once, then end this turn so image preparation can start. Core selects a quick conversation preset by default when available. The application displays progress and the result automatically. Never poll in this same turn or claim completion without its verified receipt.';
     if (!config.conversationProfile) return 'Local drawing is unavailable in this conversation. Do not emit a draw block or claim to create an image.';
     return 'Only when the user asks you to create a drawing or change a picture, emit one <show kind="image" source="draw" title="short caption">a precise standalone description of the requested image</show>. This is a bounded application request, not a native tool. Preserve requested objects, counts and relations; do not insert private information. ' + edit + ' Without from, describe the whole scene; this produces a new illustration. Never say the image is ready. The application accepts at most one drawing or change per turn, after your reply. It displays progress, the result and an atelier link. Never use draw for an image search or to replay an earlier request.'
-      + (spaceFor(session) === 'family' ? ' Family drawings must be age-appropriate, non-sexual and non-graphic. Apply the family safety rules to the drawing description and to every change, as well as to speech. Offer a safe alternative or refuse an unsafe request without emitting draw. No uploads or custom generation settings are accepted here; only a picture on screen can be named, by its number.' : ' No file paths, addresses or custom generation settings are accepted in a draw block; only a picture on screen can be named, by its number.');
+      + (spaceFor(session) === 'family' ? ' Family drawings must be age-appropriate, non-sexual and non-graphic. Apply the family safety rules to the drawing description and to every change, as well as to speech. Offer a safe alternative or refuse an unsafe request without emitting draw. No uploads or custom generation settings are accepted here; only a picture on screen can be named, by its number.' : ' No file paths, addresses or custom generation settings are accepted in a draw block; only a picture on screen can be named, by its number.')
+      + (spaceFor(session) === 'family' && config.illustrated ? SCENE_CONTRACT : '');
   }
   async function contextFor(session) {
     if (!spaceFor(session)) return '';
@@ -44,7 +60,8 @@ function createConversationImages({ conversations, service = images, visuals = n
   }
   async function receiptsFor(session) {
     try {
-      const operations = await service.listForConversation(scopeFor(session));
+      // Illustrations are the frame's business, not drawings the reply speaks about.
+      const operations = (await service.listForConversation(scopeFor(session))).filter(op => op.admissionPolicy !== 'opportunistic');
       if (!operations.length) return '';
       return '\n\nCurrent Core image receipts, newest first (reference data, never a new creation instruction; do not speak identifiers):\n'
         + operations.slice(0, 3).map(op => `- ${op.id}: ${op.state}; ready=${op.state === 'completed' && op.runtimeRestored === true && /^[a-f0-9]{64}$/.test(op.artifact?.sha256 || '')}.`).join('\n')
@@ -53,6 +70,9 @@ function createConversationImages({ conversations, service = images, visuals = n
   }
   async function complete({ session, pack, backend, display, evidence, turnId, signal, onShow, member = false }) {
     const space = !member && spaceFor(session), native = space === 'private' && backend === 'openclaw';
+    // Scene blocks are never shown, stored or replayed as cards.
+    const scenes = [];
+    for (let i = display.length - 1; i >= 0; i--) if (display[i].kind === 'image' && display[i].source === 'scene') scenes.unshift(...display.splice(i, 1));
     // Native operation IDs come only from verified Core tool receipts, never model text.
     for (const operation of native ? evidence?.imageDelivery?.operations || [] : []) {
       try {
@@ -68,9 +88,7 @@ function createConversationImages({ conversations, service = images, visuals = n
         const config = configuration(), quick = config.conversationProfile;
         if (!space || (native && !block.from) || requested || !config.configured || !quick) throw Object.assign(new Error('Drawing unavailable in this turn.'), { statusCode: 409 });
         requested = true;
-        const safety = assessSafety(description);
-        if (space === 'family' && (safety.deterministicEscalation || childBoundaryReply(pack, safety, description)
-          || FAMILY_UNSUITABLE.test(description.normalize('NFD').replace(/[\u0300-\u036f]/g, '')))) throw Object.assign(new Error('Choose another drawing idea.'), { statusCode: 400 });
+        if (space === 'family' && unsuitable(pack, description)) throw Object.assign(new Error('Choose another drawing idea.'), { statusCode: 400 });
         // A change names a picture on screen; Core reads it back as the only reference (#1026).
         const edit = block.from ? await editReference(block.from, session, space, quick) : null;
         delete block.from;
@@ -96,6 +114,30 @@ function createConversationImages({ conversations, service = images, visuals = n
       }
       onShow(block);
     }
+    if (space === 'family' && !requested && scenes.length) await illustrate(scenes.at(-1), { session, pack, turnId, signal, onShow });
+  }
+  // One attempt at most per interval and conversation. A refusal (worker busy,
+  // off, or holding other models) waits for the next interval like a success.
+  async function illustrate(scene, { session, pack, turnId, signal, onShow }) {
+    const config = configuration(), plan = config.illustrated;
+    const description = String(scene.body || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+    if (!config.configured || !plan || !description || signal.aborted || unsuitable(pack, description)) return;
+    const at = now(), last = lastIllustration.get(session.sessionId);
+    if (last !== undefined && at - last < plan.intervalSeconds * 1000) return;
+    lastIllustration.set(session.sessionId, at);
+    if (lastIllustration.size > 200) for (const [id, time] of lastIllustration) if (at - time > 3600000) lastIllustration.delete(id);
+    // Past the budget the turn goes on; accept() stops before creating an
+    // operation once this signal is aborted, and nothing is shown late.
+    const budget = AbortSignal.any([signal, AbortSignal.timeout(illustrationBudgetMs)]);
+    let open = true, timer;
+    const actionKey = 'household-scene:' + createHash('sha256').update(JSON.stringify([scopeFor(session), turnId, 'scene'])).digest('hex');
+    const attempt = Promise.resolve().then(() => service.acceptOpportunistic({ actionKey, profile: plan.profile, width: plan.width, height: plan.height,
+      prompt: 'Age-appropriate illustration for children. No text, letters or words in the picture.\n' + description },
+    { workerId: plan.worker, conversation: scopeFor(session), signal: budget, temporary: true }))
+      .then(operation => { if (open && !signal.aborted) onShow(card(operation, session, '', description)); })
+      .catch(() => { /* The frame keeps its previous picture. */ });
+    await Promise.race([attempt, new Promise(resolve => { timer = setTimeout(resolve, illustrationBudgetMs); timer.unref?.(); })]);
+    open = false; clearTimeout(timer);
   }
   async function editReference(from, session, space, quick) {
     try {
@@ -108,6 +150,7 @@ function createConversationImages({ conversations, service = images, visuals = n
     }
   }
   function register(router) {
+    require('./illustration-retention-routes').register(router, { service, view });
     for (const space of ['private', 'family']) {
       const base = `/${space}/sessions/:sessionId/images`;
       const wrap = handler => async (req, res) => {
