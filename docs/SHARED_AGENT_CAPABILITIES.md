@@ -130,8 +130,13 @@ new model-supplied audience. Do not configure it for a family runtime.
 | Heavy-work queue | `work_queue`: read, file a planning request (coding or Nestor source, no executor) and cancel an unstarted one; no reservation, dispatch or resource ownership |
 | Existing coding and assistant workflows | Native Main consultation retains its installed tools and Pipeline policies |
 
-Clients that can only launch local commands, such as Claude Desktop, reach
-either bus through `integrations/mcp-relay`, which forwards messages unchanged.
+Clients that launch local commands, such as Claude Desktop, reach either bus
+through `integrations/mcp-relay`. HTTP clients such as Codex can also use this
+adapter for automatic catalogue discovery: it polls only the configured bus's
+`tools/list` and emits MCP `notifications/tools/list_changed` on a complete
+catalogue change. Calls remain unchanged, with no local tool logic or registry;
+the adapter advertises this notification capability in its initialize response.
+See the [relay installation and acceptance](../integrations/mcp-relay/README.md).
 Core counts each `tools/call` by day, bus, tool and `x-service-caller`
 (no arguments or results); `GET /api/agent-tools/usage?days=30` reports
 every advertised tool, including unused ones, as evidence for removals.
