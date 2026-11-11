@@ -856,6 +856,22 @@ describe('Core API client scoped outbound execution', () => {
     expect(bodies.at(-1).recoveryGeneration).toBe(recovery.recoveryGeneration);
   });
 
+  test('preserves a targeted cancellation refusal without releasing or replacing native proof', async () => {
+    const workloadId = 'workload-cancel-contract';
+    queueWorkloadAcquire(workloadId);
+    await acquireWorkloadAdmission(workloadId);
+    const count = fetch.mock.calls.length;
+    fetch.mockImplementationOnce(async url => response(url, { status: 409, body: JSON.stringify({
+      status: 'error', data: { heartbeat: false, code: 'WORKLOAD_CANCEL_REQUESTED', reason: 'Exact workload stop requested' }
+    }) }));
+    await expect(heartbeatWorkloadAdmission(workloadId)).resolves.toEqual({
+      heartbeat: false, code: 'WORKLOAD_CANCEL_REQUESTED', reason: 'Exact workload stop requested'
+    });
+    expect(fetch).toHaveBeenCalledTimes(count + 1);
+    expect(fetch.mock.calls.at(-1)[1].method).toBe('POST');
+    expect(fetch.mock.calls.at(-1)[0]).toContain('/heartbeat');
+  });
+
   test('retries ambiguous workload acquisition with one idempotency key and rejects divergent receipts', async () => {
     const workloadId = 'workload-ambiguous-contract';
     const acquired = {

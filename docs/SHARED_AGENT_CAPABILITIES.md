@@ -66,6 +66,12 @@ not a new public endpoint or an independent authentication system. See
 Allowlisting a native runtime's MCP tools narrows its exposed catalogue; it does
 not replace server-side authorization.
 
+The owner bus exposes `judge_calibration` for bounded standalone calibration
+reads and owner-requested cancellation. It records the same durable intent as
+Core's operator API. Native Benchmark recovery remains responsible for proving
+release; clients never clear admissions, child quarantine or queue receipts.
+See [the cancellation contract](OPERATIONS.md#cancelling-a-standalone-judge-calibration).
+
 OpenClaw uses its existing Core integration and permission model. Hermes can
 consume the same bus with its native MCP client. Provider choice and the number
 of agent roles do not change the domain owner. Direct AgentX/Ollama inference

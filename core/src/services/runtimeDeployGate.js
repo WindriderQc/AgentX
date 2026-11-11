@@ -86,6 +86,9 @@ function workloadBlockReason(item, service, now) {
 
 function cancelRoute(item) {
   if (item.recoveryState === 'UNKNOWN' || item.recoveryOwnerId) return `recovery quarantine: ${RECOVERY_DOC}`;
+  if (item.cancellation) return `cancellation requested; observe the native owner and ${RECOVERY_DOC}`;
+  if (require('./judgeCalibrationControl').isJudgeCalibration(item))
+    return `Core POST /api/nerve-center/judge-calibrations/${label(item.admissionId)}/cancel (exact workloadId, requestId, reason)`;
   const id = String(item.workloadId || '');
   const routes = [
     [/^profile-(.+)$/, m => `Profiler panel, or Benchmark POST /api/profiler/pipeline/profile/${label(m[1])}/cancel`],
