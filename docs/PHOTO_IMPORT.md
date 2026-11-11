@@ -44,6 +44,8 @@ Verified payloads use readable archive modes (files 0644, directories 0755)
 under the operator's access-controlled root, so existing Media share users can
 read them. State and occurrence receipts retain private modes. Existing
 operator-owned directory permissions are never silently widened on startup.
+Core explicitly applies modes after creation because some NAS ACL policies
+ignore the requested creation mode; its own private state is sealed on reuse.
 
 Publication syncs complete private staging directories before renaming them
 atomically. Concurrent winners are reverified and never replaced. A crash

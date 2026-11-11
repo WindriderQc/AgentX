@@ -39,7 +39,7 @@ async function syncDir(dir) {
 
 async function writeJson(file, value) {
   const handle = await fs.open(file, 'wx', 0o600);
-  try { await handle.writeFile(JSON.stringify(value) + '\n'); await handle.sync(); }
+  try { await handle.chmod(0o600); await handle.writeFile(JSON.stringify(value) + '\n'); await handle.sync(); }
   finally { await handle.close(); }
 }
 
@@ -58,9 +58,14 @@ async function safeDirectory(root, relative, mode = 0o700) {
   let current = root;
   for (const component of path.relative(root, target).split(path.sep).filter(Boolean)) {
     current = path.join(current, component);
-    try { await fs.mkdir(current, { mode }); await syncDir(path.dirname(current)); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+    let created = false;
+    try { await fs.mkdir(current, { mode }); created = true; } catch (error) { if (error.code !== 'EEXIST') throw error; }
     const stat = await fs.lstat(current);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw fail('UNSAFE_PATH', 'Import directories cannot be symlinks');
+    // Some NAS ACL policies ignore mode bits on creation. Seal Core-owned
+    // private state explicitly, and set new archive modes after creation.
+    if (created || mode === 0o700) await fs.chmod(current, mode);
+    if (created) await syncDir(path.dirname(current));
   }
   return target;
 }
