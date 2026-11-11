@@ -27,3 +27,43 @@ test('startup preserves a crossed image dispatch gap as UNKNOWN and never contac
   expect(result.state).toBe('uncertain'); expect(result.operation.id).toBe(op._id);
   await service.dispatchQueued(); expect(createComfyClient).not.toHaveBeenCalled();
 });
+
+test('a retained opportunistic request is cancelled before worker access rather than dispatched later', async () => {
+  await Promise.all([Images, Queue, Runtime].map(model => model.deleteMany({})));
+  const config = { workerUrl: 'http://127.0.0.1:8188', ollamaHosts: ['http://127.0.0.1:11434'],
+    profiles: { fixture: { family: 'klein', maxPixels: 1048576 } }, defaultProfile: 'fixture' };
+  loadConfig.mockReturnValue(config);
+  const op = await Images.create({ _id: '22222222-2222-4222-8222-222222222222', actionKey: 'synthetic-immediate-restart',
+    admissionPolicy: 'opportunistic', requestHash: 'b'.repeat(64), state: 'queued', workerUrl: config.workerUrl,
+    profile: { id: 'fixture' }, request: { prompt: 'Synthetic' } });
+  const job = await bridge.enroll(op.toObject(), config, {});
+  // The prior process ended before its one immediate dispatch attempt.
+  createComfyClient.mockClear();
+  await service.dispatchQueued();
+  expect(await service.get(op._id)).toMatchObject({ state: 'cancelled', admissionPolicy: 'opportunistic' });
+  expect(await queue.get(job.id)).toMatchObject({ state: 'cancelled' });
+  expect(createComfyClient).not.toHaveBeenCalled();
+  expect(await Runtime.countDocuments()).toBe(0);
+  await service.dispatchQueued();
+  expect(createComfyClient).not.toHaveBeenCalled();
+});
+
+test('a lost cancellation reply reads the same queue identity and never repeats cancellation or dispatch', async () => {
+  await Promise.all([Images, Queue, Runtime].map(model => model.deleteMany({})));
+  const config = { workerUrl: 'http://127.0.0.1:8188', ollamaHosts: ['http://127.0.0.1:11434'] };
+  const op = await Images.create({ _id: '33333333-3333-4333-8333-333333333333', actionKey: 'synthetic-cancel-lost-reply',
+    admissionPolicy: 'opportunistic', requestHash: 'c'.repeat(64), state: 'queued', workerUrl: config.workerUrl,
+    profile: { id: 'fixture' }, request: { prompt: 'Synthetic' } });
+  const job = await bridge.enroll(op.toObject(), config, {});
+  const cancel = queue.cancel;
+  const lost = jest.spyOn(queue, 'cancel').mockImplementationOnce(async (...args) => {
+    await cancel(...args); throw new Error('Cancellation response lost');
+  });
+  const launch = jest.fn();
+  try {
+    await bridge.dispatch({ ...op.toObject(), queueRequestId: job.id }, launch);
+    expect(await service.get(op._id)).toMatchObject({ state: 'cancelled' });
+    expect(await queue.get(job.id)).toMatchObject({ state: 'cancelled' });
+    expect(lost).toHaveBeenCalledTimes(1); expect(launch).not.toHaveBeenCalled();
+  } finally { lost.mockRestore(); }
+});

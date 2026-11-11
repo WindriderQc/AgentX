@@ -58,6 +58,47 @@ describe('image GPU handoff and original-job recovery', () => {
     expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(0);
     expect(await coordination.acquireInference({ principal: 'chat', requestId: 'after', host, model: 'gemma:12b' })).toMatchObject({ acquired: true });
   });
+  test('opportunistic admission never unloads a resident that appeared after worker selection', async () => {
+    const op = { _id: 'opportunistic-resident-race', admissionPolicy: 'opportunistic' };
+    const persist = jest.fn(async changes => Object.assign(op, changes));
+    await expect(reserve({ ollamaHosts: [host], drainMs: 60000 }, op, persist, async () => false))
+      .rejects.toMatchObject({ message: expect.stringContaining('never unload'), runtimeUnknown: false });
+    expect(unloadModel).not.toHaveBeenCalled();
+    expect(warmDefaultModel).not.toHaveBeenCalled();
+    expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(0);
+    expect(running).toEqual(snap.residents.map(runningInfo));
+  });
+  test('opportunistic admission never waits for a busy physical alias', async () => {
+    const original = process.env.AGENTX_RUNTIME_RESOURCES_JSON;
+    const alias = 'http://127.0.0.2:11434';
+    process.env.AGENTX_RUNTIME_RESOURCES_JSON = JSON.stringify([{ id: 'shared-card', endpoints: [host, alias] }]);
+    const acquire = jest.spyOn(coordination, 'acquireWorkload');
+    try {
+      expect(await coordination.acquireInference({ principal: 'chat', requestId: 'busy-card', host: alias, model: 'agentx-primary' })).toMatchObject({ acquired: true });
+      await expect(reserve({ ollamaHosts: [host], drainMs: 60000 },
+        { _id: 'opportunistic-busy', admissionPolicy: 'opportunistic' }, jest.fn(), async () => false)).rejects.toThrow('GPU busy');
+      expect(acquire).toHaveBeenCalledTimes(1);
+      expect(captureBenchmarkRuntime).not.toHaveBeenCalled();
+      expect(unloadModel).not.toHaveBeenCalled();
+    } finally {
+      acquire.mockRestore();
+      if (original === undefined) delete process.env.AGENTX_RUNTIME_RESOURCES_JSON; else process.env.AGENTX_RUNTIME_RESOURCES_JSON = original;
+    }
+  });
+  test('opportunistic admission on an empty worker keeps native verification and release', async () => {
+    snap = { exact: true, capturedAt: new Date(), source: 'ollama_ps', residents: [] };
+    snap.identityDigest = benchmarkRuntimeSnapshotIdentity(snap);
+    running = []; captureBenchmarkRuntime.mockResolvedValue(snap);
+    const op = { _id: 'opportunistic-empty', admissionPolicy: 'opportunistic' };
+    const persist = jest.fn(async changes => Object.assign(op, changes));
+    const reservation = await reserve({ ollamaHosts: [host] }, op, persist, async () => false);
+    expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(1);
+    expect(unloadModel).not.toHaveBeenCalled();
+    await reservation.verified({ jobTerminal: true });
+    await reservation.restore();
+    expect(warmDefaultModel).not.toHaveBeenCalled();
+    expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(0);
+  });
   test('the bound image executor reserves its physical aliases before Ollama unload', async () => {
     const original = process.env.AGENTX_RUNTIME_RESOURCES_JSON;
     const workerUrl = 'http://image-worker:8188', alias = 'http://image-gpu:11435';

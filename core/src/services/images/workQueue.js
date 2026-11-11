@@ -48,9 +48,28 @@ async function enroll(op, config, body) {
     ...(body.queueDispatchId && { queueDispatchId: body.queueDispatchId }) } }, { writeConcern: WC });
   return job;
 }
-async function dispatch(op, launch) {
+async function discardWaiting(op, job) {
+  // Cancellation is conclusive only while the original queue entry has not
+  // crossed begin. A lost response/another dispatcher remains its own identity.
+  if (!['requested', 'reserved', 'cancelled'].includes(job.state)) return false;
+  if (job.state !== 'cancelled') {
+    try { await queue.cancel(job.id, { expectedRevision: job.revision }, 'core-images'); }
+    catch (error) {
+      // Reconcile the same cancellation after a lost reply. Never repeat it or
+      // overwrite an operation another dispatcher has already admitted.
+      const current = await queue.get(job.id);
+      if (error.code === 'HEAVY_QUEUE_STALE' && ['dispatching', 'running', 'uncertain'].includes(current.state)) return false;
+      if (current.state !== 'cancelled') throw error;
+    }
+  }
+  await Images.updateOne({ _id: op._id, state: 'queued' }, { $set: { state: 'cancelled', cancelRequested: true,
+    error: 'The immediate image slot was unavailable. This request will not run later.' }, $unset: { workerSlot: 1 } }, { writeConcern: WC });
+  return false;
+}
+async function dispatch(op, launch, { immediateAttempt = false } = {}) {
   if (!op.queueRequestId) throw fail('Image has no queue identity', 409);
   let job = await queue.get(op.queueRequestId);
+  if (op.admissionPolicy === 'opportunistic' && !immediateAttempt) return discardWaiting(op, job);
   if (job.state === 'cancelled') {
     await Images.updateOne({ _id: op._id, state: 'queued' }, { $set: { state: 'cancelled', cancelRequested: true }, $unset: { workerSlot: 1 } }, { writeConcern: WC });
     return false;
@@ -80,7 +99,10 @@ async function dispatch(op, launch) {
       await evidence.preDispatch(job);
       job = await queue.begin(job.id, { expectedRevision: job.revision }, 'core-images');
     } catch (error) {
-      if (['HEAVY_QUEUE_CONFLICT', 'HEAVY_QUEUE_STALE', 'HEAVY_QUEUE_TOPOLOGY_CHANGED', 'HEAVY_QUEUE_WINDOW_CLOSED'].includes(error.code)) return false;
+      if (['HEAVY_QUEUE_CONFLICT', 'HEAVY_QUEUE_STALE', 'HEAVY_QUEUE_TOPOLOGY_CHANGED', 'HEAVY_QUEUE_WINDOW_CLOSED'].includes(error.code)) {
+        if (op.admissionPolicy === 'opportunistic') return discardWaiting(op, await queue.get(job.id));
+        return false;
+      }
       throw error;
     }
   }

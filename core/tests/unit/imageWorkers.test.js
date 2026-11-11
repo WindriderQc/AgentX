@@ -92,6 +92,44 @@ function fakeDeps({ down = [], residents = {}, jobs = [], stats = {} } = {}) {
 }
 
 describe('worker choice before any effect', () => {
+  test('opportunistic selection uses only its named worker, with strict readiness and no fallback', async () => {
+    const config = load(twoWorkers());
+    const { deps, calls } = fakeDeps();
+    const ready = jest.fn().mockResolvedValue({ devices: [{ vram_total: 100, vram_free: 90 }] });
+    deps.client = () => ({ ready });
+    expect((await chooseWorker(config, { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', deps })).worker.worker.id).toBe('desk');
+    expect(ready).toHaveBeenCalledWith({ ...klein, id: 'fast' });
+    expect(calls.running).toEqual([A_OLLAMA]);
+    ready.mockRejectedValue(new Error('busy'));
+    expect((await chooseWorker(config, { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', deps })).worker).toBeNull();
+    expect(ready).toHaveBeenCalledTimes(2);
+    expect((await chooseWorker(config, { ...qwen, id: 'quality' }, { opportunisticWorkerId: 'desk', deps })).worker).toBeNull();
+    expect((await chooseWorker(config, { ...klein, id: 'fast' }, { opportunisticWorkerId: 'missing', deps })).worker).toBeNull();
+  });
+
+  test.each([
+    ['another image', { jobs: [{ kind: 'image', state: 'running', hosts: [A] }] }],
+    ['uncertain image', { jobs: [{ kind: 'image', state: 'uncertain', hosts: [A_OLLAMA] }] }],
+    ['missing queue evidence', { jobs: null }],
+    ['resident', { residents: { [A_OLLAMA]: [{ name: 'agentx-primary', size_vram: 0 }] } }],
+    ['no verified memory', { stats: { [A]: {} } }],
+    ['insufficient room', { stats: { [A]: { devices: [{ vram_total: 100, vram_free: 10 }] } } }],
+    ['Ollama unavailable', { down: [A_OLLAMA] }]
+  ])('opportunistic selection drops %s without trying another worker', async (_name, input) => {
+    const { deps, calls } = fakeDeps(input);
+    const result = await chooseWorker(load(twoWorkers()), { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', deps });
+    expect(result.worker).toBeNull();
+    expect(calls.ready).not.toContain(B);
+  });
+
+  test('opportunistic selection refuses missing queue evidence and a pre-reserved request', async () => {
+    const { deps, calls } = fakeDeps();
+    deps.queueJobs = async () => { throw new Error('unavailable'); };
+    expect((await chooseWorker(load(twoWorkers()), { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', deps })).worker).toBeNull();
+    expect(calls.ready).toEqual([]);
+    expect((await chooseWorker(load(twoWorkers()), { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', queueHosts: [A_OLLAMA], deps })).worker).toBeNull();
+  });
+
   test('a single worker keeps the original readiness rule and nothing else', async () => {
     const config = load({ workerUrl: A, ollamaHosts: [A_OLLAMA], defaultProfile: 'fast', profiles: { fast: klein } });
     const ok = fakeDeps({ jobs: [{ kind: 'benchmark', state: 'running', hosts: [A_OLLAMA] }] });
