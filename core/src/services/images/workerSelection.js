@@ -81,7 +81,7 @@ async function chooseWorker(config, profile, { queueHosts: reserved = null, oppo
       if (!Array.isArray(jobs)) throw new Error('Image queue evidence unavailable');
       const busy = busyKeys(jobs, deps.now(), { includeImages: true });
       if (workerKeys(worker).some(key => busy.has(key))) return { worker: null, tried: [{ id: worker.worker.id, reason: 'reserved' }] };
-      const stats = await deps.client(worker.workerUrl).ready(profile);
+      const stats = await deps.client(worker.workerUrl).ready(profile, { requireQueueProof: true });
       for (const host of worker.ollamaHosts) {
         if ((await deps.running(host)).length) return { worker: null, tried: [{ id: worker.worker.id, reason: 'resident' }] };
       }

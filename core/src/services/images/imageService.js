@@ -221,7 +221,8 @@ async function execute(op, config, client) {
     const references = await loadReferences(stored);
     enter('reserving'); await persist({ state: 'reserving' });
     reservation = await reserve(config, op, persist, cancelled);
-    await client.ready(op.profile);
+    if (op.admissionPolicy === 'opportunistic') await client.ready(op.profile, { requireQueueProof: true });
+    else await client.ready(op.profile);
     const stats = await client.json('/system_stats');
     if (stats.devices?.[0]?.vram_free < stats.devices?.[0]?.vram_total * (config.minFreeVramRatio ?? 0.75)) throw new Error('GPU used by another application. New request required.');
     const refs = [];

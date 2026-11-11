@@ -98,7 +98,7 @@ describe('worker choice before any effect', () => {
     const ready = jest.fn().mockResolvedValue({ devices: [{ vram_total: 100, vram_free: 90 }] });
     deps.client = () => ({ ready });
     expect((await chooseWorker(config, { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', deps })).worker.worker.id).toBe('desk');
-    expect(ready).toHaveBeenCalledWith({ ...klein, id: 'fast' });
+    expect(ready).toHaveBeenCalledWith({ ...klein, id: 'fast' }, { requireQueueProof: true });
     expect(calls.running).toEqual([A_OLLAMA]);
     ready.mockRejectedValue(new Error('busy'));
     expect((await chooseWorker(config, { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', deps })).worker).toBeNull();
@@ -215,3 +215,22 @@ test('memory release accepts the worker threshold for a desktop card', async () 
   const client = createComfyClient('http://127.0.0.1:8189', fetchImpl);
   await expect(client.free(async () => {}, true, 0.7)).resolves.toBeTruthy();
 }, 10000);
+
+test.each([undefined, null, {}, { queue_running: null, queue_pending: null },
+  { queue_running: [], queue_pending: null }, { queue_running: {}, queue_pending: [] }])(
+  'opportunistic selection and release reject malformed native queue %j', async queue => {
+    const calls = [];
+    const responses = { '/queue': queue, '/system_stats': { devices: [{ vram_total: 100, vram_free: 90 }] },
+      '/object_info': { UNETLoader: { input: { required: { unet_name: [[klein.diffusion]] } } },
+        CLIPLoader: { input: { required: { clip_name: [[klein.encoder]] } } },
+        VAELoader: { input: { required: { vae_name: [[klein.vae]] } } } } };
+    const fetchImpl = async url => {
+      calls.push(url); return { ok: true, text: async () => JSON.stringify(responses[new URL(url).pathname]) };
+    };
+    const client = createComfyClient(A, fetchImpl);
+    const { deps } = fakeDeps(); deps.client = () => client;
+    expect((await chooseWorker(load(twoWorkers()), { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', deps })).worker).toBeNull();
+    await expect(client.free(async () => {}, false)).rejects.toThrow('queue state is unavailable');
+    expect(calls.some(url => url.startsWith(B) || new URL(url).pathname === '/free')).toBe(false);
+  }
+);

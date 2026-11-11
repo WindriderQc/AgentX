@@ -12,8 +12,11 @@ function createComfyClient(base, fetchImpl = fetch) {
     const text = await r.text();
     return text ? JSON.parse(text) : {};
   }
-  async function ready(profile, { allowBusy = false } = {}) {
+  async function ready(profile, { allowBusy = false, requireQueueProof = false } = {}) {
     const [stats, queue, nodes] = await Promise.all([json('/system_stats'), json('/queue'), json('/object_info')]);
+    if (requireQueueProof && (!Array.isArray(queue?.queue_running) || !Array.isArray(queue?.queue_pending))) {
+      throw new Error('Image worker queue state is unavailable');
+    }
     if (!allowBusy && (queue.queue_running?.length || queue.queue_pending?.length)) throw new Error('Image worker is already busy');
     for (const [node, input, value] of [
       ['UNETLoader', 'unet_name', profile.diffusion], ['CLIPLoader', 'clip_name', profile.encoder], ['VAELoader', 'vae_name', profile.vae]
@@ -77,6 +80,7 @@ function createComfyClient(base, fetchImpl = fetch) {
   async function free(assertOwned, requireEmptyGpu = true, releasedRatio = 0.85, onReleased = () => {}) {
     await assertOwned();
     const q = await json('/queue');
+    if (!Array.isArray(q?.queue_running) || !Array.isArray(q?.queue_pending)) throw new Error('Image worker queue state is unavailable');
     if (q.queue_running?.length || q.queue_pending?.length) throw new Error('Worker has unfinished work');
     const released = await json('/free', { unload_models: true, free_memory: true });
     try { onReleased(released); } catch { /* A receipt never blocks or changes the release. */ }

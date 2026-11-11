@@ -25,6 +25,7 @@ describe('durable local image operations', () => {
     jest.clearAllMocks();
     await ImageOperation.deleteMany({});
     await require('../../models/HeavyWorkQueue').deleteMany({});
+    await require('../../models/HeavyWorkQueue').create({ _id: 'heavy-work', jobs: [] });
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'local-image-test-'));
     process.env.IMAGE_ARCHIVE_DIR = dir;
     loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:8188', ollamaHosts: ['http://127.0.0.1:11434'], profiles: { quality: profile }, defaultProfile: 'quality' });
@@ -68,10 +69,42 @@ describe('durable local image operations', () => {
     await expect(service.acceptOpportunistic({ actionKey: 'opportunistic-busy', prompt: 'A lake' }, { workerId: 'default' }))
       .rejects.toMatchObject({ statusCode: 503 });
     expect(await ImageOperation.countDocuments()).toBe(0);
-    expect(await require('../../models/HeavyWorkQueue').countDocuments()).toBe(0);
+    expect((await require('../../models/HeavyWorkQueue').findById('heavy-work').lean()).jobs).toEqual([]);
     expect(reserve).not.toHaveBeenCalled();
     expect(client.submit).not.toHaveBeenCalled();
   });
+  test('opportunistic images refuse a missing canonical queue instead of assuming there is no legacy work', async () => {
+    await require('../../models/HeavyWorkQueue').deleteMany({});
+    await expect(service.acceptOpportunistic({ actionKey: 'opportunistic-no-queue', prompt: 'A lake' }, { workerId: 'default' }))
+      .rejects.toMatchObject({ statusCode: 503 });
+    expect(await ImageOperation.countDocuments()).toBe(0);
+    expect(client.ready).not.toHaveBeenCalled();
+    expect(client.submit).not.toHaveBeenCalled();
+  });
+  test.each([{}, { queue_running: null, queue_pending: null }, { queue_running: [], queue_pending: null }])(
+    'native queue becoming malformed after preflight cannot submit or free the worker: %j', async malformed => {
+      let reads = 0;
+      const requests = [];
+      const responses = { '/system_stats': { devices: [{ vram_total: 12e9, vram_free: 11e9 }] },
+        '/object_info': { UNETLoader: { input: { required: { unet_name: [[profile.diffusion]] } } },
+          CLIPLoader: { input: { required: { clip_name: [[profile.encoder]] } } },
+          VAELoader: { input: { required: { vae_name: [[profile.vae]] } } } } };
+      const actual = jest.requireActual('../../src/services/images/comfyClient').createComfyClient('http://127.0.0.1:8188', async url => {
+        const route = new URL(url).pathname; requests.push(route);
+        const value = route === '/queue' ? ++reads === 1 ? { queue_running: [], queue_pending: [] } : malformed : responses[route];
+        return { ok: true, text: async () => JSON.stringify(value) };
+      });
+      client.ready = jest.fn(actual.ready); client.free = jest.fn(actual.free);
+      const op = await service.acceptOpportunistic({ actionKey: 'opportunistic-malformed-queue', prompt: 'A lake' }, { workerId: 'default' });
+      expect(await waitFor(op.id, 'unknown')).toMatchObject({ runtimeRestored: false });
+      expect(client.ready).toHaveBeenCalledTimes(2);
+      expect(client.ready.mock.calls.every(call => call[1]?.requireQueueProof === true)).toBe(true);
+      expect(client.submit).not.toHaveBeenCalled();
+      expect(requests).not.toContain('/free');
+      expect(reservation.restore).not.toHaveBeenCalled();
+      expect(reservation.quarantine).toHaveBeenCalledTimes(1);
+    }
+  );
   test('a reservation that wins after opportunistic preflight cancels the exact image instead of queueing it', async () => {
     client.ready.mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] });
     const queue = require('../../src/services/heavyWorkQueueService');

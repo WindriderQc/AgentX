@@ -551,6 +551,8 @@ the worker must answer, accept the selected profile, have verified free VRAM,
 have an empty native image queue and have no Ollama residents on its declared
 hosts. An unavailable queue observation also refuses the attempt. Core never
 falls back to another worker for this policy.
+The canonical Core queue must already exist; a missing queue is a refusal,
+including when the instance has not completed its legacy queue migration.
 
 An accepted attempt still uses Core's heavy-work queue, native workload
 admission and original image identity. If another reservation wins after
