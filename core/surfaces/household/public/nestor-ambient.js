@@ -414,6 +414,40 @@
       return { width, height, ratio };
     }
 
+    // Rasterize the static sky only when its size or palette changes. Copy
+    // replaces every pixel including alpha, avoiding a clear and a full-screen
+    // gradient rasterization on each animation frame (notably with SWGL).
+    const skyLayer = doc.createElement('canvas');
+    const skyContext = skyLayer.getContext?.('2d') || null;
+    let skyKey = '';
+    const invalidateSky = () => { skyKey = ''; };
+    skyLayer.addEventListener('contextrestored', invalidateSky);
+    function drawSky(box, light, iss) {
+      if (!box.width || !box.height) return;
+      const [top, bottom] = skyColors(light, iss);
+      const key = [box.width, box.height, top, bottom].join('|');
+      const paint = c => {
+        const gradient = c.createLinearGradient(0, 0, 0, box.height);
+        gradient.addColorStop(0, top); gradient.addColorStop(1, bottom);
+        c.globalAlpha = 0.9; c.fillStyle = gradient;
+        c.fillRect(0, 0, box.width, box.height); c.globalAlpha = 1;
+      };
+      if (!skyContext) {
+        ctx.clearRect(0, 0, box.width, box.height);
+        paint(ctx);
+        return;
+      }
+      if (key !== skyKey) {
+        skyLayer.width = box.width; skyLayer.height = box.height;
+        paint(skyContext);
+        skyKey = key;
+      }
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'copy';
+      ctx.drawImage(skyLayer, 0, 0);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
     function skyColors(light, iss) {
       if (iss || light === 'night') return ['#02060d', '#08172a'];
       if (light === 'twilight') return ['#0c1630', '#3a2a4a'];
@@ -564,11 +598,7 @@
         lastFrame = time;
         boxCache = size();
         const bg = scene.background, iss = scene.moment?.kind === 'iss' ? scene.moment : null;
-        const [top, bottom] = skyColors(bg.light, iss);
-        const sky = ctx.createLinearGradient(0, 0, 0, boxCache.height);
-        sky.addColorStop(0, top); sky.addColorStop(1, bottom);
-        ctx.clearRect(0, 0, boxCache.width, boxCache.height);
-        ctx.globalAlpha = 0.9; ctx.fillStyle = sky; ctx.fillRect(0, 0, boxCache.width, boxCache.height); ctx.globalAlpha = 1;
+        drawSky(boxCache, bg.light, iss);
         if (iss) drawIss(ctx, boxCache, iss, now());
         else {
           if (particleKind === 'iss-stars') { particleKind = bg.kind; particles = []; }
@@ -612,6 +642,8 @@
       root.removeEventListener('persona-presence', onPresence);
       doc.removeEventListener('keydown', onKey);
       doc.removeEventListener('visibilitychange', onVisibility);
+      skyLayer.removeEventListener('contextrestored', invalidateSky);
+      skyLayer.width = 0; skyLayer.height = 0;
       canvas.remove(); chips.remove(); visit.remove(); weather.remove();
     }
     // Photos wait while Nestor shows a moment of his own.
