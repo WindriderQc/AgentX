@@ -53,6 +53,7 @@ function publicOperation(op) {
     if (['http:', 'https:'].includes(url.protocol)) studioUrl = url.origin + studioPath;
   } catch { /* A local deployment may only have relative browser routes. */ }
   return { id: op._id, state: op.state, profile: op.profile.id, label: op.profile.label,
+    ...(op.admissionPolicy && { admissionPolicy: op.admissionPolicy }),
     ...(op.queueRequestId && { queueRequestId: op.queueRequestId }),
     studioPath, ...(studioUrl && { studioUrl }), ...(op.workerId && { worker: op.workerId }),
     createdAt: op.createdAt, updatedAt: op.updatedAt, runtimeRestored: op.runtimeRestored,
@@ -103,12 +104,17 @@ function validate(body, config) {
     ...(parent && { parent: { ...parent, transform: TRANSFORM } }), ...(recipe && { recipe }), ...(expert && { expert }), ...(referenceSelection && { referenceSelection }) }));
   return { profile: { ...profile, id }, request, requestHash, originals, parent, recipe, expert, referenceSelection };
 }
-async function accept(body, { conversation, signal } = {}) {
+async function accept(body, { conversation, signal, opportunisticWorkerId = null } = {}) {
   assertSupportedRequest(body);
   await initialize();
   const config = loadConfig();
   if (!config || !defaultArchive().enabled) throw fail('The local image service is not configured.', 503);
   const input = validate(body, config);
+  if (opportunisticWorkerId !== null) {
+    if (typeof opportunisticWorkerId !== 'string' || !/^[a-z0-9-]{1,40}$/.test(opportunisticWorkerId)
+      || body.queueRequestId || body.queueDispatchId) throw fail('An opportunistic image needs one configured worker and a fresh immediate request.');
+    input.requestHash = hash(JSON.stringify([input.requestHash, 'opportunistic', opportunisticWorkerId]));
+  }
   if (conversation) {
     if (input.expert) throw fail('A Workshop proposal cannot be attached to another surface.', 403);
     conversation = normalizeConversation(conversation);
@@ -130,7 +136,7 @@ async function accept(body, { conversation, signal } = {}) {
   if (body.queueRequestId) {
     try { reservedHosts = (await require('../heavyWorkQueueService').get(body.queueRequestId))?.hosts || null; } catch { /* enroll refuses it below */ }
   }
-  const choice = await chooseWorker(config, input.profile, { queueHosts: reservedHosts });
+  const choice = await chooseWorker(config, input.profile, { queueHosts: reservedHosts, opportunisticWorkerId });
   if (!choice.worker) {
     const error = fail('The image PC is unavailable or the required model is missing.', 503);
     await workQueue.refuseBeforeAccept(body, config, input.requestHash, error.message);
@@ -143,6 +149,7 @@ async function accept(body, { conversation, signal } = {}) {
   let op;
   try {
     op = await ImageOperation.create([{ _id: id, actionKey: body.actionKey, requestHash: input.requestHash,
+      ...(opportunisticWorkerId !== null && { admissionPolicy: 'opportunistic' }),
       ...(conversation && { conversation }), workerUrl: worker.workerUrl, workerId: worker.worker.id, state: 'queued', profile: input.profile, request: input.request,
       ...(expert && { expert }),
       ...(referenceStorage && { referenceStorage }), ...(prepared.lineage && { lineage: prepared.lineage }), jobId: id }], { writeConcern: { w: 1, j: true } });
@@ -160,12 +167,19 @@ async function accept(body, { conversation, signal } = {}) {
     op.queueRequestId = job.id;
     if (body.queueDispatchId) op.queueDispatchId = body.queueDispatchId;
     await workQueue.dispatch(op, accepted => setImmediate(() => execute(accepted, worker, client)
-      .catch(error => logger.error('Local image operation failed', { id, error: error.message }))));
+      .catch(error => logger.error('Local image operation failed', { id, error: error.message }))),
+      { immediateAttempt: opportunisticWorkerId !== null });
   } catch (error) {
     await save(id, { state: 'unknown', error: 'Queue registration uncertain. Check the same receipt before any retry.' });
     throw error;
   }
   return publicOperation(await ImageOperation.findById(id).lean());
+}
+// Server-side callers select the already configured dedicated worker. This is
+// admission policy, not a new client authority, retention mode or warm cache.
+function acceptOpportunistic(body, { workerId, conversation, signal } = {}) {
+  if (typeof workerId !== 'string' || !workerId) throw fail('An opportunistic image requires a configured worker.');
+  return accept(body, { conversation, signal, opportunisticWorkerId: workerId });
 }
 async function dispatchQueued() {
   const config = loadConfig();
@@ -173,6 +187,10 @@ async function dispatchQueued() {
   await initialize();
   const pending = await ImageOperation.find({ state: 'queued' }).sort({ createdAt: 1 }).select('+workerUrl').limit(20).lean();
   for (const op of pending) {
+    if (op.admissionPolicy === 'opportunistic') {
+      await workQueue.dispatch(op, () => {});
+      continue;
+    }
     const worker = workerFor(config, op.workerUrl);
     if (!worker) continue;
     try {
@@ -203,7 +221,8 @@ async function execute(op, config, client) {
     const references = await loadReferences(stored);
     enter('reserving'); await persist({ state: 'reserving' });
     reservation = await reserve(config, op, persist, cancelled);
-    await client.ready(op.profile);
+    if (op.admissionPolicy === 'opportunistic') await client.ready(op.profile, { requireQueueProof: true });
+    else await client.ready(op.profile);
     const stats = await client.json('/system_stats');
     if (stats.devices?.[0]?.vram_free < stats.devices?.[0]?.vram_total * (config.minFreeVramRatio ?? 0.75)) throw new Error('GPU used by another application. New request required.');
     const refs = [];
@@ -350,4 +369,4 @@ function status() {
     conversationProfile: p ? { id: quick, width: Math.min(1024, Math.floor(Math.sqrt(p.maxPixels) / 32) * 32), height: Math.min(1024, Math.floor(Math.sqrt(p.maxPixels) / 32) * 32) } : null,
     profiles: Object.entries(config?.profiles || {}).map(([id, p]) => ({ id, label: p.label || id, maxPixels: p.maxPixels, license: p.license || null })) };
 }
-module.exports = { accept, dispatchQueued, get, getForAction, getForConversation, listForConversation, draft, list, listFinished, cancel, image, retryArchive, recover, status, validate, publicOperation };
+module.exports = { accept, acceptOpportunistic, dispatchQueued, get, getForAction, getForConversation, listForConversation, draft, list, listFinished, cancel, image, retryArchive, recover, status, validate, publicOperation };

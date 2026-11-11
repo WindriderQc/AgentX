@@ -7,6 +7,8 @@ const ImageOperation = require('../../models/ImageOperation');
 jest.mock('../../src/services/images/config', () => ({ ...jest.requireActual('../../src/services/images/config'), loadConfig: jest.fn() }));
 jest.mock('../../src/services/images/comfyClient', () => ({ createComfyClient: jest.fn() }));
 jest.mock('../../src/services/images/gpuReservation', () => ({ reserve: jest.fn() }));
+jest.mock('../../src/services/hostPinPrimitives', () => ({ ...jest.requireActual('../../src/services/hostPinPrimitives'), fetchRunningModelInfosStrict: jest.fn() }));
+const { fetchRunningModelInfosStrict } = require('../../src/services/hostPinPrimitives');
 const { loadConfig } = require('../../src/services/images/config');
 const { createComfyClient } = require('../../src/services/images/comfyClient');
 const { reserve } = require('../../src/services/images/gpuReservation');
@@ -23,6 +25,7 @@ describe('durable local image operations', () => {
     jest.clearAllMocks();
     await ImageOperation.deleteMany({});
     await require('../../models/HeavyWorkQueue').deleteMany({});
+    await require('../../models/HeavyWorkQueue').create({ _id: 'heavy-work', jobs: [] });
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'local-image-test-'));
     process.env.IMAGE_ARCHIVE_DIR = dir;
     loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:8188', ollamaHosts: ['http://127.0.0.1:11434'], profiles: { quality: profile }, defaultProfile: 'quality' });
@@ -31,6 +34,7 @@ describe('durable local image operations', () => {
       observe: jest.fn().mockImplementation(async (_id, options) => { await options.onTerminal(); return { filename: 'result.png', subfolder: 'agentx', type: 'output' }; }),
       read: jest.fn().mockResolvedValue(bytes), free: jest.fn().mockResolvedValue({}) };
     reservation = { assertOwned: jest.fn().mockResolvedValue(), verified: jest.fn().mockResolvedValue(), restore: jest.fn().mockResolvedValue(), quarantine: jest.fn().mockResolvedValue() };
+    fetchRunningModelInfosStrict.mockResolvedValue([]);
     reserve.mockResolvedValue(reservation); createComfyClient.mockReturnValue(client);
   });
   afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); delete process.env.IMAGE_ARCHIVE_DIR; });
@@ -45,6 +49,96 @@ describe('durable local image operations', () => {
     expect((await service.accept(body)).id).toBe(first.id);
     expect(client.submit).toHaveBeenCalledTimes(1);
     await expect(service.accept({ ...body, prompt: 'A mountain' })).rejects.toMatchObject({ statusCode: 409 });
+  });
+  test('opportunistic acceptance keeps its worker and policy in the original identity and receipt', async () => {
+    client.ready.mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] });
+    const body = { actionKey: 'opportunistic-first', prompt: 'A synthetic lake' };
+    const first = await service.acceptOpportunistic(body, { workerId: 'default' });
+    const done = await waitFor(first.id, 'completed');
+    expect(done).toMatchObject({ admissionPolicy: 'opportunistic', worker: 'default', runtimeRestored: true });
+    expect(reserve).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ admissionPolicy: 'opportunistic' }), expect.any(Function), expect.any(Function));
+    expect(await service.acceptOpportunistic(body, { workerId: 'default' })).toMatchObject({ id: first.id });
+    await expect(service.acceptOpportunistic(body, { workerId: 'other' })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.accept(body)).rejects.toMatchObject({ statusCode: 409 });
+    expect(client.submit).toHaveBeenCalledTimes(1);
+    await require('../../src/services/heavyWorkQueueEvidence').reconcile(first.queueRequestId, 'fixture');
+    expect(await require('../../src/services/heavyWorkQueueService').get(first.queueRequestId)).toMatchObject({ state: 'completed' });
+  });
+  test('opportunistic images refuse an occupied worker without dormant work or fallback', async () => {
+    client.ready.mockRejectedValue(new Error('busy'));
+    await expect(service.acceptOpportunistic({ actionKey: 'opportunistic-busy', prompt: 'A lake' }, { workerId: 'default' }))
+      .rejects.toMatchObject({ statusCode: 503 });
+    expect(await ImageOperation.countDocuments()).toBe(0);
+    expect((await require('../../models/HeavyWorkQueue').findById('heavy-work').lean()).jobs).toEqual([]);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(client.submit).not.toHaveBeenCalled();
+  });
+  test('opportunistic images refuse a missing canonical queue instead of assuming there is no legacy work', async () => {
+    await require('../../models/HeavyWorkQueue').deleteMany({});
+    await expect(service.acceptOpportunistic({ actionKey: 'opportunistic-no-queue', prompt: 'A lake' }, { workerId: 'default' }))
+      .rejects.toMatchObject({ statusCode: 503 });
+    expect(await ImageOperation.countDocuments()).toBe(0);
+    expect(client.ready).not.toHaveBeenCalled();
+    expect(client.submit).not.toHaveBeenCalled();
+  });
+  test.each([{}, { queue_running: null, queue_pending: null }, { queue_running: [], queue_pending: null }])(
+    'native queue becoming malformed after preflight cannot submit or free the worker: %j', async malformed => {
+      let reads = 0;
+      const requests = [];
+      const responses = { '/system_stats': { devices: [{ vram_total: 12e9, vram_free: 11e9 }] },
+        '/object_info': { UNETLoader: { input: { required: { unet_name: [[profile.diffusion]] } } },
+          CLIPLoader: { input: { required: { clip_name: [[profile.encoder]] } } },
+          VAELoader: { input: { required: { vae_name: [[profile.vae]] } } } } };
+      const actual = jest.requireActual('../../src/services/images/comfyClient').createComfyClient('http://127.0.0.1:8188', async url => {
+        const route = new URL(url).pathname; requests.push(route);
+        const value = route === '/queue' ? ++reads === 1 ? { queue_running: [], queue_pending: [] } : malformed : responses[route];
+        return { ok: true, text: async () => JSON.stringify(value) };
+      });
+      client.ready = jest.fn(actual.ready); client.free = jest.fn(actual.free);
+      const op = await service.acceptOpportunistic({ actionKey: 'opportunistic-malformed-queue', prompt: 'A lake' }, { workerId: 'default' });
+      expect(await waitFor(op.id, 'unknown')).toMatchObject({ runtimeRestored: false });
+      expect(client.ready).toHaveBeenCalledTimes(2);
+      expect(client.ready.mock.calls.every(call => call[1]?.requireQueueProof === true)).toBe(true);
+      expect(client.submit).not.toHaveBeenCalled();
+      expect(requests).not.toContain('/free');
+      expect(reservation.restore).not.toHaveBeenCalled();
+      expect(reservation.quarantine).toHaveBeenCalledTimes(1);
+    }
+  );
+  test('a reservation that wins after opportunistic preflight cancels the exact image instead of queueing it', async () => {
+    client.ready.mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] });
+    const queue = require('../../src/services/heavyWorkQueueService');
+    const realSubmit = queue.submit;
+    let blocker;
+    const submit = jest.spyOn(queue, 'submit').mockImplementationOnce(async (...args) => {
+      const job = await realSubmit({ key: 'opportunistic-race-blocker', title: 'Synthetic late reservation', kind: 'diagnostic',
+        hosts: ['http://127.0.0.1:11434'], estimatedMinutes: 5, source: { type: 'coding' } }, 'fixture');
+      blocker = await queue.reserve(job.id, { expectedRevision: job.revision, start: new Date().toISOString() }, 'fixture');
+      return realSubmit(...args);
+    });
+    try {
+      const body = { actionKey: 'opportunistic-race', prompt: 'A synthetic lake' };
+      const op = await service.acceptOpportunistic(body, { workerId: 'default' });
+      expect(op).toMatchObject({ state: 'cancelled', cancelRequested: true, admissionPolicy: 'opportunistic' });
+      expect(await queue.get(op.queueRequestId)).toMatchObject({ state: 'cancelled' });
+      expect(await service.acceptOpportunistic(body, { workerId: 'default' })).toMatchObject({ id: op.id, state: 'cancelled' });
+      await queue.cancel(blocker.id, { expectedRevision: blocker.revision }, 'fixture');
+      await service.dispatchQueued();
+      expect((await service.get(op.id)).state).toBe('cancelled');
+      expect(client.submit).not.toHaveBeenCalled(); expect(reserve).not.toHaveBeenCalled();
+    } finally { submit.mockRestore(); }
+  });
+  test('opportunistic unknown submission is reconciled by its original action, never replaced', async () => {
+    client.ready.mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] });
+    client.submit.mockRejectedValue(new Error('lost response'));
+    const body = { actionKey: 'opportunistic-unknown', prompt: 'A lake' };
+    const first = await service.acceptOpportunistic(body, { workerId: 'default' });
+    await waitFor(first.id, 'unknown');
+    await service.dispatchQueued();
+    expect(await service.acceptOpportunistic(body, { workerId: 'default' })).toMatchObject({ id: first.id, state: 'unknown' });
+    expect(client.submit).toHaveBeenCalledTimes(1);
+    expect(reservation.restore).not.toHaveBeenCalled();
+    expect(reservation.quarantine).toHaveBeenCalledTimes(1);
   });
   test('a lost submission response is UNKNOWN and cannot be automatically repeated', async () => {
     client.submit.mockRejectedValue(new Error('connection lost after dispatch'));

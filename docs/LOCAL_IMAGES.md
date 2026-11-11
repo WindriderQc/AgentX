@@ -540,6 +540,39 @@ envelope, so a 2400 × 1792 creation can be retouched without reducing its
 original. Uploaded references retain their 4,194,304-pixel limit. Parent
 references retain the original framing, ordered lineage and source/worker hashes.
 
+### Immediate admission without evicting residents
+
+Server-side consumers can call `imageService.acceptOpportunistic(body,
+{ workerId, conversation, signal })` to attempt an image on exactly one
+configured worker. This policy is separate from normal drawing admission:
+the caller chooses a deployment-qualified worker; this method does not establish
+physical separation from the devices serving conversation. For admission,
+the worker must answer, accept the selected profile, have verified free VRAM,
+have an empty native image queue and have no Ollama residents on its declared
+hosts. An unavailable queue observation also refuses the attempt. Core never
+falls back to another worker for this policy.
+The canonical Core queue must already exist; a missing queue is a refusal,
+including when the instance has not completed its legacy queue migration.
+
+An accepted attempt still uses Core's heavy-work queue, native workload
+admission and original image identity. If another reservation wins after
+preflight, Core cancels the original waiting queue entry and records the
+image as cancelled. A later dispatcher cancels a retained waiting attempt
+instead of starting it. Once dispatch may have occurred, uncertainty remains
+bound to that original receipt; it never creates a replacement request.
+
+Runtime admission makes one acquisition attempt without draining or waiting.
+Under that native ownership, Core captures the exact resident snapshots again
+and refuses before mutation if any resident appeared. No resident is unloaded
+for this policy. A completed render still requires the existing verification,
+worker memory release and runtime restoration receipts. The policy and selected
+worker participate in request identity, so the same action cannot be replayed
+with normal drawing admission or a different worker.
+
+This is an internal admission capability. It does not enable Family's
+illustrated mode, keep an image model warm, provide ephemeral storage or qualify
+render/conversation latency. Its images retain the ordinary archive behavior.
+
 ## Request and recovery contract
 
 `POST /api/images/operations` requires `actionKey`, `prompt`, optional `profile`,

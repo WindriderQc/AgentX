@@ -14,10 +14,10 @@ const { hosts: queueHosts } = require('../heavyWorkQueueContract');
 
 const ACTIVE = ['dispatching', 'running', 'uncertain'];
 
-function busyKeys(jobs, now = Date.now()) {
+function busyKeys(jobs, now = Date.now(), { includeImages = false } = {}) {
   const keys = new Set();
   for (const job of Array.isArray(jobs) ? jobs : []) {
-    if (job?.kind === 'image' || !Array.isArray(job?.hosts)) continue;
+    if ((!includeImages && job?.kind === 'image') || !Array.isArray(job?.hosts)) continue;
     const reservedNow = job.state === 'reserved' && job.reservation
       && Date.parse(job.reservation.start) <= now && now < Date.parse(job.reservation.end);
     if (ACTIVE.includes(job.state) || reservedNow) job.hosts.forEach(host => keys.add(host));
@@ -44,7 +44,7 @@ function defaultDeps() {
   return {
     client: url => createComfyClient(url),
     running: host => require('../hostPinPrimitives').fetchRunningModelInfosStrict(host),
-    queueJobs: async () => (await require('../heavyWorkQueueService').list())?.jobs || [],
+    queueJobs: async () => (await require('../heavyWorkQueueService').list())?.jobs,
     now: () => Date.now()
   };
 }
@@ -69,8 +69,29 @@ async function probe(worker, profile, deps, busy) {
  *   a worker whose Ollama hosts match them exactly may take it, with no fallback
  * @returns { worker, tried } where worker is a scoped configuration or null
  */
-async function chooseWorker(config, profile, { queueHosts: reserved = null, deps = defaultDeps() } = {}) {
+async function chooseWorker(config, profile, { queueHosts: reserved = null, opportunisticWorkerId = null, deps = defaultDeps() } = {}) {
   let list = candidates(config, profile.id);
+  // Opportunistic callers name one worker, never a preference list. Readiness
+  // is only a preflight: the native reservation repeats the no-resident guard.
+  if (opportunisticWorkerId !== null) {
+    const worker = list.find(item => item.worker.id === opportunisticWorkerId);
+    if (!worker || reserved) return { worker: null, tried: [] };
+    try {
+      const jobs = await deps.queueJobs();
+      if (!Array.isArray(jobs)) throw new Error('Image queue evidence unavailable');
+      const busy = busyKeys(jobs, deps.now(), { includeImages: true });
+      if (workerKeys(worker).some(key => busy.has(key))) return { worker: null, tried: [{ id: worker.worker.id, reason: 'reserved' }] };
+      const stats = await deps.client(worker.workerUrl).ready(profile, { requireQueueProof: true });
+      for (const host of worker.ollamaHosts) {
+        if ((await deps.running(host)).length) return { worker: null, tried: [{ id: worker.worker.id, reason: 'resident' }] };
+      }
+      const device = stats?.devices?.[0];
+      if (!device || !(device.vram_total > 0) || !hasRoom(stats, [], worker.minFreeVramRatio)) {
+        return { worker: null, tried: [{ id: worker.worker.id, reason: 'vram' }] };
+      }
+      return { worker, tried: [{ id: worker.worker.id, reason: 'chosen' }] };
+    } catch { return { worker: null, tried: [{ id: worker.worker.id, reason: 'unavailable' }] }; }
+  }
   if (reserved) {
     const wanted = JSON.stringify(reserved);
     list = list.filter(worker => {

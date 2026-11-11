@@ -60,7 +60,7 @@ async function reserve(config, operation, save, isCancelled) {
       workloadId: operation._id, kind: 'images',
       hosts: [config.workerUrl, ...config.ollamaHosts].filter(Boolean), ttl: 120000 });
     if (lease.acquired) break;
-    if (Date.now() >= end) throw new Error('GPU busy. Make a new request when it is available.');
+    if (operation.admissionPolicy === 'opportunistic' || Date.now() >= end) throw new Error('GPU busy. Make a new request when it is available.');
     await sleep(1000);
   } while (true);
   let lost = false, version = lease.recoveryVersion;
@@ -91,6 +91,11 @@ async function reserve(config, operation, save, isCancelled) {
       await assertOwned(); snapshots[host] = await captureBenchmarkRuntime(host);
     }
     await save({ snapshot: snapshots });
+    if (operation.admissionPolicy === 'opportunistic'
+      && Object.values(snapshots).some(snapshot => !snapshot?.exact || !Array.isArray(snapshot.residents) || snapshot.residents.length
+        || snapshot.identityDigest !== benchmarkRuntimeSnapshotIdentity(snapshot))) {
+      throw new Error('Opportunistic images never unload GPU residents.');
+    }
     await transition('MUTATING', { snapshots }); mutated = true;
     for (const [host, snap] of Object.entries(snapshots)) {
       for (const resident of snap.residents) {
