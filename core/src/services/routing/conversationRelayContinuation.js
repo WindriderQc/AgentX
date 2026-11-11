@@ -16,7 +16,7 @@ async function readOccupation(target) {
 // the selected host/context, caller admission and original occupation. Every
 // additional model call has ordinary native admission and disables retries.
 function createRelayContinuation({ reduced, target, execute, options, hostUrl, routing, continuity, maxInputChars,
-  observeFamilyOccupation = readOccupation, occupation, signal }) {
+  observeFamilyOccupation = readOccupation, occupation, signal, notice }) {
   let calls = 0;
   async function assertOccupied() {
     signal?.throwIfAborted();
@@ -27,18 +27,23 @@ function createRelayContinuation({ reduced, target, execute, options, hostUrl, r
     signal?.throwIfAborted();
   }
   return { messages: reduced.messages, assertOccupied,
-    async execute(messages, tools) {
+    async execute(messages, tools, { announce = false } = {}) {
       await assertOccupied();
+      if (announce && !tools?.length && messages[0]?.role === 'system') messages = [
+        { ...messages[0], content: messages[0].content + '\nThe selected runtime refused tools. No tools are available for this answer. Use supplied context only; do not claim a source read.' },
+        ...messages.slice(1) ];
       if (++calls > 2 || !Array.isArray(messages) || messages.length > 24
           || JSON.stringify({ messages, tools }).length > maxInputChars) {
         throw Object.assign(new Error('The relay context or model-call budget is exhausted.'), { code: 'RELAY_CONTEXT_EXCEEDED' });
       }
-      return execute({ ...reduced, messages, ...(tools?.length ? { tools } : { tools: undefined }) }, {
+      const result = await execute({ ...reduced, messages, ...(tools?.length ? { tools } : { tools: undefined }) }, {
         signal, consumerContract: options.consumerContract, hostUrl,
         degraded: routing, conversationContinuity: { ...continuity,
           lane: { role: 'conversation', mode: 'continuity', group: null, laneContext: reduced.options.num_ctx } },
         retry: { enabled: false }
       });
+      return announce ? require('./conversationContinuityContext').decorate(result, {
+        notice: (notice || 'Nestor assure temporairement le relais.').replace('des lectures Core limitées', 'sans outils'), continuity }) : result;
     }
   };
 }

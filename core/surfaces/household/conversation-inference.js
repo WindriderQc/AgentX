@@ -45,7 +45,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   for (;;) {
     const offerTools = toolsOffered && rounds < toolset.maxRounds;
     const execute = async (withTools) => {
-      if (relayContinuation) return relayContinuation.execute(conversation, withTools ? toolset.definitions : undefined);
+      if (relayContinuation) return relayContinuation.execute(conversation, withTools ? toolset.definitions : undefined, { announce: rounds === 0 });
       const body = {
         mode: 'chat', taskType,
         ...(request.model ? { model: request.model.replace(/^ollama\//, '') } : {}),
@@ -83,7 +83,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     }
     if (result?.metadata?.conversationContinuity?.state === 'status_only') toolsOffered = false;
     // A model whose runtime refuses tools answers the turn without them.
-    if (offerTools && !result?.ok && /does not support tools/i.test(JSON.stringify(result?.body?.error || ''))) {
+    if (toolsOffered && !result?.ok && /does not support tools/i.test(JSON.stringify(result?.body?.error || ''))) {
       toolsOffered = false;
       result = await execute(false);
     }
@@ -121,7 +121,8 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   if (signal?.aborted) relay = null;
   return { backend, text: streamed,
     metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}), usage: sumUsage(callUsage) },
-    tools: relay ? { status: toolset ? 'observed' : 'not_supported', authority: toolset ? 'agentx/core' : 'agentx/ollama', receipts, ...(toolset ? { offered: toolset.names } : {}), conversationRelay: { ...relaySource, completed: true } }
+    tools: relay ? { status: toolset && toolsOffered ? 'observed' : 'not_supported', authority: toolset && toolsOffered ? 'agentx/core' : 'agentx/ollama', receipts, ...(toolset && toolsOffered ? { offered: toolset.names } : {}),
+      ...(toolset && !toolsOffered ? { reason: 'The selected relay runtime does not accept tools; the same guardian answered from supplied context only.' } : {}), conversationRelay: { ...relaySource, completed: true } }
       : relaySource && emittedModelChars > 0 ? { status: 'partial', authority: 'agentx/ollama', receipts: [], conversationRelay: fragment() }
       : toolset && toolsOffered
       ? { status: 'observed', authority: 'agentx/core', offered: toolset.names, receipts }

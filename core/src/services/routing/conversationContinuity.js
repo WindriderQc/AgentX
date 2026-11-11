@@ -161,7 +161,7 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
           retry: { enabled: false } });
         const received = decorate(requireResult(result), { notice, continuity });
         if (options.relayTools && reduced.messages && options.requireOccupied) received.relayContinuation = require('./conversationRelayContinuation').createRelayContinuation({
-          reduced, target, execute, options, hostUrl, routing, continuity, maxInputChars: policy.maxInputChars, observeFamilyOccupation, occupation, signal });
+          reduced, target, execute, options, hostUrl, routing, continuity, maxInputChars: policy.maxInputChars, observeFamilyOccupation, occupation, signal, notice });
         return received;
       } catch (error) {
         if (signal?.aborted || (!safeRefusal(error) && error.code !== 'LANE_CONTEXT_EXCEEDED')) throw error;

@@ -60,3 +60,33 @@ test('Family receives a real canonical ISS computation within its unchanged rela
   expect(JSON.parse(content)).toMatchObject({ status: 'ok', visiblePassesComplete: true });
   expect(content).not.toContain('observer=v1:');
 });
+
+
+test('Hermes with no principal toolset can recover a native tool refusal only on the same verified guardian', async () => {
+  const w = fixture({ hermes: true });
+  expect(w.request.familyTools).toBeUndefined();
+  w.execute.mockImplementation(async (body, options) => body.tools?.length
+    ? { ok: false, body: { error: 'does not support tools' }, metadata: { model: body.model, conversationContinuity: options.conversationContinuity } }
+    : { ok: true, body: { message: { content: 'Réponse du même gardien sans outils.' } }, metadata: { model: body.model, conversationContinuity: options.conversationContinuity } });
+  const read = w.request.guardianTools.execute = jest.fn();
+  const result = await w.run();
+  expect(result.text).toContain('Réponse du même gardien sans outils.');
+  expect(result.text).toContain('assure temporairement le relais');
+  expect(result.text).toContain('sans outils');
+  expect(w.execute.mock.calls.map(([body]) => body.model)).toEqual(['synthetic-guardian', 'synthetic-guardian']);
+  expect(w.execute.mock.calls.map(([, options]) => options.hostUrl)).toEqual(['http://127.0.0.2:11434', 'http://127.0.0.2:11434']);
+  expect(w.execute.mock.calls[1][0].tools).toBeUndefined();
+  expect(w.execute.mock.calls[1][0].messages[0].content).toContain('No tools are available for this answer');
+  expect(w.execute.mock.calls[1][0].options.num_ctx).toBe(8192);
+  expect(result.tools).toMatchObject({ status: 'not_supported', receipts: [], conversationRelay: { role: 'relay', completed: true } });
+  expect(read).not.toHaveBeenCalled();
+});
+
+test('a tool refusal never retries after original Hermes occupation ends', async () => {
+  const w = fixture({ hermes: true });
+  w.execute.mockImplementation(async body => {
+    w.clear(); return { ok: false, body: { error: 'does not support tools' }, metadata: { model: body.model } };
+  });
+  await expect(w.run()).rejects.toMatchObject({ code: 'RELAY_OCCUPATION_CHANGED' });
+  expect(w.execute).toHaveBeenCalledTimes(1);
+});
