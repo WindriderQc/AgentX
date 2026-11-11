@@ -99,6 +99,30 @@ describe('image GPU handoff and original-job recovery', () => {
     expect(warmDefaultModel).not.toHaveBeenCalled();
     expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(0);
   });
+  test('opportunistic admission keeps a declared resident loaded and only verifies it on restore', async () => {
+    snap = { exact: true, capturedAt: new Date(), source: 'ollama_ps', residents: [resident('qllama/bge-m3:f16', 4096)] };
+    snap.identityDigest = benchmarkRuntimeSnapshotIdentity(snap);
+    running = snap.residents.map(runningInfo); captureBenchmarkRuntime.mockResolvedValue(snap);
+    const op = { _id: 'opportunistic-kept', admissionPolicy: 'opportunistic' };
+    const persist = jest.fn(async changes => Object.assign(op, changes));
+    const config = { ollamaHosts: [host], worker: { id: 'desk', keepResidents: ['qllama/bge-m3:f16'] } };
+    const reservation = await reserve(config, op, persist, async () => false);
+    expect(unloadModel).not.toHaveBeenCalled();
+    expect(running).toEqual(snap.residents.map(runningInfo));
+    await reservation.verified({ jobTerminal: true });
+    await reservation.restore();
+    expect(unloadModel).not.toHaveBeenCalled();
+    expect(running).toEqual(snap.residents.map(runningInfo));
+    expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(0);
+  });
+  test('opportunistic admission still refuses a resident that is not declared', async () => {
+    const op = { _id: 'opportunistic-undeclared', admissionPolicy: 'opportunistic' };
+    const config = { ollamaHosts: [host], drainMs: 60000, worker: { id: 'desk', keepResidents: ['qllama/bge-m3:f16'] } };
+    await expect(reserve(config, op, jest.fn(async changes => Object.assign(op, changes)), async () => false))
+      .rejects.toMatchObject({ message: expect.stringContaining('never unload'), runtimeUnknown: false });
+    expect(unloadModel).not.toHaveBeenCalled();
+    expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(0);
+  });
   test('the bound image executor reserves its physical aliases before Ollama unload', async () => {
     const original = process.env.AGENTX_RUNTIME_RESOURCES_JSON;
     const workerUrl = 'http://image-worker:8188', alias = 'http://image-gpu:11435';

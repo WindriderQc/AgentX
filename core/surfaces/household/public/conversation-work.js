@@ -96,9 +96,10 @@
     }
     const requestIdentity = item => `${timestamp(item.receivedAt)} · #${item.id.slice(0, 8)}`;
     function updateSummary() { if (summary) summary.textContent = `${copy().summary} · ${cards.size}`; }
+    const questions = root.NestorQuestions?.create({ api, base, getLanguage, onRefresh: () => { void poll(); } });
     function render(item) {
       let card = cards.get(item.id);
-      if (!item.pending && !item.result && !['failed', 'uncertain', 'cancelled', 'paused'].includes(item.state)) {
+      if (!item.pending && !item.result && !item.nativeQuestions?.questions?.length && !item.nativeQuestions?.intents?.length && !['failed', 'uncertain', 'cancelled', 'paused'].includes(item.state)) {
         card?.remove(); cards.delete(item.id); host.hidden = !cards.size; updateSummary(); return;
       }
       if (!card) {
@@ -156,6 +157,7 @@
         card.append(actions, node('p', 'conversation-work-help', c.controls));
       } else if (item.controllable) card.append(node('p', 'conversation-work-help', c.unavailable));
       else if (item.pending && item.attempt && item.state !== 'uncertain') card.append(node('p', 'conversation-work-help', c.native));
+      questions?.render(card, item, { stale });
       host.hidden = false; updateSummary();
     }
     function refresh() { for (const item of items.values()) render(item); }
@@ -276,14 +278,14 @@
       if (disposed || !id || id === sessionId) return;
       pollController?.abort(); pollController = null;
       ++generation; sessionId = id; cursor = 0; dispatch = null; stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); attempted.clear(); requested.clear();
-      restoreCommands();
+      restoreCommands(); questions?.reset(id);
       summary = node('h2', 'conversation-work-summary', '');
       host.replaceChildren(summary); host.hidden = true; clearInterval(timer);
       timer = setInterval(() => { void poll(); }, pollMs); timer.unref?.(); void poll();
     }
     function reset() {
       pollController?.abort(); pollController = null;
-      ++generation; sessionId = null; dispatch = null; clearInterval(timer); stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); host.replaceChildren(); host.hidden = true;
+      ++generation; questions?.reset(null); sessionId = null; dispatch = null; clearInterval(timer); stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); host.replaceChildren(); host.hidden = true;
     }
     function dispose() { disposed = true; reset(); }
     return { follow, reset, dispose, poll, naturalPause, refresh };

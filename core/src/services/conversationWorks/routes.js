@@ -16,11 +16,19 @@ function registerConversationWorkRoutes(router, { works, env = process.env }) {
     handle(req => delivery.receipt(req.params.sessionId, req.params.deliveryId, req.body)));
   router.post('/private/sessions/:sessionId/work/:workId/control',
     handle(req => control(req.params.sessionId, req.params.workId, req.body)));
+  router.post('/private/sessions/:sessionId/work/:workId/questions',
+    handle(req => works.questions.submit(req.params.sessionId, req.params.workId, req.body)));
+  router.post('/private/sessions/:sessionId/work/:workId/question-intents/:intentId/resume',
+    handle(req => works.questions.resume(req.params.sessionId, req.params.workId, req.params.intentId, req.body)));
+  router.get('/private/sessions/:sessionId/work/:workId/question-intents/:intentId',
+    handle(req => works.questions.lookup(req.params.sessionId, req.params.workId, req.params.intentId)));
   router.post('/native/work', handle(async req => {
     const token = /^Bearer\s+(.+)$/i.exec(req.get('authorization') || '')?.[1];
     if (!tokenMatches(token, env.PERSONAL_CONVERSATION_WORK_TOKEN)) throw fail('CONVERSATION_WORK_NOT_FOUND', 'Conversation work not found.', 404);
     const { operation, context, input, callId } = req.body || {};
     if (Object.keys(req.body || {}).some(key => !['operation', 'context', 'input', 'callId'].includes(key))) throw fail('CONVERSATION_WORK_REQUEST_INVALID', 'Invalid work request.');
+    if (operation === 'question_context') return works.questions.context(input);
+    if (operation === 'question_effect') return works.questions.claim(input);
     if (operation === 'request') return works.request(context);
     if (operation === 'context') return works.contextForWorker(context);
     if (operation === 'native_context') return works.contextForNative(context, callId);

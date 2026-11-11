@@ -31,6 +31,8 @@ async function resumeDeletedSessionCleanup() {
   try {
     for await (const row of cursor) {
       await withSessionWrite(row.surface, row.surfaceSession.sessionId, async () => {
+        await require('./images/illustrationStorage').expireConversation({ surface: row.surface,
+          sessionId: row.surfaceSession.sessionId });
         removed += (await Attachment.deleteMany({ conversationId: row._id })).deletedCount;
         await Conversation.updateOne({ _id: row._id, 'surfaceSession.deletedAt': { $type: 'date' } },
           { $set: { 'surfaceSession.deleteCleanupPending': false } });
@@ -173,6 +175,12 @@ function forSurface(surface) {
       }
       throw failure('Active conversation not found in this space', 404, 'CONVERSATION_NOT_FOUND');
     }
+    // acceptTurn already owns this session's write fence. Queue the optional
+    // TTL extension behind that same fence without waiting for re-entry. The
+    // canonical lastTurnAt above also lets capture/GC repair an interrupted follow-up.
+    if (inputText) void require('./images/illustrationStorage').touch({ surface, sessionId: event.sessionId, packId: event.packId, scopeId: event.scopeId }, row.surfaceSession.lastTurnAt).catch(() => {
+      require('../../config/logger').warn('Illustration retention awaits canonical activity reconciliation');
+    });
     return turnView(row, row.messages.find(message => String(message._id) === String(messageId)));
   }
 
@@ -288,6 +296,8 @@ function forSurface(surface) {
         }, { runValidators: true });
       }
       // A failure leaves only the tombstone and is retryable with the same scope.
+      await require('./images/illustrationStorage').expireConversation({ surface, sessionId: query.sessionId,
+        packId: query.packId, scopeId: query.scopeId });
       await Attachment.deleteMany({ conversationId: row._id });
       await Conversation.updateOne({ _id: row._id }, { $set: { 'surfaceSession.deleteCleanupPending': false } });
       return { deleted: true, sessionId: query.sessionId };

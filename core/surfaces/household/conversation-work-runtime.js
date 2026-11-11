@@ -21,6 +21,8 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     return null;
   }
   const works = capability.create({ conversations, tasks, env, classify: requestsTaskCheck, nativePrimary: true,
+    questionRuntime: env.PERSONAL_CONVERSATION_QUESTIONS_ENABLED === 'true' ? { observe: (row, options) => continuity({ operation: 'questions', workId: row._id }, options?.signal),
+      effect: (input, options) => continuity({ operation: 'question_effect', ...input }, options?.signal) } : null,
     presentResult: async (result, row) => {
       const turn = await conversations.getTurn({ sessionId: row.sessionId, packId: 'personal_operator', scopeId: 'personal', traceId: row.turnId });
       const language = turn?.speechLanguage || require('./persona-prompt').spokenReplyLanguage(result.text, turn?.inputText || '');

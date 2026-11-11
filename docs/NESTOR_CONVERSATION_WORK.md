@@ -68,7 +68,8 @@ Accepted records without this policy retain their guardian-first contract, model
 profile and execution identity, including after a restart or disabling new intake.
 The default mode remains `off`; text, Open, addressed specialists, Family and
 Hermes retain their existing routes. This change grants no native consent or
-business authority. Native clarification/approval bridging remains separate.
+business authority. Ordinary native questions use the optional [conditional question bridge](NESTOR_NATIVE_QUESTIONS.md).
+Secret and execution approvals retain their native owners.
 
 ### Reconcile an uncertain personal capture
 
@@ -174,6 +175,11 @@ guardian can accept the turn, the warm, deterministic service notice identifies
 itself as automatic; its technical explanation remains in the turn's evidence.
 It records tools as `not_run`, rather than claiming that a model rejected tools.
 Scripted greetings are marked as automatic in the visible conversation.
+The Family relay retains the server's household clock. Supplied weather keeps
+its original source projection plus separately converted local observation and
+retrieval times and observation age; a recent retrieval never makes the reading
+current. Guardian instructions keep the answer conversational and leave the
+automatic service announcement to Core.
 Canonical intake binds
 each stable turn id before inference; a duplicate reads its existing outcome
 without a second inference, including after interruption or an uncertain reply.

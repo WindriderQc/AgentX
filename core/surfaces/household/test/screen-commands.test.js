@@ -110,8 +110,10 @@ test('the page loads screen commands before the conversation, and only Nestor mo
   const page = fs.readFileSync(path.join(__dirname, '../public/conversation-page.js'), 'utf8');
   assert.match(page, /const screenWords = family \? null : window\.NestorScreenCommandsEditor\?\.mount\(/);
   assert.match(page, /const screenCommand = family \? null : window\.NestorScreenCommands\?\.handler\(board, \{ phrases: \(\) => screenWords\?\.phrases\(\) \|\| \[\] \}\)/);
-  assert.match(page, /localControl: \(text, options\) => idlePhotos\?\.localControl\(text, options\) \|\| screenCommand\?\.\(text, options\) \|\| null/);
-  assert.match(page, /if \(!drafts\.hasFiles\(\) && screenCommand\?\.\(typed\.value\)\)/, 'a typed command passes the same filter; files mean a request');
+  assert.match(page, /localControl: \(text, options\) => \(family && window\.IllustratedFrame\?\.localControl\(text, options\)\) \|\| idlePhotos\?\.localControl\(text, options\) \|\| screenCommand\?\.\(text, options\) \|\| null/,
+    'family keep precedes idle photos and the personal screen handler');
+  assert.match(page, /if \(!drafts\.hasFiles\(\) && \(\(family && window\.IllustratedFrame\?\.localControl\(typed\.value, \{ followup: true \}\)\) \|\| screenCommand\?\.\(typed\.value\)\)\)/,
+    'typed keep and screen commands share the files filter; files mean a request');
 });
 
 function harness(overrides = {}) {

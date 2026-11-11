@@ -155,7 +155,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   });
   const pagePicker = family ? null : window.NestorScreenPicker.mount({ host: app.querySelector('.conversation-toolbar'), onShow: show });
   window.addEventListener('nestor-review-destination', event => { if (!family && event.detail) show(event.detail); });
-  const clearBoard = () => { companion?.reset(); board.clear(); activity('clear'); };
+  const clearBoard = () => { companion?.reset(); board.clear(); window.IllustratedFrame?.clear(); activity('clear'); };
   window.addEventListener('persona-scene', event => {
     const detail = event.detail || {};
     if (detail.space === (family ? 'family' : 'personal') && detail.scene) show({ key: 'scene', kind: 'scene', title: detail.caption || '', scene: detail.scene });
@@ -404,7 +404,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (event.type === 'speaker') { turnSpeaker = event.speaker || null; if (turnSpeaker) el('conversationStatus').textContent = `${turnSpeaker.name} is replying.`; }
       if (event.type === 'tools') { showTools(event.evidence); activity('tools', { count: event.evidence?.receipts?.length || 1 }); }
       if (event.type === 'scene' && !interruptedTurns.has(turnId)) activity('scene', { scene: event.scene });
-      if (event.type === 'show' && !interruptedTurns.has(turnId)) show(mathCard(event.block, session, turnId));
+      // An illustration goes to its corner frame (#1304), never to the board.
+      if (event.type === 'show' && !interruptedTurns.has(turnId)) {
+        if (event.block?.presentation === 'illustration') { if (family) window.IllustratedFrame?.show(event.block); }
+        else show(mathCard(event.block, session, turnId));
+      }
       if (event.type === 'status' && event.phase === 'activity') voiceHealth.activity();
       if (!interruptedTurns.has(turnId) && event.type === 'status' && event.phase === 'activity') {
         // Nestor says what it is doing (tools, another agent) once per line.
@@ -598,7 +602,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       partial = null;
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
-    localControl: (text, options) => idlePhotos?.localControl(text, options) || screenCommand?.(text, options) || null,
+    localControl: (text, options) => (family && window.IllustratedFrame?.localControl(text, options)) || idlePhotos?.localControl(text, options) || screenCommand?.(text, options) || null,
     transcriptionStarted: turnId => workflow?.capture(conversation.session?.sessionId, turnId),
     transcriptionDone: (turnId, values) => { latestVoiceTimings = values || {}; workflow?.timings(turnId, values); },
     transcriptionEnded: (turnId, receipt) => workflow?.captureEnd(turnId, receipt),
@@ -777,6 +781,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     summarize();
   }
   function describe() {
+    if (family) window.IllustratedFrame?.follow(conversation.session);
     syncStyles(); renderTeam();
     const agent = agents.find(agent => agent.id === (conversation.session?.agentId || agentPicker.value)) || selectedAgent();
     const backend = conversation.session?.backend || backendPicker.value;
@@ -837,6 +842,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     return startVoice();
   };
   el('conversationNew').onclick = () => {
+    if (family) window.IllustratedFrame?.end();
     captureRequests?.reset(); privacyChoice.reset(open.checked); privacyBackend = null;
     recap?.clear();
     el('conversationResume').hidden = true; setHistoryOpen(false); conversation.stop(); work?.reset(); workflow?.reset(); void releaseOpen(); partial = null;
@@ -857,7 +863,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationText').onsubmit = async event => {
     event.preventDefault();
     const typed = el('conversationMessage');
-    if (!drafts.hasFiles() && screenCommand?.(typed.value)) { typed.value = ''; composer.sync(); return; }
+    if (!drafts.hasFiles() && ((family && window.IllustratedFrame?.localControl(typed.value, { followup: true })) || screenCommand?.(typed.value))) { typed.value = ''; composer.sync(); return; }
     if (!textBusy && conversation.canType()) return typedDuringVoice();
     if (textBusy || !['idle', 'paused', 'error'].includes(conversation.state)) return;
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
@@ -943,6 +949,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   };
   // Opens a saved conversation from Core: the same on every device (#120).
   async function resumeSession(session, button) {
+    if (family) window.IllustratedFrame?.end();
     captureRequests?.reset(); recap?.clear();
     el('conversationResume').hidden = true; conversation.stop();
     void releaseOpen();

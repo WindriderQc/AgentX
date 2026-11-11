@@ -20,6 +20,7 @@ function createWorkDelivery(works) {
       // Session keys, tool payloads, selected context and prompts stay private.
       guardianRunId: row.guardian?.runId || null,
       attempt: row.attempt ? { id: row.attempt.id, agentId: row.attempt.agentId, runId: row.attempt.runId || null } : null,
+      nativeQuestions: await works.questions?.projection(row),
       tools: (row.tools || []).map(tool => ({ id: tool.id, tool: tool.tool, status: tool.status,
         runId: tool.runId || null, at: tool.at })),
       nativeAdmissions: (row.nativeAdmissions || []).map(call => ({ id: call.id, tool: call.tool, at: call.at })),
@@ -35,6 +36,7 @@ function createWorkDelivery(works) {
   async function snapshot(sessionId, cursor = 0) {
     await works.session(sessionId);
     if (!Number.isSafeInteger(Number(cursor)) || Number(cursor) < 0) throw fail('CONVERSATION_WORK_CURSOR_INVALID', 'Invalid work cursor.');
+    await works.questions?.refresh(sessionId);
     const rows = await works.repo.find({ sessionId, sequence: { $gt: Number(cursor) } }, 65, { sequence: 1, _id: 1 });
     const selected = rows.slice(0, 64);
     const events = selected.flatMap(row => row.events.filter(event => event.sequence > Number(cursor))

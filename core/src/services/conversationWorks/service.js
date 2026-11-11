@@ -14,7 +14,7 @@ const { replyAttribution, resultAttribution } = require('./relay-context');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
   nativeBudget = () => null, nativeForeground = () => true, nativeTaskRead = () => false, guardianNeedsMain = () => false, nativePrimary = false,
-  presentResult = null, exchangeStore = exchanges, now = () => new Date() } = {}) {
+  presentResult = null, questionRuntime = null, exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
   let wake = () => {};
   const classification = (text, mode) => mode === 'native' ? simple(text) || !nativeForeground(text) ? 'native_review' : 'native_work'
@@ -181,6 +181,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     for (const row of rows) {
       const turn = turns.get(row.turnId);
       if (turn) turn.replyAttribution = replyAttribution(row, turn);
+      if (turn && row.nativeQuestions?.intents?.length) turn.questionDecisions = await works.questions.history(row);
       if (!row.result?.version || row.result.kind === 'no_work') continue;
       if (!turn) throw fail('CONVERSATION_WORK_CONTEXT_UNAVAILABLE', 'A background answer has no canonical conversation turn.', 503);
       const result = await repo.read(row, row.result.payloadRef);
@@ -443,7 +444,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       conversationId: row.conversationId }, 'completed', { packets: 0, statusCode: 200,
       conversationId: row.conversationId, workId: row._id });
   }
-  return { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, conversationContext, readTasks, readEvidence,
+  const works = { repo, intake, retained, prepare, guardianStarted, guardianSettled, binding, request, contextForWorker, conversationContext, readTasks, readEvidence,
     requestTextForDisplay: async row => {
       const turn = await conversations.getTurn({ ...query(row.sessionId), traceId: row.turnId });
       return turn && hash(turn.inputText) === row.requestSha256 ? turn.inputText : null;
@@ -455,5 +456,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     publish, publishNative: require('./native-results').createNativeResultReceiver({ repo, session, now, automaticSpeech }), automaticSpeech, presentResult,
     relayClassification: text => classification(text, 'native'),
     recover, finalize, handled, guardianContext, guardianContextWithRefs, taskAcceptance, nativeAcceptance, dispatchStatus, wake: () => wake(), session, query, eligible: (current, channel) => eligible(current, channel, env), wakeWith: fn => { wake = fn; } };
+  works.questions = require('./questions').createWorkQuestions({ works, runtime: questionRuntime, now: () => now().getTime() });
+  return works;
 }
 module.exports = { createConversationWorks };
