@@ -219,11 +219,16 @@ def project(value, content, spans, context, template, contract):
         choice = converted['cueDecisions'][key]
         if not isinstance(choice, dict):
             raise ValueError('Each useful cue requires a source-anchored decision')
-        if 'reasonRef' in choice and not isinstance(choice['reasonRef'], str):
-            raise ValueError('Omission choices require a known source reference')
-        if 'reasonRef' in choice and choice['reasonRef'] not in allowed:
-            raise ValueError('Unresolved identity cannot erase a complete source declaration; retain an unknown actor')
-        selected += [(f'cueDecisions/{key}/retainedMoments/{i}', m) for i, m in enumerate(choice.get('retainedMoments', []))]
+        if set(choice) == {'reasonRef'}:
+            if not isinstance(choice['reasonRef'], str):
+                raise ValueError('Omission choices require a known source reference')
+            if choice['reasonRef'] not in allowed:
+                raise ValueError('Unresolved identity cannot erase a complete source declaration; retain an unknown actor')
+            continue
+        retained = choice.get('retainedMoments')
+        if set(choice) != {'retainedMoments'} or not isinstance(retained, list) or not 1 <= len(retained) <= 10:
+            raise ValueError('A retained cue requires a bounded native fact list or its own omission')
+        selected += [(f'cueDecisions/{key}/retainedMoments/{i}', m) for i, m in enumerate(retained)]
     actor_rows = {r['citationId']: r for r in actors(source, context)}
     for path, fact in selected:
         if not isinstance(fact, dict) or not isinstance(fact.get('anchorCitationId'), str):

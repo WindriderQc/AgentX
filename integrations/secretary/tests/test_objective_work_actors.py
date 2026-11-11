@@ -107,6 +107,15 @@ class WorkActorTests(unittest.TestCase):
             value = raw(cues={'q1': [moment('q1')]});value[field] = bad
             with self.subTest(field=field, bad=bad), self.assertRaises(ValueError):project(value, body)
 
+    def test_malformed_retained_cue_cannot_escape_as_an_uncertain_worker_crash(self):
+        body = 'Mon voyage...'
+        for choice in ({'retainedMoments': None}, {'retainedMoments': []},
+                       {'retainedMoments': True}, {'retainedMoments': 'q1'},
+                       {'retainedMoments': None, 'reasonRef': 'r1'}):
+            value = raw();value['cueDecisions']['q1'] = choice;before = copy.deepcopy(value)
+            with self.subTest(choice=choice), self.assertRaises(ValueError):project(value, body)
+            self.assertEqual(value, before)
+
     def test_mixed_unresolved_travel_keeps_direct_statements_with_unknown_actors(self):
         body, value = v13.travel();value['professionalDecisions'] = {}
         for c in value['cueDecisions'].values():
@@ -192,6 +201,16 @@ class WorkActorWorkerTests(unittest.TestCase):
         client, calls = fixtures.DispositionTests.client(self, output)
         self.assertEqual(self.run_worker(client, retain_rejected_pages=True)['newlyRejectedPages'], 1)
         self.assertEqual(self.run_worker(client, retain_rejected_pages=True)['inferenceCalls'], 0);self.assertEqual(len(calls), 1)
+
+    def test_null_retention_is_preserved_as_a_rejection_without_another_model_call(self):
+        self.mail('message01', 'Mon voyage...')
+        def output(prompt, reply):
+            value = raw();value['cueDecisions']['q1'] = {'retainedMoments': None}
+            reply['response'] = json.dumps(value);return reply
+        client, calls = fixtures.DispositionTests.client(self, output)
+        self.assertEqual(self.run_worker(client, retain_rejected_pages=True)['newlyRejectedPages'], 1)
+        self.assertEqual(self.run_worker(client, retain_rejected_pages=True)['inferenceCalls'], 0)
+        self.assertEqual(len(calls), 1)
 
 
 if __name__ == '__main__':unittest.main()
