@@ -131,6 +131,16 @@ hashes, reader contract, text-part hashes and lengths, attachment/reading gaps,
 assertion revision and context revision/hash. Only metadata and fingerprints are
 stored; mail bodies remain in their existing archive.
 
+New snapshots use `agentx.history-source-review/v2` and also freeze the native
+original `From`, `To`, `Cc`, `Date` and `Subject` headers, each bounded by the
+reader's 2,000-character limit. The owner panel displays them as escaped text,
+including empty fields as unknown. A message's declared date is not a fact date,
+and its sender does not establish who wrote a quotation. Reaching the native
+header limit remains an explicit gap. Missing or malformed headers make the
+new source observation unavailable; changed headers invalidate page delivery
+and a pending decision. Frozen v1 snapshots keep their original hashes and
+resume under their original contract without synthesized headers.
+
 `GET .../source-review/:requestId` retrieves that receipt and rechecks its native
 sources. An unavailable reader remains unknown, never a substituted source or
 proof of disappearance. Unsupported sources, including selected Outlook exports,

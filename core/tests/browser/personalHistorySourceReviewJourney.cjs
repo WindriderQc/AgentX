@@ -25,7 +25,8 @@ let nativeOutage = false;
 const errors = [], external = [];
 
 (async () => {
-  fixture = await archive({ body: 'Synthetic browser source 🦉 <img src=x onerror=alert(1)> '.repeat(400) });
+  fixture = await archive({ body: 'Synthetic browser source 🦉 <img src=x onerror=alert(1)> '.repeat(400),
+    subject: 'Synthetic <img src=x onerror=alert(1)> subject' });
   mongo = await MongoMemoryServer.create({ instance: { ip: '127.0.0.1', dbName: 'history_source_review_browser_fixture' } });
   await mongoose.connect(mongo.getUri());
   await Entry.createCollection(); await Entry.createIndexes(); await Suppression.createCollection();
@@ -94,6 +95,11 @@ const errors = [], external = [];
   await card.locator('[data-source-review-start]').click();
   const ready = card.locator('[data-source-review-decision] button[value=reviewed_scope]');
   await ready.waitFor(); assert.equal(await ready.isDisabled(), true);
+  const headers = card.locator('[data-source-review-headers]');
+  assert.match(await headers.innerText(), /Synthetic <source@example.invalid>/);
+  assert.match(await headers.innerText(), /Synthetic <img src=x onerror=alert\(1\)> subject/);
+  assert.match(await headers.innerText(), /Date déclarée du message\s+Non renseigné/);
+  assert.equal(await headers.locator('img').count(), 0);
   assert.equal(preparations.length, 2);
   assert.equal(new Set(preparations.map(input => input.requestId)).size, 1);
   assert.equal((await Entry.findById(saved.entry.id).lean()).sourceReviews.length, 1);

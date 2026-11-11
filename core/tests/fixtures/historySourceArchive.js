@@ -12,11 +12,11 @@ const native = path.resolve(__dirname, '../../../integrations/secretary');
 
 // Real native archive reader, synthetic bytes and temporary files only. A
 // provider, model, OCR, import and mailbox executor are never configured.
-async function archive({ body = 'A synthetic source 🦉 '.repeat(800), attachment = true } = {}) {
+async function archive({ body = 'A synthetic source 🦉 '.repeat(800), attachment = true, subject = 'Synthetic source' } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'history-source-review-'));
   const threadId = '1234567890abcdea', messageId = '1234567890abcdef';
   const raw = Buffer.from('Message-ID: <synthetic@example.invalid>\r\nFrom: Synthetic <source@example.invalid>\r\n'
-    + 'Subject: Synthetic source\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=outer\r\n\r\n'
+    + `Subject: ${subject}\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=outer\r\n\r\n`
     + '--outer\r\nContent-Type: multipart/alternative; boundary=inner\r\n\r\n'
     + '--inner\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n'
     + Buffer.from(body).toString('base64') + '\r\n--inner\r\nContent-Type: text/html; charset=utf-8\r\n\r\n'

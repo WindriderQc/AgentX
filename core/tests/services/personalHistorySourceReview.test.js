@@ -35,6 +35,66 @@ describe('source-bound historical scope reviews', () => {
   });
   afterEach(async () => fixture.cleanup());
 
+  test('pins native original headers separately from assertion actors and dates', async () => {
+    const review = await prepared();
+    expect(review.sources[0].headers).toEqual({ From: 'Synthetic <source@example.invalid>', To: '', Cc: '', Date: '', Subject: 'Synthetic source' });
+    expect((await Entry.findById(id).lean()).sourceReviews[0].snapshot.contract).toBe('agentx.history-source-review/v2');
+    expect((await reviews.get(id, review.requestId, deps)).review.nativeState).toBe('observed');
+    // The assertion date is not a substitute for an absent original Date.
+    expect(review.sources[0].headers.Date).toBe('');
+  });
+
+  test.each(['From', 'Date', 'Subject'])('changed native %s refuses page delivery and a late decision', async name => {
+    const review = await serve(await prepared());
+    deps.mail = { archived: async args => {
+      const result = await fixture.mail.archived(args);
+      return { ...result, headers: { ...result.headers, [name]: 'Different native observation' } };
+    } };
+    expect((await reviews.get(id, review.requestId, deps)).review.nativeState).toBe('stale');
+    await expect(reviews.page(id, review.requestId, { source: 0, part: review.sources[0].parts[0].partIndex, offset: 0 }, deps)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(reviews.decide(id, review.requestId, decision(review), deps)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await Entry.findById(id).lean()).sourceReviews[0].decision).toBeNull();
+  });
+
+  test('missing, invalid or oversized native headers remain unavailable, without borrowing assertion metadata', async () => {
+    const native = await fixture.mail.archived({ messageId: fixture.source.messageId, sha256: fixture.source.sourceSha256 });
+    for (const headers of [undefined, [], { ...native.headers, From: 42 }, { ...native.headers, Subject: 'x'.repeat(2001) }]) {
+      deps.mail = { archived: async () => ({ ...native, headers }) };
+      const review = await prepared();
+      expect(review.sources[0]).toMatchObject({ status: 'unavailable' });
+      expect(review.sources[0].headers).toBeUndefined();
+      expect(review.coverage.status).toBe('unknown');
+    }
+  });
+
+  test('native header limit remains a visible gap and Unicode uses the native character bound', async () => {
+    deps.mail = { archived: async args => {
+      const result = await fixture.mail.archived(args);
+      return { ...result, headers: { ...result.headers, Subject: '🦉'.repeat(2000) } };
+    } };
+    const review = await prepared();
+    expect(review.sources[0].status).toBe('available');
+    expect(review.coverage.gaps).toContainEqual({ source: 0, code: 'original_header_length_limit' });
+  });
+
+  test('frozen v1 reviews resume and decide with their original hash and no synthesized headers', async () => {
+    const review = await prepared();
+    const saved = (await Entry.findById(id).lean()).sourceReviews[0];
+    saved.snapshot.contract = 'agentx.history-source-review/v1';
+    saved.snapshot.sources.forEach(source => { delete source.headers; });
+    saved.snapshotHash = digest(saved.snapshot);
+    await Entry.updateOne({ _id: id }, { $set: { sourceReviews: [saved] } });
+    let observed = (await reviews.get(id, review.requestId, deps)).review;
+    expect(observed.nativeState).toBe('observed');
+    expect(observed.snapshotHash).toBe(saved.snapshotHash);
+    expect(observed.sources[0].headers).toBeUndefined();
+    observed = await serve(observed);
+    const result = await reviews.decide(id, review.requestId, decision(observed), deps);
+    expect(result.receipt.snapshotHash).toBe(saved.snapshotHash);
+    expect(result.review.sources[0].headers).toBeUndefined();
+    expect((await reviews.get(id, review.requestId, deps)).review.nativeState).toBe('observed');
+  });
+
   test('prepares, serves Unicode native pages and records only explicit text-scope review', async () => {
     let review = await prepared();
     expect(review.coverage.status).toBe('partial');

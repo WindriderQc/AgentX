@@ -2,6 +2,9 @@
 
 const { createHash } = require('node:crypto');
 const CONTRACT = 'secretary.archive-reader/v3';
+const SNAPSHOT_CONTRACT = 'agentx.history-source-review/v2';
+const LEGACY_CONTRACT = 'agentx.history-source-review/v1';
+const HEADER_NAMES = ['From', 'To', 'Cc', 'Date', 'Subject'];
 const HASH = /^[a-f0-9]{64}$/;
 const MAX_SNAPSHOT_BYTES = 256 * 1024;
 const canonical = value => Array.isArray(value) ? value.map(canonical)
@@ -28,7 +31,8 @@ function references(row) {
   });
 }
 
-function describe(reference, result) {
+function describe(reference, result, contract = SNAPSHOT_CONTRACT) {
+  if (![SNAPSHOT_CONTRACT, LEGACY_CONTRACT].includes(contract)) throw failure('The source review contract is unsupported.');
   if (result?.readerContract !== CONTRACT || result.messageId !== reference.messageId
     || result.threadId !== reference.threadId || result.sourceSha256 !== reference.sourceSha256
     || !Array.isArray(result.bodyRepresentations) || result.bodyRepresentations.length > 4096
@@ -46,6 +50,15 @@ function describe(reference, result) {
       metadataHash: digest(part) };
   }).sort((a, b) => a.partIndex - b.partIndex);
   const gaps = [];
+  let headers;
+  if (contract === SNAPSHOT_CONTRACT) {
+    if (!result.headers || typeof result.headers !== 'object' || Array.isArray(result.headers)
+      || HEADER_NAMES.some(name => typeof result.headers[name] !== 'string' || Array.from(result.headers[name]).length > 2000)) {
+      throw failure('The native archived source did not confirm its bounded original headers.');
+    }
+    headers = Object.fromEntries(HEADER_NAMES.map(name => [name, result.headers[name]]));
+    if (HEADER_NAMES.some(name => Array.from(headers[name]).length === 2000)) gaps.push('original_header_length_limit');
+  }
   if (!parts.some(part => part.readable)) gaps.push('no_readable_text');
   if (parts.some(part => !part.readable)) gaps.push('unreadable_text_representation');
   if (result.attachmentCount) gaps.push('attachments_not_reviewed');
@@ -55,11 +68,13 @@ function describe(reference, result) {
   if (Object.keys(result.compoundAttachments || {}).length) gaps.push('compound_members_not_reviewed');
   if (result.bodyRepresentations.some(part => part.extractionGaps?.length || part.extraction)) gaps.push('extracted_text_limits');
   return { reference, status: 'available', readerContract: CONTRACT, parts, gaps,
+    ...(headers ? { headers } : {}),
     metadataHash: digest([result.bodyRepresentations, result.attachmentCount, result.attachments,
       result.compoundAttachments]) };
 }
 
-async function collect(row, mail) {
+async function collect(row, mail, contract = SNAPSHOT_CONTRACT) {
+  if (![SNAPSHOT_CONTRACT, LEGACY_CONTRACT].includes(contract)) throw failure('The source review contract is unsupported.');
   const refs = references(row);
   if (!refs.length || refs.length > 19) throw failure('Choose an existing bounded historical source set.', 400);
   const sources = [];
@@ -69,13 +84,13 @@ async function collect(row, mail) {
     }
     try {
       const value = await mail.archived({ messageId: reference.messageId, sha256: reference.sourceSha256, offset: 0 });
-      sources.push(describe(reference, value));
+      sources.push(describe(reference, value, contract));
     } catch (error) {
       sources.push({ reference, status: 'unavailable', code: /^[A-Z0-9_]{1,80}$/.test(error.code || '')
         ? error.code : 'SOURCE_READER_UNAVAILABLE' });
     }
   }
-  const snapshot = { contract: 'agentx.history-source-review/v1', scope: 'readable-text-representations-only', sources };
+  const snapshot = { contract, scope: 'readable-text-representations-only', sources };
   if (Buffer.byteLength(JSON.stringify(snapshot)) > MAX_SNAPSHOT_BYTES) throw failure('The source snapshot exceeds its bounded capacity.', 413);
   return snapshot;
 }
