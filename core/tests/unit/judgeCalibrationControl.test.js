@@ -177,6 +177,19 @@ test('one cancellation requestId cannot race onto two different calibrations', a
   expect(results.find(r => r.status === 'rejected').reason.code).toBe('CALIBRATION_CANCELLATION_CONFLICT');
 });
 
+test('targets the second calibration beside an earlier native receipt without touching the first', async () => {
+  const released = await acquire();
+  await coordination.release('workload', proof(released));
+  const untouched = await acquire();
+  const target = await acquire(B);
+  const input = cancelInput(target);
+  await control.operate(input);
+  const state = await Runtime.findById('runtime').select('+releaseReceipts').lean();
+  expect(state.workloads.find(w => w.admissionId === untouched.admissionId).cancellation).toBeNull();
+  expect(state.workloads.find(w => w.admissionId === target.admissionId).cancellation.requestId).toBe(input.requestId);
+  expect(state.releaseReceipts[0]).toMatchObject({ admissionId: released.admissionId, released: true, cancellation: null });
+});
+
 test('native recovery release refuses an unresolved child inference after cancellation', async () => {
   const target = await acquire();
   const inference = await coordination.acquireInference({ principal: target.principal, requestId: randomUUID(), host: A,
