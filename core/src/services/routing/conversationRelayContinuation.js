@@ -16,10 +16,14 @@ async function readOccupation(target) {
 // the selected host/context, caller admission and original occupation. Every
 // additional model call has ordinary native admission and disables retries.
 function createRelayContinuation({ reduced, target, execute, options, hostUrl, routing, continuity, maxInputChars,
-  observeFamilyOccupation = readOccupation, occupation, signal, notice }) {
+  observeFamilyOccupation = readOccupation, occupation, signal, notice, requireOccupation = true }) {
   let calls = 0;
   async function assertOccupied() {
     signal?.throwIfAborted();
+    // An unavailable Family principal refused this new turn before dispatch.
+    // Completing its read-only guardian reply needs no claim that Main is busy.
+    // Each model call still takes native admission on the same guardian host.
+    if (!requireOccupation && !occupation) return;
     const current = occupation ? await options.observeOccupation() : await boundedRead(() => observeFamilyOccupation(target), 1500, signal);
     const valid = occupation ? current?.state === 'running' && current.authority === 'hermes'
       && current.runId === occupation.runId && current.sessionKey === occupation.sessionKey : current === true;
@@ -43,8 +47,8 @@ function createRelayContinuation({ reduced, target, execute, options, hostUrl, r
         retry: { enabled: false }
       });
       return announce ? require('./conversationContinuityContext').decorate(result, {
-        notice: (notice || 'Nestor assure temporairement le relais.').replace('des lectures Core limitées', 'sans outils'), continuity }) : result;
+        notice: (notice || 'Nestor assure temporairement le relais.').replace('avec quelques outils de consultation', 'sans outils'), continuity }) : result;
     }
   };
 }
-module.exports = { createRelayContinuation, readOccupation };
+module.exports = { createRelayContinuation, readOccupation, safeOccupation };

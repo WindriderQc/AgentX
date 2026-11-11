@@ -3,12 +3,12 @@ const { runLocalConversation } = require('../../surfaces/household/conversation-
 const { guardianReadTools } = require('../../surfaces/household/guardian-read-tools');
 const { createConversationContinuity } = require('../../src/services/routing/conversationContinuity');
 const packs = require('../../surfaces/household/packs');
-function fixture({ hermes = false, iss = false } = {}) {
+function fixture({ hermes = false, iss = false, failure = null } = {}) {
   const pack = packs.packById(hermes ? 'personal_operator' : 'kidx_nestor');
   let busy = true;
   const execute = jest.fn(async (body, options) => {
     if (body.model === 'synthetic-main') throw Object.assign(Error('busy'), { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED',
-      failure: { safeToRetry: true, cause: 'inference_active', holder: { type: 'inference' } } });
+      failure: failure || { safeToRetry: true, cause: 'inference_active', holder: { type: 'inference' } } });
     const final = body.messages.some(message => message.role === 'tool');
     return { ok: true, body: { message: { content: final ? 'Le résultat est 13.' : '', ...(!final && { tool_calls: [
       { function: iss ? { name: 'iss_passes', arguments: { hours: 24, visible_only: true, max_passes: 1 } } : { name: 'math', arguments: { operation: 'add', a: 8, b: 5 } } }
@@ -51,6 +51,17 @@ test('occupation ending after the first model reply stops before any read or add
   await expect(w.run()).rejects.toMatchObject({ code: 'RELAY_OCCUPATION_CHANGED' });
   expect(w.request.guardianTools.execute).not.toHaveBeenCalled();
   expect(w.execute).toHaveBeenCalledTimes(2);
+});
+
+test('an unavailable Family principal permits the same read-only guardian to finish without claiming occupation', async () => {
+  const w = fixture({ failure: { safeToRetry: true, cause: 'admission_conflict_unclassified', holder: null } });
+  w.clear();
+  const result = await w.run();
+  expect(result.text).toContain('Le résultat est 13.');
+  expect(result.text).toContain('indisponible');
+  expect(result.text).not.toContain('occupé');
+  expect(result.tools).toMatchObject({ status: 'observed', receipts: [expect.objectContaining({ tool: 'math', status: 'completed' })] });
+  expect(w.execute.mock.calls.map(([body]) => body.model)).toEqual(['synthetic-main', 'synthetic-guardian', 'synthetic-guardian']);
 });
 
 test('Family receives a real canonical ISS computation within its unchanged relay budget, with no observer coordinates', async () => {

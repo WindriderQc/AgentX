@@ -16,7 +16,7 @@
         morning: ['Bon matin la famille !', 'Coucou ! Bien dormi ?'],
         day: ['Coucou tout le monde ! Me voilà.', 'Allô la famille ! Je suis réveillé.'],
         evening: ['Bonsoir la famille !', 'Coucou ! Me voilà pour la soirée.'],
-        night: ['Coucou… je suis là, tout doucement.']
+        night: ['Coucou ! On garde ça tout doux à cette heure-ci.', 'Allô ! Un petit brin de jasette avant de dormir ?']
       },
       listening: ' Je t’écoute !',
       wakeWord: ' Dis « Hey Nestor » quand tu veux me parler.',
