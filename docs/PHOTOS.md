@@ -9,6 +9,10 @@ Core holds the only Immich API key. Agents (OpenClaw, Hermes, Codex, Claude)
 never get their own key: one credential, one set of scopes, and every call
 logged by Core with its `x-service-caller`.
 
+The [native Android USB importer](PHOTO_IMPORT.md) separately saves verified
+originals through Core's import capability. It leaves the phone intact and
+does not upload to Immich or start its indexing/analysis jobs.
+
 ## Configuration
 
 | Variable | Meaning |
