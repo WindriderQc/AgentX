@@ -32,6 +32,33 @@ class WorkerTest(unittest.TestCase):
         self.worker.log.close()
         self.tmp.cleanup()
 
+    def test_stats_advertise_native_removal_without_starting_or_mutating_a_job(self):
+        self.worker.start = Mock()
+        with patch.object(module.subprocess, 'check_output', return_value='Synthetic GPU, 12000, 11000\n'):
+            result = self.worker.stats()
+        self.assertEqual(result['outputRemoval'], {'contract': 'agentx.image-output-removal/v1'})
+        self.worker.start.assert_not_called()
+        self.assertFalse(self.worker.record_path(self.job_id).exists())
+
+    def test_http_stats_keep_supervisor_removal_proof_while_a_child_is_running(self):
+        self.worker.running = Mock(return_value=True)
+        self.worker.call = Mock(return_value={'devices': [], 'outputRemoval': {'contract': 'foreign-child/v1'}})
+        self.worker.start = Mock()
+        server = ThreadingHTTPServer(('127.0.0.1', 0), module.create_handler(self.worker, []))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urllib.request.urlopen(f'http://127.0.0.1:{server.server_port}/system_stats') as response:
+                result = json.load(response)
+            self.assertEqual(result['outputRemoval'], {'contract': 'agentx.image-output-removal/v1'})
+            self.worker.call.assert_called_once_with('/system_stats')
+            self.worker.start.assert_not_called()
+            self.assertFalse(self.worker.record_path(self.job_id).exists())
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
     def stored_output(self):
         folder = self.root / 'output' / 'agentx'
         folder.mkdir(parents=True, exist_ok=True)

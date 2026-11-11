@@ -148,7 +148,7 @@ async function accept(body, { conversation, signal, opportunisticWorkerId = null
   if (body.queueRequestId) {
     try { reservedHosts = (await require('../heavyWorkQueueService').get(body.queueRequestId))?.hosts || null; } catch { /* enroll refuses it below */ }
   }
-  const choice = await chooseWorker(config, input.profile, { queueHosts: reservedHosts, opportunisticWorkerId });
+  const choice = await chooseWorker(config, input.profile, { queueHosts: reservedHosts, opportunisticWorkerId, requireOutputRemoval: Boolean(illustration) });
   if (!choice.worker) {
     const error = fail('The image PC is unavailable or the required model is missing.', 503);
     await workQueue.refuseBeforeAccept(body, config, input.requestHash, error.message);
@@ -249,7 +249,7 @@ async function execute(op, config, client) {
     const references = await loadReferences(stored);
     enter('reserving'); await persist({ state: 'reserving' });
     reservation = await reserve(config, op, persist, cancelled);
-    if (op.admissionPolicy === 'opportunistic') await client.ready(op.profile, { requireQueueProof: true });
+    if (op.admissionPolicy === 'opportunistic') await client.ready(op.profile, { requireQueueProof: true, ...(op.illustration && { requireOutputRemoval: true }) });
     else await client.ready(op.profile);
     const stats = await client.json('/system_stats');
     if (stats.devices?.[0]?.vram_free < stats.devices?.[0]?.vram_total * (config.minFreeVramRatio ?? 0.75)) throw new Error('GPU used by another application. New request required.');

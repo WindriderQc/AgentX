@@ -69,7 +69,7 @@ async function probe(worker, profile, deps, busy) {
  *   a worker whose Ollama hosts match them exactly may take it, with no fallback
  * @returns { worker, tried } where worker is a scoped configuration or null
  */
-async function chooseWorker(config, profile, { queueHosts: reserved = null, opportunisticWorkerId = null, deps = defaultDeps() } = {}) {
+async function chooseWorker(config, profile, { queueHosts: reserved = null, opportunisticWorkerId = null, requireOutputRemoval = false, deps = defaultDeps() } = {}) {
   let list = candidates(config, profile.id);
   // Opportunistic callers name one worker, never a preference list. Readiness
   // is only a preflight: the native reservation repeats the no-resident guard.
@@ -81,7 +81,7 @@ async function chooseWorker(config, profile, { queueHosts: reserved = null, oppo
       if (!Array.isArray(jobs)) throw new Error('Image queue evidence unavailable');
       const busy = busyKeys(jobs, deps.now(), { includeImages: true });
       if (workerKeys(worker).some(key => busy.has(key))) return { worker: null, tried: [{ id: worker.worker.id, reason: 'reserved' }] };
-      const stats = await deps.client(worker.workerUrl).ready(profile, { requireQueueProof: true });
+      const stats = await deps.client(worker.workerUrl).ready(profile, { requireQueueProof: true, ...(requireOutputRemoval && { requireOutputRemoval: true }) });
       const kept = worker.worker.keepResidents || [];
       for (const host of worker.ollamaHosts) {
         if ((await deps.running(host)).some(r => !kept.includes(r.name || r.model))) return { worker: null, tried: [{ id: worker.worker.id, reason: 'resident' }] };

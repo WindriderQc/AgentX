@@ -909,7 +909,13 @@ by the original job UUID, output index and SHA-256. It validates its original
 locator, inode and bytes, journals intent, unlinks and synchronizes the output
 directory before acknowledging removal. Core retries an uncertain removal
 using the same identity through existing housekeeping/recovery. A pending or
-missing receipt never claims the worker file is gone. An older worker lacking
-this endpoint leaves cleanup pending; no release or restore bypass is added.
+missing receipt never claims the worker file is gone. Before accepting a new
+marked scene, Core requires `/system_stats` to advertise
+`outputRemoval.contract: "agentx.image-output-removal/v1"`, and repeats that
+read-only qualification before dispatch. Missing or foreign proof refuses
+initial acceptance; losing it before dispatch refuses that send. Generic images
+retain their existing readiness contract.
+Already accepted operations keep their own cleanup/recovery identity when a
+worker is replaced or becomes unavailable; no release or restore bypass is added.
 All validation for this change uses synthetic CPU fixtures, not a live render
 or measured latency/VRAM acceptance.

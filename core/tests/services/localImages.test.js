@@ -89,6 +89,44 @@ describe('durable local image operations', () => {
       { workerId: 'default', conversation: bound, temporary: true })).toMatchObject({ id: op.id });
     expect(client.submit).toHaveBeenCalledTimes(1);
   });
+  test.each(['before-accept', 'before-dispatch', 'qualified'])('ephemeral scenes require native removal proof %s while probes remain read-only', async stage => {
+    const { randomUUID } = require('node:crypto');
+    const sessions = require('../../src/services/surfaceConversationService').forSurface('household');
+    const bound = { surface: 'household', sessionId: 'family:qualification.' + randomUUID(), packId: 'kidx_nestor', scopeId: 'family' };
+    await sessions.createSession({ ...bound, modeId: 'family' });
+    const requests = []; let statsReads = 0;
+    const nodes = { UNETLoader: { input: { required: { unet_name: [[profile.diffusion]] } } },
+      CLIPLoader: { input: { required: { clip_name: [[profile.encoder]] } } },
+      VAELoader: { input: { required: { vae_name: [[profile.vae]] } } } };
+    const actual = jest.requireActual('../../src/services/images/comfyClient').createComfyClient('http://127.0.0.1:8188', async (url, options) => {
+      const path = new URL(url).pathname; requests.push([path, options.method]);
+      let value = path === '/queue' ? { queue_running: [], queue_pending: [] } : nodes;
+      if (path === '/system_stats') {
+        statsReads++;
+        const qualified = stage === 'qualified' || stage === 'before-dispatch' && statsReads === 1;
+        value = { devices: [{ vram_total: 12e9, vram_free: 11e9 }],
+          ...(qualified && { outputRemoval: { contract: 'agentx.image-output-removal/v1' } }) };
+      }
+      return { ok: true, text: async () => JSON.stringify(value) };
+    });
+    client.ready = jest.fn(actual.ready);
+    client.discardOutput = jest.fn(async (jobId, sha256) => ({ contract: 'agentx.image-output-removal/v1', jobId, sha256, removed: true }));
+    const accepting = service.acceptOpportunistic({ actionKey: 'illustrated-qualification:' + randomUUID(), prompt: 'A fictional moon' },
+      { workerId: 'default', conversation: bound, temporary: true });
+    if (stage === 'before-accept') {
+      await expect(accepting).rejects.toMatchObject({ statusCode: 503 });
+      expect(await ImageOperation.countDocuments()).toBe(0);
+      expect((await require('../../models/HeavyWorkQueue').findById('heavy-work').lean()).jobs).toEqual([]);
+      expect(reserve).not.toHaveBeenCalled();
+    } else {
+      const op = await accepting;
+      expect(await waitFor(op.id, stage === 'qualified' ? 'completed' : 'failed')).toMatchObject({ runtimeRestored: true });
+      expect(client.ready).toHaveBeenCalledTimes(2);
+    }
+    expect(client.ready.mock.calls.every(call => call[1]?.requireOutputRemoval === true)).toBe(true);
+    expect(client.submit).toHaveBeenCalledTimes(stage === 'qualified' ? 1 : 0);
+    expect(requests.every(([, method]) => method === 'GET')).toBe(true);
+  });
   test('a renderer returning after canonical conversation deletion cannot restore bytes, graph or scene', async () => {
     const { randomUUID } = require('node:crypto');
     const sessions = require('../../src/services/surfaceConversationService').forSurface('household');

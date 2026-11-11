@@ -362,7 +362,8 @@ class Worker:
         name, total, free = [x.strip() for x in raw.strip().split(',')]
         return {'devices': [{'name': name, 'index': self.args.gpu, 'type': 'cuda',
             'vram_total': int(total) * 1048576, 'vram_free': int(free) * 1048576,
-            'torch_vram_total': 0, 'torch_vram_free': 0}], 'system': {'supervised': True}}
+            'torch_vram_total': 0, 'torch_vram_free': 0}], 'system': {'supervised': True},
+            'outputRemoval': {'contract': 'agentx.image-output-removal/v1'}}
 
     def object_info(self):
         # The pinned schema is captured during setup; model presence stays live.
@@ -394,7 +395,8 @@ def create_handler(worker, allowed=frozenset()):
             route = urlsplit(self.path)
             if self.command == 'GET':
                 if route.path == '/system_stats':
-                    self.send(worker.call(route.path) if worker.running() else worker.stats())
+                    stats = worker.call(route.path) if worker.running() else worker.stats()
+                    self.send({**stats, 'outputRemoval': {'contract': 'agentx.image-output-removal/v1'}})
                 elif route.path == '/object_info':
                     self.send(worker.object_info())
                 elif route.path == '/queue':
