@@ -5,6 +5,12 @@
 const crypto = require('node:crypto');
 const Task = require('../../models/PipelineTask');
 const workerScope = require('../helpers/workerTaskScope');
+const graphContract = require('../../../shared/codeStepGraphSummary');
+function graphEvidence(value) {
+  if (value == null) return null;
+  try { return graphContract.normalize(value); }
+  catch { return { invalid: true }; } // Preserve missing versus invalid, without leaking unrecognized fields.
+}
 const { SUMMARY_FIELDS, projectTaskRows } = require('./pipelineTaskProjectionReadService');
 const STATUSES = ['queued', 'in_progress', 'review', 'blocked', 'done'];
 const fail = (message, code = 'INVALID_ARGUMENTS', status = 400) => Object.assign(new Error(message), { code, status });
@@ -53,7 +59,8 @@ function documentFor(task) {
       requestId: attempt.dispatchRequestId || null, acquiredAt: attempt.acquiredAt, completedAt: attempt.completedAt,
       finalState: attempt.finalState, reviewOutcome: attempt.reviewOutcome || null, reviewedAt: attempt.reviewedAt,
       verification: attempt.evidence?.verification || null, changes: attempt.evidence?.changes || null,
-      failureCodes: attempt.evidence?.failureCodes || [], codeSteps: attempt.evidence?.codeSteps || null })),
+      failureCodes: attempt.evidence?.failureCodes || [], codeSteps: attempt.evidence?.codeSteps || null,
+      codeStepGraph: graphEvidence(attempt.evidence?.codeStepGraph) })),
     evidenceReferences: require('./pipelineEvidenceReferences').taskEvidenceReferences(task),
     execution: state ? { state: state.state, reason: state.reason || null, authorized: state.authorized === true,
       limits: budgets.totalLimits(state), remaining: budgets.remaining(task),

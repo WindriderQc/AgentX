@@ -27,7 +27,7 @@
       + `${graph.counts.waiting} waiting · ${graph.counts.uncertain} uncertain · active ${active}`;
   }
 
-  function render(value, { escapeHtml = escDefault, durationLabel = durationDefault, compact = false } = {}) {
+  function render(value, { escapeHtml = escDefault, durationLabel = durationDefault, compact = false, nativeSessionMode = 'button' } = {}) {
     if (value == null) return '';
     const graph = safe(value);
     if (!graph) return '<p class="pipeline-code-graph-invalid">Code-step graph unavailable; malformed evidence was not displayed.</p>';
@@ -38,7 +38,9 @@
         : '<span class="pipeline-code-step-tests-empty">Focused tests not recorded</span>';
       const commit = step.commit ? `<code title="${escapeHtml(step.commit)}">${escapeHtml(step.commit.slice(0, 12))}</code>` : 'No verified commit';
       const session = step.nativeSession;
-      const conversation = session ? `<button type="button" data-native-step-pipeline="${escapeHtml(session.pipelineId)}"
+      const conversation = session && nativeSessionMode === 'pipeline'
+        ? `<a href="/pipeline?task=${encodeURIComponent(session.pipelineId)}" target="_blank" rel="noopener noreferrer">Conversation OpenCode dans le Pipeline</a>`
+        : session ? `<button type="button" data-native-step-pipeline="${escapeHtml(session.pipelineId)}"
         data-native-step-request="${escapeHtml(session.requestId)}" data-native-step-executor="${escapeHtml(session.executorId)}">Conversation OpenCode</button>` : '';
       const adoption = step.adoption ? step.adoption.state === 'adopted'
         ? `Adopted as <code title="${escapeHtml(step.adoption.assemblyCommit)}">${escapeHtml(step.adoption.assemblyCommit.slice(0, 12))}</code>`
