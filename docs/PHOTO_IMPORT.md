@@ -194,6 +194,9 @@ cleanup retains its strict source-key checks and does not inherit this
 read-only reassociation rule.
 The Windows staging lock is a kernel-owned exclusive file handle, released
 when its helper exits even if the importer is killed; its filename is not a lease.
+Checkpoint replacement retries brief Windows sharing/access contention for a
+bounded period. It preserves the last durable state and complete temporary file
+on failure; a retry does not repeat the USB read or upload.
 WPD readers also share one kernel-owned lock per device across cache directories.
 Inventory, signature audit and copying are serialized; two MTP readers are never
 started by the adapter on the same device at once.
