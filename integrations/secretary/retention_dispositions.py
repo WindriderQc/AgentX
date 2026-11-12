@@ -78,7 +78,7 @@ def core_entries(core, opener=urllib.request.urlopen):
     return entries
 
 
-def dispositions(archive, before, entries, manifests=(), at=None):
+def dispositions(archive, before, entries, manifests=(), at=None, *, observed_rows=None):
     lanes_file = archive.root / LANES_NAME
     lanes = load(lanes_file, {}).get("messages", {})
     lanes_sha = content_hash(load(lanes_file, {}))
@@ -100,7 +100,7 @@ def dispositions(archive, before, entries, manifests=(), at=None):
             if cited.get("messageId"):
                 citing[cited["messageId"]].append(decision)
     out, counts = [], Counter()
-    for row in coverage(archive, before)["messages"]:
+    for row in coverage(archive, before)["messages"] if observed_rows is None else observed_rows:
         lane = lanes.get(row["messageId"])
         basis = BASIS.get((lane or {}).get("lane"))
         if not basis:

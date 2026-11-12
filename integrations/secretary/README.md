@@ -467,6 +467,22 @@ See the [exact-message contract](../../docs/SECRETARY_DOSSIER_REVIEW.md#native-d
 for native record/response bounds. Large real archive observations still use
 the heavy-work queue; this mode performs no provider action or cleanup.
 
+`--native-finding-scope` selects v4 and implies the v3 message/decision checks.
+The native archive reader verifies the exact original bytes and recorded review
+metadata, returning only finding IDs/sections and hashed thread questions.
+Core relates every recorded finding to exact current references and decisions;
+missing references, candidates, open retained actions, pending source reviews,
+different kinds and unresolved thread questions remain explicit. The client
+requires matching current archive hashes/finding sets and native Core member
+versions. A held finding returns exit code 2 even when the previous export
+comparison matches. Unavailable or changing evidence writes no success report,
+without a fallback. Reports are private and previous modes stay unchanged.
+See the [recorded finding contract](../../docs/SECRETARY_DOSSIER_REVIEW.md#recorded-findings-and-current-core-decisions)
+for capacities, freshness fences and the important distinction between recorded
+analysis and semantic acceptance. The reader does not recalculate the complete
+evidence packet, qualify analysis, verify MIME/independent copies or authorize
+mailbox cleanup; all four global gaps and false execution flags remain.
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive
