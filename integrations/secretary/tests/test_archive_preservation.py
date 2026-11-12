@@ -21,6 +21,71 @@ MID, TID = "a" * 16, "b" * 16
 ATTACHMENT = b"synthetic preserved binary attachment"
 
 
+class MimeTransferDecodingTests(unittest.TestCase):
+    def scope(self, body, encoding=b"quoted-printable", extra=b""):
+        return native.mime_scope(b"Content-Type: application/octet-stream\n"
+            b"Content-Disposition: attachment; filename=synthetic.bin\n"
+            b"Content-Transfer-Encoding: " + encoding + b"\n" + extra + b"\n" + body)
+
+    def test_malformed_quoted_printable_is_not_repaired_or_silently_retained(self):
+        for body in (b"private=", b"=ZZ", b"=0", b"=\r", b"bad=\rnext", b"bad\x00"):
+            with self.subTest(body=body), self.assertRaises(native.PreservationError):
+                self.scope(body)
+
+    def test_unknown_encoding_is_refused_without_identity_decoding_fallback(self):
+        for encoding in (b"x-unknown", b"x-uuencode"):
+            with self.subTest(encoding=encoding), self.assertRaises(native.PreservationError):
+                self.scope(b"YQ==", encoding=encoding)
+
+    def test_ambiguous_structure_headers_are_refused_including_identical_duplicates(self):
+        for extra in (b"Content-Transfer-Encoding: base64\n", b"Content-Transfer-Encoding: quoted-printable\n",
+                      b"cOnTeNt-TrAnSfEr-EnCoDiNg: quoted-printable\n",
+                      b"Content-Type: text/plain\n", b"Content-Disposition: inline\n"):
+            with self.subTest(extra=extra), self.assertRaises(native.PreservationError):
+                self.scope(b"YQ==", encoding=b"base64", extra=extra)
+
+    def test_qualified_quoted_printable_decodes_exact_octets(self):
+        for encoded, decoded in ((b"private=3D", b"private="), (b"caf=C3=A9", "café".encode()),
+                                 (b"one=\r\ntwo", b"onetwo"), (b"one=\ntwo", b"onetwo"),
+                                 (b"one= \t\r\ntwo", b"onetwo"), (b"=3d", b"="),
+                                 (b"one \t\r\ntwo", b"one\r\ntwo")):
+            with self.subTest(encoded=encoded):
+                _, parts, attachments = self.scope(encoded)
+                self.assertEqual(parts, 1)
+                self.assertEqual(attachments, [(hashlib.sha256(decoded).hexdigest(), len(decoded))])
+
+    def test_qualified_base64_decodes_exact_octets_and_header_comments(self):
+        for encoding in (b"base64", b"BASE64", b"base64 (synthetic comment)"):
+            with self.subTest(encoding=encoding):
+                _, _, attachments = self.scope(b"cHJpdmF0ZQ==\r\n", encoding=encoding)
+                self.assertEqual(attachments, [(hashlib.sha256(b"private").hexdigest(), 7)])
+
+    def test_base64_whitespace_is_qualified_but_invalid_alphabet_padding_and_pad_bits_refuse(self):
+        _, _, attachments = self.scope(b"cHJp \t\r\ndmF0ZQ==", encoding=b"base64")
+        self.assertEqual(attachments, [(hashlib.sha256(b"private").hexdigest(), 7)])
+        for wire in (b"cHJpdmF0ZQ=", b"cHJpdmF0ZQ===", b"cHJpdmF0ZQ==!", b"YR=="):
+            with self.subTest(wire=wire), self.assertRaises(native.PreservationError):
+                self.scope(wire, encoding=b"base64")
+
+    def test_quoted_printable_line_limit_is_explicit_and_transport_padding_does_not_count(self):
+        self.scope(b"x" * 76 + b" \t\r\n")
+        with self.assertRaises(native.PreservationError):
+            self.scope(b"x" * 77)
+
+    def test_encoded_multipart_cannot_skip_the_declared_transfer_encoding(self):
+        message = (b"Content-Type: multipart/mixed; boundary=b\nContent-Transfer-Encoding: base64\n\n"
+                   b"--b\nContent-Type: text/plain\n\nsynthetic\n--b--\n")
+        with self.assertRaises(native.PreservationError):
+            native.mime_scope(message)
+
+    def test_identity_encoding_profiles_do_not_repair_7bit_high_bytes(self):
+        for encoding in (b"8bit", b"binary"):
+            _, _, attachments = self.scope(b"\xff\x00", encoding=encoding)
+            self.assertEqual(attachments, [(hashlib.sha256(b"\xff\x00").hexdigest(), 2)])
+        with self.assertRaises(native.PreservationError):
+            self.scope(b"\xff", encoding=b"7bit")
+
+
 @unittest.skipUnless(hasattr(os, "O_NOFOLLOW") and os.open in os.supports_dir_fd,
                      "Native archive probing requires POSIX no-follow directory descriptors")
 class NativePreservationTests(unittest.TestCase):

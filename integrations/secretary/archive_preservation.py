@@ -6,14 +6,18 @@ in-memory MIME decoding. It is not a disk restore, corpus acceptance or consent.
 from __future__ import annotations
 
 from collections import Counter
+import base64
+import binascii
 import email
 from email import policy
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import re
 import stat
+import quopri
 
 from archive_read import CHARSET_ALIASES
 
@@ -132,6 +136,76 @@ def checked_bytes(files, record):
     return data
 
 
+def transfer_encoding(part):
+    # A parser choosing the first contradictory header is not native proof of
+    # which structure or decoding was intended by the archived source.
+    for field in ("Content-Type", "Content-Transfer-Encoding", "Content-Disposition"):
+        if len(part.get_all(field, [])) > 1:
+            raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
+    header = part.get("Content-Transfer-Encoding")
+    encoding = getattr(header, "cte", None) if header is not None else "7bit"
+    if encoding not in ("7bit", "8bit", "binary", "base64", "quoted-printable"):
+        raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
+    return encoding
+
+
+def quoted_printable(data):
+    """Qualify hex octets and soft breaks, then use the standard decoder.
+
+    RFC2045 section6.7 permits transport padding and local line conventions.
+    CRLF and LF are supported here; bare CR and overlong encoded lines refuse.
+    Lowercase hex is handled explicitly as its corresponding uppercase octet.
+    This bounded profile is not a claim of complete MIME conformance.
+    """
+    normalized = []
+    for physical in io.BytesIO(data):
+        ending = b"\r\n" if physical.endswith(b"\r\n") else b"\n" if physical.endswith(b"\n") else b""
+        line = (physical[:-len(ending)] if ending else physical).rstrip(b" \t")
+        if len(line) > 76:
+            raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
+        index = 0
+        while index < len(line):
+            value = line[index]
+            if value == 61:
+                if index == len(line) - 1 and ending:
+                    index += 1
+                elif index + 2 < len(line) and all(value in b"0123456789ABCDEFabcdef" for value in line[index + 1:index + 3]):
+                    index += 3
+                else:
+                    raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
+            elif value in (9, 32) or 33 <= value <= 60 or 62 <= value <= 126:
+                index += 1
+            else:
+                raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
+        normalized.append(line + ending)
+    return quopri.decodestring(b"".join(normalized))
+
+
+def decoded_payload(part, encoding):
+    try:
+        if encoding in ("base64", "quoted-printable"):
+            # email.get_payload(decode=True) repairs malformed transfer data
+            # and ignores the parsed CTE token when comments surround it.
+            # Qualify the actual ASCII wire payload before explicitly decoding.
+            wire = part.get_payload(decode=False)
+            if not isinstance(wire, str):
+                raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
+            wire = wire.encode("ascii", errors="strict")
+            if encoding == "quoted-printable":
+                return quoted_printable(wire)
+            encoded = re.sub(rb"[ \t\r\n]", b"", wire)
+            decoded = base64.b64decode(encoded, validate=True)
+            if base64.b64encode(decoded) != encoded:
+                raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
+            return decoded
+        payload = part.get_payload(decode=True)
+        if not isinstance(payload, bytes) or encoding == "7bit" and any(value > 127 for value in payload):
+            raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
+        return payload
+    except (UnicodeError, ValueError, binascii.Error):
+        raise PreservationError("SECRETARY_PRESERVATION_MIME", 409) from None
+
+
 def mime_scope(data):
     message = email.message_from_bytes(data, policy=policy.default)
     stack, visited, decoded, attachments, total = [(message, 0)], 0, 0, [], 0
@@ -141,14 +215,17 @@ def mime_scope(data):
             raise PreservationError("SECRETARY_PRESERVATION_TOO_LARGE", 413)
         if part.defects or any(getattr(value, "defects", ()) for _, value in part.items()):
             raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
+        encoding = transfer_encoding(part)
         if part.get_content_type() == "message/rfc822":
             # The email library does not expose the original encoded bytes of
             # this container without serialization. Do not substitute new bytes.
             raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
         if part.is_multipart():
+            if encoding not in ("7bit", "8bit", "binary"):
+                raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
             stack.extend((child, depth + 1) for child in reversed(list(part.iter_parts())))
             continue
-        payload = part.get_payload(decode=True)
+        payload = decoded_payload(part, encoding)
         if not isinstance(payload, bytes) or part.defects:
             raise PreservationError("SECRETARY_PRESERVATION_MIME", 409)
         total += len(payload)
