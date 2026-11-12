@@ -12,11 +12,20 @@ const { createRemote, createWpd, lockCache } = require('./transport.cjs');
 const SHA = value => crypto.createHash('sha256').update(value).digest('hex');
 const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '');
 
-async function checkpoint(file, value) {
+async function checkpoint(file, value, { rename = fs.rename, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   const temp = file + '.' + crypto.randomUUID() + '.tmp';
   const handle = await fs.open(temp, 'wx', 0o600);
   try { await handle.writeFile(JSON.stringify(value) + '\n'); await handle.sync(); } finally { await handle.close(); }
-  await fs.rename(temp, file);
+  // Windows scanners/readers can briefly omit FILE_SHARE_DELETE. Retrying
+  // atomic replacement never truncates the last durable checkpoint or repeats
+  // a phone read/upload. Keep the complete temp file if contention persists.
+  for (let attempt = 0; ; attempt++) {
+    try { await rename(temp, file); break; }
+    catch (error) {
+      if (!['EPERM', 'EBUSY', 'EACCES'].includes(error.code) || attempt >= 7) throw error;
+      await pause(Math.min(1000, 20 * 2 ** attempt));
+    }
+  }
 }
 
 async function runImport(config, { source, remote, deviceId, resume, initialRunId, limit = 100000, log = console.log } = {}) {
