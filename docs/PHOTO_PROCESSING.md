@@ -163,10 +163,15 @@ raise the existing runtime quarantine alert.
 
 For the first installation on a version without this protocol, its drain
 endpoint does not protect photo batches. Through the existing queue operator,
-reserve the earliest unstarted FIFO photo request in a future window, preserving
-its identity and selection. Verify that request remains unstarted and later
-photo requests stay behind it. Let the current batch finish, observe its queue
-release and settled indexing, then deploy through the ordinary maintenance gate.
+observe the active batch's natural completion, queue release and settled
+indexing. Active work prevents even a future reservation on the same resources.
+At that boundary, reserve the earliest unstarted FIFO photo request in a future
+window, preserving its identity and selection with the current queue revision.
+If the monitor starts another batch first, the reservation refuses: observe that
+batch and wait for its natural boundary instead. After a lost reservation reply,
+read the same request before any retry. Verify the held request remains unstarted,
+later requests stay behind it and no photo worker still owns a claimed/running
+slot, then deploy through the ordinary maintenance gate.
 Keep the future FIFO reservation in place until the new Core is verified; move
 that same reservation back through the native operator to resume processing.
 If any identity or launch is uncertain, stop the installation and observe it.

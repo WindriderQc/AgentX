@@ -191,3 +191,30 @@ test('background indexing remains protected after Core has stored its completed 
   await worker.observe(job, { client: { json: async () => idle() } });
   expect((await lease()).acquired).toBe(true);
 });
+
+test('first installation obtains a native FIFO hold only at a natural batch boundary, then resumes that same selection', async () => {
+  const first = await worker.enqueue(input(), deps), second = await worker.enqueue(input(), deps);
+  await worker.enqueue(input(), deps);
+  const run = jest.fn(async (_row, job) => {
+    await Batches.updateOne({ _id: job.executor.processingId }, { $set: { state: 'completed' } });
+  });
+  const client = { json: async () => idle() };
+  await worker.sweep({ ...deps, client, work: { run }, wait: true });
+  const next = await queue.get(second.queueId), future = new Date(Date.now() + 2 * 3600000).toISOString();
+  await expect(queue.reserve(next.id, { expectedRevision: next.revision, start: future }, 'test-bootstrap'))
+    .rejects.toMatchObject({ code: 'HEAVY_QUEUE_CONFLICT' });
+  const active = await queue.get(first.queueId);
+  await queue.settle(active.id, await worker.observe(active, { client }), 'test-native-observer');
+  const held = await queue.reserve(next.id, { expectedRevision: next.revision, start: future }, 'test-bootstrap');
+  await worker.sweep({ ...deps, client, work: { run }, wait: true });
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(await Batches.countDocuments({ workerSlot: 'photo-processing' })).toBe(0);
+  expect((await Batches.findById(second.operationId)).state).toBe('queued');
+  const maintenance = await lease();
+  expect(maintenance.acquired).toBe(true);
+  await runtime.release('maintenance', { id: maintenance.leaseId, generation: maintenance.generation, principal: 'operator' });
+  await queue.reserve(held.id, { expectedRevision: held.revision, start: new Date().toISOString() }, 'test-bootstrap');
+  await worker.sweep({ ...deps, client, work: { run }, wait: true });
+  expect(run).toHaveBeenCalledTimes(2);
+  expect((await Batches.findById(second.operationId)).state).toBe('completed');
+});
