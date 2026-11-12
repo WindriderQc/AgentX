@@ -354,13 +354,13 @@
         const p = place({ azDeg, altDeg: 0 });
         if (p.x > 24 * ratio && p.x < width - 24 * ratio) c.fillText(label, p.x, horizon + 20 * ratio);
       }
-      const stars = (sky.stars || []).filter(star => frame.visible(star) && (full || star.mag <= 0.6));
+      const selected = Choice.skyStars(sky, bg), stars = selected.stars;
       // A few well-known figures, barely drawn, with their names.
       if (full) {
         const byName = new Map(stars.map(star => [star.name, place(star)]));
         c.strokeStyle = 'rgba(150,190,230,0.13)'; c.lineWidth = ratio;
         c.fillStyle = 'rgba(170,200,230,0.3)'; c.font = `${Math.round(12 * ratio)}px system-ui, sans-serif`;
-        for (const figure of sky.figures || []) {
+        for (const figure of selected.figures) {
           const points = figure.lines.map(([a, z]) => [byName.get(a), byName.get(z)]);
           if (points.some(([a, z]) => !a || !z)) continue;
           c.beginPath();
@@ -669,3 +669,4 @@
 
   root.NestorAmbient = { mount, chipsForSpace };
 })(typeof window !== 'undefined' ? window : globalThis);
+

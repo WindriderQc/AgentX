@@ -6,6 +6,12 @@ draws the scenes and reports visibility. The portable
 [ArtX chapter](../skills/agentx/references/artx.md) of the agentx skill guides
 scene selection and explanation; it is also the idle task's system prompt.
 
+The ambient sky/weather background and dedicated scenes are distinct concepts.
+ISS and ecosystem visits are scenes, not additional avatar backgrounds. The
+reader retains their separate `moment.kind` identity; the sky context describes
+the underlying panorama and does not claim to explain the contents of those
+dedicated scenes. Extending their explanatory contracts is separate work.
+
 After two minutes of visible, quiet full-screen standby, the browser requests
 one silent Nestor task. Core offers only `artx_present` to the existing routed
 voice model, with the family-safe weather, computed sky and available picture
@@ -46,6 +52,19 @@ sky, planets outside the panorama and expired observations remain explicit.
 The recent previous receipt helps explain a painting removed when talking
 began. The reader never turns a new selection into proof of display.
 
+`skyContext` adds the panorama's horizon and zenith coordinates, span and
+projection type and the supplied constellation members, altitude ranges and
+compass regions. This compact summary does not inject the whole star catalogue.
+The renderer and reader share star/figure selection rules. Constellation bounds
+describe the lines actually drawn; they are not a single outdoor coordinate.
+Coverage is limited to source drawing candidates, not the whole celestial
+catalogue. An omitted constellation has no established position in this context.
+`moonPosition` retains the Moon's calculated outdoor direction and altitude even
+when it is not drawn; the existing `moon` field retains its visible-only meaning.
+Rendered means drawn behind the avatar, not unobscured pixels or guaranteed
+outdoor visibility. The Moon is enlarged and this panorama is not a perspective
+camera. Source and receipt expiry remain unchanged.
+
 Core’s MCP bus exposes `artx_read` and `artx_present` outside its memory-only
 profile. The Core family engine offers those same handlers only when this
 turn has a valid display observation; Core binds the display and request
@@ -65,3 +84,4 @@ CPU fixtures cover the complete family-turn path, MCP and HTTP dispatch,
 idle timing, interrupted results, response reconciliation, weather masking and
 the panorama’s Moon avoidance. Installation, a real model choosing its tool
 and physical-device acceptance require separate evidence.
+

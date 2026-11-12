@@ -207,7 +207,18 @@
       const p = project(moon, center);
       if (Math.abs(p.x - 0.5) < FACE.halfWidth && p.y > FACE.top && p.y < FACE.bottom) center += p.x < 0.5 ? 35 : -35;
     }
-    return { center, project: point => project(point, center), visible: point => Math.abs(project(point, center).offset) <= SKY_SPAN && point.altDeg > -1 };
+    return { center, spanDeg: SKY_SPAN * 2, horizonY: horizon, zenithY: top,
+      project: point => project(point, center), visible: point => Math.abs(project(point, center).offset) <= SKY_SPAN && point.altDeg > -1 };
+  }
+
+  // One selection rule for the renderer and its source-backed description.
+  function skyStars(sky, background) {
+    if (!sky || !background?.sky) return { stars: [], figures: [] };
+    const frame = skyFrame(sky), full = background.sky === 'full';
+    const stars = (sky.stars || []).filter(star => frame.visible(star) && (full || star.mag <= 0.6));
+    const names = new Set(stars.map(star => star.name));
+    const figures = full ? (sky.figures || []).filter(figure => figure.lines.every(pair => pair.every(name => names.has(name)))) : [];
+    return { stars, figures };
   }
 
   // Shared by the canvas and Core's display reader: never explain a body the
@@ -237,8 +248,9 @@
     return next;
   }
 
-  const api = { background, chooseScreen, skyFrame, skyBodies, artxScene, paintMoment, paintPhase, passArc, passProgress, visitKey, minutesText,
+  const api = { background, chooseScreen, skyFrame, skyBodies, skyStars, artxScene, paintMoment, paintPhase, passArc, passProgress, visitKey, minutesText,
     weatherLine, WEATHER_STALE_MS, ISS_NOTICE_MS, ISS_MOMENT_MS, VISIT_COOLDOWN_MS, MAX_CHIPS, PAINT_IDLE_MS, PAINT_EVERY_MS, PAINT_MS };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.NestorAmbientChoice = api;
 })(typeof window !== 'undefined' ? window : globalThis);
+
