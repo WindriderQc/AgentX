@@ -121,7 +121,7 @@ async function main() {
     const payload = path.join(dir, 'payload.bin');
     let result;
     try {
-      const body = ['begin', 'receive', 'batch', 'library'].includes(header.action) ? createReadStream(payload) : Readable.from([]);
+      const body = ['begin', 'receive', 'batch', 'library', 'lookupMany'].includes(header.action) ? createReadStream(payload) : Readable.from([]);
       result = { ok: true, data: header.action === 'batch'
         ? await executeBatch(config, await readJsonBody(body), dir) : await execute(config, header, body) };
     } catch (error) { result = { ok: false, error: { code: error.code || 'IMPORT_FAILED', message: error.message } }; }

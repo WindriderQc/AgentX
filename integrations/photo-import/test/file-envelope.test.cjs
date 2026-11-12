@@ -44,6 +44,9 @@ test('lost response transfers retry the same envelope without replaying the doma
   assert.deepEqual(waits, [250]); assert.equal(receipt.disposition, 'copied');
   assert.equal((await f.service.status(f.input)).counts.copied, 1);
   assert.equal(await fs.readFile(receipt.path, 'utf8'), 'hello');
+  const reconciled = await remote({ action: 'lookupMany' }, { json: { runId: f.input.runId, items: [f.input] } });
+  assert.equal(reconciled.results[0].sha256, receipt.sha256);
+  assert.equal(executions, 2);
 });
 test('persistent file transport failure is bounded and never dispatches a replacement effect', async t => {
   const f = await fixture(t); let copies = 0, executions = 0;
