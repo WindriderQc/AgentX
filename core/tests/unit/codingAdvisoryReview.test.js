@@ -43,4 +43,41 @@ describe('consultative coding review', () => {
     const inside = [...argv]; inside[3] = path.join(__dirname, 'advice-report');
     await expect(review.run(inside, { open })).rejects.toThrow(/outside|Git/);
   });
+
+  test('existing callers retain code-only advisory scope', () => {
+    expect(review.parseArgs(argv).lenses).toEqual(['code']);
+    expect(review.messages({})[0].content).toContain('code: Check concrete correctness');
+  });
+
+  test.each(['', 'ui', 'code,', 'code,code', 'code,approve'])('invalid lenses %j fail before inference', async lenses => {
+    const open = jest.fn();
+    await expect(review.run([...argv, '--lenses', lenses], { open })).rejects.toThrow();
+    expect(open).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(root, 'report', 'receipt.json'))).toBe(false);
+  });
+
+  test('dry-run exposes all requested lenses without claiming execution or approval', async () => {
+    const open = jest.fn();
+    const result = await review.run([...argv, '--lenses', 'code,ux,visual,performance,security', '--dry-run'], { open });
+    expect(result.reviewScope).toEqual({ lenses: ['code', 'ux', 'visual', 'performance', 'security'],
+      basis: 'supplied_packet_only', browserExecuted: false, testsExecuted: false,
+      performanceMeasured: false, grantsApproval: false });
+    expect(result.status).toBe('not_run');
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  test('specialized prompts preserve reference-data boundary and report the limits', async () => {
+    const infer = jest.fn(async () => ({ model: 'candidate', message: { content: 'Measurement missing.' } }));
+    const receipt = await review.run([...argv, '--lenses', 'ux,visual,performance'],
+      { open: async () => ({ infer, close: jest.fn() }) });
+    const prompt = infer.mock.calls[0][0][0].content;
+    expect(prompt).toContain('reference data');
+    expect(prompt).toContain('ux:');
+    expect(prompt).toContain('visual:');
+    expect(prompt).toContain('performance:');
+    expect(prompt).toContain('no browser, test runner or measuring tools');
+    expect(prompt).toContain('Do not issue PASS');
+    expect(receipt.reviewScope.performanceMeasured).toBe(false);
+    expect(receipt.advisoryOnly).toBe(true);
+  });
 });
