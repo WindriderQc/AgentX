@@ -120,7 +120,7 @@ afterEach(async () => { world?.release(); await until(() => !world || world.acti
 test.each(['voice', 'text'])('Family %s relays on a real admission conflict, retains child safety and returns to its unchanged primary route', async channel => {
   world = await fixture('agentx');
   const id = randomUUID(), reply = await world.send('Explique les nuages.', id, channel).expect(200);
-  expect(done(reply).reply.text).toContain('assure temporairement le relais');
+  expect(done(reply).reply.text).toBe('Yo c’est l’Gardien… Nestor est occupé.\n\nJe peux continuer la discussion.');
   expect(world.state.inference.map(input => input.model)).toEqual(['synthetic-main', 'synthetic-guardian']);
   expect(world.state.inference[0].exclusiveHost).toBe(true);
   const backup = world.state.inference[1];
@@ -174,7 +174,7 @@ test('Hermes detaches its actual running native work, relays tool-free, preserve
   expect(interrupted.body.data.detached).toBe(true); await first;
   expect(world.state.runs[0].cancelled).toBeUndefined();
   const relayId = randomUUID(), relay = await world.send('Peux-tu expliquer simplement les nuages ?', relayId).expect(200);
-  expect(done(relay).reply.text).toContain('assure temporairement le relais');
+  expect(done(relay).reply.text).toBe('Yo c’est l’Gardien… Nestor est occupé.\n\nJe peux continuer la discussion.');
   expect(world.state.runs).toHaveLength(1);
   expect(world.state.inference.every(input => input.model === 'synthetic-guardian')).toBe(true);
   expect(done(relay).tools.conversationRelay.relayFor).toMatchObject({ authority: 'hermes', runId: running.runId, turnId: firstId });
@@ -240,7 +240,7 @@ test('voice relay announces itself once in streamed speech and waits for Core te
   complete({ completed: true, terminalComplete: true });
   const result = await response;
   const spoken = events(result).filter(event => event.type === 'delta').map(event => event.delta).join('');
-  expect(spoken.match(/assure temporairement le relais/g)).toHaveLength(1);
+  expect(spoken.match(/Yo c’est l’Gardien… Nestor est occupé\./g)).toHaveLength(1);
   expect(done(result).reply.text).toContain('Je peux continuer la discussion.');
   expect((await conversations.getTurn({ sessionId: world.session.sessionId, traceId: id })).toolEvidence.conversationRelay.completed).toBe(true);
 });

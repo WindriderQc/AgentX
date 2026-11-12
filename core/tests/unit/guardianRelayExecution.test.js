@@ -82,7 +82,7 @@ test('Hermes with no principal toolset can recover a native tool refusal only on
   const read = w.request.guardianTools.execute = jest.fn();
   const result = await w.run();
   expect(result.text).toContain('Réponse du même gardien sans outils.');
-  expect(result.text).toContain('assure temporairement le relais');
+  expect(result.text).toContain('Yo c’est l’Gardien… Nestor est occupé.');
   expect(result.text).toContain('sans outils');
   expect(w.execute.mock.calls.map(([body]) => body.model)).toEqual(['synthetic-guardian', 'synthetic-guardian']);
   expect(w.execute.mock.calls.map(([, options]) => options.hostUrl)).toEqual(['http://127.0.0.2:11434', 'http://127.0.0.2:11434']);

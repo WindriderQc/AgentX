@@ -143,10 +143,9 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         const resident = (await probe.json()).models?.find(row => deps.modelsMatch(row.name || row.model, pin.model));
         if (!resident || Number(resident.context_length) !== Number(pin.contextSize)) continue;
       } catch { if (signal?.aborted) signal.throwIfAborted(); continue; }
-      const notice = 'Message automatique d’AgentX — Petit contretemps : '
-        + (options.requireOccupied
-          ? `le cerveau principal est ${occupied ? 'occupé' : 'indisponible'}. Le gardien de Nestor assure temporairement le relais avec un contexte récent limité, ${options.relayTools ? 'avec quelques outils de consultation' : 'sans outils'}.`
-          : `Nestor passe en mode de secours local avec son gardien, avec un contexte récent réduit et sans outils d’action. ${status}`);
+      const notice = options.requireOccupied
+        ? `Yo c’est l’Gardien… Nestor est ${occupied ? 'occupé' : 'indisponible'}.`
+        : `Message automatique d’AgentX — Petit contretemps : Nestor passe en mode de secours local avec son gardien, avec un contexte récent réduit et sans outils d’action. ${status}`;
       const reduced = reducedRequest(options.relayRequest || request, { ...policy, model: pin.model,
         contextSize: Number(pin.contextSize), notice, status, familyInstructions: options.familyInstructions, relayTools: options.relayTools });
       if (!reduced) return statusResult(request, status, 'backup_context_unavailable', primaryRefusal);
