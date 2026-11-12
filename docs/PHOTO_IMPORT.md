@@ -120,6 +120,21 @@ devices, and `start.ps1` selects one (prompting when several are available).
 It offers to resume the latest pending local checkpoint before requiring a
 connected phone. An instance may create a shortcut to this launcher.
 
+The WPD reader uses the resource's advertised transfer buffer (64 KiB when
+unspecified; values over 16 MiB are refused). Short reads are accumulated;
+EOF, the exact declared byte count, source properties and the final hash still
+have to agree. A growing or truncated stream never becomes a verified copy.
+
+When an iPhone is exposed through Windows WPD, USB transfer can fail even
+after successful enumeration. Keep it unlocked and trust the computer. Apple's
+[HEIF/HEVC transfer guidance](https://support.apple.com/116944) places **Keep
+Originals** under Settings → Apps → Photos (Settings → Photos on older iOS).
+Automatic transfer may convert media on the phone; the importer does not
+perform that conversion. A device-unavailable error alone does not establish
+its cause. After changing transfer settings, resume the original operation;
+if the exposed content changed, the frozen source check refuses it and a new
+inventory is necessary. Previously verified Media copies stay intact.
+
 ```powershell
 .\integrations\photo-import\start.ps1 -Config C:\Instance\photo-import.json
 .\integrations\photo-import\start.ps1 -Config C:\Instance\photo-import.json -Resume <run-uuid>
@@ -300,5 +315,11 @@ mobile layout and exercises lost-result confirmation without a repeated
 effect. SDK compilation, Windows job/SSH transport, and real-device deletion
 acceptance are separate checks. A successful compile or simulated deletion
 is never a real-phone deletion receipt.
+
+An incomplete import exposes its first source failure alongside the verified
+counter and original request identity. The Windows-only
+`test/stream-smoke.ps1` regression uses a synthetic size-limited `IStream` to
+verify driver-sized buffers, partial reads, hashing, rejected growth/truncation
+and no overwrite; it opens no physical phone.
 
 On Windows, `powershell -NoProfile -STA -ExecutionPolicy Bypass -File integrations/photo-import/test/lock-smoke.ps1` compiles the SDK and checks both reader and cleanup fences with a synthetic device ID. It verifies the named mutex across different TEMP directories without opening a real phone.

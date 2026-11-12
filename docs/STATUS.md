@@ -15,7 +15,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   backup and source bytes, and receives exact native deletion results. Unknown
   dispatches stay fenced rather than replayed. Native cleanup is separately
   enabled; source and simulated browser checks remain distinct from deployment
-  and real-device deletion acceptance. See [photo import](PHOTO_IMPORT.md).
+  and real-device deletion acceptance. Interrupted imports expose the source
+  failure alongside verified progress; native transfers respect the WPD
+  driver's buffer size without relaxing byte/source verification. See
+  [photo import](PHOTO_IMPORT.md).
 
 - **Living sources.** Personal and family conversations share an audience-bound
   source directory and dated weather context. Native reads reuse producer records,

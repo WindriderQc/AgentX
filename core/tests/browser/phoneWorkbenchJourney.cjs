@@ -153,6 +153,17 @@ const uuid = () => crypto.randomUUID();
     await page.getByRole('button', { name: 'Importer les nouveaux médias' }).click();
     await page.getByText('Opération terminée', { exact: true }).waitFor();
     assert.equal(effects, 0);
+    latest = { ...latest, state: 'incomplete', progress: { verified: 2, selected: 6 },
+      error: { code: 'TRANSPORT_OR_SOURCE_FAILED', message: 'USB indisponible (0x80070141)' },
+      result: { state: 'incomplete', counts: { pending: 4, failedVerification: 0 } } };
+    await page.getByRole('button', { name: 'Actualiser', exact: true }).click();
+    await page.locator('#job-detail').filter({ hasText: '0x80070141' }).waitFor();
+    assert.match(await page.locator('#job-detail').textContent(), /2 \/ 6 fichiers reçus/);
+    assert.equal(await page.locator('#resume').isVisible(), true);
+    assert.equal(effects, 0);
+    latest = { ...latest, state: 'completed', progress: { verified: 6, selected: 6 }, result: null, error: null };
+    await page.getByRole('button', { name: 'Actualiser', exact: true }).click();
+    await page.getByText('Opération terminée', { exact: true }).waitFor();
     await page.locator('.card select').first().selectOption('archive');
     await page.waitForFunction(() => document.querySelector('.card select').disabled === false);
     await page.getByRole('button', { name: 'Actualiser', exact: true }).click();

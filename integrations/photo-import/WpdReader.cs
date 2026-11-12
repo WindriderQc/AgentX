@@ -183,29 +183,44 @@ namespace AgentX.PhotoImport {
       } catch(Exception e) { result.complete=false;result.errors.Add(prefix+": "+e.Message); }
       finally { Release(ids); }
     }
+    // GetStream supplies a driver-specific transfer size. Portable-device
+    // drivers can refuse reads larger than their advertised buffer.
+    public static int TransferBufferSize(uint optimal) {
+      if(optimal>16*1024*1024) throw new IOException("Invalid WPD transfer buffer size");
+      return optimal==0 ? 64*1024 : (int)optimal;
+    }
+    public static string CopyResource(IStream stream,string destination,ulong expectedSize,uint optimal) {
+      IntPtr bytesRead=Marshal.AllocCoTaskMem(4);
+      try {
+        byte[] buffer=new byte[TransferBufferSize(optimal)];ulong total=0;string sha;
+        using(var output=new FileStream(destination,FileMode.CreateNew,FileAccess.Write,FileShare.None))
+        using(var hash=SHA256.Create()) {
+          while(true) {
+            int requested=buffer.Length;
+            Marshal.WriteInt32(bytesRead,0);stream.Read(buffer,requested,bytesRead);
+            int read=Marshal.ReadInt32(bytesRead);if(read==0) break;
+            if(read<0 || read>requested) throw new IOException("Invalid WPD read count");
+            total+=(ulong)read;
+            if(total>expectedSize) throw new IOException("Object grew during transfer");
+            output.Write(buffer,0,read);hash.TransformBlock(buffer,0,read,null,0);
+          }
+          if(total!=expectedSize) throw new IOException("Source transfer was incomplete");
+          hash.TransformFinalBlock(new byte[0],0,0);sha=BitConverter.ToString(hash.Hash).Replace("-","").ToLowerInvariant();output.Flush(true);
+        }
+        return sha;
+      } finally { Marshal.FreeCoTaskMem(bytesRead); }
+    }
     public Dictionary<string,object> Read(string id,string relative,string destination) {
       var before=Snapshot(id,relative);IStream stream=null;Resources resources=null;
-      IntPtr bytesRead=Marshal.AllocCoTaskMem(4);
       try {
         content.Transfer(out resources);uint optimal=0;
         var key=new Key("E81E79BE-34F0-41BF-B53F-F1A06AE87842",0);
         resources.GetStream(id,ref key,0,ref optimal,out stream); // STGM_READ only
-        byte[] buffer=new byte[1024*1024];ulong total=0;string sha;
-        using(var output=new FileStream(destination,FileMode.CreateNew,FileAccess.Write,FileShare.None))
-        using(var hash=SHA256.Create()) {
-          while(true) {
-            Marshal.WriteInt32(bytesRead,0);stream.Read(buffer,buffer.Length,bytesRead);
-            int read=Marshal.ReadInt32(bytesRead);if(read==0) break;
-            if(read<0 || read>buffer.Length) throw new IOException("Invalid WPD read count");
-            total+=(ulong)read;if(total>before.size) throw new IOException("Object grew during transfer");
-            output.Write(buffer,0,read);hash.TransformBlock(buffer,0,read,null,0);
-          }
-          hash.TransformFinalBlock(new byte[0],0,0);sha=BitConverter.ToString(hash.Hash).Replace("-","").ToLowerInvariant();output.Flush(true);
-        }
+        string sha=CopyResource(stream,destination,before.size,optimal);
         var after=Snapshot(id,relative);
-        if(total!=before.size || before.key!=after.key || before.name!=after.name || before.size!=after.size || before.modified!=after.modified) throw new IOException("Source changed or transfer was incomplete");
-        return new Dictionary<string,object>{{"sha256",sha},{"size",total},{"source",before},{"phoneReadOnly",true},{"sourceChecksumIndependent",false}};
-      } finally { Marshal.FreeCoTaskMem(bytesRead);Release(stream);Release(resources); }
+        if(before.key!=after.key || before.name!=after.name || before.size!=after.size || before.modified!=after.modified) throw new IOException("Source changed or transfer was incomplete");
+        return new Dictionary<string,object>{{"sha256",sha},{"size",before.size},{"source",before},{"phoneReadOnly",true},{"sourceChecksumIndependent",false}};
+      } finally { Release(stream);Release(resources); }
     }
     public string ReadPrefix(string id) {
       Resources resources=null;IStream stream=null;IntPtr count=Marshal.AllocCoTaskMem(4);
@@ -215,7 +230,7 @@ namespace AgentX.PhotoImport {
         resources.GetStream(id,ref key,0,ref optimal,out stream);
         // Drain the resource: some MTP drivers keep the device busy when an
         // object stream is abandoned after a short read. Retain only 64 bytes.
-        byte[] bytes=new byte[1024*1024];int total=0;
+        byte[] bytes=new byte[TransferBufferSize(optimal)];int total=0;
         using(var output=new MemoryStream()) {
           while(true) {
             Marshal.WriteInt32(count,0);stream.Read(bytes,bytes.Length,count);

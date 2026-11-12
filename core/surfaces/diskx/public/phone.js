@@ -289,6 +289,9 @@
         job.state === 'incomplete' &&
         job.result?.counts?.pending === 0 &&
         job.result?.counts?.failedVerification === 0;
+      const received = job.progress
+        ? `${job.progress.verified} / ${job.progress.selected} fichiers reçus sur Media`
+        : null;
       $('job-title').textContent = selectionReceived
         ? 'Copies reçues · couverture partielle'
         : labels[job.state] || job.state;
@@ -297,12 +300,12 @@
           ? errorMessage(job.error) +
             (job.result?.deleted
               ? ` · ${job.result.deleted} fichiers supprimés, ${bytes(job.result.confirmedBytes)} correspondants.`
-              : ` · Référence : ${job.requestId}`)
+              : ` · ${received ? received + ' · ' : ''}Référence : ${job.requestId}`)
           : null) ||
         (job.result?.deleted !== undefined
           ? `${job.result.deleted} fichiers supprimés · taille correspondante : ${bytes(job.result.confirmedBytes)}`
           : job.progress
-            ? `${job.progress.verified} / ${job.progress.selected} fichiers reçus sur Media`
+            ? received
             : job.kind === 'import'
               ? 'Lecture de l’inventaire et préparation de l’import…'
               : 'Vérification des copies et préparation de la suppression…');

@@ -48,7 +48,7 @@ function createPhoneWorkbench({
         runId: job.input.resume || job.requestId,
         planId: job.input.planId,
         at: job.updatedAt || job.at,
-        error: job.error,
+        error: job.error || job.result?.failures?.[0],
         result: job.result
           ? {
               state: job.result.state,
