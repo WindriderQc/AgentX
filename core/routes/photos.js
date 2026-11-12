@@ -15,6 +15,7 @@
  * GET  /api/photos/tags
  * GET  /api/photos/assets/:id
  * GET  /api/photos/assets/:id/thumbnail?size=thumbnail|preview
+ * GET  /api/photos/assets/:id/video   (streaming playback with byte ranges)
  * PUT  /api/photos/assets/:id/description   { description }   (off unless IMMICH_DESCRIPTION_WRITE_ENABLED=true)
  *
  * Reads take `audience=family` for children's and family surfaces: timeline
@@ -80,6 +81,20 @@ function createPhotoRoutes({ service = createPhotoService(), frame = createPhoto
       });
       return res.end(image.bytes);
     } catch (error) { return sendError(res, error); }
+  });
+
+  router.get('/assets/:id/video', async (req, res) => {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    res.once('close', abort);
+    try {
+      const result = await service.video(req.params.id, req.query, { range: req.get('range'), signal: controller.signal });
+      res.status(result.status).set(result.headers);
+      await require('node:stream/promises').pipeline(require('node:stream').Readable.fromWeb(result.body), res);
+    } catch (error) {
+      if (!res.headersSent && !res.destroyed) sendError(res, error);
+      else if (!res.destroyed) res.destroy();
+    } finally { res.removeListener('close', abort); }
   });
 
   router.put('/assets/:id/description', handle(async (req) => {

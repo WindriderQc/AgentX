@@ -11,7 +11,10 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 - **Phone media workbench.** DiskX links `/diskx/phone`: resumable Android USB
   import, existing Media receipts, previews, persistent review choices and
-  explicitly selected phone cleanup. Core freezes the selection, rechecks
+  explicitly selected phone cleanup. Clickable media, a modal viewer, comparison
+  of up to four takes, page filters and folded descriptions clarify review.
+  Exact duplicates, frame suggestions and actual frame selection have separate
+  labels; indexed videos play through Core. Core freezes the selection, rechecks
   backup and source bytes, and receives exact native deletion results. Unknown
   dispatches stay fenced rather than replayed. Native cleanup is separately
   enabled; source and simulated browser checks remain distinct from deployment

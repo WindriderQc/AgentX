@@ -250,7 +250,20 @@ view. It composes the same Core import ledger, rather than creating another
 photo index or gallery. The page detects the configured collector's Android
 phones, starts a resumable import, pages existing import occurrences, searches
 source folders/names, orders by size, and saves `review`, `keep` or `archive`
-choices. Archiving is a review state; it moves no original. It does not invoke
+choices. The gallery uses clickable previews, a keyboard-navigable modal viewer
+and side-by-side comparison of two to four selected media. Comparison changes
+no review, frame or phone-cleanup decision. Descriptions and metadata are folded;
+reviewed descriptions and generated proposals remain distinct. Page filters
+cover photos, videos, exact duplicates, untriaged items and frame suggestions;
+counts explicitly refer to the current page of at most 24 occurrences. Bulk
+phone-cleanup selection includes only the displayed eligible items.
+
+An exact-duplicate badge means the import reused byte-identical content already
+on Media (SHA-256); it is not a deletion recommendation. Similar shots and bursts
+are not automatically grouped. Frame suggestions evaluate each image separately,
+so similar images may all be suggested. Actual album selection is shown separately
+and still requires the explicit frame action. Videos remain outside the frame.
+Archiving is a review state; it moves no original. It does not invoke
 vision, publish to family, or alter Immich albums.
 
 Core's `/api/phone-media` entrance relays a fixed JSON command to the native
@@ -259,7 +272,11 @@ bounded reads and named import/review/cleanup actions; callers cannot supply
 an executable, arbitrary path or shell command. Preview bytes come from the
 verified occurrence's Media path, are bounded to 8 MiB, and are resized and
 re-encoded by Core's existing Sharp dependency. Unsupported formats, very large
-images or unavailable codecs display an explicit preview fallback. Previews
+images or unavailable codecs display an explicit preview fallback. Indexed
+Immich images use Core's larger preview in the viewer; indexed videos use the
+credential-private streaming playback route with native browser controls. An
+unindexed or unplayable video explains its unavailable state without launching
+analysis or conversion. Previews
 never become evidence that a backup is still valid. No Windows HTTP listener
 or new media credential is introduced. Family-pinned and demo devices do not
 have this workbench.

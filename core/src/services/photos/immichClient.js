@@ -98,6 +98,9 @@ function createImmichClient({ env = process.env, fetchImpl = globalThis.fetch, r
 
   return {
     settings,
+    video(id, options = {}) {
+      return require('./immichVideo').streamVideo({ settings, fetchImpl, readFile, id, ...options });
+    },
     async json(path, options) {
       const { bytes } = await send(path, options);
       if (!bytes.length) return null;
