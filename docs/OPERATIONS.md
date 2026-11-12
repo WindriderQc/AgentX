@@ -2800,6 +2800,11 @@ for a later attempt. Unknown completion remains fenced by Core. Truncated or
 empty notes carry an explicit status. Advisory notes are not an executable test
 or a model qualification.
 
+Optional [review lenses](CODING_ADVISORY_LENSES.md) focus this same consultative
+call on code, UX, visual, performance or security questions. The default stays
+code-only; the receipt explicitly distinguishes supplied evidence from actions
+the reviewer did not execute.
+
 Live coding attempt evidence also retains observed session tokens and the
 actual model on successful and failed outcomes, independently of cost
 telemetry. An attribution alias is resolved only from server evidence; missing
