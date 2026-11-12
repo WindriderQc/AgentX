@@ -272,7 +272,7 @@ test('a received native success reconciles a lost Core acknowledgment without re
 test('transport job retries preserve their request and import identity across disconnects', async (t) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'phone-job-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
-  let launches = 0;
+  let launches = 0, live = true;
   const api = createPhoneWorkbench({
     config: { cacheRoot: dir },
     checkpoint,
@@ -280,7 +280,7 @@ test('transport job retries preserve their request and import identity across di
     source: {},
     remote: () => {},
     launch: async () => ++launches,
-    alive: async () => true,
+    alive: async () => live,
     importer: async (config, options) => {
       assert.equal(options.initialRunId, requestId);
       return { state: 'incomplete', counts: { pending: 1 }, failures: [{ code: 'TRANSPORT_OR_SOURCE_FAILED', message: 'USB device unavailable (0x80070141)' }] };
@@ -297,6 +297,12 @@ test('transport job retries preserve their request and import identity across di
   assert.equal(status.error.code, 'TRANSPORT_OR_SOURCE_FAILED');
   assert.match(status.error.message, /0x80070141/);
   await assert.rejects(api.command({ ...input, resume: uuid() }), { code: 'REQUEST_CONFLICT' });
+  live = false;
+  await api.command({ op: 'reconcile', requestId });
+  live = true;
+  const resumed = (await api.command({ op: 'status' })).jobs[0];
+  assert.equal(resumed.state, 'accepted');
+  assert.equal(resumed.error, undefined, 'an active retry must not display its previous failure');
 });
 
 test('durable native success can repair Core with the phone disconnected', async (t) => {
