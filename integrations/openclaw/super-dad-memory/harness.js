@@ -45,7 +45,7 @@ export async function contextFor(workspace, query, { includeMemory = false, incl
       ({ id, tool, status, resultRef, observed, deliveryState, at, ...(queueRequest && { queueRequest }) })) : [];
   const result = { generatedAt: nowIso(), notes,
     previousGoal: state.goal && Date.now() - Date.parse(state.goal.at) < 86400000 ? state.goal : null,
-    receipts, sources: { personal_memory: memoryConsulted ? "available" : "not_consulted", calendar: "not_connected", ledger: "not_connected" } };
+    receipts, sources: { personal_memory: memoryConsulted ? "available" : "not_consulted", calendar: "not_consulted", ledger: "not_consulted" } };
   if (includeTasks) {
     try {
       const data = await readTasks();
@@ -168,8 +168,8 @@ export async function recordRun(workspace, event, context, { config, pluginConfi
   }));
 }
 
-// Core composes the brief; this harness only relays it and states what it lacks.
+// Core owns connection state; this harness reports only its read coverage.
 export function briefingFromCore(data) {
   if (typeof data?.text !== "string" || !data.text) throw new Error("Personal briefing unavailable");
-  return { ...data, calendar: "not_connected", deliveryState: "not_requested" };
+  return { calendar: "not_consulted", ...data, deliveryState: "not_requested" };
 }
