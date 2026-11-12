@@ -133,7 +133,7 @@ test('inventory refuses unavailable service, candidate bounds, traversal and sym
   const f = await fixture(t); const candidate = path.join(f.dir, 'candidate'); await fs.mkdir(candidate);
   const base = { coreUrl: 'http://core.example', mappings: [{ indexedRoot: '/mnt/photos', physicalRoot: candidate }] };
   const fetchRows = rows => async () => ({ ok: true, json: async () => ({ data: { files: rows, pagination: { pages: 1 } } }) });
-  await assert.rejects(createImportInventory({ ...base, fetchImpl: async () => ({ ok: false, status: 503 }) })(f.input), { code: 'INVENTORY_UNAVAILABLE' });
+  await assert.rejects(createImportInventory({ ...base, retryWindowMs: 0, fetchImpl: async () => ({ ok: false, status: 503 }) })(f.input), { code: 'INVENTORY_UNAVAILABLE' });
   await assert.rejects(createImportInventory({ ...base, fetchImpl: fetchRows([{ path: '/mnt/photos/../outside.jpg' }]) })(f.input), { code: 'UNSAFE_INVENTORY_PATH' });
   await fs.symlink(path.join(f.root, 'anything'), path.join(candidate, 'escape.jpg'));
   // Existing targets outside the approved root must be refused.
@@ -142,6 +142,38 @@ test('inventory refuses unavailable service, candidate bounds, traversal and sym
   await assert.rejects(createImportInventory({ ...base, maxCandidates: 1, fetchImpl: fetchRows([{ path: '/mnt/photos/a.jpg' }, { path: '/mnt/photos/b.jpg' }]) })(f.input), { code: 'INVENTORY_LIMIT' });
   const backup = await createImportInventory({ ...base, fetchImpl: fetchRows([{ path: '/mnt/photos/escape.jpg', storage_role: 'backup_copy' }]) })(f.input);
   assert.equal(backup.path, null);
+});
+
+test('native imports can read Data directly while Core is absent and survive a transient inventory outage', async t => {
+  const f = await fixture(t), existing = path.join(f.dir, 'prior');
+  await fs.mkdir(existing); await fs.writeFile(path.join(existing, 'photo.jpg'), 'hello');
+  let clock = 0, calls = 0;
+  const requests = [];
+  const lookup = createImportInventory({ dataUrl: 'http://data.example',
+    mappings: [{ indexedRoot: '/mnt/photos', physicalRoot: existing }],
+    retryWindowMs: 1500, now: () => clock, pause: async ms => { clock += ms; },
+    fetchImpl: async (url, options) => {
+      requests.push({ url: url.toString(), method: options.method || 'GET' });
+      if (++calls === 1) return { ok: false, status: 503 };
+      if (calls === 2) throw new TypeError('fetch failed');
+      return { ok: true, json: async () => ({ data: { pagination: { pages: 1 },
+        files: [{ path: '/mnt/photos/photo.jpg', size: 5 }] } }) };
+    } });
+  assert.equal((await lookup(f.input)).path, path.join(existing, 'photo.jpg'));
+  assert.equal(calls, 3);
+  assert.equal(new Set(requests.map(r => r.url)).size, 1);
+  assert.ok(requests.every(r => r.url.startsWith('http://data.example/api/v1/storage/files/browse?') && r.method === 'GET'));
+  assert.throws(() => createImportInventory({ coreUrl: 'http://core.example', dataUrl: 'http://data.example' }), { code: 'INVALID_CONFIG' });
+});
+
+test('a persistent inventory outage stays pending instead of declaring no duplicates', async t => {
+  const f = await fixture(t); let clock = 0, calls = 0;
+  const lookup = createImportInventory({ dataUrl: 'http://data.example',
+    mappings: [{ indexedRoot: '/mnt/photos', physicalRoot: f.root }],
+    retryWindowMs: 1000, now: () => clock, pause: async ms => { clock += ms; },
+    fetchImpl: async () => { calls++; return { ok: false, status: 503 }; } });
+  await assert.rejects(lookup(f.input), { code: 'INVENTORY_UNAVAILABLE' });
+  assert.equal(calls, 3);
 });
 
 test('stdio framing preserves bytes split across headers and refuses oversized headers', async () => {

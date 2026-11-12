@@ -20,6 +20,26 @@ step does not yet attach them to Immich assets or rewrite metadata.
 versioned `agentx.photo-import/v1` API through the existing SSH identity. There
 is no new listener, Immich key, model call or automatic indexing job.
 
+The native receiver and Media ledger continue independently of the Core web
+process. Optional cross-library duplicate lookup can use `inventory.dataUrl`
+to query Data's own inventory entrance directly, so replacing Core does not
+break that read. Legacy `inventory.coreUrl` still uses Core's Data relay;
+configure one entrance, never both. Root mappings and fresh candidate hashes
+have the same semantics at either entrance. Nothing starts an inventory scan.
+
+Inventory GET requests retry temporary network errors and HTTP 502/503/504
+within `inventory.retryWindowMs` (default 30000; maximum 120000; 0 disables
+retries). Unavailable inventory remains an error; it never means no duplicates.
+The exact original import, cached media and verified receipts stay available
+for reconciliation. No phone read or receiver mutation is retried by this GET
+policy. Core analysis/indexing is a separate phase from the native copy.
+
+When migrating a running older client, keep its legacy inventory settings
+until its worker has finished or the owner has authorized same-ID
+reconciliation with the new native release. An existing process retains its
+loaded code; replacing a release pointer cannot repair a child already hung
+in an old transport. Keep old releases while any worker still uses them.
+
 Stdio requests contain one bounded JSON header followed by payload bytes.
 Windows uses native SSH/SCP with inherited handles and file envelopes because
 Windows OpenSSH can block on Node's redirected stdio. A transport job's UUID
@@ -323,3 +343,17 @@ verify driver-sized buffers, partial reads, hashing, rejected growth/truncation
 and no overwrite; it opens no physical phone.
 
 On Windows, `powershell -NoProfile -STA -ExecutionPolicy Bypass -File integrations/photo-import/test/lock-smoke.ps1` compiles the SDK and checks both reader and cleanup fences with a synthetic device ID. It verifies the named mutex across different TEMP directories without opening a real phone.
+
+The headless WMI launcher redirects its worker's input to NUL. Fixed SSH
+envelope commands use `-n`; SCP keeps its own SSH/SFTP stdin protocol. Stderr
+and stdout still inherit native handles rather than Windows child-process
+pipes. Staging setup is bounded to 30 seconds; other file-transport children
+are bounded to 30 minutes. A transport timeout preserves the original domain
+identity and files; it is not proof that the receiver effect did not happen.
+
+`test/file-transport-smoke.cjs` runs through `launchWorker` on Windows with a
+disposable receiver configuration and `--config <file> --run <UUID>`. It
+records exclusive qualification intent, executes twelve actual file-envelope
+pings and writes a terminal result under the private cache after SSH logout.
+It does not open a phone. Inspect the original intent/process/result after a
+lost qualification response rather than launching a replacement blindly.

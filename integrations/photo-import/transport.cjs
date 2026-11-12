@@ -49,9 +49,9 @@ function createRemote(config) {
   };
 }
 
-function inherited(command, args) {
+function inherited(command, args, timeoutMs = 30 * 60 * 1000) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'inherit' });
+    const child = spawn(command, args, { stdio: 'inherit', timeout: timeoutMs });
     child.once('error', reject);
     child.once('close', code => resolve(code));
   });
@@ -60,7 +60,9 @@ function inherited(command, args) {
 function createFileRemote(config, command) {
   if (!config.remoteTransportRoot.startsWith('/') || !path.isAbsolute(config.cacheRoot || '')) throw new Error('Invalid native transport roots');
   const options = ['-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3'];
-  const ssh = command => inherited('ssh', ['-T', ...options, config.sshHost, command]);
+  // Fixed envelope commands have no stdin. Do not pass this option through
+  // SCP: its own SSH child uses stdin for the SFTP transfer protocol.
+  const ssh = (command, timeoutMs) => inherited('ssh', ['-n', '-T', ...options, config.sshHost, command], timeoutMs);
   return async (header, payload) => {
     const job = crypto.randomUUID();
     const dir = await fs.mkdtemp(path.join(config.cacheRoot, 'transport-'));
@@ -70,7 +72,7 @@ function createFileRemote(config, command) {
     };
     await fs.writeFile(path.join(dir, 'request.json'), JSON.stringify(header), { flag: 'wx', mode: 0o600 });
     if (payload?.json) await fs.writeFile(path.join(dir, 'payload.bin'), JSON.stringify(payload.json), { flag: 'wx', mode: 0o600 });
-    if (await ssh('mkdir -m 700 -- ' + quote(remoteDir)) !== 0) throw new Error('Receiver staging is unavailable');
+    if (await ssh('mkdir -m 700 -- ' + quote(remoteDir), 30000) !== 0) throw new Error('Receiver staging is unavailable; reconcile the original import');
     await copy(path.join(dir, 'request.json'), config.sshHost + ':' + remoteDir + '/request.json');
     if (payload?.file || payload?.json) await copy(payload.file || path.join(dir, 'payload.bin'), config.sshHost + ':' + remoteDir + '/payload.bin');
     await ssh(command + ' --job ' + quote(job));
