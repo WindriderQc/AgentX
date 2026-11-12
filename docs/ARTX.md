@@ -83,6 +83,8 @@ a layout reservation, not a measured pixel silhouette. The laboratory outlines
 these same computed zones instead of maintaining separate CSS geometry.
 Compass captions stay centred on their projected azimuth; an obstructed direction
 is omitted instead of moved beside the portrait like a body caption with a leader.
+Body captions leave clearance around their discs, including the enlarged Sun
+and Moon, so their labels do not cover a lunar crescent or the solar disc.
 
 The Sun and Moon may appear in daylight, using Core's existing computed
 positions. Daylight planets and stars are omitted. The Sun and Moon carry explicit

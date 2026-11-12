@@ -81,6 +81,24 @@ test('compass captions keep their azimuth instead of moving beside the portrait'
   }
 });
 
+test('body captions leave the enlarged Sun and Moon discs unobstructed', () => {
+  const clearMoon = { ...sky, moon: { ...sky.moon, altDeg: 25, azDeg: 240 } };
+  let checked = 0;
+  for (const [width, height] of [[1920, 1080], [1280, 800], [390, 844]]) {
+    for (const light of ['day', 'night']) {
+      const plan = Layout.plan(clearMoon, { ...bg, light }, { width, height });
+      for (const body of plan.objects.filter(o => o.rendered && o.label)) {
+        const r = body.radiusPx;
+        const disc = { x: body.screen.x - r / width, y: body.screen.y - r / height,
+          w: r * 2 / width, h: r * 2 / height };
+        assert.ok(!Layout.overlap(body.label, disc), body.id + ' caption covers its disc');
+        if (body.id === 'sun' || body.id === 'moon') checked++;
+      }
+    }
+  }
+  assert.ok(checked >= 4, 'visible Sun and Moon captions were checked');
+});
+
 test('day sky uses computed Sun and Moon but does not claim daytime planets', () => {
   const snapshot = { sky, sun: { elevationDeg: 20 }, weather: { kind: 'clear' } };
   const background = Choice.background(snapshot);
