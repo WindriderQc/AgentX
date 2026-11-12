@@ -65,3 +65,64 @@ CPU fixtures cover the complete family-turn path, MCP and HTTP dispatch,
 idle timing, interrupted results, response reconciliation, weather masking and
 the panorama’s Moon avoidance. Installation, a real model choosing its tool
 and physical-device acceptance require separate evidence.
+
+
+## Readable sky and shared geometry
+
+`nestor-sky-layout.js` owns the fixed panorama, inverse projection, reserved
+face/clock/conversation zones and bounded caption placement. Core and the
+production painter use this same module. The panorama does not jump when the
+Moon crosses the face: its disc is omitted and a leader caption, when space
+permits, identifies its true anchor. Other bodies intersecting reserved zones
+are also omitted. Captions avoid those zones and one another; crowded labels
+are suppressed rather than painted over the face. Layout uses the CSS viewport,
+independently of the canvas pixel ratio.
+
+The Sun and Moon may appear in daylight, using Core's existing computed
+positions. Daylight planets and stars are omitted. The Sun and Moon carry explicit
+enlargement captions; its illuminated side uses the Sun's local tangent direction,
+with the panorama's angular scaling. The sky palette follows the Sun's height
+in half-degree cache bins. Decorative daytime specks and the fixed sun glow
+are absent. ISS retains its separate framing and simulation badges.
+
+ArtX receipts carry bounded viewport dimensions. Core recomputes Sun, Moon and
+planet positions, disc visibility, caption presence and reserved-zone occlusions
+from its original snapshot. The read distinguishes a visible disc from an
+occluded body identified by a caption. It includes the computed Sun and Moon
+positions even when their discs are not drawn. This remains a browser visibility
+report, not a camera measurement or proof of human attention.
+
+Weather freshness uses the oldest available observation, retrieval and snapshot
+time. After thirty minutes the weather line discloses its age; after three hours
+it reports unavailable weather and removes weather effects. A recent retrieval
+cannot make an old observation current. Sky calculation time and weather
+observation time remain distinct in Nestor's context.
+
+## ArtX laboratory
+
+`/artx-lab`, linked from Workshop, drives the production `NestorAmbient` painter
+with an explicit UTC time, synthetic observer, weather, observation age, panorama
+centre, aspect ratio and pixel ratio. The preview and manifest are permanently
+labelled as simulation. The face is represented by its reserved rectangle;
+this page does not load the avatar, microphone or family display controller.
+
+`GET /api/artx/lab/sky?at=<ISO-time>&lat=<latitude>&lon=<longitude>` calls Core's
+existing `skyView` calculation only, with validated explicit coordinates and a
+date between 1900 and 2050. It reads no home location, weather, picture library,
+model or display registry and persists nothing. Family-pinned devices cannot
+reach the page or calculation endpoint. No new runtime or deployment setting is
+required.
+
+Static preview uses a fixed clock and seeded particles; submitting the same
+scene produces the same canvas pixels in the same browser environment. Weather
+animation is optional and reduced-motion retains a still frame. The bounded
+last 300 draw samples show p50/p95 for the background painter only; they do not
+measure the full frame, avatar, kitchen compositor or real device acceptance.
+
+CPU fixtures cover geometry, collisions, daylight, expired observations, Core
+read parity and laboratory route validation. `core/tests/browser/artxLabJourney.cjs`
+checks the real canvas, repeatable pixels, day/night, stale weather, aspect ratio,
+pixel ratio, mobile and reduced motion without live services or inference.
+Use `ARTX_REPORT_DIR` outside the checkout and optionally `ARTX_CHROME` for a
+local Chromium executable. Real sky accuracy, kitchen readability and full
+avatar/compositor performance require their own physical reception.

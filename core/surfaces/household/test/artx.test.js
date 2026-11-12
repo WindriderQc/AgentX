@@ -36,8 +36,11 @@ test('the display reader uses the renderer’s geometry and separates off-panora
   const rotated = await f.service.snapshot(displayId);
   const view = f.service.observe(f.observation(rotated)).current;
   assert.equal(view.panorama.centerAzimuthDeg, Choice.skyFrame(rotated.sky).center);
-  assert.equal(view.panorama.centerAzimuthDeg, 145);
-  assert.equal(view.planets[0].screen.x, 0.409);
+  assert.equal(view.panorama.centerAzimuthDeg, 180);
+  assert.equal(view.moon.rendered, false);
+  assert.equal(view.moon.reason, 'face');
+  assert.match(view.moon.label, /derrière moi/);
+  assert.equal(view.planets[0].screen.x, 0.25);
 });
 
 test('hidden weather, ISS, hidden displays and expired sources never attest a visible Saturn', async () => {

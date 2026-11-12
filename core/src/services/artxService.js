@@ -4,6 +4,7 @@
 // A browser attests visibility only; positions, names and pictures come from Core.
 const { randomUUID } = require('node:crypto');
 const Choice = require('../../surfaces/household/public/nestor-ambient-choice');
+const { describeSky } = require('./artxSkyDescription');
 
 const ID = /^[a-zA-Z0-9-]{8,80}$/;
 const IDLE_MS = 120000, COOLDOWN_MS = 900000, SNAPSHOT_MS = 1200000, RECEIPT_MS = 180000;
@@ -13,28 +14,18 @@ const directions = ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ouest', 'o
 const direction = az => directions[Math.round(az / 45) % 8];
 
 function describe(snapshot, receipt, task) {
-  const background = Choice.background(snapshot);
+  const background = Choice.background(snapshot, { at: Date.parse(receipt.at) });
   if (['weather', 'rest'].includes(task?.mode) || receipt.moment?.kind === 'iss') background.sky = null;
-  const sky = snapshot.sky, frame = Choice.skyFrame(sky);
-  const bodies = Choice.skyBodies(sky, background);
-  const planets = (sky?.planetPositions || sky?.planets || []).map(planet => {
-    const rendered = receipt.visible && bodies.planets.some(body => body.id === planet.id);
-    const p = frame.project(planet);
-    return { id: planet.id, name: planet.name, altitudeDeg: planet.altDeg, azimuthDeg: planet.azDeg,
-      direction: direction(planet.azDeg), aboveHorizon: planet.altDeg > 0, rendered,
-      ...(rendered ? { screen: { x: +p.x.toFixed(3), y: +p.y.toFixed(3),
-        side: p.x < 0.4 ? 'gauche' : p.x > 0.6 ? 'droite' : 'centre' } }
-        : { reason: !receipt.visible ? 'display_hidden' : !background.sky ? 'sky_hidden'
-          : !frame.visible(planet) ? (planet.altDeg < 0 ? 'below_horizon' : 'outside_panorama') : 'too_close_to_sun' }) };
-  });
+  const frame = Choice.skyFrame(snapshot.sky);
+  const sky = describeSky(snapshot, background, receipt);
   const picture = receipt.moment?.kind === 'paint'
     ? snapshot.paintings?.find(item => item.id === receipt.moment.id) : null;
   return { source: 'agentx.artx/v1', snapshotId: receipt.snapshotId, observedAt: receipt.at, computedAt: snapshot.at,
     visibility: receipt.visible ? 'reported_visible' : 'hidden', mode: task?.mode || 'automatic',
     background: { kind: background.kind, light: background.light, sky: background.sky },
     panorama: { centerAzimuthDeg: frame.center, direction: direction(frame.center), eastNormallyLeft: true },
-    paintings: (snapshot.paintings || []).slice(0, 12), planets, moon: receipt.visible && bodies.moon ? { phase: sky.moon.name, altitudeDeg: sky.moon.altDeg,
-      direction: direction(sky.moon.azDeg), screen: frame.project(sky.moon) } : null,
+    weather: { ...background.weatherFreshness, observedAt: snapshot.weather?.observedAt || null, fetchedAt: snapshot.weather?.fetchedAt || null },
+    paintings: (snapshot.paintings || []).slice(0, 12), ...sky,
     moment: picture ? { kind: 'paint', id: picture.id, source: picture.source,
       description: picture.source === 'family' ? 'dessin de la famille' : 'création de l’atelier' }
       : ['iss', 'visit'].includes(receipt.moment?.kind) ? { kind: receipt.moment.kind } : null,
@@ -78,6 +69,8 @@ function createArtxService({ ambient, decide = null, now = () => Date.now(), hou
       || typeof value.visible !== 'boolean' || !Number.isFinite(Date.parse(value.at))
       || Math.abs(now() - Date.parse(value.at)) > RECEIPT_MS) return null;
     return { snapshotId: value.snapshotId, at: value.at, visible: value.visible,
+      ...(value.skyViewport && [value.skyViewport.width, value.skyViewport.height].every(n => typeof n === 'number' && Number.isFinite(n))
+        ? { skyViewport: { width: Math.max(1, Math.min(7680, value.skyViewport.width)), height: Math.max(1, Math.min(4320, value.skyViewport.height)) } } : {}),
       ...(ID.test(value.taskId || '') ? { taskId: value.taskId } : {}),
       ...(['paint', 'iss', 'visit'].includes(value.moment?.kind) ? { moment: { kind: value.moment.kind,
         ...(ID.test(value.moment.id || '') ? { id: value.moment.id } : {}) } } : {}) };

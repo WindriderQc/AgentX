@@ -95,7 +95,7 @@ test('the snapshot reads each owner once per cache period and drops failures to 
 
 test('the background follows the weather, the light and the night calm', () => {
   const bg = choice.background({ weather: { kind: 'snow', strength: 'heavy', windKmh: 30 }, sun: { elevationDeg: -20 } }, { hour: 23 });
-  assert.deepEqual(bg, { kind: 'snow', light: 'night', intensity: 0.84, wind: 0.5, calm: true, sky: null });
+  assert.deepEqual(bg, { kind: 'snow', light: 'night', intensity: 0.84, wind: 0.5, calm: true, sky: null, sunAltitudeDeg: -20, weatherFreshness: { state: 'unknown', ageMinutes: null } });
   assert.equal(choice.background({ weather: null }, { hour: 12 }).kind, 'unknown');
   assert.equal(choice.background({ weather: null }, { hour: 12 }).intensity, 0);
   assert.equal(choice.background({ sun: { elevationDeg: 0 } }).light, 'twilight');
@@ -357,7 +357,7 @@ test('after sunset the background shows the real sky, and a note says what is up
   assert.equal(cloudy.background.sky, 'bright');
   assert.match(cloudy.chips[0].text, /derrière les nuages$/);
   assert.equal(choice.chooseScreen({ ...night, weather: { kind: 'snow' } }, { hour: 20 }).background.sky, null, 'snow hides it');
-  assert.equal(choice.chooseScreen({ ...night, sun: { elevationDeg: 20 } }, { hour: 13 }).background.sky, null, 'not by day');
+  assert.equal(choice.chooseScreen({ ...night, sun: { elevationDeg: 20 } }, { hour: 13 }).background.sky, 'day', 'Sun and Moon by day');
   assert.equal(choice.chooseScreen({ ...night, sun: { elevationDeg: -3 } }, { hour: 17 }).background.sky, 'bright', 'dusk');
   assert.equal(choice.chooseScreen(night, { hour: 20, standby: false }).chips.length, 0, 'a conversation keeps only the sky');
 });
@@ -375,11 +375,11 @@ test('planet ephemerides retain below-horizon Saturn without adding it to drawin
     night.planetPositions.find(planet => planet.id === 'saturn'));
 });
 
-test('the panorama turns so the Moon is never hidden behind Nestor', () => {
+test('the panorama stays fixed when the Moon is behind Nestor', () => {
   const ahead = { moon: { altDeg: 40, azDeg: 185 } };
   const frame = choice.skyFrame(ahead);
-  assert.notEqual(frame.center, 180);
-  assert.ok(Math.abs(frame.project(ahead.moon).x - 0.5) > 0.15);
+  assert.equal(frame.center, 180);
+  assert.ok(Math.abs(frame.project(ahead.moon).x - 0.5) < 0.1);
   const aside = { moon: { altDeg: 40, azDeg: 120 } };
   assert.equal(choice.skyFrame(aside).center, 180);
   assert.equal(choice.skyFrame(aside).project({ azDeg: 180, altDeg: 0 }).x, 0.5);
@@ -395,7 +395,7 @@ test('the weather beside the date: rounded, a night icon after sunset, hidden wh
   assert.deepEqual(choice.weatherLine(clear, { at }), { icon: 'sun', text: '0 °C · Dégagé' });
   assert.equal(choice.weatherLine({ ...clear, sun: { elevationDeg: -12 } }, { at }).icon, 'night');
   assert.deepEqual(choice.weatherLine({ ...snapshot, weather: { temperatureC: -7 } }, { at }), { icon: null, text: '-7 °C' });
-  assert.equal(choice.weatherLine(snapshot, { at: at + 4 * 60 * MIN }), null, 'a reading over three hours old is hidden');
+  assert.equal(choice.weatherLine(snapshot, { at: at + 4 * 60 * MIN }).text, 'Météo indisponible · relevé expiré');
   assert.equal(choice.weatherLine({ ...snapshot, weather: { kind: 'rain' } }, { at }), null, 'no number and no words');
   assert.equal(choice.weatherLine({ weather: null }, { at }), null);
   const talking = choice.chooseScreen(snapshot, { at, hour: 10, standby: false });

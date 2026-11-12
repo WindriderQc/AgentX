@@ -31,7 +31,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   renderer’s panorama geometry. A silent routed Nestor task chooses a scene
   after two quiet minutes, at most once per fifteen minutes. Shared ArtX tools
   and a portable skill distinguish selection, reported visibility and unavailable
-  observations. See [ArtX](ARTX.md) for qualification and process-local limits.
+  observations. Its fixed panorama shares collision-aware labels and body
+  occlusions with Core, draws the computed daytime Sun/Moon, and discloses old
+  weather. Workshop's ArtX lab previews the production painter with explicit
+  simulated inputs and no model or live display effects. Source/browser checks
+  remain separate from physical reception. See [ArtX](ARTX.md) for qualification
+  and process-local limits.
 
 - **Coding work in Studio and Nestor.** DSH and OpenCode adapters expose native
   worker conversations with read-only progress and independent human

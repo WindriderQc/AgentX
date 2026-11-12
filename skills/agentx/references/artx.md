@@ -19,8 +19,8 @@ disappeared when the person started talking; identify it as the previous scene.
 
 For Saturn or another planet, distinguish its real sky direction and altitude
 from its position in the displayed panorama. Use `rendered` and the normalized
-screen coordinates (x from left to right, y from top to bottom). The panorama
-can turn to keep the Moon beside your face. A planet above the real horizon
+screen coordinates (x from left to right, y from top to bottom). The panorama stays fixed when a body passes behind the face; a leader caption
+can identify the hidden body without moving its astronomical position. A planet above the real horizon
 may be outside the panorama or hidden by weather. Do not claim it is on screen
 when `rendered` is false. These are computed positions, not live camera pixels.
 
@@ -43,3 +43,9 @@ Painting animates an existing picture; it does not generate a new one.
 For a requested scene change, call `artx_present` with the current display and
 a stable request reference, then qualify the result as selected until a browser
 receipt confirms it. Use only tools actually available in the current runtime.
+
+The Sun and Moon may be drawn in daylight. The Moon is enlarged for readability;
+never present its drawn diameter as its true angular size. A `face`, `clock` or
+`bar` reason describes an occlusion. A caption can name an occluded body without
+claiming its disc is visible. Read weather `observedAt` and freshness separately
+from the sky computation time; an expired weather layer supplies no current conditions.

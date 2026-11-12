@@ -20,6 +20,7 @@
       const changed = current && (JSON.stringify(current.moment) !== JSON.stringify(moment) || current.taskId !== taskId);
       if (changed) previous = current;
       current = { snapshotId: snapshot.snapshotId, at: new Date(now()).toISOString(), visible: true,
+        ...(scene.skyViewport ? { skyViewport: scene.skyViewport } : {}),
         ...(taskId ? { taskId } : {}), ...(moment ? { moment } : {}) };
     }
     function context({ visible = true } = {}) {
