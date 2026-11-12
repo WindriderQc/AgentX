@@ -32,7 +32,7 @@ test('explicit same-phone recovery proves three contents and resumes the frozen 
   assert.deepEqual(await fs.readFile(f.stateFile),f.before,'recovery never rewrites the checkpoint or original device key');
   assert.deepEqual(await reconnect(f.config,f.input,{source:f.current,remote:f.send}),receipt);assert.equal(f.reads,3);assert.equal(f.enumerations,1);
   assert.equal((await binding(f.config,f.state)).deviceId,'reconnected');
-  const result=await runImport(f.config,{source:f.current,remote:f.send,resume:f.runId,log:()=>{}});
+  const result=await runImport(f.config,{source:f.current,remote:f.send,resume:f.runId,deviceId:'original',log:()=>{}});
   assert.equal(result.counts.pending,0);assert.equal(f.reads,4,'resume reads only its remaining original');
   const after=JSON.parse(await fs.readFile(f.stateFile));assert.equal(after.deviceId,'original');assert.equal(after.deviceKey,sha('original'));
   assert.equal(after.items[3].key,'old-3');assert.equal(after.items[3].readSource.key,'new-3');
