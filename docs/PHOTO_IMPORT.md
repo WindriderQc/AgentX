@@ -378,3 +378,33 @@ records exclusive qualification intent, executes twelve actual file-envelope
 pings and writes a terminal result under the private cache after SSH logout.
 It does not open a phone. Inspect the original intent/process/result after a
 lost qualification response rather than launching a replacement blindly.
+
+
+## Windows reconnect identity recovery
+
+A Windows USB reconnect can replace the WPD device identifier. Normal resume
+keeps the original device key and refuses a different selected device. An
+operator can recover read-only import access after the owner identifies the
+connected device as the same phone:
+
+```sh
+node integrations/photo-import/reconnect.cjs --config /absolute/client.json --command <base64-json>
+```
+
+The JSON request contains `operationId`, `runId`, the detected `deviceId` and
+`samePhone: true`. Plan the phone inventory and sample reads in the normal
+heavy-work window before invoking this operator capability. It takes the same
+workbench/import locks, requires a complete inventory with unique unchanged
+facts for every still-needed source, and independently hashes three distinct
+previously verified contents read from the selected phone. Their canonical
+Media copies are first rehashed through the receiver. Each anchor is at
+most 16 MiB. Missing/ambiguous/changed sources, insufficient anchors and a hash
+mismatch refuse recovery.
+
+The immutable receipt lives under the local staging root in
+`source-bindings/<runId>/<operationId>/binding.json`. It binds the original
+manifest fingerprint to the observed device. The next normal resume uses it
+without changing the original run, selected source facts, device key or Media
+receipts. Replaying the same recovery identity returns that proof; it does not
+repeat successful phone reads. This binding never changes cleanup's strict
+physical-device/key checks or supplies deletion authorization.
