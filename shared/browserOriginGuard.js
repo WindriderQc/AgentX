@@ -30,10 +30,24 @@ function appendVary(res, field) {
   res.setHeader('Vary', [...fields, field].join(', '));
 }
 
+function additionalBrowserOrigins(value = process.env.AGENTX_BROWSER_ORIGINS || '') {
+  return String(value).split(',').map(item => item.trim()).filter(Boolean).map(value => {
+    let url;
+    try { url = new URL(value); } catch { /* Refuse invalid configuration below. */ }
+    if (!url || value.includes('*') || !['http:', 'https:'].includes(url.protocol) || url.origin !== value) {
+      throw new Error('AGENTX_BROWSER_ORIGINS must contain exact HTTP(S) origins without paths or credentials');
+    }
+    return url.origin;
+  });
+}
+
 function createBrowserOriginGuard(options = {}) {
   const allowed = options.allowedOrigins
     ? new Set(options.allowedOrigins)
-    : allowedBrowserOrigins(options.publicUrls);
+    : new Set([
+      ...allowedBrowserOrigins(options.publicUrls),
+      ...additionalBrowserOrigins(options.additionalOrigins),
+    ]);
 
   return function browserOriginGuard(req, res, next) {
     const method = String(req.method || 'GET').toUpperCase();

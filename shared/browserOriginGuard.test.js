@@ -113,3 +113,51 @@ test('answers an allowed preflight and leaves a foreign one unanswered', () => {
   assert.equal(foreignPreflight.passed, true);
   assert.equal(foreignPreflight.res.headers['access-control-allow-origin'], undefined);
 });
+
+test('explicit gateway aliases allow same-origin writes without widening trust', () => {
+  const recovery = 'https://192.0.2.10';
+  const aliasGuard = createBrowserOriginGuard({
+    publicUrls: ['https://household.example.invalid'],
+    additionalOrigins: ` ${recovery}, https://recovery.example.invalid:8443 `,
+  });
+  for (const origin of [recovery, 'https://recovery.example.invalid:8443', 'https://household.example.invalid']) {
+    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+      const { res, passed } = run(aliasGuard, { method, headers: { origin, 'sec-fetch-site': 'same-origin' } });
+      assert.equal(passed, true, `${method} ${origin}`);
+      assert.equal(res.headers['access-control-allow-origin'], origin);
+    }
+  }
+  for (const origin of ['https://192.0.2.11', 'http://192.0.2.10', 'https://recovery.example.invalid', 'https://localhost:8443', 'null']) {
+    const { res, passed } = run(aliasGuard, { method: 'POST', headers: { origin, 'sec-fetch-site': 'same-origin' } });
+    assert.equal(passed, false, origin);
+    assert.equal(res.statusCode, 403);
+  }
+  const crossSite = run(aliasGuard, { method: 'POST', headers: { origin: recovery, 'sec-fetch-site': 'cross-site' } });
+  assert.equal(crossSite.res.statusCode, 403);
+  assert.equal(crossSite.passed, false);
+  const preflight = run(aliasGuard, { method: 'OPTIONS', headers: { origin: recovery, 'access-control-request-method': 'POST' } });
+  assert.equal(preflight.res.statusCode, 204);
+  assert.equal(preflight.res.headers['access-control-allow-origin'], recovery);
+});
+
+test('refuses malformed gateway alias configuration at startup', () => {
+  for (const additionalOrigins of ['*', 'null', 'https://*.example.invalid', 'https://example.invalid/path',
+    'https://user:password@example.invalid', 'file:///tmp/example', 'https://example.invalid?x=1']) {
+    assert.throws(() => createBrowserOriginGuard({ additionalOrigins }), /AGENTX_BROWSER_ORIGINS/);
+  }
+});
+
+test('reads gateway aliases from the instance environment', () => {
+  const previous = process.env.AGENTX_BROWSER_ORIGINS;
+  try {
+    process.env.AGENTX_BROWSER_ORIGINS = 'https://recovery.example.invalid';
+    const { res, passed } = run(createBrowserOriginGuard(), {
+      method: 'POST', headers: { origin: 'https://recovery.example.invalid', 'sec-fetch-site': 'same-origin' },
+    });
+    assert.equal(passed, true);
+    assert.equal(res.headers['access-control-allow-origin'], 'https://recovery.example.invalid');
+  } finally {
+    if (previous === undefined) delete process.env.AGENTX_BROWSER_ORIGINS;
+    else process.env.AGENTX_BROWSER_ORIGINS = previous;
+  }
+});
