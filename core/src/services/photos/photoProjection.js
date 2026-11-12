@@ -14,7 +14,7 @@ function fileName(source, sha256) {
   const extension = sourceExtension(source);
   if (!extension || ['.xmp', '.aae'].includes(extension)) return null;
   const name = source.name;
-  return typeof name === 'string' && name.length <= 220 && !/[\\/\x00-\x1f\x7f]/.test(name)
+  return sourceExtension({ name }) && typeof name === 'string' && name.length <= 220 && !/[\\/\x00-\x1f\x7f]/.test(name)
     && !['.', '..'].includes(name) ? name : sha256 + extension;
 }
 
@@ -74,6 +74,13 @@ async function createPhotoProjection(config) {
     if (!chosen) return { sourceRequestId: requestId, skipped: 'companion', sha256: entry.receipt.sha256 };
     const { slot, saved } = chosen;
     const components = saved.relativePath.split('/');
+    // Older unpublished intents may retain an extensionless signature match.
+    // Keep that immutable intent while publishing a usable gallery filename.
+    if (components.length === 3 && !sourceExtension({ name: components[2] })
+      && components[2].length <= 220 && !/[\\/\x00-\x1f\x7f]/.test(components[2])
+      && !['.', '..'].includes(components[2]) && fileName(entry.source, saved.sha256))
+      components[2] = saved.sha256 + sourceExtension(entry.source);
+    const relativePath = components.join('/');
     if (components.length !== 3 || !SHA.test(components[1]) || id(components[0]) !== components[0]
       || fileName({ name: components[2] }, saved.sha256) !== components[2])
       throw fail('UNSAFE_PATH', 'Invalid gallery reference intent');
@@ -92,7 +99,7 @@ async function createPhotoProjection(config) {
     const sha1 = crypto.createHash('sha1');
     for await (const chunk of createReadStream(target)) sha1.update(chunk);
     // Immich exposes SHA-1; it supplements, never replaces, our SHA-256 proof.
-    const value = { ...saved, kind: 'hardlink', immichChecksum: sha1.digest('base64') };
+    const value = { ...saved, relativePath, ...(relativePath === saved.relativePath ? {} : { legacyIntentPath: saved.relativePath }), kind: 'hardlink', immichChecksum: sha1.digest('base64') };
     const temporary = await fs.mkdtemp(path.join(root, '.agentx-import/staging/projection-receipt-'));
     try {
       await writeJson(path.join(temporary, 'receipt.json'), value);

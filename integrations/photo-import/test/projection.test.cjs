@@ -5,10 +5,10 @@ const { Readable } = require('node:stream');
 const { createPhotoImportService } = require('../../../core/src/services/photos/photoImportService');
 const { createPhotoProjection } = require('../../../core/src/services/photos/photoProjection');
 const uuid = () => crypto.randomUUID(), sha = x => crypto.createHash('sha256').update(x).digest('hex');
-async function fixture(t, name = 'image.jpg', bytes = Buffer.from('synthetic media')) {
+async function fixture(t, name = 'image.jpg', bytes = Buffer.from('synthetic media'), header) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'photo-project-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
   const service = await createPhotoImportService({ root });
-  const runId = uuid(), requestId = uuid(), source = { requestId, key: 'one', name, relativePath: 'Storage/DCIM/'+name, size: bytes.length, modified: null };
+  const runId = uuid(), requestId = uuid(), source = { requestId, key: 'one', name, relativePath: 'Storage/DCIM/'+name, size: bytes.length, modified: null, ...(header ? { header } : {}) };
   await service.begin({ runId, deviceKey: sha('fake-phone'), coverage: { enumerationComplete: true }, sources: [source] });
   const receipt = await service.receive({ runId, requestId, sha256: sha(bytes), size: bytes.length }, Readable.from([bytes]));
   const projection = await createPhotoProjection({ root });
@@ -51,4 +51,23 @@ test('card export binds content and analysis identity and preserves an immutable
   assert.deepEqual(await f.projection.exportCard(input), await f.projection.exportCard(input));
   await assert.rejects(f.projection.exportCard({ ...input, card: { ...card, description: 'different' } }), { code: 'REQUEST_CONFLICT' });
   await assert.rejects(f.projection.exportCard({ ...input, card: { ...card, sourceSha256: '0'.repeat(64) } }), { code: 'INVALID_CARD' });
+});
+
+
+for (const legacy of [false, true]) test('signature-only images receive a gallery extension; immutable legacy intent: '+legacy, async t => {
+  const bytes = Buffer.from('89504e470d0a1a0a0000000000000000', 'hex');
+  const f = await fixture(t, 'cache.file', bytes, bytes.toString('base64'));
+  const slot = path.join(f.root, '.agentx-import/gallery-references', f.receipt.sha256);
+  let intent;
+  if (legacy) {
+    await fs.mkdir(slot, { recursive: true });
+    intent = { schema: 'agentx.photo-projection/v1', sha256: f.receipt.sha256, size: bytes.length,
+      relativePath: f.runId+'/'+sha('Storage/DCIM')+'/cache.file', runId: f.runId, requestId: f.requestId };
+    await fs.writeFile(path.join(slot, 'intent.json'), JSON.stringify(intent));
+  }
+  const row = (await f.projection.project(f.input)).results[0];
+  assert.equal(path.basename(row.relativePath), f.receipt.sha256+'.png');
+  assert.deepEqual(await fs.readFile(path.join(f.projection.directory, row.relativePath)), bytes);
+  if (legacy) assert.deepEqual(JSON.parse(await fs.readFile(path.join(slot, 'intent.json'))), intent);
+  assert.equal((await f.projection.project(f.input)).results[0].relativePath, row.relativePath);
 });
