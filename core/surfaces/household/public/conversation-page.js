@@ -199,6 +199,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       const label = document.createElement('small'); label.className = 'interjection-label';
       label.textContent = spoken ? 'Brain remark · spoken' : 'Brain remark · shown only (Nestor was not speaking then)';
       row.dataset.spoken = String(spoken); row.append(label, document.createTextNode(remark.text)); transcript.append(row); transcript.scrollTop = transcript.scrollHeight;
+      return spoken === true;
     } });
   const work = family ? null : NestorWork.create({ host: el('conversationWork'), base: sessionBase, api,
     getConversation: () => conversation, getLanguage: () => language.value, maySpeak: () => !textBusy,

@@ -543,6 +543,7 @@ function createPersonaTurnHandler({
         replySha256: crypto.createHash('sha256').update(replyText).digest('hex'),
         safetyFlags: safety.flagIds,
         parentAttention: safety.requiresParentAttention,
+        ...(safety.deterministicEscalation ? { safetyReply: 'escalation' } : childBoundary ? { safetyReply: 'child_boundary' } : {}),
         soundId: sound?.id || '',
         model: metadata.model || '',
         hostKey: metadata.hostKey || '',

@@ -124,6 +124,7 @@ function publicAudit(doc) {
     inputPreview: fullInput.slice(0, 240),
     replyPreview: fullReply.slice(0, 320),
     safetyFlags: doc?.safetyFlags || [],
+    ...(doc?.safetyReply ? { safetyReply: doc.safetyReply } : {}),
     parentAttention: Boolean(doc?.parentAttention),
     soundId: doc?.soundId || '',
     model: doc?.model || '',

@@ -62,6 +62,7 @@ function reviewerPrompt({ family, deep = false }) {
     'Set urgent only for safety or a correction that matters now.',
     'Never praise, grade or comment on Nestor\'s answer, and never apologise for it: the interjection is Nestor adding something new, not a critic.',
     'Text marked as shortened for this review was shown complete: never claim or suggest that Nestor was cut off or should finish it.',
+    'A reply marked as a fixed safety reply was chosen by a safety rule, not by Nestor: never apologise for it, call it a misunderstanding or suggest Nestor misread the person. If it did not fit, simply continue the conversation.',
     'A revision must change something; do not restate what was already shown.',
     deep ? 'This is a deeper review: check facts, arithmetic, dates and consistency across the whole conversation before answering.' : '',
     family
@@ -77,12 +78,28 @@ function clip(value, max) {
   return source.length <= max ? source : source.slice(0, max) + ' […shortened for this review only; the person saw the complete text]';
 }
 
+const SAFETY_REPLIES = Object.freeze({
+  escalation: 'fixed safety reply chosen by a rule, not written by a model; spoken',
+  child_boundary: 'fixed child-safety boundary reply chosen by a rule, not written by a model; spoken'
+});
+// What the page did with the reviewer's remark (#169): said at a pause, only shown in the
+// transcript, or withheld because the person asked for quiet.
+const PRESENTATIONS = Object.freeze(['spoken', 'shown', 'withheld']);
+
+function remarkNote(interjection, presented) {
+  const quoted = `"${interjection.text}"`;
+  if (presented === 'spoken') return ` Nestor already said this remark aloud at a pause: ${quoted}. Do not repeat it.`;
+  if (presented === 'shown') return ` It suggested adding: ${quoted}. It was shown on screen only and never spoken; say it only if it still fits the conversation now.`;
+  if (presented === 'withheld') return ` It suggested adding: ${quoted}. It was not presented because the person asked for quiet; mention it only if it matters for this request.`;
+  return ` It suggested adding: ${quoted} (it may already have been said at a pause).`;
+}
+
 function transcript(turns, { complete = true } = {}) {
   const content = (value, max) => complete ? String(value || '') : clip(value, max);
   return turns.map(turn => [
     turn.traceId ? `Turn: ${turn.traceId}${turn.outcome ? ` (${turn.outcome})` : ''}` : '',
     turn.inputText ? `Person: ${content(turn.inputText, LIMITS.turnChars)}` : '',
-    turn.replyText ? `Nestor (spoken): ${content(turn.replyText, LIMITS.turnChars)}` : '',
+    turn.replyText ? `Nestor (${SAFETY_REPLIES[turn.safetyReply] || 'spoken'}): ${content(turn.replyText, LIMITS.turnChars)}` : '',
     ...(turn.display || []).filter(block => block.kind !== 'secret' && block.kind !== 'image' && block.body)
       .map(block => `Nestor (on screen${block.title ? `, ${block.title}` : ''}): ${content(block.body, LIMITS.blockChars)}`),
     ...(complete ? [turn.attachments?.length ? 'Attachment references: ' + JSON.stringify(turn.attachments) : '',
@@ -274,7 +291,7 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     const corrections = found.corrections || [];
     const text = '\n\nBackground review of this conversation (advisory; it may be wrong, so verify before relying on it):'
       + (corrections.length ? ' Possible corrections: ' + corrections.join(' | ') + '.' : '')
-      + (found.interjection ? ` It suggested adding: "${found.interjection.text}" (it may already have been said at a pause).` : '')
+      + (found.interjection ? remarkNote(found.interjection, found.interjectionPresented) : '')
       + ' If a correction is right, acknowledge it briefly and naturally in this turn; do not mention the review itself.'
       + (refused ? ' The latest complete review was refused for lack of context capacity; this earlier feedback does not validate newer turns.' : '');
     return { text, refs: found.adviceId ? [{ source: 'brain', adviceId: found.adviceId, version: found.version,
@@ -298,8 +315,38 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     });
   }
 
+  // The page reports what it did with a remark. Only the conversation's latest review is
+  // updated, matched by its adviceId; an older or unknown advice changes nothing.
+  async function presented(session, adviceId, presentation) {
+    let recorded = false;
+    const current = reviews.get(session.sessionId);
+    if (current?.adviceId === adviceId && current.interjection) {
+      reviews.set(session.sessionId, { ...current, interjectionPresented: presentation });
+      recorded = true;
+    }
+    if (durable) {
+      try {
+        recorded = Boolean(await conversations.updateSession({ ...spaceOf(session), 'backgroundReview.review.adviceId': adviceId },
+          { $set: { 'backgroundReview.review.interjectionPresented': presentation } })) || recorded;
+      } catch (error) {
+        logger?.warn?.('Household brain remark presentation was not stored', { error: error.message, code: error.code });
+      }
+    }
+    return recorded;
+  }
+
   function register(router) {
     for (const [space, scope] of Object.entries(SPACES)) {
+      router.post(`/${space}/sessions/:sessionId/brain/presentation`, async (req, res) => {
+        const adviceId = typeof req.body?.adviceId === 'string' && /^[a-zA-Z0-9-]{1,80}$/.test(req.body.adviceId) ? req.body.adviceId : '';
+        const presentation = PRESENTATIONS.includes(req.body?.presented) ? req.body.presented : '';
+        if (!adviceId || !presentation) return res.status(400).json({ ok: false, status: 'error', code: 'INVALID_BRAIN_PRESENTATION', message: 'adviceId and presented (spoken, shown or withheld) are required' });
+        const session = await conversations.getSession({ sessionId: req.params.sessionId }).catch(() => null);
+        if (!session || session.packId !== scope.packId || session.scopeId !== scope.scopeId) {
+          return res.status(404).json({ ok: false, status: 'error', code: 'VOICE_PERSONA_SESSION_NOT_FOUND', message: 'Voice persona session not found' });
+        }
+        return res.json({ ok: true, status: 'success', data: { recorded: await presented(session, adviceId, presentation) } });
+      });
       router.get(`/${space}/sessions/:sessionId/brain`, async (req, res) => {
         const session = await conversations.getSession({ sessionId: req.params.sessionId }).catch(() => null);
         if (!session || session.packId !== scope.packId || session.scopeId !== scope.scopeId) {
@@ -315,7 +362,7 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
     }
   }
 
-  return { schedule, cancel, latest, wait, contextFor, contextWithRefs, register, enabled, reconfigure };
+  return { schedule, cancel, latest, wait, contextFor, contextWithRefs, presented, register, enabled, reconfigure };
 }
 
-module.exports = { createBrain, readReview, reviewerPrompt, transcript, LIMITS };
+module.exports = { createBrain, readReview, reviewerPrompt, transcript, remarkNote, LIMITS };

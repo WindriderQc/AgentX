@@ -1024,7 +1024,17 @@ pages and APIs retain the parental gateway guard.
   corrections that the next turn carries as advisory notes beside its request, and
   at most one short remark the browser speaks only at a natural pause, unless
   the person chose quiet. It has no tools, saves nothing, keeps its latest
-  review in memory per conversation, and a new turn cancels it.
+  review per conversation, and a new turn cancels it. The page reports whether
+  the remark was spoken, only shown or withheld for quiet
+  (`POST .../sessions/:id/brain/presentation`), and the next turn's advisory
+  note says so instead of guessing. A reply that is a fixed safety sentence is
+  recorded with `safetyReply`, and the reviewer is told it was chosen by a rule,
+  so it never apologises for it.
+  Safety rules (`persona-prompt.js`) ignore a negated "danger" ("pas de
+  danger"). In Famille the bare word "danger", or "en danger" said of the
+  addressee's thing ("ton micro est en danger"), goes to the model with a strict
+  safety note and still asks for a parent's attention; a person in danger, the
+  other immediate-danger words, self-harm and abuse keep the fixed reply.
   Kids Room and Lecture conversations carry the Nestor personality like
   Famille, and read replies through the same voice ladder
   (`persona-presentation.js`): the reading voice chosen on that browser, then

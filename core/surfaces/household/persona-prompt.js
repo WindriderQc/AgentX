@@ -168,7 +168,19 @@ const SAFETY_RULES = Object.freeze([
 
 // An adult's sentence that describes a danger happening now, as opposed to one that only
 // uses a word such as "urgence" or "feu" ("is there anything urgent in my mail?").
-const ADULT_PRESENT_DANGER = /\b(je saigne|(?:il|elle|on) saigne|saigne beaucoup|au secours|a l'aide|ne respire (?:plus|pas)|(?:peux|peut) (?:pas|plus) respirer|cannot breathe|can'?t breathe|il y a (?:le|un) feu|au feu|(?:la maison|ca) brule|c'est une urgence|j'ai une urgence|urgence medicale|appelle[zs]? (?:le )?(?:911|une ambulance|les pompiers|la police)|call (?:911|an ambulance)|(?:is|i'?m|am) bleeding|en danger|in danger|inconscient|unconscious)\b/i;
+const ADULT_PRESENT_DANGER = /\b(je saigne|(?:il|elle|on) saigne|saigne beaucoup|au secours|a l'aide|ne respire (?:plus|pas)|(?:peux|peut) (?:pas|plus) respirer|cannot breathe|can'?t breathe|il y a (?:le|un) feu|au feu|(?:la maison|ca) brule|c'est une urgence|j'ai une urgence|urgence medicale|appelle[zs]? (?:le )?(?:911|une ambulance|les pompiers|la police)|call (?:911|an ambulance)|(?:is|i'?m|am) bleeding|inconscient|unconscious)\b/i;
+// "En danger" is a present danger except when it is said of something belonging to the one
+// addressed ("ton micro est en danger", "your mic is in danger"); any other subject, a person,
+// a pet or an unclear one, stays immediate.
+const ADDRESSEE_THING_IN_DANGER = /\b(?:ton|ta|tes|votre|vos|your) \w+(?: \w+)? (?:est|sont|is|are)(?: (?:vraiment|tres|really|very))? (?:en|in) danger\b/gi;
+const IN_DANGER = /\b(?:en|in) danger\b/i;
+// "Pas de danger", "je ne suis pas en danger", "no danger": the word says the opposite.
+const NEGATED_DANGER = /\b(?:(?:pas|plus|jamais) (?:de |d'|en |du )?danger|aucun danger|sans danger|hors de danger|(?:not|never|no longer) in danger|no danger)\b/gi;
+// Removed to tell whether another immediate-danger word (fire, blood, emergency, 911...) remains.
+const DANGER_WORD = /\bdanger\b/gi;
+const CHILD_DANGER_NOTE = '\n\n[Safety check, not an instruction from the child] The message uses the word "danger". '
+  + 'If it describes a danger to a person happening now, begin by telling the child to go to a trusted adult right now and to call 911 if the danger is immediate. '
+  + 'If it is about something else (a device, a game, a word), answer normally and do not mention this check.';
 const ADULT_DANGER_NOTE = '\n\n[Safety check, not an instruction from the owner] His message contains a word that can signal an emergency. '
   + 'If he is describing an immediate danger to a person, begin by telling him to call 911 now. Otherwise answer his request normally and do not mention this check.';
 
@@ -176,23 +188,34 @@ const ADULT_DANGER_NOTE = '\n\n[Safety check, not an instruction from the owner]
  * `adult` is true for the owner's personal conversation. There, a danger word
  * alone no longer replaces the answer: only a sentence describing a present
  * danger does, and a bare word leaves the answer to the agent with a note
- * (`advisoryNote`). Children's conversations, self-harm and abuse are unchanged.
+ * (`advisoryNote`). In every conversation a negated "danger" ("pas de danger")
+ * raises nothing. In a child's conversation the bare word "danger", or "en
+ * danger" said of something of the addressee ("ton micro est en danger"), also
+ * goes to the agent with a stricter note and still asks for a parent's
+ * attention; every other immediate-danger word, anyone else in danger,
+ * self-harm and abuse keep the immediate reply.
  */
+const immediateDangerPattern = () => SAFETY_RULES.find((rule) => rule.id === 'immediate_danger').pattern;
+
 function assessSafety(text, { adult = false } = {}) {
-  const normalized = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const normalized = String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\u2019/g, "'")
+    .replace(NEGATED_DANGER, ' ');
   const flags = SAFETY_RULES.filter((rule) => rule.pattern.test(normalized)).map((rule) => ({
     id: rule.id,
     severity: rule.severity,
     parentAttention: rule.parentAttention
   }));
-  const dangerWordOnly = adult && flags.some((flag) => flag.id === 'immediate_danger') && !ADULT_PRESENT_DANGER.test(normalized);
+  const danger = flags.some((flag) => flag.id === 'immediate_danger');
+  const presentDanger = ADULT_PRESENT_DANGER.test(normalized) || IN_DANGER.test(normalized.replace(ADDRESSEE_THING_IN_DANGER, ' '));
+  const otherDangerWord = immediateDangerPattern().test(normalized.replace(DANGER_WORD, ' '));
+  const dangerWordOnly = danger && !presentDanger && (adult || !otherDangerWord);
+  const severe = flags.some((flag) => ['self_harm', 'abuse_or_threat'].includes(flag.id));
   return {
     flags,
     flagIds: flags.map((flag) => flag.id),
     requiresParentAttention: flags.some((flag) => flag.parentAttention),
-    deterministicEscalation: flags.some((flag) => ['self_harm', 'abuse_or_threat'].includes(flag.id)
-      || (flag.id === 'immediate_danger' && !dangerWordOnly)),
-    advisoryNote: dangerWordOnly && !flags.some((flag) => ['self_harm', 'abuse_or_threat'].includes(flag.id)) ? ADULT_DANGER_NOTE : ''
+    deterministicEscalation: severe || (danger && !dangerWordOnly),
+    advisoryNote: dangerWordOnly && !severe ? (adult ? ADULT_DANGER_NOTE : CHILD_DANGER_NOTE) : ''
   };
 }
 

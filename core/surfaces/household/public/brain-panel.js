@@ -3,7 +3,8 @@
 // "Leads": what Nestor's background brain proposes after a turn (#169).
 // Follow-up questions become buttons the person can tap; revisions go to the
 // text zone; a short remark may be spoken at the next natural pause unless the
-// person asked for quiet, which an urgent remark still overrides.
+// person asked for quiet, which an urgent remark still overrides. Core is told
+// whether the remark was spoken, only shown, or withheld, so the next turn knows.
 (function exposeBrainPanel(root) {
   const QUIET_CHOICES = Object.freeze([
     ['', 'Allowed'], ['15', 'Quiet 15 min'], ['60', 'Quiet 1 h'], ['conversation', 'Quiet for this conversation']
@@ -72,7 +73,14 @@
           }
           render(review.suggestions || []);
           (review.revisions || []).forEach((revision, index) => onRevision({ id: `brain-${traceId}-${index}`, kind: 'text', title: `Revised · ${revision.title}`, body: revision.body }));
-          if (mayInterject(quiet, review.interjection)) onInterject(review.interjection);
+          if (review.interjection?.text) {
+            const report = presented => { if (review.adviceId) void fetchImpl(`${base}/${encodeURIComponent(sessionId)}/brain/presentation`, {
+              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ adviceId: review.adviceId, presented }) }).catch(() => {}); };
+            if (mayInterject(quiet, review.interjection)) void Promise.resolve(onInterject(review.interjection))
+              .then(spoken => report(spoken === true ? 'spoken' : 'shown'), () => report('shown'));
+            else report('withheld');
+          }
           return review;
         } catch { return null; }
         finally { if (pending === controller) pending = null; }

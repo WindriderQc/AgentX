@@ -43,6 +43,8 @@ module.exports = new Schema({
     replySha256: String,
     safetyFlags: { type: [String], default: [] },
     parentAttention: { type: Boolean, default: false },
+    // Set when the reply is a fixed safety sentence chosen by a rule, not written by a model.
+    safetyReply: { type: String, enum: ['escalation', 'child_boundary'], default: undefined },
     // Which catalog clip the surface was told to play, so the parent journal
     // shows what the child actually heard, not only what was said.
     soundId: { type: String, default: '' },
