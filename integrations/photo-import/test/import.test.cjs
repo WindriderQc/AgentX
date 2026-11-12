@@ -8,12 +8,34 @@ const crypto = require('node:crypto');
 const { Readable } = require('node:stream');
 const { createPhotoImportService } = require('../../../core/src/services/photos/photoImportService');
 const { createImportInventory } = require('../../../core/src/services/photos/importInventory');
-const { runImport } = require('../import.cjs');
+const { runImport, checkpoint } = require('../import.cjs');
 const { readRequest, execute } = require('../receiver.cjs');
 const { quote } = require('../transport.cjs');
 const { signatureExtension, classifyInventory } = require('../../../core/src/services/photos/importFormats');
 const { executeBatch } = require('../receiver.cjs');
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
+
+test('checkpoint contention retries only atomic replacement, keeping the previous durable state until success', async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'checkpoint-contention-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'state.json'); await checkpoint(file, { verified: 372 });
+  const waits = [], paths = [];
+  await checkpoint(file, { verified: 373 }, { pause: async ms => waits.push(ms), rename: async (temp, target) => {
+    paths.push(temp);
+    assert.deepEqual(JSON.parse(await fs.readFile(target)), { verified: 372 });
+    assert.deepEqual(JSON.parse(await fs.readFile(temp)), { verified: 373 });
+    if (paths.length < 3) throw Object.assign(Error('shared reader'), { code: 'EPERM' });
+    await fs.rename(temp, target);
+  } });
+  assert.deepEqual(waits, [20, 40]); assert.equal(new Set(paths).size, 1);
+  assert.deepEqual(JSON.parse(await fs.readFile(file)), { verified: 373 });
+  let calls = 0;
+  await assert.rejects(checkpoint(file, { verified: 374 }, { pause: async () => {}, rename: async () => {
+    calls++; throw Object.assign(Error('persistent contention'), { code: 'EACCES' });
+  } }), { code: 'EACCES' });
+  assert.equal(calls, 8); assert.deepEqual(JSON.parse(await fs.readFile(file)), { verified: 373 });
+  assert.equal((await fs.readdir(dir)).filter(x => x.endsWith('.tmp')).length, 1);
+});
 
 async function fixture(t, options = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'photo-import-'));
