@@ -24,7 +24,7 @@ function fixture(options = {}) {
     image: async () => ({ bytes: Buffer.from('verified bytes'), mimeType: 'image/png' })
   };
   const conversations = { getSession: async ({ sessionId }) => [family, privateSession].find(session => session.sessionId === sessionId) };
-  const images = createConversationImages({ conversations, service, ...options });
+  const images = createConversationImages({ conversations, service, logger: { info() {} }, ...options });
   const complete = (display, overrides = {}) => images.complete({ session: family, pack: packs.packById(family.packId), backend: 'openclaw',
     display, turnId: 'synthetic-turn', signal: new AbortController().signal, onShow: block => events.push(block), ...overrides });
   const app = express(); app.use(express.json()); images.register(app);
@@ -200,4 +200,32 @@ test('an unreachable illustrated worker never holds the end of the turn', async 
   assert.equal(f.immediate.length, 1); assert.equal(f.events.length, 0);
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.equal(seen.aborted, true, 'admission is told to stop before creating anything');
+});
+
+test('each family turn logs where its illustration stopped, without the description', async () => {
+  const lines = [], logger = { info: (message, fields) => lines.push({ message, ...fields }) };
+  const f = illustrated({ logger });
+  await f.complete([{ id: 'b1', kind: 'text', title: '', body: 'Hello' }]);
+  await f.complete([scene('A secret purple dragon')]);
+  await f.complete([scene('A lake at dawn')]);
+  f.advance(61); f.refuse = true;
+  await f.complete([scene('A red kite')]);
+  assert.deepEqual(lines.map(line => line.outcome), ['no_scene', 'accepted', 'interval', 'refused']);
+  assert.ok(lines.every(line => line.message === 'Family illustration'));
+  assert.equal(lines[1].worker, 'desk'); assert.equal(lines[1].shown, true); assert.ok(lines[2].waitSeconds > 0);
+  assert.equal(lines[3].status, 503); assert.match(lines[3].reason, /unavailable/);
+  assert.doesNotMatch(JSON.stringify(lines), /dragon|lake|kite/);
+  const off = illustrated({ logger }); lines.length = 0;
+  off.service.status = () => ({ configured: true, conversationProfile: { id: 'quick', width: 1024, height: 1024 }, illustrated: null });
+  await off.complete([{ id: 'b1', kind: 'text', title: '', body: 'Hello' }]);
+  assert.equal(lines.length, 0, 'nothing is logged while the mode is off');
+});
+
+test('an illustration past its admission budget is logged as such', async () => {
+  const lines = [], logger = { info: (message, fields) => lines.push(fields) };
+  const f = illustrated({ illustrationBudgetMs: 20, logger });
+  f.service.acceptOpportunistic = (body, opts) => new Promise((resolve, reject) => opts.signal.addEventListener('abort', () => reject(opts.signal.reason)));
+  await f.complete([scene('A dragon kite')]);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.deepEqual(lines.map(line => line.outcome), ['budget']);
 });

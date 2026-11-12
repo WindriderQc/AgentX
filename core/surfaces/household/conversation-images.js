@@ -21,7 +21,8 @@ const SCENE_CONTRACT = ' Illustrated mode is on: a small frame beside you shows 
 // The turn never waits longer than this for an illustration's admission: a
 // stopped or unreachable worker must not delay the end of the reply.
 const ILLUSTRATION_BUDGET_MS = 3000;
-function createConversationImages({ conversations, service = images, visuals = null, now = Date.now, illustrationBudgetMs = ILLUSTRATION_BUDGET_MS }) {
+function createConversationImages({ conversations, service = images, visuals = null, now = Date.now, illustrationBudgetMs = ILLUSTRATION_BUDGET_MS,
+  logger = require('../../config/logger') }) {
   const configuration = () => { try { return service.status(); } catch { return { configured: false, conversationProfile: null }; } };
   const lastIllustration = new Map();
   function view(operation, session) {
@@ -115,15 +116,21 @@ function createConversationImages({ conversations, service = images, visuals = n
       onShow(block);
     }
     if (space === 'family' && !requested && scenes.length) await illustrate(scenes.at(-1), { session, pack, turnId, signal, onShow });
+    else if (space === 'family' && configuration().illustrated) note(session, turnId, requested && scenes.length ? 'drawing_requested' : 'no_scene');
+  }
+  // The description stays out of the log: a child's conversation is not copied there.
+  function note(session, turnId, outcome, details = {}) {
+    try { logger.info('Family illustration', { session: String(session.sessionId || '').slice(0, 8), turnId: turnId || '', outcome, ...details }); } catch { /* logging never affects the turn */ }
   }
   // One attempt at most per interval and conversation. A refusal (worker busy,
   // off, or holding other models) waits for the next interval like a success.
   async function illustrate(scene, { session, pack, turnId, signal, onShow }) {
     const config = configuration(), plan = config.illustrated;
     const description = String(scene.body || '').replace(/\s+/g, ' ').trim().slice(0, 400);
-    if (!config.configured || !plan || !description || signal.aborted || unsuitable(pack, description)) return;
+    const skip = !config.configured || !plan ? 'off' : !description ? 'empty' : signal.aborted ? 'aborted' : unsuitable(pack, description) ? 'unsuitable' : '';
+    if (skip) return note(session, turnId, skip);
     const at = now(), last = lastIllustration.get(session.sessionId);
-    if (last !== undefined && at - last < plan.intervalSeconds * 1000) return;
+    if (last !== undefined && at - last < plan.intervalSeconds * 1000) return note(session, turnId, 'interval', { waitSeconds: Math.ceil((plan.intervalSeconds * 1000 - (at - last)) / 1000) });
     lastIllustration.set(session.sessionId, at);
     if (lastIllustration.size > 200) for (const [id, time] of lastIllustration) if (at - time > 3600000) lastIllustration.delete(id);
     // Past the budget the turn goes on; accept() stops before creating an
@@ -134,8 +141,16 @@ function createConversationImages({ conversations, service = images, visuals = n
     const attempt = Promise.resolve().then(() => service.acceptOpportunistic({ actionKey, profile: plan.profile, width: plan.width, height: plan.height,
       prompt: 'Age-appropriate illustration for children. No text, letters or words in the picture.\n' + description },
     { workerId: plan.worker, conversation: scopeFor(session), signal: budget, temporary: true }))
-      .then(operation => { if (open && !signal.aborted) onShow(card(operation, session, '', description)); })
-      .catch(() => { /* The frame keeps its previous picture. */ });
+      .then(operation => {
+        const shown = open && !signal.aborted;
+        note(session, turnId, 'accepted', { worker: plan.worker, operation: operation.id, state: operation.state, shown, chars: description.length });
+        if (shown) onShow(card(operation, session, '', description));
+      })
+      .catch(error => {
+        // The frame keeps its previous picture.
+        note(session, turnId, budget.aborted && !signal.aborted ? 'budget' : 'refused', { worker: plan.worker,
+          code: error?.code || '', status: error?.statusCode || 0, reason: String(error?.message || '').slice(0, 160) });
+      });
     await Promise.race([attempt, new Promise(resolve => { timer = setTimeout(resolve, illustrationBudgetMs); timer.unref?.(); })]);
     open = false; clearTimeout(timer);
   }
