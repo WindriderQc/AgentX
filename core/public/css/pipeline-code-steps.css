@@ -28,3 +28,12 @@
 [data-code-graph-state="uncertain"] .pipeline-code-step-state, [data-code-graph-state="waiting"] .pipeline-code-step-state { color: #fde68a; }
 [data-code-graph-state="failed"] .pipeline-code-step-state, [data-code-graph-state="blocked"] .pipeline-code-step-state { color: #fca5a5; }
 @media (max-width: 560px) { .pipeline-code-step-state { margin-left: 0; } }
+
+/* The current attempt is visible without opening the expert audit trail. */
+.pipeline-drawer-steps { margin: 1rem 0; padding: 1rem; border: 1px solid rgba(83,211,224,.28); border-radius: 14px; background: rgba(83,211,224,.04); }
+.pipeline-drawer-steps > header { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; flex-wrap: wrap; }
+.pipeline-drawer-steps h3 { margin: 0; font-size: 1rem; }
+.pipeline-drawer-steps > header > span { color: var(--text-secondary, #a7b5c8); font-size: .8rem; }
+.pipeline-drawer-steps summary { cursor: pointer; padding: .65rem 0; font-weight: 600; }
+.pipeline-drawer-step-summary { font-weight: 600; }
+.pipeline-drawer-step-empty { margin-bottom: 0; color: var(--text-secondary, #a7b5c8); }
