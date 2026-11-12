@@ -8,6 +8,8 @@
   const MAX_BLOCKS = 30;
   const KIND_LABELS = { text: 'Note', list: 'List', table: 'Table', code: 'Code', link: 'Link', secret: 'Secret', review: 'Proposition', image: 'Image', scene: '3D', page: 'Page', math: 'Math' };
   const STAGE_WAIT_MS = 4000;
+  const markdownLinks = typeof module === 'object' && module.exports
+    ? require('../../../public/js/markdown-links') : root.AgentXMarkdownLinks;
   let sequence = 0;
 
   function node(tag, className, text) {
@@ -63,13 +65,21 @@
   function linkBody(body, space) {
     const list = node('div', 'display-block-links');
     const clickable = linksClickable(space);
-    body.split(/\s+/).filter(Boolean).forEach(value => {
+    const appendLink = (value, label = value) => {
       const href = safeUrl(value);
-      if (!href || !clickable) { list.append(node('span', '', value)); return; }
-      const link = node('a', '', value);
+      if (!href || !clickable) { list.append(node('span', '', label === value ? value : `${label} (${value})`)); return; }
+      const link = node('a', '', label);
       link.href = href; link.target = '_blank'; link.rel = 'noopener noreferrer';
       list.append(link);
-    });
+    };
+    const appendWords = text => text.split(/\s+/).filter(Boolean).forEach(value => appendLink(value));
+    let offset = 0;
+    for (const link of markdownLinks.scan(body).links) {
+      appendWords(body.slice(offset, link.start));
+      appendLink(link.url, link.label);
+      offset = link.end;
+    }
+    appendWords(body.slice(offset));
     return list;
   }
 

@@ -77,7 +77,7 @@ app.get('/fixture', (_req, res) => res.type('html').send(`<!doctype html><html l
 <section id="text"></section><section id="visual"></section></div></div></section></div></section></main>
 <script src="/vendor/marked.js"></script><script src="/vendor/purify.js"></script><script src="/js/presentation-markdown.js"></script>
 <script src="/js/screen-pages.js"></script><script src="/assets/household/presentation-observation.js"></script>
-<script src="/assets/household/presentation-commands.js"></script><script src="/assets/household/page-presentation.js"></script><script src="/assets/household/display-board.js"></script>
+<script src="/assets/household/presentation-commands.js"></script><script src="/assets/household/page-presentation.js"></script><script src="/js/markdown-links.js"></script><script src="/assets/household/display-board.js"></script>
 <script src="/assets/household/presentation-collaboration.js"></script><script src="/assets/household/presentation-companion.js"></script><script>
 AgentXScreenPages.configure(${JSON.stringify(pages.entries)});
 window.session=${JSON.stringify(session)};

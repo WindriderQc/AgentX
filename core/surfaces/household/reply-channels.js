@@ -14,6 +14,7 @@ const { SPOKEN_REPLY_INSTRUCTION } = require('../../src/services/voice/presentat
 const path = require('node:path');
 const spokenPresentation = require('../../public/js/voice/spoken-presentation');
 const screenPages = require('../../public/js/screen-pages');
+const markdownLinks = require('../../public/js/markdown-links');
 const mathExpression = require('../../public/js/math-expression');
 
 const KINDS = Object.freeze(['text', 'list', 'table', 'code', 'link', 'secret', 'image', 'math']);
@@ -151,7 +152,7 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
   };
 
   // Clean tokens before presentation so private values never enter the prose block.
-  const speakProse = text => {
+  const speakTokens = text => {
     say(text.split(/(\s+)/).map(word => {
       // A harness file reference keeps its existing handling (speech drops it),
       // except a generated picture, which becomes an image block (#168).
@@ -167,6 +168,17 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
       if (model) { addBlock(kind, '', core); return readAloud ? word : word.replace(core, model); }
       return word.replace(core, screenCue(addBlock(kind, '', core)));
     }).join('').replace(/[ \t]{2,}/g, ' '));
+  };
+  const speakProse = text => {
+    let offset = 0;
+    for (const link of markdownLinks.scan(text).links) {
+      speakTokens(text.slice(offset, link.start));
+      const shown = addBlock('link', plainReply(link.label).slice(0, LIMITS.title), link.url);
+      const resource = link.url.match(/^https?:\/\/(?:www\.)?(suicide\.ca|988\.ca)(?=[/:?#]|$)/i)?.[1];
+      say(resource || screenCue(shown));
+      offset = link.end;
+    }
+    speakTokens(text.slice(offset));
   };
   const closeGroup = () => {
     if (!group) return;
@@ -229,7 +241,14 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
         prose = false;
         continue;
       }
-      const boundary = ended ? line.length : line.search(/\s\S*$/);
+      let boundary = ended ? line.length : line.search(/\s\S*$/);
+      if (!ended) {
+        // A label may contain spaces. Keep the entire link until its closing
+        // parenthesis arrives; neither its URL nor Markdown reaches speech.
+        const { links, pending } = markdownLinks.scan(line);
+        if (pending >= 0) boundary = Math.min(boundary, pending);
+        for (const link of links) if (link.start < boundary && link.end > boundary) boundary = link.start;
+      }
       if (boundary <= 0) return;
       speakProse(line.slice(0, boundary));
       line = line.slice(boundary);

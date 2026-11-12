@@ -5,6 +5,12 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const { createRequire } = require('node:module');
 const core = path.resolve(__dirname, '../..'), req = createRequire(core + '/package.json');
 const express = req('express'), { chromium } = require(process.env.AGENTX_PLAYWRIGHT_MODULE || 'playwright');
+const { createReplyChannels } = req('./surfaces/household/reply-channels');
+const linkChannels = createReplyChannels();
+for (const character of 'Source : [Le ciel de novembre](https://example.test/astronomy/night-sky-2026?source=reference).') linkChannels.push(character);
+const linkReply = linkChannels.end();
+assert.equal(linkReply.display[0].kind, 'link');
+assert.equal(linkReply.say, 'Source : (à l’écran).');
 const reportDir = process.env.PAGE_PRESENTATION_REPORT_DIR;
 if (!reportDir || path.resolve(reportDir).startsWith(path.resolve(core, '..') + path.sep)) throw Error('Set PAGE_PRESENTATION_REPORT_DIR outside the checkout');
 fs.mkdirSync(reportDir, { recursive: true });
@@ -23,7 +29,7 @@ let server, browser;
     <body class="household-product"><nav>AgentX · Personnel · Famille · Atelier</nav><main id="app">${markup}</main>
     <script src="/js/screen-pages.js"></script><script src="/assets/household/page-presentation.js"></script>
     <script src="/assets/household/presentation-observation.js"></script>
-    <script src="/assets/household/display-board.js"></script><script src="/assets/household/avatar-dock.js"></script>
+    <script src="/js/markdown-links.js"></script><script src="/assets/household/display-board.js"></script><script src="/assets/household/avatar-dock.js"></script>
     <script>
       AgentXScreenPages.configure([{id:'dad-day',label:'Ma journée',href:'/dad/day',mode:'frame'},{id:'dad-memories',label:'Mes souvenirs',href:'/dad/memories',mode:'frame'}]);
       customElements.define('llmx-face', class extends HTMLElement {});
@@ -105,6 +111,14 @@ let server, browser;
     assert.equal(await page.locator('.conversation-text').isVisible(), true);
     assert.equal(await page.locator('#conversationWorkflow').isVisible(), true);
     assert.equal(await page.locator('.conversation-toolbar').isVisible(), true);
+    await page.evaluate(block => board.add(block), linkReply.display[0]);
+    const reference = page.locator('.page-presentation .display-block[data-selected="true"] a').filter({ hasText: 'https://example.test/astronomy' });
+    assert.equal(await reference.getAttribute('href'), linkReply.display[0].body);
+    assert.equal(await page.locator('.page-presentation .display-block[data-selected="true"] code').count(), 0);
+    await page.evaluate(() => board.add({ kind: 'link', body: '[Le ciel de novembre](https://example.test/astronomy/night-sky-2026?source=reference)' }));
+    assert.equal(await page.locator('.page-presentation .display-block[data-selected="true"] a').filter({ hasText: 'Le ciel de novembre' }).getAttribute('href'), linkReply.display[0].body);
+    assert.equal(await overflow(), false);
+    await page.screenshot({ path: path.join(reportDir, `link-${viewport.width}.png`), fullPage: true });
     // The request pipeline folds under the conversation.
     await page.locator('#conversationPipeline > summary').click();
     assert.equal(await page.locator('#conversationWorkflow').isVisible(), false);

@@ -30,7 +30,7 @@ let server, browser;
   app.get('/fixture', (_req, res) => res.send(`<!doctype html><html lang="fr"><title>Visiter avec Nestor</title>
     <link rel="stylesheet" href="/assets/household/display-board.css"><style>body{font:16px sans-serif;background:#10212b;color:white;margin:24px;--line:#456;--panel:#142b37;--panel-2:#203848;--soft:#cad;--cyan:#5dd}button,a,summary{color:inherit}button{background:#284e5c;border:1px solid #789;padding:8px;border-radius:6px}header{display:flex;flex-wrap:wrap;gap:12px}.display-board-list{max-height:none}</style>
     <h1>Visiter avec Nestor</h1><p>La conversation reste disponible pendant la visite.</p><header id="toolbar"></header><section id="screen"></section>
-    <script src="/js/screen-pages.js"></script><script src="/assets/household/screen-picker.js"></script><script src="/assets/household/guided-visit.js"></script><script src="/assets/household/display-board.js"></script>
+    <script src="/js/screen-pages.js"></script><script src="/assets/household/screen-picker.js"></script><script src="/assets/household/guided-visit.js"></script><script src="/js/markdown-links.js"></script><script src="/assets/household/display-board.js"></script>
     <script>window.ready = fetch('/api/voice-personas/private/screen-pages').then(r=>r.json()).then(({data})=>{
       AgentXScreenPages.configure(data.destinations); window.board=DisplayBoard.create(document.getElementById('screen'));
       NestorScreenPicker.mount({host:document.getElementById('toolbar'),onShow:block=>board.add(block)});

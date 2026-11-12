@@ -60,6 +60,36 @@ test('Famille never displays or speaks a secret', () => {
   assert.doesNotMatch(result.streamed, /écran/, 'no cue points at a screen that shows nothing');
 });
 
+test('Markdown references become complete link cards across stream boundaries', () => {
+  const url = 'https://www.example.test/astronomy/night-sky-2026?source=reference';
+  for (const label of ['example.test', 'Le ciel de novembre']) {
+    const reply = `Consulte [${label}](${url}), puis on continue.`;
+    for (const size of [1, 2, 5, 17, reply.length]) {
+      const result = run(chunks(reply, size));
+      assert.equal(result.say, 'Consulte (à l’écran), puis on continue.', `chunk size ${size}`);
+      assert.deepEqual(result.display, [{ id: 'b1', kind: 'link', title: label, body: url }]);
+      assert.doesNotMatch(result.streamed, /https|example|\[|\]|novembre/);
+      assert.deepEqual(storedDisplay(result.display), result.display);
+    }
+  }
+});
+
+test('Markdown links retain balanced target parentheses, adjacent references and ordinary brackets', () => {
+  const url = 'https://example.test/wiki/Sky_(astronomy)?year=2026';
+  const result = run(chunks(`[Ciel](${url})[Suite](https://example.test/next).\nNote [à vérifier] demain.`, 1));
+  assert.deepEqual(result.display.map(block => block.body), [url, 'https://example.test/next']);
+  assert.equal(result.say, '(à l’écran)(à l’écran).\nNote [à vérifier] demain.');
+  const fenced = run(['```markdown\n[Exemple](https://example.test/2026)\n```']);
+  assert.equal(fenced.display[0].kind, 'code');
+  assert.equal(fenced.display[0].body, '[Exemple](https://example.test/2026)');
+});
+
+test('Markdown help references keep their resource name audible', () => {
+  const result = run(chunks('Aide : [Ressource](https://988.ca/fr).', 1));
+  assert.equal(result.say, 'Aide : 988.ca.');
+  assert.deepEqual(result.display.map(block => block.kind), ['link']);
+});
+
 test('recognized model tags speak their family and size while retaining the exact identifier', () => {
   const result = run(['Le modèle qwen2.5-coder:32b-instruct-q4_K_M répond.'], { allowSecrets: false });
   assert.deepEqual(result.display.map(block => block.kind), ['code']);

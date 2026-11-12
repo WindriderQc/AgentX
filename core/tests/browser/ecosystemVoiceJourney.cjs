@@ -37,7 +37,7 @@ const catalog = require('../../public/js/screen-pages').createCatalog(require('.
 app.get('/fixture', (_req, res) => res.send(`<!doctype html><html lang="fr"><meta charset="utf-8"><title>Guide et Nestor</title>
 <style>*{box-sizing:border-box}body{margin:12px;background:#07181e;color:white;font:16px system-ui}.page-presentation-board iframe{width:100%;height:700px}.page-presentation-board[hidden]{display:none}</style>
 <div id="app"><div class="conversation-layout"><section id="text"></section><section id="visual"></section></div><button id="ask">Poser une question</button></div>
-<script src="/js/screen-pages.js"></script><script src="/assets/household/page-presentation.js"></script><script src="/assets/household/display-board.js"></script>
+<script src="/js/screen-pages.js"></script><script src="/assets/household/page-presentation.js"></script><script src="/js/markdown-links.js"></script><script src="/assets/household/display-board.js"></script>
 <script src="/js/voice/speech-language.js"></script><script src="/js/voice/voice-capture.js"></script><script src="/js/voice/browser-conversation.js"></script><script src="/api/voix/player.js"></script>
 <script>AgentXScreenPages.configure(${JSON.stringify(catalog.entries)});window.board=DisplayBoard.createScreen({text:document.getElementById('text'),visual:document.getElementById('visual')},{space:'personal'});board.add({kind:'page',title:'Visite',body:'ecosystem play=overview,frank'});
 window.presence=busy=>dispatchEvent(new CustomEvent('persona-presence',{detail:{conversationBusy:busy}}));

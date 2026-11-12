@@ -41,7 +41,7 @@ app.get('/fixture', (_req, res) => res.type('html').send(`<!doctype html><html l
 </head><body data-avatar-view="menu"><main id="app"><div class="fixture-face" aria-label="Avatar"></div><div id="badge" hidden></div><textarea aria-label="Conversation">La conversation reste accessible.</textarea><section id="board"></section><section id="workflow" hidden></section></main>
 <div class="avatar-scene-bar"><div class="avatar-scene-actions"><button>Conversation</button></div></div>
 ${['journey-timings','nestor-progress','workflow-panel'].map(x => `<script src="/assets/household/${x}.js"></script>`).join('')}
-<script src="/js/screen-pages.js"></script><script src="/assets/household/display-board.js"></script>
+<script src="/js/screen-pages.js"></script><script src="/js/markdown-links.js"></script><script src="/assets/household/display-board.js"></script>
 <script>
 AgentXScreenPages.configure([{id:'diskx',label:'DiskX',href:'/diskx?janitor=latest',mode:'frame'},{id:'ecosystem',label:'Écosystème',href:'/diskx?app=ecosystem',mode:'frame'}]);
 const progress=NestorProgress.create({host:document.querySelector('#badge'),getLanguage:()=> 'fr'});
