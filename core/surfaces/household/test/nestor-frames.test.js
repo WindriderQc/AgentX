@@ -38,7 +38,8 @@ test('Super Dad loads the frames and the shared living screen; Famille gets neit
   const page = fs.readFileSync(path.join(__dirname, '../public/conversation-page.js'), 'utf8');
   assert.match(page, /const ambient = window\.NestorAmbient\?\.mount\(\{ space \}\)/, 'both spaces get the living screen');
   assert.match(page, /const frames = family \? null : window\.NestorFrames\?\.mount/);
-  assert.match(page, /\.\.\.\(family && ambient\?\.context\(\) && \{ artx: ambient\.context\(\) \}\)/, "Super Dad turns keep their context");
+  // Per-surface receipt forwarding is exercised by the real composer/canvas
+  // journey in core/tests/browser/nestorArtxConversationJourney.cjs.
   const { mount } = require('../public/nestor-frames');
   assert.equal(mount({ space: 'family', documentRef: { body: {} } }), null);
   require('../public/nestor-ambient');

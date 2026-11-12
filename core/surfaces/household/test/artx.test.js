@@ -208,6 +208,23 @@ test('family ArtX tools bind the active display while MCP reuses the same reader
   assert.equal(familyToolset({ HOUSEHOLD_FAMILY_TOOLS: 'artx_read,artx_present' }), null, 'no family tool can choose a foreign display');
 });
 
+for (const backend of ['agentx', 'openclaw']) test(`personal ${backend} receives visible, masked and below-horizon sky facts`, async () => {
+  const f = fixture();
+  f.data.sky.moon = { altDeg: 40, azDeg: 180, name: 'croissant', illumination: 0.1 };
+  f.data.sky.planetPositions = [...f.data.sky.planets,
+    { id: 'jupiter', name: 'Jupiter', altDeg: -25, azDeg: 70 }];
+  const snapshot = await f.service.snapshot(displayId);
+  const h = harness({ packId: 'personal_operator', backend, artx: f.service });
+  await h.turn('Quels astres sont visibles, masqués ou sous l’horizon ?', 'text', { artx: f.observation(snapshot) });
+  const read = h.turns[0].presentationContext.artx.current;
+  assert.equal(read.planets.find(p => p.id === 'saturn').rendered, true);
+  assert.equal(read.moon.reason, 'face');
+  assert.equal(read.planets.find(p => p.id === 'jupiter').aboveHorizon, false);
+  assert.equal(read.planets.find(p => p.id === 'jupiter').reason, 'below_horizon');
+  assert.match(h.sent[0].request, /"altitudeDeg":-25/);
+  assert.match(h.sent[0].request, /A screen side is not a compass direction/);
+});
+
 test('the HTTP idle endpoint executes the same task and preserves its identity', async () => {
   const express = require('express');
   const { registerFamilyRoutes } = require('../family-routes');
