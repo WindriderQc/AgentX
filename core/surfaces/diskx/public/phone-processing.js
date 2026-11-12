@@ -105,9 +105,12 @@
     }
     const current = result.jobs.find(x => ['queued', 'claimed', 'running', 'uncertain'].includes(x.state)) || result.jobs[0];
     if (current) {
-      const labels = { queued: 'Analyse en file Core', claimed: 'Préparation de l’analyse', running: 'Analyse et indexation en cours',
+      const labels = { queued: 'Analyse en attente', claimed: 'Préparation de l’analyse', running: 'Analyse et indexation en cours',
         completed: 'Fiches disponibles pour le tri', uncertain: 'Traitement à réconcilier', failed: 'Traitement arrêté' };
-      say((labels[current.state] || current.state)+(current.error ? ' · '+current.error : ''));
+      const reason = current.error === 'HEAVY_QUEUE_CONFLICT'
+        ? 'Les ressources sont occupées. Le traitement reprendra automatiquement.'
+        : current.error ? 'Une vérification du traitement est nécessaire.' : '';
+      say((labels[current.state] || 'État du traitement à vérifier')+(reason ? ' · '+reason : ''));
     }
   }
   async function load() {
