@@ -19,6 +19,7 @@ async function readTurnContext(conversations, query) {
     ...(row.attachments?.length && { attachments: row.attachments }),
     ...(row.display?.length && { display: row.display.filter(block => block.kind !== 'secret') }),
     ...(row.toolEvidence && { toolEvidence: row.toolEvidence }),
+    ...(row.safetyReply && { safetyReply: row.safetyReply }),
     ...(row.adviceRefs?.length && { adviceRefs: row.adviceRefs }),
     ...(row.presentationContext && { historicalPresentation: row.presentationContext }),
     ...(row.speaker && { speaker: row.speaker }),

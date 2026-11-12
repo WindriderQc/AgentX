@@ -95,3 +95,24 @@ test('a refused review reaches the workflow as unavailable without replacing ear
   assert.deepEqual(h.spoken, []);
   assert.equal(h.revised.length, 1);
 });
+
+test('the page tells Core whether the remark was spoken, only shown or withheld', async () => {
+  const run = async ({ quiet = '', spoken }) => {
+    const container = new Element('section'), posts = [];
+    const review = { ...REVIEW, adviceId: 'advice-1' };
+    const brain = create(container, { base: '/api/voice-personas/family/sessions',
+      fetchImpl: async (url, options = {}) => {
+        if (options.method === 'POST') { posts.push({ url, body: JSON.parse(options.body) }); return { ok: true, json: async () => ({}) }; }
+        return { ok: true, json: async () => ({ data: { review } }) };
+      },
+      onInterject: async () => spoken });
+    const select = container.children[2].children[0];
+    select.value = quiet; select.listeners.change();
+    await brain.follow('s', 't1');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    return posts;
+  };
+  assert.deepEqual(await run({ spoken: true }), [{ url: '/api/voice-personas/family/sessions/s/brain/presentation', body: { adviceId: 'advice-1', presented: 'spoken' } }]);
+  assert.equal((await run({ spoken: false }))[0].body.presented, 'shown');
+  assert.equal((await run({ quiet: 'conversation' }))[0].body.presented, 'withheld');
+});

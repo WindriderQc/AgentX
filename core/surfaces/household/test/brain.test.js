@@ -104,7 +104,7 @@ test('on a dedicated host a newer turn discards the running review without cance
 
 test('the route serves a review only within its own space', async () => {
   const routes = {};
-  const router = { get: (path, handler) => { routes[path] = handler; } };
+  const router = { get: (path, handler) => { routes[path] = handler; }, post: () => {} };
   const brain = createBrain({ inference: inferenceReturning(REVIEW), loadTurns: async () => TURNS, delayMs: 0, env: { HOUSEHOLD_BRAIN_ENABLED: 'true' },
     conversations: { getSession: async ({ sessionId }) => (sessionId === SESSION.sessionId ? SESSION : null) } });
   brain.register(router);
