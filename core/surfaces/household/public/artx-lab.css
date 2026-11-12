@@ -20,8 +20,7 @@ button:hover{background:#c2f1e7}input:focus-visible,select:focus-visible,button:
 .nestor-ambient-chips,.nestor-ambient-visit,.nestor-ambient-weather{display:none}
 .lab-zones{position:absolute;inset:0;pointer-events:none;color:#c6d8e5;font-size:clamp(9px,1vw,14px);text-align:center}
 .lab-zones>div{position:absolute;display:grid;place-content:center;border:1px dashed #a1c4d776;background:#09152178;box-sizing:border-box}
-.clock-zone{left:28%;top:0;width:44%;height:26%}.face-zone{left:40%;top:30%;width:20%;height:38%}.face-zone small{font-size:.7em;opacity:.7}
-.bar-zone{bottom:0;left:0;width:100%;height:11%}.hide-zones .lab-zones{display:none}
+.face-zone small{font-size:.7em;opacity:.7}.hide-zones .lab-zones{display:none}
 .facts{display:flex;flex-wrap:wrap;gap:10px 26px;color:#b8d0dc;font-size:13px;margin:18px 0 30px}.facts p{margin:0}
 .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}th,td{padding:12px 10px;border-bottom:1px solid #243a49}th{color:#86b7c8}
 details{margin-top:24px}summary{cursor:pointer;color:#9fd4da}pre{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;background:#0c1b26;padding:16px;border-radius:8px}

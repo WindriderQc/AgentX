@@ -33,11 +33,25 @@ let server, browser;
     await page.getByRole('button', { name: 'Afficher la scène' }).click();
     await page.waitForFunction(() => window.artxLab?.snapshot);
   };
+  const checkZones = async () => {
+    const mismatches = await page.evaluate(() => {
+      const parent = document.querySelector('.lab-zones').getBoundingClientRect();
+      return artxLab.plan.zones.filter(zone => {
+        const box = document.querySelector('.' + zone.id + '-zone').getBoundingClientRect();
+        return Math.abs(box.x - parent.x - zone.x * parent.width) > 1
+          || Math.abs(box.y - parent.y - zone.y * parent.height) > 1
+          || Math.abs(box.width - zone.w * parent.width) > 1
+          || Math.abs(box.height - zone.h * parent.height) > 1;
+      }).map(zone => zone.id);
+    });
+    assert.deepEqual(mismatches, [], 'laboratory outlines match the painter reservations');
+  };
   await page.locator('[name=at]').fill('2026-06-21T10:00'); await submit();
   const day = await page.evaluate(() => artxLab);
   assert.equal(day.background.light, 'day');
   assert.equal(day.plan.objects.find(o => o.id === 'sun').rendered, true);
   assert.equal(day.plan.objects.some(o => o.type === 'planet'), false);
+  await checkZones();
   const first = await page.locator('#stage canvas').evaluate(c => c.toDataURL());
   await submit();
   assert.equal(await page.locator('#stage canvas').evaluate(c => c.toDataURL()), first, 'fixed scene renders identical pixels');
@@ -57,6 +71,7 @@ let server, browser;
   assert.ok(await page.locator('#stage canvas').evaluate(c => Math.abs(c.width / c.clientWidth - 1.5) < 0.01));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('[name=aspect]').selectOption('9/16'); await submit();
+  await checkZones();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.screenshot({ path: path.join(report, 'artx-lab-mobile.png'), fullPage: true });
   await page.emulateMedia({ reducedMotion: 'reduce' });

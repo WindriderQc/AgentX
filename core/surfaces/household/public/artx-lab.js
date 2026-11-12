@@ -8,6 +8,13 @@
   function seeded(seed) {
     return () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
   }
+  function updateZones() {
+    for (const zone of NestorSkyLayout.zones({ width: stage.clientWidth, height: stage.clientHeight })) {
+      const element = stage.querySelector('.' + zone.id + '-zone');
+      Object.assign(element.style, { left: zone.x * 100 + '%', top: zone.y * 100 + '%',
+        width: zone.w * 100 + '%', height: zone.h * 100 + '%' });
+    }
+  }
   async function render(event) {
     event?.preventDefault();
     if (!form.reportValidity()) return;
@@ -57,6 +64,8 @@
     } catch (error) { if (own === revision) status.textContent = 'Aperçu indisponible : ' + error.message; }
   }
   form.addEventListener('submit', render);
-  window.addEventListener('pagehide', () => { revision++; mounted?.dispose(); });
+  const resize = new ResizeObserver(updateZones);
+  resize.observe(stage);
+  window.addEventListener('pagehide', () => { revision++; resize.disconnect(); mounted?.dispose(); });
   render();
 })();

@@ -48,6 +48,29 @@ test('captions never overlap reserved zones or one another, including portrait a
   }
 });
 
+test('the full portrait keeps low and side captions clear across landscape and portrait screens', () => {
+  const view = Layout.frame();
+  const nearChin = { ...sky, moon: { ...sky.moon, ...view.unproject({ x: 0.625, y: 0.76 }) } };
+  for (const [width, height, portrait] of [
+    [1920, 1080, { x: 0.36, y: 0.1, w: 0.28, h: 0.78 }],
+    [390, 844, { x: 0.08, y: 0.2, w: 0.84, h: 0.6 }]
+  ]) {
+    const plan = Layout.plan(nearChin, bg, { width, height });
+    assert.ok(plan.labels.every(label => !Layout.overlap(label, portrait)), 'caption crosses the full portrait');
+    const moon = plan.objects.find(o => o.id === 'moon');
+    assert.equal(moon.rendered, false);
+    assert.equal(moon.hiddenBy, 'face');
+    assert.deepEqual(moon.screen, view.project(nearChin.moon));
+    const read = describeSky({ sky: nearChin }, bg, { visible: true, skyViewport: { width, height } });
+    assert.equal(read.moon.reason, 'face');
+    assert.equal(read.moon.altitudeDeg, nearChin.moon.altDeg);
+    if (width > height) {
+      assert.ok(moon.label, 'landscape has room for a leader caption');
+      assert.match(moon.label.text, /derrière moi/);
+    }
+  }
+});
+
 test('day sky uses computed Sun and Moon but does not claim daytime planets', () => {
   const snapshot = { sky, sun: { elevationDeg: 20 }, weather: { kind: 'clear' } };
   const background = Choice.background(snapshot);
