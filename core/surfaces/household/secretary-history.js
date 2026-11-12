@@ -5,9 +5,10 @@ const context = require('../../src/services/personalHistoryContextService');
 const sourceReview = require('../../src/services/personalHistorySourceReview');
 const preservation = require('../../src/services/personalHistoryPreservation');
 const decisionState = require('../../src/services/personalHistoryDecisionState');
+const messageScope = require('../../src/services/personalHistoryMessageScope');
 
 function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' },
-  preservationDeps = { audience: 'owner' }, decisionStateDeps = { audience: 'owner' } }) {
+  preservationDeps = { audience: 'owner' }, decisionStateDeps = { audience: 'owner' }, messageScopeDeps = { audience: 'owner' } }) {
   const respond = async (res, action) => {
     try { return envelope(res, await action()); }
     catch (error) { return fail(res, error.statusCode || 500, error.message, error.code || 'PERSONAL_HISTORY_FAILED'); }
@@ -15,6 +16,8 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDe
   const sourceResponse = (res, action) => { res.set('Cache-Control', 'private, no-store'); return respond(res, action); };
   router.get('/history', (req, res) => respond(res, () => history.list(req.query)));
   router.get('/history/timeline', (_req, res) => respond(res, () => history.timeline()));
+  router.post('/history/decision-state/discover', (req, res) => sourceResponse(res,
+    () => messageScope.discover(req.body, messageScopeDeps)));
   router.get('/history/:id/decision-state', (req, res) => sourceResponse(res,
     () => decisionState.get(req.params.id, req.query, decisionStateDeps)));
   router.post('/history/:id/decision-state/check', (req, res) => sourceResponse(res,

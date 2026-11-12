@@ -71,6 +71,7 @@ const schema = new mongoose.Schema({
 
 schema.index({ scope: 1, reviewState: 1, sourceDate: 1, _id: 1 });
 schema.index({ 'source.system': 1, 'source.messageId': 1 });
+schema.index({ 'relatedSources.system': 1, 'relatedSources.messageId': 1 });
 schema.index({ sourceReviewRequestKeys: 1 }, { unique: true, sparse: true });
 schema.index({ preservationRequestKeys: 1 }, { unique: true, sparse: true });
 
