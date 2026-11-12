@@ -6,6 +6,8 @@ const { id, hash } = require('./phoneLibrary');
 const { fail } = require('./importFiles');
 const { loadProcessingConfig } = require('./photoProcessingConfig');
 const { createPhotoProcessingBridge } = require('./photoProcessingBridge');
+const PENDING = { state: { $in: ['queued', 'claimed', 'running', 'uncertain'] } };
+const MAX_PENDING = 16;
 const WC = { w: 1, j: true };
 function operationId(value) {
   const bytes = crypto.createHash('sha256').update(value).digest().subarray(0, 16);
@@ -28,6 +30,7 @@ async function enrollRun(input, deps = {}) {
 async function discover(deps = {}) {
   const config = (deps.config || loadProcessingConfig)();
   if (!config) return;
+  if (await Batches.countDocuments(PENDING) >= MAX_PENDING) return;
   const bridge = deps.bridge || createPhotoProcessingBridge({ config: deps.config || loadProcessingConfig });
   if (config.autoProcess === true) {
     const result = await bridge.call({ op: 'runs' });
@@ -37,6 +40,7 @@ async function discover(deps = {}) {
   // read. Pending receipts are revisited on the next pass; partial inventories
   // never imply a complete phone backup.
   for (const run of await Runs.find({ state: 'active' }).sort({ lastObservedAt: 1 }).limit(5).lean()) {
+    if (await Batches.countDocuments(PENDING) >= MAX_PENDING) break;
     try {
       let cursor = run.cursor;
       for (let pages = 0; pages < 4; pages++) {

@@ -123,3 +123,19 @@ test('whole-run discovery revisits receipts that arrive later and does not queue
   expect(await Batches.countDocuments()).toBe(2);
   await discover({ ...deps, bridge }); expect(await Batches.countDocuments()).toBe(2);
 });
+
+
+test('discovery waits at its pending batch limit and admits later receipts when capacity returns', async () => {
+  const { enrollRun, discover } = require('../../src/services/photos/photoProcessingRuns');
+  const runId = uuid(), requestId = uuid();
+  await enrollRun({ runId, operationId: uuid() }, deps);
+  const rows = Array.from({ length: 16 }, () => ({ _id: uuid(), runId: uuid(), items: [uuid()], state: 'queued' }));
+  await Batches.insertMany(rows);
+  const bridge = { call: jest.fn(async () => ({ total: 1, items: [{ requestId, backup: { sha256: 'a'.repeat(64) } }] })) };
+  await discover({ ...deps, bridge });
+  expect(bridge.call).not.toHaveBeenCalled(); expect(await Batches.countDocuments()).toBe(16);
+  await Batches.updateOne({ _id: rows[0]._id }, { $set: { state: 'completed' } });
+  await discover({ ...deps, bridge });
+  expect(await Batches.countDocuments({ runId, items: requestId })).toBe(1);
+  expect(await Batches.countDocuments({ state: 'queued' })).toBe(16);
+});
