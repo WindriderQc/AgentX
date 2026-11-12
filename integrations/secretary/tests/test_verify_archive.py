@@ -119,6 +119,60 @@ class VerifyArchiveTests(unittest.TestCase):
                          {key: original[key] for key in ("path", "sha256", "bytes")})
         self.assertEqual((restored["partsDecoded"], restored["attachmentsDecoded"]), (2, 1))
 
+    def test_kept_restore_never_overwrites_an_existing_file(self):
+        _, receipts = module.verify(self.copy)
+        receipt = receipts[0]
+        target = Path(self.temp.name) / "restore"
+        target.mkdir()
+        existing = target / Path(receipt["path"]).name
+        existing.write_bytes(b"existing restored mail must survive")
+        sample = module.restore_sample(self.copy, [receipt], 1, target)
+        self.assertEqual(existing.read_bytes(), b"existing restored mail must survive")
+        self.assertEqual((sample["opened"], sample["sources"]), (0, {}))
+        self.assertEqual(sample["failures"], [{"messageId": receipt["messageId"], "error": "FileExistsError"}])
+
+    def test_kept_restore_never_follows_an_existing_destination_symlink(self):
+        _, receipts = module.verify(self.copy)
+        receipt = receipts[0]
+        target = Path(self.temp.name) / "restore"
+        target.mkdir()
+        protected = Path(self.temp.name) / "unrelated.eml"
+        protected.write_bytes(b"unrelated mail must survive")
+        restored = target / Path(receipt["path"]).name
+        restored.symlink_to(protected)
+        sample = module.restore_sample(self.copy, [receipt], 1, target)
+        self.assertTrue(restored.is_symlink())
+        self.assertEqual(protected.read_bytes(), b"unrelated mail must survive")
+        self.assertEqual((sample["opened"], sample["sources"]), (0, {}))
+        self.assertEqual(sample["failures"], [{"messageId": receipt["messageId"], "error": "FileExistsError"}])
+
+    def test_a_new_kept_sample_opens_and_a_second_drill_preserves_its_bytes(self):
+        _, receipts = module.verify(self.copy)
+        target = Path(self.temp.name) / "restore"
+        first = module.restore_sample(self.copy, receipts, 2, target)
+        before = {p.name: p.read_bytes() for p in target.iterdir()}
+        second = module.restore_sample(self.copy, receipts, 2, target)
+        self.assertEqual((first["opened"], first["failures"]), (2, []))
+        self.assertEqual(len(first["sources"]), 2)
+        self.assertEqual({p.name: p.read_bytes() for p in target.iterdir()}, before)
+        self.assertEqual((second["opened"], second["sources"]), (0, {}))
+        self.assertEqual({failure["error"] for failure in second["failures"]}, {"FileExistsError"})
+
+    def test_cli_collision_fails_integrity_and_cannot_emit_successful_restore_evidence(self):
+        _, receipts = module.verify(self.copy)
+        target = Path(self.temp.name) / "restore"
+        module.restore_sample(self.copy, receipts, 2, target)
+        report, proof = Path(self.temp.name) / "report.json", Path(self.temp.name) / "proof.json"
+        with mock.patch.object(sys, "argv", ["verify_archive.py", str(self.copy), "--sample", "2",
+                                           "--restore-to", str(target), "--report", str(report), "--proof", str(proof)]), \
+                mock.patch("builtins.print"):
+            self.assertEqual(module.main(), 2)
+        observed, evidence = json.loads(report.read_text()), json.loads(proof.read_text())
+        self.assertFalse(observed["intact"])
+        self.assertFalse(evidence["intact"])
+        self.assertEqual(evidence["restoreSample"]["sources"], {})
+        self.assertEqual(len(evidence["restoreSample"]["failures"]), 2)
+
     def test_lost_or_corrupt_originals_leave_no_successful_restore_source(self):
         _, receipts = module.verify(self.copy)
         (self.copy / receipts[0]["path"]).unlink()

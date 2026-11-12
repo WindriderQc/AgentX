@@ -696,8 +696,12 @@ SHA-256: originals (and their Message-ID against the archived thread),
 attachments, Outlook items and the kept PST exports, and lists missing or
 mismatched ones by id or relative path. `--sample N` restores N originals into
 a disposable directory (removed afterwards unless `--restore-to` is given) and
-opens each like a mail client, decoding every MIME part. It has no dependency on
-the other Secretary modules, so it runs on the machine that holds the copy.
+opens each like a mail client, decoding every MIME part. Restored files are
+created exclusively: an existing filename, including a symlink or hard link,
+is retained unchanged and reported as a failed sample without a successful
+source receipt. Choose a fresh output directory for another kept drill.
+It has no dependency on the other Secretary modules, so it runs on the machine
+that holds the copy.
 Exit code 0 means intact; the report holds counts and identifiers only.
 
 ```bash
