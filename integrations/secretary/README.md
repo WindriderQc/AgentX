@@ -439,6 +439,20 @@ dispositions. A large real archive observation uses the heavy-work queue;
 synthetic checks remain direct. Source tests and native instance acceptance
 are separate results.
 
+Adding `--native-decisions` selects the v2 reconciliation report. Core compares
+each selected entry projection with its current committed document and binds
+its decisions, review history, context and pending source-review intents to a
+fingerprint. At most 100 selected entries are rechecked twice with fresh
+observation IDs; native failures never fall back to the legacy observation.
+Pending intents produce exit code 2, while a changing or unavailable native
+state refuses without a success report. Standard output adds only native
+status/counts; exact identities and observations stay in the private report.
+Empty selection is `no_selected_entries`, not acceptance. The existing Gmail
+primary-source discovery does not establish cross-source completeness, and
+individual committed documents are not an atomic batch. All four global gaps
+remain; no planner acceptance, grant or mailbox effect follows. See the
+[native decision contract](../../docs/SECRETARY_DOSSIER_REVIEW.md#native-state-of-a-selected-historical-decision).
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive

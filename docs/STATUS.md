@@ -284,6 +284,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   Core retains a revalidatable receipt on the same assertion; erasure clears it.
   Missing or changed copies remain blocked, with no cleanup authority. See
   [native preservation](SECRETARY_DOSSIER_REVIEW.md#native-preservation-of-a-selected-source).
+  A read-only native decision fingerprint also binds one committed entry's
+  decisions, context and pending source-review intents. The optional retention
+  reconciliation consumer rechecks these selected documents without claiming
+  an atomic batch, complete discovery or cleanup acceptance. See
+  [native decision state](SECRETARY_DOSSIER_REVIEW.md#native-state-of-a-selected-historical-decision).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a
   souvenir: a permanent owner note with its event date, people, places and

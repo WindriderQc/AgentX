@@ -196,6 +196,54 @@ the receipt records that limitation. Names, model text, headers and client
 all four native acceptance gaps and its blocked/false execution flags. This
 source-text review supplies no cleanup manifest, grant or executor.
 
+## Native state of a selected historical decision
+
+`GET /api/secretary/history/:id/decision-state` observes the selected committed
+Core history document. Its `agentx.history-decision-state/v1` fingerprint binds
+the entry revision and projection, exact source references, context version,
+decision and confirmation, review history, and complete embedded source-review
+state, including pending intents and page progress. Reasons and source bodies
+are not returned. A souvenir reference remains `not_rechecked`: reading this
+document does not inspect the current note, provider or archive.
+
+The optional `expected` query fingerprint returns `observed_match` or `changed`.
+`POST .../decision-state/check` is also read-only: it takes the earlier `entry`
+projection, a fresh UUID `observationId`, and optional `expected` fingerprint.
+Core compares that projection against its own current entry and returns
+`entryMatches` separately from fingerprint equality. A supplied value never
+becomes native evidence. The consumer must require both the expected equality
+and `entryMatches: true`. The echoed observation identity rejects substitution
+of an older response; it creates no durable intent, decision or grant. Core
+performs the full JSON comparison so consumers need not reproduce JavaScript
+number serialization. The current souvenir projection from a list (`souvenir`)
+is excluded by the consumer; its reference remains pinned in the entry.
+
+Both routes use the existing owner human-surface boundary and private/no-store
+responses. Family-pinned clients are refused. After the awaited privacy lookup,
+a final native read supplies the complete document; an erasure committed during
+that lookup cannot return an older decision. Missing and forgotten entries share
+the same unavailable response. Input projections are bounded to 256 KiB and the
+returned snapshot to 64 KiB. The check stores no observation and records no new
+decision; existing privacy suppression still applies.
+
+`retention_reconcile.py --native-decisions` additionally compares the selected
+disposition's decision entries, and current primary/related assertions found by
+its existing Gmail history discovery, through this native contract. At most
+100 entry identities are checked twice with fresh observation IDs and matching
+fingerprints. The v2 private report retains native fingerprints, observation IDs
+and times, pending intent counts and the unchanged global blockers. A pending
+intent returns exit code 2; an unavailable, changed or malformed native reply
+refuses without a success report and never falls back to the legacy reader.
+An empty selection is `no_selected_entries`, never accepted decision coverage.
+
+Each native snapshot is one committed document, not an atomic batch. The
+existing paginated discovery covers entries whose primary source is Gmail;
+it does not prove discovery of every cross-source assertion citing mail,
+completeness of archive findings, semantic correctness or downstream settlement.
+The legacy v1 observation stays available without the flag. Neither report is a
+retention-planner acceptance input: all four global native gaps, blocked cleanup
+and false execution flags remain. No human approval or mailbox executor is added.
+
 ## Native preservation of a selected source
 
 `POST /api/secretary/history/:id/preservation` takes only a stable UUID
