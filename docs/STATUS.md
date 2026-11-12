@@ -295,6 +295,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   reconciliation consumer rechecks these selected documents without claiming
   an atomic batch, complete discovery or cleanup acceptance. See
   [native decision state](SECRETARY_DOSSIER_REVIEW.md#native-state-of-a-selected-historical-decision).
+  Exact-message discovery also observes primary and related mail references
+  across source systems within explicit record/byte bounds. Its optional v3
+  reconciliation detects linked open actions missing from an earlier Gmail
+  export, without claiming archive completeness or atomic acceptance. See
+  [message discovery](SECRETARY_DOSSIER_REVIEW.md#native-discovery-for-an-exact-mail-message).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a
   souvenir: a permanent owner note with its event date, people, places and

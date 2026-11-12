@@ -453,6 +453,20 @@ individual committed documents are not an atomic batch. All four global gaps
 remain; no planner acceptance, grant or mailbox effect follows. See the
 [native decision contract](../../docs/SECRETARY_DOSSIER_REVIEW.md#native-state-of-a-selected-historical-decision).
 
+`--native-message-scope` selects v3 and implies native decision checks. It
+discovers only the 1–20 exact selected messages through Core's primary and
+related references, including assertions whose primary source is a document
+or another system. It observes at most 100 distinct entries and 16 MiB per
+pass, rechecks both membership and every native decision fingerprint, and
+retains final native scope receipts privately. Conflicting references,
+changed/shared entries, unavailable contracts or capacity limits refuse; no
+legacy whole-history scan is used as a fallback. Existing v1/v2 modes and all
+four global cleanup gaps remain. Observed Core membership is not an atomic
+batch, complete archive finding coverage or semantic/downstream acceptance.
+See the [exact-message contract](../../docs/SECRETARY_DOSSIER_REVIEW.md#native-discovery-for-an-exact-mail-message)
+for native record/response bounds. Large real archive observations still use
+the heavy-work queue; this mode performs no provider action or cleanup.
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive

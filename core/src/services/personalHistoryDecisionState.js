@@ -79,4 +79,4 @@ async function check(id, input, deps) {
   return get(id, input.expected === undefined ? {} : { expected: input.expected }, deps, input.entry, input.observationId);
 }
 
-module.exports = { get, check, CONTRACT };
+module.exports = { get, check, snapshot, CONTRACT };

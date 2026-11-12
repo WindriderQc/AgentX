@@ -244,6 +244,56 @@ The legacy v1 observation stays available without the flag. Neither report is a
 retention-planner acceptance input: all four global native gaps, blocked cleanup
 and false execution flags remain. No human approval or mailbox executor is added.
 
+## Native discovery for an exact mail message
+
+`POST /api/secretary/history/decision-state/discover` observes visible owner
+history entries citing one selected Gmail message, either as the primary source
+or within `relatedSources`. The primary source may be a document, testimony,
+export or another supported system. Other messages in the same thread are not
+selected. The input contains only `source` (system, message/thread IDs and
+original SHA-256), a fresh UUID `observationId`, and optional `expected`
+fingerprint. It supplies expectations, never authority or an import.
+
+The `agentx.history-message-scope/v1` snapshot binds the selected reference to
+the sorted entry IDs, revisions and native decision-state fingerprints. The
+query matches the message identity before checking thread/hash equality, so a
+conflicting recorded reference remains an explicit `sourceBinding: conflict`
+instead of disappearing behind the selection filter. Every matching reference
+on an entry must agree; the client refuses a conflict. The echoed observation
+UUID, scope fingerprint and per-entry native checks reject older replies,
+missing members, altered projections or a changed decision.
+
+Core performs two bounded membership queries around the existing privacy
+checks. Changed membership, decisions or privacy guards refuse the observation;
+no old entry is returned after an erasure settles during the privacy lookup.
+The reader excludes context source bodies inside MongoDB, then conditionally
+projects at most 512 KiB per stored record before materializing it in Node.
+It refuses more than 100 entries, 8 MiB of selected stored records or a 4 MiB
+response, without returning a partial successful scope. Each database query has
+a five-second limit. Responses are private/no-store; the existing owner and
+pinned-family boundary applies. No observation or new decision is stored.
+Existing privacy suppression still applies to forgotten content.
+
+`retention_reconcile.py --native-message-scope` selects the v3 private report
+and implies native decision checks. It discovers exactly 1–20 messages from the
+saved disposition file, with at most 100 distinct entries across them and
+16 MiB of aggregate responses per observation. It does not paginate or scan
+unrelated history. Each discovered member must still match the per-entry native
+contract; two agreeing scope observations and fresh entry rechecks are required.
+The report retains final scope fingerprints, native member pins and observation
+identities/times. Changing shared entries, unavailable contracts, capacity limits
+or malformed replies refuse without a success report or legacy fallback. The
+archive, saved dispositions and prior reports are unchanged. Existing v1 and v2
+modes retain their original behavior.
+
+This covers observed visible membership for the selected messages in Core,
+including references across primary source systems. It establishes neither one
+atomic cross-document snapshot nor complete archive finding coverage. Empty
+membership is `no_selected_entries`, not semantic or cleanup acceptance.
+Forgotten entries contribute no decisions. Souvenir/provider/archive state is
+not rechecked. All four global native gaps, blocked cleanup and false execution
+flags remain; no permission, approval binding, model campaign or executor is added.
+
 ## Native preservation of a selected source
 
 `POST /api/secretary/history/:id/preservation` takes only a stable UUID
