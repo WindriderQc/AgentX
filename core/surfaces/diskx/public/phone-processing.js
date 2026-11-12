@@ -49,6 +49,7 @@
         if (proposal.reasons.length) body.append(node('p', proposal.reasons.join(' · ')));
         if (proposal.privacyReview) body.append(node('p', 'L’analyse suggère une vérification du contenu personnel.'));
       } else if (row.analysis?.state === 'running') body.append(node('p', 'Analyse en cours ou à réconcilier.'));
+      else if (row.analysis?.state === 'failed') body.append(node('p', 'La proposition de l’analyse n’est pas exploitable. Les métadonnées restent disponibles pour ta relecture.'));
       if (row.assetId && row.metadata?.type === 'IMAGE') {
         const picture = card.querySelector('.picture');
         if (picture && !picture.querySelector('img')) {

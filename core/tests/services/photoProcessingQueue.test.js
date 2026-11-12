@@ -67,7 +67,7 @@ test('a lost begin reply leaves the crossed fence held without relaunching', asy
   expect(await Batches.countDocuments({ workerSlot: 'photo-processing' })).toBe(1);
 });
 
-test('indexing, metadata, vision and portable export dedupe the same content across occurrences', async () => {
+test.each([true, false])('indexing and portable export dedupe content and retain a completed model result (valid proposal: %s)', async valid => {
   const request = await worker.enqueue(input(), deps), row = await Batches.findById(request.operationId).lean();
   const sha256 = 'a'.repeat(64), analysis = { description: 'Synthetic landscape', tags: ['nature'], quality: 'bonne',
     frameSuitability: 'oui', reasons: ['Composition simple'], privacyReview: false };
@@ -75,14 +75,19 @@ test('indexing, metadata, vision and portable export dedupe the same content acr
   const bridge = { call: jest.fn(async command => command.op === 'project' ? { results: [projected, projected] } : { exported: true }) };
   const asset = { id: uuid(), libraryId: config().libraryId, hasMetadata: true, type: 'IMAGE', exifInfo: { dateTimeOriginal: '2020-01-02T03:04:05Z', description: 'Human text' }, tags: [{ value: 'Human tag' }] };
   const immich = { validateLibrary: jest.fn(), asset: jest.fn(async () => asset), scan: jest.fn(), pendingTag: jest.fn() };
-  const inference = { execute: jest.fn(async () => ({ ok: true, body: { message: { content: JSON.stringify(analysis) } }, metadata: { model: 'synthetic-vision' } })) };
+  const inference = { execute: jest.fn(async () => ({ ok: true, body: { message: { content: valid ? JSON.stringify(analysis) : 'invalid-json' } }, metadata: { model: 'synthetic-vision' } })) };
   const client = { json: jest.fn(async p => p === '/jobs' ? idle() : []), image: jest.fn(async () => ({ bytes: Buffer.from('synthetic-preview'), contentType: 'image/jpeg' })) };
   const work = createPhotoProcessingWork({ config, bridge, immich, inference, client });
   await worker.sweep({ ...deps, work, wait: true });
   expect((await Batches.findById(row._id)).state).toBe('completed'); expect(inference.execute).toHaveBeenCalledTimes(1);
   const stored = await Cards.findById(sha256).lean();
-  expect(stored.analysis.card).toMatchObject({ reviewed: false, sourceSha256: sha256, proposal: analysis,
+  expect(stored.analysis.card).toMatchObject({ reviewed: false, sourceSha256: sha256,
     metadata: { exif: { description: 'Human text' }, tags: ['Human tag'] } });
+  if (valid) expect(stored.analysis.card.proposal).toEqual(analysis);
+  else {
+    expect(stored.analysis).toMatchObject({ state: 'failed', card: { vision: 'failed', error: 'PHOTO_ANALYSIS_INVALID' } });
+    expect((await Batches.findById(row._id)).progress.failedAnalyses).toBe(1);
+  }
   expect(client.json.mock.calls.some(([p, options]) => p.startsWith('/assets/') && options?.method === 'PUT')).toBe(false);
   expect(bridge.call.mock.calls.filter(([x]) => x.op === 'exportCard')).toHaveLength(1);
   expect((await worker.observe(await queue.get(request.queueId), { client })).state).toBe('completed');

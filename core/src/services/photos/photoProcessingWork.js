@@ -6,7 +6,7 @@ const { createPhotoProcessingBridge } = require('./photoProcessingBridge');
 const { createImmichClient } = require('./immichClient');
 const { createPhotoProcessingImmich, metadata } = require('./photoProcessingImmich');
 const { loadProcessingConfig } = require('./photoProcessingConfig');
-const { analyze } = require('./photoAnalysis');
+const { analyze, completedAnalysisFailure } = require('./photoAnalysis');
 const { fail } = require('./importFiles');
 const { hash } = require('./phoneLibrary');
 const WC = { w: 1, j: true };
@@ -71,7 +71,7 @@ function createPhotoProcessingWork(deps = {}) {
     } else if (!queuesIdle(await client.json('/jobs'))) {
       throw fail('PHOTO_INDEX_RECONCILIATION_REQUIRED', 'Immich still has active indexing work');
     }
-    let completed = 0;
+    let completed = 0, failedAnalyses = 0;
     for (const projection of selected) {
       const asset = assets.get(projection.sha256);
       const ocr = await client.json('/assets/' + asset.id + '/ocr');
@@ -89,12 +89,23 @@ function createPhotoProcessingWork(deps = {}) {
           { new: true, writeConcern: WC }).lean();
         if (!claimed) throw fail('PHOTO_ANALYSIS_HELD', 'Another analysis owns this content');
         const inference = deps.inference || require('../../extensions/trustedRuntimeServices').createTrustedRuntimeServices().inference;
-        const result = { ...await analyze({ inference, ...preview, sha256: card._id, analysisId, queueId: job.id, target: row.target }), metadata: card.metadata };
+        let result, state = 'completed';
+        try { result = { ...await analyze({ inference, ...preview, sha256: card._id, analysisId, queueId: job.id, target: row.target }), metadata: card.metadata }; }
+        catch (error) {
+          // A malformed returned proposal is a known completed inference, not
+          // evidence of an outstanding model call. Preserve its failed attempt
+          // without retrying it or blocking unrelated content indefinitely.
+          if (!completedAnalysisFailure(error)) throw error;
+          state = 'failed';
+          result = { schema: 'agentx.photo-metadata/v1', analysisId, sourceSha256: card._id,
+            metadata: card.metadata, reviewed: false, vision: 'failed', error: error.code };
+        }
         await cards.updateOne({ _id: card._id, 'analysis.analysisId': analysisId, 'analysis.state': 'running' },
-          { $set: { analysis: { state: 'completed', analysisId, card: result } } }, { writeConcern: WC });
+          { $set: { analysis: { state, analysisId, card: result } } }, { writeConcern: WC });
         card = await cards.findById(card._id).lean();
       }
       if (card.analysis?.state === 'running') throw fail('PHOTO_ANALYSIS_HELD', 'Observe the original analysis; no model replay');
+      if (card.analysis?.state === 'failed') failedAnalyses++;
       if (asset.type !== 'IMAGE' && !card.analysis) {
         const analysisId = crypto.randomUUID();
         await cards.updateOne({ _id: card._id, analysis: { $exists: false } }, { $set: { analysis: { state: 'completed', analysisId,
@@ -108,7 +119,8 @@ function createPhotoProcessingWork(deps = {}) {
       await batches.updateOne({ _id: row._id }, { $set: { progress: { phase: 'analysis', selected: selected.length, completed } } });
     }
     await batches.updateOne({ _id: row._id, dispatchId: job.dispatchId }, { $set: { state: 'completed', finishedAt: new Date(),
-      progress: { phase: 'completed', selected: selected.length, completed, companions: projection.results.length - selected.length } } }, { writeConcern: WC });
+      progress: { phase: 'completed', selected: selected.length, completed, failedAnalyses,
+        companions: projection.results.length - selected.length } } }, { writeConcern: WC });
   }
   return { run };
 }
