@@ -133,6 +133,44 @@ canonical originals into cleanup candidates.
 
 ## API and recovery
 
+### Draining before Core maintenance
+
+Core records a durable batch writer in the runtime coordination document
+before claiming a photo worker slot or crossing the queue dispatch fence.
+Maintenance acquisition and writer admission exclude each other in that same
+Mongo compare-and-set. The writer covers projection, indexing, the gaps between
+image calls, metadata cards and portable export. It changes no inference,
+Benchmark or Profiler admission.
+
+The Bash launcher requests the existing bounded runtime drain when its only
+blockers are active photo writers and drainable background inference. Core's
+photo monitor stops admitting batches during that drain; an already admitted
+batch continues normally. The writer releases only after the native batch is
+completed and Immich indexing is settled. The maintenance lease then keeps new
+batches out across the recreate, even when process-local drain advice clears.
+After lease release, the monitor resumes the existing FIFO and reuses completed
+content cards. A drain timeout withdraws the advice and refuses maintenance;
+it never terminates a batch.
+
+An unstarted validation/reservation refusal releases only its own writer and
+leaves the selection queued. A lost begin response, unknown model/scan/export
+outcome or process crash retains the original identity and durable fence.
+Neither elapsed time nor a terminal queue alone clears that fence. Completed
+batches with settled indexing can be observed after a restart; uncertain effects
+require native reconciliation. Runtime coordination lists the writer without
+its process proof and names it in deployment blockers. Unknown writers also
+raise the existing runtime quarantine alert.
+
+For the first installation on a version without this protocol, its drain
+endpoint does not protect photo batches. Through the existing queue operator,
+reserve the earliest unstarted FIFO photo request in a future window, preserving
+its identity and selection. Verify that request remains unstarted and later
+photo requests stay behind it. Let the current batch finish, observe its queue
+release and settled indexing, then deploy through the ordinary maintenance gate.
+Keep the future FIFO reservation in place until the new Core is verified; move
+that same reservation back through the native operator to resume processing.
+If any identity or launch is uncertain, stop the installation and observe it.
+
 `GET /api/phone-media/processing` returns configuration availability only.
 The owner-only POST endpoint admits `page`, `enqueueRun`, bounded `enqueue`,
 `review` and `frame`. Family/demo restrictions match the phone workbench.

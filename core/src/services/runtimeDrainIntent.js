@@ -3,8 +3,8 @@
 // A drain request (#253): the launcher says a recreate is about to happen so
 // resumable background work pauses before its next unit instead of holding the
 // deploy guard indefinitely. It is advice read through runtime coordination,
-// not a lease: nothing is refused because of it, and it lives in this process
-// only, so it disappears with the recreate it announces.
+// not a lease: cooperative writers stop admitting their next unit. It lives
+// in this process only; the durable maintenance lease protects the recreate.
 
 const MIN_TTL_MS = 30 * 1000;
 const MAX_TTL_MS = 10 * 60 * 1000;

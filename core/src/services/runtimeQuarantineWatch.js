@@ -27,6 +27,12 @@ function expiredFor(item, now) {
 
 function findQuarantines(runtime, prefs, now = Date.now()) {
   const found = [];
+  for (const writer of runtime?.coreWriters || []) {
+    if (writer.state !== 'UNKNOWN') continue;
+    found.push({ host: 'core', holder: writer.operationId, kind: writer.kind,
+      failureCode: 'core_writer_unknown', reason: 'Reconcile the original batch and queue receipts',
+      since: writer.acquiredAt });
+  }
   if (runtime?.maintenance?.state === 'UNKNOWN') {
     found.push({ host: 'maintenance', holder: runtime.maintenance.requestId || runtime.maintenance.leaseId,
       kind: `maintenance:${runtime.maintenance.scope || 'unknown'}`, failureCode: 'maintenance_unknown',

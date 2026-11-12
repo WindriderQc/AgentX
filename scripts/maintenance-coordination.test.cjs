@@ -72,6 +72,12 @@ test('maintenance and UNKNOWN workloads remain blockers in a valid snapshot', as
   assert.deepEqual(await readCoordination({ read: async () => snapshot(busy) }), busy);
 });
 
+test('Core batch writers remain visible and malformed writer lists refuse', async () => {
+  const busy = { ...idle, coreWriters: [{ kind: 'photo-processing', operationId: 'synthetic-batch', state: 'UNKNOWN' }] };
+  assert.deepEqual(await readCoordination({ read: async () => snapshot(busy) }), busy);
+  await assert.rejects(readCoordination({ read: async () => snapshot({ ...idle, coreWriters: null }) }), /snapshot is unavailable/);
+});
+
 test('an incomplete coordination read prevents the actual recreate driver from invoking its launcher', async () => {
   const { recreateWhenIdle } = require('./maintenance-actions.cjs');
   let launched = false;

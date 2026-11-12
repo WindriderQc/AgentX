@@ -83,7 +83,7 @@ test('a refused lease prints the blockers Core names, with their cancel route, a
 });
 
 // A Core held only by background inference, which stops once a drain is requested (#253).
-function drainingCore(blocker) {
+function drainingCore(blocker, completes = true) {
   const seen = [];
   let draining = false;
   const server = http.createServer((req, res) => {
@@ -93,7 +93,7 @@ function drainingCore(blocker) {
       const send = (status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
       if (req.url === '/api/nerve-center/runtime-coordination/drain') { draining = req.method === 'POST'; return send(200, { data: {} }); }
       if (req.method === 'POST' && req.url === '/api/nerve-center/maintenance-leases') {
-        return draining ? send(200, { data: { acquired: true, leaseId: 'lease-1', generation: 'gen-1' } })
+        return draining && completes ? send(200, { data: { acquired: true, leaseId: 'lease-1', generation: 'gen-1' } })
           : send(409, { status: 'error', data: { acquired: false, blockers: [blocker] } });
       }
       return send(200, { data: { released: true, heartbeat: true } });
@@ -111,7 +111,44 @@ test('held only by background inference, the launcher asks it to pause, takes th
     assert.match(result.stdout, /rc=0 id=lease-1/);
     assert.match(result.stderr, /asking it to pause/);
     const drain = core.seen.filter(call => call.endsWith('/runtime-coordination/drain'));
-    assert.deepEqual(drain.map(call => call.split(' ')[0]), ['POST', 'DELETE']);
+    assert.equal(drain[0].split(' ')[0], 'POST');
+    assert.equal(drain.at(-1).split(' ')[0], 'DELETE');
+    assert.ok(drain.slice(0, -1).every(call => call.startsWith('POST ')));
+  } finally { core.server.close(); }
+});
+
+test('a full photo batch is drained even between inferences, while UNKNOWN never asks for a forced finish', async () => {
+  for (const [state, drainable] of [['ACTIVE', true], ['UNKNOWN', false]]) {
+    const core = await drainingCore({ type: 'core-writer', kind: 'photo-processing', drainable,
+      id: 'synthetic-batch', state, summary: 'Core owns synthetic-batch through indexing and export' });
+    try {
+      const result = await run(`runtime_lease_acquire '${core.url}' core-recreate; echo "rc=$?"; runtime_lease_release`,
+        { AGENTX_RUNTIME_LEASE_DRAIN_SECONDS: '3', AGENTX_RUNTIME_LEASE_DRAIN_POLL_SECONDS: '1' });
+      assert.match(result.stdout, drainable ? /rc=0/ : /rc=10/);
+      assert.equal(core.seen.some(call => call.includes('/drain')), drainable);
+    } finally { core.server.close(); }
+  }
+});
+
+test('only the native photo inference label is drainable; interactive and UNKNOWN labels stay excluded', async () => {
+  const result = await run(`for body in \
+    '{"type":"inference","kind":"trusted-runtime","drainable":true}' \
+    '{"type":"inference","kind":"trusted-runtime","drainable":false}' \
+    '{"type":"inference","kind":"inference-automated","drainable":false}'; do
+      runtime_lease_drainable "$body"; echo "rc=$?"
+    done`);
+  assert.equal(result.stdout.trim(), 'rc=0\nrc=1\nrc=1');
+});
+
+test('a batch exceeding the drain budget retains its refusal and withdraws the drain without a recreate', async () => {
+  const core = await drainingCore({ type: 'core-writer', kind: 'photo-processing', drainable: true,
+    summary: 'Active synthetic batch still owns export' }, false);
+  try {
+    const result = await run(`runtime_lease_acquire '${core.url}' core-recreate; echo "rc=$? id=[$RUNTIME_LEASE_ID]"`,
+      { AGENTX_RUNTIME_LEASE_DRAIN_SECONDS: '2', AGENTX_RUNTIME_LEASE_DRAIN_POLL_SECONDS: '1' });
+    assert.match(result.stdout, /rc=10 id=\[\]/);
+    assert.equal(core.seen.at(-1), 'DELETE /api/nerve-center/runtime-coordination/drain');
+    assert.equal(core.seen.filter(call => call === 'POST /api/nerve-center/maintenance-leases').length, 3);
   } finally { core.server.close(); }
 });
 

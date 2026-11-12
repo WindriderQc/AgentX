@@ -26,10 +26,12 @@ async function readCoordination({ coreUrl, read, now = Date.now,
   if (!response?.ok || response.json?.status !== 'success' || !data || typeof data !== 'object'
     || !Object.hasOwn(data, 'maintenance')
     || !(data.maintenance === null || (typeof data.maintenance === 'object' && !Array.isArray(data.maintenance)))
-    || !Array.isArray(data.workloads) || !Array.isArray(data.inferences)) {
+    || !Array.isArray(data.workloads) || !Array.isArray(data.inferences)
+    || (Object.hasOwn(data, 'coreWriters') && !Array.isArray(data.coreWriters))) {
     throw new Error('Core runtime coordination snapshot is unavailable or incomplete');
   }
-  return { maintenance: data.maintenance, workloads: data.workloads, inferences: data.inferences };
+  return { maintenance: data.maintenance, workloads: data.workloads, inferences: data.inferences,
+    ...(Object.hasOwn(data, 'coreWriters') ? { coreWriters: data.coreWriters } : {}) };
 }
 
 module.exports = { readCoordination };
