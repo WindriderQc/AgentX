@@ -21,8 +21,11 @@ separate selected-cleanup confirmation.
    companions remain backed up and are not standalone gallery assets.
 4. A dedicated Immich external library indexes that managed directory. Core
    checks its sole import path before requesting a scan. Original path, library,
-   size and Immich's SHA-1 must match the SHA-256-verified reference. SHA-1 is
-   only the upstream linkage check. Core observes indexing queues and metadata;
+   size and the applicable Immich checksum must match the verified reference.
+   External libraries may use SHA-1 of `path:<exact-original-path>`; legacy
+   assets may use content SHA-1. Neither replaces the NAS SHA-256 readback.
+   Assets whose metadata extraction is still pending are revisited. Core
+   observes indexing queues and metadata;
    accepting the scan is not completion.
 5. Immich supplies EXIF, OCR and existing named face groups. Core records those
    extracted facts separately from a bounded vision proposal. Images use a

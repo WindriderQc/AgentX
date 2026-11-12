@@ -69,3 +69,25 @@ test('an unobserved provisioning dispatch remains fenced even when the upstream 
   await expect(provision(request, { client })).rejects.toMatchObject({ code: 'PHOTO_SETUP_UNKNOWN' });
   expect(client.json.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
 });
+
+
+test('external path checksums link only the verified library/path and await metadata extraction', async () => {
+  const fixed = { libraryId: uuid(), originalPathPrefix: '/gallery' }, assetId = uuid();
+  const projection = { relativePath: 'run/photo.jpg', size: 123, immichChecksum: 'content-sha1' };
+  // Immich contract: SHA-1 of the exact path: prefix + original path.
+  let value = { id: assetId, libraryId: fixed.libraryId, originalPath: '/gallery/run/photo.jpg',
+    checksum: 'yPm62MY7AX2A65rYlkD+LXzJoKM=', hasMetadata: false };
+  const client = { json: jest.fn(async p => p === '/search/metadata' ? { assets: { items: [{ id: assetId }] } } : value) };
+  const upstream = createPhotoProcessingImmich({ client, config: () => fixed });
+  expect(await upstream.asset(projection)).toBeNull();
+  value = { ...value, hasMetadata: true, exifInfo: { fileSizeInByte: 123 } };
+  expect((await upstream.asset(projection)).id).toBe(assetId);
+  const original = structuredClone(value);
+  for (const patch of [{ checksum: undefined }, { checksum: 'another-path-checksum' }, { originalPath: '/gallery/run/other.jpg' },
+    { libraryId: uuid() }, { exifInfo: { fileSizeInByte: 124 } }, { isTrashed: true }]) {
+    value = { ...original, ...patch };
+    await expect(upstream.asset(projection)).rejects.toMatchObject({ code: 'PHOTO_ASSET_MISMATCH' });
+  }
+  value = { ...original, hasMetadata: false, libraryId: uuid() };
+  await expect(upstream.asset(projection)).rejects.toMatchObject({ code: 'PHOTO_ASSET_MISMATCH' });
+});
