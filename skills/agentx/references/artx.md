@@ -44,8 +44,8 @@ For a requested scene change, call `artx_present` with the current display and
 a stable request reference, then qualify the result as selected until a browser
 receipt confirms it. Use only tools actually available in the current runtime.
 
-The Sun and Moon may be drawn in daylight. The Moon is enlarged for readability;
-never present its drawn diameter as its true angular size. A `face`, `clock` or
+The Sun and Moon may be drawn in daylight. The Sun and Moon are enlarged for readability;
+never present a drawn diameter as its true angular size. A `face`, `clock` or
 `bar` reason describes an occlusion. A caption can name an occluded body without
 claiming its disc is visible. Read weather `observedAt` and freshness separately
 from the sky computation time; an expired weather layer supplies no current conditions.

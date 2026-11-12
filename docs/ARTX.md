@@ -63,7 +63,7 @@ not a second persistent personal-task or memory store.
 
 CPU fixtures cover the complete family-turn path, MCP and HTTP dispatch,
 idle timing, interrupted results, response reconciliation, weather masking and
-the panorama’s Moon avoidance. Installation, a real model choosing its tool
+fixed panorama geometry and occlusion captions. Installation, a real model choosing its tool
 and physical-device acceptance require separate evidence.
 
 
@@ -80,7 +80,7 @@ independently of the canvas pixel ratio.
 
 The Sun and Moon may appear in daylight, using Core's existing computed
 positions. Daylight planets and stars are omitted. The Sun and Moon carry explicit
-enlargement captions; its illuminated side uses the Sun's local tangent direction,
+enlargement captions. The Moon's illuminated side uses the Sun's local tangent direction,
 with the panorama's angular scaling. The sky palette follows the Sun's height
 in half-degree cache bins. Decorative daytime specks and the fixed sun glow
 are absent. ISS retains its separate framing and simulation badges.
