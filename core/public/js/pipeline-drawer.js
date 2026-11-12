@@ -191,6 +191,21 @@
       .reduce((latest, attempt) => !latest || Number(attempt.attempt) > Number(latest.attempt) ? attempt : latest, null);
     const verification = latestAttempt?.evidence?.schema && latestAttempt.completedAt ? latestAttempt.evidence.verification : null;
     const attemptDossier = renderAttemptDossier(task);
+    // Surface the latest recorded attempt, never an older successful receipt.
+    // This is evidence, not a second task status or a live execution assertion.
+    const stepEvidence = latestAttempt?.evidence || {};
+    const stepGraph = window.PipelineCodeStepGraph;
+    const codeSteps = window.PipelineCodeSteps;
+    const graphSummary = stepEvidence.codeStepGraph == null ? null : stepGraph?.summaryText(stepEvidence.codeStepGraph);
+    const stepsMarkup = stepEvidence.codeStepGraph != null
+      ? stepGraph?.render(stepEvidence.codeStepGraph, { escapeHtml })
+      : codeSteps?.render(stepEvidence.codeSteps, { escapeHtml });
+    const executionSteps = `<section class="pipeline-drawer-steps" aria-label="Execution and steps">
+      <header><h3>Execution and steps</h3><span>${latestAttempt ? `Latest recorded attempt ${escapeHtml(latestAttempt.attempt)}` : 'No recorded attempt'}</span></header>
+      <p class="pipeline-drawer-context">${latestAttempt?.completedAt ? `Attempt end recorded ${escapeHtml(formatDate(latestAttempt.completedAt))}.` : 'No attempt end recorded.'} Task status, human review and delivery remain separate.</p>
+      ${graphSummary ? `<p class="pipeline-drawer-step-summary">${escapeHtml(graphSummary)}</p><details data-drawer-section="visible-steps"><summary>View steps, dependencies and evidence</summary>${stepsMarkup}</details>`
+        : stepsMarkup || '<p class="pipeline-drawer-step-empty">No code-step plan recorded for this attempt. This does not mean no work was done; read the work updates and results below.</p>'}
+    </section>`;
     body.innerHTML = `
       <div class="pipeline-drawer-overview">
         <div class="pipeline-drawer-status">${statusBadge(task.status)} ${priorityChip(task.priority)} ${riskChip(task.risk)}${resolution ? ` <span class="pipeline-chip pipeline-chip-superseded" title="${escapeHtml(resolution.reason || '')}"><i class="fas fa-code-branch" aria-hidden="true"></i> Superseded by <a href="/pipeline?task=${encodeURIComponent(resolution.supersededBy)}">#${escapeHtml(resolution.supersededBy)}</a></span>` : ''}</div>
@@ -200,6 +215,7 @@
         </div>
       </div>
       <p class="pipeline-drawer-byline">${escapeHtml(task.assignee ? `Assigned to ${task.assignee}` : 'Not assigned')}${task.dueAt ? ` · Due ${escapeHtml(formatDate(task.dueAt))}` : ''}</p>
+      ${executionSteps}
       ${window.PipelineIntake?.markup(task, reviewer) || ''}
       ${window.PipelineWorkLinks?.markup(task, reviewer) || ''}
       <div class="pipeline-drawer-workspace" data-dossier-mode="${mode}">
