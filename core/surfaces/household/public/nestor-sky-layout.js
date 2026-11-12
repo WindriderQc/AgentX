@@ -42,16 +42,16 @@
     const reserved = zones(options), face = reserved.find(r => r.id === 'face');
     const fontPx = Math.max(14, height * 0.018), compassPx = Math.max(16, height * 0.022);
     const labels = [], occupied = [...reserved], objects = [];
-    function label(id, text, anchor, size = fontPx) {
+    function label(id, text, anchor, size = fontPx, radiusPx = 0) {
       const compass = id.startsWith('compass-');
       // Conservative fixed geometry; renderer uses the same bounded monospace box.
       const w = Math.max(20, (Array.from(text).length * 0.67 + 1) * size) / width;
-      const h = size * 1.5 / height, gap = 12 / height;
+      const h = size * 1.5 / height, gap = (radiusPx + 12) / height, sideGap = (radiusPx + 16) / width;
       const candidates = [
         { x: anchor.x - w / 2, y: anchor.y + gap },
         { x: anchor.x - w / 2, y: anchor.y - h - gap },
-        { x: anchor.x + 16 / width, y: anchor.y - h / 2 },
-        { x: anchor.x - w - 16 / width, y: anchor.y - h / 2 }
+        { x: anchor.x + sideGap, y: anchor.y - h / 2 },
+        { x: anchor.x - w - sideGap, y: anchor.y - h / 2 }
       ];
       // A compass caption names this exact azimuth. Unlike a body with a
       // leader, it cannot move sideways to make room for the portrait.
@@ -78,7 +78,7 @@
       const hiddenBy = inFrame ? reserved.find(z => overlap(area, z))?.id || null : point.altDeg < 0 ? 'below_horizon' : 'outside_panorama';
       const item = { id, type, screen, inFrame, hiddenBy, radiusPx, rendered: inFrame && !hiddenBy };
       objects.push(item);
-      if (inFrame) item.label = label(id, hiddenBy === 'face' ? text + ' · derrière moi' : text, screen);
+      if (inFrame) item.label = label(id, hiddenBy === 'face' ? text + ' · derrière moi' : text, screen, fontPx, radiusPx);
     }
     if (background?.sky && sky) {
       if (background.light !== 'night') body('sun', 'sun', sky.sun, 'Soleil · agrandi', height * 0.018);
