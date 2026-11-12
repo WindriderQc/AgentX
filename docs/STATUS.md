@@ -20,6 +20,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   driver's buffer size without relaxing byte/source verification. See
   [photo import](PHOTO_IMPORT.md).
 
+  The native receiver can read Data inventory directly without the Core web
+  process; bounded retries cover temporary read-only inventory outages.
+  Windows headless file transport closes unused input and bounds child
+  lifetimes, keeping uncertain effects on the same import identity.
+
 - **Living sources.** Personal and family conversations share an audience-bound
   source directory and dated weather context. Native reads reuse producer records,
   with explicit freshness, coverage and pagination. Mail and finance remain private;

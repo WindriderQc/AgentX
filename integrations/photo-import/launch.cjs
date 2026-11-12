@@ -21,7 +21,7 @@ async function launchWorker({ requestId, configFile, cacheRoot, worker }) {
     worker = checkedPath(worker);
     configFile = checkedPath(configFile);
     checkedPath(logFile);
-    const line = `cmd.exe /d /s /c ""${exe}" "${worker}" --config "${configFile}" --run ${requestId} >> "${logFile}" 2>&1"`;
+    const line = `cmd.exe /d /s /c ""${exe}" "${worker}" --config "${configFile}" --run ${requestId} < NUL >> "${logFile}" 2>&1"`;
     const script =
       "$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';$line=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('" +
       Buffer.from(line).toString('base64') +
