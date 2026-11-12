@@ -36,7 +36,7 @@ Instance configuration, data and deployment receipts remain outside Git.
   shared AgentX reads cover service reachability only. Installation and runtime
   acceptance remain separate. See [living sources](LIVING_SOURCES.md).
 
-- **Nestor ArtX.** The family standby screen supplies its current and recent
+- **Nestor ArtX.** Personal and family standby screens supply their current and recent
   render receipts to the dialogue, using Core’s source snapshots and the
   renderer’s panorama geometry. A silent routed Nestor task chooses a scene
   after two quiet minutes, at most once per fifteen minutes. Shared ArtX tools

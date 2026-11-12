@@ -1,6 +1,6 @@
 # Nestor ArtX
 
-ArtX is the shared capability behind Nestor’s animated family standby screen.
+ArtX is the shared capability behind Nestor’s animated personal and family standby screens.
 Core owns the source snapshots, scene selections and display reader. The browser
 draws the scenes and reports visibility. The portable
 [ArtX chapter](../skills/agentx/references/artx.md) of the agentx skill guides
@@ -45,6 +45,9 @@ native agent transports. Its exact evidence is retained under
 sky, planets outside the panorama and expired observations remain explicit.
 The recent previous receipt helps explain a painting removed when talking
 began. The reader never turns a new selection into proof of display.
+Both Super Dad and Famille submit their own browser observation with each text
+or voice turn. Personal Hermes receives the same Core-recomputed facts as other
+transports; selecting an engine does not detach the screen from its conversation.
 
 Core’s MCP bus exposes `artx_read` and `artx_present` outside its memory-only
 profile. The Core family engine offers those same handlers only when this
