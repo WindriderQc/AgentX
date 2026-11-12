@@ -81,6 +81,8 @@ The face zone reserves the full assembled portrait with a conservative envelope
 that follows the viewport aspect ratio, including its forehead and chin. It is
 a layout reservation, not a measured pixel silhouette. The laboratory outlines
 these same computed zones instead of maintaining separate CSS geometry.
+Compass captions stay centred on their projected azimuth; an obstructed direction
+is omitted instead of moved beside the portrait like a body caption with a leader.
 
 The Sun and Moon may appear in daylight, using Core's existing computed
 positions. Daylight planets and stars are omitted. The Sun and Moon carry explicit

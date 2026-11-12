@@ -43,6 +43,7 @@
     const fontPx = Math.max(14, height * 0.018), compassPx = Math.max(16, height * 0.022);
     const labels = [], occupied = [...reserved], objects = [];
     function label(id, text, anchor, size = fontPx) {
+      const compass = id.startsWith('compass-');
       // Conservative fixed geometry; renderer uses the same bounded monospace box.
       const w = Math.max(20, (Array.from(text).length * 0.67 + 1) * size) / width;
       const h = size * 1.5 / height, gap = 12 / height;
@@ -52,8 +53,11 @@
         { x: anchor.x + 16 / width, y: anchor.y - h / 2 },
         { x: anchor.x - w - 16 / width, y: anchor.y - h / 2 }
       ];
+      // A compass caption names this exact azimuth. Unlike a body with a
+      // leader, it cannot move sideways to make room for the portrait.
+      if (compass) candidates.length = 2;
       // A hidden body keeps its true anchor; its caption may sit beside Nestor.
-      if (contains(face, anchor)) {
+      if (!compass && contains(face, anchor)) {
         const y = Math.max(0.27, Math.min(0.88 - h, anchor.y));
         candidates.unshift({ x: face.x + face.w + 12 / width, y },
           { x: face.x - w - 12 / width, y });

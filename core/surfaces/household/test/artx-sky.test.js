@@ -71,6 +71,16 @@ test('the full portrait keeps low and side captions clear across landscape and p
   }
 });
 
+test('compass captions keep their azimuth instead of moving beside the portrait', () => {
+  for (const [width, height] of [[1920, 1080], [1280, 800], [390, 844]]) {
+    const plan = Layout.plan(sky, bg, { width, height });
+    for (const label of plan.labels.filter(item => item.id.startsWith('compass-'))) {
+      assert.ok(Math.abs(label.x + label.w / 2 - label.anchor.x) < 1e-12, label.text + ' moved horizontally');
+    }
+    assert.equal(plan.labels.some(label => label.id === 'compass-S'), false, 'South is covered by the portrait');
+  }
+});
+
 test('day sky uses computed Sun and Moon but does not claim daytime planets', () => {
   const snapshot = { sky, sun: { elevationDeg: 20 }, weather: { kind: 'clear' } };
   const background = Choice.background(snapshot);
