@@ -59,6 +59,8 @@ const schema = new mongoose.Schema({
   sourceReviews: { type: [require('./personalHistorySourceReviewSchema')], default: [] },
   // Opaque transport fences survive erasure; source snapshots and reasons do not.
   sourceReviewRequestKeys: { type: [String], default: undefined },
+  preservationChecks: { type: [require('./personalHistoryPreservationSchema')], default: [] },
+  preservationRequestKeys: { type: [String], default: undefined },
   // The owner's souvenir kept from this assertion (MemoryNote id).
   souvenirNoteId: { type: String, default: '', maxlength: 24 },
   // The opaque import fence survives forgetting; source bodies and aliases do not.
@@ -70,5 +72,6 @@ const schema = new mongoose.Schema({
 schema.index({ scope: 1, reviewState: 1, sourceDate: 1, _id: 1 });
 schema.index({ 'source.system': 1, 'source.messageId': 1 });
 schema.index({ sourceReviewRequestKeys: 1 }, { unique: true, sparse: true });
+schema.index({ preservationRequestKeys: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.models.PersonalHistoryEntry || mongoose.model('PersonalHistoryEntry', schema);

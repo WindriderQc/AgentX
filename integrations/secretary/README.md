@@ -224,6 +224,13 @@ The restore sample names only the exact message IDs, hashes and sizes copied
 and successfully decoded, with per-message MIME part and attachment counts.
 Missing files, changed bytes and MIME defects stay failures. This sample does
 not establish restoration of other messages or of the complete archive.
+The separate native `secretary_mail_desk.py preservation` command verifies one
+exact on-disk message and its recorded attachments without a provider call or
+archive write. Core compares two operator-selected native copies and retains
+the receipt on the existing historical assertion; clients cannot submit local
+verification JSON as native evidence. See the
+[selected-source preservation contract](../../docs/SECRETARY_DOSSIER_REVIEW.md#native-preservation-of-a-selected-source)
+for bounds, refusal/revalidation and the independent acceptance gaps.
 Hash verification and restoration of a large live archive use the instance's
 heavy-work queue; synthetic tests remain ordinary isolated checks.
 
