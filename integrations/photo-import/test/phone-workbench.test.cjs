@@ -283,7 +283,7 @@ test('transport job retries preserve their request and import identity across di
     alive: async () => true,
     importer: async (config, options) => {
       assert.equal(options.initialRunId, requestId);
-      return { state: 'incomplete', counts: { pending: 1 } };
+      return { state: 'incomplete', counts: { pending: 1 }, failures: [{ code: 'TRANSPORT_OR_SOURCE_FAILED', message: 'USB device unavailable (0x80070141)' }] };
     },
   });
   const requestId = uuid(),
@@ -292,7 +292,10 @@ test('transport job retries preserve their request and import identity across di
   await api.command(input);
   assert.equal(launches, 1);
   await api.run(requestId);
-  assert.equal((await api.command({ op: 'status' })).jobs[0].state, 'incomplete');
+  const status = (await api.command({ op: 'status' })).jobs[0];
+  assert.equal(status.state, 'incomplete');
+  assert.equal(status.error.code, 'TRANSPORT_OR_SOURCE_FAILED');
+  assert.match(status.error.message, /0x80070141/);
   await assert.rejects(api.command({ ...input, resume: uuid() }), { code: 'REQUEST_CONFLICT' });
 });
 
