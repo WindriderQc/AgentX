@@ -12,7 +12,7 @@ const { createPhotoProcessingReview } = require('./photoProcessingReview');
 function createPhotoProcessingService(deps = {}) {
   const config = deps.config || loadProcessingConfig, bridge = deps.bridge || createPhotoProcessingBridge({ config });
   const client = deps.client || createImmichClient(), cards = deps.cards || Cards, batches = deps.batches || Batches;
-  const immich = deps.immich || createPhotoProcessingImmich({ client, config });
+  const immich = deps.immich || createPhotoProcessingImmich({ client, config, bridge });
   const decisions = createPhotoProcessingReview({ client, bridge, immich, config, cards,
     frameConfig: deps.frameConfig || require('./photoFrameService').loadFrameConfig, decisions: deps.decisions });
   function status() {

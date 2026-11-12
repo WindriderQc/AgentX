@@ -53,6 +53,44 @@ test('card export binds content and analysis identity and preserves an immutable
   await assert.rejects(f.projection.exportCard({ ...input, card: { ...card, sourceSha256: '0'.repeat(64) } }), { code: 'INVALID_CARD' });
 });
 
+test('gallery tags use separate versioned XMP bytes and leave original media and backed-up companions intact',async t=>{
+  const f=await fixture(t);const p=(await f.projection.project(f.input)).results[0];
+  const original=await fs.stat(f.receipt.path), target=path.join(f.projection.directory,p.relativePath+'.xmp');
+  const input={sha256:p.sha256,writeId:uuid(),revision:0,tags:['Famille & amis','AgentX/Relecture/à relire','photo <été> "2026" 🐈']};
+  const result=await f.projection.syncTags(input);assert.equal(result.persisted,true);
+  const xml=await fs.readFile(target,'utf8');assert.match(xml,/Famille &amp; amis/);assert.match(xml,/&lt;été&gt; &quot;2026&quot; 🐈/);
+  const sidecar=await fs.stat(target);assert.notEqual(sidecar.ino,original.ino);assert.equal(sidecar.nlink,1);
+  const after=await fs.stat(f.receipt.path);assert.equal(after.ino,original.ino);assert.equal(after.mtimeMs,original.mtimeMs);
+  assert.deepEqual(await fs.readFile(f.receipt.path),f.bytes);
+  assert.equal((await f.projection.syncTags(input)).sidecarSha256,result.sidecarSha256);
+  await assert.rejects(f.projection.syncTags({...input,tags:['changed']}),{code:'REQUEST_CONFLICT'});
+  const reviewInput={...input,writeId:uuid(),revision:1,tags:['AgentX/Téléphone/Relu','Famille & amis']};
+  const reviewed=await f.projection.syncTags(reviewInput);
+  assert.equal(reviewed.revision,1);assert.equal((await f.projection.syncTags(input)).superseded,true);
+  assert.doesNotMatch(await fs.readFile(target,'utf8'),/à relire/);
+  await assert.rejects(f.projection.syncTags({...reviewInput,writeId:uuid()}),{code:'PHOTO_TAGS_CHANGED'});
+  // A lost response/publication after the XMP but before its pointer retains
+  // the immutable intent and is reconciled through the same identity.
+  await fs.rm(path.join(f.root,'.agentx-import/gallery-sidecars',p.sha256,'current.json'));
+  assert.equal((await f.projection.syncTags(reviewInput)).sidecarSha256,reviewed.sidecarSha256);
+  await fs.writeFile(target,'human XMP edit');
+  await assert.rejects(f.projection.syncTags({...input,writeId:uuid(),revision:2}),{code:'PHOTO_SIDECAR_CONFLICT'});
+  assert.equal(await fs.readFile(target,'utf8'),'human XMP edit');
+});
+test('unknown sidecars, symlinks, hardlinks, invalid XML text and concurrent unknown writers refuse without changing originals',async t=>{
+  const f=await fixture(t);const p=(await f.projection.project(f.input)).results[0],target=path.join(f.projection.directory,p.relativePath+'.xmp');
+  const input={sha256:p.sha256,writeId:uuid(),revision:0,tags:['review']};
+  await fs.writeFile(target,'existing companion');
+  await assert.rejects(f.projection.syncTags(input),{code:'PHOTO_SIDECAR_CONFLICT'});await fs.rm(target);
+  await fs.symlink(f.receipt.path,target);await assert.rejects(f.projection.syncTags(input),{code:'PHOTO_SIDECAR_CONFLICT'});await fs.rm(target);
+  await fs.link(f.receipt.path,target);await assert.rejects(f.projection.syncTags(input),{code:'PHOTO_SIDECAR_CONFLICT'});await fs.rm(target);
+  await assert.rejects(f.projection.syncTags({...input,tags:['bad\u0000text']}),{code:'INVALID_PHOTO_TAGS'});
+  await assert.rejects(f.projection.syncTags({...input,tags:Array.from({length:48},(_,i)=>'&'.repeat(900)+i)}),{code:'INVALID_PHOTO_TAGS'});
+  const lock=path.join(f.root,'.agentx-import/gallery-sidecars',p.sha256,'lock');await fs.mkdir(lock);
+  await assert.rejects(f.projection.syncTags(input),{code:'PHOTO_TAGS_HELD'});
+  assert.deepEqual(await fs.readFile(f.receipt.path),f.bytes);
+});
+
 
 for (const legacy of [false, true]) test('signature-only images receive a gallery extension; immutable legacy intent: '+legacy, async t => {
   const bytes = Buffer.from('89504e470d0a1a0a0000000000000000', 'hex');
