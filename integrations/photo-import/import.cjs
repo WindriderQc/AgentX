@@ -19,7 +19,7 @@ async function checkpoint(file, value) {
   await fs.rename(temp, file);
 }
 
-async function runImport(config, { source, remote, deviceId, resume, limit = 100000, log = console.log } = {}) {
+async function runImport(config, { source, remote, deviceId, resume, initialRunId, limit = 100000, log = console.log } = {}) {
   if (!path.isAbsolute(config.cacheRoot || '')) throw new Error('cacheRoot must be an absolute local staging directory');
   if (!Number.isInteger(limit) || limit < 1 || limit > 100000) throw new Error('limit must be 1–100000');
   await fs.mkdir(config.cacheRoot, { recursive: true, mode: 0o700 });
@@ -50,7 +50,8 @@ async function runImport(config, { source, remote, deviceId, resume, limit = 100
     const audit = classifyInventory(inventory.files, prefixes.entries);
     const selected = audit.selected;
     if (!selected.length) throw new Error('No readable media exposed by USB. Check phone unlock/file-transfer mode.');
-    const runId = crypto.randomUUID();
+    const runId = initialRunId || crypto.randomUUID();
+    if (!uuid(runId)) throw new Error('Invalid initial run identity');
     const coverage = { transport: 'windows-wpd-mtp-read-only', enumerationComplete: inventory.complete,
       enumerationErrors: inventory.errors, objectsVisited: inventory.objectsVisited,
       mediaFound: selected.length, selected: Math.min(limit, selected.length), remaining: Math.max(0, selected.length - limit),

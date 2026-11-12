@@ -18,6 +18,7 @@ const DEMO_DISABLED_PREFIXES = Object.freeze([
   '/api/consumers/nestor',
   '/api/data-toolbox',
   '/api/diskx',
+  '/api/phone-media',
   '/api/dsh',
   '/api/graphysx',
   '/api/family',

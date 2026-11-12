@@ -4,9 +4,10 @@ The native importer reads an unlocked Android phone through Windows WPD/MTP.
 Core's `photoImportService` owns the import manifest, content identity,
 publication and immutable receipts on the configured Media filesystem. The
 Windows adapter only discovers objects, transfers bytes and presents results.
-It opens WPD with `GENERIC_READ` and resources with `STGM_READ`; it has no phone
-delete, move, metadata-write or writable-resource implementation. ADB and USB
-debugging are unnecessary.
+The import path opens WPD with `GENERIC_READ` and resources with `STGM_READ`.
+The separate [phone workbench](#phone-workbench-in-diskx) implements explicitly
+confirmed cleanup through its own writable adapter; import itself never deletes
+or changes phone files. ADB and USB debugging are unnecessary.
 
 The importer copies original image/video bytes and XMP/AAE companions without
 conversion. App-private and cloud-only originals are outside MTP coverage.
@@ -185,3 +186,119 @@ uses a separately configured isolated receiver root, synthetic sources and
 real SSH/SCP. It checks a lost acknowledgment, resume, a repeated import and
 unchanged source bytes. It never opens a phone. Real WPD discovery, media
 readback and actual device acceptance remain separate receipts.
+
+## Phone workbench in DiskX
+
+`/diskx/phone` is the full-profile phone workbench, linked from DiskX's disk
+view. It composes the same Core import ledger, rather than creating another
+photo index or gallery. The page detects the configured collector's Android
+phones, starts a resumable import, pages existing import occurrences, searches
+source folders/names, orders by size, and saves `review`, `keep` or `archive`
+choices. Archiving is a review state; it moves no original. It does not invoke
+vision, publish to family, or alter Immich albums.
+
+Core's `/api/phone-media` entrance relays a fixed JSON command to the native
+Windows collector through its existing trusted SSH identity. It accepts only
+bounded reads and named import/review/cleanup actions; callers cannot supply
+an executable, arbitrary path or shell command. Preview bytes come from the
+verified occurrence's Media path, are bounded to 8 MiB, and are resized and
+re-encoded by Core's existing Sharp dependency. Unsupported formats, very large
+images or unavailable codecs display an explicit preview fallback. Previews
+never become evidence that a backup is still valid. No Windows HTTP listener
+or new media credential is introduced. Family-pinned and demo devices do not
+have this workbench.
+
+The instance places `config/photo-import/workbench.json` under its existing
+`AGENTX_INSTANCE_ROOT`:
+
+```json
+{
+  "sshTarget": "android-collector",
+  "worker": "C:\\AgentX\\photo-import\\integrations\\photo-import\\workbench.cjs",
+  "clientConfig": "C:\\Instance\\photo-import.json"
+}
+```
+
+The client configuration above remains the native import configuration. The
+optional `phoneCleanupEnabled: true` enables the separate explicit cleanup
+entrance; omission keeps cleanup disabled. Deploy the matching native receiver,
+Core photo modules and Windows integration together. Existing run/request IDs,
+Media originals and checkpoints remain valid. The receiver needs the `library`
+action as well as the original import API. Native `workbench.cjs --config file
+--command BASE64_JSON` is the fixed transport entrance, not a shell executor.
+A dedicated SSH key can be restricted to the fixed worker with
+`--config <trusted-file> --ssh forced`; that entrance decodes only the bounded
+`SSH_ORIGINAL_COMMAND` payload and exposes no shell. Configure Core with
+`forcedCommand: true`, `identityFile` and a pinned `knownHostsFile` to use it.
+Private keys and authorization installation stay outside Git. Its command families are `status`, `devices`, `runs`, `page`, `preview`, `review`,
+`prepare`, `cleanupStatus`, `start`, and explicit `reconcile` of an existing job.
+
+The native adapter launches only its own fixed worker. On Windows it uses WMI
+process creation with a fixed command line and a private logfile: an ordinary
+detached Node child is still killed when its Windows OpenSSH session ends.
+The collector account needs permission for this local WMI process creation;
+a refusal retains the original launch identity for reconciliation.
+Import and cleanup jobs retain their request ID, original input and process
+receipt locally; closing the browser or losing SSH does not create another
+intent. A lost launch without a process receipt stays uncertain for inspection.
+Explicit reconciliation refuses a live original worker and preserves its IDs.
+
+### Selected phone cleanup
+
+Nothing is preselected. The owner selects up to 100 exact imported occurrences,
+with at most 2 GiB of source bytes per cleanup batch. Core prepares an immutable
+plan only after hashing every selected Media destination. The confirmation
+names the files and their estimated logical size, and requires the displayed
+`SUPPRIMER N` phrase. A prepared plan, review choice, thumbnail or duplicate
+label never executes deletion. The separate library choice and phone choice
+remain independent.
+
+After confirmation, the native worker refreshes the same phone's inventory,
+resolves persistent source identities and paths, and refuses changed or
+ambiguous files. Its separate WPD cleanup module opens a writable session,
+fully hashes each selected source, then waits for a just-in-time Core grant.
+Core rehashes that file's Media copy before sending the grant. WPD checks the
+actual parent/name path and source metadata again and deletes exactly one
+file with `PORTABLE_DEVICE_DELETE_NO_RECURSION`. Folders are refused. The import
+reader remains read-only and does not load the cleanup module. USB deletion
+is direct; the UI does not promise a gallery recycle bin.
+
+The actual WPD PowerShell process owns a global named device mutex and the
+legacy exclusive file handle, across SSH/WMI sessions and different staging
+folders. A dead Node parent cannot release the native process's device fence.
+A kernel-abandoned mutex proves that owner thread ended; it does not settle an
+uncertain deletion, which remains independently fenced in the dispatch journal.
+
+Core freezes a claim for each exact device/source/content occurrence. The
+native worker retains a durable native attempt ID, bound into the Core grant;
+losing/resetting the local cache cannot reuse that grant for a new attempt. The
+native worker fsyncs a dispatch record **before** invoking WPD and a result
+record only after exact overall and per-object success. Core receives that
+native result durably. Lost acknowledgments reconcile the original native
+receipt, including with a disconnected phone; a dispatch without a result is
+uncertain and is never automatically sent again. A replacement operation for
+a held source refuses. Confirmed deletions and unresolved sources appear in
+the workbench and cannot be selected again. A later changed file at the same
+path is a separate occurrence after its own verified import.
+
+The status counts confirmed deletions and corresponding logical bytes. It
+makes no claim about measured physical free space. Copies, original metadata
+bytes and import provenance on Media remain intact. Core stores review
+versions, plans, claims, grants and results under the existing private import
+ledger, not in a runtime's second content database.
+
+Workbench checks:
+
+```sh
+node --test integrations/photo-import/test/phone-workbench.test.cjs
+node --test core/surfaces/diskx/test/phone.test.js
+node core/tests/browser/phoneWorkbenchJourney.cjs
+```
+
+The browser journey uses synthetic media and a fake native adapter, checks
+mobile layout and exercises lost-result confirmation without a repeated
+effect. SDK compilation, Windows job/SSH transport, and real-device deletion
+acceptance are separate checks. A successful compile or simulated deletion
+is never a real-phone deletion receipt.
+
+On Windows, `powershell -NoProfile -STA -ExecutionPolicy Bypass -File integrations/photo-import/test/lock-smoke.ps1` compiles the SDK and checks both reader and cleanup fences with a synthetic device ID. It verifies the named mutex across different TEMP directories without opening a real phone.

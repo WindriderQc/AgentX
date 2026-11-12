@@ -189,6 +189,7 @@ ${ecosystem ? `<script defer src="/js/voice/speech-language.js"></script>
 <script defer src="/assets/diskx/${ecosystem ? 'ecosystem-page' : 'diskx-page'}.js"></script>
 </head>
 <body>
+${ecosystem ? '' : '<nav class="diskx-phone-link"><a href="/diskx/phone">📱 Téléphone · importer, trier et libérer de la place</a></nav>'}
 <${tag}${attrs}></${tag}>
 <p id="diskx-status" role="status" aria-live="polite">Chargement de la vue ${title}…</p>
 <noscript><p>DiskX a besoin de JavaScript.</p></noscript>
@@ -206,6 +207,8 @@ function errorPage(message) {
 
 function register({ app, express, fetchWithTimeout, fetchData, env = process.env }) {
   app.use('/assets/diskx', express.static(path.join(__dirname, 'public'), { fallthrough: false, maxAge: '5m' }));
+
+  require('./phone').registerPhone({ app, express });
 
   app.get('/api/diskx/presentation', async (req, res) => {
     res.set('Cache-Control', 'private, no-store');

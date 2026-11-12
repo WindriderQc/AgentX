@@ -9,6 +9,14 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 ## Available capabilities
 
+- **Phone media workbench.** DiskX links `/diskx/phone`: resumable Android USB
+  import, existing Media receipts, previews, persistent review choices and
+  explicitly selected phone cleanup. Core freezes the selection, rechecks
+  backup and source bytes, and receives exact native deletion results. Unknown
+  dispatches stay fenced rather than replayed. Native cleanup is separately
+  enabled; source and simulated browser checks remain distinct from deployment
+  and real-device deletion acceptance. See [photo import](PHOTO_IMPORT.md).
+
 - **Living sources.** Personal and family conversations share an audience-bound
   source directory and dated weather context. Native reads reuse producer records,
   with explicit freshness, coverage and pagination. Mail and finance remain private;

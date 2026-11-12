@@ -69,12 +69,12 @@ describe('DiskX access', () => {
     expect(ecosystem.text).toContain('<agentx-ecosystem app="ecosystem" play="network">');
     expect(ecosystem.text).not.toContain('roots="/srv/lake"');
     expect((await tablet.get('/api/diskx/diskx.js')).text).toBe(MODULE);
-    for (const path of ['/diskx', '/diskx?janitor=latest', '/diskx?app=diskx', '/data-toolbox']) {
+    for (const path of ['/diskx', '/diskx?janitor=latest', '/diskx?app=diskx', '/diskx/phone', '/data-toolbox']) {
       const page = await tablet.get(path);
       expect(page.status).toBe(302);
       expect(page.headers.location).toBe('/panel');
     }
-    for (const path of ['/api/diskx/presentation?report=2026-01-01T00:00:00Z', '/api/data-toolbox/janitor/strategy/latest']) {
+    for (const path of ['/api/diskx/presentation?report=2026-01-01T00:00:00Z', '/api/phone-media?op=status', '/api/data-toolbox/janitor/strategy/latest']) {
       const answer = await tablet.get(path);
       expect(answer.status).toBe(403);
       expect(answer.body.code).toBe('FAMILY_DEVICE_PINNED');
