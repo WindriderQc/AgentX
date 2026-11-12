@@ -145,6 +145,8 @@ it contains no coordinates or operations snapshot and grants no owner tools.
 Full-screen Nestor shows the observed reply model as a badge in the top right
 corner and distinguishes Big Brain, the limited guardian relay and other model
 fallbacks by name and colour; nothing shows before a turn. A tap opens the detail.
+The guardian introduces a busy relay with “Yo c’est l’Gardien… Nestor est occupé.”
+An unavailable principal is described as “indisponible” instead.
 Until a model receipt arrives, it says that confirmation is pending; completed
 replies are labelled as the last reply. Personal pending requests use the existing
 work projection, with stale and uncertain states retained, and their count shows on

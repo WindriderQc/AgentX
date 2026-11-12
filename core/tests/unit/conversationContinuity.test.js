@@ -176,7 +176,7 @@ describe('local conversation continuity', () => {
       });
       expect(result.metadata.conversationContinuity.state).toBe('backup');
       expect(result.metadata.conversationContinuity.primaryRefusal).toEqual({ code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', cause });
-      expect(result.body.message.content).toContain('Message automatique d’AgentX');
+      expect(result.body.message.content).toBe('Yo c’est l’Gardien… Nestor est indisponible.\n\nRéponse limitée');
       expect(result.body.message.content).toContain('indisponible');
       expect(result.body.message.content).not.toContain('occupé');
       expect(w.run).toHaveBeenCalledTimes(2);
