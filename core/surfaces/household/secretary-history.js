@@ -4,9 +4,10 @@ const history = require('../../src/services/personalHistoryService');
 const context = require('../../src/services/personalHistoryContextService');
 const sourceReview = require('../../src/services/personalHistorySourceReview');
 const preservation = require('../../src/services/personalHistoryPreservation');
+const decisionState = require('../../src/services/personalHistoryDecisionState');
 
 function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' },
-  preservationDeps = { audience: 'owner' } }) {
+  preservationDeps = { audience: 'owner' }, decisionStateDeps = { audience: 'owner' } }) {
   const respond = async (res, action) => {
     try { return envelope(res, await action()); }
     catch (error) { return fail(res, error.statusCode || 500, error.message, error.code || 'PERSONAL_HISTORY_FAILED'); }
@@ -14,6 +15,10 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDe
   const sourceResponse = (res, action) => { res.set('Cache-Control', 'private, no-store'); return respond(res, action); };
   router.get('/history', (req, res) => respond(res, () => history.list(req.query)));
   router.get('/history/timeline', (_req, res) => respond(res, () => history.timeline()));
+  router.get('/history/:id/decision-state', (req, res) => sourceResponse(res,
+    () => decisionState.get(req.params.id, req.query, decisionStateDeps)));
+  router.post('/history/:id/decision-state/check', (req, res) => sourceResponse(res,
+    () => decisionState.check(req.params.id, req.body, decisionStateDeps)));
   // The existing private LAN human surface owns this domain. Caller headers,
   // profile names and model tools cannot supply its audience or a decision.
   router.post('/history/:id/source-review', (req, res) => sourceResponse(res, () => sourceReview.prepare(req.params.id, req.body, sourceReviewDeps)));

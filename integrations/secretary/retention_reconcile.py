@@ -42,14 +42,19 @@ def entry_set(entries):
     return content_hash(sorted(entries, key=lambda entry: entry["id"]))
 
 
-def reconcile(archive, before, saved, core, manifests=(), *, opener=None):
+def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False):
     previous = indexed(saved)
     manifests = list(manifests)
     options = {} if opener is None else {"opener": opener}
     first = core_entries(core, **options)
     first_rows, _ = dispositions(archive, before, first, manifests)
+    if native_decisions:
+        from native_history_decisions import capture
+        native_first = capture(core, first, first_rows, saved, **options)
     second = core_entries(core, **options)
     second_rows, _ = dispositions(archive, before, second, manifests)
+    if native_decisions:
+        native_second = capture(core, second, second_rows, saved, previous=native_first, **options)
     if entry_set(first) != entry_set(second) \
             or content_hash([comparable(row) for row in first_rows]) != content_hash([comparable(row) for row in second_rows]):
         raise ValueError("Core or archive changed during reconciliation; no current observation was established")
@@ -69,12 +74,16 @@ def reconcile(archive, before, saved, core, manifests=(), *, opener=None):
                      "changedFields": sorted(key for key in set(row) | set(fresh or {})
                                              if key != "at" and row.get(key) != (fresh or {}).get(key)),
                      "executionAllowed": False})
-    return {"schema": "agentx.secretary-retention-reconciliation/v1", "at": now(),
+    native = {"nativeDecisions": {"contract": "agentx.history-decision-state/v1", "entries": native_second,
+              "scope": "selected-entries-only", "pendingEntries": sum(row["pendingSourceDecisions"] > 0 for row in native_second),
+              "consistency": "single-entry committed observations; not an atomic batch or completeness proof",
+              "status": "observed_match" if native_second else "no_selected_entries", "executionAllowed": False}} if native_decisions else {}
+    return {"schema": f"agentx.secretary-retention-reconciliation/v{2 if native_decisions else 1}", "at": now(),
             "before": before.isoformat(), "decisionSource": "agentx.core",
             "observation": "two agreeing bounded reads; not an atomic snapshot or native acceptance",
             "savedDispositionsSha256": content_hash(saved), "coreEntriesSha256": entry_set(second),
             "manifestsSha256": content_hash(list(manifests)), "counts": dict(counts), "messages": rows,
-            "nativeValidationGaps": list(NATIVE_GAPS), "cleanupStatus": "blocked", "executionAllowed": False}
+            "nativeValidationGaps": list(NATIVE_GAPS), "cleanupStatus": "blocked", "executionAllowed": False, **native}
 
 
 def main(argv=None):
@@ -85,6 +94,8 @@ def main(argv=None):
     parser.add_argument("--core", default="http://127.0.0.1:3180")
     parser.add_argument("--souvenir-manifest", type=Path, action="append", default=[])
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--native-decisions", action="store_true",
+                        help="Recheck at most 100 selected Core decision documents through their native contract; no legacy fallback")
     args = parser.parse_args(argv)
     if args.output.resolve().is_relative_to(args.root.resolve()):
         parser.error("Reconciliation reports stay outside the evidence archive")
@@ -92,10 +103,16 @@ def main(argv=None):
         parser.error("Retain the existing report and use a new output identity")
     archive = Archive(args.root, run=lambda _: (_ for _ in ()).throw(RuntimeError("Provider access disabled")))
     report = reconcile(archive, args.before, load(args.dispositions), args.core,
-                       [load(path) for path in args.souvenir_manifest])
+                       [load(path) for path in args.souvenir_manifest], native_decisions=args.native_decisions)
     durable(args.output, report, exclusive=True)
-    print(json.dumps({key: report[key] for key in ("schema", "at", "counts", "cleanupStatus", "executionAllowed")}))
-    return 0 if all(row["status"] == "observed_match" for row in report["messages"]) else 2
+    summary = {key: report[key] for key in ("schema", "at", "counts", "cleanupStatus", "executionAllowed")}
+    if args.native_decisions:
+        native = report["nativeDecisions"]
+        summary["nativeDecisions"] = {"status": native["status"], "selectedEntries": len(native["entries"]),
+                                     "pendingEntries": native["pendingEntries"]}
+    print(json.dumps(summary))
+    return 0 if all(row["status"] == "observed_match" for row in report["messages"]) \
+        and not report.get("nativeDecisions", {}).get("pendingEntries") else 2
 
 
 if __name__ == "__main__":
