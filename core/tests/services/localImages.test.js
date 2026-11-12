@@ -24,8 +24,10 @@ describe('durable local image operations', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     await ImageOperation.deleteMany({});
-    await require('../../models/HeavyWorkQueue').deleteMany({});
-    await require('../../models/HeavyWorkQueue').create({ _id: 'heavy-work', jobs: [] });
+    // Preserve the singleton identity and CAS revision while prior asynchronous
+    // receipt writes finish, rather than racing delete/create with ensure().
+    await require('../../models/HeavyWorkQueue').updateOne({ _id: 'heavy-work' },
+      { $set: { jobs: [] }, $inc: { revision: 1 } }, { upsert: true });
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'local-image-test-'));
     process.env.IMAGE_ARCHIVE_DIR = dir;
     loadConfig.mockReturnValue({ workerUrl: 'http://127.0.0.1:8188', ollamaHosts: ['http://127.0.0.1:11434'], profiles: { quality: profile }, defaultProfile: 'quality' });
@@ -135,12 +137,15 @@ describe('durable local image operations', () => {
     await sessions.createSession({ ...bound, modeId: 'family', illustrationRetention: { epoch, expiresAt: new Date(Date.now() + 600000).toISOString() } });
     client.ready.mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] });
     client.discardOutput = jest.fn(async (jobId, sha256) => ({ contract: 'agentx.image-output-removal/v1', jobId, sha256, removed: true }));
-    let finish; const gate = new Promise(resolve => { finish = resolve; });
-    client.observe.mockImplementationOnce(async (_id, options) => { await gate; await options.onTerminal();
+    let finish, started; const gate = new Promise(resolve => { finish = resolve; });
+    const observing = new Promise(resolve => { started = resolve; });
+    client.observe.mockImplementationOnce(async (_id, options) => { started(); await gate; await options.onTerminal();
       return { filename: 'result.png', subfolder: 'agentx', type: 'output' }; });
     const op = await service.acceptOpportunistic({ actionKey: 'illustrated-late:' + randomUUID(), prompt: 'A fictional moon' },
       { workerId: 'default', conversation: bound, temporary: true });
-    await waitFor(op.id, 'generating');
+    // Test a renderer that has actually crossed dispatch, not the earlier UI
+    // state that can still be correctly cancelled before dispatch under load.
+    await observing;
     const { surface, ...sessionQuery } = bound; await sessions.deleteSession(sessionQuery); finish();
     const done = await waitFor(op.id, 'completed');
     expect(done).not.toHaveProperty('artifact');
