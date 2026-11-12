@@ -41,7 +41,8 @@ async function runImport(config, { source, remote, deviceId, resume, initialRunI
     state = JSON.parse(await fs.readFile(stateFile, 'utf8'));
     if (state.runId !== resume) throw new Error('Checkpoint identity mismatch');
     if (deviceId && SHA(deviceId) !== state.deviceKey) throw new Error('Selected phone differs from checkpoint');
-    deviceId ||= state.deviceId;
+    const attached = await require('./reconnect.cjs').binding(config, state);
+    deviceId ||= attached?.deviceId || state.deviceId;
   } else {
     const devices = await source.devices();
     if (!deviceId) {
