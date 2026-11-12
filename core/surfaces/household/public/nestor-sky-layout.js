@@ -2,8 +2,7 @@
 (function (root) {
   'use strict';
   const DEFAULT_FRAME = Object.freeze({ center: 180, span: 220, horizon: 0.84, top: 0.1 });
-  const ZONES = Object.freeze([
-    { id: 'face', x: 0.4, y: 0.3, w: 0.2, h: 0.38 },
+  const OVERLAYS = Object.freeze([
     { id: 'clock', x: 0.28, y: 0, w: 0.44, h: 0.26 },
     { id: 'bar', x: 0, y: 0.89, w: 1, h: 0.11 }
   ]);
@@ -28,11 +27,21 @@
     return { width: Math.max(1, Math.min(7680, finite(value.width, 1920))),
       height: Math.max(1, Math.min(4320, finite(value.height, 1080))) };
   }
+  function zones(options = {}) {
+    const { width, height } = dimensions(options);
+    // Reserve the assembled portrait, including its forehead and chin. Its
+    // framing fits the limiting viewport axis; a fixed percentage box misses
+    // the sides in portrait and the lower face in landscape. This is a safe
+    // presentation envelope, not a measurement of the avatar's pixels.
+    const h = Math.min(0.84, 0.88 * width / height / 0.62);
+    const w = h * height / width * 0.62;
+    return [{ id: 'face', x: (1 - w) / 2, y: (1 - h) / 2, w, h }, ...OVERLAYS.map(r => ({ ...r }))];
+  }
   function plan(sky, background, options = {}) {
     const view = frame(options), { width, height } = dimensions(options);
-    const zones = ZONES.map(r => ({ ...r }));
+    const reserved = zones(options), face = reserved.find(r => r.id === 'face');
     const fontPx = Math.max(14, height * 0.018), compassPx = Math.max(16, height * 0.022);
-    const labels = [], occupied = [...zones], objects = [];
+    const labels = [], occupied = [...reserved], objects = [];
     function label(id, text, anchor, size = fontPx) {
       // Conservative fixed geometry; renderer uses the same bounded monospace box.
       const w = Math.max(20, (Array.from(text).length * 0.67 + 1) * size) / width;
@@ -44,9 +53,10 @@
         { x: anchor.x - w - 16 / width, y: anchor.y - h / 2 }
       ];
       // A hidden body keeps its true anchor; its caption may sit beside Nestor.
-      if (zones.some(r => r.id === 'face' && contains(r, anchor))) {
-        candidates.unshift({ x: 0.62, y: Math.max(0.28, Math.min(0.69, anchor.y)) },
-          { x: 0.38 - w, y: Math.max(0.28, Math.min(0.69, anchor.y)) });
+      if (contains(face, anchor)) {
+        const y = Math.max(0.27, Math.min(0.88 - h, anchor.y));
+        candidates.unshift({ x: face.x + face.w + 12 / width, y },
+          { x: face.x - w - 12 / width, y });
       }
       const box = candidates.map(r => ({ ...r, w, h })).find(r => r.x >= 0.01 && r.y >= 0.01
         && r.x + w <= 0.99 && r.y + h <= 0.88 && !occupied.some(z => overlap(r, z)));
@@ -61,7 +71,7 @@
       const radius = radiusPx / height;
       const area = { x: screen.x - radiusPx / width, y: screen.y - radius,
         w: radiusPx * 2 / width, h: radius * 2 };
-      const hiddenBy = inFrame ? zones.find(z => overlap(area, z))?.id || null : point.altDeg < 0 ? 'below_horizon' : 'outside_panorama';
+      const hiddenBy = inFrame ? reserved.find(z => overlap(area, z))?.id || null : point.altDeg < 0 ? 'below_horizon' : 'outside_panorama';
       const item = { id, type, screen, inFrame, hiddenBy, radiusPx, rendered: inFrame && !hiddenBy };
       objects.push(item);
       if (inFrame) item.label = label(id, hiddenBy === 'face' ? text + ' · derrière moi' : text, screen);
@@ -86,9 +96,9 @@
         }
       }
     }
-    return { frame: { kind: 'panorama', centerAzDeg: view.center, spanDeg: view.span }, width, height, zones, objects, labels };
+    return { frame: { kind: 'panorama', centerAzDeg: view.center, spanDeg: view.span }, width, height, zones: reserved, objects, labels };
   }
-  const api = { DEFAULT_FRAME, ZONES, frame, plan, dimensions, overlap, contains };
+  const api = { DEFAULT_FRAME, ZONES: Object.freeze(zones()), zones, frame, plan, dimensions, overlap, contains };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.NestorSkyLayout = api;
 })(typeof window !== 'undefined' ? window : globalThis);

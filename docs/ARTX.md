@@ -77,6 +77,10 @@ permits, identifies its true anchor. Other bodies intersecting reserved zones
 are also omitted. Captions avoid those zones and one another; crowded labels
 are suppressed rather than painted over the face. Layout uses the CSS viewport,
 independently of the canvas pixel ratio.
+The face zone reserves the full assembled portrait with a conservative envelope
+that follows the viewport aspect ratio, including its forehead and chin. It is
+a layout reservation, not a measured pixel silhouette. The laboratory outlines
+these same computed zones instead of maintaining separate CSS geometry.
 
 The Sun and Moon may appear in daylight, using Core's existing computed
 positions. Daylight planets and stars are omitted. The Sun and Moon carry explicit
