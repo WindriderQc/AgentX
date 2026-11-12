@@ -158,5 +158,18 @@ version. The server retains the original pending decision so another browser
 can resume it. A changed album/library cannot redirect an uncertain choice.
 
 Unit/integration/browser checks use synthetic media and mocked Immich/inference.
+For a proven `RUNTIME_INFERENCE_ADMISSION_DENIED` before provider dispatch,
+Core's operator `scripts/reconcile-photo-admission.cjs` can close the exact
+running claim as a failed, **not-attempted** metadata card. It requires the
+original batch/dispatch/analysis identities, operator evidence that the old
+worker terminated, no overlapping runtime authority and settled indexing.
+The same recovery ID is idempotent; timeouts, possibly dispatched calls and
+other errors refuse. This performs no inference and changes no human decision.
+Supply the reviewed plan as base64 `PHOTO_ADMISSION_RECOVERY`, from Core's
+working directory. An operator delivering the reviewed script through stdin
+also sets `PHOTO_ADMISSION_RECOVERY_STDIN=1`; it runs in a separate Core-side
+process and changes no loaded server module. The queue's original dispatch
+is reconciled separately through the native queue operator and its receipt.
+
 Container installation, a real external-library scan, physical phone acceptance
 and actual frame delivery are separately verified instance receipts.
