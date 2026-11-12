@@ -26,7 +26,11 @@ async function load(id) {
   if (await privacy.forgottenSource({ noteId: row.source?.personalNoteId, contentHash: row.contentHash })) {
     await privacy.suppress({ _id: row._id }); throw missing();
   }
-  return row;
+  // Privacy lookup itself awaits native storage. An explicit erasure can settle
+  // during that await, so the final returned row must be read after it.
+  const current = await Entry.findOne({ _id: id, scope: 'owner', reviewState: { $ne: 'forgotten' } }).lean();
+  if (!current || current.source?.personalNoteId !== row.source?.personalNoteId || current.contentHash !== row.contentHash) throw missing();
+  return current;
 }
 function find(row, key) {
   const check = (row.preservationChecks || []).find(check => check.requestId === key);

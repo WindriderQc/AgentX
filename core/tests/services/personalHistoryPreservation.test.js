@@ -192,4 +192,21 @@ describe('native exact-source preservation receipts', () => {
     release(); await expect(pending).rejects.toMatchObject({ statusCode: 404 });
     expect((await Entry.findById(id).lean()).preservationChecks).toEqual([]);
   });
+
+  test.each(['prepare', 'get'])('forgetting during the final privacy lookup prevents late %s output', async operation => {
+    const key = randomUUID();
+    if (operation === 'get') await prepare(key);
+    const privacy = require('../../src/services/personalHistoryPrivacy');
+    const original = privacy.forgottenSource;
+    let calls = 0;
+    const spy = jest.spyOn(privacy, 'forgottenSource').mockImplementation(async input => {
+      const result = await original(input);
+      if (++calls === 2) await history.review(id, { revision: 0, state: 'forgotten' });
+      return result;
+    });
+    try {
+      await expect(operation === 'get' ? checks.get(id, key, deps) : prepare(key)).rejects.toMatchObject({ statusCode: 404 });
+      expect((await Entry.findById(id).lean()).preservationChecks).toEqual([]);
+    } finally { spy.mockRestore(); }
+  });
 });
