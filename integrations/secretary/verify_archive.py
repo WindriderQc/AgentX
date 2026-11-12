@@ -182,7 +182,11 @@ def restore_sample(root, receipts, count, target=None, seed=None):
         for receipt in chosen:
             restored = work / Path(receipt["path"]).name
             try:
-                shutil.copyfile(Path(root) / receipt["path"], restored)
+                # A kept drill may reuse a directory containing earlier samples
+                # or unrelated files. Exclusive creation also refuses symlinks
+                # and hard links instead of overwriting their destination.
+                with open(Path(root) / receipt["path"], "rb") as original, restored.open("xb") as output:
+                    shutil.copyfileobj(original, output)
                 if restored.stat().st_size != receipt["bytes"] or sha_file(restored) != receipt["sha256"]:
                     raise ValueError("restored copy differs")
                 with open(restored, "rb") as handle:
