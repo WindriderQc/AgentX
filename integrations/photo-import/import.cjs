@@ -77,7 +77,7 @@ async function runImport(config, { source, remote, deviceId, resume, initialRunI
     for (const item of state.items) {
       const spool = path.join(config.cacheRoot, item.requestId + '.media');
       try {
-        let known = item.sha256 ? await remote({ action: 'lookup', runId: state.runId, requestId: item.requestId, size: item.size, sha256: item.sha256 }) : null;
+        let known = item.sha256 ? await remote({ action: 'lookup', runId: state.runId, requestId: item.requestId, size: item.size, sha256: item.sha256, ...(item.readSource ? { readSource: item.readSource } : {}) }) : null;
         if (!known || known.needsUpload) {
           let local;
           try { local = await hashFile(spool); } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -86,16 +86,25 @@ async function runImport(config, { source, remote, deviceId, resume, initialRunI
             // diagnosis and use a fresh path; never trust its size alone.
             if (local) await fs.rename(spool, spool + '.incomplete-' + crypto.randomUUID());
             currentInventory ||= await source.inventory(deviceId);
-            const candidates = currentInventory.files.filter(s => s.key === item.key && s.relativePath === item.relativePath);
-            if (candidates.length !== 1 || candidates[0].size !== item.size || candidates[0].modified !== item.modified) throw new Error('Phone source changed or is unavailable; start a new run for changed content');
-            const result = await source.read(deviceId, candidates[0], spool);
+            // Some WPD drivers reissue both object IDs and their advertised
+            // persistent keys. Preserve the frozen selection and separately
+            // record the identity actually observed at the successful read.
+            const candidates = currentInventory.files.filter(s => s.relativePath === item.relativePath);
+            const current = candidates[0];
+            if (candidates.length !== 1 || current.name !== item.name || current.size !== item.size || current.modified !== item.modified) throw new Error('Phone source changed or is unavailable; start a new run for changed content');
+            const result = await source.read(deviceId, current, spool);
             local = await hashFile(spool);
-            if (result.size !== item.size || result.sha256 !== local.sha256 || local.size !== item.size || result.source.key !== item.key || result.source.modified !== item.modified) throw new Error('WPD stream/source verification failed');
+            if (result.size !== item.size || result.sha256 !== local.sha256 || local.size !== item.size
+              || result.source.size !== item.size || result.source.key !== current.key || result.source.name !== item.name
+              || result.source.relativePath !== item.relativePath || result.source.modified !== item.modified) throw new Error('WPD stream/source verification failed');
             if (item.sha256 && item.sha256 !== local.sha256) throw new Error('Source content changed; the original request hash remains frozen');
             item.sha256 = local.sha256;
+            item.readSource ||= { key: result.source.key, name: result.source.name,
+              relativePath: result.source.relativePath, size: result.source.size, modified: result.source.modified };
             await checkpoint(stateFile, state);
           }
-          const input = { runId: state.runId, requestId: item.requestId, size: item.size, sha256: item.sha256 };
+          const input = { runId: state.runId, requestId: item.requestId, size: item.size, sha256: item.sha256,
+            ...(item.readSource ? { readSource: item.readSource } : {}) };
           known = await remote({ action: 'lookup', ...input });
           if (known.needsUpload) known = await remote({ action: 'receive', ...input }, { file: spool });
         }

@@ -68,6 +68,14 @@ async function createPhotoImportService({ root, findExisting = async () => ({ pa
     const run = await runRecord(runId);
     const item = run.sources.find(s => s.requestId === requestId);
     if (!item || input.size !== item.size) throw fail('REQUEST_CONFLICT', 'Source does not match the frozen manifest');
+    let readSource;
+    if (input.readSource !== undefined) {
+      const normalized = source({ ...input.readSource, ...(item.header ? { header: item.header } : {}) });
+      if (['name', 'relativePath', 'size', 'modified'].some(field => normalized[field] !== item[field]))
+        throw fail('SOURCE_CHANGED', 'Read source does not match the frozen path and metadata');
+      const { header, ...observed } = normalized;
+      readSource = observed;
+    }
     const intentDir = path.join(runs, runId, 'intents', requestId);
     const temp = await fs.mkdtemp(path.join(staging, 'intent-'));
     try {
@@ -76,8 +84,24 @@ async function createPhotoImportService({ root, findExisting = async () => ({ pa
       const intent = await readJson(path.join(intentDir, 'intent.json'));
       if (intent.sha256 !== input.sha256 || intent.size !== input.size) throw fail('REQUEST_CONFLICT', 'Request content identity is already frozen');
     } finally { await fs.rm(temp, { recursive: true, force: true }); }
+    if (readSource) {
+      const observedDir = path.join(intentDir, 'read-source');
+      const temporary = await fs.mkdtemp(path.join(staging, 'read-source-'));
+      const value = { sha256: input.sha256, size: input.size, readSource };
+      try {
+        await writeJson(path.join(temporary, 'observation.json'), value);
+        await publishDirectory(temporary, observedDir);
+        const saved = await readJson(path.join(observedDir, 'observation.json'));
+        if (digest(JSON.stringify(saved)) !== digest(JSON.stringify(value)))
+          throw fail('REQUEST_CONFLICT', 'The first successful source observation is already frozen');
+      } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+    }
+    if (!readSource) {
+      try { readSource = (await readJson(path.join(intentDir, 'read-source', 'observation.json'))).readSource; }
+      catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
     return { runId, requestId, sha256: input.sha256, size: item.size, source: item,
-      receiptDir: path.join(runs, runId, 'receipts', requestId) };
+      ...(readSource ? { readSource } : {}), receiptDir: path.join(runs, runId, 'receipts', requestId) };
   }
 
   async function existingReceipt(ctx) {
@@ -105,6 +129,7 @@ async function createPhotoImportService({ root, findExisting = async () => ({ pa
     await verify(file, ctx);
     const value = { schema: 'agentx.photo-import-receipt/v1', runId: ctx.runId, requestId: ctx.requestId,
       sha256: ctx.sha256, size: ctx.size, source: ctx.source, path: file, disposition, coverage,
+      ...(ctx.readSource ? { readSource: ctx.readSource, sourceReassociated: ctx.readSource.key !== ctx.source.key } : {}),
       verifiedAt: new Date().toISOString(), verification: 'source-stream-sha256-and-destination-readback', phoneReadOnly: true };
     const temp = await fs.mkdtemp(path.join(staging, 'receipt-'));
     try {

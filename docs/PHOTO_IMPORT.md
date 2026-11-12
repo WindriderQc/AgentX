@@ -180,6 +180,18 @@ reuses a verified local spool when available. A phone disconnect during its
 read leaves an incomplete file; a network disconnect preserves the verified
 spool. Changed phone content needs a new run; it never changes an existing
 request's hash. Completed sources in the same run need no new phone read.
+Some WPD drivers reissue both object IDs and advertised persistent keys after
+reconnection. A pending read can resolve the unique, exact frozen path only
+when its name, size and modification marker still match. The stream reader
+must confirm that current identity before and after reading. The original
+manifest remains unchanged; the first successful read identity is journaled
+separately as `readSource` and included in the verified receipt. A changed key
+sets `sourceReassociated`. A previously frozen content hash must still match.
+Before a first successful read, matching metadata does not prove the bytes
+were identical at enumeration time: the backup represents the verified bytes
+actually read. Ambiguous paths or changed metadata refuse recovery. Phone
+cleanup retains its strict source-key checks and does not inherit this
+read-only reassociation rule.
 The Windows staging lock is a kernel-owned exclusive file handle, released
 when its helper exits even if the importer is killed; its filename is not a lease.
 WPD readers also share one kernel-owned lock per device across cache directories.
