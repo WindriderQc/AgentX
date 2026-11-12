@@ -393,6 +393,12 @@ cut, and the launcher prints its verdict:
   exits. Core inference, batches and judges (which go
   through Core inference), a workload in recovery or about to expire, and another
   maintenance lease block it.
+  A photo-processing batch also holds a durable Core writer through projection,
+  indexing, every image and export. The Bash launcher drains that full active
+  batch while its monitor admits no new one. Completion and settled indexing
+  release the writer; the maintenance lease protects the subsequent recreate.
+  A timeout refuses the recreate and lets processing continue. Unknown writer
+  outcomes retain their fence. See [photo draining and first installation](PHOTO_PROCESSING.md#draining-before-core-maintenance).
 - Benchmark alone (`benchmark`, `benchmark-runner`) owns every workload writer:
   it takes no lease (conversations go from Core to Ollama) and waits until Core
   reports no workload.

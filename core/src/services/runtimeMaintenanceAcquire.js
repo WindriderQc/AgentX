@@ -102,7 +102,7 @@ function createMaintenanceAcquisition({ clean, ttlMs, secret, reapExpired }) {
       };
     }
     const updated = await RuntimeCoordination.findOneAndUpdate(
-      { _id: 'runtime', maintenance: null, ...idle,
+      { _id: 'runtime', maintenance: null, 'coreWriters.0': { $exists: false }, ...idle,
         ...(scope === CORE_RECREATE_SCOPE ? {} : admitsHosts(hosts, resourceIds)) },
       { $set: { maintenance: lease } },
       { new: true }

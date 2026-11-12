@@ -53,6 +53,15 @@ describe('runtimeQuarantineWatch.findQuarantines', () => {
     expect(watch.findQuarantines(runtime, [], NOW).map(item => item.failureCode))
       .toEqual(['maintenance_unknown', 'inference_recovery_unknown']);
   });
+  it('reports an unknown Core writer without releasing or expiring it', () => {
+    const runtime = { coreWriters: [
+      { kind: 'photo-processing', operationId: 'active', state: 'ACTIVE' },
+      { kind: 'photo-processing', operationId: 'unknown-batch', state: 'UNKNOWN', acquiredAt: new Date(NOW) }
+    ] };
+    expect(watch.findQuarantines(runtime, [], NOW)).toEqual([expect.objectContaining({
+      host: 'core', holder: 'unknown-batch', failureCode: 'core_writer_unknown'
+    })]);
+  });
 });
 
 describe('runtimeQuarantineWatch.scan', () => {

@@ -127,6 +127,12 @@ const RuntimeCoordinationSchema = new mongoose.Schema({
   _id: { type: String, default: 'runtime' },
   resourceTopologyHash: { type: String, default: null },
   maintenance: { type: MaintenanceLeaseSchema, default: null },
+  // Core-owned writers survive inference gaps. A crash retains the exact
+  // operation/process fence until its native terminal receipt is reconciled.
+  coreWriters: { type: [new mongoose.Schema({
+    kind: String, operationId: String, queueId: String, processId: String,
+    hosts: [String], acquiredAt: Date, state: { type: String, enum: ['ACTIVE', 'UNKNOWN'] }
+  }, { _id: false })], default: [] },
   // One revisioned control per machine group. It persists across Core restarts
   // and has no TTL: only an explicit Play gives control back to AgentX.
   hostControls: { type: [new mongoose.Schema({

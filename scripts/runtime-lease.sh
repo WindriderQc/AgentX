@@ -118,10 +118,14 @@ runtime_lease_acquire() {
   local rc=0 waited=0
   runtime_lease_try "$1" "$2" || rc=$?
   if [[ $rc -eq 10 ]] && (( RUNTIME_LEASE_DRAIN_SECONDS > 0 )) && runtime_lease_drainable "$RUNTIME_LEASE_REFUSAL"; then
-    echo "Only background inference holds the runtime: asking it to pause (up to ${RUNTIME_LEASE_DRAIN_SECONDS}s)." >&2
+    echo "Background work holds the runtime: asking it to pause after its active unit (up to ${RUNTIME_LEASE_DRAIN_SECONDS}s)." >&2
     runtime_lease_request POST /api/nerve-center/runtime-coordination/drain \
       "{\"scope\":\"$2\",\"ttlMs\":$(( (RUNTIME_LEASE_DRAIN_SECONDS + 30) * 1000 ))}" >/dev/null 2>&1 || true
     while (( waited < RUNTIME_LEASE_DRAIN_SECONDS )); do
+      # The server bounds drain TTLs. Renew during long batch waits; expiry
+      # must not admit another batch while this launcher is still draining.
+      runtime_lease_request POST /api/nerve-center/runtime-coordination/drain \
+        "{\"scope\":\"$2\",\"ttlMs\":$(( (RUNTIME_LEASE_DRAIN_SECONDS + 30) * 1000 ))}" >/dev/null 2>&1 || true
       sleep "$RUNTIME_LEASE_DRAIN_POLL_SECONDS"
       waited=$(( waited + RUNTIME_LEASE_DRAIN_POLL_SECONDS ))
       rc=0
@@ -139,9 +143,9 @@ runtime_lease_acquire() {
 # probes. Benchmark, interactive and maintenance holders keep refusing at once.
 runtime_lease_drainable() {
   local kinds
-  kinds="$(printf '%s' "$1" | grep -oE '"type":"[^"]*","kind":"[^"]*"' | sort -u)"
+  kinds="$(printf '%s' "$1" | grep -oE '"type":"[^"]*","kind":"[^"]*"(,"drainable":(true|false))?' | sort -u)"
   [[ -n "$kinds" ]] || return 1
-  ! printf '%s\n' "$kinds" | grep -qvE '^"type":"inference","kind":"(inference-automated|watchdog-probe)"$'
+  ! printf '%s\n' "$kinds" | grep -qvE '^("type":"inference","kind":"(inference-automated|watchdog-probe)"(,"drainable":true)?|"type":"inference","kind":"trusted-runtime","drainable":true|"type":"core-writer","kind":"photo-processing","drainable":true)$'
 }
 
 # One attempt: 0 held, 10 refused (the body is kept in RUNTIME_LEASE_REFUSAL), 11 unreachable.

@@ -246,7 +246,7 @@ async function waitIdle(coreUrl, waitMs) {
   const deadline = Date.now() + waitMs;
   for (;;) {
     const work = await activeWork(coreUrl);
-    if (!work.maintenance && !work.workloads.length && !work.inferences.length) return;
+    if (!work.maintenance && !work.workloads.length && !work.inferences.length && !work.coreWriters?.length) return;
     if (Date.now() >= deadline) throw refuse('Work stayed active on the instance', { work });
     await sleep(10_000);
   }

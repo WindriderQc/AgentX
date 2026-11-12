@@ -107,7 +107,8 @@ function blocker(fields) {
   const where = fields.hosts?.length ? ` on ${fields.hosts.map(host => label(host, 200)).join(',')}` : '';
   const summary = `${fields.type} ${label(fields.kind)} ${label(fields.id)}${where}`
     + ` (owner ${label(fields.owner)}, started ${fields.startedAt || 'unknown'}): ${fields.reason}. Cancel: ${fields.cancel}`;
-  return { ...fields, summary: summary.replace(/["\\\r\n]/g, ' ') };
+  return { type: fields.type, kind: fields.kind, drainable: fields.drainable === true,
+    ...fields, summary: summary.replace(/["\\\r\n]/g, ' ') };
 }
 
 // service: core (Core alone), benchmark (Benchmark and its runner), all.
@@ -122,9 +123,20 @@ function deployBlockers(state, { service = 'all', now = new Date() } = {}) {
       state: item.recoveryState || null, reason, cancel: cancelRoute(item) }));
   }
   if (service === 'benchmark') return { service, allowed: blockers.length === 0, blockers };
+  for (const item of state?.coreWriters || []) {
+    blockers.push(blocker({ type: 'core-writer', kind: item.kind, drainable: item.state === 'ACTIVE',
+      id: item.operationId, hosts: item.hosts || [], owner: 'core-photo-processing',
+      startedAt: iso(item.acquiredAt), state: item.state,
+      reason: item.state === 'ACTIVE' ? 'Core owns the entire batch, including indexing and export'
+        : 'the original batch outcome requires reconciliation',
+      cancel: 'none; let the batch finish or reconcile its original native receipts' }));
+  }
   for (const item of state?.inferences || []) {
     const unknown = item.state === 'UNKNOWN';
-    blockers.push(blocker({ type: 'inference', kind: item.kind, id: item.model, hosts: [item.host],
+    blockers.push(blocker({ type: 'inference', kind: item.kind,
+      drainable: !unknown && (['inference-automated', 'watchdog-probe'].includes(item.kind)
+        || (item.kind === 'trusted-runtime' && item.caller === 'verified-phone-photo')),
+      id: item.model, hosts: [item.host],
       owner: item.principal, startedAt: iso(item.acquiredAt), expiresAt: iso(item.expiresAt),
       state: item.state || null,
       reason: unknown ? 'its outcome is UNKNOWN and the host stays quarantined' : 'Core serves it; a Core recreate cuts it',

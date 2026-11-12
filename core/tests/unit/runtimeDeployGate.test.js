@@ -141,4 +141,13 @@ describe('runtime deploy gate', () => {
     const verdict = await service.listDeployBlockers({ service: 'benchmark' });
     expect(verdict.blockers[0].summary).not.toMatch(/["\\\n]/);
   });
+  test('only known active photo inference is drainable; caller labels never release a lease', async () => {
+    const admission = await service.acquireInference({ principal: 'core-trusted-runtime', requestId: 'photo-gap',
+      host: HOST_A, model: 'synthetic-vision', kind: 'trusted-runtime', caller: 'verified-phone-photo' });
+    expect(admission.acquired).toBe(true);
+    expect((await lease('core-recreate')).blockers[0]).toMatchObject({ type: 'inference', drainable: true });
+    await service.markInferenceUnknown({ id: admission.admissionId, generation: admission.generation,
+      principal: 'core-trusted-runtime', reason: 'unknown provider result' });
+    expect((await lease('core-recreate')).blockers[0]).toMatchObject({ type: 'inference', drainable: false });
+  });
 });

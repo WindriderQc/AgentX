@@ -7,6 +7,7 @@ const { hash, id } = require('./phoneLibrary');
 const { fail } = require('./importFiles');
 const { loadProcessingConfig } = require('./photoProcessingConfig');
 const { createPhotoProcessingWork } = require('./photoProcessingWork');
+const writer = require('./photoProcessingWriter');
 const PROCESS = crypto.randomUUID(), ACTOR = 'core-photo-processing', WC = { w: 1, j: true };
 const configIdentity = c => hash([c.libraryId, c.originalPathPrefix, c.nasHost]);
 async function target() {
@@ -73,6 +74,7 @@ async function observe(job, deps = {}) {
     const client = deps.client || require('./immichClient').createImmichClient();
     if (!require('./photoProcessingWork').queuesIdle(await client.json('/jobs')))
       return { ...base, terminal: false, reason: 'Immich background work still holds the planned window' };
+    await writer.release(row);
     return { ...base, terminal: true, state: 'completed', authority: 'core.photo-processing' };
   }
   return { ...base, terminal: false, uncertain: row.state === 'uncertain' || row.processId !== PROCESS,
@@ -90,9 +92,15 @@ async function sweep(deps = {}) {
   if (held) {
     const job = held.queueId && await service.get(held.queueId);
     if (!job || !['completed', 'failed', 'cancelled'].includes(job.state)) return;
+    // UNKNOWN writers retain their fence even if someone marks a queue
+    // terminal. Only the native completed batch and settled indexing release it.
+    if (held.state === 'completed') {
+      if (!(await observe(job, deps)).terminal) return;
+    } else if (await writer.held(held)) return;
     await Batches.updateOne({ _id: held._id, workerSlot: 'photo-processing', dispatchId: held.dispatchId },
       { $unset: { workerSlot: 1 }, ...(!['completed', 'failed'].includes(held.state) ? { $set: { state: 'failed', error: 'Queue: ' + job.state } } : {}) }, { writeConcern: WC });
   }
+  if (writer.draining()) return;
   const rows = await Batches.find({ state: 'queued', queueId: { $exists: true } }).sort({ createdAt: 1 }).limit(20).lean();
   for (const row of rows) {
     let job = await service.get(row.queueId);
@@ -100,27 +108,44 @@ async function sweep(deps = {}) {
       await Batches.updateOne({ _id: row._id, state: 'queued' }, { $set: { state: 'failed', error: 'Queue: ' + job.state } }); continue;
     }
     if (['dispatching', 'running', 'uncertain'].includes(job.state)) return;
+    const candidate = { ...row, processId: PROCESS };
+    // Acquire before creating a durable slot: if maintenance wins, a recreate
+    // must not leave an unstarted claimed row owned by the previous process.
+    if (!await writer.acquire(candidate)) return;
     let claimed;
     try { claimed = await Batches.findOneAndUpdate({ _id: row._id, state: 'queued' },
       { $set: { state: 'claimed', workerSlot: 'photo-processing', processId: PROCESS } }, { new: true, writeConcern: WC }).lean(); }
-    catch (error) { if (error.code === 11000) return; throw error; }
-    if (!claimed) return;
+    catch (error) {
+      // A dropped claim acknowledgement may still have written the slot.
+      // No queue dispatch has happened: reset that exact unstarted claim
+      // before releasing its maintenance fence.
+      await Batches.updateOne({ _id: row._id, state: 'claimed', processId: PROCESS, dispatchId: { $exists: false } },
+        { $set: { state: 'queued' }, $unset: { workerSlot: 1 } }, { writeConcern: WC });
+      await writer.release(candidate);
+      if (error.code === 11000) return; throw error;
+    }
+    if (!claimed) { await writer.release(candidate); return; }
     try {
       if (job.state === 'requested') job = await service.reserve(job.id, { expectedRevision: job.revision, start: new Date().toISOString() }, ACTOR);
       await (deps.preDispatch || require('../heavyWorkQueueEvidence').preDispatch)(job);
+      await writer.assert(claimed);
       job = await service.begin(job.id, { expectedRevision: job.revision }, ACTOR);
       await Batches.updateOne({ _id: row._id, state: 'claimed' }, { $set: { dispatchId: job.dispatchId, state: 'running' } }, { writeConcern: WC });
       await service.assertDispatch(job.id, job.dispatchId);
       await service.record(job.id, { dispatchId: job.dispatchId, state: 'running', operationId: row._id }, ACTOR);
       const work = (deps.work || createPhotoProcessingWork(deps)).run(claimed, job).catch(async error => {
+        await writer.unknown(claimed);
         await Batches.updateOne({ _id: row._id, dispatchId: job.dispatchId }, { $set: { state: 'uncertain', error: error.code || 'PHOTO_PROCESSING_UNKNOWN' } }, { writeConcern: WC });
         await service.record(job.id, { dispatchId: job.dispatchId, state: 'uncertain', reason: 'Observe original photo processing effects before any retry.' }, ACTOR).catch(() => {});
       });
       if (deps.wait) await work; else work.catch(() => {});
     } catch (error) {
       const current = await service.get(job.id);
-      if (['requested', 'reserved'].includes(current.state)) await Batches.updateOne({ _id: row._id, state: 'claimed' },
-        { $set: { state: 'queued', error: error.code || 'PHOTO_PROCESSING_WAITING' }, $unset: { workerSlot: 1 } }, { writeConcern: WC });
+      if (['requested', 'reserved'].includes(current.state)) {
+        await Batches.updateOne({ _id: row._id, state: 'claimed' },
+          { $set: { state: 'queued', error: error.code || 'PHOTO_PROCESSING_WAITING' }, $unset: { workerSlot: 1 } }, { writeConcern: WC });
+        await writer.release(claimed);
+      } else await writer.unknown(claimed);
     }
     return;
   }
