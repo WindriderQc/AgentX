@@ -26,9 +26,12 @@ app.get('/', (_req, res) => res.type('html').send(`<!doctype html><html><head>
 <style>body{margin:0;background:#02060d}.avatar-dock{position:fixed;inset:0}.nestor-ambient-sky{width:100%;height:100%}
 .nestor-ambient-chips{position:fixed;bottom:10px;color:#d9eef5}</style></head><body>
 <div class="avatar-dock" data-view="plein"></div>
+<script src="/assets/nestor-sky-layout.js"></script><script src="/assets/nestor-sky-renderer.js"></script>
 <script src="/assets/nestor-ambient-choice.js"></script><script src="/assets/nestor-artx.js"></script>
 <script src="/assets/nestor-ambient.js"></script><script>
-window.fixtureClock=${clock};window.labels=[];
+window.fixtureClock=${clock};window.labels=[];window.circles=[];
+const nativeArc=CanvasRenderingContext2D.prototype.arc;
+CanvasRenderingContext2D.prototype.arc=function(x,y,r){const m=this.getTransform();window.circles.push({x:m.a*x+m.c*y+m.e,y:m.b*x+m.d*y+m.f,r});return nativeArc.apply(this,arguments)};
 const nativeText=CanvasRenderingContext2D.prototype.fillText;
 CanvasRenderingContext2D.prototype.fillText=function(text,x,y){window.labels.push({text,x,y});return nativeText.apply(this,arguments)};
 window.ambient=NestorAmbient.mount({now:()=>fixtureClock});
@@ -47,7 +50,9 @@ let browser, server;
   const first = artx.observe(observation).current;
   const label = await page.evaluate(() => labels.filter(label => label.text === 'Saturne').at(-1));
   assert.equal(first.planets[0].rendered, true);
-  assert.ok(Math.abs(label.x / 1280 - first.planets[0].screen.x) < 0.001);
+  assert.ok(await page.evaluate(point => circles.some(c => Math.abs(c.x / 1280 - point.x) < 0.001 && Math.abs(c.y / 720 - point.y) < 0.001), first.planets[0].screen));
+  const caption = await page.evaluate(() => ambient.skyPlan().labels.find(l => l.id === 'saturn'));
+  assert.ok(Math.abs(label.x - (caption.x * 1280 + caption.fontPx * 0.4)) < 0.01);
   assert.equal(choices, 0);
   clock += 120001;
   await page.evaluate(value => { fixtureClock = value; ambient.decide(); }, clock);
@@ -59,8 +64,10 @@ let browser, server;
   await page.waitForFunction(old => ambient.context().current.snapshotId !== old, oldSource);
   const rotated = artx.observe(await page.evaluate(() => ambient.context())).current;
   const moved = await page.evaluate(() => labels.filter(label => label.text === 'Saturne').at(-1));
-  assert.equal(rotated.panorama.centerAzimuthDeg, 145);
-  assert.ok(Math.abs(moved.x / 1280 - rotated.planets[0].screen.x) < 0.001);
+  assert.equal(rotated.panorama.centerAzimuthDeg, 180);
+  assert.equal(moved.x, label.x, 'Moon occlusion does not move the sky or Saturn caption');
+  assert.equal(rotated.moon.reason, 'face');
+  assert.match(rotated.moon.label, /derrière moi/);
   await page.screenshot({ path: path.join(report, 'saturn-panorama.png') });
   await page.evaluate(() => {
     const photos = document.createElement('div'); photos.className = 'nestor-idle-photos'; document.body.append(photos);
@@ -68,7 +75,7 @@ let browser, server;
   assert.equal(artx.observe(await page.evaluate(() => ambient.context())).current.planets[0].rendered, false);
   assert.deepEqual(errors, []);
   fs.writeFileSync(path.join(report, 'receipt.json'), JSON.stringify({ choices, first, rotated, errors }, null, 2));
-  console.log('ArtX browser journey passed: canvas position, idle selection, rotated Moon panorama and hidden display.');
+  console.log('ArtX browser journey passed: canvas position, idle selection, fixed Moon panorama and hidden display.');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   await browser?.close();
   if (server) await new Promise(resolve => server.close(resolve));

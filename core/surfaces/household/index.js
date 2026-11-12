@@ -260,6 +260,7 @@ function register(api) {
   app.get('/voice-personas/debug', (_req, res) => res.redirect(302, '/voice-lab/personas'));
   app.get('/dad/nestor', (_req, res) => res.redirect(302, '/voice'));
   require('./kids-tasks-page').registerKidsTasksPage(app);
+  require('./artx-lab').registerArtxLab(app);
   app.get([
     '/panel', '/dad', '/dad/day', '/dad/memories', '/dad/history', '/dad/people', '/dad/family', '/dad/family/plants', '/voice-lab', '/voice-lab/devices', '/voice-lab/personas', '/kids', '/kids/sounds', '/kids/plants', '/lecture', '/lecture/parents', '/lecture/parents.html',
     '/voice', '/voice.html', '/voix', '/voice-personas', '/voice-personas.html'

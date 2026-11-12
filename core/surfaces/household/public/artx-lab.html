@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Laboratoire ArtX · AgentX</title>
+  <link rel="stylesheet" href="/assets/household/artx-lab.css?v=1">
+  <script src="/assets/household/nestor-sky-layout.js?v=artx-sky-1" defer></script>
+  <script src="/assets/household/nestor-sky-renderer.js?v=artx-sky-1" defer></script>
+  <script src="/assets/household/nestor-ambient-choice.js?v=artx-sky-1" defer></script>
+  <script src="/assets/household/nestor-ambient.js?v=artx-sky-1" defer></script>
+  <script src="/assets/household/artx-lab.js?v=1" defer></script>
+</head>
+<body>
+  <!-- product-navigation -->
+  <main class="artx-lab">
+    <header><p class="eyebrow">ATELIER / NESTOR</p><h1>Laboratoire ArtX</h1>
+      <p>Un ciel calculé, le vrai moteur d’affichage et des conditions à explorer.</p></header>
+    <div class="lab-grid">
+      <form id="controls" class="controls">
+        <h2>Composer une scène</h2>
+        <label>Date et heure (UTC)<input name="at" type="datetime-local" value="2026-06-21T10:00" required></label>
+        <div class="pair"><label>Latitude<input name="lat" type="number" min="-89" max="89" step="0.01" value="45" required></label>
+          <label>Longitude<input name="lon" type="number" min="-180" max="180" step="0.01" value="0" required></label></div>
+        <p class="hint">Lieu d’essai explicite. Aucune lecture de la position de la maison ou de votre appareil.</p>
+        <label>Centre du panorama (azimut)<input name="center" type="number" min="0" max="359" value="180" required></label>
+        <label>Scène<select name="mode"><option value="sky">Ciel</option><option value="weather">Météo</option><option value="rest">Repos</option></select></label>
+        <label>Conditions simulées<select name="weather"><option value="clear">Dégagé</option><option value="cloud">Nuageux</option>
+          <option value="rain">Pluie</option><option value="snow">Neige</option><option value="fog">Brouillard</option><option value="unknown">Indisponibles</option></select></label>
+        <label>Âge du relevé<select name="age"><option value="0">Récent</option><option value="45">45 minutes</option><option value="240">4 heures · expiré</option></select></label>
+        <label>Format<select name="aspect"><option value="16/9">16:9</option><option value="16/10">16:10</option><option value="9/16">Portrait</option></select></label>
+        <label>Densité de pixels<select name="pixelRatio"><option value="1">1×</option><option value="1.5">1,5× · plafond du moteur</option></select></label>
+        <label class="check"><input name="zones" type="checkbox" checked> Voir les zones réservées</label>
+        <label class="check"><input name="motion" type="checkbox"> Animer la météo</label>
+        <button type="submit">Afficher la scène</button>
+        <p id="status" role="status">Préparation du ciel…</p>
+      </form>
+      <section class="preview-panel" aria-label="Aperçu du ciel">
+        <div class="preview-heading"><span class="simulation">SIMULATION</span><span id="source-time"></span></div>
+        <div id="stage" class="avatar-dock" data-view="plein">
+          <div class="lab-zones" aria-hidden="true"><div class="clock-zone">Horloge et notes</div><div class="face-zone">Nestor<br><small>zone du visage</small></div><div class="bar-zone">Conversation</div></div>
+        </div>
+        <p class="hint">Le dessin utilise le moteur de Nestor. Le cadre pointillé représente son visage; aucun avatar, micro, modèle ou écran familial n’est activé.</p>
+        <div class="facts"><p id="weather-age"></p><p id="render-time"></p></div>
+        <h2>Ce que le moteur dessine</h2>
+        <div class="table-wrap"><table><thead><tr><th>Objet</th><th>Position réelle</th><th>Affichage</th></tr></thead><tbody id="objects"></tbody></table></div>
+        <details><summary>Géométrie et manifeste de simulation</summary><pre id="manifest"></pre></details>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

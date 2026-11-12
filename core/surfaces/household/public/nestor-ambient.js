@@ -49,12 +49,13 @@
     try { root.localStorage?.setItem(PAINT_KEY, JSON.stringify(log)); } catch { /* per-device convenience only */ }
   }
 
-  function mount({ space = 'family', documentRef = root.document, now = () => Date.now(), fetchImpl = root.fetch?.bind(root) } = {}) {
+  function mount({ space = 'family', documentRef = root.document, now = () => Date.now(), fetchImpl = root.fetch?.bind(root),
+    preview = null, random = Math.random, animate = true, onFrame = null } = {}) {
     const Choice = root.NestorAmbientChoice;
     const doc = documentRef;
     if (!Choice || !doc?.body) return null;
     const reducedMotion = !!root.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const artx = root.NestorArtx?.create({ now, fetchImpl });
+    const artx = preview ? null : root.NestorArtx?.create({ now, fetchImpl });
     const canvas = doc.createElement('canvas');
     canvas.className = 'nestor-ambient-sky';
     canvas.setAttribute('aria-hidden', 'true');
@@ -72,10 +73,11 @@
     weather.hidden = true;
     doc.body.append(chips, visit);
 
+    let skyPlan = null;
     let snapshot = null, state = 'idle', sample = null, scene = null, disposed = false;
     let frame = 0, lastFrame = 0, particles = [], particleKind = '', flash = 0;
-    let visitKey = null, visitMoment = null, visitTimer = null, dismissed = new Set(), visits = readVisits();
-    let paintLog = readPaintLog(), standbySince = null, painting = null, paintedTaskId = null;
+    let visitKey = null, visitMoment = null, visitTimer = null, dismissed = new Set(), visits = preview ? {} : readVisits();
+    let paintLog = preview ? { painted: {}, last: 0 } : readPaintLog(), standbySince = null, painting = null, paintedTaskId = null;
     const ctx = canvas.getContext?.('2d') || null;
 
     const dock = () => doc.querySelector('.avatar-dock');
@@ -104,10 +106,12 @@
     function decide() {
       if (disposed) return;
       const at = now();
+      if (preview) snapshot = preview.snapshot;
       const quiet = standby();
       if (!quiet) standbySince = null; else if (standbySince === null) standbySince = at;
       const next = Choice.artxScene(Choice.chooseScreen(snapshot, { at, standby: quiet, visits, painted: paintLog.painted, lastPaint: paintLog.last,
         idleMs: standbySince === null || photosShown() ? 0 : at - standbySince, painting: painting?.moment || null }), snapshot, snapshot?.artx?.task, quiet);
+      if (preview?.mode && ['weather', 'rest'].includes(preview.mode)) next.background.sky = null;
       if (next.moment && dismissed.has(momentId(next.moment))) next.moment = null;
       if (next.moment?.kind === 'paint' && next.artxTaskId === paintedTaskId) next.moment = null;
       // An open visit is already recorded (cooldown) but keeps the screen until its tour ends.
@@ -117,7 +121,7 @@
       const host = dock();
       if (host && canvas.parentElement !== host) host.prepend(canvas);
       const shown = plein() && !photosShown();
-      artx?.tick({ snapshot, quiet, visible: shown && !doc.hidden && !!ctx });
+      if (!preview) artx?.tick({ snapshot, quiet, visible: shown && !doc.hidden && !!ctx });
       renderChips(shown ? chipsFor(next.chips) : []);
       if (next.moment?.kind === 'visit' && shown) openVisit(next.moment, at); else if (next.moment?.kind !== 'visit') closeVisit();
       if (next.moment?.kind === 'paint' && shown) startPaint(next.moment); else if (painting) endPaint();
@@ -254,19 +258,19 @@
           for (let c = 0; c < cols; c += 1) {
             const i = (r * cols + c) * 4;
             dabs.push({ x: dx + (c + 0.5) * cw, y: dy + (r + 0.5) * ch, w: cw * 1.35, h: ch * 1.35,
-              color: `rgb(${data[i]},${data[i + 1]},${data[i + 2]})`, tilt: (Math.random() - 0.5) * 0.8,
-              t0: start + span * Math.min(1, Math.max(0, order(c, r, cols, rows))), bend: (Math.random() - 0.5) * 0.5 });
+              color: `rgb(${data[i]},${data[i + 1]},${data[i + 2]})`, tilt: (random() - 0.5) * 0.8,
+              t0: start + span * Math.min(1, Math.max(0, order(c, r, cols, rows))), bend: (random() - 0.5) * 0.5 });
           }
         }
       };
       const fine = Math.max(6 * ratio, Math.sqrt(dw * dh / 5000));
       // Coarse underpainting: a burst from the centre outwards.
-      layerOf(fine * 4, 0, 0.24, (c, r, cols, rows) => Math.hypot((c + 0.5) / cols - 0.5, (r + 0.5) / rows - 0.5) / 0.71 + Math.random() * 0.08);
+      layerOf(fine * 4, 0, 0.24, (c, r, cols, rows) => Math.hypot((c + 0.5) / cols - 0.5, (r + 0.5) / rows - 0.5) / 0.71 + random() * 0.08);
       // Fine strokes: seven bands, each swept left-right then right-left.
       layerOf(fine, 0.2, 0.72, (c, r, cols, rows) => {
         const bands = 7, band = Math.min(bands - 1, Math.floor(r / rows * bands));
         const along = band % 2 ? 1 - c / cols : c / cols;
-        return (band + along * 0.92 + Math.random() * 0.12) / bands;
+        return (band + along * 0.92 + random() * 0.12) / bands;
       });
       dabs.sort((a, b) => a.t0 - b.t0);
       const layer = doc.createElement('canvas');
@@ -337,89 +341,9 @@
       if (imageAlpha > 0.05) c.strokeRect(dx - 0.5, dy - 0.5, dw + 1, dh + 1);
     }
 
-    // ---- the real night sky ----------------------------------------------------------------
-    const PLANET_COLORS = { venus: '#fffbe8', mars: '#ffb08a', jupiter: '#fff0d0', saturn: '#f3dca0' };
-    const COMPASS_MARKS = [['N', 0], ['NE', 45], ['E', 90], ['SE', 135], ['S', 180], ['SO', 225], ['O', 270], ['NO', 315]];
-    function drawRealSky(c, b, bg, sky, at) {
-      const { width, height, ratio } = b, full = bg.sky === 'full', dusk = bg.light === 'twilight';
-      const frame = Choice.skyFrame(sky);
-      const place = point => { const q = frame.project(point); return { x: q.x * width, y: q.y * height }; };
-      const horizon = 0.84 * height, seconds = at / 1000;
-      // The horizon and the compass, faint.
-      c.globalAlpha = 1; c.strokeStyle = 'rgba(120,170,200,0.22)'; c.lineWidth = ratio;
-      c.beginPath(); c.moveTo(0, horizon); c.lineTo(width, horizon); c.stroke();
-      c.fillStyle = 'rgba(160,200,225,0.45)'; c.font = `${Math.round(13 * ratio)}px system-ui, sans-serif`; c.textAlign = 'center';
-      for (const [label, azDeg] of COMPASS_MARKS) {
-        if (!frame.visible({ azDeg, altDeg: 0 })) continue;
-        const p = place({ azDeg, altDeg: 0 });
-        if (p.x > 24 * ratio && p.x < width - 24 * ratio) c.fillText(label, p.x, horizon + 20 * ratio);
-      }
-      const stars = (sky.stars || []).filter(star => frame.visible(star) && (full || star.mag <= 0.6));
-      // A few well-known figures, barely drawn, with their names.
-      if (full) {
-        const byName = new Map(stars.map(star => [star.name, place(star)]));
-        c.strokeStyle = 'rgba(150,190,230,0.13)'; c.lineWidth = ratio;
-        c.fillStyle = 'rgba(170,200,230,0.3)'; c.font = `${Math.round(12 * ratio)}px system-ui, sans-serif`;
-        for (const figure of sky.figures || []) {
-          const points = figure.lines.map(([a, z]) => [byName.get(a), byName.get(z)]);
-          if (points.some(([a, z]) => !a || !z)) continue;
-          c.beginPath();
-          for (const [a, z] of points) { c.moveTo(a.x, a.y); c.lineTo(z.x, z.y); }
-          c.stroke();
-          const all = points.flat();
-          c.fillText(figure.name, all.reduce((sum, p) => sum + p.x, 0) / all.length, Math.max(...all.map(p => p.y)) + 18 * ratio);
-        }
-      }
-      // Stars: size and light by magnitude, a gentle twinkle, dimmer near the horizon.
-      c.fillStyle = '#e9f0ff';
-      stars.forEach((star, index) => {
-        const p = place(star);
-        const twinkle = reducedMotion ? 1 : 0.82 + 0.18 * Math.sin(seconds * (1.1 + (index % 7) * 0.23) + index * 1.7);
-        const low = star.altDeg < 12 ? 0.45 + star.altDeg * 0.045 : 1;
-        c.globalAlpha = Math.max(0.3, Math.min(1, 1.05 - 0.22 * star.mag)) * twinkle * low * (dusk ? 0.6 : 1);
-        c.beginPath(); c.arc(p.x, p.y, Math.max(0.7, 2.6 - 0.75 * star.mag) * ratio, 0, Math.PI * 2); c.fill();
-      });
-      // Planets: steady, a touch of colour, named.
-      c.font = `${Math.round(12 * ratio)}px system-ui, sans-serif`;
-      const bodies = Choice.skyBodies(sky, bg);
-      for (const planet of bodies.planets) {
-        const p = place(planet), r = Math.max(1.8, 3.4 - 0.5 * planet.mag) * ratio, color = PLANET_COLORS[planet.id] || '#fff';
-        const glow = c.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 4);
-        glow.addColorStop(0, color); glow.addColorStop(1, 'rgba(255,255,255,0)');
-        c.globalAlpha = 0.35; c.fillStyle = glow; c.beginPath(); c.arc(p.x, p.y, r * 4, 0, Math.PI * 2); c.fill();
-        c.globalAlpha = 1; c.fillStyle = color; c.beginPath(); c.arc(p.x, p.y, r, 0, Math.PI * 2); c.fill();
-        c.globalAlpha = 0.55; c.fillStyle = '#d9eef5'; c.fillText(planet.name, p.x, p.y + r + 15 * ratio);
-      }
-      c.globalAlpha = 1;
-      if (bodies.moon) drawMoon(c, b, sky, place);
-    }
-
-    // The Moon, larger than life so its phase reads from across the kitchen. Its lit side faces
-    // the Sun, wherever the Sun is below the horizon.
-    function drawMoon(c, b, sky, place) {
-      const moon = sky.moon, p = place(moon), sun = place(sky.sun || { azDeg: 180, altDeg: -30 });
-      const R = Math.min(b.width, b.height) * 0.035, k = Math.max(0, Math.min(1, moon.illumination));
-      const halo = c.createRadialGradient(p.x, p.y, R, p.x, p.y, R * 4);
-      halo.addColorStop(0, `rgba(235,240,255,${0.08 + 0.18 * k})`); halo.addColorStop(1, 'rgba(235,240,255,0)');
-      c.globalAlpha = 1; c.fillStyle = halo; c.beginPath(); c.arc(p.x, p.y, R * 4, 0, Math.PI * 2); c.fill();
-      c.save();
-      c.translate(p.x, p.y); c.rotate(Math.atan2(sun.y - p.y, sun.x - p.x));
-      c.fillStyle = 'rgba(70,82,100,0.55)'; // earthshine on the dark side
-      c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2); c.fill();
-      // Lit limb on the Sun's side (+x), closed by the terminator: a half ellipse bulging toward
-      // the light for a crescent, away from it for a gibbous moon.
-      const a = R * Math.abs(1 - 2 * k);
-      c.fillStyle = '#f3efe2';
-      c.beginPath(); c.arc(0, 0, R, -Math.PI / 2, Math.PI / 2);
-      if (k < 0.5) c.ellipse(0, 0, a, R, 0, Math.PI / 2, -Math.PI / 2, true);
-      else c.ellipse(0, 0, a, R, 0, Math.PI / 2, Math.PI * 1.5, false);
-      c.fill();
-      c.restore();
-    }
-
     // ---- drawing -------------------------------------------------------------------------
     function size() {
-      const ratio = Math.min(1.5, root.devicePixelRatio || 1);
+      const ratio = Math.min(1.5, preview?.pixelRatio || root.devicePixelRatio || 1);
       const width = Math.round(canvas.clientWidth * ratio), height = Math.round(canvas.clientHeight * ratio);
       if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; particles = []; }
       return { width, height, ratio };
@@ -433,9 +357,10 @@
     let skyKey = '';
     const invalidateSky = () => { skyKey = ''; };
     skyLayer.addEventListener('contextrestored', invalidateSky);
-    function drawSky(box, light, iss) {
+    function drawSky(box, light, iss, altitude) {
       if (!box.width || !box.height) return;
-      const [top, bottom] = skyColors(light, iss);
+      const [top, bottom] = !iss && Number.isFinite(altitude) && root.NestorSkyRenderer
+        ? root.NestorSkyRenderer.palette(altitude) : skyColors(light, iss);
       const key = [box.width, box.height, top, bottom].join('|');
       const paint = c => {
         const gradient = c.createLinearGradient(0, 0, 0, box.height);
@@ -470,8 +395,8 @@
       const density = { snow: 1 / 2600, rain: 1 / 2200, storm: 1 / 1700, fog: 1 / 90000, cloud: 1 / 120000, clear: 1 / 30000, unknown: 0 }[kind] || 0;
       const count = Math.round(Math.min(420, area * density * bg.intensity * (bg.calm ? 0.6 : 1) * (kind === 'clear' && bg.light === 'night' ? 6 : 1)));
       particles = Array.from({ length: count }, () => ({
-        x: Math.random() * box.width, y: Math.random() * box.height,
-        r: Math.random(), s: 0.5 + Math.random(), p: Math.random() * Math.PI * 2
+        x: random() * box.width, y: random() * box.height,
+        r: random(), s: 0.5 + random(), p: random() * Math.PI * 2
       }));
     }
 
@@ -484,7 +409,7 @@
         for (const f of particles) {
           f.y += (18 + 30 * f.s) * ratio * dt; f.p += dt * (0.8 + f.r);
           f.x += (Math.sin(f.p) * 12 + wind * 90 * f.s) * ratio * dt;
-          if (f.y > height) { f.y = -4; f.x = Math.random() * width; }
+          if (f.y > height) { f.y = -4; f.x = random() * width; }
           f.x = (f.x + width) % width;
           c.globalAlpha = 0.45 + 0.5 * f.r;
           c.beginPath(); c.arc(f.x, f.y, (1.2 + 3 * f.r) * ratio, 0, Math.PI * 2); c.fill();
@@ -496,14 +421,14 @@
         for (const d of particles) {
           const speed = (420 + 300 * d.s) * ratio * dt;
           d.y += speed; d.x += speed * slant;
-          if (d.y > height) { d.y = -20 * ratio; d.x = Math.random() * width * 1.2 - width * 0.2; }
+          if (d.y > height) { d.y = -20 * ratio; d.x = random() * width * 1.2 - width * 0.2; }
           const len = (10 + 14 * d.s) * ratio;
           c.globalAlpha = 0.25 + 0.4 * d.r;
           c.moveTo(d.x, d.y); c.lineTo(d.x - len * slant, d.y - len);
         }
         c.stroke();
         if (bg.kind === 'storm' && !bg.calm && !reducedMotion) {
-          if (flash <= 0 && Math.random() < dt / 9) flash = 0.35;
+          if (flash <= 0 && random() < dt / 9) flash = 0.35;
           if (flash > 0) { c.globalAlpha = flash * 0.5; c.fillStyle = '#cfe4ff'; c.fillRect(0, 0, width, height); flash -= dt * 1.4; }
         }
       } else if (bg.kind === 'fog' || bg.kind === 'cloud') {
@@ -519,12 +444,7 @@
           c.fillRect(b.x - radius, y - radius, radius * 2, radius * 2);
         }
       } else if (bg.kind === 'clear') {
-        if (bg.light === 'day') {
-          const sun = c.createRadialGradient(width * 0.85, height * 0.12, 0, width * 0.85, height * 0.12, height * 0.5);
-          sun.addColorStop(0, 'rgba(255,214,140,0.22)'); sun.addColorStop(1, 'rgba(255,214,140,0)');
-          c.globalAlpha = 1; c.fillStyle = sun; c.fillRect(0, 0, width, height);
-        }
-        drawStars(c, dt, bg.light === 'day' ? 'rgba(255,236,190,0.6)' : 'rgba(225,235,255,0.9)', bg.light === 'day' ? 0.25 : 1);
+        if (!snapshot?.sky && bg.light !== 'day') drawStars(c, dt, 'rgba(225,235,255,0.9)', 1);
       }
       c.globalAlpha = 1;
     }
@@ -547,7 +467,7 @@
       if (!particles.length || particleKind !== 'iss-stars') {
         particleKind = 'iss-stars';
         particles = Array.from({ length: Math.round(Math.min(500, width * height / (ratio * ratio) / 2500)) },
-          () => ({ x: Math.random() * width, y: Math.random() * height * 0.82, r: Math.random(), p: Math.random() * 6 }));
+          () => ({ x: random() * width, y: random() * height * 0.82, r: random(), p: random() * 6 }));
       }
       drawStars(c, FRAME_MS / 1000, 'rgba(225,235,255,0.95)', 1);
       const arc = Choice.passArc(moment.pass);
@@ -604,24 +524,29 @@
       if (disposed || !ctx) return;
       const visible = plein() && !doc.hidden && !photosShown() && scene;
       if (!visible) return;
-      if (time - lastFrame >= FRAME_MS || reducedMotion) {
+      if (!animate || time - lastFrame >= FRAME_MS || reducedMotion) {
+        const started = onFrame ? root.performance.now() : 0;
         const dt = Math.min(0.1, (time - lastFrame) / 1000 || FRAME_MS / 1000);
         lastFrame = time;
         boxCache = size();
         const bg = scene.background, iss = scene.moment?.kind === 'iss' ? scene.moment : null;
-        drawSky(boxCache, bg.light, iss);
+        drawSky(boxCache, bg.light, iss, bg.sunAltitudeDeg);
         if (iss) drawIss(ctx, boxCache, iss, now());
         else {
           if (particleKind === 'iss-stars') { particleKind = bg.kind; particles = []; }
-          if (bg.sky && snapshot?.sky) drawRealSky(ctx, boxCache, bg, snapshot.sky, now());
+          if (bg.sky && snapshot?.sky && root.NestorSkyRenderer) {
+            skyPlan = root.NestorSkyRenderer.draw(ctx, boxCache, bg, snapshot.sky, now(),
+              { reducedMotion, center: preview?.center, span: preview?.span });
+          } else skyPlan = null;
           // On a clear evening the real stars replace the decorative ones; clouds still drift over.
           if (!(bg.sky && snapshot?.sky && bg.kind !== 'cloud')) drawWeather(ctx, boxCache, bg, dt);
         }
         if (scene.moment?.kind === 'paint') drawPaint(ctx, boxCache, now());
-        artx?.rendered(snapshot, { ...scene, moment: scene.moment?.kind === 'paint' && !painting?.startedAt ? null : scene.moment });
+        onFrame?.(root.performance.now() - started);
+        artx?.rendered(snapshot, { ...scene, skyViewport: { width: boxCache.width / boxCache.ratio, height: boxCache.height / boxCache.ratio }, moment: scene.moment?.kind === 'paint' && !painting?.startedAt ? null : scene.moment });
       }
       // Reduced motion: one still picture per decision.
-      if (!reducedMotion) frame = root.requestAnimationFrame(draw);
+      if (!reducedMotion && animate) frame = root.requestAnimationFrame(draw);
     }
 
     // ---- events --------------------------------------------------------------------------
@@ -641,9 +566,9 @@
     root.addEventListener('persona-presence', onPresence);
     doc.addEventListener('keydown', onKey);
     doc.addEventListener('visibilitychange', onVisibility);
-    const pollTimer = root.setInterval(poll, POLL_MS);
-    const decideTimer = root.setInterval(decide, DECIDE_MS);
-    poll();
+    const pollTimer = preview ? null : root.setInterval(poll, POLL_MS);
+    const decideTimer = preview ? null : root.setInterval(decide, DECIDE_MS);
+    if (preview) decide(); else poll();
 
     function dispose() {
       disposed = true;
@@ -659,6 +584,7 @@
     }
     // Photos wait while Nestor shows a moment of his own.
     return { busy: () => !!scene?.moment && standby() && plein(), scene: () => scene,
+      skyPlan: () => skyPlan,
       context: () => artx?.context({ visible: !!ctx && plein() && !doc.hidden && !photosShown() }), decide, dispose };
   }
 

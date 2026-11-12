@@ -33,6 +33,7 @@ function productSpaces(link) {
         item('images', 'Images', '/images', 'fa-image'),
         item('models', 'Models', '/models', 'fa-cubes'),
         item('voice-lab', 'Voice workshop', '/voice-lab', 'fa-microphone-lines'),
+        item('artx-lab', 'ArtX lab', '/artx-lab', 'fa-star'),
         item('graphysx', 'GraphysX Center', '/graphysx', 'fa-cube', 'core', {
           description: 'The 3D world Nestor proposes changes to. Nothing applies until you accept it in the page.'
         }),
