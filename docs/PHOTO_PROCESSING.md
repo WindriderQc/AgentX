@@ -33,10 +33,33 @@ separate selected-cleanup confirmation.
    cards without an image-model invocation. Models do not guess identities.
 6. Content cards and human corrections remain in Core. Immutable, versioned JSON
    cards also live under `.agentx-import/gallery-cards`, outside originals and
-   outside the Immich directory. No original or existing XMP is rewritten.
+   outside the Immich directory. No original or backed-up XMP is rewritten.
 7. Owner review synchronizes only managed review/label tags in Immich. Existing
    human descriptions and unrelated tags remain unchanged. A separate explicit
    frame choice changes membership of the configured frame album.
+
+### Durable tags in a read-only Immich library
+
+Before changing tag membership, Core asks the NAS to persist a complete tag set
+in an AgentX-owned XMP beside the **gallery reference**. This is a separate
+regular file, never another link to original media or a backed-up companion.
+The gallery stays mounted read-only in Immich. This lets later metadata
+extraction read the intended tags even when Immich cannot write a sidecar.
+See [Immich's XMP behavior](https://docs.immich.app/features/xmp-sidecars/).
+
+The NAS retains an immutable write intent and monotonic owner-review revision,
+atomically publishes the sidecar and checks its bytes. An unknown XMP, edited
+sidecar, symlink or hardlink refuses. A lost writer lock requires observation;
+it is never removed by age alone. Replays use the same write ID and tag set.
+A pending marker cannot replace a newer owner review. Original unrelated tags
+are merged with the managed labels; incomplete historical snapshots refuse
+rather than silently truncating human tags. No description, date or other
+human field is placed in this tags-only XMP.
+
+Core waits for sidecar/extraction jobs to settle and reads tag membership back
+before acknowledging synchronization. A missing tag or unavailable extraction
+remains a reconciliation error. Use DiskX for durable managed review; direct
+Immich metadata edits retain Immich's own read-only sidecar limitation.
 
 The original filename and folder grouping are retained where safe, allowing
 matching Live Photo names to remain adjacent when their first content references
@@ -71,7 +94,7 @@ node /srv/instance/native-tools/photo-import/releases/REV/integrations/photo-imp
 ```
 
 Only bounded base64 JSON operations are admitted: projection, its status, card
-export and bounded import reads. Callers supply identities, never paths or shell
+export, versioned gallery tag sidecars and bounded import reads. Callers supply identities, never paths or shell
 fragments. The receiver configuration and approved duplicate-source mappings
 remain operator-owned. This bridge works with the phone host off.
 

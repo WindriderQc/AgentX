@@ -129,7 +129,8 @@ async function createPhotoProjection(config) {
     await library.immutable(parent, analysisId, input.card);
     return { sha256, analysisId, exported: true };
   }
-  return { project, existing, exportCard, directory };
+  const syncTags = require('./photoProjectionTags').createPhotoProjectionTags({ root, directory, library, existing });
+  return { project, existing, exportCard, syncTags, directory };
 }
 
 module.exports = { createPhotoProjection, fileName, LIBRARY };

@@ -2,7 +2,8 @@
 const path = require('node:path'), crypto = require('node:crypto');
 const { fail } = require('./importFiles');
 const { UUID } = require('./photoProcessingConfig');
-function createPhotoProcessingImmich({ client, config }) {
+function createPhotoProcessingImmich({ client, config, bridge = require('./photoProcessingBridge').createPhotoProcessingBridge({ config }), ...deps }) {
+  const tags = require('./photoProcessingTags').createPhotoProcessingTags({ client, config, bridge, ...deps });
   async function validateLibrary() {
     const fixed = config();
     const value = await client.json('/libraries/' + fixed.libraryId);
@@ -36,33 +37,7 @@ function createPhotoProcessingImmich({ client, config }) {
       throw fail('PHOTO_ASSET_MISMATCH', 'Immich asset byte count differs from the verified projection');
     return value;
   }
-  async function pendingTag(assetId) {
-    const value = 'AgentX/Relecture/à relire';
-    const tags = await client.json('/tags', { method: 'PUT', body: { tags: [value] } });
-    const tag = Array.isArray(tags) && tags.find(x => x.value === value);
-    if (!tag || !UUID.test(tag.id)) throw fail('PHOTO_TAG_UNAVAILABLE', 'Immich did not confirm the managed review tag');
-    // Set membership is idempotent and never replaces human descriptions/tags.
-    const result = await client.json('/tags/' + tag.id + '/assets', { method: 'PUT', body: { ids: [assetId] } });
-    if (!Array.isArray(result) || !result.some(x => x.id === assetId && (x.success || x.error === 'duplicate')))
-      throw fail('PHOTO_TAG_UNAVAILABLE', 'Immich did not confirm the review tag membership');
-  }
-  async function syncReview(assetId, review) {
-    const prefix = 'AgentX/Téléphone/Étiquette/';
-    const pending = 'AgentX/Relecture/à relire', approved = 'AgentX/Téléphone/Relu';
-    const desired = review.approved ? [approved, ...review.tags.filter(Boolean).map(x => prefix+x)] : [pending];
-    const current = await client.json('/assets/' + assetId);
-    const obsolete = (current.tags || []).filter(t => [pending, approved].includes(t.value) || t.value?.startsWith(prefix))
-      .filter(t => !desired.includes(t.value));
-    const tags = await client.json('/tags', { method: 'PUT', body: { tags: [...new Set(desired)] } });
-    if (!Array.isArray(tags) || !desired.every(value => tags.some(t => t.value === value && UUID.test(t.id))))
-      throw fail('PHOTO_TAG_UNAVAILABLE', 'Immich did not confirm the reviewed tag set');
-    for (const tag of [...tags.filter(t => desired.includes(t.value)), ...obsolete]) {
-      const result = await client.json('/tags/' + tag.id + '/assets', { method: desired.includes(tag.value) ? 'PUT' : 'DELETE', body: { ids: [assetId] } });
-      if (!Array.isArray(result) || !result.some(x => x.id === assetId && (x.success || x.error === 'duplicate')))
-        throw fail('PHOTO_TAG_UNAVAILABLE', 'The original tag decision needs reconciliation');
-    }
-  }
-  return { validateLibrary, asset, pendingTag, syncReview,
+  return { validateLibrary, asset, pendingTag: tags.pending, syncReview: tags.review,
     scan: () => client.json('/libraries/' + config().libraryId + '/scan', { method: 'POST' }) };
 }
 function metadata(asset, ocr = null) {

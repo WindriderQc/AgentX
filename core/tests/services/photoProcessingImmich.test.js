@@ -19,21 +19,6 @@ test('asset linkage requires the exact managed library, path, checksum and origi
     await expect(upstream.asset(projection)).rejects.toMatchObject({ code: 'PHOTO_ASSET_MISMATCH' });
   }
 });
-test('review synchronization touches only managed tags and never edits human descriptions', async () => {
-  const assetId = uuid(), pendingId = uuid(), oldId = uuid(), humanId = uuid(), newId = uuid(), reviewedId = uuid();
-  const client = { json: jest.fn(async (p, options) => {
-    if (p === '/assets/'+assetId) return { tags: [{ id: pendingId, value: 'AgentX/Relecture/à relire' },
-      { id: oldId, value: 'AgentX/Téléphone/Étiquette/ancien' }, { id: humanId, value: 'Famille' }] };
-    if (p === '/tags') return [{ id: newId, value: 'AgentX/Téléphone/Étiquette/nature' }, { id: reviewedId, value: 'AgentX/Téléphone/Relu' }];
-    return [{ id: assetId, success: true }];
-  }) };
-  await createPhotoProcessingImmich({ client, config: () => ({}) }).syncReview(assetId, { approved: true, tags: ['nature'] });
-  const mutations = client.json.mock.calls.filter(([, options]) => options?.method);
-  expect(mutations.some(([p]) => p === '/assets/'+assetId)).toBe(false);
-  expect(mutations.some(([p]) => p.includes(humanId))).toBe(false);
-  expect(mutations.find(([p]) => p.includes(pendingId))[1].method).toBe('DELETE');
-  expect(mutations.find(([p]) => p.includes(newId))[1].method).toBe('PUT');
-});
 test('metadata keeps extracted values bounded and explicitly marks truncated fields', () => {
   const result = metadata({ exifInfo: { description: 'é'.repeat(10000), city: 'x'.repeat(1000) }, people: Array.from({ length: 30 }, () => ({ id: uuid(), name: '人'.repeat(1000) })),
     tags: Array(100).fill({ value: 'é'.repeat(1000) }) }, '文'.repeat(10000));

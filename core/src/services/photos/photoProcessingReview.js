@@ -24,6 +24,7 @@ function createPhotoProcessingReview({ client, bridge, immich, config, cards = C
       if (typeof input.approved !== 'boolean' || typeof input.description !== 'string' || input.description.length > 2000
         || !Array.isArray(input.tags) || input.tags.length > 20 || input.tags.some(x => typeof x !== 'string' || x.length > 100))
         throw fail('INVALID_REVIEW', 'Invalid human review');
+      require('./photoProjectionTags').tagList(input.tags.filter(Boolean));
       value = { approved: input.approved, description: input.description, tags: input.tags };
     }
     const inputHash = hash({ sha256, kind, value, expectedRevision: input.expectedRevision });
@@ -53,7 +54,9 @@ function createPhotoProcessingReview({ client, bridge, immich, config, cards = C
         const projection = await bridge.call({ op: 'projection', sha256 });
         const asset = projection && await immich.asset(projection);
         if (!asset || asset.id !== card.assetId) throw fail('PHOTO_ASSET_MISMATCH', 'Recheck the original reviewed asset');
-        await immich.syncReview(card.assetId, value);
+        await immich.syncReview(card.assetId, value, { sha256,writeId,revision:input.expectedRevision+1,
+          baselineTags:card.metadata?.tags || [],baselineIncomplete:Boolean(card.metadata?.tagsTruncated
+            || card.metadata?.truncatedFields?.includes('tags')) });
       }
       if (kind === 'frame') {
         const fixed = config(), frame = frameConfig();

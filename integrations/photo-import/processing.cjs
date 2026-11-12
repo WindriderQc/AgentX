@@ -14,6 +14,7 @@ async function main() {
   const config = JSON.parse(await fs.readFile(args[1], 'utf8'));
   const service = await createPhotoProjection(config);
   const handlers = { project: ['operationId', 'runId', 'items'], projection: ['sha256'], exportCard: ['sha256', 'analysisId', 'card'],
+    syncTags: ['sha256', 'writeId', 'revision', 'tags'],
     runs: [], page: ['runId', 'offset', 'limit'], occurrence: ['runId', 'requestId'] };
   if (!Object.hasOwn(handlers, input.op) || Object.keys(input).some(k => k !== 'op' && !handlers[input.op].includes(k)))
     throw new Error('Invalid photo processing operation');

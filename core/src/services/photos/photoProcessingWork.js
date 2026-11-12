@@ -24,7 +24,7 @@ function createPhotoProcessingWork(deps = {}) {
   const config = () => pinnedConfig || configured();
   const bridge = deps.bridge || createPhotoProcessingBridge({ config });
   const client = deps.client || createImmichClient();
-  const immich = deps.immich || createPhotoProcessingImmich({ client, config });
+  const immich = deps.immich || createPhotoProcessingImmich({ client, config, bridge });
   const cards = deps.cards || Cards, batches = deps.batches || Batches;
   const pause = deps.pause || (ms => new Promise(resolve => setTimeout(resolve, ms)));
   const now = deps.now || Date.now;
@@ -80,7 +80,8 @@ function createPhotoProcessingWork(deps = {}) {
       $set: { assetId: asset.id, libraryId: config().libraryId, metadata: metadata(asset, require('./photoService').ocrText(ocr)) } }, { upsert: true, writeConcern: WC });
       let card = await cards.findById(projection.sha256).lean();
       if (asset.type === 'IMAGE' && !card.analysis) {
-        await immich.pendingTag(asset.id);
+        if (!card.review?.revision && !card.pendingDecision)
+          await immich.pendingTag(asset.id, { sha256:card._id });
         const preview = await client.image('/assets/' + asset.id + '/thumbnail?size=preview');
         await assertWindow(job, 180000);
         const analysisId = crypto.randomUUID();

@@ -74,3 +74,9 @@ test('frame selection requires the freshly checked verified image and leaves pho
     .rejects.toMatchObject({ code: 'PHOTO_FRAME_INVALID' });
   expect(client.json).not.toHaveBeenCalled(); expect(selected).toBe(false);
 });
+test('invalid XML tag text is rejected before reserving a durable human decision',async()=>{
+  await expect(review.review({writeId:uuid(),sha256:SHA,expectedRevision:0,approved:true,description:'Review',tags:['bad\u0000tag']}))
+    .rejects.toMatchObject({code:'INVALID_PHOTO_TAGS'});
+  expect(await Decisions.countDocuments()).toBe(0);expect((await Cards.findById(SHA)).pendingDecision).toBeUndefined();
+  expect(immich.syncReview).not.toHaveBeenCalled();
+});
