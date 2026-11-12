@@ -42,17 +42,23 @@ def entry_set(entries):
     return content_hash(sorted(entries, key=lambda entry: entry["id"]))
 
 
-def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False, message_scope=False):
+def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False, message_scope=False, finding_scope=False):
     previous = indexed(saved)
     manifests = list(manifests)
     options = {} if opener is None else {"opener": opener}
+    if finding_scope:
+        message_scope = True
     if message_scope:
         from native_history_message_scope import discover, confirm
         native_decisions = True
         first, scopes_first = discover(core, saved, **options)
     else:
         first = core_entries(core, **options)
-    first_rows, _ = dispositions(archive, before, first, manifests)
+    if finding_scope:
+        from history_coverage import coverage
+        first_coverage = coverage(archive, before)["messages"]
+    first_rows, _ = dispositions(archive, before, first, manifests,
+                                **({"observed_rows": first_coverage} if finding_scope else {}))
     if native_decisions:
         from native_history_decisions import capture
         native_first = capture(core, first, first_rows, saved, **options)
@@ -62,7 +68,10 @@ def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native
         second, scopes_second = discover(core, saved, previous=scopes_first, **options)
     else:
         second = core_entries(core, **options)
-    second_rows, _ = dispositions(archive, before, second, manifests)
+    if finding_scope:
+        second_coverage = coverage(archive, before)["messages"]
+    second_rows, _ = dispositions(archive, before, second, manifests,
+                                 **({"observed_rows": second_coverage} if finding_scope else {}))
     if native_decisions:
         native_second = capture(core, second, second_rows, saved, previous=native_first, **options)
         if message_scope:
@@ -92,7 +101,10 @@ def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native
               "status": "observed_match" if native_second else "no_selected_entries", "executionAllowed": False}} if native_decisions else {}
     if message_scope:
         native["nativeDecisions"].update({"discoveryContract": "agentx.history-message-scope/v1", "messageScopes": scopes_second})
-    return {"schema": f"agentx.secretary-retention-reconciliation/v{3 if message_scope else 2 if native_decisions else 1}", "at": now(),
+    if finding_scope:
+        from native_history_finding_scope import capture as capture_findings
+        native["nativeFindingScopes"] = capture_findings(core, saved, second_coverage, scopes_second, second, **options)
+    return {"schema": f"agentx.secretary-retention-reconciliation/v{4 if finding_scope else 3 if message_scope else 2 if native_decisions else 1}", "at": now(),
             "before": before.isoformat(), "decisionSource": "agentx.core",
             "observation": "two agreeing bounded reads; not an atomic snapshot or native acceptance",
             "savedDispositionsSha256": content_hash(saved), "coreEntriesSha256": entry_set(second),
@@ -112,6 +124,8 @@ def main(argv=None):
                         help="Recheck at most 100 selected Core decision documents through their native contract; no legacy fallback")
     parser.add_argument("--native-message-scope", action="store_true",
                         help="Discover 1-20 exact saved messages across primary and related Core references; implies native decision checks")
+    parser.add_argument("--native-finding-scope", action="store_true",
+                        help="Also bind recorded native archive findings/questions to current Core decisions; implies native message scope")
     args = parser.parse_args(argv)
     if args.output.resolve().is_relative_to(args.root.resolve()):
         parser.error("Reconciliation reports stay outside the evidence archive")
@@ -120,16 +134,21 @@ def main(argv=None):
     archive = Archive(args.root, run=lambda _: (_ for _ in ()).throw(RuntimeError("Provider access disabled")))
     report = reconcile(archive, args.before, load(args.dispositions), args.core,
                        [load(path) for path in args.souvenir_manifest], native_decisions=args.native_decisions,
-                       message_scope=args.native_message_scope)
+                       message_scope=args.native_message_scope, finding_scope=args.native_finding_scope)
     durable(args.output, report, exclusive=True)
     summary = {key: report[key] for key in ("schema", "at", "counts", "cleanupStatus", "executionAllowed")}
-    if args.native_decisions or args.native_message_scope:
+    if args.native_decisions or args.native_message_scope or args.native_finding_scope:
         native = report["nativeDecisions"]
         summary["nativeDecisions"] = {"status": native["status"], "selectedEntries": len(native["entries"]),
                                      "pendingEntries": native["pendingEntries"]}
+    if args.native_finding_scope:
+        scopes = report["nativeFindingScopes"]
+        summary["nativeFindings"] = {"messages": len(scopes), "heldMessages": sum(bool(scope["snapshot"]["coverage"]["blockers"]) for scope in scopes),
+            "recordedFindings": sum(scope["snapshot"]["coverage"]["counts"]["recordedFindings"] for scope in scopes)}
     print(json.dumps(summary))
     return 0 if all(row["status"] == "observed_match" for row in report["messages"]) \
-        and not report.get("nativeDecisions", {}).get("pendingEntries") else 2
+        and not report.get("nativeDecisions", {}).get("pendingEntries") \
+        and not any(scope["snapshot"]["coverage"]["blockers"] for scope in report.get("nativeFindingScopes", [])) else 2
 
 
 if __name__ == "__main__":

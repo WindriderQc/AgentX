@@ -294,6 +294,65 @@ Forgotten entries contribute no decisions. Souvenir/provider/archive state is
 not rechecked. All four global native gaps, blocked cleanup and false execution
 flags remain; no permission, approval binding, model campaign or executor is added.
 
+## Recorded findings and current Core decisions
+
+`POST /api/secretary/history/decision-state/findings` takes the same exact Gmail
+reference, fresh observation UUID and optional expected fingerprint as message
+discovery. It observes the current native archive inventory and relates each
+recorded finding to exact primary/related Core references. It stores no receipt
+and takes no decision. Existing privacy suppression still applies.
+
+The existing SSH mail bridge calls `findings --message ... --thread ... --sha256
+... --request-id ...` before any Gmail account/keyring requirement. The
+`secretary.archive-findings/v1` reader shares the qualified no-follow file reader
+and its 16 MiB total byte budget. It checks the original bytes against their
+exact receipt, unique manifest message identity and current review/manifest
+`evidenceHash` agreement. All four finding-section arrays and unresolved-thread
+questions are required. Missing, stale, ambiguous or malformed metadata refuses
+instead of becoming an empty finding set. Limits are 256 selected findings and
+128 thread questions; there is no truncated success.
+
+Finding IDs reuse the existing import/disposition algorithm. The response
+contains IDs, sections, content/metadata hashes and original byte length, never
+finding text, question text or archive paths. Its metadata fingerprint covers
+every opened file's bytes. This is an inventory of recorded analysis: the
+reader does not recompute the full evidence packet, prove parsed-body/MIME
+agreement, complete analysis, independent preservation or semantic correctness.
+
+Core requires two agreeing native inventories with distinct server-generated
+nonces, checks every member's existing native decision fingerprint, then
+rechecks the complete Core message scope after all producer/entry calls.
+Changed inventory, membership, decisions, pending source-review state or an
+intervening erasure refuses an older result. The resulting
+`agentx.history-finding-scope/v1` snapshot binds both inventories' stable content
+to the current native Core scope. The snapshot is bounded to 256 KiB.
+
+Each recorded finding is `no_core_reference`, `needs_review` or
+`observed_decision`. The last means only a recorded Core choice with reason/date
+and the existing import kind, not an authenticated person or semantic acceptance.
+Candidates, retained actions/deliverables, pending source-review intents and
+different kinds stay explicit review blockers. Core references outside the
+current recorded finding set remain visible. Whole-thread unresolved questions
+also hold review of the selected message; no other message becomes a candidate.
+An empty recorded finding set cannot establish semantic acceptance.
+
+`retention_reconcile.py --native-finding-scope` selects v4 and implies v3's
+bounded message/decision checks. The same local coverage observation supplies
+both dispositions and native comparisons. The client requires exact agreement
+on the source, review content/evidence hashes, complete recorded finding set,
+thread-question count and reconciled Core scope/member versions. It retains the
+native snapshot, fingerprint and observation identity/time in the new private
+report. Native replies are bounded to 512 KiB; counts alone appear on stdout.
+A held finding/message returns exit code 2 even when the earlier export
+comparison matches. Unavailable or changed evidence refuses without a success
+report or legacy fallback. Previous v1/v2/v3 modes and reports are unchanged.
+
+All four global native acceptance gaps, blocked cleanup and false execution
+flags remain. Neither the native inventory nor an `observed_decision` supplies
+atomic batch acceptance, complete finding coverage, a current downstream note,
+mailbox approval or an executor. Real archive campaigns use the heavy-work queue
+and their own authorization; source tests use isolated synthetic fixtures.
+
 ## Native preservation of a selected source
 
 `POST /api/secretary/history/:id/preservation` takes only a stable UUID

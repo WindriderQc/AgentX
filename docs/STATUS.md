@@ -300,6 +300,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   reconciliation detects linked open actions missing from an earlier Gmail
   export, without claiming archive completeness or atomic acceptance. See
   [message discovery](SECRETARY_DOSSIER_REVIEW.md#native-discovery-for-an-exact-mail-message).
+  Native recorded finding inventory also relates the exact archived review's
+  finding IDs and unresolved thread questions to current Core decisions.
+  Its optional v4 report keeps missing references, open actions and pending
+  reviews visible, without semantic acceptance or mailbox authority. See
+  [recorded findings](SECRETARY_DOSSIER_REVIEW.md#recorded-findings-and-current-core-decisions).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a
   souvenir: a permanent owner note with its event date, people, places and

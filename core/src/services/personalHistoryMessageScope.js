@@ -90,4 +90,4 @@ async function discover(input, deps) {
   return result;
 }
 
-module.exports = { discover, CONTRACT };
+module.exports = { discover, inputOf, CONTRACT };
