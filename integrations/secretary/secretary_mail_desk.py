@@ -6,7 +6,9 @@ calls it over the same SSH boundary as the other host controls. It lists the
 threads the triage labelled Urgent or Needs Reply, removes that one label when
 Dad has handled a thread, counts recent Inbox mail the triage has not labelled
 yet, and ranks the senders it most often leaves in Review so Dad can turn them
-into rules. It never reads a body, sends, archives or trashes.
+into rules. Archived-source reading and preservation commands open bounded
+native archive bytes without Gmail authorization. It never sends, archives or
+trashes.
 """
 
 from __future__ import annotations
@@ -85,6 +87,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     archived.add_argument("--sha256", required=True)
     archived.add_argument("--offset", type=int, default=0)
     archived.add_argument("--part", type=int)
+    preservation = commands.add_parser("preservation")
+    preservation.add_argument("--message", required=True)
+    preservation.add_argument("--thread", required=True)
+    preservation.add_argument("--sha256", required=True)
+    preservation.add_argument("--request-id", required=True)
     return parser.parse_args(argv)
 
 
@@ -331,6 +338,14 @@ def main(argv: list[str] | None = None) -> int:
                           "message": "the Secretary mail request is not valid"}))
         return 0
     try:
+        if args.command == "preservation":
+            from archive_preservation import PreservationError, probe
+            try:
+                data = probe(args.evidence_root, args.message, args.thread, args.sha256, args.request_id)
+            except PreservationError as error:
+                raise MailDeskError(str(error), error.code, error.status) from None
+            print(json.dumps({"status": "success", "data": data}, ensure_ascii=False))
+            return 0
         if args.command == "archived":
             from archive_read import ArchiveReadError, read_original
             try:
