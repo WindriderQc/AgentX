@@ -92,6 +92,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     preservation.add_argument("--thread", required=True)
     preservation.add_argument("--sha256", required=True)
     preservation.add_argument("--request-id", required=True)
+    findings = commands.add_parser("findings")
+    findings.add_argument("--message", required=True)
+    findings.add_argument("--thread", required=True)
+    findings.add_argument("--sha256", required=True)
+    findings.add_argument("--request-id", required=True)
     return parser.parse_args(argv)
 
 
@@ -338,6 +343,14 @@ def main(argv: list[str] | None = None) -> int:
                           "message": "the Secretary mail request is not valid"}))
         return 0
     try:
+        if args.command == "findings":
+            from archive_findings import FindingsError, probe
+            try:
+                data = probe(args.evidence_root, args.message, args.thread, args.sha256, args.request_id)
+            except FindingsError as error:
+                raise MailDeskError(str(error), error.code, error.status) from None
+            print(json.dumps({"status": "success", "data": data}, ensure_ascii=False))
+            return 0
         if args.command == "preservation":
             from archive_preservation import PreservationError, probe
             try:
