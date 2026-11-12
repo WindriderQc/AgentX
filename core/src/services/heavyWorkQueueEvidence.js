@@ -20,6 +20,7 @@ async function preDispatch(job) {
   if (!job.executor) throw fail('No supported executor on this request', 409);
   // Inside a topology window: wait until the window has reached its mode.
   if (job.withinWindow) await require('./runtimeTopologyWindow').assertWindowReady(job);
+  if (job.kind === 'other' && job.executor.mode === 'photo-processing') return require('./photos/photoProcessingQueue').preDispatch(job);
   if (job.kind === 'other' && job.executor.mode === 'plant-identify') return require('./householdPlantImportQueue').preDispatch(job);
   if (job.kind === 'transcription') {
     return require('./transcriptionExecutor').preDispatch(job);
@@ -181,6 +182,11 @@ async function observe(job) {
       return { ...progress, operationId, terminal: false };
     }
     receipt = { ...result.receipt, operationId };
+  } else if (job.kind === 'other' && job.executor?.mode === 'photo-processing') {
+    const result = await require('./photos/photoProcessingQueue').observe(job);
+    operationId = result.operationId;
+    if (!result.terminal) return result;
+    receipt = { operationId, state: result.state, authority: result.authority };
   } else if (job.kind === 'other' && job.executor?.mode === 'plant-identify') {
     const result = await require('./householdPlantImportQueue').observe(job);
     operationId = result.operationId;

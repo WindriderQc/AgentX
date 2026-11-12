@@ -1,0 +1,71 @@
+'use strict';
+const { createPhotoProcessingImmich, metadata } = require('../../src/services/photos/photoProcessingImmich');
+const { provision } = require('../../src/services/photos/photoProcessingSetup');
+const Setup = require('../../models/PhotoProcessingSetup');
+const crypto = require('node:crypto'), uuid = () => crypto.randomUUID();
+beforeEach(async () => { await Setup.deleteMany({}); });
+test('asset linkage requires the exact managed library, path, checksum and original byte count', async () => {
+  const fixed = { libraryId: uuid(), originalPathPrefix: '/gallery' }, assetId = uuid();
+  const projection = { relativePath: 'run/photo.jpg', size: 123, immichChecksum: 'synthetic-sha1' };
+  let value = { id: assetId, libraryId: fixed.libraryId, originalPath: '/gallery/run/photo.jpg', checksum: projection.immichChecksum,
+    hasMetadata: true, exifInfo: { fileSizeInByte: 123 } };
+  const client = { json: jest.fn(async p => p === '/search/metadata' ? { assets: { items: [{ id: assetId }] } } : value) };
+  const upstream = createPhotoProcessingImmich({ client, config: () => fixed });
+  expect((await upstream.asset(projection)).id).toBe(assetId);
+  const original = structuredClone(value);
+  for (const changed of [{ libraryId: uuid() }, { originalPath: '/gallery-other/run/photo.jpg' }, { checksum: 'different' },
+    { exifInfo: { fileSizeInByte: 124 } }, { isOffline: true }]) {
+    value = { ...original, ...changed };
+    await expect(upstream.asset(projection)).rejects.toMatchObject({ code: 'PHOTO_ASSET_MISMATCH' });
+  }
+});
+test('review synchronization touches only managed tags and never edits human descriptions', async () => {
+  const assetId = uuid(), pendingId = uuid(), oldId = uuid(), humanId = uuid(), newId = uuid(), reviewedId = uuid();
+  const client = { json: jest.fn(async (p, options) => {
+    if (p === '/assets/'+assetId) return { tags: [{ id: pendingId, value: 'AgentX/Relecture/à relire' },
+      { id: oldId, value: 'AgentX/Téléphone/Étiquette/ancien' }, { id: humanId, value: 'Famille' }] };
+    if (p === '/tags') return [{ id: newId, value: 'AgentX/Téléphone/Étiquette/nature' }, { id: reviewedId, value: 'AgentX/Téléphone/Relu' }];
+    return [{ id: assetId, success: true }];
+  }) };
+  await createPhotoProcessingImmich({ client, config: () => ({}) }).syncReview(assetId, { approved: true, tags: ['nature'] });
+  const mutations = client.json.mock.calls.filter(([, options]) => options?.method);
+  expect(mutations.some(([p]) => p === '/assets/'+assetId)).toBe(false);
+  expect(mutations.some(([p]) => p.includes(humanId))).toBe(false);
+  expect(mutations.find(([p]) => p.includes(pendingId))[1].method).toBe('DELETE');
+  expect(mutations.find(([p]) => p.includes(newId))[1].method).toBe('PUT');
+});
+test('metadata keeps extracted values bounded and explicitly marks truncated fields', () => {
+  const result = metadata({ exifInfo: { description: 'é'.repeat(10000), city: 'x'.repeat(1000) }, people: Array.from({ length: 30 }, () => ({ id: uuid(), name: '人'.repeat(1000) })),
+    tags: Array(100).fill({ value: 'é'.repeat(1000) }) }, '文'.repeat(10000));
+  expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThan(40000);
+  expect(result.truncatedFields).toEqual(expect.arrayContaining(['exif.description', 'exif.city', 'ocr']));
+  expect(result.peopleTruncated).toBe(true); expect(result.tagsTruncated).toBe(true);
+});
+test('provisioning reconciles lost library and album responses without another creation or scan', async () => {
+  const ownerId = uuid(), request = { operationId: uuid(), libraryName: 'Synthetic imports', albumName: 'Synthetic frame', originalPathPrefix: '/gallery' };
+  let library, album;
+  const client = { json: jest.fn(async (p, options) => {
+    if (p === '/users/me') return { id: ownerId };
+    if (p === '/libraries' && !options) return library ? [library] : [];
+    if (p === '/albums' && !options) return album ? [album] : [];
+    if (p === '/libraries') { library = { id: uuid(), ...options.body }; throw Error('library reply lost'); }
+    if (p === '/albums') { album = { id: uuid(), shared: false, hasSharedLink: false, ...options.body }; throw Error('album reply lost'); }
+    throw Error('Unexpected upstream effect');
+  }) };
+  await expect(provision(request, { client })).rejects.toThrow('library reply lost');
+  await expect(provision(request, { client })).rejects.toThrow('album reply lost');
+  expect(await provision(request, { client })).toMatchObject({ libraryId: library.id, frameAlbumId: album.id, scanStarted: false });
+  expect(client.json.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(2);
+  await expect(provision({ ...request, originalPathPrefix: '/other' }, { client })).rejects.toMatchObject({ code: 'REQUEST_CONFLICT' });
+});
+test('an unobserved provisioning dispatch remains fenced even when the upstream inventory is empty', async () => {
+  const request = { operationId: uuid(), libraryName: 'Synthetic imports', albumName: 'Synthetic frame', originalPathPrefix: '/gallery' };
+  const ownerId = uuid(), client = { json: jest.fn(async (p, options) => {
+    if (p === '/users/me') return { id: ownerId };
+    if (options?.method === 'POST') throw Error('upstream result unknown');
+    return [];
+  }) };
+  await expect(provision(request, { client })).rejects.toThrow('upstream result unknown');
+  await expect(provision(request, { client })).rejects.toMatchObject({ code: 'PHOTO_SETUP_UNKNOWN' });
+  expect(client.json.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+});

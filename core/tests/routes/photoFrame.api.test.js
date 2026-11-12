@@ -7,6 +7,18 @@ const fs = require('node:fs'), os = require('node:os'), path = require('node:pat
 const ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const source = '/external/frame';
 const asset = () => ({ id: ID, type: 'IMAGE', visibility: 'timeline', originalPath: source + '/nested/example.jpg' });
+test('reviewed album membership adds imported images and is checked again before serving pixels', async () => {
+  const albumId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', imported = { ...asset(), originalPath: '/imports/new.jpg' };
+  let selected = true;
+  const client = { settings: () => ({ enabled: true }), image: jest.fn(async () => ({ bytes: Buffer.from('preview'), contentType: 'image/jpeg' })),
+    json: jest.fn(async p => p === '/search/random' ? [imported] : p === '/search/metadata' ? { assets: { items: selected ? [imported] : [] } } : imported) };
+  const frame = createPhotoFrameService({ client, config: () => ({ prefix: source, albumId }) });
+  expect((await frame.next()).id).toBe(ID);
+  expect(client.json.mock.calls[0][1].body.filter.or).toEqual([{ originalPath: { startsWith: source+'/' } }, { albumIds: { any: [albumId] } }]);
+  selected = false;
+  await expect(frame.image(ID)).rejects.toMatchObject({ code: 'PHOTOS_NOT_FOUND' });
+  expect(client.image).not.toHaveBeenCalled();
+});
 function fixture({ row = asset(), configured = true, rows } = {}) {
   const client = {
     settings: () => ({ enabled: true }),

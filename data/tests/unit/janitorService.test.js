@@ -37,6 +37,14 @@ describe('validatePath', () => {
 });
 
 describe('isProtectedPath', () => {
+  test('protects import receipts and managed gallery references without protecting similarly named user folders', () => {
+    expect(isProtectedPath('/mnt/media/photos/.agentx-import/runs/example/receipt.json')).toBe(true);
+    expect(isProtectedPath('/mnt/media/photos/.agentx-import/immich-library/example/photo.jpg')).toBe(true);
+    expect(isProtectedPath('E:\\Photos\\.agentx-import\\gallery-cards\\card.json')).toBe(true);
+    expect(isProtectedPath('/mnt/media/photos/.agentx-imported-old/photo.jpg')).toBe(false);
+    expect(isProtectedPath('/mnt/media/photos/Originals/aa/'+'a'.repeat(64)+'/original.jpg')).toBe(true);
+    expect(isProtectedPath('/mnt/media/photos/Originals/family/original.jpg')).toBe(false);
+  });
   test('blocks key material and invalid inputs', () => {
     expect(isProtectedPath('/mnt/datalake/keys/secret.pem')).toBe(true);
     expect(isProtectedPath('/home/user/keys/id_rsa')).toBe(true);

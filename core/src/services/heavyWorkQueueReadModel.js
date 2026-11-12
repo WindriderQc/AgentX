@@ -22,7 +22,8 @@ function presentation(job, { now = Date.now() } = {}) {
   const supported = manuallyStartable(job);
   const nativeImage = job.kind === 'image' && job.executor?.mode === 'image-operation';
   const nativePlant = job.kind === 'other' && job.executor?.mode === 'plant-identify';
-  const automatic = nativeImage || nativePlant || (autoStartable(job) && job.reservation?.autoStart === true);
+  const nativePhotos = job.kind === 'other' && job.executor?.mode === 'photo-processing';
+  const automatic = nativeImage || nativePlant || nativePhotos || (autoStartable(job) && job.reservation?.autoStart === true);
   const editable = ['requested', 'reserved'].includes(job.state);
   const base = {
     schema: 'agentx.heavy-work-presentation/v1', observedAt: new Date(now).toISOString(),

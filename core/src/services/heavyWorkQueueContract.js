@@ -99,6 +99,9 @@ function validateRequest(body) {
       if (!Number.isSafeInteger(executor.dimension) || executor.dimension < 1 || executor.dimension > 8192) throw fail('embedding reindex dimension needs 1 to 8192');
     } else if (kind === 'topology') {
       require('./runtimeTopologyWindow').validateExecutor(executor);
+    } else if (kind === 'other' && executor.mode === 'photo-processing') {
+      only(executor, ['mode', 'processingId'], 'verified photo processing executor');
+      if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(executor.processingId || '')) throw fail('Exact photo processing identity required');
     } else if (kind === 'other' && executor.mode === 'plant-identify') {
       only(executor, ['mode', 'importId'], 'plant identification executor');
       if (!/^[a-f0-9]{64}$/.test(executor.importId || '')) throw fail('Exact plant import identity required');
