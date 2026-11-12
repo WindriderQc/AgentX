@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { contextFor } from '../harness.js';
+import { contextFor, briefingFromCore } from '../harness.js';
 import { updateState, readState } from '../store.js';
 
 test('requested context is bounded, preserves task date flags and excludes other chats without erasing receipts', async t => {
@@ -43,8 +43,19 @@ test('context does not consult unrequested sources or include unscoped receipts'
   const result = await contextFor(workspace, 'synthetic', { readTasks: unexpected, readNotes: unexpected });
   assert.deepEqual(result.receipts, []);
   assert.deepEqual(result.notes, []);
-  assert.equal(result.sources.personal_memory, 'not_consulted');
+  assert.deepEqual(result.sources, { personal_memory: 'not_consulted',
+    calendar: 'not_consulted', ledger: 'not_consulted' });
   assert.equal(result.tasks, undefined);
+});
+
+test('briefing reports missing read coverage without overwriting Core calendar evidence', () => {
+  const unread = briefingFromCore({ text: 'Synthetic briefing' });
+  assert.equal(unread.calendar, 'not_consulted');
+  assert.equal(unread.deliveryState, 'not_requested');
+  const calendar = { state: 'available', source: 'canonical-calendar' };
+  const observed = briefingFromCore({ text: 'Synthetic briefing', calendar });
+  assert.deepEqual(observed.calendar, calendar);
+  assert.equal(observed.deliveryState, 'not_requested');
 });
 
 test('context preserves Core currentness and review references instead of presenting old titles without their pending decision', async t => {
