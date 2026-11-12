@@ -98,7 +98,8 @@ async function createPhotoProjection(config) {
       throw fail('PROJECTION_CONFLICT', 'The managed reference is not the original hard link');
     const sha1 = crypto.createHash('sha1');
     for await (const chunk of createReadStream(target)) sha1.update(chunk);
-    // Immich exposes SHA-1; it supplements, never replaces, our SHA-256 proof.
+    // Legacy content SHA-1 supplements the canonical SHA-256 proof. Immich
+    // external-library assets may expose a path digest instead of this value.
     const value = { ...saved, relativePath, ...(relativePath === saved.relativePath ? {} : { legacyIntentPath: saved.relativePath }), kind: 'hardlink', immichChecksum: sha1.digest('base64') };
     const temporary = await fs.mkdtemp(path.join(root, '.agentx-import/staging/projection-receipt-'));
     try {

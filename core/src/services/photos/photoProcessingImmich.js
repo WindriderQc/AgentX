@@ -1,5 +1,5 @@
 'use strict';
-const path = require('node:path');
+const path = require('node:path'), crypto = require('node:crypto');
 const { fail } = require('./importFiles');
 const { UUID } = require('./photoProcessingConfig');
 function createPhotoProcessingImmich({ client, config }) {
@@ -23,11 +23,17 @@ function createPhotoProcessingImmich({ client, config }) {
     if (!Array.isArray(items) || items.length > 1) throw fail('PHOTO_ASSET_AMBIGUOUS', 'Immich returned an ambiguous projection');
     if (!items.length) return null;
     const value = await client.json('/assets/' + items[0].id);
+    // External-library checksums may identify paths. NAS projection verifies
+    // canonical SHA-256 bytes and the same-inode link before this lookup.
+    const pathChecksum = crypto.createHash('sha1').update('path:'+originalPath).digest('base64');
     if (!UUID.test(value?.id || '') || value.libraryId !== fixed.libraryId || value.originalPath !== originalPath
-      || value.isOffline || value.isTrashed || value.checksum !== projection.immichChecksum
-      || value.exifInfo?.fileSizeInByte !== projection.size)
+      || value.isOffline || value.isTrashed
+      || typeof value.checksum !== 'string' || ![projection.immichChecksum, pathChecksum].includes(value.checksum))
       throw fail('PHOTO_ASSET_MISMATCH', 'Immich asset does not match the verified projection');
-    return value.hasMetadata ? value : null;
+    if (!value.hasMetadata) return null;
+    if (value.exifInfo?.fileSizeInByte !== projection.size)
+      throw fail('PHOTO_ASSET_MISMATCH', 'Immich asset byte count differs from the verified projection');
+    return value;
   }
   async function pendingTag(assetId) {
     const value = 'AgentX/Relecture/à relire';
