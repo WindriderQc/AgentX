@@ -3382,6 +3382,26 @@
       "secret": false,
       "description": "SearXNG URL for web search. Unset: web search answers not configured."
     },
+    "SECRETARY_ARCHIVE_MIRROR_REMOTE_ROOT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": true,
+      "description": "Optional product checkout on the mirror SSH host containing the native Secretary reader. The host selects its archive root; no request supplies a filesystem path. Unset: mirror unavailable."
+    },
+    "SECRETARY_ARCHIVE_MIRROR_SSH_TARGET": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "bridges",
+      "secret": true,
+      "description": "Optional operator-selected SSH destination for the second native Secretary archive copy. Unset: mirror unavailable; never falls back to the primary host. No credentials are accepted from a preservation request."
+    },
     "SECRETARY_MAIL_REMOTE_ROOT": {
       "services": [
         "core"

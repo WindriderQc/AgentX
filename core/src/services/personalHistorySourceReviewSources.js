@@ -112,4 +112,4 @@ function coverageOf(review) {
     meaning: 'Pages served, not comprehension, fact confirmation, complete semantic acceptance or cleanup permission.' };
 }
 
-module.exports = { CONTRACT, digest, failure, basis, collect, describe, initialCoverage, coverageOf };
+module.exports = { CONTRACT, digest, failure, basis, references, collect, describe, initialCoverage, coverageOf };

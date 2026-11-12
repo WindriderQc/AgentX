@@ -279,6 +279,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   proposed relations and media bindings on those same assertions. Stable imports
   preserve native decisions; owner corrections have a separate context revision.
   Source reads verify their text hashes; importing or editing confirms no claim.
+  Native preservation checks on a selected Gmail source compare its exact
+  original, recorded attachments and MIME decoding on two distinct machines.
+  Core retains a revalidatable receipt on the same assertion; erasure clears it.
+  Missing or changed copies remain blocked, with no cleanup authority. See
+  [native preservation](SECRETARY_DOSSIER_REVIEW.md#native-preservation-of-a-selected-source).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a
   souvenir: a permanent owner note with its event date, people, places and

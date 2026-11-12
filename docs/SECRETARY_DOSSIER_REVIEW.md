@@ -196,6 +196,67 @@ the receipt records that limitation. Names, model text, headers and client
 all four native acceptance gaps and its blocked/false execution flags. This
 source-text review supplies no cleanup manifest, grant or executor.
 
+## Native preservation of a selected source
+
+`POST /api/secretary/history/:id/preservation` takes only a stable UUID
+`requestId`, the displayed assertion `revision` and a `source` index (0–18)
+from its stored source set. Core derives the exact Gmail message, thread and
+original SHA-256. Clients supply no proof, host, archive path, acceptance flag
+or approval. This is an owner human-surface route, not a model or family tool.
+
+Core calls `secretary.archive-preservation/v1` through its existing SSH mail
+transport on the primary and an optional operator-selected mirror. Each
+observation uses a fresh server nonce, which both native replies must echo.
+The native reader selects its own evidence root, verifies the pinned original,
+every recorded attachment and their full MIME decoding within a 16 MiB total
+read budget, 128 attachments and 4,096 MIME parts. Reads use POSIX no-follow
+file descriptors and refuse missing, escaped, changed or inconsistent sources.
+They write no archive, restore directory or provider record. Unsupported
+encapsulated MIME structures remain explicit refusals.
+
+`verified_scope` requires agreeing source metadata, original and attachment
+bytes, MIME counts and distinct hashes of the native machines' `/etc/machine-id`.
+Two paths or SSH aliases on one machine cannot count as two copies. An absent
+reader, stale nonce, malformed result or read failure stays blocked. The scope
+is the selected original, its recorded attachments and MIME decoding; it is
+neither the complete archive nor proof of independent physical storage failure
+domains, semantic correctness or human consent.
+
+The immutable bounded receipt lives on the existing `PersonalHistoryEntry`.
+At most 20 checks are retained, without eviction. Replaying the same UUID and
+arguments returns the original receipt without replacing it. Assertion/context
+revision fences reject late storage. A lost Mongo acknowledgment is reconciled
+with the original UUID, never a new write identity. An unavailable receipt is
+not proof that a pending write cannot still settle.
+
+`GET .../:id/preservation` discovers retained request IDs without claiming fresh
+native verification. `GET .../:id/preservation/:requestId` rechecks both copies
+with a new server nonce. `nativeState: current` means the fresh scope matches
+the retained snapshot; it does not turn an originally blocked snapshot into a
+verified one. Changed sources or entry versions are stale; unavailable native
+reads remain unknown. All responses are private/no-store. Ordinary history
+decisions, fact confirmation and selected memory remain unchanged.
+
+Explicit forgetting and source-note erasure clear the embedded proofs, and
+pending native reads cannot return or store them after the erasure fence. Only
+opaque request-key hashes survive, allowing the same UUID to receive an empty
+`erased` acknowledgment. No source identifiers or proof survive in that reply.
+
+The primary uses the existing `SecretaryMailControl` configuration. The mirror
+requires both optional `SECRETARY_ARCHIVE_MIRROR_SSH_TARGET` and
+`SECRETARY_ARCHIVE_MIRROR_REMOTE_ROOT`; it never falls back to the primary.
+The mirror host selects its archive root through the existing native evidence
+configuration. These settings are not forwarded by Compose automatically and
+their absence activates nothing. Installation, host trust and real-copy
+qualification are separate operator work; a large corpus campaign still uses
+the heavy-work queue. This contract adds no transport credential or permission.
+
+All four retention-planner native gaps remain explicit: this narrow mechanical
+receipt supplies no global preservation acceptance, semantic validation,
+atomic decision reconciliation or exact mailbox-approval binding. Every result
+keeps `executionAllowed: false` and `cleanupStatus: blocked`. No mailbox
+executor, new approval path, migration or actual cleanup is introduced.
+
 ## Catch-up and duplicate candidates
 
 Future catch-up findings retain their actor, source status and date. Resolved,

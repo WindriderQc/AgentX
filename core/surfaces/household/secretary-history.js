@@ -3,8 +3,10 @@
 const history = require('../../src/services/personalHistoryService');
 const context = require('../../src/services/personalHistoryContextService');
 const sourceReview = require('../../src/services/personalHistorySourceReview');
+const preservation = require('../../src/services/personalHistoryPreservation');
 
-function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' } }) {
+function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' },
+  preservationDeps = { audience: 'owner' } }) {
   const respond = async (res, action) => {
     try { return envelope(res, await action()); }
     catch (error) { return fail(res, error.statusCode || 500, error.message, error.code || 'PERSONAL_HISTORY_FAILED'); }
@@ -19,6 +21,9 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDe
   router.get('/history/:id/source-review/:requestId/page', (req, res) => sourceResponse(res, () => sourceReview.page(req.params.id, req.params.requestId,
     { source: Number(req.query.source), part: Number(req.query.part), offset: Number(req.query.offset) }, sourceReviewDeps)));
   router.post('/history/:id/source-review/:requestId/decision', (req, res) => sourceResponse(res, () => sourceReview.decide(req.params.id, req.params.requestId, req.body, sourceReviewDeps)));
+  router.get('/history/:id/preservation', (req, res) => sourceResponse(res, () => preservation.list(req.params.id, preservationDeps)));
+  router.post('/history/:id/preservation', (req, res) => sourceResponse(res, () => preservation.prepare(req.params.id, req.body, preservationDeps)));
+  router.get('/history/:id/preservation/:requestId', (req, res) => sourceResponse(res, () => preservation.get(req.params.id, req.params.requestId, preservationDeps)));
   router.post('/history/import', (req, res) => respond(res, async () => {
     const entries = req.body?.entries;
     if (!Array.isArray(entries) || !entries.length || entries.length > 50) {
