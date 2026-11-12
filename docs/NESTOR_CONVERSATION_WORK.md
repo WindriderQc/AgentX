@@ -178,7 +178,11 @@ Scripted greetings are marked as automatic in the visible conversation.
 The Family relay retains the server's household clock. Supplied weather keeps
 its original source projection plus separately converted local observation and
 retrieval times and observation age; a recent retrieval never makes the reading
-current. Guardian instructions keep the answer conversational and leave the
+current. Core also supplies natural observation introductions in French and
+English, including the date for an earlier-day reading. Weather replies must
+carry that observation time in their opening, followed by the conditions and a
+friendly remark; an unknown time stays unknown rather than borrowing retrieval
+time. Guardian instructions keep the answer conversational and leave the
 automatic service announcement to Core.
 Canonical intake binds
 each stable turn id before inference; a duplicate reads its existing outcome
