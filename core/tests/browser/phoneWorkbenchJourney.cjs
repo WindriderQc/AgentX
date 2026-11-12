@@ -133,7 +133,7 @@ const uuid = () => crypto.randomUUID();
   const processing = {
     status: () => ({ configured: true, frameEnabled: true }),
     enqueueRun: async input => { processingCalls.push(input); return { state: 'active' }; },
-    page: async () => ({ configured: true, frameEnabled: true, jobs: [], results: [{ requestId: sources[0].requestId,
+    page: async () => ({ configured: true, frameEnabled: true, jobs: [{ state: 'queued', error: 'HEAVY_QUEUE_CONFLICT' }], results: [{ requestId: sources[0].requestId,
       sha256: sources[0].backup.sha256, metadata: { type: 'IMAGE', exif: { dateTimeOriginal: '2020-01-02T03:04:05Z' } },
       analysis: { state: 'completed', card: { proposal: { description: 'Un paysage de démonstration', tags: ['nature'], quality: 'bonne', frameSuitability: 'oui', reasons: [], privacyReview: false } } },
       review: reviewed, frame: [...frameWrites.values()].at(-1) || { revision: 0, selected: false } }] }),
@@ -166,6 +166,8 @@ const uuid = () => crypto.randomUUID();
     await page.goto(`http://127.0.0.1:${server.address().port}/diskx/phone`);
     await page.locator('.card').first().waitFor();
     assert.equal(await page.locator('.card').count(), 6);
+    await page.locator('#processing-state').filter({ hasText: 'Les ressources sont occupées' }).waitFor();
+    assert.equal((await page.locator('body').textContent()).includes('HEAVY_QUEUE_CONFLICT'), false);
     assert.equal(effects, 0);
     await page.getByRole('button', { name: 'Détecter le téléphone' }).click();
     await page.locator('#device-state').filter({ hasText: 'Android de démonstration' }).waitFor();
