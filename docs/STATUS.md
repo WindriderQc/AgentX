@@ -232,7 +232,8 @@ Instance configuration, data and deployment receipts remain outside Git.
   and real-device acceptance. See [attachments](api/NESTOR_ATTACHMENTS.md).
 - **Optional Hermes conversation.** Personal Nestor can use Hermes behind the existing local voice and reactive avatar. Core keeps dispatch identity, transcript and terminal receipts; native cancellation and uncertain results remain fenced. Family and LLMx exclude this backend. See [Hermes conversation](HERMES_CONVERSATION.md).
 - **Nestor guardian and brain.** Optional personal voice work commits the human
-  request before inference. Native mode sends all work to complete Main with its
+  request before inference. New native requests reach complete Main first; the
+  guardian relays only while another verified Main request is busy. Main keeps its
   installed tools, memory, specialists and approval contracts while the guardian
   stays available. Both share canonical Core context; Main can refresh it while
   working. Ordinary dialogue receives a real guardian response while Main runs;
@@ -247,6 +248,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   Personal review, task workers and native consultations receive the complete
   canonical conversation separately from selected memory, including recorded
   tool evidence. Oversized context refuses rather than dropping older turns.
+  Exact pause/resume/cancel controls apply before native admission. Personal task
+  capture supports read-only recovery by its original UUID after a lost reply.
+  These paths do not require a patched OpenClaw. The separate native-question
+  bridge remains unavailable without its advertised conditional-resolution
+  capability; native approvals retain their runtime interfaces.
   The feature defaults off; text, Open, specialists and Famille keep their
   existing contracts. See [conversation work](NESTOR_CONVERSATION_WORK.md).
 - **Conversation recovery.** Playground retains accepted requests and response

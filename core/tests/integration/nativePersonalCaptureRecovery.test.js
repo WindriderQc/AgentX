@@ -123,6 +123,20 @@ test.each([false, true])('complete Main reconciles a lost MCP creation ACK in re
   const rest = (await request(app).get('/api/secretary/tasks').query({ requestId }).expect(200)).body.data;
   expect(rest.captureReceipt).toEqual(received.captureReceipt);
   expect(agentForTest).toHaveBeenCalledTimes(1);
+  // A browser retry points to the original result for explicit recovery,
+  // including an unknown capture, without launching Main or creating again.
+  const originalWork = await Work.findById(work._id).lean();
+  const recovered = await request(app).post(`${base}/${session.sessionId}/turns/text`)
+    .send({ text: 'Ajoute une tâche personnelle synthétique.', channel: 'voice', turnId }).expect(202);
+  expect(recovered.body.data).toMatchObject({ workId: work._id, recovery: 'explicit_listen', reply: null, replayed: false });
+  const feed = (await request(app).get(`${base}/${session.sessionId}/work`).expect(200)).body.data;
+  expect(feed.items.find(item => item.id === work._id).result.text).toBe(reply.body.data.reply.text);
+  expect(agentForTest).toHaveBeenCalledTimes(1);
+  expect(calls).toEqual(['add_personal_task', 'list_personal_tasks', 'list_personal_tasks']);
+  expect(await Work.countDocuments({ sessionId: session.sessionId, turnId })).toBe(1);
+  expect((await Work.findById(work._id).lean()).attempt).toEqual(originalWork.attempt);
+  expect(await PipelineTask.countDocuments({})).toBe(erased ? 0 : 1);
+  expect(await Counter.findById('pipelineTask').lean()).toMatchObject({ seq: 1 });
 });
 
 test('real MCP/REST refuse mixed scopes and incompatible identities without granting proposal approval', async () => {

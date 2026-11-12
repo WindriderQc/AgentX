@@ -12,6 +12,29 @@ Core owns acceptance, complete requests, execution metadata, verified task reads
 structured results and presentation receipts. OpenClaw owns the native agent/tool
 loop. Polling the browser projection never starts inference.
 
+## Boundary with an unchanged OpenClaw
+
+Durable intake, Main-first dispatch, the busy guardian relay, result recovery,
+review context and pre-dispatch controls use the existing native contracts.
+They do not require the optional question bridge or a patched Gateway. Main
+keeps its installed tools and native approval owners.
+
+Personal task capture also uses the existing Core owner. After a lost creation
+reply, the original UUID identifies a read-only receipt lookup; an unknown result
+does not authorize another creation. This bounded path does not establish replay
+safety for unrelated business actions.
+
+Pause, resume and cancel apply only before native admission. They neither amend
+the accepted intent nor stop or undo an admitted action. An uncertain native
+execution remains bound to its original owner. Display, scheduled playback and
+completed playback have separate receipts; supplied review context does not
+prove that Main produced a correction or that the person heard it.
+
+The [question bridge](NESTOR_NATIVE_QUESTIONS.md) has a separate native capability
+requirement and remains unavailable when that capability is absent. Existing
+native question and approval interfaces keep their authority. Core does not
+widen a grant or substitute an ordinary conversational reply for native consent.
+
 ### Main first on new personal native requests
 
 The personal OpenClaw surface freezes `entryPolicy=main-first/v1` in each new
