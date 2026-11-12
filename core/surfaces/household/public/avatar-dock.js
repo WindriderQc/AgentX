@@ -326,6 +326,10 @@
       if (!ok) { showRenderer('orb'); return; }
       const element = doc.createElement('llmx-face');
       element.setAttribute('tint', tint);
+      // A conversation needs the assembled portrait, not the Forge's entry
+      // choreography. Its simulation clock can run slowly at low frame rates;
+      // native intro="off" still emits ready only after a successful render.
+      element.setAttribute('intro', 'off');
       // Density follows the device, not the window: a narrow desktop window at load must not
       // pin the dense mask to its coarsest level for the whole visit. Weak hardware is capped
       // by the element itself.

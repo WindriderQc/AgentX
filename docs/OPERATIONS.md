@@ -1210,6 +1210,15 @@ The Super Dad and Famille avatar dock loads GraphysX's `<llmx-face>` module from
 relays it at `/api/household/avatar/llmx-face.js`, like the VoiX player, so the
 page CSP stays `'self'`; without it the dock shows a 2D orb driven by the same
 conversation signals.
+The conversation dock requests GraphysX's native `intro="off"` assembled
+portrait. It does not wait for the Forge entry choreography, whose animation
+clock can advance slowly at low frame rates. The orb disappears only after
+the component's real `llmx-face-ready` event following a successful render;
+the existing timeout and WebGL-error fallback remain available. The standalone
+Forge retains its own introduction. No instance setting or GraphysX fork is
+required. `core/tests/browser/nestorFaceReadinessJourney.cjs` accepts a separately
+supplied `GRAPHYSX_FACE_MODULE_FILE` and tests the production dock with that
+actual embed at four frames per second, reduced motion and WebGL failure.
 `/llmx` hosts GraphysX's existing Forge and conversation on Core's origin;
 `/llmx?profile=family` selects its existing Family contract. The page derives
 `/embed/llmx-room.js` beside the configured avatar module, relays up to 6 MiB
