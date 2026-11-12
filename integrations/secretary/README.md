@@ -403,6 +403,35 @@ hash/revision and decision date. Forgotten entries contribute no decision.
 These snapshots do not revalidate a later Core state or substitute for native
 semantic acceptance. Prior v1 snapshots remain review inputs without v2 pins.
 
+`retention_reconcile.py` compares an explicitly selected v2 disposition file
+with fresh read-only Core history. It makes two complete bounded observations
+and regenerates disposition pins from the current archive, value lanes and
+selected consolidation manifests. The two observations must agree, including
+entry revisions, decisions, source references, souvenir changes and newly open
+related findings. Changed, forgotten or absent decisions cannot silently reuse
+an older snapshot. Reconciliation covers exactly the saved message set and
+never adds other current messages to that set.
+
+The private immutable report records `observed_match`, `changed` or `absent`
+per message, compared hashes and changed field names; exit code 2 signals a
+mismatch. An unavailable Core, malformed/unfinished pagination, a changing
+observation or capacity limit refuses without writing a successful report.
+Each observation is limited to 20,000 entries, 200 pages and 64 MiB, with a
+16 MiB page limit. Standard output contains only counts and fixed status fields.
+The saved dispositions and archive are never rewritten. Two agreeing reads
+remain a dated observation, not an atomic snapshot, comprehension, current
+mailbox approval or a planner gate: all four native gaps and false execution
+flags remain. The report does not become a new planner input or execute mail.
+
+```bash
+python3 integrations/secretary/retention_reconcile.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORY_CUTOFF_WITH_OFFSET" --dispositions "$PRIVATE_DISPOSITIONS" --core "$CORE_URL" --output "$PRIVATE_RECONCILIATION_REPORT"
+```
+
+Pass the same `--souvenir-manifest` files used to prepare consolidated
+dispositions. A large real archive observation uses the heavy-work queue;
+synthetic checks remain direct. Source tests and native instance acceptance
+are separate results.
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive

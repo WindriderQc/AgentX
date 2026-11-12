@@ -17,6 +17,7 @@ import argparse
 from collections import Counter, defaultdict
 import json
 from pathlib import Path
+import re
 import sys
 import urllib.request
 
@@ -32,14 +33,48 @@ BASIS = {"bulk": "bulk-lane", "person": "owner-decided", "important": "owner-dec
 
 
 def core_entries(core, opener=urllib.request.urlopen):
-    """Every non-forgotten Gmail history entry, with its source and state."""
-    entries, offset = [], 0
+    """A bounded, complete observation; pagination is not an atomic snapshot."""
+    entries, offset, total, seen = [], 0, None, set()
+    pages, received = 0, 0
     while offset is not None:
+        pages += 1
+        if pages > 200:
+            raise ValueError("Core history observation exceeds 200 pages")
         url = f"{core.rstrip('/')}/api/secretary/history?limit=100&offset={offset}&state=&source=gmail"
-        with opener(url, timeout=60) as response:
-            data = json.loads(response.read())["data"]
+        request = urllib.request.Request(url, headers={"x-service-caller": "secretary-retention-review"})
+        with opener(request, timeout=60) as response:
+            payload = response.read(16 * 1024 * 1024 + 1)
+        if len(payload) > 16 * 1024 * 1024:
+            raise ValueError("Core history page exceeds its bounded capacity")
+        received += len(payload)
+        if received > 64 * 1024 * 1024:
+            raise ValueError("Core history observation exceeds its bounded capacity")
+        result = json.loads(payload)
+        data = result.get("data") if isinstance(result, dict) and result.get("ok") is True else None
+        if not isinstance(data, dict) or data.get("authority") != "agentx.core" \
+                or type(data.get("total")) is not int or not 0 <= data["total"] <= 20000 \
+                or not isinstance(data.get("entries"), list) or len(data["entries"]) > 100 \
+                or "nextOffset" not in data:
+            raise ValueError("Core history observation is incomplete or invalid")
+        if total is None:
+            total = data["total"]
+        if data["total"] != total:
+            raise ValueError("Core history changed during pagination")
+        for entry in data["entries"]:
+            if not isinstance(entry, dict) or not isinstance(entry.get("id"), str) \
+                    or not re.fullmatch(r"[a-f0-9]{24}", entry["id"]) \
+                    or entry["id"] in seen or type(entry.get("revision")) is not int or entry["revision"] < 0 \
+                    or entry.get("reviewState") not in ("candidate", "retained", "dismissed", "resolved") \
+                    or not isinstance(entry.get("source"), dict) or entry["source"].get("system") != "gmail":
+                raise ValueError("Core history returned an invalid or repeated entry")
+            seen.add(entry["id"])
         entries.extend(data["entries"])
-        offset = data["nextOffset"]
+        expected = offset + len(data["entries"])
+        following = data.get("nextOffset")
+        if expected > total or (expected == total and following is not None) \
+                or (expected < total and (not data["entries"] or type(following) is not int or following != expected)):
+            raise ValueError("Core history pagination did not cover its declared scope")
+        offset = following
     return entries
 
 
