@@ -14,16 +14,24 @@ class FakeElement {
   setAttribute(name, value) { this.attributes[name] = String(value); }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
   dispatch(type) { (this.listeners[type] || []).splice(0).forEach(fn => fn({ target: this })); }
-  append(child) { child.parent = this; this.children.push(child); }
+  append(child) { child.parent = this; this.children.push(child); child.connectedCallback?.(); }
   remove() { if (this.parent) this.parent.children = this.parent.children.filter(c => c !== this); this.parent = null; }
   querySelector(selector) { return (this.parts[selector] ||= new FakeElement(selector)); }
   querySelectorAll() { return []; }
 }
 
-function setup() {
+function setup({ assembledPortrait = false } = {}) {
   const body = new FakeElement('body');
   const created = [];
-  const doc = { body, createElement(tag) { const element = new FakeElement(tag); created.push(element); return element; } };
+  const doc = { body, createElement(tag) {
+    const element = new FakeElement(tag);
+    if (tag === 'llmx-face' && assembledPortrait) element.connectedCallback = () => {
+      // Native GraphysX emits ready after its first completed frame when the
+      // host requests the supported already-assembled portrait.
+      if (element.attributes.intro === 'off') element.dispatch('llmx-face-ready');
+    };
+    created.push(element); return element;
+  } };
   globalThis.customElements = { get: name => name === 'llmx-face' };
   globalThis.addEventListener ||= () => {};
   globalThis.removeEventListener ||= () => {};
@@ -33,6 +41,24 @@ function setup() {
 }
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+test('conversation portrait becomes ready without waiting for the Forge assembly clock', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const { dock, doc, created } = setup({ assembledPortrait: true });
+  const handle = dock.mount({ space: 'family', documentRef: doc });
+  try {
+    let ready;
+    handle.ready.then(value => { ready = value; });
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    const face = created.find(element => element.tagName === 'llmx-face');
+    const container = created.find(element => element.className === 'avatar-dock');
+    assert.equal(ready, 'face', 'readiness follows the real component event, before the fallback timeout');
+    assert.equal(container.dataset.renderer, 'face');
+    t.mock.timers.tick(7000);
+    assert.equal(container.dataset.renderer, 'face', 'the timeout never covers a ready portrait');
+    assert.ok(face.parent);
+  } finally { handle.dispose(); delete globalThis.customElements; delete globalThis.AvatarDock; }
+});
 
 test('a face that becomes ready after the timeout replaces the orb instead of being discarded', async t => {
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
