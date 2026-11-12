@@ -12,8 +12,12 @@ try {
     exit 0
   }
   $request = Get-Content -LiteralPath $RequestFile -Raw -Encoding UTF8 | ConvertFrom-Json
-  $reader = New-Object AgentX.PhotoImport.Reader($request.deviceId)
+  $reader=$null
+  $deviceLock=$null
   try {
+    . (Join-Path $PSScriptRoot 'device-lock.ps1')
+    $deviceLock=Enter-PhotoDeviceLock $request.deviceId
+    $reader=New-Object AgentX.PhotoImport.Reader($request.deviceId)
     if ($Action -eq 'inventory') { $result = $reader.Enumerate(100000) }
     elseif ($Action -eq 'prefixes') {
       if (@($request.objects).Count -gt 100000) { throw 'Prefix request exceeds object bound' }
@@ -89,7 +93,7 @@ try {
     }
     else { $result = $reader.Read($request.objectId, $request.relativePath, $request.destination) }
     ConvertTo-Json -InputObject $result -Depth 10 -Compress
-  } finally { $reader.Dispose() }
+  } finally { if($reader){$reader.Dispose()};if($deviceLock){Exit-PhotoDeviceLock $deviceLock} }
 } catch {
   [Console]::Error.WriteLine($_.Exception.Message)
   exit 1

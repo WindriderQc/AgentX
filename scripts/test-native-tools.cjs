@@ -3,7 +3,7 @@ const { spawnSync } = require('node:child_process');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const tests = [
-  [process.execPath, ['--test', 'integrations/photo-import/test/import.test.cjs']],
+  [process.execPath, ['--test', 'integrations/photo-import/test/import.test.cjs', 'integrations/photo-import/test/phone-workbench.test.cjs']],
   ...(process.platform === 'win32' ? [] : [[process.env.AGENTX_PYTHON_BIN || 'python3', ['-m', 'unittest', 'discover', '-s', 'integrations/codex', '-p', 'test_*.py']]]),
   [process.execPath, ['--test', 'integrations/hermes/dashboard-voice/test/bridge.test.cjs', 'integrations/hermes/dashboard-voice/test/context.test.cjs', 'integrations/hermes/dashboard-voice/test/adapter.test.cjs']],
   [process.env.AGENTX_PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3'), ['-m', 'unittest', 'discover', '-s', 'integrations/hermes/dashboard-voice/test', '-p', 'test_*.py']],

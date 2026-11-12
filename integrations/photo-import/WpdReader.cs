@@ -1,6 +1,6 @@
 // Native Windows transport. Interface slots/keys follow Microsoft's WPD SDK
 // (PortableDeviceApi.h / PortableDeviceTypes.h / PortableDevice.h). Deliberately
-// no device Delete, Move, Copy, SetValues, or writable resource implementation.
+// the default reader opens read-only. Explicit cleanup is in WpdCleanup.cs.
 using System;
 using System.IO;
 using System.Text;
@@ -39,6 +39,9 @@ namespace AgentX.PhotoImport {
     void EnumObjects(uint flags, [MarshalAs(UnmanagedType.LPWStr)] string parent, IntPtr filter, out ObjectIds ids);
     void Properties(out Properties properties);
     void Transfer(out Resources resources);
+    void UnusedCreateObjectWithPropertiesOnly();
+    void UnusedCreateObjectWithPropertiesAndData();
+    [PreserveSig] int Delete(uint options, VariantCollection ids, [In, Out] ref VariantCollection results);
   }
   [ComImport, Guid("10ece955-cf41-4728-bfa0-41eedf1bbf19"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface ObjectIds {
@@ -67,6 +70,12 @@ namespace AgentX.PhotoImport {
     void UnusedSetUnsignedLargeIntegerValue();
     [PreserveSig] int GetUnsignedLargeIntegerValue(ref Key key, out ulong value);
   }
+  [ComImport, Guid("89b2e422-4f1b-4316-bcef-a44afea83eb3"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface VariantCollection {
+    void GetCount(out uint count);
+    void GetAt(uint index, out Variant value);
+    void Add(ref Variant value);
+  }
   public class Source {
     public string objectId, key, name, relativePath, modified;
     public ulong size;
@@ -77,12 +86,12 @@ namespace AgentX.PhotoImport {
     public int objectsVisited;
     public bool complete=true;
   }
-  public sealed class Reader : IDisposable {
+  public sealed partial class Reader : IDisposable {
     [DllImport("ole32.dll")] static extern int PropVariantClear(ref Variant value);
     static readonly string ObjectKeys="EF6B490D-5CD8-437A-AFFC-DA8B60EE4A3C";
     static readonly Guid Folder=new Guid("27E2E392-A111-48E0-AB0C-E17705A05F85");
     static readonly Guid Functional=new Guid("99ED0160-17FF-4C44-9D98-1D7A6F941921");
-    Device device; Content content; Properties properties;
+    Device device; Content content; Properties properties; internal bool CleanupWritable { get; private set; }
     static object Create(string guid) { return Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid(guid))); }
     static void Release(object value) { if(value!=null && Marshal.IsComObject(value)) Marshal.ReleaseComObject(value); }
     static string StringValue(Values values, uint pid) {
@@ -116,12 +125,14 @@ namespace AgentX.PhotoImport {
         return result;
       } finally { if(buffer!=IntPtr.Zero) Marshal.FreeCoTaskMem(buffer);Release(manager); }
     }
-    public Reader(string id) {
+    public Reader(string id) : this(id,false) {}
+    internal Reader(string id,bool writable) {
+      CleanupWritable=writable;
       Values info=(Values)Create("0C15D503-D017-47CE-9016-7B3F978721CC");
       try {
         // WPD otherwise defaults to GENERIC_READ | GENERIC_WRITE.
         var access=new Key("204D9F0C-2292-4080-9F42-40664E70F859",9);
-        info.SetUnsignedIntegerValue(ref access,0x80000000); // GENERIC_READ
+        info.SetUnsignedIntegerValue(ref access,writable?0xc0000000:0x80000000); // normal reader: GENERIC_READ
         device=(Device)Create("F7C0039A-4762-488A-B4B3-760EF9A1BA9B");
         device.Open(id,info);device.Content(out content);content.Properties(out properties);
       } catch { Dispose();throw; } finally { Release(info); }

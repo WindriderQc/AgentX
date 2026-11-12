@@ -52,6 +52,15 @@ async function execute(config, header, body) {
     case 'lookup': return service.lookup(header);
     case 'receive': return service.receive(header, body);
     case 'status': return service.status(header);
+    case 'library': {
+      const library = await require('../../core/src/services/photos/phoneLibrary').createPhoneLibrary(config);
+      const cleanup = require('../../core/src/services/photos/phoneCleanup').createPhoneCleanup(library);
+      const input = await readJsonBody(body);
+      const handlers = { runs: library.list, page: library.page, review: library.setReview, preview: library.preview,
+        prepare: cleanup.prepare, plan: x => cleanup.prepared(x.planId), authorize: cleanup.authorize, deleted: cleanup.record, cleanupStatus: cleanup.status };
+      if (!Object.hasOwn(handlers, input.op)) throw fail('INVALID_ACTION', 'Unknown phone operation');
+      return handlers[input.op](input);
+    }
     case 'ping': return { schema: 'agentx.photo-import/v1', ready: true, phoneReadOnly: true };
     default: throw fail('INVALID_ACTION', 'Unknown import action');
   }
@@ -111,7 +120,7 @@ async function main() {
     const payload = path.join(dir, 'payload.bin');
     let result;
     try {
-      const body = ['begin', 'receive', 'batch'].includes(header.action) ? createReadStream(payload) : Readable.from([]);
+      const body = ['begin', 'receive', 'batch', 'library'].includes(header.action) ? createReadStream(payload) : Readable.from([]);
       result = { ok: true, data: header.action === 'batch'
         ? await executeBatch(config, await readJsonBody(body), dir) : await execute(config, header, body) };
     } catch (error) { result = { ok: false, error: { code: error.code || 'IMPORT_FAILED', message: error.message } }; }

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Téléphone · DiskX</title>
+    <link rel="stylesheet" href="/assets/diskx/phone.css" />
+    <script defer src="/assets/diskx/phone.js"></script>
+  </head>
+  <body>
+    <main>
+      <nav><a href="/diskx">← DiskX</a><a href="/data-toolbox">Stockage & sauvegardes</a></nav>
+      <header>
+        <div>
+          <p class="eyebrow">DISKX / MÉDIAS</p>
+          <h1>La place pour les prochains souvenirs.</h1>
+          <p class="intro">
+            Brancher le téléphone, garder les originaux sur Media, puis choisir ce qui reste dans la poche.
+          </p>
+        </div>
+        <div class="phone-mark" aria-hidden="true">▣</div>
+      </header>
+      <ol class="steps">
+        <li><b>01</b> Brancher</li>
+        <li><b>02</b> Sauvegarder</li>
+        <li><b>03</b> Trier</li>
+        <li><b>04</b> Libérer</li>
+      </ol>
+      <section class="connection" aria-label="Téléphone et import">
+        <div>
+          <h2>Ton Android</h2>
+          <p id="device-state">Branche-le en USB, déverrouille-le et choisis « Transfert de fichiers ».</p>
+          <select id="device" aria-label="Téléphone connecté" hidden></select>
+        </div>
+        <div class="buttons">
+          <button id="detect">Détecter le téléphone</button
+          ><button id="import" class="primary" disabled>Importer les nouveaux médias</button>
+        </div>
+      </section>
+      <div id="message" role="status" aria-live="polite"></div>
+      <section id="job" class="job" hidden>
+        <strong id="job-title"></strong>
+        <p id="job-detail"></p>
+        <progress id="job-progress"></progress><button id="resume" hidden>Reprendre cet import</button>
+        <button id="reconcile" hidden>Réconcilier cette opération</button>
+      </section>
+      <section class="library">
+        <div class="library-heading">
+          <div>
+            <p class="eyebrow">LA RÉSERVE</p>
+            <h2>Sauvegardés, à toi de choisir.</h2>
+          </div>
+          <a href="/data-toolbox">Voir les sauvegardes existantes ↗</a>
+        </div>
+        <div class="toolbar">
+          <label
+            >Import<select id="run">
+              <option value="">Choisir un import</option>
+            </select></label
+          ><label class="search"
+            >Dossier ou nom<input id="search" type="search" placeholder="DCIM, captures, WhatsApp…" /></label
+          ><label
+            >Ordre<select id="order">
+              <option value="source">Dossiers du téléphone</option>
+              <option value="size">Plus volumineux d’abord</option>
+            </select></label
+          ><button id="refresh">Actualiser</button>
+        </div>
+        <p id="coverage" class="muted"></p>
+        <button id="select-page">Sélectionner les copies de cette page</button>
+        <p class="muted">
+          « Garder » et « Archiver » enregistrent ton tri. Les originaux sur Media restent à leur emplacement.
+        </p>
+        <div id="cards" class="cards">
+          <p class="empty">
+            Les imports vérifiés apparaîtront ici. Aucune suppression n’est présélectionnée.
+          </p>
+        </div>
+        <div class="pagination">
+          <button id="previous" disabled>Précédent</button><span id="page-count"></span
+          ><button id="next" disabled>Suivant</button>
+        </div>
+      </section>
+      <section class="selection" aria-label="Sélection pour le téléphone">
+        <div>
+          <strong id="selection-count">Aucun fichier sélectionné</strong>
+          <p id="selection-bytes">Choisis uniquement les fichiers que tu veux enlever du téléphone.</p>
+        </div>
+        <button id="prepare" class="danger" disabled>Vérifier ma sélection</button
+        ><button id="clear" disabled>Vider la sélection</button>
+      </section>
+      <p class="footnote">
+        La suppression nécessite une copie Media revérifiée et une confirmation finale. Elle vise uniquement
+        les fichiers sélectionnés du téléphone. Les médias seulement dans le nuage et les dossiers privés
+        d’applications ne sont pas exposés par USB. Aucun tri automatique par IA n’est lancé ici.
+      </p>
+      <dialog id="confirmation">
+        <form method="dialog"><button class="close" aria-label="Fermer">×</button></form>
+        <p class="eyebrow">DERNIÈRE VÉRIFICATION</p>
+        <h2>Retirer du téléphone ?</h2>
+        <p id="plan-summary"></p>
+        <p>
+          Les copies sur Media restent conservées. La suppression USB est directe : ne compte pas sur la
+          corbeille de la galerie.
+        </p>
+        <ul id="plan-files"></ul>
+        <label id="confirmation-label" for="confirmation-text"></label
+        ><input id="confirmation-text" autocomplete="off" spellcheck="false" />
+        <div class="buttons">
+          <button id="cancel-delete">Annuler</button
+          ><button id="confirm-delete" class="danger" disabled>Supprimer du téléphone</button>
+        </div>
+      </dialog>
+    </main>
+  </body>
+</html>

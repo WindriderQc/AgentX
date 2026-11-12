@@ -6,7 +6,6 @@ const { spawn } = require('node:child_process');
 const { pipeline } = require('node:stream/promises');
 const { Readable } = require('node:stream');
 const crypto = require('node:crypto');
-const os = require('node:os');
 
 const quote = (arg) => "'" + String(arg).replace(/'/g, "'\\''") + "'";
 
@@ -36,7 +35,7 @@ function createRemote(config) {
   if (config.remoteTransportRoot) return createFileRemote(config, command);
   return async (header, payload) => {
     if (process.platform === 'win32') throw new Error('Windows requires remoteTransportRoot for native SSH/SCP transport');
-    const child = spawn('ssh', ['-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=15', config.sshHost, command], { windowsHide: true });
+    const child = spawn('ssh', ['-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', config.sshHost, command], { windowsHide: true });
     const result = childResult(child, 1024 * 1024);
     // Attach rejection handling before streaming so a lost connection cannot
     // leave an unhandled rejection or trigger a replacement request.
@@ -60,7 +59,7 @@ function inherited(command, args) {
 
 function createFileRemote(config, command) {
   if (!config.remoteTransportRoot.startsWith('/') || !path.isAbsolute(config.cacheRoot || '')) throw new Error('Invalid native transport roots');
-  const options = ['-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=15'];
+  const options = ['-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3'];
   const ssh = command => inherited('ssh', ['-T', ...options, config.sshHost, command]);
   return async (header, payload) => {
     const job = crypto.randomUUID();
@@ -94,12 +93,9 @@ function createFileRemote(config, command) {
 function createWpd(cache) {
   const script = path.join(__dirname, 'wpd.ps1');
   async function call(action, request) {
-    let file, releaseReader;
+    let file;
     try {
-      if (request?.deviceId) {
-        const key = crypto.createHash('sha256').update(request.deviceId).digest('hex');
-        releaseReader = await lockCache(path.join(os.tmpdir(), 'agentx-wpd-' + key + '.lock'));
-      }
+      // wpd.ps1 owns its device lock for the actual COM process lifetime.
       const args = ['-NoProfile', '-NonInteractive', '-STA', '-ExecutionPolicy', 'Bypass', '-File', script, '-Action', action];
       if (request) {
         file = path.join(cache, `wpd-${require('node:crypto').randomUUID()}.json`);
@@ -108,8 +104,7 @@ function createWpd(cache) {
       }
       return await childResult(spawn('powershell.exe', args, { windowsHide: true }));
     } finally {
-      try { if (file) await fs.rm(file, { force: true }); }
-      finally { if (releaseReader) await releaseReader(); }
+      if (file) await fs.rm(file, { force: true });
     }
   }
   return { devices: () => call('devices'), inventory: deviceId => call('inventory', { deviceId }),
