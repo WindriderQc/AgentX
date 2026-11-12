@@ -51,6 +51,7 @@ successful job's own transport files. Failed or uncertain jobs are preserved.
 | --- | --- | --- |
 | `begin` | JSON payload: UUID `runId`, hashed `deviceKey`, coverage and `sources` (each with UUID `requestId`, source key, name, path, size and modified marker) | Frozen manifest; same identity with another manifest refuses. Maximum 100,000 media objects / 16 MiB. |
 | `lookup` | Header: `runId`, `requestId`, `sha256`, `size` | Reconciled, freshly verified receipt, an exact existing duplicate, or `needsUpload`. The first hash is frozen before effects. |
+| `lookupMany` | JSON payload: `runId`, up to eight known request/hash/size identities | The same independent Media readback for each item, with per-file errors; no source read or upload. |
 | `receive` | Same header plus original bytes | Size/hash check, fsync, independent destination readback and atomic publication without replacement; then a durable receipt. |
 | `status` | Header: `runId` | Reverified counts of copied, duplicate, pending and failed verification, plus original coverage. A bounded or incomplete inventory remains explicit. |
 | `ping` | No payload | Receiver configuration/filesystem availability. |
@@ -180,6 +181,11 @@ reuses a verified local spool when available. A phone disconnect during its
 read leaves an incomplete file; a network disconnect preserves the verified
 spool. Changed phone content needs a new run; it never changes an existing
 request's hash. Completed sources in the same run need no new phone read.
+Known hashes resume in groups of eight receipt checks, reducing native SSH/SCP
+round trips while retaining each destination readback. An unchanged local receipt
+needs no redundant checkpoint rewrite. File-envelope SCP retries up to three
+times against the same paths; it never repeats the remote domain execution to
+compensate for a lost response download. Persistent failure retains the envelope.
 Some WPD drivers reissue both object IDs and advertised persistent keys after
 reconnection. A pending read can resolve the unique, exact frozen path only
 when its name, size and modification marker still match. The stream reader

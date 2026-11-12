@@ -29,10 +29,10 @@ function childResult(child, max = 16 * 1024 * 1024, timeoutMs = 30 * 60 * 1000) 
   });
 }
 
-function createRemote(config) {
+function createRemote(config, dependencies) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.@-]*$/.test(config.sshHost || '') || !config.receiver || !config.receiverConfig) throw new Error('Invalid SSH receiver configuration');
   const command = [config.node || 'node', config.receiver, '--config', config.receiverConfig].map(quote).join(' ');
-  if (config.remoteTransportRoot) return createFileRemote(config, command);
+  if (config.remoteTransportRoot) return createFileRemote(config, command, dependencies);
   return async (header, payload) => {
     if (process.platform === 'win32') throw new Error('Windows requires remoteTransportRoot for native SSH/SCP transport');
     const child = spawn('ssh', ['-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', config.sshHost, command], { windowsHide: true });
@@ -57,18 +57,24 @@ function inherited(command, args, timeoutMs = 30 * 60 * 1000) {
   });
 }
 
-function createFileRemote(config, command) {
+function createFileRemote(config, command, { runNative = inherited, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   if (!config.remoteTransportRoot.startsWith('/') || !path.isAbsolute(config.cacheRoot || '')) throw new Error('Invalid native transport roots');
   const options = ['-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=15', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3'];
   // Fixed envelope commands have no stdin. Do not pass this option through
   // SCP: its own SSH child uses stdin for the SFTP transfer protocol.
-  const ssh = (command, timeoutMs) => inherited('ssh', ['-n', '-T', ...options, config.sshHost, command], timeoutMs);
+  const ssh = (command, timeoutMs) => runNative('ssh', ['-n', '-T', ...options, config.sshHost, command], timeoutMs);
   return async (header, payload) => {
     const job = crypto.randomUUID();
     const dir = await fs.mkdtemp(path.join(config.cacheRoot, 'transport-'));
     const remoteDir = config.remoteTransportRoot.replace(/\/+$/, '') + '/' + job;
     const copy = async (source, target) => {
-      if (await inherited('scp', ['-q', ...options, source, target]) !== 0) throw new Error('SCP transfer incomplete; preserve the original import identity');
+      // Retry only this file transfer to the same envelope. A lost response
+      // download must never dispatch the domain receiver a second time.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (await runNative('scp', ['-q', ...options, source, target]) === 0) return;
+        if (attempt < 2) await pause(250 * 2 ** attempt);
+      }
+      throw new Error('SCP transfer incomplete; preserve the original import identity');
     };
     await fs.writeFile(path.join(dir, 'request.json'), JSON.stringify(header), { flag: 'wx', mode: 0o600 });
     if (payload?.json) await fs.writeFile(path.join(dir, 'payload.bin'), JSON.stringify(payload.json), { flag: 'wx', mode: 0o600 });
@@ -129,4 +135,4 @@ async function lockCache(file) {
   return () => new Promise(resolve => { child.once('close', resolve); child.stdin.end('\n'); });
 }
 
-module.exports = { createRemote, createWpd, quote, childResult, lockCache };
+module.exports = { createRemote, createWpd, quote, childResult, lockCache, inherited };

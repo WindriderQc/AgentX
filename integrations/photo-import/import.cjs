@@ -82,11 +82,26 @@ async function runImport(config, { source, remote, deviceId, resume, initialRunI
   const lockFile = stateFile + '.lock';
   const releaseLock = await lockCache(lockFile);
   const failures = [];
+  let reconciled = new Map();
   try {
-    for (const item of state.items) {
+    for (let index = 0; index < state.items.length; index++) {
+      const item = state.items[index];
       const spool = path.join(config.cacheRoot, item.requestId + '.media');
       try {
-        let known = item.sha256 ? await remote({ action: 'lookup', runId: state.runId, requestId: item.requestId, size: item.size, sha256: item.sha256, ...(item.readSource ? { readSource: item.readSource } : {}) }) : null;
+        if (resume && item.sha256 && !reconciled.has(item.requestId)) {
+          const group = state.items.slice(index, index + 8).filter(entry => entry.sha256);
+          const input = { runId: state.runId, items: group.map(entry => ({ requestId: entry.requestId, size: entry.size,
+            sha256: entry.sha256, ...(entry.readSource ? { readSource: entry.readSource } : {}) })) };
+          const batch = await remote({ action: 'lookupMany' }, { json: input });
+          if (batch.runId !== state.runId || !Array.isArray(batch.results) || batch.results.length !== group.length
+            || new Set(batch.results.map(row => row.requestId)).size !== group.length
+            || batch.results.some(row => !group.some(entry => entry.requestId === row.requestId)))
+            throw new Error('Invalid batched reconciliation response');
+          reconciled = new Map(batch.results.map(row => [row.requestId, row]));
+        }
+        let known = reconciled.get(item.requestId);
+        if (known?.error) throw Object.assign(new Error(known.error.message), { code: known.error.code });
+        known ||= item.sha256 ? await remote({ action: 'lookup', runId: state.runId, requestId: item.requestId, size: item.size, sha256: item.sha256, ...(item.readSource ? { readSource: item.readSource } : {}) }) : null;
         if (!known || known.needsUpload) {
           let local;
           try { local = await hashFile(spool); } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -118,9 +133,10 @@ async function runImport(config, { source, remote, deviceId, resume, initialRunI
           if (known.needsUpload) known = await remote({ action: 'receive', ...input }, { file: spool });
         }
         if (known.runId !== state.runId || known.requestId !== item.requestId || known.sha256 !== item.sha256 || known.size !== item.size || !['copied', 'duplicate'].includes(known.disposition)) throw new Error('Invalid receiver verification receipt');
+        const unchanged = !item.error && JSON.stringify(item.receipt) === JSON.stringify(known);
         item.receipt = known;
         delete item.error;
-        await checkpoint(stateFile, state);
+        if (!unchanged) await checkpoint(stateFile, state);
         await fs.rm(spool, { force: true });
         log(`${known.disposition === 'copied' ? 'Vérifié sur Media' : 'Doublon vérifié, copie évitée'}: ${item.relativePath}`);
       } catch (error) {
