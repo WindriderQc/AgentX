@@ -189,6 +189,20 @@ async function createPhotoImportService({ root, findExisting = async () => ({ pa
     } finally { await fs.rm(temp, { recursive: true, force: true }); }
   }
 
+  async function lookupMany(input) {
+    const runId = validId(input.runId);
+    if (!Array.isArray(input.items) || !input.items.length || input.items.length > 8)
+      throw fail('INVALID_BATCH', 'Reconcile one to eight known content identities');
+    if (new Set(input.items.map(item => validId(item.requestId))).size !== input.items.length)
+      throw fail('INVALID_BATCH', 'Duplicate reconciliation request identity');
+    const results = [];
+    for (const item of input.items) {
+      try { results.push(await lookup({ ...item, runId })); }
+      catch (error) { results.push({ requestId: item.requestId, error: { code: error.code || 'LOOKUP_FAILED', message: error.message } }); }
+    }
+    return { runId, results };
+  }
+
   async function status(input) {
     const run = await runRecord(validId(input.runId));
     const counts = { selected: run.sources.length, copied: 0, duplicates: 0, pending: 0, failedVerification: 0 };
@@ -204,7 +218,7 @@ async function createPhotoImportService({ root, findExisting = async () => ({ pa
       coverage: run.coverage, phoneReadOnly: true };
   }
 
-  return { begin, lookup, receive, status, root, state };
+  return { begin, lookup, lookupMany, receive, status, root, state };
 }
 
 module.exports = { createPhotoImportService, MEDIA };

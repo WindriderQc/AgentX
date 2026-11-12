@@ -50,6 +50,7 @@ async function execute(config, header, body) {
   switch (header.action) {
     case 'begin': return service.begin(await readJsonBody(body));
     case 'lookup': return service.lookup(header);
+    case 'lookupMany': return service.lookupMany(await readJsonBody(body));
     case 'receive': return service.receive(header, body);
     case 'status': return service.status(header);
     case 'library': {

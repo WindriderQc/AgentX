@@ -283,6 +283,7 @@ function remoteAdapter(service) {
   return async (input, body) => {
     if (input.action === 'begin') return service.begin(body.json);
     if (input.action === 'receive') return service.receive(input, require('node:fs').createReadStream(body.file));
+    if (input.action === 'lookupMany') return service.lookupMany(body.json);
     return service[input.action](input);
   };
 }
@@ -427,4 +428,31 @@ test('receiver freezes read observations independently of the immutable original
   const result = await f.service.receive(f.input, Readable.from(['hello']));
   assert.equal(result.source.key, f.item.key); assert.equal(result.readSource.key, readSource.key);
   assert.equal(result.sourceReassociated, true);
+});
+
+test('resume rehashes Media receipts in bounded groups without reading a disconnected phone', async t => {
+  const f = await fixture(t), source = sourceAdapter(Array(17).fill('hello'));
+  const original = remoteAdapter(f.service), calls = [];
+  const remote = async (...args) => { calls.push(args[0].action); return original(...args); };
+  const config = { cacheRoot: f.cacheRoot };
+  const first = await runImport(config, { source, remote, log: () => {} });
+  calls.length = 0;
+  source.inventory = async () => { throw Error('Phone disconnected'); };
+  const result = await runImport(config, { source, remote, resume: first.runId, log: () => {} });
+  assert.equal(result.state, 'complete'); assert.equal(source.reads, 17);
+  assert.equal(calls.filter(x => x === 'lookupMany').length, 3);
+  assert.equal(calls.filter(x => x === 'lookup' || x === 'receive').length, 0);
+});
+
+test('batched reconciliation preserves per-file corruption refusal and its original content identity', async t => {
+  const f = await fixture(t), source = sourceAdapter(['hello', 'world']);
+  const remote = remoteAdapter(f.service);
+  const first = await runImport({ cacheRoot: f.cacheRoot }, { source, remote, log: () => {} });
+  const state = JSON.parse(await fs.readFile(path.join(f.cacheRoot, first.runId+'.json')));
+  await fs.writeFile(state.items[0].receipt.path, 'other');
+  const result = await runImport({ cacheRoot: f.cacheRoot }, { source, remote, resume: first.runId, log: () => {} });
+  assert.equal(result.state, 'incomplete'); assert.equal(result.counts.failedVerification, 1);
+  assert.equal(result.failures[0].code, 'COPY_VERIFICATION_FAILED'); assert.equal(source.reads, 2);
+  assert.equal(await fs.readFile(state.items[0].receipt.path, 'utf8'), 'other');
+  await assert.rejects(f.service.lookupMany({ runId: first.runId, items: Array(9).fill(f.input) }), { code: 'INVALID_BATCH' });
 });
