@@ -65,7 +65,10 @@ under the prefix and at the root of their own port.
 MongoDB and Qdrant are internal. Browsers on a foreign site cannot read or mutate
 AgentX APIs: Core, Benchmark, RAG and Data answer CORS only for the origins of
 `CORE_PUBLIC_URL`, `BENCHMARK_PUBLIC_URL` and `RAG_PUBLIC_URL` (plus their loopback
-variants). Requests other than GET, HEAD and OPTIONS receive 403 when marked
+variants), plus exact additional origins in `AGENTX_BROWSER_ORIGINS`. Use this
+comma-separated setting for private gateway aliases such as a DNS recovery
+entry; paths, credentials and wildcards are refused at startup. Requests other
+than GET, HEAD and OPTIONS receive 403 when marked
 `Sec-Fetch-Site: cross-site` or carrying an `Origin` outside that list, including
 same-site origins on other ports or subdomains. Configured browser origins and
 clients that send no browser headers (harnesses, curl, service calls) retain

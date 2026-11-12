@@ -39,6 +39,7 @@ services:
     ports:
       - "127.0.0.1:${CORE_PORT:-3180}:3080"
     environment:
+      AGENTX_BROWSER_ORIGINS: ${AGENTX_BROWSER_ORIGINS:-}
       # Host folders behind the photos and documents mounts, so Core can open a path a history context recorded.
       HOUSEHOLD_PLANT_IMPORT_DIR: ${HOUSEHOLD_PLANT_IMPORT_DIR:-}
       OWNER_PHOTOS_HOST_DIR: ${HOUSEHOLD_PHOTOS_DIR:-}
@@ -233,6 +234,7 @@ services:
     ports:
       - "127.0.0.1:${BENCHMARK_PORT:-3181}:3081"
     environment:
+      AGENTX_BROWSER_ORIGINS: ${AGENTX_BROWSER_ORIGINS:-}
       NODE_ENV: production
       PORT: 3081
       HOST: 0.0.0.0
@@ -325,6 +327,7 @@ services:
     ports:
       - "127.0.0.1:${RAG_PORT:-3182}:3082"
     environment:
+      AGENTX_BROWSER_ORIGINS: ${AGENTX_BROWSER_ORIGINS:-}
       NODE_ENV: production
       PORT: 3082
       HOST: 0.0.0.0
@@ -370,6 +373,7 @@ services:
     ports:
       - "127.0.0.1:${DATA_PORT:-3183}:3083"
     environment:
+      AGENTX_BROWSER_ORIGINS: ${AGENTX_BROWSER_ORIGINS:-}
       NODE_ENV: production
       PORT: 3083
       HOST: 0.0.0.0

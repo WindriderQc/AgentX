@@ -21,6 +21,19 @@
       "secret": false,
       "description": "Credential-free HTTP(S) origin of the external benchmark harness broker. Unset while BENCHMARK_HARNESS_ENABLED=true: broker calls fail with HARNESS_BROKER_NOT_CONFIGURED (503)."
     },
+    "AGENTX_BROWSER_ORIGINS": {
+      "services": [
+        "benchmark",
+        "core",
+        "data",
+        "rag"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "network",
+      "secret": false,
+      "description": "Comma-separated exact HTTP(S) browser origins served by the private gateway, in addition to public URL origins. No paths, credentials or wildcards; cross-site writes remain refused. Unset: no additional origins."
+    },
     "AGENTX_CLASSIFIER_RESPECT_PRIMARY_PIN": {
       "services": [
         "core"

@@ -90,6 +90,15 @@ has its own API service; the Toolbox retains its bounded projection, its network
 editor and scan request, the MQTT publish form, the storage scan request and the Janitor's stored duplicate-review decisions. The demo profile continues to exclude personal and household
 capabilities, regardless of the browser entry.
 
+Additional private gateway addresses (for example a DNS recovery entry) must
+be listed in `AGENTX_BROWSER_ORIGINS`, a comma-separated list of exact HTTP(S)
+origins, such as `https://recovery.example.invalid`. Configure it on each
+browser-facing service and recreate the containers. It adds to the configured
+public URL origins without changing navigation links. Paths, credentials and
+wildcards are refused at startup. Requests marked `Sec-Fetch-Site: cross-site`
+remain refused even from a listed origin. Merely serving a page at an alternate
+gateway address does not authorize its voice uploads or other writes.
+
 ## Capability and identity boundaries
 
 | Capability | Authority that remains |
