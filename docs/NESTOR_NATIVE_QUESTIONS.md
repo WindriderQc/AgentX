@@ -13,6 +13,13 @@ not identify a person, establish adult identity or grant an agent more authority
 
 ## Availability
 
+This bridge is independent of ordinary conversation work. AgentX does not supply
+the required `question-conditional-resolve-v1` Gateway capability. An unchanged
+OpenClaw without that capability cannot use this bridge, even when its native
+question RPCs are available. Keep the bridge disabled and use the runtime's
+existing native question and approval interfaces. A pre-read of a question is
+not a substitute for a native condition checked when accepting its answer.
+
 The feature defaults off. `PERSONAL_CONVERSATION_QUESTIONS_ENABLED=true` permits
 new observations and effect admissions in Core. The personal harness requires
 these private, explicitly configured fields:
