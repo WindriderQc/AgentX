@@ -64,7 +64,7 @@ const urls = () => ({ core: base, benchmark: base + '/benchmark', rag: base + '/
       <main id="app"><div class="conversation-layout"><section id="text"></section><section id="visual"></section></div></main>
       <script src="/js/screen-pages.js"></script><script src="/assets/household/page-presentation.js"></script>
       <script src="/assets/household/screen-page-focus.js"></script><script src="/assets/household/presentation-observation.js"></script>
-      <script src="/assets/household/display-board.js"></script><script>
+      <script src="/js/markdown-links.js"></script><script src="/assets/household/display-board.js"></script><script>
       AgentXScreenPages.configure(${JSON.stringify(catalog.entries)});
       window.board=DisplayBoard.createScreen({text:document.getElementById('text'),visual:document.getElementById('visual')});
       window.show=body=>board.add({kind:'page',body,title:body});

@@ -409,6 +409,12 @@ replay include all requested content in ordered synthesis segments, including
 text blocks, table cells and fenced code. Secrets remain excluded from speech.
 A completed summary is a presented result, not proof of complete reading.
 
+Markdown web references in spoken prose become link cards, with the label as
+their title and the complete URL retained. Streaming holds an unfinished label
+or target so Markdown and addresses do not leak into speech. Explicit link
+blocks also render Markdown labels as links; Famille retains its configured
+plain-text or clickable-link setting. Fenced code stays literal.
+
 The shared speech cleanup removes display markup while preserving prose and
 emergency phone numbers; stored text stays unchanged. This contract needs
 resource-line qualification: removing links or table-shaped lines can omit

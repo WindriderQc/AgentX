@@ -52,7 +52,7 @@ app.get('/', (_req, res) => res.send(`<!doctype html><html lang="fr"><meta chars
 <style>:root{--line:#24414a;--panel:#10242c;--panel-2:#15313a;--cyan:#68dedb;--soft:#b2ccd3;color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:16px;background:#07181e;color:#edf7fb;font:16px system-ui}.conversation-layout{display:grid;gap:12px}textarea{width:100%;min-height:60px}button,select,textarea{font:inherit;background:#10242c;color:inherit;border:1px solid #34535d;padding:8px}.page-presentation-board iframe{min-height:620px}</style>
 <main id="app"><h1>Nestor et DiskX</h1><div class="conversation-layout"><section><p>Explique-moi le groupe affiché.</p><textarea aria-label="Message">La conversation reste disponible.</textarea><section id="visual"></section><section id="text"></section></section></div></main>
 <script src="/vendor/marked.js"></script><script src="/vendor/purify.js"></script><script src="/js/presentation-markdown.js"></script><script src="/js/screen-pages.js"></script>
-<script src="/assets/household/presentation-observation.js"></script><script src="/assets/household/page-presentation.js"></script><script src="/assets/household/display-board.js"></script>
+<script src="/assets/household/presentation-observation.js"></script><script src="/assets/household/page-presentation.js"></script><script src="/js/markdown-links.js"></script><script src="/assets/household/display-board.js"></script>
 <script>AgentXScreenPages.configure(${JSON.stringify(catalog.entries)});window.board=DisplayBoard.createScreen({text:document.getElementById('text'),visual:document.getElementById('visual')},{space:'personal',secrets:false});</script></html>`));
 
 (async () => {

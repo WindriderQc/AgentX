@@ -108,6 +108,35 @@ test('the page loads the board before the conversation that mounts it', () => {
   const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
   assert.ok(html.indexOf('display-board.js') > 0 && html.indexOf('display-board.js') < html.indexOf('conversation-page.js'));
   assert.ok(html.includes('display-board.css'));
+  assert.ok(html.indexOf('markdown-links.js') > 0 && html.indexOf('markdown-links.js') < html.indexOf('display-board.js'));
+});
+
+test('Markdown link cards use labels, preserve targets and respect family link settings', () => {
+  const store = new Map();
+  globalThis.localStorage = { getItem: key => store.get(key) ?? null };
+  const url = 'https://example.test/wiki/Sky_(astronomy)?year=2026';
+  const body = `[Le ciel de novembre](${url}) https://example.test/next`;
+  const card = space => {
+    const container = new Element('section');
+    create(container, { space }).add({ kind: 'link', body });
+    return container;
+  };
+  try {
+    const personal = card('personal'), link = personal.find(node => node.tagName === 'A');
+    assert.equal(link.textContent, 'Le ciel de novembre');
+    assert.equal(link.href, url);
+    assert.equal(link.target, '_blank');
+    assert.equal(link.rel, 'noopener noreferrer');
+    assert.doesNotMatch(personal.text(), /\[|\]\(/);
+    const family = card('family');
+    assert.equal(family.find(node => node.tagName === 'A'), null);
+    assert.ok(family.text().includes(url), 'the URL remains readable when links are disabled');
+    store.set('household.space.family.links', 'clickable');
+    assert.equal(card('family').find(node => node.tagName === 'A').href, url);
+    const unsafe = new Element('section');
+    create(unsafe).add({ kind: 'link', body: '[Ouvrir](javascript:alert(1)) <img src=x onerror=alert(1)>' });
+    assert.equal(unsafe.find(node => ['A', 'IMG'].includes(node.tagName)), null);
+  } finally { delete globalThis.localStorage; }
 });
 
 test('pictures go to their own zone, with provenance, and a missing one says so', () => {

@@ -48,7 +48,7 @@ app.get('/fixture.js', (_req, res) => res.type('js').send(`
 app.get('/', (_req, res) => res.type('html').send(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nestor agenda</title>
 <link rel="stylesheet" href="/assets/household/display-board.css"><link rel="stylesheet" href="/assets/household/page-presentation.css">
 <script defer src="/vendor/marked.js"></script><script defer src="/vendor/purify.js"></script><script defer src="/js/presentation-markdown.js"></script><script defer src="/js/screen-pages.js"></script>
-<script defer src="/assets/household/presentation-observation.js"></script><script defer src="/assets/household/page-presentation.js"></script><script defer src="/assets/household/display-board.js"></script><script defer src="/fixture.js"></script></head>
+<script defer src="/assets/household/presentation-observation.js"></script><script defer src="/assets/household/page-presentation.js"></script><script defer src="/js/markdown-links.js"></script><script defer src="/assets/household/display-board.js"></script><script defer src="/fixture.js"></script></head>
 <body><main id="app"><h1>Nestor et mon agenda</h1><div class="conversation-layout"><section><textarea aria-label="Message">Conversation disponible</textarea><section id="visual"></section><section id="text"></section></section></div></main></body></html>`));
 
 (async () => {

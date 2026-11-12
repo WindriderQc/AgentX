@@ -61,7 +61,7 @@ button,select,textarea{font:inherit;padding:10px;border:1px solid var(--line);bo
 <section id="visual" class="conversation-board conversation-visual" hidden></section><section id="text" class="conversation-board" hidden></section></div></section></div></section></main>
 <script src="/vendor/marked.js"></script><script src="/vendor/purify.js"></script><script src="/js/presentation-markdown.js"></script>
 <script src="/js/screen-pages.js"></script><script src="/assets/household/presentation-observation.js"></script>
-<script src="/assets/household/page-presentation.js"></script><script src="/assets/household/display-board.js"></script>
+<script src="/assets/household/page-presentation.js"></script><script src="/js/markdown-links.js"></script><script src="/assets/household/display-board.js"></script>
 <script>AgentXScreenPages.configure(${JSON.stringify(catalog.entries)});window.board=DisplayBoard.createScreen({text:document.getElementById('text'),visual:document.getElementById('visual')},{space:'personal',secrets:true});
 document.querySelector('form').addEventListener('submit',event=>event.preventDefault());
 window.read=async()=>{const r=await fetch('/selected-context',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(board.context())});return r.json()};
