@@ -30,7 +30,8 @@ function createPhotoProcessingImmich({ client, config }) {
       || value.isOffline || value.isTrashed
       || typeof value.checksum !== 'string' || ![projection.immichChecksum, pathChecksum].includes(value.checksum))
       throw fail('PHOTO_ASSET_MISMATCH', 'Immich asset does not match the verified projection');
-    if (!value.hasMetadata) return null;
+    // Full asset DTOs can report hasMetadata before extraction creates EXIF.
+    if (!value.hasMetadata || value.exifInfo?.fileSizeInByte == null) return null;
     if (value.exifInfo?.fileSizeInByte !== projection.size)
       throw fail('PHOTO_ASSET_MISMATCH', 'Immich asset byte count differs from the verified projection');
     return value;

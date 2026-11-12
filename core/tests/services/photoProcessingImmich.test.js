@@ -80,6 +80,10 @@ test('external path checksums link only the verified library/path and await meta
   const client = { json: jest.fn(async p => p === '/search/metadata' ? { assets: { items: [{ id: assetId }] } } : value) };
   const upstream = createPhotoProcessingImmich({ client, config: () => fixed });
   expect(await upstream.asset(projection)).toBeNull();
+  value = { ...value, hasMetadata: true };
+  expect(await upstream.asset(projection)).toBeNull();
+  value = { ...value, exifInfo: { fileSizeInByte: null } };
+  expect(await upstream.asset(projection)).toBeNull();
   value = { ...value, hasMetadata: true, exifInfo: { fileSizeInByte: 123 } };
   expect((await upstream.asset(projection)).id).toBe(assetId);
   const original = structuredClone(value);
