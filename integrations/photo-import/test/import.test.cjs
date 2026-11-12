@@ -311,3 +311,98 @@ test('source identity or stream mismatch remains incomplete and never records a 
   assert.equal(result.state, 'incomplete'); assert.equal(result.counts.pending, 1);
   assert.equal((await fs.readdir(path.join(f.root, 'Originals'))).length, 0);
 });
+
+test('same-run recovery tolerates reissued WPD keys while preserving frozen selections and verified receipts', async t => {
+  const f = await fixture(t), source = sourceAdapter(['hello', 'world']);
+  const remote = remoteAdapter(f.service), config = { cacheRoot: f.cacheRoot };
+  const read = source.read;
+  source.read = async (...args) => {
+    if (args[1].objectId === '1') throw new Error('USB disconnected before read');
+    return read(...args);
+  };
+  const first = await runImport(config, { source, remote, log: () => {} });
+  assert.equal(first.counts.copied, 1);
+  const inventory = source.inventory;
+  source.inventory = async () => ({ ...await inventory(), files: (await inventory()).files.map(item => ({
+    ...item, key: 'reissued-' + item.key, objectId: 'new-' + item.objectId
+  })) });
+  source.read = async (device, item, destination) => {
+    assert.equal(item.key, 'reissued-source-1');
+    return { ...await read(device, { ...item, objectId: item.objectId.replace('new-', '') }, destination), source: item };
+  };
+  const result = await runImport(config, { source, remote, resume: first.runId, log: () => {} });
+  assert.equal(result.runId, first.runId); assert.equal(result.state, 'complete');
+  assert.equal(source.reads, 2);
+  const state = JSON.parse(await fs.readFile(path.join(f.cacheRoot, first.runId + '.json')));
+  const item = state.items[1];
+  assert.equal(item.key, 'source-1'); assert.equal(item.receipt.source.key, item.key);
+  assert.equal(item.receipt.readSource.key, 'reissued-source-1');
+  assert.equal(item.receipt.sourceReassociated, true);
+  assert.equal(await fs.readFile(item.receipt.path, 'utf8'), 'world');
+  assert.equal((await f.service.lookup({ runId: result.runId, requestId: item.requestId, size: item.size, sha256: item.sha256 })).readSource.key, 'reissued-source-1');
+});
+
+test('reassociation refuses ambiguous paths or changed source metadata before reading', async t => {
+  for (const change of ['ambiguous', 'name', 'size', 'modified']) {
+    const f = await fixture(t), source = sourceAdapter(['hello']);
+    const inventory = source.inventory, read = source.read;
+    source.read = async () => { throw new Error('disconnected'); };
+    const options = { source, remote: remoteAdapter(f.service), log: () => {} };
+    const first = await runImport({ cacheRoot: f.cacheRoot }, options);
+    source.inventory = async () => {
+      const value = await inventory();
+      if (change === 'ambiguous') value.files.push({ ...value.files[0], key: 'other' });
+      else value.files[0][change] = change === 'size' ? 6 : 'different';
+      return value;
+    };
+    source.read = read;
+    const resumed = await runImport({ cacheRoot: f.cacheRoot }, { ...options, resume: first.runId });
+    assert.equal(resumed.state, 'incomplete', change); assert.equal(source.reads, 0, change);
+    assert.match(resumed.failures[0].message, /changed or is unavailable/);
+  }
+});
+
+test('a reissued key cannot replace an already frozen content hash', async t => {
+  const f = await fixture(t), source = sourceAdapter(['hello']);
+  const original = remoteAdapter(f.service);
+  const first = await runImport({ cacheRoot: f.cacheRoot }, { source, remote: async (input, body) => {
+    if (input.action === 'receive') throw new Error('network interrupted');
+    return original(input, body);
+  }, log: () => {} });
+  const state = JSON.parse(await fs.readFile(path.join(f.cacheRoot, first.runId + '.json')));
+  await fs.rm(path.join(f.cacheRoot, state.items[0].requestId + '.media'));
+  const inventory = source.inventory;
+  source.inventory = async () => {
+    const value = await inventory(); value.files[0].key = 'new-key'; return value;
+  };
+  source.read = async (device, item, destination) => {
+    await fs.writeFile(destination, 'world'); return { size: 5, sha256: hash('world'), source: item };
+  };
+  const resumed = await runImport({ cacheRoot: f.cacheRoot }, { source, remote: original, resume: first.runId, log: () => {} });
+  assert.match(resumed.failures[0].message, /original request hash remains frozen/);
+  assert.equal(resumed.counts.pending, 1); assert.equal(resumed.counts.copied, 0);
+});
+
+test('the source observed at stream read must match every selected metadata field', async t => {
+  for (const field of ['key', 'name', 'relativePath', 'size', 'modified']) {
+    const f = await fixture(t), source = sourceAdapter(['hello']);
+    const read = source.read;
+    source.read = async (...args) => {
+      const result = await read(...args); return { ...result, source: { ...result.source, [field]: field === 'size' ? 6 : 'different' } };
+    };
+    const result = await runImport({ cacheRoot: f.cacheRoot }, { source, remote: remoteAdapter(f.service), log: () => {} });
+    assert.equal(result.counts.pending, 1, field); assert.match(result.failures[0].message, /verification failed/);
+  }
+});
+
+test('receiver freezes read observations independently of the immutable original manifest', async t => {
+  const f = await fixture(t); await f.service.begin(f.manifest);
+  const { requestId, ...readSource } = { ...f.item, key: 'reissued' };
+  const input = { ...f.input, readSource };
+  await f.service.lookup(input);
+  await assert.rejects(f.service.lookup({ ...input, readSource: { ...readSource, key: 'another' } }), { code: 'REQUEST_CONFLICT' });
+  await assert.rejects(f.service.lookup({ ...input, readSource: { ...readSource, relativePath: 'other/photo.jpg' } }), { code: 'SOURCE_CHANGED' });
+  const result = await f.service.receive(f.input, Readable.from(['hello']));
+  assert.equal(result.source.key, f.item.key); assert.equal(result.readSource.key, readSource.key);
+  assert.equal(result.sourceReassociated, true);
+});

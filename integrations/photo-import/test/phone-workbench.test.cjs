@@ -212,6 +212,23 @@ test('wrong phone, changed source, disabled cleanup and mismatched confirmation 
   assert.equal(effects, 0);
 });
 
+test('reissued source keys stay ineligible for cleanup even when path, metadata and bytes match', async (t) => {
+  const f = await fixture(t), p = await plan(f);
+  const input = { planId: p.planId, digest: p.digest, confirmation: p.confirmation, operationId: uuid() };
+  const source = native(f), inventory = source.inventory;
+  source.inventory = async () => {
+    const value = await inventory(); value.files[0].key = 'reissued'; return value;
+  };
+  let deletions = 0;
+  await assert.rejects(executePhoneCleanup({ input, remote: transport(f), source, enabled: true,
+    remove: async (request, authorize) => {
+      await authorize({ attemptId: uuid(), sha256: f.header.sha256, size: f.bytes.length });
+      deletions++; return { state: 'deleted' };
+    } }), { code: 'SOURCE_CHANGED' });
+  assert.equal(deletions, 0);
+  assert.equal((await f.cleanup.status({ planId: p.planId })).deleted, 0);
+});
+
 test('native uncertainty stops the batch and keeps its grant; no replacement delete is sent', async (t) => {
   const f = await fixture(t),
     p = await plan(f);
