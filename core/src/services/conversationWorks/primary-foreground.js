@@ -2,6 +2,17 @@
 
 const { fail, notFound } = require('./contract');
 const PRIMARY = 'main-first/v1';
+async function occupiedMain(repo, observer, expected) {
+  const gate = await repo.dispatchOwner();
+  if (!gate?.workId || gate.phase !== 'dispatching' || expected && gate.workId !== expected.workId) return null;
+  const owner = await repo.get(gate.workId), attempt = owner?.attempt;
+  if (owner?.state !== 'running' || owner.result || attempt?.settledAt || attempt?.agentId !== 'main'
+      || attempt.id !== gate.attempt?.id || attempt.sessionKey !== gate.attempt?.sessionKey
+      || !/^resp_[a-f0-9-]{36}$/.test(attempt.runId || '')
+      || observer?.isExecuting?.(owner._id, attempt.id, attempt.runId, attempt.sessionKey) !== true
+      || expected && (attempt.id !== expected.attemptId || attempt.runId !== expected.runId)) return null;
+  return owner;
+}
 const pause = (signal, ms) => new Promise((resolve, reject) => {
   const done = () => { clearTimeout(timer); signal?.removeEventListener('abort', aborted); resolve(); };
   const aborted = () => { clearTimeout(timer); signal.removeEventListener('abort', aborted); reject(signal.reason); };
@@ -23,16 +34,10 @@ function createPrimaryForeground(works, observer, { pollMs = 50 } = {}) {
   async function relay(id) {
     return works.repo.mutate(id, async current => {
       if (current.attempt || current.state !== 'queued' || current.entryPolicy !== PRIMARY) return null;
-      const gate = await works.repo.dispatchOwner();
-      if (!gate?.workId || gate.workId === id || gate.phase !== 'dispatching') return null;
-      const owner = await works.repo.get(gate.workId);
+      const owner = await occupiedMain(works.repo, observer);
       // Missing/uncertain identities never attest an occupied Main. No model
       // text, client flag or caller header participates in this decision.
-      if (owner?.state !== 'running' || owner.result || owner.attempt?.settledAt
-          || owner.attempt?.agentId !== 'main' || owner.attempt.id !== gate.attempt?.id
-          || observer.isExecuting?.(owner._id, owner.attempt.id, owner.attempt.runId, owner.attempt.sessionKey) !== true
-          || !/^resp_[a-f0-9-]{36}$/.test(owner.attempt.runId || '')
-          || owner.attempt.sessionKey !== gate.attempt.sessionKey
+      if (!owner || owner._id === id
           || !current.guardian?.sessionId || ['main', 'family'].includes(current.guardian.agentId)) return null;
       const text = await works.requestTextForDisplay(current);
       if (text === null) throw notFound();
@@ -85,4 +90,4 @@ function createPrimaryForeground(works, observer, { pollMs = 50 } = {}) {
   return { reply, background };
 }
 
-module.exports = { createPrimaryForeground, PRIMARY };
+module.exports = { createPrimaryForeground, occupiedMain, PRIMARY };

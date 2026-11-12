@@ -34,6 +34,8 @@ function registerConversationWorkRoutes(router, { works, env = process.env }) {
     if (operation === 'native_context') return works.contextForNative(context, callId);
     if (operation === 'native_owner') return works.nativeOwner(context);
     if (operation === 'guardian_tool') return works.guardianTool(context);
+    if (operation === 'guardian_tools') return works.guardianTools(context);
+    if (operation === 'guardian_read') return works.guardianRead(context, input, callId);
     if (operation === 'tasks') return works.readTasks(context, input, callId);
     if (operation === 'evidence') return works.readEvidence(context, input);
     if (operation === 'native_budget') return works.admitNativeTool(context, input, callId);

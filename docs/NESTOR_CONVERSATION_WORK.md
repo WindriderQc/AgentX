@@ -227,6 +227,42 @@ transport, return, voice streaming, Stop, reconnect, erasure, missing guardian
 and ambiguous native state. They do not establish model quality, microphone
 behavior, acoustic playback or live instance activation.
 
+### Optional native OpenClaw guardian reads
+
+The dedicated native guardian can consume that same server catalogue through
+its optional `conversation_work` transport. `guardian_tools` reads the offered
+definitions; `guardian_read` accepts only `{name,args}` from those definitions.
+`HOUSEHOLD_GUARDIAN_TOOLS` remains empty by default; an unknown policy entry
+disables the catalogue. The native grant and provider tool capability remain
+independent prerequisites. This source path changes neither, and an installed
+tool-free guardian remains tool-free. Discovery itself grants no read.
+
+Each read requires the exact host-bound guardian agent, session, run and native
+call ID. Core verifies the canonical pending request and the same Main-first
+relay occupation selected by the native dispatch owner, including its live
+executor, before reservation, execution and publication. A released, unknown,
+cancelled, paused or erased owner refuses. Main and legacy workers keep their
+existing tools and receipt shapes. All other dedicated-guardian tools, owner
+bus calls, actions and second dispatches remain blocked.
+
+Core reserves each call in the existing conversation work under its content
+write fence before reading. Six distinct reads and at most sixteen native call
+identities fit one turn. Equal reads reuse
+their original receipt across native call IDs and restarts; `requestedCallId`
+and `reused` identify such a reference without inventing a new execution. Each
+referencing call is retained as an immutable alias in the same guardian journal;
+reusing that call ID with different arguments refuses after restart too.
+A reserved call without a stored result stays uncertain: its exact identity can
+be observed again but never executed again, and no other read starts while it
+is unresolved. Failed source observations likewise retain the original result.
+The shared handlers bound arguments and results and keep household coordinates
+and weather provider details server-side. Canonical receipts include the real
+agent/session/run/call identities. Main's complete conversation retains these
+receipts and exact `$evidence` references, including failed and uncertain reads,
+so its return preserves the relay's observations and the existing correction
+and attribution contracts. CPU fixtures do not qualify installed grants,
+native provider support, model tool use or physical playback.
+
 When the native dispatch owner is free, queued awaited work precedes queued
 background reviews. New Main-first dialogue is awaited work. A native review whose guardian has explicitly completed and
 answered waits for 30 seconds of quiet after its own preparation/settlement and

@@ -397,7 +397,8 @@ function createPersonaTurnHandler({
             + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch, task-list call or agent discovery is needed. Acceptance is not task data or task completion.'
           : '', acceptedNativeWork?.mode === 'native'
           ? 'Core owns this accepted Main work: ' + JSON.stringify(acceptedNativeWork)
-            + '. Respond conversationally while native Main handles the requested work. No tools or second dispatch from the guardian; acceptance is not completion.'
+            + '. Respond conversationally while native Main handles the requested work. No second dispatch; acceptance is not completion. '
+            + (guardianSession ? 'Only optional Core conversation_work guardian_tools/guardian_read may supply an allowlisted read; every other tool is unavailable here.' : 'No tools from the guardian.')
           : ''].filter(Boolean).join('\n\n');
         const nativeInstructions = guardianSession ? dedicatedGuardian.instructions(session.persona) : nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
           soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
