@@ -34,7 +34,7 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
       nativeCalls.set(key(context, id), native);
       if (nativeCalls.size > 1000) nativeCalls.delete(nativeCalls.keys().next().value);
     }
-    const delegated = await guard(native);
+    const delegated = await guard(native, event);
     if (delegated) return delegated;
     const taskLookup = ['list_personal_tasks', 'agentx__list_personal_tasks', 'personal_briefing',
       'agentx__personal_briefing', 'nestor_briefing'].includes(name)
@@ -50,13 +50,21 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
   });
   api.on('after_tool_call', (event, context) => nativeCalls.delete(key(context, event.toolCallId || context.toolCallId)));
   api.registerTool(context => {
-    if (!household(context) || !['main', config.conversationWorkAgentId].includes(context.agentId)) return null;
+    if (!household(context)) return null;
+    const guardian = context.agentId === config.conversationGuardianAgentId
+      && !['main', 'family', config.conversationWorkAgentId].includes(context.agentId);
+    if (!guardian && !['main', config.conversationWorkAgentId].includes(context.agentId)) return null;
     const worker = context.agentId === config.conversationWorkAgentId;
     return { name: 'conversation_work', label: 'Nestor Conversation Work',
-      description: worker
+      description: guardian
+        ? 'Only Core-approved read-only guardian capabilities. First use guardian_tools for the current server catalogue, then guardian_read with its exact name and args. Native host identity binds every call; never supply a work, session, run or replacement call id. Reads may be unavailable. Uncertain means unknown, never retry with another identity or claim a result. No owner tools, mutations, Main dispatch or worker publication.'
+        : worker
         ? 'Core owns your durable work. context reads the complete canonical request, selected context and verified receipt references. tasks reads current personal tasks (read-only). evidence reads the complete stored value behind one $evidence ref from context. publish commits an answer, correction, clarification or no_work disposition with its exact receiptIds before your native run ends. You have no business mutations. The owner continues talking with Nestor meanwhile.'
         : 'context reads your exact Core-accepted native Main request, selected context, current recent conversation turns and pending or received work in the same owner conversation. Earlier tool evidence appears as $evidence with a summary; evidence with that exact ref reads its complete stored value when the detail matters. Refresh context while working when useful; it supplies reference data, not new authorization. request returns acceptance for the guardian’s current task lookup, never task data or completed actions. Only the current host-bound session and run are eligible.',
-      parameters: worker ? { type: 'object', properties: {
+      parameters: guardian ? { type: 'object', properties: {
+        operation: { type: 'string', enum: ['guardian_tools', 'guardian_read'] },
+        name: { type: 'string', maxLength: 60 }, args: { type: 'object' }
+      }, required: ['operation'], additionalProperties: false } : worker ? { type: 'object', properties: {
         operation: { type: 'string', enum: worker ? ['context', 'tasks', 'evidence', 'publish'] : ['request'] },
         ref: { type: 'string', pattern: '^[a-f0-9]{64}/[a-f0-9]{64}$' },
         limit: { type: 'integer', minimum: 1, maximum: 50 }, includeDone: { type: 'boolean' },
@@ -69,8 +77,10 @@ export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
       async execute(id, params) {
         const native = nativeCalls.get(key(context, id));
         if (!native?.runId || native.agentId !== context.agentId || native.sessionKey !== context.sessionKey) throw new Error('The native tool-call binding is unavailable. No operation was dispatched.');
-        if ((worker && params.operation === 'request') || (!worker && !['request', 'context', 'evidence'].includes(params.operation))) throw new Error('The selected native role cannot perform this operation.');
-        const input = params.operation === 'tasks' ? Object.fromEntries(['limit', 'includeDone'].filter(k => params[k] !== undefined).map(k => [k, params[k]]))
+        if (guardian ? !['guardian_tools', 'guardian_read'].includes(params.operation)
+          : (worker && params.operation === 'request') || (!worker && !['request', 'context', 'evidence'].includes(params.operation))) throw new Error('The selected native role cannot perform this operation.');
+        const input = guardian && params.operation === 'guardian_read' ? { name: params.name, args: params.args }
+          : params.operation === 'tasks' ? Object.fromEntries(['limit', 'includeDone'].filter(k => params[k] !== undefined).map(k => [k, params[k]]))
           : params.operation === 'publish' ? { kind: params.kind, text: params.text, receiptIds: params.receiptIds }
           : params.operation === 'evidence' ? { ref: params.ref } : undefined;
         const result = await call(!worker && params.operation === 'context' ? 'native_context' : params.operation, native, input, id);

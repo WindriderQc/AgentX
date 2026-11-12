@@ -1,6 +1,7 @@
 import { digest, nowIso, readState, updateState } from "./store.js";
 import { verifiedIssResult } from './iss-evidence.js';
 import { nativeActionProvenance } from '../action-provenance.mjs';
+import { isNativeToolCallId } from '../../../shared/nativeToolCallId.cjs';
 
 export function decodeResult(result) {
   if (result?.isError) return { error: "tool_error" };
@@ -99,10 +100,30 @@ export async function recordTool(workspace, event, context, { config, pluginConf
   const workRead = tool === 'conversation_work' && data?.authority === 'core.conversation-works'
     && data.receipt?.tool === 'tasks.personal.list' && data.receipt.status === 'verified'
     && data.receipt.runId === (context.runId || event.runId) && /^[a-f0-9]{64}$/.test(data.receipt.id || '');
+  const guardianReceipt = data?.receipt, guardianResult = data?.result;
+  const guardianIdentity = /^[a-z][a-z0-9_-]{0,63}$/.test(context.agentId || '')
+    && !['main', 'family', pluginConfig?.conversationWorkAgentId].includes(context.agentId)
+    && context.agentId === pluginConfig?.conversationGuardianAgentId
+    && new RegExp(`^agent:${context.agentId}:household:direct:[a-f0-9-]{36}$`).test(context.sessionKey || '')
+    && /^resp_[a-f0-9-]{36}$/.test(context.runId || event.runId || '')
+    && isNativeToolCallId(context.toolCallId || event.toolCallId);
+  const guardianRead = !failed && guardianIdentity && tool === 'conversation_work' && data?.authority === 'core.conversation-works'
+    && event.params?.operation === 'guardian_read' && data.reused !== true
+    && guardianReceipt?.status === 'completed' && guardianResult?.receipt?.status === 'completed'
+    && guardianResult.receipt.authority === 'core.guardian-reads'
+    && guardianReceipt.agentId === context.agentId && guardianReceipt.sessionKey === context.sessionKey
+    && guardianReceipt.runId === (context.runId || event.runId)
+    && guardianReceipt.callId === (context.toolCallId || event.toolCallId)
+    && (!event.runId || !context.runId || event.runId === context.runId)
+    && (!event.toolCallId || !context.toolCallId || event.toolCallId === context.toolCallId)
+    && guardianReceipt.tool === event.params?.name && guardianResult.receipt.tool === guardianReceipt.tool
+    && guardianResult.message?.tool_name === guardianReceipt.tool && typeof guardianResult.message?.content === 'string'
+    && guardianResult.receipt.resultSha256 === digest(guardianResult.message.content)
+    && guardianReceipt.id === digest(JSON.stringify([context.agentId, context.sessionKey, guardianReceipt.runId, guardianReceipt.callId]));
   const workPublished = tool === 'conversation_work' && data?.authority === 'core.conversation-works'
     && data.published === true && /^[a-f0-9]{64}$/.test(data.id || '') && data.resultVersion === 1;
   const issRead = ['iss_passes', 'agentx__iss_passes'].includes(tool) && verifiedIssResult(data);
-  const proved = issRead || acceptedWork || workRead || workPublished || (localImage ? data.operation.state === 'completed' && data.operation.runtimeRestored === true && Boolean(data.operation.artifact?.sha256)
+  const proved = issRead || acceptedWork || workRead || guardianRead || workPublished || (localImage ? data.operation.state === 'completed' && data.operation.runtimeRestored === true && Boolean(data.operation.artifact?.sha256)
     : tool === 'work_queue' ? Boolean(queueRequest || queueRead)
     : tool === "personal_memory" ? data?.ok === true
     : soundTool ? Boolean(soundId)
@@ -124,6 +145,9 @@ export async function recordTool(workspace, event, context, { config, pluginConf
       ...(imageOperation ? { imageOperation } : {}),
       ...(queueRequest ? { queueRequest } : {}),
       ...(workRead ? { workRead: { id: data.receipt.id, tool: data.receipt.tool } } : {}),
+      ...(guardianRead ? { guardianRead: { id: guardianReceipt.id, tool: guardianReceipt.tool, status: guardianReceipt.status,
+        agentId: guardianReceipt.agentId, sessionKey: guardianReceipt.sessionKey, runId: guardianReceipt.runId,
+        callId: guardianReceipt.callId, at: guardianReceipt.at, resultSha256: guardianResult.receipt.resultSha256 } } : {}),
       ...(workPublished ? { workPublished: { id: data.id, resultVersion: data.resultVersion } } : {}),
       ...(acceptedWork ? { acceptedWork: { id: data.id, state: data.state } } : {}),
       deliveryState: "unknown", at: nowIso() }].slice(-40) }));

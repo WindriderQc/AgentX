@@ -145,8 +145,20 @@ catalog advertises `nativeConversation` so an older installation refuses before
 dispatch.
 
 The private guardian-work probe binds the same host run to Core's accepted
-native-mode turn. All guardian tool calls, including deferred actions, are
-blocked while complete Main owns that work. Ordinary conversation still gets
+native-mode turn. Guardian tool calls, including deferred actions, are
+blocked while complete Main owns that work. The sole optional exception for a
+dedicated Main-first relay is `conversation_work guardian_tools/guardian_read`:
+Core offers the existing server-selected ISS, weather and bounded math catalogue,
+empty by default, and revalidates actual Main occupation before every read.
+The host supplies the exact agent/session/run/call identity; the model cannot
+select an owner. Core reserves calls before reading and retains bounded results
+and original receipts. Unknown calls cannot be replaced; equal reads reuse the
+original receipt without another source call. All other tools remain blocked.
+The native receipt capsule marks a new `guardianRead` verified only when its
+actual agent/session/run/call and content hash match the completed Core result.
+Reused references, refused or uncertain reads do not claim a new execution.
+The installed native grant and provider's tool capability are independent:
+this adapter does not enable or widen either. Ordinary conversation still gets
 the guardian's native reply. Legacy turns and background Main do not acquire
 this restriction. A known guardian remains fenced if Core later fails or its
 conversation is erased.

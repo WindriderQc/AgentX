@@ -7,9 +7,20 @@ export function createGuardianWorkGuard(call, guardianAgentId) {
     runs.set(key, value);
     if (runs.size > 1000) runs.delete(runs.keys().next().value);
   };
-  return async native => {
-    if (guardianAgentId && native.agentId === guardianAgentId) return { block: true,
-      blockReason: 'The dedicated conversational guardian has no tools. Core retains the complete request for native Main; continue the conversation from the supplied context.' };
+  return async (native, event = {}) => {
+    if (guardianAgentId && native.agentId === guardianAgentId) {
+      const wrapped = event.toolName === 'tool_call';
+      const params = wrapped ? event.params?.args : event.params;
+      const transport = event.toolName === 'conversation_work' || wrapped
+        && /^(?:openclaw|plugin):super-dad-memory:conversation_work$/.test(event.params?.id || '');
+      if (transport && ['guardian_tools', 'guardian_read'].includes(params?.operation)) {
+        try {
+          const work = await call('guardian_tool', native);
+          if (work.delegated === true) return;
+        } catch { /* An unknown native binding never grants a read. */ }
+      }
+      return { block: true, blockReason: 'The dedicated guardian can only use Core conversation_work guardian_tools and guardian_read under the server read allowlist. Core retains complete Main work. No other tool or replacement dispatch was executed.' };
+    }
     if (native.agentId !== 'main' || !/^resp_[a-f0-9-]{36}$/.test(native.runId || '')) return;
     const key = `${native.sessionKey}:${native.runId}`;
     if (runs.get(key) === 'ordinary') return;
