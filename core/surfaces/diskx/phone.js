@@ -6,7 +6,8 @@ const { createPhoneWorkbenchBridge } = require('../../src/services/photos/phoneW
 const { id } = require('../../src/services/photos/phoneLibrary');
 
 const READS = new Set(['status', 'devices', 'runs', 'page', 'cleanupStatus']);
-function registerPhone({ app, express, bridge = createPhoneWorkbenchBridge() }) {
+function registerPhone({ app, express, bridge = createPhoneWorkbenchBridge(), processing }) {
+  require('./photo-processing').registerPhotoProcessing({ app, express, service: processing });
   const answer = (res, error) =>
     res
       .status(

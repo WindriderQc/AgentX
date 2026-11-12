@@ -133,6 +133,11 @@ Supported executors:
   dispatches one plant at a time; lost outcomes remain fenced. Routing and
   native runtime admission retain their existing owners. See
   [plant folder import](PLANT_IMPORT.md).
+- **Verified phone media**: `other` with `{mode: "photo-processing", processingId}`
+  names one immutable batch of at most 24 verified import occurrences. Core
+  serializes gallery projection, Immich indexing and routed image analysis.
+  Lost outcomes retain their original fences; upstream queues and runtime
+  admission must release before completion. See [phone processing](PHOTO_PROCESSING.md).
 - **Diagnostic/other** requests may be planned without an executor or may use
   `{mode: "operator", receiptRef: "<out-of-Git receipt reference>"}` for custom
   coding checks. The explicit operator protocol below starts no command.

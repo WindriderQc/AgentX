@@ -128,7 +128,26 @@ const uuid = () => crypto.randomUUID();
     },
   };
   app.use('/assets/diskx', express.static(path.join(__dirname, '../../surfaces/diskx/public')));
-  registerPhone({ app, express, bridge });
+  let frameEffects = 0, frameLoss = true;
+  const frameWrites = new Map(), processingCalls = [], reviewed = { revision: 0, approved: false };
+  const processing = {
+    status: () => ({ configured: true, frameEnabled: true }),
+    enqueueRun: async input => { processingCalls.push(input); return { state: 'active' }; },
+    page: async () => ({ configured: true, frameEnabled: true, jobs: [], results: [{ requestId: sources[0].requestId,
+      sha256: sources[0].backup.sha256, metadata: { type: 'IMAGE', exif: { dateTimeOriginal: '2020-01-02T03:04:05Z' } },
+      analysis: { state: 'completed', card: { proposal: { description: 'Un paysage de démonstration', tags: ['nature'], quality: 'bonne', frameSuitability: 'oui', reasons: [], privacyReview: false } } },
+      review: reviewed, frame: [...frameWrites.values()].at(-1) || { revision: 0, selected: false } }] }),
+    review: async input => { processingCalls.push(input); Object.assign(reviewed, input, { revision: 1 }); return reviewed; },
+    frame: async input => {
+      processingCalls.push(input);
+      if (frameWrites.has(input.writeId)) return frameWrites.get(input.writeId);
+      const value = { revision: input.expectedRevision + 1, selected: input.selected };
+      frameWrites.set(input.writeId, value); frameEffects++;
+      if (frameLoss) { frameLoss = false; throw Error('Réponse Cadre perdue'); }
+      return value;
+    },
+  };
+  registerPhone({ app, express, bridge, processing });
   const server = await new Promise((resolve) => {
     const server = app.listen(0, '127.0.0.1', () => resolve(server));
   });
@@ -169,6 +188,21 @@ const uuid = () => crypto.randomUUID();
     await page.getByRole('button', { name: 'Actualiser', exact: true }).click();
     await page.waitForTimeout(100);
     assert.equal(await page.locator('.card select').first().inputValue(), 'archive');
+    await page.getByRole('button', { name: 'Analyser cet import et ajouter à Immich' }).click();
+    assert.equal(processingCalls.filter(x => x.op === 'enqueueRun').length, 1);
+    await page.locator('.photo-analysis summary').click();
+    await page.getByRole('textbox', { name: 'Description relue', exact: true }).fill('Ma description relue');
+    await page.getByRole('button', { name: 'Enregistrer ma relecture' }).click();
+    await page.locator('#processing-state').filter({ hasText: 'Relecture enregistrée' }).waitFor();
+    assert.equal(reviewed.description, 'Ma description relue');
+    await page.getByRole('button', { name: 'Ajouter au Cadre Photo' }).click();
+    await page.locator('#processing-state').filter({ hasText: 'Réponse Cadre perdue' }).waitFor();
+    await page.getByRole('button', { name: 'Ajouter au Cadre Photo' }).click();
+    await page.getByRole('button', { name: 'Retirer du Cadre Photo' }).waitFor();
+    assert.equal(frameEffects, 1);
+    const frames = processingCalls.filter(x => x.op === 'frame');
+    assert.equal(frames[0].writeId, frames[1].writeId);
+    assert.equal(effects, 0); assert.equal(await page.locator('.card input:checked').count(), 0);
     await page.getByRole('button', { name: 'Sélectionner les copies de cette page' }).click();
     assert.equal(await page.locator('.card input:checked').count(), 6);
     assert.equal(effects, 0);

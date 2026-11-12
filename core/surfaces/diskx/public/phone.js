@@ -107,6 +107,7 @@
     for (const item of state.items) {
       const card = node('article', undefined, 'card'),
         picture = node('div', undefined, 'picture');
+      card.dataset.requestId = item.requestId;
       const fallback = node(
         'span',
         item.format?.match(/mp4|mov|mkv|webm/i)
@@ -243,6 +244,7 @@
         : '') +
       'Les copies reçues seront revérifiées avant toute suppression.';
     renderItems();
+    window.dispatchEvent(new CustomEvent('phone-media-page', { detail: { runId: run, items: data.items } }));
   }
   async function runs() {
     const data = await call({ op: 'runs' }),

@@ -7,6 +7,7 @@
     <title>Téléphone · DiskX</title>
     <link rel="stylesheet" href="/assets/diskx/phone.css" />
     <script defer src="/assets/diskx/phone.js"></script>
+    <script defer src="/assets/diskx/phone-processing.js"></script>
   </head>
   <body>
     <main>
@@ -29,7 +30,7 @@
       </ol>
       <section class="connection" aria-label="Téléphone et import">
         <div>
-          <h2>Ton Android</h2>
+          <h2>Ton téléphone</h2>
           <p id="device-state">Branche-le en USB, déverrouille-le et choisis « Transfert de fichiers ».</p>
           <select id="device" aria-label="Téléphone connecté" hidden></select>
         </div>
@@ -66,8 +67,10 @@
               <option value="size">Plus volumineux d’abord</option>
             </select></label
           ><button id="refresh">Actualiser</button>
+          <button id="process-page" hidden>Analyser cet import et ajouter à Immich</button>
         </div>
         <p id="coverage" class="muted"></p>
+        <p id="processing-state" class="muted" role="status"></p>
         <button id="select-page">Sélectionner les copies de cette page</button>
         <p class="muted">
           « Garder » et « Archiver » enregistrent ton tri. Les originaux sur Media restent à leur emplacement.
@@ -93,7 +96,7 @@
       <p class="footnote">
         La suppression nécessite une copie Media revérifiée et une confirmation finale. Elle vise uniquement
         les fichiers sélectionnés du téléphone. Les médias seulement dans le nuage et les dossiers privés
-        d’applications ne sont pas exposés par USB. Aucun tri automatique par IA n’est lancé ici.
+        d’applications ne sont pas exposés par USB. Les propositions de l’analyse attendent ta relecture.
       </p>
       <dialog id="confirmation">
         <form method="dialog"><button class="close" aria-label="Fermer">×</button></form>

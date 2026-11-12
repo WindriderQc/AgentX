@@ -36,6 +36,8 @@ async function sweep() {
     catch (error) { logger.warn('Image dispatcher unavailable; other queue receipts remain observable', { code: error.code || 'IMAGE_QUEUE_UNAVAILABLE' }); }
     try { await require('./householdPlantImportQueue').sweep(); }
     catch (error) { logger.warn('Plant import identification awaits reconciliation', { code: error.code }); }
+    try { await require('./photos/photoProcessingQueue').sweep(); }
+    catch (error) { logger.warn('Verified photo processing awaits reconciliation', { code: error.code }); }
     try { await require('./transcriptionService').sweep(); }
     catch (error) { logger.warn('Transcription planning awaits reconciliation', { code: error.code }); }
     try { await require('./heavyWorkQueueLauncher').dispatchDue(); }

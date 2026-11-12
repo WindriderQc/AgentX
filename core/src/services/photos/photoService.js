@@ -112,7 +112,9 @@ async function mapLimited(items, size, fn) {
   }));
 }
 
-function createPhotoService({ client = createImmichClient(), now = () => Date.now(), timeZone } = {}) {
+function createPhotoService({ client = createImmichClient(), now = () => Date.now(), timeZone,
+  processingConfig = require('./photoProcessingConfig').loadProcessingConfig } = {}) {
+  const privateImportLibrary = () => processingConfig()?.libraryId;
   const caches = new Map();
   async function cached(key, load) {
     const hit = caches.get(key);
@@ -225,7 +227,10 @@ function createPhotoService({ client = createImmichClient(), now = () => Date.no
       if (fileName) filter.originalFileName = { like: fileName };
       if (flag(query.favorite)) filter.isFavorite = { eq: true };
     }
-    if (audience === 'family') filter.visibility = { eq: 'timeline' };
+    if (audience === 'family') {
+      filter.visibility = { eq: 'timeline' };
+      if (privateImportLibrary()) filter.libraryId = { ne: privateImportLibrary() };
+    }
     return filter;
   }
 
@@ -414,7 +419,8 @@ function createPhotoService({ client = createImmichClient(), now = () => Date.no
       const safeId = immichId(id);
       const audience = audienceOf(query.audience);
       const asset = await client.json(`/assets/${safeId}`);
-      if (audience === 'family' && asset?.visibility && asset.visibility !== 'timeline') {
+      if (audience === 'family' && ((asset?.visibility && asset.visibility !== 'timeline')
+        || (privateImportLibrary() && asset?.libraryId === privateImportLibrary()))) {
         throw photoError(404, 'PHOTOS_NOT_FOUND', 'Immich has no such item');
       }
       let ocr = null;
@@ -456,7 +462,7 @@ function createPhotoService({ client = createImmichClient(), now = () => Date.no
       if (!IMAGE_SIZES.includes(wanted)) throw bad('size must be thumbnail or preview');
       if (audienceOf(query.audience) === 'family') {
         const asset = await client.json(`/assets/${safeId}`);
-        if (asset?.visibility && asset.visibility !== 'timeline') throw photoError(404, 'PHOTOS_NOT_FOUND', 'Immich has no such item');
+        if ((asset?.visibility && asset.visibility !== 'timeline') || (privateImportLibrary() && asset?.libraryId === privateImportLibrary())) throw photoError(404, 'PHOTOS_NOT_FOUND', 'Immich has no such item');
       }
       return client.image(`/assets/${safeId}/thumbnail?size=${wanted}`);
     },

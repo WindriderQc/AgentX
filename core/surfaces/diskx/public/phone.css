@@ -442,3 +442,8 @@ dialog input {
     grid-template-columns: 1fr;
   }
 }
+.photo-analysis { border-top: 1px solid var(--line, #ddd); margin-top: 12px; padding-top: 8px; overflow-wrap: anywhere; }
+.photo-analysis p { font-size: .85rem; }
+.photo-analysis textarea, .photo-analysis input { box-sizing: border-box; width: 100%; margin: 8px 0; }
+.photo-analysis textarea { min-height: 7rem; }
+.photo-analysis button { max-width: 100%; margin-top: 8px; }

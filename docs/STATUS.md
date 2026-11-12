@@ -24,6 +24,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   process; bounded retries cover temporary read-only inventory outages.
   Windows headless file transport closes unused input and bounds child
   lifetimes, keeping uncertain effects on the same import identity.
+  Optional receipt-driven processing creates deduplicated gallery references,
+  links Immich metadata, queues vision proposals and preserves owner corrections.
+  Reviewed album membership adds selected imports to the existing photo frame.
+  Source/mock/browser checks remain distinct from installation and live indexing.
+  See [phone processing](PHOTO_PROCESSING.md).
 
 - **Living sources.** Personal and family conversations share an audience-bound
   source directory and dated weather context. Native reads reuse producer records,

@@ -27,7 +27,9 @@ function loadFrameConfig(env = process.env) {
     if (!Number.isInteger(value) || value < min || value > 3600) throw fail();
     return value;
   };
-  return { prefix, idleSeconds: seconds(raw.idleSeconds, 120, 30), intervalSeconds: seconds(raw.intervalSeconds, 30, 5) };
+  if (raw.albumId !== undefined && !UUID.test(raw.albumId)) throw fail();
+  return { prefix, ...(raw.albumId ? { albumId: raw.albumId } : {}),
+    idleSeconds: seconds(raw.idleSeconds, 120, 30), intervalSeconds: seconds(raw.intervalSeconds, 30, 5) };
 }
 
 function createPhotoFrameService({ client = createImmichClient(), config = () => loadFrameConfig() } = {}) {
@@ -37,11 +39,20 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
     return value;
   }
   // Also verify upstream results: a prefix without its slash must not match a sibling.
-  function allowed(asset, value) {
+  function eligible(asset) {
     return asset && UUID.test(String(asset.id)) && asset.type === 'IMAGE'
-      && asset.visibility === 'timeline' && !asset.isTrashed && !asset.isOffline
-      && typeof asset.originalPath === 'string' && asset.originalPath.startsWith(value.prefix + '/')
-      && path.posix.normalize(asset.originalPath) === asset.originalPath;
+      && asset.visibility === 'timeline' && !asset.isTrashed && !asset.isOffline;
+  }
+  async function allowed(asset, value) {
+    if (!eligible(asset)) return false;
+    if (typeof asset.originalPath === 'string' && asset.originalPath.startsWith(value.prefix + '/')
+      && path.posix.normalize(asset.originalPath) === asset.originalPath) return true;
+    if (!value.albumId) return false;
+    const result = await client.json('/search/metadata', { method: 'POST', body: { size: 1,
+      filter: { id: { eq: asset.id }, albumIds: { any: [value.albumId] },
+        type: { eq: 'IMAGE' }, visibility: { eq: 'timeline' }, isOffline: { eq: false }, trashedAt: { eq: null } } } });
+    const items = result?.assets?.items;
+    return Array.isArray(items) && items.length === 1 && items[0].id === asset.id && eligible(items[0]);
   }
   return {
     status() {
@@ -53,11 +64,13 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
     async next(exclude) {
       const value = settings();
       if (exclude !== undefined && !UUID.test(String(exclude))) throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid previous image');
-      const filter = { originalPath: { startsWith: value.prefix + '/' }, type: { eq: 'IMAGE' },
+      const scope = value.albumId ? { or: [{ originalPath: { startsWith: value.prefix + '/' } }, { albumIds: { any: [value.albumId] } }] }
+        : { originalPath: { startsWith: value.prefix + '/' } };
+      const filter = { ...scope, type: { eq: 'IMAGE' },
         visibility: { eq: 'timeline' }, isOffline: { eq: false }, trashedAt: { eq: null } };
       if (exclude) filter.id = { ne: exclude };
       const rows = await client.json('/search/random', { method: 'POST', body: { size: 1, filter } });
-      if (!Array.isArray(rows) || rows.length > 1 || rows.some(asset => !allowed(asset, value))) {
+      if (!Array.isArray(rows) || rows.length > 1 || (rows.length && !await allowed(rows[0], value))) {
         throw photoError(502, 'PHOTO_FRAME_INVALID_RESULT', 'Photo frame received an invalid image');
       }
       const asset = rows[0];
@@ -67,7 +80,7 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
       const value = settings();
       if (!UUID.test(String(id))) throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid image');
       const asset = await client.json('/assets/' + id);
-      if (String(asset?.id).toLowerCase() !== String(id).toLowerCase() || !allowed(asset, value)) {
+      if (String(asset?.id).toLowerCase() !== String(id).toLowerCase() || !await allowed(asset, value)) {
         throw photoError(404, 'PHOTOS_NOT_FOUND', 'Photo frame has no such image');
       }
       return client.image('/assets/' + id + '/thumbnail?size=preview');

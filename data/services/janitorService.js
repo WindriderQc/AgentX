@@ -57,7 +57,9 @@ const PROTECTED_PATTERNS = ['/keys/', '/keys'];
 function isProtectedPath(filePath) {
   if (!filePath || typeof filePath !== 'string') return true;
   const normalized = filePath.replace(/\\/g, '/').toLowerCase();
-  return PROTECTED_PATTERNS.some(p => normalized.includes(p));
+  return PROTECTED_PATTERNS.some(p => normalized.includes(p))
+    || /(?:^|\/)\.agentx-import(?:\/|$)/.test(normalized)
+    || /(?:^|\/)originals\/[a-f0-9]{2}\/[a-f0-9]{64}(?:\/|$)/.test(normalized);
 }
 
 // ── Path validation ─────────────────────────────────────────────

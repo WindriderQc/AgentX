@@ -11,7 +11,9 @@ logged by Core with its `x-service-caller`.
 
 The [native Android USB importer](PHOTO_IMPORT.md) separately saves verified
 originals through Core's import capability. It leaves the phone intact and
-does not upload to Immich or start its indexing/analysis jobs.
+does not upload to Immich or start its indexing/analysis jobs. The optional
+[processing pipeline](PHOTO_PROCESSING.md) follows its verified Media receipts
+through a dedicated external library, queued analysis and owner review.
 
 ## Configuration
 
@@ -262,8 +264,9 @@ with counter renderers at desktop and mobile sizes.
 
 ## Not covered
 
-No general album, upload, delete, face naming or tagging route. Indexing and its
-machine-learning jobs stay in Immich; a large run is heavy work for the
-instance queue.
+No general album, upload, delete or face-naming route. The phone-processing
+capability manages only its configured review tags and frame album. Indexing
+and its machine-learning jobs stay in Immich under Core's planned heavy-work
+window for this pipeline.
 
 Tests: `core/tests/routes/photos*.api.test.js` (mocked Immich, synthetic data).
