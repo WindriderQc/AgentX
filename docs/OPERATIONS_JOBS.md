@@ -43,8 +43,10 @@ these named adapters. Its systemd timer continues when Core is unavailable; an
 acknowledged complete backup marker may be cached for recovery transfer.
 
 Supported handlers are usage counters, submit-only memory collection, off-host
-backup replication, archive mirroring, session transcript archiving and bundle
-delivery. The memory handler
+backup replication, archive mirroring, session transcript archiving, bundle
+delivery and [native recovery sets](RECOVERY_SETS.md). Local transport runs
+recovery beside the server data; other jobs retain their installed SSH transport.
+The memory handler
 preserves the native source filters and watermarks and never synthesizes or applies
 memory. Existing synthesis remains under its native owner. These handlers do not
 invoke inference or change model pins. Heavy coding/qualification work still uses

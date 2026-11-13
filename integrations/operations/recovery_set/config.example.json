@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "root": "/var/lib/agentx/recovery",
+  "sourceHost": "home-server",
+  "scope": ["instructions", "personality versions", "native and shared memory", "all RAG collections"],
+  "minimumCaptureIntervalSeconds": 21600,
+  "refreshOnCriticalChange": true,
+  "staleAfterSeconds": 32400,
+  "keep": 7,
+  "repositories": [
+    {"id": "instance", "path": "/opt/agentx-home"},
+    {"id": "product", "path": "/opt/AgentX"},
+    {"id": "hermes-source", "path": "/opt/hermes/source"}
+  ],
+  "hermes": [{"id": "hermes-personal", "home": "/var/lib/hermes/personal", "command": ["/opt/hermes/bin/hermes"]}],
+  "openclaw": {
+    "home": "/var/lib/openclaw",
+    "command": ["node", "/opt/openclaw/openclaw.mjs"],
+    "packageRoot": "/opt/openclaw",
+    "historicalTrees": ["archive-disabled", "backups", "rollback", "session-sqlite-migration-runs", "state-backups"]
+  },
+  "mongo": {
+    "container": "instance-mongo-1",
+    "database": "agentx_product",
+    "consistencyCollections": ["household_voice_memories", "promptconfigs", "promptconfig_dedup_archives", "prompttemplates", "embedding_profile"]
+  },
+  "qdrant": {"container": "instance-qdrant-1", "clientContainer": "instance-rag-1"},
+  "runtimeContainers": ["instance-core-1", "instance-rag-1"],
+  "privatePaths": ["/etc/agentx/private", "/srv/documents/originals"],
+  "consistencyTrees": ["/srv/documents/originals", "/var/lib/hermes/personal/memories"],
+  "consistencyFiles": ["/var/lib/hermes/personal/SOUL.md", "/var/lib/openclaw/openclaw.json"],
+  "restoreReadme": "/opt/AgentX/integrations/operations/recovery_set/RESTORE.md",
+  "queue": {
+    "coreUrl": "http://127.0.0.1:3180",
+    "actor": "native-recovery",
+    "hosts": ["http://home-server:3180"],
+    "estimatedMinutes": 90,
+    "source": {"type": "coding", "taskId": "replace-with-authorized-session-or-task-reference"}
+  },
+  "replica": {"sshTarget": "backup-host", "root": "/home/operator/private/recovery", "keep": 2, "minFreeBytes": 2147483648}
+}

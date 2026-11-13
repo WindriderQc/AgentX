@@ -2973,6 +2973,11 @@ and off-host replication together.
 
 ### Backup schedule
 
+[Native recovery sets](RECOVERY_SETS.md) extend these Core backups with native
+agent homes, private parameters and full Qdrant storage. Their existing operations
+supervisor owns recurrence and verified off-host transfer; its private instance
+configuration determines cadence and retention.
+
 Core creates the Mongo, configuration and Qdrant backup set once per
 occurrence of a cron expression. The occurrence state is persisted, so a Core
 restart never adds a cycle and never moves the schedule. These are Core

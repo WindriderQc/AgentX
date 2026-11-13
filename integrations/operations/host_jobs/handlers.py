@@ -56,6 +56,10 @@ def prepare(job, request_id, source_at=None):
         command = [options["python"], options["script"], "--source-host", options["sourceHost"], "--source-root", options["sourceRoot"],
                    "--staging", options["staging"], "--destination", options["destination"]]
         receipt = Path(options["staging"]) / "delivery-receipt.json"
+    elif kind in {"recovery-capture", "recovery-replica"}:
+        action = "capture" if kind == "recovery-capture" else "replicate"
+        command = [options["python"], options["script"], action, "--config", options["config"]]
+        receipt = Path(options["stateRoot"]) / (action + "-latest.private.json")
     else:
         raise JobError("UNSUPPORTED_HANDLER", "This operational handler is not supported.", 400)
     return command, cwd, environment, receipt
@@ -94,4 +98,7 @@ def metrics(job, receipt, stdout):
         import re
         result["accepted"] = sum(int(n) for n in re.findall(r"accepted=(\d+)", stdout))
         result["noModelCall"] = True
+    elif job["kind"] in {"recovery-capture", "recovery-replica"}:
+        result = {key: value[key] for key in ("files", "bytes", "fresh", "verified", "attemptVerified",
+                  "attemptState", "captureAgeSeconds", "offhostCaptureAgeSeconds") if key in value}
     return result
