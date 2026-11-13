@@ -24,15 +24,15 @@ test('projection and inverse agree through wraparound and across viewport shapes
   }
 });
 
-test('the Moon keeps its true anchor and an external leader caption when behind the face', () => {
+test('the Moon keeps its true anchor but gets no caption when it is behind the face', () => {
   const plan = Layout.plan(sky, bg);
   const moon = plan.objects.find(o => o.id === 'moon');
   assert.equal(plan.frame.centerAzDeg, 180);
   assert.equal(moon.screen.x, 0.5);
   assert.equal(moon.rendered, false);
   assert.equal(moon.hiddenBy, 'face');
-  assert.match(moon.label.text, /agrandie.*derrière moi/);
-  assert.ok(!Layout.ZONES.some(z => Layout.overlap(moon.label, z)));
+  assert.equal(moon.label, undefined);
+  assert.equal(plan.labels.some(label => label.id === 'moon' || /derrière/.test(label.text)), false);
 });
 
 test('captions never overlap reserved zones or one another, including portrait and high DPI sizes', () => {
@@ -64,10 +64,8 @@ test('the full portrait keeps low and side captions clear across landscape and p
     const read = describeSky({ sky: nearChin }, bg, { visible: true, skyViewport: { width, height } });
     assert.equal(read.moon.reason, 'face');
     assert.equal(read.moon.altitudeDeg, nearChin.moon.altDeg);
-    if (width > height) {
-      assert.ok(moon.label, 'landscape has room for a leader caption');
-      assert.match(moon.label.text, /derrière moi/);
-    }
+    assert.equal(moon.label, undefined, 'a hidden body is never named');
+    assert.equal(read.moon.label, null);
   }
 });
 
@@ -78,7 +76,61 @@ test('compass captions keep their azimuth instead of moving beside the portrait'
       assert.ok(Math.abs(label.x + label.w / 2 - label.anchor.x) < 1e-12, label.text + ' moved horizontally');
     }
     assert.equal(plan.labels.some(label => label.id === 'compass-S'), false, 'South is covered by the portrait');
+    for (const label of plan.labels.filter(item => item.kind === 'compass')) {
+      assert.match(label.text, /^[NESO]$/, 'only the four cardinal marks');
+    }
   }
+});
+
+test('captions are small, unboxed text sized from the viewport height', () => {
+  const clearMoon = { ...sky, moon: { ...sky.moon, altDeg: 25, azDeg: 240 } };
+  for (const [width, height] of [[1920, 1080], [1280, 800], [390, 844], [3840, 2160]]) {
+    const plan = Layout.plan(clearMoon, bg, { width, height });
+    if (width > height) assert.ok(plan.labels.length > 0, 'landscape shows captions');
+    for (const label of plan.labels) {
+      assert.ok(['body', 'figure', 'compass'].includes(label.kind), label.text);
+      assert.ok(label.fontPx >= 10 && label.fontPx <= Math.max(11, height * 0.012), label.text + ' is too large');
+      assert.ok(label.h * height <= label.fontPx * 1.4 + 1e-9);
+    }
+  }
+});
+
+test('only bodies that are actually drawn are named: never hidden, below the horizon or off screen', () => {
+  const planets = [
+    { id: 'venus', name: 'Vénus', altDeg: 25, azDeg: 240, mag: -4, sunSeparationDeg: 40 },
+    { id: 'mars', name: 'Mars', altDeg: 40, azDeg: 182, mag: 1, sunSeparationDeg: 90 },
+    { id: 'jupiter', name: 'Jupiter', altDeg: -5, azDeg: 220, mag: -2, sunSeparationDeg: 90 },
+    { id: 'saturn', name: 'Saturne', altDeg: 30, azDeg: 10, mag: 1, sunSeparationDeg: 100 }
+  ];
+  for (const [width, height] of [[1920, 1080], [1280, 800], [390, 844]]) {
+    const plan = Layout.plan({ ...sky, planets }, bg, { width, height });
+    for (const object of plan.objects) {
+      if (!object.rendered) assert.equal(object.label, undefined, object.id + ' is hidden but named');
+    }
+    const byId = id => plan.objects.find(o => o.id === id);
+    assert.equal(byId('mars').hiddenBy, 'face');
+    assert.equal(byId('jupiter').hiddenBy, 'below_horizon');
+    assert.equal(byId('saturn').hiddenBy, 'outside_panorama');
+    assert.deepEqual(plan.labels.filter(l => l.kind === 'body').map(l => l.id).filter(id => id !== 'moon'),
+      byId('venus').label ? ['venus'] : []);
+  }
+});
+
+test('a constellation is named only when most of its figure is visible beside the portrait', () => {
+  const star = (name, azDeg, altDeg) => ({ name, azDeg, altDeg, mag: 2 });
+  const stars = [star('a1', 238, 40), star('a2', 250, 46), star('a3', 256, 36), star('a4', 244, 30),
+    star('b1', 172, 40), star('b2', 186, 46), star('b3', 230, 46), star('b4', 236, 28)];
+  const figures = [
+    { name: 'Cygne', lines: [['a1', 'a2'], ['a2', 'a3'], ['a3', 'a4'], ['a4', 'a1']] },
+    { name: 'Pégase', lines: [['b1', 'b2'], ['b2', 'b3'], ['b3', 'b4'], ['b4', 'b1']] }
+  ];
+  const plan = Layout.plan({ ...sky, stars, figures }, bg, { width: 1920, height: 1080 });
+  const names = plan.labels.filter(l => l.kind === 'figure').map(l => l.text);
+  assert.deepEqual(names, ['Cygne'], 'Pégase is mostly behind Nestor');
+  const cygne = plan.labels.find(l => l.text === 'Cygne');
+  assert.ok(!plan.zones.some(z => Layout.overlap(cygne, z)));
+  assert.equal(Layout.plan({ ...sky, stars, figures }, { ...bg, sky: 'bright' }).labels.some(l => l.kind === 'figure'), false,
+    'figures are named only on the full night sky');
 });
 
 test('body captions leave the enlarged Sun and Moon discs unobstructed', () => {
