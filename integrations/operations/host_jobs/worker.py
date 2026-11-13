@@ -70,8 +70,10 @@ class Worker:
                         self.store.write_record(record)
                         return public_record(record)
                 record.update(state="completed" if exit_code == 0 else "failed", exitCode=exit_code, finishedAt=now(), phase="terminal")
+                if exit_code == 3 and job["kind"] in {"recovery-capture", "recovery-replica"}:
+                    record.update(state="unknown", code="NATIVE_OUTCOME_UNKNOWN", phase="executing")
                 record["metrics"] = handlers.metrics(job, receipt, output.read_text(encoding="utf-8-sig", errors="replace")) if exit_code == 0 else {}
-                if exit_code:
+                if exit_code and record["state"] != "unknown":
                     record["code"] = "HANDLER_FAILED"
             except OSError:
                 record.update(state="failed", code="EXECUTABLE_UNAVAILABLE", finishedAt=now(), phase="terminal", exitCode=127)
