@@ -3,7 +3,7 @@
 (() => {
   'use strict';
   const endpoint = '/api/phone-media/processing', $ = id => document.getElementById(id);
-  let generation = 0, page;
+  let generation = 0, page, latest;
   const node = (tag, text) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; return el; };
   const say = text => { $('processing-state').textContent = text; };
   async function call(input) {
@@ -33,32 +33,54 @@
       if (!card) continue;
       card.querySelector('.photo-analysis')?.remove();
       const body = node('section'); body.className = 'photo-analysis';
-      body.append(node('h4', row.metadata ? 'Métadonnées et relecture' : 'Analyse en attente'));
+      const proposal = row.analysis?.card?.proposal;
+      const heading = node('div'); heading.className = 'analysis-heading';
+      heading.append(node('strong', row.review?.approved ? '✓ Fiche relue' : proposal ? 'Proposition à relire' : row.metadata ? 'Métadonnées disponibles' : 'Analyse en attente'));
+      body.append(heading);
+      if (row.metadata?.exif?.dateTimeOriginal) {
+        const date = node('p', 'Prise de vue : '+row.metadata.exif.dateTimeOriginal.slice(0, 10)); date.className = 'capture-date'; body.append(date);
+      }
+      if (proposal || row.review?.approved) {
+        const excerpt = node('p', row.review?.approved ? row.review.description : proposal.description);
+        excerpt.className = 'description-excerpt'; body.append(excerpt);
+      }
+      const detailsInfo = node('details'), detailsTitle = node('summary', 'Description et détails');
+      detailsInfo.append(detailsTitle);
       if (row.metadata) {
         const exif = row.metadata.exif || {};
-        if (exif.dateTimeOriginal) body.append(node('p', 'Prise de vue (EXIF) : '+exif.dateTimeOriginal));
+        if (exif.dateTimeOriginal) detailsInfo.append(node('p', 'Prise de vue (EXIF) : '+exif.dateTimeOriginal));
         const camera = [exif.make, exif.model].filter(Boolean).join(' ');
-        if (camera) body.append(node('p', camera));
+        if (camera) detailsInfo.append(node('p', camera));
         const place = [exif.city, exif.state, exif.country].filter(Boolean).join(', ');
-        if (place) body.append(node('p', 'Lieu extrait : '+place));
+        if (place) detailsInfo.append(node('p', 'Lieu extrait : '+place));
       }
-      const proposal = row.analysis?.card?.proposal;
+      const reviewedText = node('p');
+      if (row.review?.approved) reviewedText.textContent = 'Description relue : '+row.review.description;
+      detailsInfo.append(reviewedText);
       if (proposal) {
-        body.append(node('p', 'Proposition à relire : '+proposal.description));
-        body.append(node('p', 'Cadre suggéré : '+proposal.frameSuitability+' · Qualité : '+proposal.quality));
-        if (proposal.reasons.length) body.append(node('p', proposal.reasons.join(' · ')));
-        if (proposal.privacyReview) body.append(node('p', 'L’analyse suggère une vérification du contenu personnel.'));
+        detailsInfo.append(node('p', 'Description proposée : '+proposal.description));
+        detailsInfo.append(node('p', 'Qualité proposée : '+proposal.quality));
+        if (proposal.reasons?.length) detailsInfo.append(node('p', proposal.reasons.join(' · ')));
+        if (proposal.privacyReview) detailsInfo.append(node('p', 'Contenu personnel à vérifier avant diffusion.'));
       } else if (row.analysis?.state === 'running') body.append(node('p', 'Analyse en cours ou à réconcilier.'));
-      else if (row.analysis?.state === 'failed') body.append(node('p', 'La proposition de l’analyse n’est pas exploitable. Les métadonnées restent disponibles pour ta relecture.'));
-      if (row.assetId && row.metadata?.type === 'IMAGE') {
+      else if (row.analysis?.state === 'failed') body.append(node('p', 'Analyse indisponible. Les métadonnées restent consultables.'));
+      body.append(detailsInfo);
+      if (row.assetId && ['IMAGE', 'VIDEO'].includes(row.metadata?.type)) {
         const picture = card.querySelector('.picture');
         if (picture && !picture.querySelector('img')) {
           const img = node('img'); img.loading = 'lazy'; img.alt = 'Aperçu de la copie dans Immich';
           img.src = '/api/photos/assets/'+encodeURIComponent(row.assetId)+'/thumbnail';
           img.addEventListener('load', () => { const fallback = picture.querySelector('.fallback'); if (fallback) fallback.hidden = true; });
+          img.addEventListener('error', () => img.remove());
           picture.append(img);
         }
       }
+      const frameState = node('p'); frameState.className = 'frame-state';
+      const frameText = () => row.metadata?.type === 'VIDEO' ? 'Vidéo · hors Cadre Photo'
+        : row.frame?.selected ? '✓ Dans le Cadre Photo' : !result.frameEnabled ? 'Cadre indisponible · sélection non configurée' : proposal?.frameSuitability === 'oui'
+          ? 'Cadre suggéré · pas encore ajouté' : proposal?.frameSuitability === 'non'
+            ? 'Cadre non suggéré · choix libre' : 'Cadre · à choisir';
+      if (row.metadata) { frameState.textContent = frameText(); body.append(frameState); }
       if (row.metadata) {
         const details = node('details'), summary = node('summary', 'Relire et corriger la fiche');
         const description = node('textarea'); description.setAttribute('aria-label', 'Description relue'); description.maxLength = 2000;
@@ -77,6 +99,11 @@
               expectedRevision: row.review?.revision || 0, approved: true, description: description.value,
               tags: tags.value.split(',').map(x => x.trim()).filter(Boolean) });
             row.pendingIntent = null;
+            heading.firstChild.textContent = '✓ Fiche relue';
+            reviewedText.textContent = 'Description relue : '+row.review.description;
+            body.querySelector('.description-excerpt')?.remove();
+            const excerpt = node('p', row.review.description); excerpt.className = 'description-excerpt'; heading.after(excerpt);
+            window.PhoneGallery?.update(row);
             say('Relecture enregistrée. Les propositions et les originaux sont conservés.');
           } catch (error) { say(error.message+' Réessaie pour réconcilier cette même décision.'); }
           finally { approve.disabled = false; }
@@ -94,6 +121,8 @@
             row.frame = await intent('frame.'+row.sha256, recovery || { op: 'frame', writeId: crypto.randomUUID(), sha256: row.sha256,
               expectedRevision: row.frame?.revision || 0, selected: !row.frame?.selected });
             row.pendingIntent = null;
+            frameState.textContent = frameText();
+            window.PhoneGallery?.update(row);
             frame.textContent = row.frame.selected ? 'Retirer du Cadre Photo' : 'Ajouter au Cadre Photo';
             say(row.frame.selected ? 'Photo ajoutée à la sélection du Cadre Photo.' : 'Photo retirée de la sélection du Cadre Photo.');
           } catch (error) { say(error.message+' Réessaie pour réconcilier cette même décision.'); }
@@ -102,6 +131,7 @@
         body.append(frame);
       }
       card.querySelector('.card-body').append(body);
+      window.PhoneGallery?.update(row);
     }
     const current = result.jobs.find(x => ['queued', 'claimed', 'running', 'uncertain'].includes(x.state)) || result.jobs[0];
     if (current) {
@@ -120,12 +150,15 @@
     if (own !== generation) return;
     $('process-page').hidden = !result.configured;
     $('process-page').disabled = !selected.length;
+    latest = result;
     render(result);
   }
   window.addEventListener('phone-media-page', event => {
-    page = event.detail; generation++;
+    page = event.detail; latest = null; generation++;
+    if (!page) { $('process-page').disabled = true; say('Choisis un import pour consulter ses fiches.'); return; }
     load().catch(error => say(error.message));
   });
+  window.addEventListener('phone-media-render', () => { if (latest) render(latest); });
   $('process-page').addEventListener('click', async () => {
     if (!page) return;
     $('process-page').disabled = true;

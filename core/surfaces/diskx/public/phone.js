@@ -106,7 +106,8 @@
     if (!state.items.length) grid.append(node('p', 'Aucun fichier dans cette vue.', 'empty'));
     for (const item of state.items) {
       const card = node('article', undefined, 'card'),
-        picture = node('div', undefined, 'picture');
+        picture = node('button', undefined, 'picture');
+      picture.type = 'button';
       card.dataset.requestId = item.requestId;
       const fallback = node(
         'span',
@@ -131,7 +132,10 @@
       }
       card.append(picture);
       const body = node('div', undefined, 'card-body');
-      body.append(node('h3', item.name), node('div', item.relativePath, 'path'));
+      body.append(node('h3', item.name));
+      const location = node('details', undefined, 'source-location');
+      location.append(node('summary', 'Dossier source'), node('div', item.relativePath, 'path'));
+      body.append(location);
       const facts = node('div', undefined, 'facts');
       facts.append(node('span', bytes(item.size)), node('span', (item.format || '').slice(1).toUpperCase()));
       const date = sourceDate(item.modified);
@@ -142,13 +146,15 @@
           'span',
           item.backup
             ? item.backup.disposition === 'duplicate'
-              ? 'Doublon reçu sur Media'
+              ? 'Doublon exact · déjà sur Media'
               : 'Copie reçue sur Media'
             : 'Sauvegarde en attente',
           'badge' + (item.backup ? '' : ' pending'),
         ),
       );
       const choice = node('select');
+      const choiceLabel = node('label', 'Mon tri', 'tri-label');
+      choiceLabel.append(choice);
       choice.setAttribute('aria-label', 'Tri de ' + item.name);
       for (const [value, label] of [
         ['review', 'À trier'],
@@ -180,9 +186,10 @@
           say(errorMessage(e), true);
         } finally {
           choice.disabled = false;
+          window.PhoneGallery?.refresh();
         }
       });
-      body.append(choice);
+      body.append(choiceLabel);
       const label = node('label', undefined, 'choose'),
         check = node('input');
       check.type = 'checkbox';
@@ -220,9 +227,15 @@
       ? `${state.offset + 1}–${Math.min(state.offset + 24, state.total)} sur ${state.total}`
       : '';
     selected();
+    window.PhoneGallery?.setPage(state.run, state.items);
+    window.dispatchEvent(new CustomEvent('phone-media-render'));
   }
   async function loadPage() {
-    if (!state.run) return;
+    if (!state.run) {
+      ++state.pageSequence; state.items = []; state.total = 0; renderItems();
+      window.dispatchEvent(new CustomEvent('phone-media-page', { detail: null }));
+      return;
+    }
     const generation = ++state.pageSequence,
       run = state.run;
     const data = await call({
@@ -433,7 +446,8 @@
   $('select-page').addEventListener('click', () => {
     for (const item of state.items) {
       if (state.selected.size >= 100) break;
-      if (item.backup && item.phone !== 'deleted' && item.phone !== 'uncertain')
+      if (item.backup && item.phone !== 'deleted' && item.phone !== 'uncertain'
+        && !document.querySelector('[data-request-id="'+item.requestId+'"]')?.hidden)
         state.selected.set(item.requestId, item);
     }
     renderItems();
