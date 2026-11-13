@@ -3012,6 +3012,26 @@
       "secret": true,
       "description": "Private native binding token shared with the Nestor plugin conversationWorkToken. Keep it outside model/browser parameters and retain it while accepted work remains open."
     },
+    "PHOTO_INDEX_RECOVERY": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": true,
+      "description": "Private bounded base64 JSON inspection or exact failure-closure plan for the Core photo-index operator process. Unset: that operator refuses. Supply only to the separate process, not the long-running server; no scan or model call is started."
+    },
+    "PHOTO_INDEX_RECOVERY_STDIN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "other",
+      "secret": false,
+      "description": "Set to 1 only when feeding the reviewed photo-index recovery owner module through stdin from Core working directory. Runs a separate operator process; it does not patch a loaded server module or restart a service. Normally unset."
+    },
     "PIN_CONTEXT_SPEED_TOLERANCE_PCT": {
       "services": [
         "core"
