@@ -129,7 +129,8 @@ class RecoveryTests(unittest.TestCase):
             p, _ = self.generation(stamp=f'2026-01-0{day}T00:00:00Z')
             paths.append(p)
             if day != 1:
-                save(self.root / 'replicas' / (p.name + '.private.json'), {'verified': True})
+                save(self.root / 'replicas' / (p.name + '.private.json'), {'verified': True, 'generation': p.name,
+                     'manifestSha256': digest(p / 'manifest.private.json')})
         local_retention(self.root, 2)
         self.assertTrue(paths[0].exists())  # No proof of off-host copy.
         self.assertFalse(paths[1].exists())

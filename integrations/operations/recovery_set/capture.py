@@ -78,6 +78,7 @@ def capture_qdrant(config, work, artifacts):
             raise ValueError('Unsafe native snapshot identity')
     except Exception as error:
         raise Uncertain('Qdrant snapshot outcome requires the original native result') from error
+    save(artifacts / 'qdrant-snapshot.private.json', {'native': result, 'collections': before})
     output = artifacts / 'qdrant-full-storage.snapshot'
     script = '''const {Readable}=require('node:stream');const {pipeline}=require('node:stream/promises');
 fetch(process.env.QDRANT_URL+'/snapshots/'+encodeURIComponent(NAME)).then(async r=>{if(!r.ok)throw Error('download');await pipeline(Readable.fromWeb(r.body),process.stdout)}).catch(()=>process.exitCode=1);'''.replace('NAME', json.dumps(name))
@@ -96,7 +97,18 @@ fetch(process.env.QDRANT_URL+'/snapshots/'+encodeURIComponent(NAME)).then(async 
     after_collections = json.loads(after.read_text())['result']['collections']
     if sorted(x['name'] for x in before) != sorted(x['name'] for x in after_collections):
         raise RuntimeError('Qdrant collection inventory changed during capture')
-    save(artifacts / 'qdrant-snapshot.private.json', {'native': result, 'collections': before})
+
+
+def release_snapshot(config, work, artifacts):
+    descriptor_path = artifacts / 'qdrant-snapshot.private.json'
+    if not descriptor_path.exists():
+        return
+    descriptor = json.loads(descriptor_path.read_text())['native']
+    name = descriptor['name']
+    if Path(name).name != name or name in ('.', '..'):
+        raise ValueError('Unsafe owned snapshot identity')
+    deletion = 'fetch(process.env.QDRANT_URL+"/snapshots/"+encodeURIComponent(' + json.dumps(name) + '),{method:"DELETE"}).then(async r=>{if(!r.ok&&r.status!==404)throw Error("cleanup");console.log(JSON.stringify({released:true}))}).catch(()=>process.exitCode=1)'
+    node_in(config['clientContainer'], deletion, work / 'qdrant-cleanup.log', work / 'qdrant-cleanup.private.json')
 
 
 def capture(config, request_id):
@@ -155,9 +167,7 @@ def capture(config, request_id):
         validate(config, work, artifacts)
         # The downloaded and restored full snapshot is the recovery copy. Remove
         # only this job's native server duplicate, never unrelated snapshots.
-        descriptor = json.loads((artifacts / 'qdrant-snapshot.private.json').read_text())['native']
-        deletion = 'fetch(process.env.QDRANT_URL+"/snapshots/"+encodeURIComponent(' + json.dumps(descriptor['name']) + '),{method:"DELETE"}).then(async r=>{if(!r.ok&&r.status!==404)throw Error("cleanup");console.log(JSON.stringify({released:true}))}).catch(()=>process.exitCode=1)'
-        node_in(config['qdrant']['clientContainer'], deletion, work / 'qdrant-cleanup.log', work / 'qdrant-cleanup.private.json')
+        release_snapshot(config['qdrant'], work, artifacts)
         if config.get('restoreReadme'):
             shutil.copyfile(config['restoreReadme'], artifacts / 'RESTORE.md')
         save(artifacts / 'capture-evidence.private.json', {
@@ -193,6 +203,13 @@ def capture(config, request_id):
         raise
     finally:
         if not uncertain:
+            # Failed captures also release their own known snapshot duplicate.
+            # An unknown POST stays fenced and never enters this cleanup path.
+            if not success and (artifacts / 'qdrant-snapshot.private.json').exists():
+                try:
+                    release_snapshot(config['qdrant'], work, artifacts)
+                except Exception:
+                    save(work / 'qdrant-cleanup-pending.private.json', {'state': 'pending', 'observedAt': now()})
             try:
                 queue.finish(success)
             except Exception as error:

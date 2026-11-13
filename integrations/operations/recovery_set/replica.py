@@ -54,14 +54,16 @@ def publish(d):
  t=root/'latest.private.json.tmp';t.write_text(json.dumps(value));os.replace(t,root/'latest.private.json')
  return {'state':'verified','generation':identifier,'verified':True,'files':len(d['artifacts']),'bytes':sum(a['bytes'] for a in d['artifacts']),'manifestSha256':cfg['manifestSha256']}
 def prune(keep):
- directory=root/'generations';directory.mkdir(exist_ok=True,mode=0o700)
+ directory=root/'generations'
+ if directory.is_symlink():raise ValueError('unsafe generations directory')
+ directory.mkdir(exist_ok=True,mode=0o700)
  candidates=[]
  for p in directory.iterdir():
   if p.is_symlink() or not p.is_dir():continue
   try:
    if str(uuid.UUID(p.name))!=p.name:continue
    d=json.loads((p/'manifest.private.json').read_text())
-   if d.get('contract')!='agentx.recovery-set/v1' or d.get('state')!='complete':continue
+   if d.get('contract')!='agentx.recovery-set/v1' or d.get('state')!='complete' or d.get('generation')!=p.name:continue
    candidates.append((d['completedAt'],p))
   except (ValueError,KeyError,FileNotFoundError):continue
  latest=json.loads((root/'latest.private.json').read_text())['generation'] if (root/'latest.private.json').exists() else None
@@ -101,7 +103,10 @@ def local_retention(root, keep):
     root = Path(root)
     latest = json.loads((root / 'latest.private.json').read_text())['generation']
     candidates = []
-    for path in (root / 'generations').iterdir():
+    directory = root / 'generations'
+    if directory.is_symlink():
+        raise ValueError('Unsafe generations directory')
+    for path in directory.iterdir():
         if path.is_symlink() or not path.is_dir():
             continue
         try:
@@ -109,7 +114,9 @@ def local_retention(root, keep):
                 continue
             manifest = json.loads((path / 'manifest.private.json').read_text())
             receipt = json.loads((root / 'replicas' / (path.name + '.private.json')).read_text())
-            if manifest['state'] == 'complete' and receipt.get('verified') is True:
+            if (manifest.get('contract') == 'agentx.recovery-set/v1' and manifest['state'] == 'complete'
+                    and manifest.get('generation') == path.name and receipt.get('generation') == path.name
+                    and receipt.get('manifestSha256') == digest(path / 'manifest.private.json') and receipt.get('verified') is True):
                 candidates.append((manifest['completedAt'], path))
         except (ValueError, KeyError, FileNotFoundError):
             continue
