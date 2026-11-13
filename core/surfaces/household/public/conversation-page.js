@@ -364,6 +364,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (!data.session.ephemeral) { workflow?.follow(data.session.sessionId); work?.follow(data.session.sessionId); }
     return data.session;
   }
+  const activityAnnouncements = AgentActivity.createAnnouncements();
   async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice, onSayEnd, requestPolicy = requestPrivacy() } = {}) {
     session = await preparePrivacy(session, requestPolicy, signal);
     signal.throwIfAborted(); conversation.session = session; describe();
@@ -394,6 +395,17 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     let pending = '', answer = '', result, noticed = false, workAccepted = false;
     const said = new Set();
     const agentName = id => agents.find(agent => agent.id === id)?.name || id.charAt(0).toUpperCase() + id.slice(1);
+    const announcements = activityAnnouncements.begin(line => {
+      if (!signal.aborted && !interruptedTurns.has(turnId) && !said.has(line.text)) {
+        said.add(line.text); el('conversationStatus').textContent = line.text;
+        if (line.spoken) {
+          transcript.querySelector('.empty')?.remove();
+          const row = document.createElement('div'); row.className = 'conversation-message activity'; row.textContent = line.text;
+          transcript.insertBefore(row, partial); transcript.scrollTop = transcript.scrollHeight;
+          onNotice?.(line.text);
+        }
+      }
+    }, { signal, agentName });
     const consume = line => {
       if (signal.aborted) throw new DOMException('Conversation cancelled', 'AbortError');
       if (!line.trim()) return;
@@ -411,19 +423,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         else show(mathCard(event.block, session, turnId));
       }
       if (event.type === 'status' && event.phase === 'activity') voiceHealth.activity();
-      if (!interruptedTurns.has(turnId) && event.type === 'status' && event.phase === 'activity') {
-        // Nestor says what it is doing (tools, another agent) once per line.
-        const line = AgentActivity.describe(event.activity, agentName);
-        if (line && !said.has(line.text)) {
-          said.add(line.text); el('conversationStatus').textContent = line.text;
-          if (line.spoken) {
-            transcript.querySelector('.empty')?.remove();
-            const row = document.createElement('div'); row.className = 'conversation-message activity'; row.textContent = line.text;
-            transcript.insertBefore(row, partial); transcript.scrollTop = transcript.scrollHeight;
-            onNotice?.(line.text);
-          }
-        }
-      }
+      announcements.update(event);
       if (!interruptedTurns.has(turnId) && event.type === 'status' && ['loading', 'pending', 'waiting_host'].includes(event.phase)) {
         el('conversationStatus').textContent = event.phase === 'waiting_host'
           ? 'Nestor is waiting for available resources. Your message is kept; the wait duration is unknown.'
@@ -461,7 +461,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (result.consult) void followMember(session, result.consult.turnId, result.consult.speaker);
       return { ...result.reply, sound: result.sound };
     } catch (error) { activity('execution-interrupted'); workflow?.stream(turnId, { type: signal.aborted ? 'interrupted' : 'error' }); throw error; }
-    finally { await reader.cancel().catch(() => {}); }
+    finally { announcements.end(); await reader.cancel().catch(() => {}); }
   }
   const labels = { idle: 'Ready to listen.', starting: 'Turning on the microphone…', listening: 'Listening…', hearing: 'Listening…', transcribing: 'One moment…', waiting: 'Finishing the previous answer…', thinking: 'Thinking…', preparing: 'Preparing the answer…', speaking: 'Nestor is answering…', paused: 'Mic off.', error: 'Conversation paused.', reviewing: 'Mic off for replay.', resuming: 'Resuming after playback…' };
   const frenchLabels = { idle: 'Prêt. Activez le micro pour parler.', starting: 'Activation du micro…', listening: 'À l’écoute…', hearing: 'Je vous écoute…', transcribing: 'Reconnaissance en cours…', waiting: 'Fin de la réponse précédente…', thinking: 'Nestor prépare sa réponse…', preparing: 'Préparation de la voix…', speaking: 'Nestor répond…', paused: 'Micro coupé.', error: 'La voix est arrêtée. Appuyez sur Reprendre.', reviewing: 'Micro en pause. Réécoutez ou appuyez sur Reprendre.', resuming: 'Reprise après la réécoute…', recovering: 'Reprise de l’écoute en attente…' };
