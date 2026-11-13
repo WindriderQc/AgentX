@@ -434,6 +434,14 @@ this reads no other message's original and establishes no whole-thread recovery.
 The source is checked again for changes during the operation. Temporary files
 are removed before a successful result; failed copying, verification or cleanup
 cannot yield a successful proof. No provider, account or keyring is needed.
+Temporary paths are opened through no-follow directory descriptors. Cleanup
+is restricted to the journal of files and directories created by this probe;
+unknown or replaced entries refuse cleanup instead of becoming deletion targets.
+Cleanup first captures names atomically with `renameat2(RENAME_NOREPLACE)` into
+private unpredictable slots, then checks the retained inode identity. Unsupported
+platforms and collisions refuse without a weaker replacement operation. The
+native OS account and privileged processes remain trusted: this is not a
+sandbox against a hostile process with the same UID rewriting private slots.
 
 Each read and restored file set stays within 16 MiB, 131 files and 128 recorded
 attachments. The restoration profile also limits relative paths to 32 components
