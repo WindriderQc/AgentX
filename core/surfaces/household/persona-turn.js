@@ -428,7 +428,7 @@ function createPersonaTurnHandler({
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: mathFor(pack), allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
-          canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target,
+          canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target, onWritten: value => { if (!res.writableEnded) event('written', value); },
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.
@@ -499,8 +499,8 @@ function createPersonaTurnHandler({
           knowledgeStatus: knowledge.status, knowledgeSourceCount: knowledge.sourceCount, knowledgeUsed: knowledge.used === true,
           knowledgeCorpusFingerprint: knowledge.corpusFingerprint, safetyFlags: safety.flagIds,
           parentAttention: safety.requiresParentAttention, soundId: sound?.id || '' };
-        if (abort.signal.aborted) return;
         if (channels && !channels.received) channels.push(result.text);
+        if (abort.signal.aborted) return;
         // `say_end`: every spoken word is sent, so a voice page says its last clause
         // now instead of waiting for pictures, tool receipts and the record before `done`.
         if (channels) { ({ display } = channels.end()); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
@@ -538,7 +538,7 @@ function createPersonaTurnHandler({
         channel: req.body?.channel === 'voice' ? 'voice' : 'text',
         inputText: userText,
         attachments: entry.attachments,
-        replyText: replyText,
+        replyText: replyText, ...(entry.channels ? { written: entry.channels.end().written, speechProjection: { method: readingRequested(userText) ? 'full-reading' : 'reply-channels' } } : {}),
         inputSha256: crypto.createHash('sha256').update(userText).digest('hex'),
         replySha256: crypto.createHash('sha256').update(replyText).digest('hex'),
         safetyFlags: safety.flagIds,
@@ -580,7 +580,7 @@ function createPersonaTurnHandler({
         { $set: { teamExchange: teamAddress.exchangeRecord(member, speaker.name, userText, replyText, { consulted: Boolean(consult) }) } });
       else if (session.teamExchange) await conversations.updateSession({ sessionId: session.sessionId }, { $unset: { teamExchange: '' } });
       if (entry.detached) {
-        memberWork.finish(session.sessionId, clientTurnId, { traceId, text: speechText(replyText),
+        memberWork.finish(session.sessionId, clientTurnId, { traceId, text: speechText(replyText), written: audit.written, display: audit.display,
           language: spokenReplyLanguage(replyText, userText), speaker: audit.speaker, speech: audit.replySpeech });
         return undefined;
       }
@@ -601,7 +601,7 @@ function createPersonaTurnHandler({
       }
       const updated = await conversations.getSession({ sessionId: session.sessionId });
       const resultPayload = {
-        traceId, speaker: audit.speaker, ...(consulted ? { consult: consulted } : {}),
+        traceId, speaker: audit.speaker, written: audit.written, speechProjection: audit.speechProjection, ...(consulted ? { consult: consulted } : {}),
         ...(adviceRefs.length ? { adviceRefs } : {}),
         ...(isLlmX ? { origin: isOpening ? 'application_opening' : 'human', turnId: clientTurnId } : {}),
         ...(sceneProposal ? { sceneProposal } : {}), ...(display.length ? { display } : {}),
@@ -667,7 +667,7 @@ function createPersonaTurnHandler({
             ...entry.snapshot, traceId: entry.traceId, clientTurnId, interrupted: entry.interrupted,
             ...(isLlmX ? { source: 'graphysx-llmx', origin: isOpening ? 'application_opening' : 'human', outcome: abort.signal.aborted ? 'cancelled' : 'failed', applicationEvent: entry.applicationEvent || null } : {}),
             interruptionState: entry.primaryDetached ? '' : entry.error && !entry.executionSettled ? 'failed' : 'confirmed',
-            channel: req.body?.channel === 'voice' ? 'voice' : 'text', inputText: userText, replyText: reply, ...(entry.channels?.end().display.length ? { display: replyChannels.storedDisplay(entry.channels.end().display) } : {}),
+            channel: req.body?.channel === 'voice' ? 'voice' : 'text', inputText: userText, replyText: reply, writtenStatus: entry.executionSettled && !entry.error ? 'complete' : 'partial', ...(entry.channels ? { written: entry.channels.end().written } : {}), ...(entry.channels?.end().display.length ? { display: replyChannels.storedDisplay(entry.channels.end().display) } : {}),
             attachments: entry.attachments,
             inputSha256: crypto.createHash('sha256').update(userText).digest('hex'),
             replySha256: crypto.createHash('sha256').update(reply).digest('hex'),

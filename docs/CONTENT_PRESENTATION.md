@@ -1,5 +1,22 @@
 # Content presented during a conversation
 
+Household retains the complete safe written answer on its existing canonical
+Core turn. Versioned `written.segments` keep prose and references to the turn's
+existing display blocks in source order. Bodies remain in `display`; secrets
+remain redacted. Consult and page directives remain commands, not answer prose.
+`written` records its source turn/run, revision and completion state;
+`speechProjection` references that source revision while `replyText` retains the
+spoken projection. A shorter spoken update cannot replace a completed source.
+
+The browser receives ordered, sequenced `written` events independently of speech
+`delta` events, then the canonical source with `done`. It shows the complete
+answer with copy and expansion controls and restores the same source from
+history. Source incompleteness and interrupted playback have separate labels.
+The parent journal and background result presentation use the same order.
+Older turns keep their recorded speech and display blocks; no original order or
+missing complete answer is invented. These presentation fields change no agent
+permissions, execution roles, model routes, context limits or native budgets.
+
 Core owns the presentation/read contracts. Nestor selects one content workspace
 beside the conversation: page, note, Markdown list, table, code, image or scene.
 The picker returns to retained content, Expand adjusts its size and Close hides

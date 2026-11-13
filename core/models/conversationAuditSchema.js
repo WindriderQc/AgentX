@@ -22,6 +22,9 @@ module.exports = new Schema({
     sceneProposedReplyText: { type: String, default: '' },
     // Blocks shown on screen, never spoken (#167). Secrets are stored redacted.
     display: { type: [Object], default: undefined },
+    // Ordered safe answer on this canonical turn; speech references its revision.
+    written: { type: Object, default: undefined },
+    speechProjection: { type: Object, default: undefined },
     // Slider positions the person left on this turn's math cards, by block id (#1270).
     mathValues: { type: Object, default: undefined },
     interrupted: { type: Boolean, default: false },
