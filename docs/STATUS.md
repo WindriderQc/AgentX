@@ -293,6 +293,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   Core retains a revalidatable receipt on the same assertion; erasure clears it.
   Missing or changed copies remain blocked, with no cleanup authority. See
   [native preservation](SECRETARY_DOSSIER_REVIEW.md#native-preservation-of-a-selected-source).
+  An optional restoration check copies that selected native file set into
+  private temporary storage, reopens and verifies its bytes and MIME, and removes
+  it before returning evidence. The same receipt retains each copy's file-set
+  hashes; this does not qualify the whole archive or authorize mailbox effects.
   A read-only native decision fingerprint also binds one committed entry's
   decisions, context and pending source-review intents. The optional retention
   reconciliation consumer rechecks these selected documents without claiming

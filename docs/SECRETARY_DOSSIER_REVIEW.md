@@ -414,6 +414,57 @@ atomic decision reconciliation or exact mailbox-approval binding. Every result
 keeps `executionAllowed: false` and `cleanupStatus: blocked`. No mailbox
 executor, new approval path, migration or actual cleanup is introduced.
 
+### Temporary disk restoration
+
+The same `POST .../:id/preservation` optionally takes
+`verification: "restoration"`. An absent value or `"preservation"` keeps the
+original byte/MIME check. The selected mode belongs to the immutable UUID:
+reusing a UUID cannot upgrade an earlier check or downgrade a restoration.
+The combined limit remains 20 retained checks on the existing assertion.
+Frozen v1 snapshots keep their original contract and hash.
+
+For restoration, the existing primary and mirror transports call
+`restoration --message ... --thread ... --sha256 ... --request-id ...`.
+The native `secretary.archive-restoration/v1` command verifies the selected
+original and recorded attachments with the existing preservation reader, copies
+the exact opened file set into private temporary storage outside the evidence
+archive, and reopens that copy through the same native byte/MIME verification.
+The copied set also contains its raw receipt and complete thread manifest;
+this reads no other message's original and establishes no whole-thread recovery.
+The source is checked again for changes during the operation. Temporary files
+are removed before a successful result; failed copying, verification or cleanup
+cannot yield a successful proof. No provider, account or keyring is needed.
+
+Each read and restored file set stays within 16 MiB, 131 files and 128 recorded
+attachments. The restoration profile also limits relative paths to 32 components
+and creates at most 512 directories below its temporary root. These bounds do
+not change the v1 reader.
+The result retains original machine/archive identities and only hashes, sizes,
+MIME counts and restoration counters. It exposes no source or temporary paths,
+filenames or contents. Its restoration object binds equal source/restored
+file-set hashes, copied file/byte counts and successful temporary removal.
+Disk reopen and synchronization qualify this bounded mechanical recovery;
+they do not prove crash recovery or independent physical storage failure domains.
+
+Core validates both restoration replies under fresh server nonces and still
+requires distinct native machine identities and agreeing selected-source
+content. The resulting snapshot is `agentx.history-preservation/v2`; each
+copy retains its own complete file-set hash. Complete manifests can differ on
+unselected members between copies, while the selected message must agree.
+Changing any copied file on a later read makes that retained receipt stale.
+Unavailable restoration remains unknown or blocked: Core never substitutes
+the earlier byte-only command. `GET` rechecks the stored mode rather than a
+client-selected substitute; discovery exposes the retained mode. Existing
+assertion/context, lost-acknowledgment, capacity and erasure fences apply.
+
+This optional command creates and removes only a bounded temporary copy. It
+writes neither the archive nor mailbox and adds no transport configuration,
+permission, human identity or cleanup approval. Synthetic isolated checks do
+not establish acceptance on a live archive; large real-copy campaigns retain
+their queue and authorization requirements. All four global native gaps and
+blocked/false execution flags remain, including whole-manifest preservation
+acceptance. The receipt qualifies only its exact selected source and files.
+
 ## Catch-up and duplicate candidates
 
 Future catch-up findings retain their actor, source status and date. Resolved,

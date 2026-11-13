@@ -16,8 +16,13 @@ class SecretaryPreservationControl {
       ? new SecretaryMailControl({ sshTarget: mirrorTarget, remoteRoot: mirrorRoot }) : null);
   }
 
-  async probe(copy, { requestId, messageId, threadId, sourceSha256 } = {}) {
+  async probe(copy, input) { return this.read(copy, input, 'preservation'); }
+
+  async probeRestoration(copy, input) { return this.read(copy, input, 'restoration'); }
+
+  async read(copy, { requestId, messageId, threadId, sourceSha256 } = {}, command) {
     if (![requestId, messageId, threadId, sourceSha256].every(value => typeof value === 'string')
+      || !['preservation', 'restoration'].includes(command)
       || !['primary', 'mirror'].includes(copy) || !UUID.test(requestId || '') || !ID.test(messageId || '')
       || !ID.test(threadId || '') || !HASH.test(sourceSha256 || '')) {
       throw new SecretaryMailError('Choose an exact native preservation source.', { code: 'SECRETARY_PRESERVATION_INVALID', statusCode: 400 });
@@ -26,7 +31,7 @@ class SecretaryPreservationControl {
     if (!reader || !reader.available) throw new SecretaryMailError('This native archive copy is not configured.', {
       code: 'SECRETARY_PRESERVATION_UNAVAILABLE', statusCode: 503
     });
-    return reader.call(`preservation --message ${messageId} --thread ${threadId} --sha256 ${sourceSha256} --request-id ${requestId}`);
+    return reader.call(`${command} --message ${messageId} --thread ${threadId} --sha256 ${sourceSha256} --request-id ${requestId}`);
   }
 }
 
