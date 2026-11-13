@@ -76,7 +76,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   and device notification acceptance remain separate. See
   [personal calendar](PERSONAL_CALENDAR.md).
 
-- **Content presentation.** Personal Nestor selects pages, Markdown, lists,
+- **Content presentation.** Household retains an ordered, versioned complete
+  written answer on its canonical turn independently of speech. The live page,
+  resumed history and parent journal render this source with explicit partial
+  status; speech keeps its source revision. Personal Nestor selects pages, Markdown, lists,
   tables, code and images in one content workspace with retained navigation,
   copy, expansion and closure. Analytics' inference overview provides a bounded,
   dated Core read of the same summary response and selected window. Its live

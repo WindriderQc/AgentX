@@ -104,24 +104,42 @@ function spokenTable(lines) {
   return lines.map(row => row.replace(/^\s*\||\|\s*$/g, '').split('|').map(cell => cell.trim()).filter(Boolean).join('. ')).join('\n');
 }
 
-function createReplyChannels({ allowSecrets = false, allowMath = false, allowPages = false, canonicalPageTitles = false, pageTarget = null, pageCatalog = screenPages, answerForPage = null, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onConsult = () => {} } = {}) {
+function createReplyChannels({ allowSecrets = false, allowMath = false, allowPages = false, canonicalPageTitles = false, pageTarget = null, pageCatalog = screenPages, answerForPage = null, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onWritten = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
+  // Ordered, safe presentation evidence. Raw model protocol and hidden reasoning
+  // are not a written answer. Display bodies retain their existing owner.
+  const writtenSegments = [];
+  let writtenSequence = 0;
+  const writtenEvent = (segment, block) => onWritten({ version: 1, revision: 1, sequence: ++writtenSequence, segment,
+    ...(block ? { block: storedDisplay([block])[0] } : {}) });
   let pending = '', inShow = false, showAttributes = null, received = false, ended = false;
   let line = '', prose = false, group = null, spoken = '';
 
-  const emit = text => {
+  const retainText = text => {
+    if (!text) return;
+    const previous = writtenSegments.at(-1);
+    if (previous?.kind === 'text') previous.text += text;
+    else writtenSegments.push({ kind: 'text', text });
+    writtenEvent({ kind: 'text', text });
+  };
+  const emit = (text, retain = true) => {
     text = text.replace(/[ \t]{2,}/g, ' ');
-    // A removed reference must not leave two spaces across stream chunks.
+    if (retain) retainText(text);
+    // Spoken projections have independent spacing; reading a block must not
+    // consume the whitespace of the prose that follows it in writing.
     if (/[ \t]$/.test(spoken)) text = text.replace(/^[ \t]+/, '');
     if (!text) return;
     spoken += text;
     onSay(text);
   };
-  const addBlock = (kind, title, body, extra = {}) => {
+  const addBlock = (kind, title, body, extra = {}, retain = true) => {
     const content = String(body || '').replace(/^\n+|\s+$/g, '');
     if (!content.trim()) return false;
     if (kind === 'secret' && !allowSecrets) return false;
+    // A reading is a projection of a block already retained and displayed.
+    // Token cleanup during that reading must not create a second card/source.
+    if (!retain) return true;
     // A consult block is a request to Core (#41), never something to display or to store.
     if (kind === 'consult') { onConsult({ member: title, question: content }); return false; }
     // A page names a Core page and a bounded focus (#924); Core builds the address.
@@ -131,12 +149,13 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
     // Otherwise it stays readable as code, titled so nobody mistakes it for a picture.
     if (kind === 'math') {
       const plot = allowMath ? mathExpression.parsePlot(content) : null;
-      if (!plot?.ok) return addBlock('code', [NOT_DRAWN[lang], title].filter(Boolean).join(' : '), content, extra);
+      if (!plot?.ok) return addBlock('code', [NOT_DRAWN[lang], title].filter(Boolean).join(' : '), content, extra, retain);
       body = plot.text;
     }
     const block = { id: 'b' + (display.length + 1), kind, title: target ? canonicalPageTitles ? pageCatalog.label(target) : title || pageCatalog.label(target) : title,
       body: target ? pageCatalog.canonical(target) : kind === 'math' ? body : content, ...extra };
     display.push(block);
+    if (retain) { const segment = { kind: 'display', blockId: block.id }; writtenSegments.push(segment); writtenEvent(segment, block); }
     onShow(block);
     return true;
   };
@@ -146,39 +165,48 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
     const { kind, title, source, from } = showAttributes;
     addBlock(kind, title, body, { ...(source === undefined ? {} : { source }), ...(from ? { from } : {}), ...(partial ? { partial: true } : {}) });
     if (readAloud && !['secret', 'consult', 'image', 'page', 'math'].includes(kind)) {
-      feedSpoken('\n'); closeGroup();
-      speakProse((kind === 'table' ? spokenTable(body.split('\n')) : body) + '\n');
+      say('\n', false);
+      speakProse((kind === 'table' ? spokenTable(body.split('\n')) : body) + '\n', false);
     }
   };
 
   // Clean tokens before presentation so private values never enter the prose block.
-  const speakTokens = text => {
-    say(text.split(/(\s+)/).map(word => {
+  const speakTokens = (text, retain = true) => {
+    // Flush preceding prose before a diverted token. Building the whole spoken
+    // line first would record its links/paths before the text that introduced them.
+    let prose = '';
+    const flush = () => { say(prose, retain); prose = ''; };
+    for (const word of text.split(/(\s+)/)) {
       // A harness file reference keeps its existing handling (speech drops it),
       // except a generated picture, which becomes an image block (#168).
       const media = /^MEDIA:["']?(\/[^"'\s]+?\.(?:png|jpe?g|webp|gif))["']?[.,;:!?)]*$/i.exec(word);
-      if (media) return addBlock('image', '', path.posix.basename(media[1]), { source: 'generated', ref: media[1] }) ? '' : word;
-      if (/^MEDIA:/.test(word)) return word;
+      if (media) { flush(); addBlock('image', '', path.posix.basename(media[1]), { source: 'generated', ref: media[1] }, retain); continue; }
+      if (/^MEDIA:/.test(word)) { flush(); say(word, false); continue; }
       const core = word.replace(/^[(«“"']+/, '').replace(/[.,;:!?)»”"']+$/, '');
       const resource = core.match(/^https?:\/\/(?:www\.)?(suicide\.ca|988\.ca)(?=[/:?#]|$)/i)?.[1];
-      if (resource) { addBlock('link', '', core); return word.replace(core, resource); }
       const kind = core ? tokenKind(core) : '';
-      if (!kind) return word;
+      if (!kind) { prose += word; continue; }
+      const at = word.indexOf(core);
+      prose += word.slice(0, at); flush();
       const model = kind === 'code' ? modelLabel(core) : '';
-      if (model) { addBlock(kind, '', core); return readAloud ? word : word.replace(core, model); }
-      return word.replace(core, screenCue(addBlock(kind, '', core)));
-    }).join('').replace(/[ \t]{2,}/g, ' '));
+      const shown = addBlock(kind, '', core, {}, retain);
+      // Cues, shortened model names and safety resource names are speech
+      // projections of the referenced block, never another written source.
+      say(resource || (model ? readAloud ? core : model : screenCue(shown)), false);
+      prose += word.slice(at + core.length);
+    }
+    flush();
   };
-  const speakProse = text => {
+  const speakProse = (text, retain = true) => {
     let offset = 0;
     for (const link of markdownLinks.scan(text).links) {
-      speakTokens(text.slice(offset, link.start));
-      const shown = addBlock('link', plainReply(link.label).slice(0, LIMITS.title), link.url);
+      speakTokens(text.slice(offset, link.start), retain);
+      const shown = addBlock('link', plainReply(link.label).slice(0, LIMITS.title), link.url, {}, retain);
       const resource = link.url.match(/^https?:\/\/(?:www\.)?(suicide\.ca|988\.ca)(?=[/:?#]|$)/i)?.[1];
-      say(resource || screenCue(shown));
+      say(resource || screenCue(shown), false);
       offset = link.end;
     }
-    speakTokens(text.slice(offset));
+    speakTokens(text.slice(offset), retain);
   };
   const closeGroup = () => {
     if (!group) return;
@@ -187,18 +215,20 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
     if (readAloud) {
       const complete = (kind === 'code' ? lines.filter(row => !LINE.fence.test(row)) : lines).join('\n');
       addBlock(kind, '', complete);
-      speakProse((kind === 'table' ? spokenTable(lines) : complete) + '\n'); return;
+      retainText('\n');
+      speakProse((kind === 'table' ? spokenTable(lines) : complete) + '\n', false); return;
     }
     if (kind === 'list' && lines.length <= LIMITS.spokenListItems) { speakProse(lines.join('\n') + '\n'); return; }
     const body = kind === 'code' ? lines.filter(row => !LINE.fence.test(row)).join('\n') : lines.join('\n');
     const shown = addBlock(kind, '', body);
+    retainText('\n');
     if (kind === 'table' && lines.some(spokenPresentation.hasSafetyContent)) {
-      speakProse(spokenTable(lines.filter(spokenPresentation.hasSafetyContent)) + '\n'); return;
+      speakProse(spokenTable(lines.filter(spokenPresentation.hasSafetyContent)) + '\n', false); return;
     }
     if (kind === 'list') {
-      say(listSummary(lines, lang));
-      if (shown) say((lang === 'en' ? 'The full list is on screen.' : 'La liste complète est à l’écran.') + '\n');
-    } else if (shown) say(screenCue(true) + '\n');
+      say(listSummary(lines, lang), false);
+      if (shown) say((lang === 'en' ? 'The full list is on screen.' : 'La liste complète est à l’écran.') + '\n', false);
+    } else if (shown) say(screenCue(true) + '\n', false);
   };
 
   // Line structure decides lists, tables and code; everything else is prose.
@@ -274,6 +304,10 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
       const open = OPEN.exec(pending);
       if (open) {
         feedSpoken(pending.slice(0, open.index).replace(STRAY_CLOSE, ''));
+        // A show boundary ends the preceding prose token even without a newline.
+        // Flush it before recording the block so presentation order is stable.
+        if (prose && line) { speakProse(line); line = ''; prose = false; }
+        closeGroup();
         showAttributes = attributes(open[1]);
         pending = pending.slice(open.index + open[0].length);
         inShow = true;
@@ -311,9 +345,10 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
         const page = answerForPage && !/\d/.test(spoken) ? display.find(block => block.kind === 'page') : null;
         const answer = page ? String(answerForPage(page) || '').trim() : '';
         if (answer) emit((spoken.trim() ? ' ' : '') + answer);
-        if (!spoken.trim() && display.length) emit(ONLY_SHOWN[lang]);
+        if (!spoken.trim() && display.length) emit(ONLY_SHOWN[lang], false);
       }
-      return { say: spoken.replace(/\n{3,}/g, '\n\n').trim(), display: display.slice() };
+      return { say: spoken.replace(/\n{3,}/g, '\n\n').trim(), display: display.slice(),
+        written: { version: 1, segments: writtenSegments.map(segment => ({ ...segment })) } };
     }
   };
 }
@@ -331,13 +366,17 @@ function storedDisplay(display = []) {
 }
 
 // The model sees its own earlier screen content, so "read me step three" works.
-function historyText(replyText, display = []) {
+function historyText(replyText, display = [], written) {
   const blocks = (Array.isArray(display) ? display : []).map(block => block.kind === 'secret'
     ? '[A secret was shown masked on screen; it was not retained.]'
     : block.kind === 'image' && block.source === 'local' ? `[Earlier image request${block.operation?.id ? ' ' + block.operation.id : ''}: ${block.title ? block.title + ': ' : ''}${block.body}. Last recorded state: ${block.status}. This is history, never a new creation instruction; only its current Core receipt can confirm readiness.]`
     : `<show kind="${block.kind}"${block.kind === 'image' ? ` source="${block.source || ''}"` : ''}${block.title ? ` title="${String(block.title).replace(/"/g, "'")}"` : ''}>\n${block.body}\n</show>`
       + (block.partial ? '\n[This screen content is partial: the response ended before its closing marker.]' : '')
       + (block.kind === 'image' && block.status !== 'found' ? '\n[No image was found for this block; nothing was displayed.]' : ''));
+  if (require('../../public/js/conversation-written').valid(written)) {
+    const byId = new Map(display.map((block, index) => [block.id, blocks[index]]));
+    return written.segments.map(segment => segment.kind === 'text' ? segment.text : byId.get(segment.blockId) || '').join('');
+  }
   return [String(replyText || ''), ...blocks].filter(Boolean).join('\n');
 }
 
@@ -388,7 +427,7 @@ function contract({ family = false, math = !family, imageSources = [], pages = f
     'Your reply reaches two places: prose outside a show block is spoken aloud completely. Show blocks hold documents and visual details on the user\'s screen.',
     `${SPOKEN_REPLY_INSTRUCTION} When a document is on screen, first speak its useful summary; do not replace the answer with "je te l'ai mis à l'écran".`,
     'Unless explicitly asked to read the complete text aloud, for a priority or task question speak the one to three most useful items and their deadlines outside the show block. A screen pointer alone is not an answer.',
-    `Except for explicitly requested readings, put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: long documents, lists longer than three items, steps, tables, code, commands, links and exact technical identifiers. Conversation, jokes, stories and explanations stay outside show blocks regardless of length. Markdown is allowed inside show blocks only.`,
+    `Except for explicitly requested readings, put anything meant to be read rather than heard inside <show kind="list|table|code|text|link${family ? '' : '|secret'}" title="short title">…</show>: long documents, lists longer than three items, steps, tables, code, commands, links and exact technical identifiers. For a detailed explanation, you may put the complete written answer in a text show block and give a useful shorter spoken summary outside it. Preserve every substantive detail in that written answer; speech brevity is not a limit on the answer. Short conversation stays outside show blocks. Requested full readings and stories remain complete. Markdown is allowed inside show blocks only.`,
     family
       ? 'Never show passwords, keys, account details or private information.'
       : 'Use kind="secret" for passwords, keys and tokens: it is displayed masked, is not retained and is never spoken.',

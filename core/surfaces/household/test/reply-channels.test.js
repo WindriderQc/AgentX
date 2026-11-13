@@ -172,6 +172,63 @@ test('ordinary prose streams before completion and keeps the complete answer', (
   assert.equal(said.join(''), 'Bonjour mon ami, comment vas-tu?');
 });
 
+test('brief speech preserves the complete written explanation through stream, storage and history', () => {
+  const summary = 'La réponse repose sur trois causes, avec les détails ci-dessous.';
+  const complete = 'Explication complète. '.repeat(700) + '\nDernière réserve importante.';
+  const source = summary + '\n<show kind="text" title="Réponse complète">' + complete + '</show>';
+  for (const size of [1, 7, 103, source.length]) {
+    const result = run(chunks(source, size));
+    assert.equal(result.say, summary);
+    assert.equal(result.display[0].body, complete);
+    assert.equal(storedDisplay(result.display)[0].body, complete);
+    assert.ok(historyText(result.say, storedDisplay(result.display)).includes(complete));
+    const read = run(chunks(source, size), { readAloud: true });
+    assert.ok(read.say.endsWith('Dernière réserve importante.'));
+    assert.ok(read.say.includes(complete));
+  }
+});
+
+test('written presentation preserves interleaving and never embeds secret bodies', () => {
+  const source = 'Avant.\n<show kind="text">Premier document.</show>\nEntre.\n<show kind="secret">private-secret-value</show>\nAprès.';
+  let expected;
+  for (const size of [1, 3, 17, source.length]) {
+    const result = run(chunks(source, size), { allowSecrets: true });
+    const written = result.written;
+    assert.equal(written.version, 1);
+    assert.deepEqual(written.segments.map(row => row.kind), ['text', 'display', 'text', 'display', 'text']);
+    assert.ok(written.segments[0].text.includes('Avant.'));
+    assert.equal(written.segments[1].blockId, 'b1');
+    assert.ok(written.segments[2].text.includes('Entre.'));
+    assert.equal(written.segments[3].blockId, 'b2');
+    assert.ok(written.segments[4].text.includes('Après.'));
+    assert.doesNotMatch(JSON.stringify(written), /private-secret-value/);
+    assert.doesNotMatch(JSON.stringify(storedDisplay(result.display)), /private-secret-value/);
+    if (expected) assert.deepEqual(written, expected);
+    expected = written;
+  }
+});
+
+test('partial written blocks remain partial and repeated end cannot mutate earlier snapshots', () => {
+  const channels = createReplyChannels();
+  channels.push('Introduction. <show kind="text">Début seulement');
+  const first = channels.end();
+  assert.equal(first.display[0].partial, true);
+  assert.equal(first.written.segments.at(-1).blockId, 'b1');
+  first.written.segments[0].text = 'MUTATED';
+  assert.notEqual(channels.end().written.segments[0].text, 'MUTATED');
+  channels.push('This late suffix must not appear');
+  assert.doesNotMatch(JSON.stringify(channels.end()), /late suffix/);
+});
+
+test('speech guidance conditions brevity on a complete written answer without adding output limits', () => {
+  const instructions = contract();
+  assert.match(instructions, /complete written answer is also supplied for display/);
+  assert.match(instructions, /Never shorten the written answer to fit speech/);
+  assert.match(instructions, /speech brevity is not a limit on the answer/);
+  assert.match(instructions, /Explicit reading: full content/);
+  assert.match(instructions, /Preserve all necessary crisis resources/);
+});
+
 test('stored display redacts secrets and history shows the model its own blocks', () => {
   const display = [{ id: 'b1', kind: 'list', title: 'Étapes', body: '1. a' }, { id: 'b2', kind: 'secret', title: 'Clé', body: 'sk-x' }];
   const stored = storedDisplay(display);
@@ -293,4 +350,76 @@ test('Famille without a curated catalogue and unknown pages never open a page bl
   assert.deepEqual(run(['<show kind="page">/admin</show>'], { allowPages: true }).display, []);
   assert.doesNotMatch(contract({ family: true, pages: true }), /kind="page"/);
   assert.match(contract({ pages: true }), /kind="page">pipeline/);
+});
+
+// Rebuild only the retained presentation, independently of what speech says.
+function writtenContent(result) {
+  const blocks = new Map(storedDisplay(result.display).map(block => [block.id, block]));
+  return result.written.segments.map(segment => segment.kind === 'text' ? segment.text
+    : blocks.get(segment.blockId)?.body || '').join('').replace(/\s+/g, ' ').trim();
+}
+
+test('inline references retain preceding and following prose in source order', () => {
+  const source = 'Avant https://example.test/docs, puis /srv/example/file.txt et example/gemma4:12b-it-qat. Apres.';
+  for (const size of [1, 2, 5, 17, source.length]) {
+    const result = run(chunks(source, size));
+    assert.equal(writtenContent(result), source, `chunk size ${size}`);
+    assert.deepEqual(result.written.segments.filter(segment => segment.kind === 'display').map(segment => segment.blockId), ['b1', 'b2', 'b3']);
+    assert.doesNotMatch(result.say, /https|\/srv|example\/gemma/);
+  }
+});
+
+test('Markdown references retain source order without writing their spoken cue', () => {
+  const source = 'Avant [Premiere](https://example.test/one), puis [Deuxieme](https://example.test/two). Apres.';
+  for (const size of [1, 7, source.length]) {
+    const result = run(chunks(source, size));
+    assert.equal(writtenContent(result), 'Avant https://example.test/one, puis https://example.test/two. Apres.');
+    assert.deepEqual(result.display.map(block => block.title), ['Premiere', 'Deuxieme']);
+    assert.equal(result.written.segments.filter(segment => segment.kind === 'display').length, 2);
+  }
+});
+
+test('reading displayed content changes speech without duplicating the written source', () => {
+  for (const [kind, body] of [['text', 'Texte integral.'], ['text', 'Texte integral. https://example.test/reference'], ['list', '- Premier\n- Deuxieme'],
+    ['table', '| Premier | Deuxieme |'], ['code', 'const answer = 42;']]) {
+    const source = `Introduction. <show kind="${kind}" title="Details">${body}</show> Conclusion.`;
+    for (const size of [1, 7, source.length]) {
+      const ordinary = run(chunks(source, size));
+      const reading = run(chunks(source, size), { readAloud: true });
+      assert.equal(writtenContent(reading), `Introduction. ${body.replace(/\s+/g, ' ')} Conclusion.`, `${kind}, chunk size ${size}`);
+      assert.equal(writtenContent(reading), writtenContent(ordinary));
+      assert.equal(reading.written.segments.filter(segment => segment.kind === 'display').length, 1);
+      assert.equal(reading.display.length, 1, 'reading a link inside the source does not create a duplicate card');
+      assert.ok(reading.say.includes(kind === 'code' ? 'answer' : kind === 'text' ? 'Texte integral.' : 'Deuxieme'));
+    }
+  }
+});
+
+test('implicit list, table and code projections retain their source only once', () => {
+  for (const body of ['- Premier\n- Deuxieme\n- Troisieme\n- Quatrieme',
+    '| Premier | Deuxieme |\n| Troisieme | Quatrieme |', '```js\nconst answer = 42;\n```']) {
+    const source = `Introduction.\n${body}\nConclusion.`;
+    for (const size of [1, 13, source.length]) {
+      const ordinary = run(chunks(source, size));
+      const reading = run(chunks(source, size), { readAloud: true });
+      assert.equal(writtenContent(reading), writtenContent(ordinary), `chunk size ${size}`);
+      const expected = `Introduction. ${body.replace(/```(?:js)?\n?/g, '').replace(/\s+/g, ' ').trim()} Conclusion.`;
+      assert.equal(writtenContent(reading), expected);
+      assert.equal(reading.written.segments.filter(segment => segment.kind === 'display').length, 1);
+    }
+  }
+});
+
+test('speech projections never reintroduce a retained secret or a consultation', () => {
+  const secret = 'sk-' + 'a1'.repeat(40);
+  for (const readAloud of [false, true]) {
+    for (const allowSecrets of [false, true]) {
+      const source = `Avant ${secret}. <show kind="consult" title="helper">Private request</show> Apres.`;
+      const result = run(chunks(source, 3), { readAloud, allowSecrets });
+      assert.doesNotMatch(writtenContent(result), /sk-|Private request/);
+      assert.doesNotMatch(result.say, /sk-|Private request/);
+      assert.ok(writtenContent(result).startsWith('Avant'));
+      assert.ok(writtenContent(result).endsWith('Apres.'));
+    }
+  }
 });

@@ -44,8 +44,8 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
   const hermes = hermesClient || createHermesTransport({ env,
     recordUsage: recordRuntimeUsage || (receipt => require('../../src/services/runtimeUsageService').ingestRuntimeUsage(receipt)),
     archive: conversations ? async (session, state) => {
-    if (env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && (state.receipt?.partial === true || state.receipt?.completed === false
-        || typeof state.receipt?.output !== 'string' || !state.receipt.output.trim())) throw new Error('The original Hermes result is not fully verified. Native reconciliation is required.');
+    if (state.receipt?.partial === true || state.receipt?.completed === false
+        || typeof state.receipt?.output !== 'string' || !state.receipt.output.trim()) throw new Error('The original Hermes result is not fully verified. Native reconciliation is required.');
     const scope = { sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId };
     const previous = await conversations.getTurn({ ...scope, 'toolEvidence.runId': state.runId })
       || (state.turnId ? await conversations.getTurn({ ...scope, traceId: state.turnId }) : null);
@@ -54,7 +54,7 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
     channels.push(state.receipt.output || '');
     const parsed = channels.end(), replyText = presentation.plainReply(parsed.say);
     const receipts = state.toolReceipts || previous?.toolEvidence?.receipts || [];
-    const recovered = { replyText, display: presentation.storedDisplay(parsed.display), outcome: 'completed',
+    const recovered = { replyText, written: parsed.written, display: presentation.storedDisplay(parsed.display), outcome: 'completed',
       model: state.receipt.runtime?.model || '', routingSource: 'hermes/nestor', routeTier: 'agent',
       usage: state.receipt.usage, modelProvider: state.receipt.runtime?.provider,
       knowledgeStatus: 'agent-managed', knowledgeUsed: receipts.some(row => /rag_search|memory_search|wiki_search/.test(row.tool)),
