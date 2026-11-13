@@ -169,11 +169,32 @@ At that boundary, reserve the earliest unstarted FIFO photo request in a future
 window, preserving its identity and selection with the current queue revision.
 If the monitor starts another batch first, the reservation refuses: observe that
 batch and wait for its natural boundary instead. After a lost reservation reply,
-read the same request before any retry. Verify the held request remains unstarted,
-later requests stay behind it and no photo worker still owns a claimed/running
-slot, then deploy through the ordinary maintenance gate.
-Keep the future FIFO reservation in place until the new Core is verified; move
-that same reservation back through the native operator to resume processing.
+read the same request before any retry.
+
+The future reservation prevents dispatch, but an older monitor can still claim
+the worker slot before `begin` rejects that reservation. A free-slot snapshot
+therefore does not establish a safe first-install boundary. Also qualify a
+reversible entry fence on the old monitor, under the owner's maintenance scope,
+and prove that any preflight/configuration read already in flight has settled.
+The reservation keeps those older preflights from crossing dispatch while the
+entry fence prevents later claims. A fresh refusal from the same serialized
+native monitor after fence publication, followed by repeated zero-slot,
+zero-analysis-claim and idle-indexing reads, supplies that quiescence evidence.
+Keep the original process identity and native receipts; elapsed time alone
+does not prove it.
+
+An instance using configuration-loader refusal as this temporary fence keeps
+the configuration file present and verifies that private-library access fails
+closed. Removing the file can remove that library's exclusion from family
+reads. Preserve exact original bytes, ownership, mode and extended attributes;
+record any temporary photo-interface unavailability and the restoration plan.
+
+Only after that evidence, deploy through the ordinary maintenance gate. Keep
+both the entry fence and future FIFO reservation until the new Core and the
+deployment's terminal receipt are verified. Restore the temporary fence exactly
+before moving the same reservation back through its native operator, respecting
+other accepted windows. Observe actual progress and a complete resumed batch,
+with prior result identities and human decisions unchanged.
 If any identity or launch is uncertain, stop the installation and observe it.
 
 `GET /api/phone-media/processing` returns configuration availability only.
