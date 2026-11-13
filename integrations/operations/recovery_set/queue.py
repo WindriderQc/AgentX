@@ -20,7 +20,7 @@ class Queue:
     def api(self, suffix='', body=None):
         request = urllib.request.Request(self.config['coreUrl'].rstrip('/') + '/api/cluster/schedule/work-queue' + suffix,
             data=None if body is None else json.dumps(body).encode(),
-            headers={'Content-Type': 'application/json', 'x-service-caller': self.config['actor']})
+            headers={'Content-Type': 'application/json', 'x-service-caller': self.config['actor'], 'x-agentx-caller': 'operator'})
         with urllib.request.urlopen(request, timeout=30) as response:
             result = json.load(response)
         if result.get('ok') is False:
