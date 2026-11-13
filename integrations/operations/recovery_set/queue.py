@@ -35,6 +35,14 @@ class Queue:
     def admit(self):
         receipt = str(self.work / 'operator-terminal.private.json')
         key = self.config.get('keyPrefix', 'recovery-set') + ':' + self.request_id
+        threshold = self.config.get('archiveTerminalAtCount')
+        if threshold:
+            inventory = self.api()
+            if inventory.get('count', 0) >= int(threshold):
+                # Core writes/verifies immutable terminal receipts before moving
+                # them. Held/unknown work remains active and original IDs/keys
+                # still resolve through Core. Never delete coordination records.
+                save(self.work / 'queue-archive.private.json', self.api('/archive', {}))
         request = {
             'key': key, 'title': self.config.get('title', 'Native recovery-set capture'),
             'kind': 'diagnostic', 'hosts': self.config['hosts'],

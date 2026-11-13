@@ -17,6 +17,9 @@ native backup, snapshot and isolated restore operations. The configured `source`
 links the authorized recurring work to its session/task or issue. Every occurrence
 retains one native supervisor UUID, queue key, dispatch ID and terminal release
 receipt. It never loads a model or takes a maintenance lease for the capture.
+An instance can set `queue.archiveTerminalAtCount` below Core's queue capacity.
+At that threshold, Core's native archive preserves/verifies terminal receipts
+and keeps original IDs/keys readable; active or uncertain work is never cleared.
 
 Hermes owns backup/import and process-marker exclusions. OpenClaw receives a
 separate private source copy with coherent online SQLite snapshots, relocation

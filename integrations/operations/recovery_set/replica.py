@@ -29,6 +29,7 @@ if marker.read_text()!='agentx.recovery-set/v1\n':raise ValueError('foreign repl
 identifier=cfg['generation']
 if str(uuid.UUID(identifier))!=identifier:raise ValueError('unsafe generation')
 generation=root/'generations'/identifier
+if generation.parent.is_symlink():raise ValueError('unsafe generations directory')
 incoming=root/('.incoming-'+identifier)
 def sha(p):
  h=hashlib.sha256()
@@ -52,6 +53,11 @@ def verify(p,expected=None):
 def publish(d):
  value={'generation':identifier,'completedAt':d['completedAt'],'manifestSha256':cfg['manifestSha256']}
  t=root/'latest.private.json.tmp';t.write_text(json.dumps(value));os.replace(t,root/'latest.private.json')
+ for p in root.glob('.incoming-*'):
+  try:
+   old=p.name.removeprefix('.incoming-')
+   if str(uuid.UUID(old))==old and old!=identifier and p.is_dir() and not p.is_symlink():shutil.rmtree(p)
+  except ValueError:continue
  return {'state':'verified','generation':identifier,'verified':True,'files':len(d['artifacts']),'bytes':sum(a['bytes'] for a in d['artifacts']),'manifestSha256':cfg['manifestSha256']}
 def prune(keep):
  directory=root/'generations'
@@ -128,10 +134,12 @@ def local_retention(root, keep):
             shutil.rmtree(path)
 
 
-def replicate(config):
+def replicate(config, follow_latest=True):
     root = Path(config['root'])
     latest = json.loads((root / 'latest.private.json').read_text())
-    identifier = latest['generation']
+    pending_path = root / 'replica-pending.private.json'
+    selected = json.loads(pending_path.read_text()) if pending_path.exists() else latest
+    identifier = selected['generation']
     if str(uuid.UUID(identifier)) != identifier:
         raise ValueError('Unsafe source generation')
     source = root / 'generations' / identifier
@@ -142,8 +150,9 @@ def replicate(config):
                  'bytes': sum(a['bytes'] for a in manifest['artifacts']),
                  'keep': max(2, int(replica.get('keep', 2))),
                  'minFreeBytes': max(0, int(replica.get('minFreeBytes', 1024 ** 3)))}
-    if arguments['manifestSha256'] != latest['manifestSha256']:
+    if arguments['manifestSha256'] != selected['manifestSha256']:
         raise ValueError('Source manifest changed after publication')
+    save(pending_path, {'generation': identifier, 'manifestSha256': arguments['manifestSha256']})
     result = remote(replica, 'prepare', arguments)
     if not result.get('verified'):
         # rsync never deletes destination files. A lost transfer resumes the
@@ -160,5 +169,10 @@ def replicate(config):
     receipt = {**result, 'verifiedAt': now(), 'capturedAt': manifest['completedAt']}
     save(root / 'replicas' / (identifier + '.private.json'), receipt)
     save(root / 'replica-latest.private.json', receipt)
+    pending_path.unlink()
     local_retention(root, max(2, int(config.get('keep', 7))))
+    # A source refresh during an outage never abandons a partially transferred
+    # generation. Finish that identity, then catch up to the current latest once.
+    if follow_latest and json.loads((root / 'latest.private.json').read_text())['generation'] != identifier:
+        return replicate(config, follow_latest=False)
     return receipt

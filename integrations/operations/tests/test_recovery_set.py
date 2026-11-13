@@ -297,6 +297,34 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(queue.job['state'], 'completed')
         self.assertEqual(sum(body is not None for _, body in calls), 1)
 
+    def test_capacity_uses_native_terminal_archive_before_admission(self):
+        cfg = {'actor': 'recovery', 'hosts': ['http://host:3180'], 'source': {'type': 'coding'}, 'archiveTerminalAtCount': 300}
+        queue = Queue(cfg, self.root, str(uuid.uuid4()))
+        responses = [{'count': 389}, {'archived': 300},
+                     {'id': 'native', 'state': 'requested', 'revision': 1},
+                     {'id': 'native', 'state': 'reserved', 'revision': 2},
+                     {'id': 'native', 'state': 'dispatching', 'revision': 3, 'dispatchId': 'exact'}]
+        with patch.object(queue, 'api', side_effect=responses) as api:
+            queue.admit()
+        self.assertEqual(api.call_args_list[1].args, ('/archive', {}))
+        self.assertTrue((self.root / 'queue-archive.private.json').exists())
+
+    def test_source_refresh_does_not_abandon_pending_transfer_identity(self):
+        first, _ = self.generation()
+        save(self.root / 'replica-pending.private.json', {'generation': first.name,
+             'manifestSha256': digest(first / 'manifest.private.json')})
+        second, _ = self.generation(stamp='2026-01-02T00:00:00Z')
+        cfg = {'root': str(self.root), 'replica': {'root': '/private/destination', 'sshTarget': 'backup'}}
+        calls = []
+        def remote(cfg, action, args):
+            calls.append(args['generation'])
+            return {'verified': True, 'manifestSha256': args['manifestSha256'], 'generation': args['generation']}
+        with patch('recovery_set.replica.remote', side_effect=remote):
+            result = replicate(cfg)
+        self.assertEqual(calls, [first.name, second.name])
+        self.assertEqual(result['generation'], second.name)
+        self.assertFalse((self.root / 'replica-pending.private.json').exists())
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -35,6 +35,7 @@
     "actor": "native-recovery",
     "hosts": ["http://home-server:3180"],
     "estimatedMinutes": 90,
+    "archiveTerminalAtCount": 300,
     "source": {"type": "coding", "taskId": "replace-with-authorized-session-or-task-reference"}
   },
   "replica": {"sshTarget": "backup-host", "root": "/home/operator/private/recovery", "keep": 2, "minFreeBytes": 2147483648}
