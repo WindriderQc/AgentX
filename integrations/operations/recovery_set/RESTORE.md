@@ -4,6 +4,10 @@ This directory contains private data and credentials. Verify every artifact
 against `manifest.private.json` before import. `recovery-config.private.json`
 identifies original homes, repositories, services and external credential targets.
 Its paths describe the source installation; adapt them to a fresh destination.
+Keep the sibling `source-releases/` receipts with the generation. They preserve
+the exact operator terminal receipt and Core acknowledgment produced after capture;
+use their original identities through the native owner when reconciling a restored
+Core queue. They do not authorize replaying the work.
 
 Restore only into empty homes and isolated databases. A client-only reinstall
 reconnects to the existing Core instead of importing duplicate notes or personas.

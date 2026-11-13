@@ -56,8 +56,13 @@ A separate named `recovery-replica` job uses existing SSH credentials/host keys
 and rsync. It resumes the same incoming generation after interruption. The destination
 reads and checks every artifact before atomic publication. A lost commit reply is
 reconciled against the same manifest, not a new generation. Unchanged complete
-copies are reverified without another upload. Automatic retention is confined to
-owned UUID generations and protects the latest good copy. Source pruning requires
+copies are reverified without another upload. With
+`requireReleaseReceipt: true`, transfer also requires the exact operator terminal
+receipt acknowledged by Core. The destination preserves its original bytes and
+Core's matching SHA-256 acknowledgment in sibling `source-releases/` files.
+These post-capture receipts do not mutate the sealed generation and retain the
+identity needed for native queue reconciliation after a Core recovery. Automatic
+retention is confined to owned UUID generations and protects the latest good copy. Source pruning requires
 a verified off-host receipt; an unreachable destination never destroys the source.
 
 Set bounded source/destination `keep` counts (at least two), a destination free-space

@@ -7,6 +7,7 @@
   "refreshOnCriticalChange": true,
   "staleAfterSeconds": 32400,
   "keep": 7,
+  "requireReleaseReceipt": true,
   "repositories": [
     {"id": "instance", "path": "/opt/agentx-home"},
     {"id": "product", "path": "/opt/AgentX"},
