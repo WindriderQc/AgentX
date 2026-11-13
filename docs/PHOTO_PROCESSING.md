@@ -133,6 +133,46 @@ canonical originals into cleanup candidates.
 
 ## API and recovery
 
+### Explicit retry after a verified admission refusal
+
+`core/scripts/retry-photo-analysis.cjs` creates one operator-owned attempt for
+an image whose previous result is explicitly `not-attempted` after a reconciled
+`RUNTIME_INFERENCE_ADMISSION_DENIED` before provider dispatch. It refuses ordinary
+failed proposals, unknown outcomes, active claims and changed evidence. Enqueueing
+the same sources still reuses existing results; it does not implicitly retry them.
+
+An execution plan binds `operationId`, new `analysisId`, `previousAnalysisId`,
+`reconciliationId`, content `sha256`, `previousAnalysisSha256`, `configHash`,
+`targetHash`, `queueId`, `dispatchId`, `receiptRef` and the explicit confirmation
+`RETRY_VERIFIED_NOT_ATTEMPTED`. Hashes are SHA-256 of the corresponding JSON
+value: previous analysis, `[libraryId, originalPathPrefix, nasHost]`, and the
+existing routed `{model, host}`. Clients do not configure a different model.
+
+Before execution, plan a diagnostic operator window in Core's heavy-work queue
+with key `photo-analysis-retry:<operationId>`, the existing NAS and analysis
+hosts, and the same private receipt path. Wait for the active batch to finish
+naturally, reserve and begin that exact request through the native operator.
+The script requires its dispatch identity and at least four minutes remaining.
+Pass the reviewed plan as base64 JSON in `PHOTO_ANALYSIS_RETRY`, then run the
+script from Core's application directory. A reviewed standalone operator artifact
+can use `PHOTO_ANALYSIS_RETRY_STDIN=1`; this does not patch or restart the server.
+
+The existing full-batch writer excludes concurrent photo work and maintenance.
+The script rechecks the verified projection and exact Immich asset, takes the
+existing decoded preview and calls Core's analysis capability once. It preserves
+the complete previous analysis under `analysis.retry.previousAnalysis`; the old
+portable card stays immutable. The new card uses a new analysis identity and
+records `retryOf`. EXIF facts, model proposals and human review/frame choices
+remain separate. No original or owner decision is rewritten.
+
+A repeated completed request reads its existing result without another model
+call. A lost claim, provider or export response retains the exact attempt and
+an unknown writer fence; neither elapsed time nor a repeated command permits
+another inference. A malformed but completed response becomes a failed new
+card, without automatic retry. Completion requires portable export, settled
+indexing and release of that attempt's writer. The operator then records its
+native queue receipt and verifies ordinary FIFO processing resumes.
+
 ### Draining before Core maintenance
 
 Core records a durable batch writer in the runtime coordination document
