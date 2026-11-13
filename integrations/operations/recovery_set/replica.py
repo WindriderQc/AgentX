@@ -51,6 +51,25 @@ def verify(p,expected=None):
  if not seen:raise ValueError('empty generation')
  return d
 def publish(d):
+ release=cfg.get('sourceRelease')
+ if cfg.get('requireReleaseReceipt') and not release:raise ValueError('native release receipt missing')
+ if release:
+  text=release['operatorReceipt'];operator=json.loads(text);ack=release['coreReleaseReceipt']
+  receipt_sha=hashlib.sha256(text.encode()).hexdigest()
+  if (operator.get('contract')!='agentx.operator-heavy-work/v1' or operator.get('state')!='completed'
+   or operator.get('runtimeReleased') is not True or ack.get('state')!='completed'
+   or receipt_sha!=ack.get('receiptSha256') or operator.get('queueRequestId')!=release['queueRequestId']
+   or operator.get('dispatchId')!=release['dispatchId'] or ack.get('operationId')!=release['dispatchId']
+   or operator.get('receiptRef')!=ack.get('receiptRef')):raise ValueError('native release receipt mismatch')
+  proofs=root/'source-releases'
+  if proofs.is_symlink():raise ValueError('unsafe release directory')
+  proofs.mkdir(exist_ok=True,mode=0o700)
+  for suffix,content in [('operator-terminal.private.json',text),('core-release.private.json',json.dumps(ack))]:
+   target=proofs/(identifier+'-'+suffix)
+   if target.is_symlink():raise ValueError('unsafe release file')
+   if target.exists() and target.read_text()!=content:raise ValueError('immutable release differs')
+   if not target.exists():
+    temporary=target.with_suffix('.tmp');temporary.write_text(content);os.replace(temporary,target)
  value={'generation':identifier,'completedAt':d['completedAt'],'manifestSha256':cfg['manifestSha256']}
  t=root/'latest.private.json.tmp';t.write_text(json.dumps(value));os.replace(t,root/'latest.private.json')
  for p in root.glob('.incoming-*'):
@@ -58,7 +77,7 @@ def publish(d):
    old=p.name.removeprefix('.incoming-')
    if str(uuid.UUID(old))==old and old!=identifier and p.is_dir() and not p.is_symlink():shutil.rmtree(p)
   except ValueError:continue
- return {'state':'verified','generation':identifier,'verified':True,'files':len(d['artifacts']),'bytes':sum(a['bytes'] for a in d['artifacts']),'manifestSha256':cfg['manifestSha256']}
+ return {'state':'verified','generation':identifier,'verified':True,'files':len(d['artifacts']),'bytes':sum(a['bytes'] for a in d['artifacts']),'manifestSha256':cfg['manifestSha256'],'nativeReleaseVerified':bool(release)}
 def prune(keep):
  directory=root/'generations'
  if directory.is_symlink():raise ValueError('unsafe generations directory')
@@ -150,6 +169,19 @@ def replicate(config, follow_latest=True):
                  'bytes': sum(a['bytes'] for a in manifest['artifacts']),
                  'keep': max(2, int(replica.get('keep', 2))),
                  'minFreeBytes': max(0, int(replica.get('minFreeBytes', 1024 ** 3)))}
+    if config.get('requireReleaseReceipt'):
+        work = root / 'runs' / identifier
+        text = (work / 'operator-terminal.private.json').read_text()
+        job = json.loads((work / 'queue.private.json').read_text())
+        operator = json.loads(text)
+        ack = job.get('releaseReceipt', {})
+        if (job.get('state') != 'completed' or operator.get('runtimeReleased') is not True
+                or ack.get('receiptSha256') != digest(work / 'operator-terminal.private.json')
+                or ack.get('operationId') != job.get('dispatchId') or operator.get('queueRequestId') != job.get('id')):
+            raise ValueError('Native operator completion/release is not acknowledged')
+        arguments['requireReleaseReceipt'] = True
+        arguments['sourceRelease'] = {'operatorReceipt': text, 'coreReleaseReceipt': ack,
+                                     'queueRequestId': job['id'], 'dispatchId': job['dispatchId']}
     if arguments['manifestSha256'] != selected['manifestSha256']:
         raise ValueError('Source manifest changed after publication')
     save(pending_path, {'generation': identifier, 'manifestSha256': arguments['manifestSha256']})

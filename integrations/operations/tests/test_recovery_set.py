@@ -325,6 +325,48 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(result['generation'], second.name)
         self.assertFalse((self.root / 'replica-pending.private.json').exists())
 
+    def native_release(self):
+        import hashlib
+        operator = {'contract': 'agentx.operator-heavy-work/v1', 'queueRequestId': str(uuid.uuid4()),
+                    'dispatchId': str(uuid.uuid4()), 'receiptRef': '/private/terminal.json',
+                    'state': 'completed', 'runtimeReleased': True}
+        text = json.dumps(operator, indent=2) + '\n'
+        ack = {'state': 'completed', 'operationId': operator['dispatchId'], 'receiptRef': operator['receiptRef'],
+               'receiptSha256': hashlib.sha256(text.encode()).hexdigest()}
+        return {'operatorReceipt': text, 'coreReleaseReceipt': ack,
+                'queueRequestId': operator['queueRequestId'], 'dispatchId': operator['dispatchId']}
+
+    def test_offhost_release_keeps_exact_bytes_and_matching_core_ack(self):
+        source, _ = self.generation()
+        args = {**self.replica_args(source), 'requireReleaseReceipt': True, 'sourceRelease': self.native_release()}
+        self.remote('prepare', args)
+        shutil.copytree(source, Path(args['root']) / ('.incoming-' + source.name), dirs_exist_ok=True)
+        result = json.loads(self.remote('commit', args).stdout)
+        self.assertTrue(result['nativeReleaseVerified'])
+        proofs = Path(args['root']) / 'source-releases'
+        self.assertEqual((proofs / (source.name + '-operator-terminal.private.json')).read_text(), args['sourceRelease']['operatorReceipt'])
+        ack = json.loads((proofs / (source.name + '-core-release.private.json')).read_text())
+        self.assertEqual(ack, args['sourceRelease']['coreReleaseReceipt'])
+        self.assertTrue(json.loads(self.remote('prepare', args).stdout)['nativeReleaseVerified'])
+
+    def test_unacknowledged_release_cannot_publish_a_recovery_copy(self):
+        source, _ = self.generation()
+        args = {**self.replica_args(source), 'requireReleaseReceipt': True, 'sourceRelease': self.native_release()}
+        args['sourceRelease']['coreReleaseReceipt']['receiptSha256'] = '0' * 64
+        self.remote('prepare', args)
+        shutil.copytree(source, Path(args['root']) / ('.incoming-' + source.name), dirs_exist_ok=True)
+        self.assertNotEqual(self.remote('commit', args, check=False).returncode, 0)
+        self.assertFalse((Path(args['root']) / 'latest.private.json').exists())
+
+    def test_required_release_is_checked_before_any_remote_transfer(self):
+        self.generation()
+        cfg = {'root': str(self.root), 'requireReleaseReceipt': True,
+               'replica': {'root': '/private/destination', 'sshTarget': 'backup'}}
+        with patch('recovery_set.replica.remote') as effect:
+            with self.assertRaises(FileNotFoundError):
+                replicate(cfg)
+        effect.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
