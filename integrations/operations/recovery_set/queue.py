@@ -96,8 +96,18 @@ class Queue:
         current = self.api('/' + self.job['id'])
         if current['state'] in ('completed', 'failed'):
             return self.remember(current)
-        self.remember(self.api('/' + self.job['id'] + '/operator-finish', {
+        body = {
             'expectedRevision': current['revision'], 'dispatchId': self.job['dispatchId'],
             'state': 'completed' if success else 'failed', 'receiptRef': str(path),
             'receiptSha256': digest(path), 'confirmation': 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED',
-        }))
+        }
+        try:
+            finished = self.api('/' + self.job['id'] + '/operator-finish', body)
+        except Exception as error:
+            observed = self.api('/' + self.job['id'])
+            proof = observed.get('releaseReceipt', {})
+            if (observed.get('dispatchId') != body['dispatchId'] or observed.get('state') != body['state']
+                    or proof.get('receiptSha256') != body['receiptSha256'] or proof.get('receiptRef') != str(path)):
+                raise Uncertain('Original operator release has not been confirmed') from error
+            finished = observed
+        self.remember(finished)

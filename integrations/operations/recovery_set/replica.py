@@ -73,7 +73,9 @@ def prune(keep):
 if generation.exists():
  d=verify(generation,cfg['manifestSha256']);result=publish(d);prune(cfg['keep'])
 elif action=='prepare':
- prune(max(1,cfg['keep']-1))
+ # Keep the configured good versions throughout a failed or interrupted copy.
+ # Only commit may prune an older good generation to make room for its successor.
+ prune(cfg['keep'])
  if shutil.disk_usage(root).free < cfg['bytes']+cfg['minFreeBytes']:raise RuntimeError('insufficient destination space')
  incoming.mkdir(exist_ok=True,mode=0o700)
  if incoming.is_symlink():raise ValueError('unsafe incoming path')

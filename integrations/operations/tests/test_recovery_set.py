@@ -267,6 +267,36 @@ class RecoveryTests(unittest.TestCase):
             cli.main(['capture', '--config', str(self.root / 'config.json'), '--request-id', str(uuid.uuid4())])
         effect.assert_called_once()
 
+    def test_two_good_replicas_survive_a_third_incomplete_transfer(self):
+        for day in (1, 2):
+            source, _ = self.generation(stamp=f'2026-01-0{day}T00:00:00Z')
+            args = self.replica_args(source)
+            self.remote('prepare', args)
+            shutil.copytree(source, Path(args['root']) / ('.incoming-' + source.name), dirs_exist_ok=True)
+            self.remote('commit', args)
+        third, _ = self.generation(stamp='2026-01-03T00:00:00Z')
+        args = self.replica_args(third)
+        self.remote('prepare', args)
+        self.assertEqual(len(list((Path(args['root']) / 'generations').iterdir())), 2)
+
+    def test_lost_release_answer_uses_exact_native_receipt_without_replay(self):
+        from recovery_set.common import digest
+        queue = Queue({'actor': 'recovery'}, self.root, str(uuid.uuid4()))
+        queue.job = {'id': 'native-id', 'dispatchId': 'dispatch', 'revision': 3, 'state': 'dispatching'}
+        calls = []
+        def native(suffix='', body=None):
+            calls.append((suffix, body))
+            if body:
+                raise TimeoutError('Response lost after native finish')
+            if len(calls) == 1:
+                return queue.job
+            receipt = self.root / 'operator-terminal.private.json'
+            return {**queue.job, 'state': 'completed', 'releaseReceipt': {'receiptRef': str(receipt), 'receiptSha256': digest(receipt)}}
+        with patch.object(queue, 'api', side_effect=native):
+            queue.finish(True)
+        self.assertEqual(queue.job['state'], 'completed')
+        self.assertEqual(sum(body is not None for _, body in calls), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
