@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const written = require('../../../public/js/conversation-written');
 const { captureWritten } = require('../../../src/services/conversations/writtenPresentation');
 const { createReplyChannels, storedDisplay, historyText } = require('../reply-channels');
-const { presentationForTurn } = require('../turn-presentation');
+const { presentationForTurn, displayForReply } = require('../turn-presentation');
 
 function parse(source, options = {}) {
   const events = [], channels = createReplyChannels({ ...options, onWritten: event => events.push(event) });
@@ -132,4 +132,19 @@ test('an authoritative scene rejection revises the source without impersonating 
   assert.equal(rejected.written.sourceRunId, undefined);
   const spokenUpdate = presentationForTurn({ traceId: 'scene-turn', replyText: 'Short summary.' }, { previous });
   assert.equal(written.text(spokenUpdate), 'Proposed scene.');
+});
+
+test('HTTP replies include writer-created blocks and preserve live metadata without retaining a secret', () => {
+  const live = [{ id: 'b1', kind: 'math', title: 'Plot', body: 'y = x^2', plot: { verified: true } }];
+  const audit = presentationForTurn({ traceId: 'fixed', replyText: 'Reference https://example.test/docs.', display: live });
+  const response = { written: audit.written, display: displayForReply(audit, live) };
+  assert.doesNotMatch(written.text(response), /indisponible/);
+  assert.ok(written.text(response).includes('https://example.test/docs'));
+  assert.equal(response.display.find(block => block.kind === 'math').plot.verified, true);
+  assert.equal(response.display.find(block => block.kind === 'math').id, 'd2');
+  const parsed = parse('<show kind="secret">SYNTHETIC_ONE_TIME</show> Safe.', { allowSecrets: true });
+  const secretAudit = presentationForTurn({ traceId: 'private', replyText: parsed.say, written: parsed.written, display: parsed.display });
+  assert.doesNotMatch(JSON.stringify(secretAudit), /SYNTHETIC_ONE_TIME/);
+  assert.equal(displayForReply(secretAudit, parsed.display)[0].body, 'SYNTHETIC_ONE_TIME');
+  assert.doesNotMatch(written.text({ written: secretAudit.written, display: displayForReply(secretAudit, parsed.display) }), /SYNTHETIC_ONE_TIME/);
 });

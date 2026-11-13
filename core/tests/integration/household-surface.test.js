@@ -497,6 +497,24 @@ describe('built-in Household surface on Core', () => {
     expect((await first).status).toBe(200);
   });
 
+  test('a reply without streaming channels returns every canonical written block over HTTP', async () => {
+    const written = require('../../public/js/conversation-written');
+    const base = '/api/consumers/nestor/v1/llmx';
+    const created = await request(app).post(`${base}/sessions`).send({ backend: 'agentx' }).expect(201);
+    const id = created.body.data.session.sessionId;
+    const original = 'Hello, synthetic visitor. Reference https://example.test/docs.';
+    executeForTest.mockResolvedValueOnce({ ok: true, body: { response: original }, metadata: { model: 'synthetic' } });
+    const response = await request(app).post(`${base}/sessions/${id}/opening`)
+      .send({ requestId: 'synthetic-written-opening', openingVersion: 1, channel: 'text' }).expect(200);
+    const result = response.body.data;
+    expect(result.reply.text).toBe(original);
+    expect(result.display).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'link', body: 'https://example.test/docs' })]));
+    expect(written.text(result)).toContain('https://example.test/docs');
+    expect(written.text(result)).not.toContain('Contenu indisponible');
+    const history = await request(app).get(`${base}/sessions/${id}/history`).expect(200);
+    expect(written.text(history.body.data.turns[0])).toBe(written.text(result));
+  });
+
   test('LLMx opening and rejected scene result resume from the same canonical messages', async () => {
     const base = '/api/consumers/nestor/v1/llmx';
     const created = await request(app).post(`${base}/sessions`).send({ backend: 'agentx' }).expect(201);

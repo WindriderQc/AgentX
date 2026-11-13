@@ -7,6 +7,8 @@ remain redacted. Consult and page directives remain commands, not answer prose.
 `written` records its source turn/run, revision and completion state;
 `speechProjection` references that source revision while `replyText` retains the
 spoken projection. A shorter spoken update cannot replace a completed source.
+Validated scene-rejection receipts revise that same turn and retain the original
+proposal in its existing scene evidence.
 
 The browser receives ordered, sequenced `written` events independently of speech
 `delta` events, then the canonical source with `done`. It shows the complete

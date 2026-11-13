@@ -20,7 +20,7 @@ const { familyClockContext, familyIdentity } = require('./family-clock');
 const { familyIntroduction, soundOnlyRequest } = require('./sound-library');
 const { mathPictureFor, mathPictureContext } = require('./math-scene');
 const replyChannels = require('./reply-channels');
-const { plainReply } = replyChannels;
+const { plainReply } = replyChannels, { displayForReply } = require('./turn-presentation');
 const { scoreSpeechLanguage, speechText } = require('../../public/js/voice/speech-language');
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
@@ -604,7 +604,7 @@ function createPersonaTurnHandler({
         traceId, speaker: audit.speaker, written: audit.written, speechProjection: audit.speechProjection, ...(consulted ? { consult: consulted } : {}),
         ...(adviceRefs.length ? { adviceRefs } : {}),
         ...(isLlmX ? { origin: isOpening ? 'application_opening' : 'human', turnId: clientTurnId } : {}),
-        ...(sceneProposal ? { sceneProposal } : {}), ...(display.length ? { display } : {}),
+        ...(sceneProposal ? { sceneProposal } : {}), ...((audit.display || display).length ? { display: displayForReply(audit, display) } : {}),
         session: publicSession(updated || session),
         pack: packSummary(pack),
         mode: modeSummary(pack.modes.find((entry) => entry.id === session.modeId) || pack.modes[0]),

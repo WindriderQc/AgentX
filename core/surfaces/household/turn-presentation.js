@@ -47,4 +47,16 @@ function presentationForTurn(input, { previous, childSafe = false, replaceSource
     previous: previous?.written, status, readAloud: input.speechProjection?.method === 'full-reading' }) };
 }
 
-module.exports = { presentationForTurn };
+// The canonical writer can add fixed-answer references that had no streamed
+// channels. Return those blocks too, while preserving live rendering metadata
+// and the existing private-only one-time secret presentation.
+function displayForReply(audit, live = []) {
+  if (!valid(audit.written) || !Array.isArray(audit.display)) return live;
+  return audit.display.map(block => {
+    const original = live.find(item => item.kind === block.kind && (block.kind === 'secret'
+      ? item.id === block.id : item.body === block.body && item.title === block.title));
+    return original ? { ...original, id: block.id } : block;
+  });
+}
+
+module.exports = { presentationForTurn, displayForReply };
