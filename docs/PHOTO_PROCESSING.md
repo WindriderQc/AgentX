@@ -214,5 +214,63 @@ also sets `PHOTO_ADMISSION_RECOVERY_STDIN=1`; it runs in a separate Core-side
 process and changes no loaded server module. The queue's original dispatch
 is reconciled separately through the native queue operator and its receipt.
 
+### Closing a known index failure without replay
+
+`scripts/reconcile-photo-index.cjs` is the photo owner's bounded operator path
+for an original `PHOTO_INDEX_RECONCILIATION_REQUIRED` caught in the index phase,
+before this batch has started any analysis. It closes the batch and its exact
+queue dispatch as **failed**, preserving partial index effects, selection,
+projection receipts, existing cards and human choices. It does not start another
+scan, model call, export, batch or reservation.
+
+First verify the served worker's source boundary and native receipts: its original
+projection returned, its scan was acknowledged, the bounded index wait threw,
+and that worker handed off the exact failed batch rather than continuing. Record
+this evidence outside Git. Neither age, an expired window, an idle upstream nor
+a missing process alone proves termination. Lost scan replies, unknown calls,
+different failures and any analysis by this batch require their own native owner.
+
+From Core's working directory, supply a bounded base64 JSON plan in
+`PHOTO_INDEX_RECOVERY` and run `node scripts/reconcile-photo-index.cjs`:
+
+- `{ "op": "inspect", "processingId": "<original-batch-UUID>" }` is read-only.
+  It binds the original batch, queue, dispatch, worker process, projection digest
+  and failure revision. Two stable reads check the fixed managed library and its
+  assets; all indexing queues must have settled. Reused terminal cards are kept;
+  running selected analyses or any analysis by this batch refuse.
+- A reviewed close plan has `op: "close"`, a stable recovery `operationId`, the
+  original `processingId`, `queueId`, `dispatchId`, `processId`, inspected
+  `bindingHash`, an `actor`, a private `receiptRef`,
+  `proof: { originalWorkerTerminated: true, sourceBoundaryVerified: true }`, and
+  `confirmation: "CLOSE_FAILED_INDEX_WITHOUT_REPLAY"`. Use the instance's native
+  operator lease and current owner authorization. These proof assertions attest
+  the operator's verified evidence; they are not independent authentication.
+
+The terminal failure intent is saved on the existing batch before release.
+Only its exact `UNKNOWN` writer, with no other writer, maintenance, workload or
+inference, can be removed by a compare-and-set that atomically records its proof
+in the existing runtime release journal. Fresh stable upstream reads precede that
+CAS. Another holder or changed identity refuses; no holder is force-cleared.
+The batch retains the release receipt and the native queue receives the same
+failed outcome. A terminal queue or a missing writer without that original
+release proof cannot substitute for it.
+
+After any lost reply, read the original batch and queue, and use the **same close
+plan and recovery UUID** to finish only its saved handoff. Do not begin a second
+recovery or a replacement batch. A prepared failure still holds the FIFO lane;
+the existing monitor admits later authorized work only after native settlement.
+Completed replays return the historical receipt without writes or new effects.
+
+The owner module is self-contained against the existing Core models and queue.
+For an older installed Core, an operator may deliver the **exact reviewed**
+`src/services/photos/photoIndexRecovery.js` through stdin to a separate process
+from Core's working directory with `PHOTO_INDEX_RECOVERY_STDIN=1`. Verify that
+artifact's SHA against the reviewed source first. This installs no server module
+and recreates no container; only the fixed new receipt field is admitted by the
+side-process model on that legacy version. A normal merged build includes the
+module and CLI. The first closure therefore does not require bypassing the
+maintenance fence to install a new server image. Installation and live closure
+remain separate from source/mock qualification.
+
 Container installation, a real external-library scan, physical phone acceptance
 and actual frame delivery are separately verified instance receipts.

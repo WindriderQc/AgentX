@@ -7,6 +7,7 @@ const schema = new mongoose.Schema({
   workerSlot: String, processId: String, dispatchId: String,
   scanDispatchedAt: Date, projections: [mongoose.Schema.Types.Mixed],
   progress: mongoose.Schema.Types.Mixed, error: String, finishedAt: Date,
+  indexRecovery: mongoose.Schema.Types.Mixed,
 }, { timestamps: true, collection: 'photo_processing_batches', autoCreate: false, autoIndex: false });
 schema.index({ workerSlot: 1 }, { unique: true, sparse: true });
 let ready;
