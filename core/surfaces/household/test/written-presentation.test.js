@@ -121,3 +121,15 @@ test('a verified late display joins the same source without repeating reading pr
   assert.equal(written.text(result).split('https://example.test/docs').length, 2);
   assert.match(written.text(result), /Verified image/);
 });
+
+test('an authoritative scene rejection revises the source without impersonating a native answer', () => {
+  const previous = presentationForTurn({ traceId: 'scene-turn', replyText: 'Proposed scene.', toolEvidence: { runId: 'model-run' } });
+  const rejected = presentationForTurn({ traceId: 'scene-turn', replyText: 'Browser rejected the scene.',
+    sceneReceipt: { status: 'rejected' }, toolEvidence: { runId: 'model-run' } }, { previous, replaceSource: true });
+  assert.equal(written.text(rejected), 'Browser rejected the scene.');
+  assert.equal(rejected.written.revision, previous.written.revision + 1);
+  assert.equal(rejected.written.sourceKind, 'scene-receipt');
+  assert.equal(rejected.written.sourceRunId, undefined);
+  const spokenUpdate = presentationForTurn({ traceId: 'scene-turn', replyText: 'Short summary.' }, { previous });
+  assert.equal(written.text(spokenUpdate), 'Proposed scene.');
+});

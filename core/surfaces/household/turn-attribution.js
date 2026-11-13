@@ -41,8 +41,11 @@ function attributedConversations(conversations) {
     if (typeof update.$set?.replyText !== 'string') return conversations.updateTurn(query, update);
     const previous = await conversations.getTurn(query);
     if (!previous) return null;
+    // LLMx's verified browser rejection is the authoritative visible outcome,
+    // not a late speech summary. Its original proposal stays in scene evidence.
+    const replaceSource = previous.source === 'graphysx-llmx' && update.$set.sceneReceipt?.status === 'rejected';
     const presentation = presentationForTurn({ ...previous, ...update.$set,
-      written: update.$set.written, speechProjection: update.$set.speechProjection }, { previous, childSafe: previous.scopeId === 'family' });
+      written: update.$set.written, speechProjection: update.$set.speechProjection }, { previous, childSafe: previous.scopeId === 'family', replaceSource });
     return conversations.updateTurn({ ...query, ...(previous.written?.revision ? { 'written.revision': previous.written.revision } : {}) },
       { ...update, $set: { ...update.$set, ...presentation } });
   };

@@ -10,9 +10,9 @@ const keepSource = (input, previous) => ({ written: previous.written, display: p
 
 // Every existing Household writer crosses this boundary, including fixed
 // answers and late native recovery. It owns no transcript or native agent loop.
-function presentationForTurn(input, { previous, childSafe = false } = {}) {
+function presentationForTurn(input, { previous, childSafe = false, replaceSource = false } = {}) {
   if (typeof input.replyText !== 'string') return {};
-  if (!input.written && valid(previous?.written) && previous.written.status === 'complete') {
+  if (!input.written && !replaceSource && valid(previous?.written) && previous.written.status === 'complete') {
     return keepSource(input, previous);
   }
   let draft = input.written, display = input.display || [], replyText = input.replyText;
@@ -42,7 +42,8 @@ function presentationForTurn(input, { previous, childSafe = false } = {}) {
     : ['cancelled', 'failed'].includes(input.outcome) || input.interrupted && !input.written ? 'partial' : 'complete');
   if (status !== 'complete' && valid(previous?.written) && previous.written.status === 'complete') return keepSource(input, previous);
   return { replyText, display, replySha256: createHash('sha256').update(replyText).digest('hex'), ...captureWritten({ draft, traceId: input.traceId,
-    runId: input.toolEvidence?.runId || input.toolEvidence?.run?.runId,
+    runId: replaceSource ? undefined : input.toolEvidence?.runId || input.toolEvidence?.run?.runId,
+    kind: replaceSource ? 'scene-receipt' : 'answer',
     previous: previous?.written, status, readAloud: input.speechProjection?.method === 'full-reading' }) };
 }
 
