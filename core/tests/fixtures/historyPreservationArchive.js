@@ -11,8 +11,10 @@ const { SecretaryPreservationControl } = require('../../integrations/runtime-bri
 const exec = promisify(execFile);
 const hash = value => createHash('sha256').update(value).digest('hex');
 
-async function archive() {
+async function archive({ command: expectedCommand = 'preservation' } = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'history-preservation-'));
+  const temporaryRoot = path.join(directory, 'restoration-temporary');
+  await fs.mkdir(temporaryRoot, { mode: 0o700 });
   const messageId = '1234567890abcdef', threadId = '1234567890abcdea';
   const attachment = Buffer.from('Synthetic original attachment bytes');
   const raw = Buffer.from(['Message-ID: <preservation@example.invalid>', 'MIME-Version: 1.0',
@@ -52,14 +54,14 @@ async function archive() {
     sshRunner: async (target, command) => {
       calls.push({ copy, target, command });
       const args = command.split(' ');
-      if (args[0] !== '/usr/bin/python3' || !args[1].endsWith('/secretary_mail_desk.py') || args[2] !== 'preservation') throw new Error('Unexpected native command');
+      if (args[0] !== '/usr/bin/python3' || !args[1].endsWith('/secretary_mail_desk.py') || args[2] !== expectedCommand) throw new Error('Unexpected native command');
       return exec(process.env.AGENTX_PYTHON_BIN || 'python3', ['-c', python,
         path.resolve(__dirname, '../../../integrations/secretary'), machines[copy], roots[copy], ...args.slice(2)], {
         timeout: 10000, maxBuffer: 1024 * 1024,
-        env: { ...process.env, OPENCLAW_CONFIG_PATH: path.join(directory, 'no-runtime-config.json') },
+        env: { ...process.env, TMPDIR: temporaryRoot, OPENCLAW_CONFIG_PATH: path.join(directory, 'no-runtime-config.json') },
       });
     } });
-  return { source, roots, machines, attachmentPaths, calls,
+  return { source, roots, machines, attachmentPaths, calls, temporaryRoot,
     control: new SecretaryPreservationControl({ primary: reader('primary'), mirror: reader('mirror') }),
     rewriteRaw: async raw => {
       const sha256 = hash(raw);

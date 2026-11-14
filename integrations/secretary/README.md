@@ -231,6 +231,15 @@ the receipt on the existing historical assertion; clients cannot submit local
 verification JSON as native evidence. See the
 [selected-source preservation contract](../../docs/SECRETARY_DOSSIER_REVIEW.md#native-preservation-of-a-selected-source)
 for bounds, refusal/revalidation and the independent acceptance gaps.
+The optional native `secretary_mail_desk.py restoration` command also copies
+that exact original, its recorded attachments and required metadata to private
+temporary storage, reopens and verifies them with the same native reader, and
+removes the temporary copy before returning evidence. Core selects it with
+`verification: "restoration"` on the same preservation API and retains a v2
+receipt. This is distinct from promoting a local `--sample` attestation: no
+client JSON supplies native restoration proof, and no v1 fallback is accepted.
+See [temporary disk restoration](../../docs/SECRETARY_DOSSIER_REVIEW.md#temporary-disk-restoration)
+for the exact file/byte bounds and the remaining global acceptance gaps.
 Hash verification and restoration of a large live archive use the instance's
 heavy-work queue; synthetic tests remain ordinary isolated checks.
 
