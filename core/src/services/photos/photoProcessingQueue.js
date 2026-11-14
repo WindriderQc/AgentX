@@ -8,6 +8,7 @@ const { fail } = require('./importFiles');
 const { loadProcessingConfig } = require('./photoProcessingConfig');
 const { createPhotoProcessingWork } = require('./photoProcessingWork');
 const writer = require('./photoProcessingWriter');
+const control = require('./photoProcessingControl');
 const PROCESS = crypto.randomUUID(), ACTOR = 'core-photo-processing', WC = { w: 1, j: true };
 const configIdentity = c => hash([c.libraryId, c.originalPathPrefix, c.nasHost]);
 async function target() {
@@ -60,6 +61,7 @@ async function record(job) {
   return row;
 }
 async function preDispatch(job, deps = {}) {
+  await control.assertOpen();
   const row = await record(job), config = (deps.config || loadProcessingConfig)();
   const current = await (deps.target || target)();
   if (!config || configIdentity(config) !== row.configHash || hash(current) !== hash(row.target)
@@ -82,9 +84,10 @@ async function observe(job, deps = {}) {
 }
 async function sweep(deps = {}) {
   if (!(deps.config || loadProcessingConfig)()) return;
-  await require('./photoProcessingRuns').discover(deps);
+  const paused = await control.isPaused();
+  if (!paused) await require('./photoProcessingRuns').discover(deps);
   const service = deps.queue || queue;
-  for (const row of await Batches.find({ state: 'queued', queueId: { $exists: false } }).limit(20).lean()) {
+  for (const row of paused ? [] : await Batches.find({ state: 'queued', queueId: { $exists: false } }).limit(20).lean()) {
     try { await enroll(row, deps); }
     catch (error) { await Batches.updateOne({ _id: row._id }, { $set: { error: error.code || 'PHOTO_QUEUE_UNAVAILABLE' } }); }
   }
@@ -100,7 +103,7 @@ async function sweep(deps = {}) {
     await Batches.updateOne({ _id: held._id, workerSlot: 'photo-processing', dispatchId: held.dispatchId },
       { $unset: { workerSlot: 1 }, ...(!['completed', 'failed'].includes(held.state) ? { $set: { state: 'failed', error: 'Queue: ' + job.state } } : {}) }, { writeConcern: WC });
   }
-  if (writer.draining()) return;
+  if (writer.draining() || paused) return;
   const rows = await Batches.find({ state: 'queued', queueId: { $exists: true } }).sort({ createdAt: 1 }).limit(20).lean();
   for (const row of rows) {
     let job = await service.get(row.queueId);
