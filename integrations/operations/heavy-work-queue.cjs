@@ -8,7 +8,7 @@ const path = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const ROOT = path.resolve(__dirname, '../..');
 const { planId, planRef, batchRequest } = require('../../shared/benchmarkBatchPlan.cjs');
-const ACTIONS = new Set(['list', 'show', 'submit', 'reserve', 'cancel', 'run', 'begin-operator', 'finish-operator', 'reconcile', 'migrate', 'archive', 'recover', 'island-watch', 'island-settle']);
+const ACTIONS = new Set(['list', 'show', 'submit', 'reserve', 'cancel', 'run', 'begin-operator', 'finish-operator', 'reconcile', 'migrate', 'archive', 'recover', 'island-watch', 'island-settle', 'photo-status', 'photo-pause', 'photo-resume']);
 
 function parse(argv) {
   const [action, ...args] = argv;
@@ -26,8 +26,16 @@ function parse(argv) {
   if (!core) throw new Error('--core or AGENTX_CORE_URL required; use the instance operator address');
   const url = new URL(core);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error('Core needs an HTTP(S) origin');
-  if (!['list', 'show'].includes(action) && !options.actor) throw new Error('--actor required');
+  if (!['list', 'show', 'photo-status'].includes(action) && !options.actor) throw new Error('--actor required');
   if (['show', 'reserve', 'cancel', 'run', 'begin-operator', 'finish-operator', 'reconcile', 'recover', 'island-watch', 'island-settle'].includes(action) && !/^[a-f0-9-]{36}$/.test(options.id || '')) throw new Error('--id needs a queue request UUID');
+  if (['photo-pause', 'photo-resume'].includes(action)
+    && !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(options.id || ''))
+    throw new Error('--id needs one photo control request UUID');
+  if (action.startsWith('photo-')) {
+    const fields = ['core', 'actor', 'benchmark', ...(action !== 'photo-status' ? ['id', 'revision'] : []),
+      ...(action === 'photo-resume' ? ['confirmation'] : [])];
+    if (Object.keys(options).some(key => !fields.includes(key))) throw new Error('Unsupported photo control option; no timed resume is accepted');
+  }
   return { action, options, core: url.origin };
 }
 async function json(url, { body, actor = 'operator', fetchImpl = fetch, timeoutMs = 30000 } = {}) {
@@ -173,6 +181,22 @@ async function main(argv = process.argv.slice(2), deps = {}) {
   };
   if (action === 'list') return client();
   if (action === 'show') return client(`/${options.id}`);
+  if (action.startsWith('photo-')) {
+    const op = { 'photo-status': 'control', 'photo-pause': 'pause', 'photo-resume': 'resume' }[action];
+    if (op === 'resume' && options.confirmation !== 'RESUME_PHOTO_PROCESSING')
+      throw new Error('An explicit --confirmation RESUME_PHOTO_PROCESSING is required');
+    const body = { op, ...(op !== 'control' && { requestId: options.id, expectedRevision: revision() }),
+      ...(op === 'resume' && { confirmation: options.confirmation }) };
+    try {
+      return await json(`${core}/api/phone-media/processing`, { actor: options.actor, fetchImpl: deps.fetchImpl, body });
+    } catch (error) {
+      if (op === 'control') throw error;
+      // A lost reply can follow a committed pause/resume. Keep the original
+      // identity; the operator reads photo-status instead of repeating blindly.
+      const refused = ['PHOTO_CONTROL_INVALID', 'PHOTO_CONTROL_CONFLICT'].includes(error.body?.code);
+      throw Object.assign(error, { outcome: refused ? 'refused' : 'uncertain', requestId: options.id });
+    }
+  }
   if (action === 'submit') {
     if (!options.file) throw new Error('--file needs a JSON request');
     return client('', JSON.parse(fs.readFileSync(options.file, 'utf8')));
@@ -224,7 +248,7 @@ async function main(argv = process.argv.slice(2), deps = {}) {
 if (require.main === module) main().then(data => {
   process.stdout.write(JSON.stringify({ ok: true, data }, null, 2) + '\n');
 }).catch(error => {
-  process.stdout.write(JSON.stringify({ ok: false, message: error.message, queueId: error.queueId, outcome: error.outcome }) + '\n');
+  process.stdout.write(JSON.stringify({ ok: false, message: error.message, queueId: error.queueId, requestId: error.requestId, outcome: error.outcome }) + '\n');
   process.exitCode = error.outcome === 'uncertain' ? 3 : error.outcome === 'refused' ? 4 : 1;
 });
 

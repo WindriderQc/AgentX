@@ -133,6 +133,17 @@ const RuntimeCoordinationSchema = new mongoose.Schema({
     kind: String, operationId: String, queueId: String, processId: String,
     hosts: [String], acquiredAt: Date, state: { type: String, enum: ['ACTIVE', 'UNKNOWN'] }
   }, { _id: false })], default: [] },
+  // Owner-only photo admission control. It has no TTL or scheduled resume;
+  // reads and privacy configuration remain independent of this pause.
+  photoProcessingControl: { type: new mongoose.Schema({
+    version: { type: Number, enum: [1], required: true },
+    revision: { type: Number, min: 1, required: true },
+    paused: { type: Boolean, required: true },
+    requestId: { type: String, required: true },
+    inputHash: { type: String, required: true },
+    principal: { type: String, maxlength: 160, required: true },
+    changedAt: { type: Date, required: true }
+  }, { _id: false }), default: undefined, select: false },
   // One revisioned control per machine group. It persists across Core restarts
   // and has no TTL: only an explicit Play gives control back to AgentX.
   hostControls: { type: [new mongoose.Schema({

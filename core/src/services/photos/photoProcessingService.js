@@ -9,6 +9,7 @@ const { createPhotoProcessingBridge } = require('./photoProcessingBridge');
 const { createImmichClient } = require('./immichClient');
 const { createPhotoProcessingImmich } = require('./photoProcessingImmich');
 const { createPhotoProcessingReview } = require('./photoProcessingReview');
+const control = require('./photoProcessingControl');
 function createPhotoProcessingService(deps = {}) {
   const config = deps.config || loadProcessingConfig, bridge = deps.bridge || createPhotoProcessingBridge({ config });
   const client = deps.client || createImmichClient(), cards = deps.cards || Cards, batches = deps.batches || Batches;
@@ -39,6 +40,8 @@ function createPhotoProcessingService(deps = {}) {
       progress: row.progress, error: row.error })), ...status() };
   }
   return { status, page, review: decisions.review, frame: decisions.frame,
+    control: () => control.status(), pause: (input, principal) => control.pause(input, principal),
+    resume: (input, principal) => control.resume(input, principal),
     enqueueRun: input => require('./photoProcessingRuns').enrollRun(input, deps),
     enqueue: input => (deps.queue || require('./photoProcessingQueue')).enqueue(input, deps) };
 }

@@ -3,6 +3,7 @@ const Runtime = require('../../../models/RuntimeCoordination');
 const { reapExpired } = require('../runtimeCoordinationState');
 const drain = require('../runtimeDrainIntent');
 const { fail } = require('./importFiles');
+const control = require('./photoProcessingControl');
 const KIND = 'photo-processing', WC = { w: 1, j: true };
 const proof = row => ({ kind: KIND, operationId: row._id, queueId: row.queueId, processId: row.processId });
 const draining = () => Boolean(drain.current());
@@ -11,11 +12,11 @@ const draining = () => Boolean(drain.current());
 // the maintenance CAS document so neither side can enter through a gap in the
 // other's lifetime. No TTL can prove that a remote scan/export/model stopped.
 async function acquire(row) {
-  if (draining()) return false;
+  if (draining() || await control.isPaused()) return false;
   await reapExpired();
   const owner = { ...proof(row), hosts: [row.target.host], acquiredAt: new Date(), state: 'ACTIVE' };
   const saved = await Runtime.findOneAndUpdate({ _id: 'runtime', maintenance: null,
-    'coreWriters.0': { $exists: false } }, { $push: { coreWriters: owner } },
+    'coreWriters.0': { $exists: false }, ...control.admissionFilter() }, { $push: { coreWriters: owner } },
   { new: true, writeConcern: WC }).lean();
   if (!saved) return false;
   // Drain may have arrived while the CAS was awaiting Mongo. No effect has

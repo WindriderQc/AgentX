@@ -3,7 +3,11 @@ const { createPhotoService } = require('../../src/services/photos/photoService')
 const { parseProposal } = require('../../src/services/photos/photoAnalysis');
 const { queuesIdle } = require('../../src/services/photos/photoProcessingWork');
 const ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', LIB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-test('managed phone imports are excluded from family search, details and thumbnails', async () => {
+test.each([false, true])('managed phone imports stay excluded from family reads (paused: %s)', async paused => {
+  await require('../../models/RuntimeCoordination').deleteMany({});
+  if (paused) await require('../../src/services/photos/photoProcessingControl').pause({
+    requestId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', expectedRevision: 0
+  }, 'synthetic-operator');
   const client = { settings: () => ({ enabled: true }), image: jest.fn(),
     json: jest.fn(async p => p.startsWith('/assets/') ? { id: ID, libraryId: LIB, visibility: 'timeline' } : { assets: { items: [] } }) };
   const service = createPhotoService({ client, processingConfig: () => ({ libraryId: LIB }) });
