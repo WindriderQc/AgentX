@@ -1,5 +1,5 @@
 'use strict';
-
+const { isArchivedQualification } = require('./archivedCodingQualification');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { buildSshArgs } = require('./openclaw/agentInventory');
@@ -203,7 +203,7 @@ function baseItem(task, attempt, stage, overrides = {}) {
 }
 
 function localItem(task, repository) {
-  const attempt = latestAttempt(task);
+  const attempt = isArchivedQualification(task) ? null : latestAttempt(task);
   if (!attempt) return null;
   const reviewOutcome = String(attempt.reviewOutcome || 'pending');
   if (task.status === 'review' && reviewOutcome === 'pending') {
@@ -789,7 +789,7 @@ class CodingDeliveryControl {
     const github = observationGitHub(this.github);
     const productGithub = observationGitHub(this.productGithub);
     const [tasks, production] = await Promise.all([this.taskReader(), this.productionReader()]);
-    const projectedItems = await mapConcurrent(safeArray(tasks), 3, async (task) => {
+    const projectedItems = await mapConcurrent(safeArray(tasks).filter(task => !isArchivedQualification(task)), 3, async (task) => {
       let projected;
       try {
         if (String(task.automation?.policyRef || '').startsWith('product.') && task.status === 'done' && acceptedAttempt(task)) {
@@ -884,7 +884,7 @@ class CodingDeliveryControl {
     this.merging.add(pipelineId);
     try {
       const tasks = safeArray(await this.taskReader());
-      const task = tasks.find((candidate) => String(candidate?.pipelineId) === pipelineId);
+      const task = tasks.find((candidate) => !isArchivedQualification(candidate) && String(candidate?.pipelineId) === pipelineId);
       const attempt = task && acceptedAttempt(task);
       const promotion = task && promotionFromTask(task, this.repository);
       if (!task || !attempt || !promotion || promotion.pullRequestNumber !== pullRequestNumber) {
