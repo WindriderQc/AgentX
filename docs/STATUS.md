@@ -296,6 +296,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   Core retains a revalidatable receipt on the same assertion; erasure clears it.
   Missing or changed copies remain blocked, with no cleanup authority. See
   [native preservation](SECRETARY_DOSSIER_REVIEW.md#native-preservation-of-a-selected-source).
+  A bounded restoration scope composes retained checks for every exact selected
+  source, freshly rechecks both copies and fences all selected Core documents
+  after the native calls. The v5 reconciliation report checks complete selected
+  coverage and refreshes Core/archive pins after restoration; global semantic,
+  storage and mailbox approval gaps remain. See
+  [selected restoration scope](SECRETARY_DOSSIER_REVIEW.md#complete-selected-restoration-scope).
   An optional restoration check copies that selected native file set into
   private temporary storage, reopens and verifies its bytes and MIME, and removes
   it before returning evidence. The same receipt retains each copy's file-set

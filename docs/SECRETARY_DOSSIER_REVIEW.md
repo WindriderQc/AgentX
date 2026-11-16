@@ -414,6 +414,53 @@ atomic decision reconciliation or exact mailbox-approval binding. Every result
 keeps `executionAllowed: false` and `cleanupStatus: blocked`. No mailbox
 executor, new approval path, migration or actual cleanup is introduced.
 
+### Complete selected restoration scope
+
+`POST /api/secretary/history/preservation-scope` composes existing immutable
+restoration receipts for an explicitly selected set of 1–20 exact Gmail messages.
+It takes a fresh `observationId`, optional previous `expected` fingerprint and
+`checks`: each item has only `entryId`, the retained `requestId`, `snapshotHash`
+and exact `source` (`system`, `messageId`, `threadId`, `sourceSha256`). Duplicate
+messages, missing receipts, byte-only v1 proofs, originally blocked proofs and
+stale assertion/context versions refuse before native restoration starts.
+
+Core rechecks every retained v2 receipt through the existing primary/mirror
+restoration transport with fresh server nonces. Every source must remain current
+and use the same primary/mirror archive identities across the selected set.
+The final bounded Mongo read compares every selected assertion, context and
+receipt after all native calls, with source-erasure checks before and after.
+There is no partial success, new stored receipt, mode upgrade or fallback.
+The database bounds each projected record to 512 KiB and the complete selection
+to 4 MiB; the final snapshot is bounded to 1 MiB without truncation.
+
+`agentx.history-restoration-scope/v1` binds the complete selected source-set hash,
+retained proofs and current entry pins into one fingerprint. Its nonces/timestamps
+stay outside that stable snapshot. A matching expected fingerprint reports
+`observed_match`; a mismatch reports `changed`. All results remain private/no-store.
+The source-set hash is a canonical projection of the selected exact sources,
+not verification of an arbitrary caller-supplied manifest file or other metadata.
+The snapshot proves bounded mechanical coverage, not one atomic observation of
+all files/documents, all archive metadata, physical storage independence,
+semantic interpretation, authenticated human consent or mailbox approval.
+
+`retention_reconcile.py --native-restoration-checks <private-file>` selects v5
+and implies v4 finding/message/decision checks. The private JSON array uses the
+same `checks` fields and must cover every saved disposition exactly once; an
+omission, additional message or different source hash refuses before network
+calls. Two native scope observations must match. After restoration, Core
+membership/decisions and local archive-derived disposition pins are checked
+again before a new immutable private report is written. Original receipts,
+saved dispositions, v1–v4 reports and prior behavior remain unchanged. Standard
+output contains only status/counts. Exit zero means a matching observation,
+never execution authority; all four global gaps and blocked/false flags remain.
+
+Each existing two-copy transport has its unchanged 45-second bound; a full
+20-message request can take up to approximately 15 minutes per pass. The client
+bounds each response to 2 MiB and each observation timeout to 960 seconds, with
+no automatic retry. Real archive restoration is separately authorized queued
+work, even though only private temporary copies are removed. Synthetic CPU
+fixtures do not establish installed reader, two-host or storage acceptance.
+
 ### Temporary disk restoration
 
 The same `POST .../:id/preservation` optionally takes

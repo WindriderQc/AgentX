@@ -42,10 +42,14 @@ def entry_set(entries):
     return content_hash(sorted(entries, key=lambda entry: entry["id"]))
 
 
-def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False, message_scope=False, finding_scope=False):
+def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False, message_scope=False, finding_scope=False, restoration_checks=None):
     previous = indexed(saved)
     manifests = list(manifests)
     options = {} if opener is None else {"opener": opener}
+    if restoration_checks is not None:
+        from native_history_restoration_scope import selection
+        selection(saved, restoration_checks)  # Refuse omissions before the first external call.
+        finding_scope = True
     if finding_scope:
         message_scope = True
     if message_scope:
@@ -104,7 +108,22 @@ def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native
     if finding_scope:
         from native_history_finding_scope import capture as capture_findings
         native["nativeFindingScopes"] = capture_findings(core, saved, second_coverage, scopes_second, second, **options)
-    return {"schema": f"agentx.secretary-retention-reconciliation/v{4 if finding_scope else 3 if message_scope else 2 if native_decisions else 1}", "at": now(),
+    if restoration_checks is not None:
+        from native_history_restoration_scope import capture as capture_restoration
+        native["nativeRestorationScope"] = capture_restoration(core, saved, restoration_checks, **options)
+        # Restore probes can take longer than the earlier observations. Recheck
+        # Core membership/decisions AND archive-derived disposition pins after
+        # all probes; do not silently return the earlier successful view.
+        final_entries, final_scopes = discover(core, saved, previous=scopes_second, **options)
+        final_native = capture(core, final_entries, second_rows, saved, previous=native_second, **options)
+        confirm(final_native, final_scopes)
+        final_rows, _ = dispositions(archive, before, final_entries, manifests)
+        if entry_set(final_entries) != entry_set(second) \
+                or content_hash([comparable(row) for row in final_rows]) != content_hash([comparable(row) for row in second_rows]):
+            raise ValueError("Core or archive changed during restoration; no complete observation was established")
+        native["nativeDecisions"]["entries"] = final_native
+        native["nativeDecisions"]["messageScopes"] = final_scopes
+    return {"schema": f"agentx.secretary-retention-reconciliation/v{5 if restoration_checks is not None else 4 if finding_scope else 3 if message_scope else 2 if native_decisions else 1}", "at": now(),
             "before": before.isoformat(), "decisionSource": "agentx.core",
             "observation": "two agreeing bounded reads; not an atomic snapshot or native acceptance",
             "savedDispositionsSha256": content_hash(saved), "coreEntriesSha256": entry_set(second),
@@ -126,6 +145,8 @@ def main(argv=None):
                         help="Discover 1-20 exact saved messages across primary and related Core references; implies native decision checks")
     parser.add_argument("--native-finding-scope", action="store_true",
                         help="Also bind recorded native archive findings/questions to current Core decisions; implies native message scope")
+    parser.add_argument("--native-restoration-checks", type=Path,
+                        help="Exact retained v2 receipts for every saved source; fresh temporary disk restores, implies native finding scope")
     args = parser.parse_args(argv)
     if args.output.resolve().is_relative_to(args.root.resolve()):
         parser.error("Reconciliation reports stay outside the evidence archive")
@@ -134,17 +155,21 @@ def main(argv=None):
     archive = Archive(args.root, run=lambda _: (_ for _ in ()).throw(RuntimeError("Provider access disabled")))
     report = reconcile(archive, args.before, load(args.dispositions), args.core,
                        [load(path) for path in args.souvenir_manifest], native_decisions=args.native_decisions,
-                       message_scope=args.native_message_scope, finding_scope=args.native_finding_scope)
+                       message_scope=args.native_message_scope, finding_scope=args.native_finding_scope,
+                       restoration_checks=load(args.native_restoration_checks) if args.native_restoration_checks is not None else None)
     durable(args.output, report, exclusive=True)
     summary = {key: report[key] for key in ("schema", "at", "counts", "cleanupStatus", "executionAllowed")}
-    if args.native_decisions or args.native_message_scope or args.native_finding_scope:
+    if args.native_decisions or args.native_message_scope or args.native_finding_scope or args.native_restoration_checks is not None:
         native = report["nativeDecisions"]
         summary["nativeDecisions"] = {"status": native["status"], "selectedEntries": len(native["entries"]),
                                      "pendingEntries": native["pendingEntries"]}
-    if args.native_finding_scope:
+    if args.native_finding_scope or args.native_restoration_checks is not None:
         scopes = report["nativeFindingScopes"]
         summary["nativeFindings"] = {"messages": len(scopes), "heldMessages": sum(bool(scope["snapshot"]["coverage"]["blockers"]) for scope in scopes),
             "recordedFindings": sum(scope["snapshot"]["coverage"]["counts"]["recordedFindings"] for scope in scopes)}
+    if args.native_restoration_checks is not None:
+        summary["nativeRestoration"] = {"status": report["nativeRestorationScope"]["status"],
+            "messages": len(report["nativeRestorationScope"]["snapshot"]["members"])}
     print(json.dumps(summary))
     return 0 if all(row["status"] == "observed_match" for row in report["messages"]) \
         and not report.get("nativeDecisions", {}).get("pendingEntries") \

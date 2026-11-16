@@ -5,6 +5,8 @@ const request = require('supertest');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const Entry = require('../../models/PersonalHistoryEntry');
 const Suppression = require('../../models/PersonalHistorySuppression');
 const history = require('../../src/services/personalHistoryService');
@@ -93,5 +95,43 @@ const { archive } = require('../fixtures/historyPreservationArchive');
   test('family-selected audience refuses the new mode before any native temporary write', async () => {
     await request(mount('family')).post(url()).set('x-agentx-caller', 'owner').send(input(randomUUID())).expect(403);
     expect(fixture.calls).toEqual([]); expect(await fs.readdir(fixture.temporaryRoot)).toEqual([]);
+  });
+
+  test('Python manifest client -> Core HTTP -> actual native restoration -> final Mongo fence', async () => {
+    const source = Object.fromEntries(['system', 'messageId', 'threadId', 'sourceSha256'].map(name => [name, fixture.source[name]]));
+    const second = { ...source, messageId: '1234567890abcdfe' };
+    // Two exact message identities share deduplicated synthetic original bytes,
+    // while retaining separate raw receipts in the same two native archives.
+    for (const root of Object.values(fixture.roots)) {
+      const manifestPath = path.join(root, 'threads', source.threadId, 'manifest.json');
+      const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+      manifest.messages.push({ ...manifest.messages[0], id: second.messageId });
+      await fs.writeFile(manifestPath, JSON.stringify(manifest));
+      const rawReceipt = JSON.parse(await fs.readFile(path.join(root, 'raw-receipts', source.messageId + '.json'), 'utf8'));
+      await fs.writeFile(path.join(root, 'raw-receipts', second.messageId + '.json'), JSON.stringify({ ...rawReceipt, messageId: second.messageId }));
+    }
+    const secondId = (await history.record({ kind: 'fact', text: 'Synthetic second restored message',
+      sourceDate: '2024-01-01T00:00:00Z', source: { ...second, findingId: 'c'.repeat(64) } })).entry.id;
+    const checks = [];
+    for (const [entryId, reference] of [[id, source], [secondId, second]]) {
+      const requestId = randomUUID();
+      const receipt = (await request(app).post(`/api/secretary/history/${entryId}/preservation`)
+        .send(input(requestId)).expect(200)).body.data.receipt;
+      checks.push({ entryId, requestId, snapshotHash: receipt.snapshotHash, source: reference });
+    }
+    const server = app.listen(0, '127.0.0.1');
+    await new Promise(resolve => server.once('listening', resolve));
+    try {
+      const program = ['import json,sys', 'sys.path.insert(0,sys.argv[1])',
+        'from native_history_restoration_scope import capture',
+        'value=capture(sys.argv[2],json.loads(sys.argv[3]),json.loads(sys.argv[4]))',
+        'print(json.dumps({"status":value["status"],"members":len(value["snapshot"]["members"]),"executionAllowed":value["executionAllowed"]}))'].join('\n');
+      const result = await promisify(execFile)(process.env.AGENTX_PYTHON_BIN || 'python3', ['-c', program,
+        path.resolve(__dirname, '../../../integrations/secretary'), `http://127.0.0.1:${server.address().port}`,
+        JSON.stringify([source, second]), JSON.stringify(checks)], { timeout: 30000, maxBuffer: 4096 });
+      expect(JSON.parse(result.stdout)).toEqual({ status: 'observed_match', members: 2, executionAllowed: false });
+      expect(fixture.calls).toHaveLength(12); expect(await fs.readdir(fixture.temporaryRoot)).toEqual([]);
+      expect((await Entry.findById(id).lean()).preservationChecks).toHaveLength(1);
+    } finally { await new Promise(resolve => server.close(resolve)); }
   });
 });
