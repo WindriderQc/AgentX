@@ -52,6 +52,9 @@ test('one explicit attempt preserves refused history and human choices, exports 
   expect(card.frame).toEqual({ revision: 2, selected: true });
   expect(deps.immich.pendingTag).not.toHaveBeenCalled();
   expect(deps.inference.execute).toHaveBeenCalledTimes(1);
+  expect(deps.inference.execute.mock.calls[0][0]).not.toHaveProperty('attribution');
+  expect(deps.inference.execute.mock.calls[0][1]).toMatchObject({ consumerContract: 'photo-analysis',
+    attribution: { workItemId: input.queueId, correlationId: input.analysisId, runtime: 'agentx' } });
   expect((await Runtime.findById('runtime')).coreWriters).toHaveLength(0);
   expect(await Batches.findById(input.operationId).lean()).toMatchObject({ state: 'completed', progress: { completed: 1, failedAnalyses: 0 } });
   expect(await retry(input, deps)).toMatchObject({ idempotent: true, inferenceReplayed: false });

@@ -28,8 +28,9 @@ async function analyze({ inference, bytes, contentType, sha256, analysisId, queu
   const result = await inference.execute({ mode: 'chat', stream: false, think: false, taskType: 'analysis', model: target.model,
     messages: [{ role: 'system', content: PROMPT }, { role: 'user', content: 'Propose une fiche de tri pour cette image.', images: [bytes.toString('base64')] }],
     format: FORMAT, options: { temperature: 0.2, num_predict: 900 }, timeoutMs: 180000,
-    callerDetail: 'verified-phone-photo', attribution: { workItemId: queueId, correlationId: analysisId, runtime: 'agentx' } },
-  { consumerContract: 'photo-analysis', hostUrl: target.host, sourcePolicy: 'local-only' });
+    callerDetail: 'verified-phone-photo' },
+  { consumerContract: 'photo-analysis', hostUrl: target.host, sourcePolicy: 'local-only',
+    attribution: { workItemId: queueId, correlationId: analysisId, runtime: 'agentx' } });
   if (!result?.ok) throw fail('PHOTO_ANALYSIS_FAILED', 'Vision analysis returned no successful result');
   let proposal;
   try { proposal = parseProposal(result.body?.message?.content || result.body?.response); }
