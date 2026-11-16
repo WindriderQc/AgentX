@@ -33,13 +33,13 @@ const DEFINITIONS = Object.freeze({
 // One shared interpretation contract for every envelope and catalogue, so the
 // meanings of read time, content time and producer evidence are never repeated.
 const READING = Object.freeze({
-  availability: 'status says whether this read succeeded, not how fresh the content is. A recent readAt never makes old or undated content current, and an unavailable read is never an empty source.',
+  availability: 'status says whether this read succeeded, not how fresh the content is. A recent readAt never makes old or undated content current; an unavailable read is never an empty source.',
   timestamps: {
-    readAt: 'When Core produced this read. It is a read receipt, never a source revision and never proof the content is current.',
-    sourceUpdatedAt: 'Newest timestamp the source itself exposes for this read; null means the source exposes none, not a failure.',
+    readAt: 'When Core produced this read; a read receipt, never a source revision and never proof the content is current.',
+    sourceUpdatedAt: 'Source-specific timestamp the source exposes; null means the source exposes none, not a failure. Never a generic newest-content time.',
     producerEvidence: 'Native records or request probes this read observed; nulls and history "unknown" are missing evidence, never absence of data.'
   },
-  partial: 'A partial section, a page window or a record window is never complete coverage. Continue pages with nextOffset and expectedHash, and record cursors with section.pagination nextOffset and asOf, before answering from the result.'
+  partial: 'Partial sections, page or record windows are never complete coverage; a bounded answer suffices if you disclose it. Transport paging: continue with offset=nextOffset and expectedHash=contentHash. Record paging is separate: recordOffset carries section.pagination nextOffset and asOf.'
 });
 let ambientSingleton;
 function defaultAmbient() {
