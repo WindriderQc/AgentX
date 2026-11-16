@@ -46,6 +46,15 @@ Coding Team edits and tests them while the runner controls Git metadata.
 An interrupted merge preserves its index and local resolution. A second
 upstream conflict receives a bounded new coding turn after native release.
 
+Manual workers report final tests as direct shell calls with their native output
+and exit status together. Node tests use the TAP reporter; output redirection,
+pipes and appended echo commands can hide the actual test outcome. Reading a
+saved log in a later call does not retroactively validate an earlier test.
+A conclusive failure is `tests_failed`; inconclusive execution proof is
+`tests_unknown`. Both keep the checkpoint local and prohibit publication.
+These worker observations are not independent verification of a commit; the
+runner-owned verification profiles below retain that separate responsibility.
+
 The worker has no network, Git write access, GitHub credentials or production
 checkout. Runner-only relay headers bind every inference to its existing task,
 request and lease. Core records the call before native dispatch, checks the

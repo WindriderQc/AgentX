@@ -259,6 +259,22 @@ class CodingRunTest(unittest.TestCase):
         publish.assert_not_called()
         self.assertEqual(self.feedback.call_args.args[-1], "blocked")
 
+    def test_unknown_test_stays_local_with_distinct_reason_and_no_failed_claim(self):
+        self.exit_code = 0
+        def worker(workspace, prompt, timeout, progress):
+            progress.last_test = {"name": "node_test", "outcome": "unknown"}
+            return self.worker(workspace, prompt, timeout, progress)
+        with mock.patch.object(runner, "run_worker", worker), \
+                mock.patch.object(runner, "push_and_open_pr") as publish, mock.patch("builtins.print"):
+            self.assertEqual(runner.main(), 1)
+        publish.assert_not_called()
+        self.assertEqual(self.feedback.call_args.kwargs["reason"], "tests_unknown")
+        self.assertIn("no conclusive execution proof", self.feedback.call_args.args[1])
+        self.assertNotIn("failed", self.feedback.call_args.args[1])
+        self.assertEqual(runner.git(self.workspace, "status", "--porcelain"), "")
+        self.assertIn("Do not pipe", self.prompt)
+        self.assertIn("--test-reporter=tap", self.prompt)
+
     def test_a_controlled_stop_cannot_publish_even_if_the_child_returns_zero(self):
         self.exit_code = 0
         def worker(workspace, prompt, timeout, progress):

@@ -86,7 +86,7 @@ register('result', ['empty_response', 'thinking_only', 'no_diff_in_final', 'patc
 register('verification', ['independent_verification_failed', 'public_test_failed', 'tests_failed',
   'hidden_test_failed', 'regression_failed']);
 register('evaluator', ['grader_error', 'llm_failed', 'no_valid_scores']);
-register('evidence', ['worker_snapshot_receipt_failed', 'attribution_lease_evidence_invalid',
+register('evidence', ['tests_unknown', 'worker_snapshot_receipt_failed', 'attribution_lease_evidence_invalid',
   'attribution_request_count_mismatch', 'attribution_session_model_mismatch', 'winner_route_mismatch',
   'cost_evidence_invalid', 'cost_evidence_unavailable', 'cost_provider_mismatch',
   'local_energy_evidence_unavailable', 'RECEIPT_SELECTION_MISMATCH', 'RECEIPT_ENVELOPE_MISMATCH',

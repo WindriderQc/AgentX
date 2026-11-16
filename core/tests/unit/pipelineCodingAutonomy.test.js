@@ -764,7 +764,7 @@ test('a task taken by another worker after selection cancels only the unreceived
   expect(original.assignee).toBe('other-worker'); expect(original.codingAutonomy.reason).toBe('task_owned_elsewhere');
 });
 
-test.each(['tests_failed', 'hard_budget', 'operator_stop', 'regression_edits_missing', 'regression_requirement_unverified'])('only exact native unpublished test failure %s can select a bounded correction', async reason => {
+test.each(['tests_failed', 'tests_unknown', 'hard_budget', 'operator_stop', 'regression_edits_missing', 'regression_requirement_unverified'])('only exact native unpublished test failure %s can select a bounded correction', async reason => {
   const requiredRegressionTests = ['integrations/coding/tests/test_source.py'];
   await task('0001', { automation: intent(['integrations/coding/source.py', ...requiredRegressionTests]) });
   await authorize('0001', undefined, { requiredRegressionTests });

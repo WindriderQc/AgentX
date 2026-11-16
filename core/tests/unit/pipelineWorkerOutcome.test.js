@@ -90,3 +90,15 @@ test.each([{ reason: 'invented' }, { reason: 'constructor' }, { reason: '__proto
   expect(() => outcome.normalize({ ...observation, ...override }, '0700')).toThrow();
   expect(outcome.latest({ ...task, feedback: [{ workerOutcome: { ...observation, ...override } }] })).toBeNull();
 });
+
+
+test('unknown test proof is retained as inspection, never a failure or resume permission', () => {
+  const observed = { ...observation, reason: 'tests_unknown' };
+  const changed = { ...task, feedback: [{ workerOutcome: observed }] };
+  const c = control(); c.run.progress.stopReason = 'tests_unknown';
+  expect(outcome.normalize(observed, task.pipelineId).reason).toBe('tests_unknown');
+  expect(outcome.native(changed, c, now).reason).toBe('tests_unknown');
+  expect(outcome.describe(observed)).toMatchObject({ title: 'Test execution proof needs checking', requiresInspection: true });
+  expect(taskNextAction(changed)).toMatchObject({ code: 'inspect_blocker', authorization: 'not_granted' });
+  expect(outcome.canResume(changed, c, now)).toBe(false);
+});
