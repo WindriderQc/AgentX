@@ -11,6 +11,7 @@ import objective_claim_proofs as proofs
 import objective_explicit_selection as explicit
 import objective_omission_policy as policy
 import objective_useful_selection as selection
+import objective_actor_context as actor_context
 
 CONTRACT = 'secretary.work-actor-selection/v1'
 REPORT = re.compile(r"\bj['’]ai\s+(?:pass[eé]|travaill[eé]|consacr[eé]|envoy[eé]|livr[eé]|"
@@ -26,9 +27,11 @@ def actors(spans, context=None):
     for key, (owner, basis, header) in explicit.reading_contexts(spans, context).items():
         evidence = [s for s in spans if s['id'] == key or header and s['id'] == header['id']]
         subjects = ['owner', 'thirdparty', 'unknown'] if owner else (
-            ['thirdparty', 'unknown'] if basis == 'quoted-speaker' else ['unknown'])
+            ['thirdparty', 'unknown'] if basis in ('quoted-speaker', 'other-authored-segment-reading-context') else ['unknown'])
         rows.append({'citationId': key, 'allowedSubjects': subjects, 'contextBasis': basis,
                      'sourceSpans': evidence, 'identityVerified': False})
+        if isinstance(context, dict) and context.get('actorReadingContract') == actor_context.CONTRACT:
+            rows[-1]['sourceSegment'] = copy.deepcopy(actor_context.segment_for(next(s for s in spans if s['id'] == key), context))
     return rows
 
 
@@ -53,7 +56,7 @@ def work_catalog(spans, context=None):
         if policy.NONBIO.search(span['text']):
             reasons.append('non-biographical-context')
         elif not owner:
-            reasons.append('other-person-context' if basis == 'quoted-speaker' else 'ambiguous-actor')
+            reasons.append('other-person-context' if basis in ('quoted-speaker', 'other-authored-segment-reading-context') else 'ambiguous-actor')
         if not complete:
             reasons.append('insufficient-event-context')
         rows.append({'citationId': span['id'], 'factTypes': kinds, 'directDeclaration': complete,

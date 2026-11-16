@@ -30,6 +30,7 @@ import objective_equivalence as equivalent
 import objective_dispositions as dispositions
 import objective_rejected_copies as rejected_copies
 import objective_attribution as attribution
+import objective_actor_context as actor_context
 from objective_quote_reconciliation import reconcile as reconcile_quotes
 from objective_annual import aggregate as annual_coverage
 from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled, blocked_phase, blocked_counts, result_file
@@ -76,10 +77,14 @@ def prepare(root, config, *, create=True):
     file = objective / "manifest.json"
     previous = load(file, {}) if file.exists() else None
     contract = attribution.contract_for(previous) if previous is not None else attribution.CONTRACT
+    actors = actor_context.contract_for(previous) if previous is not None else actor_context.CONTRACT
     system = attribution.system(INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + config["instructions"], contract)
+    system = actor_context.system(system, actors)
     identity = {"contract": CONTRACT, "config": config, "system": system, "schema": SCHEMA}
     if contract:
         identity["attributionContract"] = contract
+    if actors:
+        identity['actorReadingContract'] = actors
     objective_sha = hashed(identity)
     if file.exists():
         manifest = previous
@@ -92,6 +97,8 @@ def prepare(root, config, *, create=True):
                 "config": config, "sources": inventory(root, config["selection"]),
                 "systemSha256": hashed(system), "responseSchemaSha256": hashed(SCHEMA)}
     manifest["attributionContract"] = contract
+    if actors:
+        manifest['actorReadingContract'] = actors
     try:
         durable(file, manifest, exclusive=True)
     except FileExistsError:
@@ -311,6 +318,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         return {**status, "coverage": coverage(objective, manifest)}
     system = attribution.system(INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + manifest["config"]["instructions"],
                                 attribution.contract_for(manifest))
+    system = actor_context.system(system, actor_context.contract_for(manifest))
     grounded = grounding.contract_for(manifest)
     started, made, rejected, deferred, inferences = clock(), 0, 0, 0, 0
     requested_stop = stop

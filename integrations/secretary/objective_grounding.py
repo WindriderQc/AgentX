@@ -25,6 +25,7 @@ import objective_cue_decisions as cue_decisions
 import objective_anchored_facts as anchored_facts
 import objective_claim_typing as claim_typing
 import objective_work_actors as work_actors
+import objective_actor_context as actor_context
 
 LEGACY_CONTRACT = "secretary.objective-grounding/v1"
 WORDING_CONTRACT = "secretary.objective-grounding/v2"
@@ -138,7 +139,7 @@ def extraction_context(record, manifest):
     if contract_for(manifest) in (OMISSION_CONTRACT, EXPLICIT_CONTRACT, CUE_CONTRACT, ANCHORED_CONTRACT, CLAIM_CONTRACT, CONTRACT):
         context = {**(context or {}), 'ownerAliases': manifest['config'].get('ownerAliases', [])}
     from objective_attribution import extraction_context as attributed_context
-    return attributed_context(context, record, manifest)
+    return actor_context.extraction_context(attributed_context(context, record, manifest), context, record, manifest)
 
 
 def catalog(content):

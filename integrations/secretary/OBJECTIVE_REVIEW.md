@@ -20,8 +20,26 @@ the exact unchanged representations used for reconciliation. Their hash binds
 the source record and the receipt's `quoteAttribution`; receipt reads replay
 that derivation. Rejected-copy scopes and complete-text aliases use the same
 frozen context. No evidence or model response is rewritten. A container date or
-sent-owner reading cue is unavailable on a mixed/quoted page; literal source
+sent-owner reading cue is unavailable on a mixed/quoted page in earlier actor
+contracts; literal source
 dates remain distinct from interpretation of the event.
+
+New objective manifests also freeze
+`actorReadingContract: secretary.segment-actor-reading/v1` into their intent
+and system policy. Actor choices use the existing attribution segment covering
+the entire primary excerpt. The sender of an authored sent segment can be
+proposed as owner even when a later segment is quoted. A continuation uses the
+full retained segment, including a header before the page. Quoted authors remain
+claims; unresolved, missing, overlapping or cross-boundary context stays unknown.
+Attachments cannot inherit the containing sender. A draft supplies no sent-owner
+context. Segment evidence accompanies the actor selection proof, and local
+validation rejects an actor that the model's own excerpt cannot support.
+
+This actor contract changes neither date selection nor source-claim confidence,
+and never confirms identity, an event or publication. Existing manifests without
+the field retain their exact prior system, actor choices, dispatch identities
+and projections. Receipt reads do not retrofit better attribution into old
+native results. Human corrections belong to a separate reviewed view.
 
 Each exported quote retains author/date claims separately from verified
 original matches, original-body Unicode spans, containing-message provenance,

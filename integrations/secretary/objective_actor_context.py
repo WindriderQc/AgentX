@@ -1,0 +1,73 @@
+"""Versioned actor reading from the existing frozen source segments.
+
+This changes new objectives only. Dates keep their existing conservative
+contract, and a supported actor remains a proposal, never owner confirmation.
+"""
+import copy
+
+import objective_omission_policy as policy
+
+CONTRACT = 'secretary.segment-actor-reading/v1'
+POLICY = ('Proposed actors use the frozen segment containing the entire primary excerpt. '
+          'An authored sent segment may support its own sender, even when another segment is quoted. '
+          'Quoted and unresolved text never inherits the containing sender. '
+          'These reading signals establish neither verified identity nor owner confirmation.')
+
+
+def contract_for(manifest):
+    contract = manifest.get('actorReadingContract')
+    if contract not in (None, CONTRACT):
+        raise ValueError('Unsupported objective actor reading contract')
+    if contract and not manifest.get('attributionContract'):
+        raise ValueError('Segment actor reading requires frozen source attribution')
+    return contract
+
+
+def system(base, contract):
+    return base if contract is None else base + '\n\n' + POLICY
+
+
+def extraction_context(context, original, record, manifest):
+    contract = contract_for(manifest)
+    if contract is None:
+        return context
+    native = record.get('nativeRef', record)
+    return {**(context or {}), 'actorReadingContract': contract,
+            'actorDirection': (original or {}).get('direction', 'unknown'),
+            'actorSourceSegments': copy.deepcopy(native.get('sourceContext', {}).get('segments', []))}
+
+
+def segment_for(span, context):
+    segments = context.get('actorSourceSegments')
+    offset = context.get('offset')
+    if not isinstance(segments, list) or type(offset) is not int or offset < 0:
+        return None
+    start, end = offset + span['start'], offset + span['end']
+    intersecting = [s for s in segments if isinstance(s, dict) and type(s.get('start')) is int
+                    and type(s.get('end')) is int and s['start'] < end and s['end'] > start]
+    if len(intersecting) != 1:
+        return None
+    segment = intersecting[0]
+    return segment if segment['start'] <= start < end <= segment['end'] else None
+
+
+def reading_contexts(spans, context):
+    aliases = context.get('ownerAliases', [])
+    aliases = aliases if isinstance(aliases, list) else []
+    result = {}
+    for span in spans:
+        segment = segment_for(span, context)
+        owner, basis = False, 'unresolved-speaker'
+        if segment:
+            relation = segment.get('relation')
+            author = segment.get('author') if relation == 'authored' else segment.get('claimedAuthor')
+            if relation == 'authored' and context.get('actorDirection') != 'draft' and isinstance(author, str) and author.strip():
+                if context.get('actorDirection') == 'sent' and policy._owner_header(author, aliases):
+                    owner, basis = True, 'sent-authored-segment-reading-context'
+                elif aliases and not policy._owner_header(author, aliases):
+                    basis = 'other-authored-segment-reading-context'
+            elif relation == 'quoted' and isinstance(author, str) and author.strip():
+                owner = bool(policy._owner_header(author, aliases))
+                basis = 'owner-alias-header-reading-context' if owner else 'quoted-speaker'
+        result[span['id']] = owner, basis, None
+    return result

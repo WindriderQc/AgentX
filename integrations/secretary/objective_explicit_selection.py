@@ -11,6 +11,7 @@ from evidence_attribution import FORWARDED, PARTIAL_REPLY
 import objective_omission_policy as policy
 import objective_source_observations as observations
 import objective_useful_selection as selection
+import objective_actor_context as actor_context
 
 DIRECT = re.compile(r"\bj['’](?:ai|habite|[eé]tudie)\b|\bje\s+(?:suis|vis|travaille|d[eé]bute|"
                     r"commence|pratique|termine)\b|\bnous\s+(?:avons|sommes)\b|\bon\s+(?:a|est)\b|"
@@ -21,6 +22,8 @@ FINISHED = re.compile(r'\b(?:mon|ma|mes|notre|nos)\s+[^.!?\r\n]{1,100}?\b(?:est|
 
 def reading_contexts(spans, context=None):
     context = context if isinstance(context, dict) else {}
+    if context.get('actorReadingContract') == actor_context.CONTRACT:
+        return actor_context.reading_contexts(spans, context)
     aliases = context.get('ownerAliases', [])
     aliases = aliases if isinstance(aliases, list) else []
     owner = bool(aliases and context.get('direction') == 'sent' and context.get('offset') == 0)
