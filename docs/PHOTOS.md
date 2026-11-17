@@ -160,6 +160,14 @@ invalid or unreadable configuration leaves the feature off. The configuration
 is limited to 4 KiB; inactivity is 30–3600 seconds and rotation 5–3600 seconds.
 The defaults are two minutes and thirty seconds, with no transition effect.
 
+An optional `albumId` extends the source with explicitly selected album images.
+For a curated album to be the complete slideshow, set `source: "album"` with
+that album ID. The configured directory then grants no selection or image access;
+every image delivery rechecks current album membership. Missing album identity
+or an unknown source mode refuses configuration. Omitting `source` preserves
+the directory plus optional album behavior. These settings neither move nor
+delete any original or old album member.
+
 | Route | Answer |
 |---|---|
 | `GET /api/photos/frame/status` | Enabled state and intervals; no directory or credential. |
