@@ -438,7 +438,8 @@ def push_and_open_pr(workspace: Path, branch: str, task_id: str, title: str, sum
         return existing[0]["html_url"]
     created = request(pulls, {"title": f"{title} (task {task_id})", "head": branch, "base": BASE_BRANCH, "draft": True,
                               "body": summary if safe_body else f"Pipeline task {task_id}, written by the local coding worker.\n\n"
-                                      f"## Worker summary\n\n{summary[-6000:]}"}, token=token)
+                                      "## Review required\n\nReview the source diff and exact-head CI before accepting this draft. "
+                                      "Worker output and diagnostic logs remain private; this description does not attest test results."}, token=token)
     return created["html_url"]
 
 

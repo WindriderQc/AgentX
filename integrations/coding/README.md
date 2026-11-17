@@ -455,7 +455,12 @@ preserved privately and the task is blocked. A failed
 or unknown last observed test, changed dependency files, or a previous checkpoint
 containing generated runtime artifacts prevents publication. An abrupt host
 failure stays unknown for an operator to reconcile. Successful delivery opens
-one draft PR and reuses it on subsequent handoffs.
+one draft PR and reuses it on subsequent handoffs. The manual path uses a fixed
+review notice in the public PR body, never worker stdout, stderr, native event
+streams or model prose. Raw diagnostics remain in private local/Core evidence.
+The notice attests no tests; reviewers inspect the diff and exact-head CI.
+Explicitly constructed safe bodies from the autonomous path retain their
+separate evidence contract.
 
 Pipeline's **Stop worker** requests a cooperative stop for the exact task and
 request id. The host serializes it with launches and refuses a stale selection;
