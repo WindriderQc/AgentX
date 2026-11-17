@@ -105,6 +105,9 @@ Keep experiments, logs and caches in /tmp or your home, outside /workspace.
 Make the smallest complete change requested. A failed probe is evidence to
 investigate, not a reason to repeat the same experiment. Check git diff before
 finishing and report the test results, including failures.
+Run final verification as one direct test command per shell call. Do not pipe,
+redirect, append echo/grep, or replace the native exit code. For Node use
+--test-reporter=tap so the same call contains its summary and real exit status.
 
 Your remaining soft budget is {soft_seconds} seconds; the remaining hard ceiling
 is {hard_seconds} seconds. Reading and model activity alone do not extend this
@@ -402,7 +405,7 @@ def feedback(task_id: str, text: str, status: str | None = None, *, progress=Non
     known_reasons = {"no_useful_progress", "no_changes", "model_output_limit", "model_call_limit",
                      "soft_budget_no_progress", "hard_budget", "worker_exit", "model_termination_unverified",
                      "runner_error", "operator_stop", "dependencies_failed", "dependencies_changed",
-                     "runtime_unavailable", "runtime_changed", "tests_failed", "generated_artifacts"}
+                     "runtime_unavailable", "runtime_changed", "tests_failed", "tests_unknown", "generated_artifacts"}
     stop_reason = (progress.stop_reason or reason) if progress else None
     claim_seq = getattr(progress, "task_claim_seq", None)
     if status == "blocked" and progress and progress.request_id and claim_seq and stop_reason in known_reasons:
@@ -662,9 +665,11 @@ def execute(args, progress) -> int:
         print(summary)
         return 1
     if progress.last_test and progress.last_test["outcome"] != "passed":
-        feedback(args.task_id, "The last observed test did not pass. The checkpoint stays local; "
-                               "correct the failure and rerun the tests before publishing.", "blocked", progress=progress, reason="tests_failed")
-        progress.finish("blocked", "tests_failed", progress.checkpoint)
+        reason = "tests_failed" if progress.last_test["outcome"] == "failed" else "tests_unknown"
+        feedback(args.task_id, "The last observed test failed." if reason == "tests_failed" else
+                 "The last test has no conclusive execution proof. Rerun directly without redirection, pipes or echo; keep the native output and exit together.",
+                 "blocked", progress=progress, reason=reason)
+        progress.finish("blocked", reason, progress.checkpoint)
         return 1
     introduced = git(workspace, "diff", "--name-only", f"origin/{BASE_BRANCH}", "HEAD").splitlines()
     if any(coding_progress.artifact(name) for name in introduced):

@@ -3,7 +3,7 @@
 const { describeFailure, describePipelineFailures } = require('../../../shared/failureDiagnostics');
 
 test.each([['worker_exit', 'worker'], ['operator_stop', 'cancellation'], ['hard_budget', 'budget'],
-  ['model_output_limit', 'budget'], ['no_useful_progress', 'budget'], ['tests_failed', 'verification']])
+  ['model_output_limit', 'budget'], ['no_useful_progress', 'budget'], ['tests_failed', 'verification'], ['tests_unknown', 'evidence']])
 ('native coding stop %s has an exact diagnostic without granting a retry', (code, category) => {
   expect(describeFailure(code)).toMatchObject({ code, recognizedCode: true, category,
     recovery: { authorization: 'not_granted' } });

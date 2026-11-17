@@ -322,3 +322,13 @@ describe('runner-owned code steps in the worker monitor (#836)', () => {
     expect(observed.details).not.toContain('privateFixture');
   });
 });
+
+
+test('inconclusive tests retain their exact stop reason without claiming test failure or release', () => {
+  const elements = renderMonitor(fixture({ stage: 'checkpoint', result: 'blocked', stopReason: 'tests_unknown',
+    lastTest: { name: 'node_test', outcome: 'unknown' } }, 'finished'));
+  expect(elements.pipelineWorkerMonitorEvidence.innerHTML).toContain('tests unknown');
+  expect(elements.pipelineWorkerMonitorEvidence.innerHTML).toContain('Node tests');
+  expect(elements.pipelineWorkerMonitorEvidence.innerHTML).not.toContain('tests failed');
+  expect(elements.pipelineTeamLaunchStop.hidden).toBe(true);
+});
