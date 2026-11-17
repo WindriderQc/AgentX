@@ -16,6 +16,8 @@ function createPhotoProcessingService(deps = {}) {
   const immich = deps.immich || createPhotoProcessingImmich({ client, config, bridge });
   const decisions = createPhotoProcessingReview({ client, bridge, immich, config, cards,
     frameConfig: deps.frameConfig || require('./photoFrameService').loadFrameConfig, decisions: deps.decisions });
+  const library = require('./photoLibraryBrowse').createPhotoLibraryBrowse({ config,
+    control: deps.control || control, cards, decisions: deps.decisions || Decisions });
   function status() {
     const fixed = config();
     return { configured: Boolean(fixed), frameEnabled: Boolean(fixed?.frameAlbumId), batchLimit: 24 };
@@ -36,10 +38,10 @@ function createPhotoProcessingService(deps = {}) {
     }
     let jobs = await batches.find({ runId, state: { $in: ['queued', 'claimed', 'running', 'uncertain'] } }).sort({ createdAt: 1 }).limit(10).lean();
     if (!jobs.length) jobs = await batches.find({ runId }).sort({ createdAt: -1 }).limit(10).lean();
-    return { results, jobs: jobs.map(row => ({ operationId: row._id, state: row.state, queueId: row.queueId,
+    return { results, control: await (deps.control || control).status(), jobs: jobs.map(row => ({ operationId: row._id, state: row.state, queueId: row.queueId,
       progress: row.progress, error: row.error })), ...status() };
   }
-  return { status, page, review: decisions.review, frame: decisions.frame,
+  return { status, page, library, review: decisions.review, frame: decisions.frame,
     control: () => control.status(), pause: (input, principal) => control.pause(input, principal),
     resume: (input, principal) => control.resume(input, principal),
     enqueueRun: input => require('./photoProcessingRuns').enrollRun(input, deps),

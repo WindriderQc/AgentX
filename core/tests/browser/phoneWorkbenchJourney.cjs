@@ -128,12 +128,13 @@ const uuid = () => crypto.randomUUID();
     },
   };
   app.use('/assets/diskx', express.static(path.join(__dirname, '../../surfaces/diskx/public')));
-  let frameEffects = 0, frameLoss = true;
+  let frameEffects = 0, frameLoss = true, photoPaused = false;
   const frameWrites = new Map(), processingCalls = [], reviewed = { revision: 0, approved: false };
   const processing = {
     status: () => ({ configured: true, frameEnabled: true }),
+    control: async () => ({ paused: photoPaused, revision: photoPaused ? 1 : 0, inFlight: [] }),
     enqueueRun: async input => { processingCalls.push(input); return { state: 'active' }; },
-    page: async () => ({ configured: true, frameEnabled: true, jobs: [{ state: 'queued', error: 'HEAVY_QUEUE_CONFLICT' }], results: [{ requestId: sources[0].requestId,
+    page: async () => ({ configured: true, frameEnabled: true, control: { paused: photoPaused, revision: photoPaused ? 1 : 0, inFlight: [] }, jobs: [{ state: 'queued', error: 'HEAVY_QUEUE_CONFLICT' }], results: [{ requestId: sources[0].requestId,
       sha256: sources[0].backup.sha256, metadata: { type: 'IMAGE', exif: { dateTimeOriginal: '2020-01-02T03:04:05Z' } },
       analysis: { state: 'completed', card: { proposal: { description: 'Un paysage de démonstration. '+ 'Une longue description qui reste repliée pour garder la galerie lisible. '.repeat(25), tags: ['nature'], quality: 'bonne', frameSuitability: 'oui', reasons: [], privacyReview: false } } },
       review: reviewed, frame: [...frameWrites.values()].at(-1) || { revision: 0, selected: false } },
@@ -307,6 +308,13 @@ const uuid = () => crypto.randomUUID();
     await page.waitForTimeout(100);
     assert.equal(await page.getByText('Supprimé du téléphone', { exact: true }).count(), 2);
     assert.equal(await page.locator('.card input:disabled').count(), 2);
+    photoPaused = true;
+    const enqueueCount = processingCalls.filter(x => x.op === 'enqueueRun').length;
+    await page.getByRole('button', { name: 'Actualiser', exact: true }).click();
+    await page.locator('#processing-control').filter({ hasText: 'Analyses en pause' }).waitFor();
+    assert.equal(await page.locator('#process-page').isDisabled(), true);
+    assert.match(await page.locator('#processing-state').textContent(), /Analyses en pause/);
+    assert.equal(processingCalls.filter(x => x.op === 'enqueueRun').length, enqueueCount);
     assert.deepEqual(errors, []);
     await fs.writeFile(
       path.join(dir, 'result.json'),

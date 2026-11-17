@@ -189,7 +189,7 @@ ${ecosystem ? `<script defer src="/js/voice/speech-language.js"></script>
 <script defer src="/assets/diskx/${ecosystem ? 'ecosystem-page' : 'diskx-page'}.js"></script>
 </head>
 <body>
-${ecosystem ? '' : '<nav class="diskx-phone-link"><a href="/diskx/phone">📱 Téléphone · importer, trier et libérer de la place</a></nav>'}
+${ecosystem ? '' : '<nav class="diskx-phone-link"><a href="/diskx/photos">▧ Photothèque · images analysées et suggestions Cadre Photo</a> · <a href="/diskx/phone">📱 Imports USB · sauvegarder et libérer de la place</a></nav>'}
 <${tag}${attrs}></${tag}>
 <p id="diskx-status" role="status" aria-live="polite">Chargement de la vue ${title}…</p>
 <noscript><p>DiskX a besoin de JavaScript.</p></noscript>

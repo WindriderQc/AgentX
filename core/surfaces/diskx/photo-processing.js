@@ -11,6 +11,7 @@ function registerPhotoProcessing({ app, express, service = createPhotoProcessing
     res.set('Cache-Control', 'private, no-store');
     try {
       const fields = { page: ['runId', 'items'], enqueue: ['operationId', 'runId', 'items'], enqueueRun: ['operationId', 'runId'],
+        library: ['filter', 'search', 'quality', 'order', 'offset', 'limit'],
         control: [], pause: ['requestId', 'expectedRevision'], resume: ['requestId', 'expectedRevision', 'confirmation'],
         review: ['writeId', 'sha256', 'expectedRevision', 'approved', 'description', 'tags'],
         frame: ['writeId', 'sha256', 'expectedRevision', 'selected'] };

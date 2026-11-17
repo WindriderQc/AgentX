@@ -7,6 +7,36 @@ separate selected-cleanup confirmation.
 
 ## Flow and ownership
 
+### Global owner photothèque
+
+`/diskx/photos` browses completed image proposals from the configured managed
+library across all imports, one entry per content SHA-256. Search, review,
+privacy, frame and quality filters apply in Mongo before bounded 60-card
+pagination. Counts describe the entire eligible collection before filters;
+suggestions awaiting a frame choice exclude images already selected. Failed or
+unknown attempts, videos and metadata-only cards remain in the import workbench.
+Ordering has a deterministic content-identity tie breaker. The owner-only
+`POST /api/phone-media/processing` operation `library` returns only the current
+proposal, extracted facts, human choices and bounded pending-decision intent,
+without historical analysis or internal reconciliation journals.
+
+The UI retains filters in its URL, supports a page jump, comfortable/compact
+layouts, a large keyboard-accessible viewer and up to four comparison choices
+across pages. Human review and frame changes reuse the existing version-checked
+decision services and portable exports. Unacknowledged browser or Core intents
+remain visible and reuse their original identity; other decisions stay disabled
+until reconciliation. Unsaved description edits require confirmation before
+leaving the viewer. Comparisons alone write no decision.
+
+Both media entries show the durable photo control, including unknown reads and
+already admitted writers. Browsing never enrolls an import, scans Immich, resumes
+processing or invokes inference. The import's enqueue button is disabled while
+paused or control status is unavailable. Review and frame choices remain usable
+while paused. Garder/Archiver remain occurrence-level labels in the original
+import workbench, linked from the global detail view; neither moves originals.
+
+### Import processing
+
 1. The NAS capability reads existing Media manifests and verification receipts.
    A whole-import watcher revisits pending receipts as new files arrive. The
    optional `autoProcess` setting enrolls the latest import runs automatically;
