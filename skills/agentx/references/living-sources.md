@@ -6,8 +6,9 @@ artifacts. It is one guide to native readers, not another memory or copied corpu
 1. **Discover.** On the owner bus call `source_catalogue` with
    `{ "view": "discovery" }`. Narrow by `domain` (`weather`, `platform`, `mail`,
    `finance`, `engineering`, `files`, `other`) when useful. Follow `nextCatalogueArgs`
-   for more entries; a page is not the whole catalogue. No-argument discovery
-   preserves the compact living-source directory used by existing conversations.
+   for more entries; a page is not the whole catalogue. The no-argument
+   catalogue returns the traditional directory, with optional weather sections
+   advertised to the owner. Automatic context keeps its previous directory.
 2. **Read.** Each entry gives its producer, coverage, exclusions and `reader`.
    Use only a tool actually offered to this session. Combine its fixed
    `arguments` with the named `requires` from the owner's question or verified
@@ -28,7 +29,11 @@ artifacts. It is one guide to native readers, not another memory or copied corpu
 
 - Living-source entries read station weather, service reachability, Secretary
   records and Accountant records through `source_read`. The source's current
-  coverage and exclusions are authoritative.
+  coverage and exclusions are authoritative. Owner weather accepts optional
+  section=forecasts, hourly or warnings; omit section for current observations.
+  Named forecast periods have no fabricated absolute dates. Issue, validity,
+  observation and retrieval timestamps are distinct. Empty warnings are not
+  a global all-clear. Family cannot request these forecast sections.
 - `mail_archive` points to `mail_recall`: indexed archive records, not live Gmail.
 - `pipeline_deliverables` points to `pipeline_artifacts`: list by `pipelineId`,
   then read a registered `deliverableId`. Binary receipts are not text content.

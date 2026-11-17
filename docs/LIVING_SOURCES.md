@@ -191,8 +191,9 @@ schemas and boundaries: indexed archive, registered deliverables and indexed
 file metadata respectively. The extra entry IDs are not `source_read` IDs.
 There is no arbitrary reader dispatch, path fetch, URL execution or new store.
 Other tools and Data feeds are not implicitly exposed. Household discovery
-omits the private references; no Family tools are activated. HTTP and adapter
-no-argument catalogues retain their existing behavior.
+omits the private references; no Family tools are activated. HTTP and adapter no-argument catalogues retain the directory shape; the owner
+weather entry additionally advertises its explicit sections. Family and the
+automatic context retain their previous metadata and current-weather payload.
 
 The [portable guide](../skills/agentx/references/living-sources.md) teaches one
 discover/read/deepen workflow, including freshness and incomplete coverage.
