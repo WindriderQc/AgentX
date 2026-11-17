@@ -79,3 +79,9 @@ The command tests use injected synthetic records and no database or photos.
 Service tests additionally cover strict selections, incomplete/pending records,
 bounds and metadata preservation. These are not live Immich, XMP round-trip,
 filesystem relocation or real-device acceptance tests.
+
+## Read-only relocation preparation
+
+The [relocation preflight](PHOTO_RELOCATION_PREFLIGHT.md) combines this registry
+observation with exact image/XMP filesystem evidence through trusted injected
+operator capabilities. It remains non-executable and never authorizes a move.
