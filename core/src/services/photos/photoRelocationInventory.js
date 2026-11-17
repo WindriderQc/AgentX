@@ -104,5 +104,3 @@ function createPhotoRelocationInventory({ fs = nativeFs, platform = process.plat
   return { inspectPair };
 }
 module.exports = { createPhotoRelocationInventory };
-
-

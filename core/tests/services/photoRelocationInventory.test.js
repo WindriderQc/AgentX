@@ -104,4 +104,3 @@ test('managed sidecar cannot have another hardlink even to a non-image file',asy
  await fs.link(input.xmp.source,path.join(input.sourceRoot,'sidecar-alias'));
  await expect(make().inspectPair(input)).rejects.toMatchObject({code:'PHOTO_RELOCATION_SIDECAR_SHARED'});
 });
-
