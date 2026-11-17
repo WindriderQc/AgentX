@@ -46,6 +46,7 @@ def observe(core, reference, finding, entries, *, expected=None, opener=urllib.r
     if not isinstance(snapshot, dict) or set(snapshot) != {"contract", "reference", "findingScope", "entries", "coverage"} \
             or snapshot.get("contract") != CONTRACT or snapshot.get("reference") != reference \
             or snapshot.get("findingScope") != {"fingerprint": finding["fingerprint"], "snapshot": finding["snapshot"]} \
+            or digest(snapshot["findingScope"]) != digest({"fingerprint": finding["fingerprint"], "snapshot": finding["snapshot"]}) \
             or digest(finding["snapshot"]) != finding["fingerprint"] \
             or not isinstance(snapshot.get("entries"), list):
         raise ValueError("Native downstream source/finding membership changed")
@@ -89,7 +90,7 @@ def observe(core, reference, finding, entries, *, expected=None, opener=urllib.r
     blockers = list(finding["snapshot"]["coverage"]["blockers"])
     if counts["unavailable"] or counts["needsReview"]:
         blockers.append("linked_souvenirs_need_review")
-    if snapshot["coverage"] != {"counts": counts, "blockers": blockers}:
+    if digest(snapshot["coverage"]) != digest({"counts": counts, "blockers": blockers}):
         raise ValueError("Native downstream coverage disagrees with its complete members")
     if not isinstance(data.get("fingerprint"), str) or not HASH.fullmatch(data["fingerprint"]) \
             or digest(snapshot) != data["fingerprint"] or (expected is not None and data["fingerprint"] != expected):

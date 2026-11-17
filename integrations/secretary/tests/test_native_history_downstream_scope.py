@@ -124,6 +124,18 @@ class NativeDownstreamTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'binding failures'):
             self.observed(mutate)
 
+    def test_boolean_or_float_substitution_cannot_match_integer_metadata_by_python_equality(self):
+        for nested in (True, False):
+            for wrong in (True, 1.0):
+                def mutate(data, _):
+                    if nested:
+                        data['snapshot']['findingScope']['snapshot']['coverage']['counts']['observedDecision'] = wrong
+                    else:
+                        data['snapshot']['coverage']['counts']['currentLinks'] = wrong
+                    data['fingerprint'] = digest(data['snapshot'])
+                with self.subTest(nested=nested, wrong=wrong), self.assertRaises(ValueError):
+                    self.observed(mutate)
+
     def test_second_note_change_refuses_old_fingerprint(self):
         def mutate(data, call):
             if call == 2:
