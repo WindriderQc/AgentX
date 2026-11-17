@@ -8,7 +8,7 @@ const { query } = require('../../src/services/photos/photoLibraryBrowse');
   const calls = [], writes = new Map(), rows = Array.from({ length: 82 }, (_, i) => ({
     sha256: i.toString(16).padStart(64,'0'), assetId: 'fixture-'+i,
     proposal: { description: i === 81 ? '<img onerror=alert(1)> Un souvenir de la montagne' : 'Un paysage de démonstration '+(i+1),
-      tags: ['nature', 'demo'], quality: i % 3 ? 'bonne' : 'moyenne', frameSuitability: i >= 60 ? 'oui' : 'non',
+      tags: ['nature', 'demo'], quality: i >= 60 || i % 3 ? 'bonne' : 'moyenne', frameSuitability: i >= 60 ? 'oui' : 'non',
       privacyReview: i === 80, reasons: ['Composition de démonstration'] },
     metadata: { type: 'IMAGE', exif: { city: 'Ville de démonstration', dateTimeOriginal: '2026-01-02T12:00:00Z' } },
     review: { revision: 0, approved: false }, frame: { revision: 0, selected: false },
@@ -16,17 +16,25 @@ const { query } = require('../../src/services/photos/photoLibraryBrowse');
   let effects = 0, lose = true, unavailable = false;
   const paused = { paused: true, revision: 5, inFlight: [] };
   function library(input) {
-    query(input);
+    const q=query(input);
+    const eligible=r=>r.proposal.frameSuitability==='oui'&&!r.proposal.privacyReview&&!r.frame.selected&&!r.frame.revision;
+    const groupId=r=>[rows[60].sha256,rows[61].sha256].includes(r.sha256)?rows[60].sha256:r.sha256;
     const matches = rows.filter(r => (!input.search || r.proposal.description.toLowerCase().includes(input.search.toLowerCase()))
       && (!input.quality || input.quality === 'all' || r.proposal.quality === input.quality)
-      && (!input.filter || input.filter === 'all' || input.filter === 'suggested' && r.proposal.frameSuitability === 'oui' && !r.frame.selected
+      && (!q.group || groupId(r)===q.group)
+      && (!input.filter || input.filter === 'all' || input.filter === 'suggested' && eligible(r)
         || input.filter === 'frame' && r.frame.selected || input.filter === 'review' && !r.review.approved
         || input.filter === 'reviewed' && r.review.approved || input.filter === 'privacy' && r.proposal.privacyReview));
-    return { configured: true, frameEnabled: true, control: paused, total: matches.length, offset: input.offset || 0, limit: input.limit || 60,
-      summary: { total: rows.length, suggested: rows.filter(r => r.proposal.frameSuitability === 'oui' && !r.frame.selected).length,
+    const grouped=q.similarity==='grouped'&&!q.group,groups=new Map();
+    for(const r of matches){const key=grouped?groupId(r):r.sha256;const prior=groups.get(key);if(prior)prior.similarity.size++;
+      else groups.set(key,{...r,suggestion:{eligible:eligible(r)},similarity:{groupId:groupId(r),size:1}});}
+    const visible=[...groups.values()];
+    return { configured: true, frameEnabled: true, control: paused, total: visible.length, offset: input.offset || 0, limit: input.limit || 60,
+      similarity:{mode:grouped?'grouped':'all',indexed:rows.length,total:rows.length,images:matches.length,observedAt:new Date().toISOString()},
+      summary: { total: rows.length, suggested: rows.filter(eligible).length,
         frame: rows.filter(r => r.frame.selected).length, review: rows.filter(r => !r.review.approved).length,
         reviewed: rows.filter(r => r.review.approved).length, privacy: 1 },
-      results: structuredClone(matches.slice(input.offset || 0, (input.offset || 0)+(input.limit || 60))) };
+      results: structuredClone(visible.slice(input.offset || 0, (input.offset || 0)+(input.limit || 60))) };
   }
   const processing = {
     status: () => ({ configured: true }), control: async () => paused,
@@ -71,11 +79,18 @@ const { query } = require('../../src/services/photos/photoLibraryBrowse');
     await page.locator('#detail-close').click();
     paused.inFlight = [{ state: 'UNKNOWN' }]; await page.locator('#refresh-library').click();
     await page.locator('#analysis-control').filter({hasText:'attend réconciliation'}).waitFor();
-    await page.locator('[data-filter=suggested]').click(); await page.waitForFunction(()=>document.getElementById('library-status').textContent.includes('sur 22 images'));
-    assert.equal(await page.locator('.global-photo').count(),22); assert.equal(await page.locator('#total-count').textContent(),'82');
-    await page.locator('.photo-open').first().click(); await page.getByRole('button',{name:'Ajouter au Cadre Photo',exact:true}).click();
+    await page.locator('[data-filter=suggested]').click(); await page.waitForFunction(()=>document.getElementById('library-status').textContent.includes('sur 20 groupes'));
+    assert.equal(await page.locator('.global-photo').count(),20); assert.equal(await page.locator('#total-count').textContent(),'82');
+    await page.getByRole('button',{name:'Voir les 2 photos proches',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelectorAll('.global-photo').length===2);
+    await page.getByRole('button',{name:'Revenir à la collection',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelectorAll('.global-photo').length===20);
+    await page.locator('#global-similarity').selectOption('all');
+    await page.waitForFunction(()=>document.querySelectorAll('.global-photo').length===21);
+    await page.locator('.frame-choice').first().click();
     await page.getByRole('button',{name:'Reprendre mon choix Cadre',exact:true}).waitFor();
     await page.getByRole('button',{name:'Reprendre mon choix Cadre',exact:true}).click();
+    await page.locator('[data-filter=frame]').click();await page.locator('.photo-open').first().click();
     await page.getByRole('button',{name:'Retirer du Cadre Photo',exact:true}).waitFor();
     assert.equal(effects,1); const attempts=calls.filter(x=>x.op==='frame'); assert.equal(attempts.length,2); assert.deepEqual(attempts[0],attempts[1]);
     assert.equal(await page.locator('#frame-count').textContent(),'1');
@@ -85,6 +100,14 @@ const { query } = require('../../src/services/photos/photoLibraryBrowse');
     await page.getByRole('button',{name:'Enregistrer ma relecture',exact:true}).click();
     await page.locator('.detail-feedback').filter({hasText:'Relecture enregistrée'}).waitFor();
     await page.locator('#detail-close').click();
+    await page.locator('[data-filter=suggested]').click();
+    await page.locator('.dismiss-suggestion').first().waitFor();
+    const rejected=await page.locator('.global-photo').first().getAttribute('data-sha256');
+    await page.locator('.dismiss-suggestion').first().click();
+    await page.locator('#library-feedback').filter({hasText:'Photo écartée'}).waitFor();
+    assert.equal(await page.locator('.global-photo[data-sha256="'+rejected+'"]').count(),0);
+    assert.equal(rows.find(r=>r.sha256===rejected).frame.selected,false);
+    await page.locator('[data-filter=all]').click();
     await page.locator('#global-search').fill('montagne'); await page.locator('#library-search').evaluate(f=>f.requestSubmit());
     await page.waitForFunction(()=>document.getElementById('library-status').textContent.includes('sur 1 image'));
     assert.equal(await page.locator('.global-photo').count(),1);
@@ -103,6 +126,6 @@ const { query } = require('../../src/services/photos/photoLibraryBrowse');
     assert.equal(await page.locator('#photo-detail').evaluate(d=>d.scrollWidth<=d.clientWidth+1),true);
     await page.locator('#detail-close').click();
     assert.deepEqual(errors,[]); assert(calls.every(x=>['library','frame','review'].includes(x.op)));
-    console.log(JSON.stringify({passed:true,globalPagination:true,crossPageComparison:true,lostDecisionReconciled:true,desktopMobile:true,pausePreserved:true,modelOrPhoneCalls:0}));
+    console.log(JSON.stringify({passed:true,globalPagination:true,crossPageComparison:true,gridFrameChoice:true,reversibleSimilarGroups:true,lostDecisionReconciled:true,desktopMobile:true,pausePreserved:true,modelOrPhoneCalls:0}));
   } finally { await browser.close(); await new Promise(resolve=>server.close(resolve)); }
 })().catch(error=>{console.error(error);process.exitCode=1;});

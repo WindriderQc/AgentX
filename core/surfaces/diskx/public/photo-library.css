@@ -56,6 +56,12 @@ main { max-width: 1540px; padding: 28px 44px 50px; }
 .photo-badges .privacy { background: #fff0d5; color: #76551d; }
 .photo-actions { display: flex; gap: 7px; margin-top: 12px; }
 .photo-actions button { font-size: .75rem; flex: 1; padding: 9px 7px; }
+.frame-actions { display: grid; gap: 7px; margin-top: 12px; }
+.frame-actions button { width: 100%; min-height: 42px; font-size: .85rem; padding: 10px; }
+.frame-actions .dismiss-suggestion { background: transparent; font-size: .78rem; }
+.near-photos { width: 100%; margin-top: 8px; background: #e7edde; font-size: .82rem; }
+.suggestion-explanation { padding: 10px; border: 1px solid #d3bf93; background: #fff4df; border-radius: 8px; }
+#library-feedback { font-size: .9rem; color: #354d3c; }
 .compact .photo-open { height: 170px; }
 .compact .photo-copy { padding: 11px; }
 .global-pagination, .global-pagination form { display: flex; justify-content: center; align-items: center; gap: 12px; }
