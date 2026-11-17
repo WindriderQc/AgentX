@@ -1,5 +1,4 @@
 """Segment-bound actor proposals; frozen objectives and responses stay unchanged."""
-import copy
 import json
 from pathlib import Path
 import sys
@@ -95,7 +94,10 @@ class SegmentActorContextTests(unittest.TestCase):
     def test_complete_name_and_mailbox_aliases_still_support_owner_proposals(self):
         for author, aliases in ((OWNER, ['Personne Exemple']), ('PERSONNE EXEMPLE', ['Personne Exemple']),
                                 ('Personne Exemple <OWNER@example.invalid>', ['owner@example.invalid']),
-                                ('owner@example.invalid', ['owner@example.invalid'])):
+                                ('owner@example.invalid', ['owner@example.invalid']),
+                                ('"Exemple, Personne" <owner@example.invalid>', ['Exemple, Personne']),
+                                ('"Exemple, Personne"', ['Exemple, Personne']),
+                                ('Élodie Exemple <owner@example.invalid>', ['E\u0301lodie   Exemple'])):
             with self.subTest(author=author):
                 self.assertIn('owner', self.rows('Je débute la boxe.', sender=author,
                     owner_aliases=aliases)[0]['allowedSubjects'])

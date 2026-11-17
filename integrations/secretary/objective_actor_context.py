@@ -4,7 +4,7 @@ This changes new objectives only. Dates keep their existing conservative
 contract, and a supported actor remains a proposal, never owner confirmation.
 """
 import copy
-from email.utils import getaddresses
+from email.utils import getaddresses, unquote
 import re
 import unicodedata
 
@@ -56,6 +56,9 @@ def _author_identity(author):
     """A single literal name/mailbox, never a substring or a selected list member."""
     if not isinstance(author, str) or not author.strip() or any(c in author for c in '\r\n'):
         return None
+    author = author.strip()
+    if re.fullmatch(r'"(?:[^"\\]|\\.)*"', author):
+        return unquote(author), None
     if not any(c in author for c in '@<>,;'):
         return author.strip().strip('"'), None
     try:
@@ -77,6 +80,10 @@ def _owner_author(author, aliases):
     normalize = lambda s: unicodedata.normalize('NFC', ' '.join(s.split())).casefold()
     name, address = identity
     for alias in aliases:
+        if isinstance(alias, str) and alias.strip() and not any(c in alias for c in '@<>'):
+            if name and normalize(unquote(alias.strip())) == normalize(name):
+                return True
+            continue
         candidate = _author_identity(alias)
         if candidate is None:
             continue
