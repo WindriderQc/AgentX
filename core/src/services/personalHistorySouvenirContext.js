@@ -30,4 +30,16 @@ function snapshot(entry, timeline) {
     claimsWithExactQuotes: timeline.claimsWithExactQuotes,
     sources: entry.context.sources.map(s => ({ id: s.id, kind: s.kind, bodySha256: s.bodySha256 })) });
 }
-module.exports = { normalize, snapshot };
+// Shared by the existing keep path and read-only downstream verification.
+// Source-body integrity remains the keep owner's separate check.
+function sourceRefs(entry) {
+  const cited = [entry.source, ...(entry.relatedSources || [])];
+  const contextual = (entry.context?.sources || []).map(source => ({
+    system: ['media', 'ledger', 'testimony', 'conversation', 'calendar'].includes(source.kind) ? source.kind : 'document',
+    sourceSha256: source.bodySha256
+  }));
+  return [{ system: 'personal-history', id: String(entry._id || entry.id) },
+    ...[...new Map([...cited, ...contextual].map(source => [`${source.system}:${source.sourceSha256}`,
+      { system: source.system, id: source.sourceSha256 }])).values()]];
+}
+module.exports = { normalize, snapshot, sourceRefs };

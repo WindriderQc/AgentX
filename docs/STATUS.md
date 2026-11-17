@@ -321,6 +321,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   Its optional v4 report keeps missing references, open actions and pending
   reviews visible, without semantic acceptance or mailbox authority. See
   [recorded findings](SECRETARY_DOSSIER_REVIEW.md#recorded-findings-and-current-core-decisions).
+  Optional v6 reconciliation also observes already linked current owner souvenirs,
+  their source/context binding and native fingerprints. Missing or stale links
+  stay held; owner corrections and unlinked assertions remain untouched. It
+  creates no memory and establishes no semantic, atomic or mailbox acceptance.
+  See [linked souvenirs](SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a
   souvenir: a permanent owner note with its event date, people, places and

@@ -516,6 +516,23 @@ Real restoration requires its own authorization and heavy-work queue; no live
 corpus or instance change follows from installing this code. See the
 [complete selected restoration scope](../../docs/SECRETARY_DOSSIER_REVIEW.md#complete-selected-restoration-scope).
 
+`--native-downstream-scope` selects v6 and implies v4's existing native checks;
+the v5 restoration option can be composed with it. Core rechecks only existing
+linked owner souvenirs, their current fingerprints, exact source provenance and
+kept context. Missing/pending/inactive notes, stale bindings and unfinished
+replacements stay held. Owner text/date corrections remain untouched, and an
+unlinked assertion creates no memory or commitment. No recall index is qualified.
+
+Two native scope observations per selected message must agree with the verified
+finding scope. Shared entries/notes must retain the same pins across selected
+messages; final Core/archive checks precede the new immutable private report.
+Standard output contains only counts, including current links and unlinked
+entries; held messages return exit 2. Each reply is bounded to 1 MiB, aggregate
+capture to 16 MiB and each observation to 60 seconds without automatic retry.
+No note content or source-reference list is returned. All four global gaps and
+false/blocked execution flags remain; original contracts/reports are unchanged.
+See [current linked souvenirs](../../docs/SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive
