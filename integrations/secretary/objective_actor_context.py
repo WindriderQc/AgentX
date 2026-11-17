@@ -4,7 +4,8 @@ This changes new objectives only. Dates keep their existing conservative
 contract, and a supported actor remains a proposal, never owner confirmation.
 """
 import copy
-from email.utils import getaddresses, unquote
+from email.headerregistry import HeaderRegistry
+from email.utils import unquote
 import re
 import unicodedata
 
@@ -59,18 +60,18 @@ def _author_identity(author):
     author = author.strip()
     if re.fullmatch(r'"(?:[^"\\]|\\.)*"', author):
         return unquote(author), None
-    if not any(c in author for c in '@<>,;'):
-        return author.strip().strip('"'), None
+    if not any(c in author for c in '@<>,;"'):
+        return author, None
     try:
-        addresses = getaddresses([author])
+        header = HeaderRegistry()('From', author)
     except ValueError:
         return None
-    if len(addresses) != 1:
+    if header.defects or len(header.addresses) != 1:
         return None
-    name, address = addresses[0]
-    if not re.fullmatch(r'[^<>\s@,;]+@[^<>\s@,;]+', address):
+    address = header.addresses[0]
+    if not address.username or not address.domain:
         return None
-    return name, address
+    return address.display_name, address.addr_spec
 
 
 def _owner_author(author, aliases):

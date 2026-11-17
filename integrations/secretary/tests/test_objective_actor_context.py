@@ -85,6 +85,8 @@ class SegmentActorContextTests(unittest.TestCase):
 
     def test_multiple_or_malformed_authors_cannot_select_a_single_identity(self):
         for author in (OWNER + ', ' + OTHER, 'Personne Exemple <owner@>',
+                       'Personne Exemple"', '"Personne Exemple',
+                       'Personne Exemple <owner@example..invalid>',
                        'Personne Exemple <owner@example.invalid> junk'):
             for body, sender in (('Je débute la boxe.', author),
                                  ('From: ' + author + '\nJe débute la boxe.', OTHER)):
