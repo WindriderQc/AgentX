@@ -353,6 +353,58 @@ atomic batch acceptance, complete finding coverage, a current downstream note,
 mailbox approval or an executor. Real archive campaigns use the heavy-work queue
 and their own authorization; source tests use isolated synthetic fixtures.
 
+## Current linked souvenirs in historical reconciliation
+
+`POST /api/secretary/history/decision-state/downstream` takes the same exact
+Gmail source, fresh observation UUID and optional expected fingerprint as
+finding discovery. It composes the existing recorded-finding/native-decision
+scope with current souvenirs already linked by those Core entries. It creates,
+activates, edits, indexes or forgets no note. Unlinked assertions remain
+`not_linked`; they are not silently promoted to selected memory.
+
+The existing owner memory capability supplies bounded `souvenirEvidence` through
+its own personal-space, active, validity and expiry filters. Pending, forgotten,
+expired, out-of-space or missing notes are unavailable. At most 100 selected note
+IDs are read, each projected record is bounded inside Mongo to 512 KiB before
+materialization, and the total is bounded to 8 MiB. No embedding is read or run.
+Family memory callers cannot use this evidence capability.
+
+For an available link, Core binds its revision and opaque content/metadata
+fingerprint, exact history-entry backlink, every expected source hash and full
+kept source context. The keep path and reader share the same source-reference
+projection. Owner corrections to souvenir text, dates, people or places remain
+intact; their current fingerprint is observed without copying them into the
+historical assertion. Source/context mismatches and unfinished replacements
+remain `needs_review`; unavailable links remain held. No note text, quoted
+context or source-reference list leaves this response.
+
+Two memory observations must agree, with intervening and final Core
+membership/decision/privacy fences. The stable
+`agentx.history-downstream-scope/v1` fingerprint includes the existing complete
+finding scope and every selected entry's link state. Responses are private/no-store
+and bounded to 512 KiB without truncated success. This is a dated observation
+of existing links, not an atomic cross-collection snapshot, semantic acceptance,
+recall-index qualification, an authenticated human or a provider approval.
+Tasks, appointments and other downstream capabilities are not inspected here.
+
+`retention_reconcile.py --native-downstream-scope` selects v6 and implies v4's
+finding/message/decision checks. It can also compose the existing v5 restoration
+option. Two complete native downstream observations per selected message must
+match the previously verified finding scope. Shared entries and shared note
+fingerprints must agree across the complete selected message set. Final Core
+and archive disposition checks follow these observations before a new private
+report is written. Missing or changing evidence has no legacy fallback.
+Standard output contains only counts, including current links and unlinked
+entries without double-counting shared assertions; held links return exit 2.
+Each reply is bounded to 1 MiB, the complete capture to 16 MiB and each HTTP
+observation to 60 seconds without automatic retry. Real corpus qualification
+still uses its own authorization and heavy-work queue.
+
+All four global native gaps and false/blocked execution flags remain. A current
+linked note is not a complete downstream disposition, and an unlinked assertion
+is not evidence of either a failed projection or a wish to create memory.
+Older decision/finding contracts and v1–v5 reports keep their original behavior.
+
 ## Native preservation of a selected source
 
 `POST /api/secretary/history/:id/preservation` takes only a stable UUID
@@ -368,6 +420,13 @@ The native reader selects its own evidence root, verifies the pinned original,
 every recorded attachment and their full MIME decoding within a 16 MiB total
 read budget, 128 attachments and 4,096 MIME parts. Reads use POSIX no-follow
 file descriptors and refuse missing, escaped, changed or inconsistent sources.
+The final source fence reopens every qualified file and compares its current
+bytes with the buffered qualified bytes, checking metadata before and after.
+Each verification pass rereads at most the same 16 MiB source-set bound; the
+initial source/MIME budget is unchanged. Matching inode/size/timestamps alone
+cannot qualify a late same-size rewrite. Multiple finish passes used by native
+restoration retain the same bound per pass. This is not an atomic filesystem
+snapshot or a guarantee against changes after a completed verification.
 They write no archive, restore directory or provider record. Unsupported
 encapsulated MIME structures remain explicit refusals.
 

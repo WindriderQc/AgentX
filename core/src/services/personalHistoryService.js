@@ -272,14 +272,10 @@ async function keepAsSouvenir(id, input = {}) {
   if (defaultPrecision === 'month') defaultDate = defaultDate?.slice(0, 7);
   const precision = input.eventDatePrecision === undefined ? defaultPrecision : enumValue(input.eventDatePrecision, temporal.PRECISIONS);
   const when = eventDate(input.eventDate === undefined ? defaultDate : input.eventDate, precision);
-  const cited = [entry.source, ...(entry.relatedSources || [])];
-  const contextSources = (entry.context?.sources || []).map(source => {
+  for (const source of entry.context?.sources || []) {
     if (digest(source.body) !== source.bodySha256) throw failure('Stored source integrity check failed', 409);
-    return { system: ['media', 'ledger', 'testimony', 'conversation', 'calendar'].includes(source.kind) ? source.kind : 'document', sourceSha256: source.bodySha256 };
-  });
-  const sources = [{ system: 'personal-history', id: String(entry._id) },
-    ...[...new Map([...cited, ...contextSources].map(source => [`${source.system}:${source.sourceSha256}`,
-      { system: source.system, id: source.sourceSha256 }])).values()]];
+  }
+  const sources = require('./personalHistorySouvenirContext').sourceRefs(entry);
   const people = entry.people?.length ? entry.people : entry.actor ? [entry.actor] : [];
   const content = current ? [...new Set([current.title, current.description].filter(Boolean))].join('\n\n') : entry.text;
   const note = await notes().keepSouvenir({ text: souvenirText({ text: content, eventDate: when }, input),

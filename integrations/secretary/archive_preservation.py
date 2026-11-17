@@ -55,7 +55,7 @@ def strict_object(pairs):
 
 
 class SourceFiles:
-    """No-follow reads below one open native root, with one shared byte budget."""
+    """No-follow bounded source reads and current-byte verification passes."""
     def __init__(self, root):
         self.root = Path(root).resolve(strict=True)
         self.fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -117,9 +117,21 @@ class SourceFiles:
     def finish(self):
         if stamp(os.fstat(self.fd)) != self.root_stamp or stamp(self.root.stat()) != self.root_stamp:
             raise PreservationError()
-        for relative, (fd, before, _) in self.files.items():
+        # Timestamps may not distinguish two same-size writes. Reopen and
+        # compare current bytes against the bounded bytes actually qualified,
+        # rather than treating matching stat metadata as content identity.
+        # One finish pass reads at most the original MAX_BYTES file budget.
+        for relative, (fd, before, expected) in self.files.items():
             current = self.open(relative)
             try:
+                if stamp(os.fstat(fd)) != before or stamp(os.fstat(current)) != before:
+                    raise PreservationError()
+                offset = 0
+                while offset < len(expected):
+                    chunk = os.read(current, min(65536, len(expected) - offset))
+                    if not chunk or chunk != expected[offset:offset + len(chunk)]:
+                        raise PreservationError()
+                    offset += len(chunk)
                 if stamp(os.fstat(fd)) != before or stamp(os.fstat(current)) != before:
                     raise PreservationError()
             finally:

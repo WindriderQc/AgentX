@@ -241,7 +241,7 @@ class NativePreservationTests(unittest.TestCase):
     def test_budget_is_total_including_metadata_machine_id_and_unique_attachment_bytes(self):
         total = sum(p.stat().st_size for p in (self.raw, self.attachment, self.receipt_file, self.manifest_file, self.machine))
         with patch.object(native, "MAX_BYTES", total):
-            self.probe()  # same bytes at two part IDs share one native file read
+            self.probe()  # repeated part IDs share initial bytes; finish rechecks each unique file
         with patch.object(native, "MAX_BYTES", total - 1):
             self.assertEqual(self.refused().status, 413)
 
@@ -289,6 +289,36 @@ class NativePreservationTests(unittest.TestCase):
             result = original(data); self.raw.write_bytes(b"x" * len(data)); return result
         with patch.object(native, "mime_scope", side_effect=mutate):
             self.refused()
+
+    def test_late_same_size_mutation_is_refused_with_unchanged_file_timestamps(self):
+        original = native.mime_scope
+        def mutate(data):
+            result = original(data)
+            self.raw.write_bytes(b"x" * len(data))
+            return result
+        # File timestamp precision can be coarser than two consecutive writes.
+        # Keep actual identity/type/size; only timestamp changes are unavailable.
+        def coarse(value):
+            return (value.st_dev, value.st_ino, value.st_mode, value.st_size, 0, 0)
+        with patch.object(native, "mime_scope", side_effect=mutate), patch.object(native, "stamp", side_effect=coarse):
+            self.refused()
+
+    def test_every_opened_source_is_rechecked_when_timestamps_are_unchanged(self):
+        finish = native.SourceFiles.finish
+        def coarse(value):
+            return (value.st_dev, value.st_ino, value.st_mode, value.st_size, 0, 0)
+        for target in (self.raw, self.attachment, self.manifest_file, self.receipt_file):
+            expected = target.read_bytes()
+            def mutate(reader):
+                self.assertIn(target.relative_to(self.root).as_posix(), reader.files)
+                target.write_bytes(b"x" * len(expected))
+                finish(reader)
+            try:
+                with self.subTest(source=target.parent.name), patch.object(native, "stamp", side_effect=coarse), \
+                        patch.object(native.SourceFiles, "finish", new=mutate):
+                    self.refused()
+            finally:
+                target.write_bytes(expected)
 
     def test_source_growth_during_the_read_refuses_without_reading_past_the_budget(self):
         original = os.read; changed = False
