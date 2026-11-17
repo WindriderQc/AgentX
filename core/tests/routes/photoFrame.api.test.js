@@ -19,6 +19,21 @@ test('reviewed album membership adds imported images and is checked again before
   await expect(frame.image(ID)).rejects.toMatchObject({ code: 'PHOTOS_NOT_FOUND' });
   expect(client.image).not.toHaveBeenCalled();
 });
+test('album selection excludes the legacy directory, and removed members cannot use a cached image URL', async () => {
+  const albumId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  let member = true;
+  const client = { settings: () => ({ enabled: true }), image: jest.fn(async () => ({ bytes: Buffer.from('preview'), contentType: 'image/jpeg' })),
+    json: jest.fn(async p => p === '/search/random' ? [asset()] : p === '/search/metadata' ? { assets: { items: member ? [asset()] : [] } } : asset()) };
+  const frame = createPhotoFrameService({ client, config: () => ({ prefix: source, albumId, source: 'album' }) });
+  expect((await frame.next()).id).toBe(ID);
+  expect(client.json.mock.calls[0][1].body.filter).toMatchObject({ albumIds: { any: [albumId] } });
+  expect(client.json.mock.calls[0][1].body.filter).not.toHaveProperty('or');
+  expect(client.json.mock.calls[0][1].body.filter).not.toHaveProperty('originalPath');
+  member = false;
+  await expect(frame.image(ID)).rejects.toMatchObject({ code: 'PHOTOS_NOT_FOUND' });
+  await expect(frame.next()).rejects.toMatchObject({ code: 'PHOTO_FRAME_INVALID_RESULT' });
+  expect(client.image).not.toHaveBeenCalled();
+});
 function fixture({ row = asset(), configured = true, rows } = {}) {
   const client = {
     settings: () => ({ enabled: true }),
@@ -90,6 +105,13 @@ test('instance configuration is bounded and rejects unconfined or malformed dire
     expect(loadFrameConfig({})).toBeNull(); expect(loadFrameConfig(env)).toBeNull();
     fs.writeFileSync(file, JSON.stringify({ version: 1, originalPathPrefix: source }));
     expect(loadFrameConfig(env)).toEqual({ prefix: source, idleSeconds: 120, intervalSeconds: 30 });
+    const albumId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    fs.writeFileSync(file, JSON.stringify({ version: 1, originalPathPrefix: source, source: 'album', albumId }));
+    expect(loadFrameConfig(env)).toMatchObject({ source: 'album', albumId });
+    for (const extra of [{ source: 'album' }, { source: 'unknown', albumId }, { source: {}, albumId }]) {
+      fs.writeFileSync(file, JSON.stringify({ version: 1, originalPathPrefix: source, ...extra }));
+      expect(() => loadFrameConfig(env)).toThrow('not configured');
+    }
     for (const prefix of ['/', 'relative', source + '/', source + '/../other', '/a\\b']) {
       fs.writeFileSync(file, JSON.stringify({ version: 1, originalPathPrefix: prefix }));
       expect(() => loadFrameConfig(env)).toThrow('not configured');

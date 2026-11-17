@@ -28,7 +28,10 @@ function loadFrameConfig(env = process.env) {
     return value;
   };
   if (raw.albumId !== undefined && !UUID.test(raw.albumId)) throw fail();
+  if (raw.source !== undefined && !['directory-and-album', 'album'].includes(raw.source)) throw fail();
+  if (raw.source === 'album' && !raw.albumId) throw fail();
   return { prefix, ...(raw.albumId ? { albumId: raw.albumId } : {}),
+    ...(raw.source ? { source: raw.source } : {}),
     idleSeconds: seconds(raw.idleSeconds, 120, 30), intervalSeconds: seconds(raw.intervalSeconds, 30, 5) };
 }
 
@@ -45,7 +48,7 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
   }
   async function allowed(asset, value) {
     if (!eligible(asset)) return false;
-    if (typeof asset.originalPath === 'string' && asset.originalPath.startsWith(value.prefix + '/')
+    if (value.source !== 'album' && typeof asset.originalPath === 'string' && asset.originalPath.startsWith(value.prefix + '/')
       && path.posix.normalize(asset.originalPath) === asset.originalPath) return true;
     if (!value.albumId) return false;
     const result = await client.json('/search/metadata', { method: 'POST', body: { size: 1,
@@ -64,7 +67,8 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
     async next(exclude) {
       const value = settings();
       if (exclude !== undefined && !UUID.test(String(exclude))) throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid previous image');
-      const scope = value.albumId ? { or: [{ originalPath: { startsWith: value.prefix + '/' } }, { albumIds: { any: [value.albumId] } }] }
+      const scope = value.source === 'album' ? { albumIds: { any: [value.albumId] } }
+        : value.albumId ? { or: [{ originalPath: { startsWith: value.prefix + '/' } }, { albumIds: { any: [value.albumId] } }] }
         : { originalPath: { startsWith: value.prefix + '/' } };
       const filter = { ...scope, type: { eq: 'IMAGE' },
         visibility: { eq: 'timeline' }, isOffline: { eq: false }, trashedAt: { eq: null } };
