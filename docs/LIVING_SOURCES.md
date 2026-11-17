@@ -52,16 +52,19 @@ to the principal; they do not start a duplicate consultation. A runtime without
 an installed source tool must not claim it used one.
 
 Small reads return the complete structured data. Larger JSON returns text pages,
-contentHash, totalChars and nextOffset; concatenate all text pages before parsing.
-Continue using nextReadArgs plus offset=nextOffset and
-expectedHash=contentHash. SOURCE_CHANGED means restart from offset zero. The
-hash binds content, source and audience. There is no saved snapshot: a native
+contentHash, totalChars and nextOffset; a complete JSON parses only once all its
+pages are concatenated, but a bounded answer may stop paging early when the
+incomplete coverage is disclosed. Continue using nextReadArgs plus
+offset=nextOffset and expectedHash=contentHash. SOURCE_CHANGED means restart
+from offset zero. The hash binds content, source and audience. There is no saved snapshot: a native
 change can invalidate a continuation. Unicode pairs are not split.
 
-Record pagination is independent of JSON transport pagination. Within a brief,
-section.pagination declares limit, offset, returned, hasMore and nextOffset.
-Read one section and pass recordOffset=section.pagination.nextOffset to
-source_read (offset to team_brief). Retain asOf from the first brief to keep
+Record pagination is independent of JSON transport pagination: recordOffset
+carries the record cursor, while the transport page position is the separate
+offset argument. Within a brief, section.pagination declares limit, offset,
+returned, hasMore and nextOffset. Read one section and pass
+recordOffset=section.pagination.nextOffset to source_read (offset to
+team_brief). Retain asOf from the first brief to keep
 the same date window. Record order is deterministic, but consistency is live:
 concurrent record insertion/deletion can move offsets. Pagination does not
 claim a frozen database snapshot. All limits are per-page, not an assertion
@@ -75,9 +78,12 @@ Core and must be relayed without model arithmetic.
 ## Freshness and failure
 
 readAt and lastSuccessfulReadAt describe this read only, not the last successful
-producer run. No cross-request success history is invented. sourceUpdatedAt
-is null when the producer does not expose a reliable timestamp. Brief metadata
-marks that unknown and preserves domain dates and coverage within sections.
+producer run. No cross-request success history is invented. sourceUpdatedAt is a
+source-specific timestamp the source itself exposes for this read (for weather,
+the retrieval timestamp), not a generic newest-content time and not proof of
+completeness; it is null when the producer exposes no reliable timestamp. Brief
+metadata marks that unknown and preserves domain dates and coverage within
+sections.
 A fixed asOf anchors the query window; it is not a producer observation time.
 
 producerEvidence distinguishes native retrieval evidence from producer runs.
@@ -132,3 +138,5 @@ Qualify native discovery and actual reads in each intended runtime, stale and
 failed sources, complete multi-page reads, private-source refusal in family,
 and conversation/guardian continuity. Queue model-based acceptance through the
 existing heavy-work entrance. Keep private receipts outside public Git.
+
+The Family inference prompt keeps its existing compact catalogue projection so detailed reading guidance cannot displace the relay budget. Owner catalogue and explicit source reads retain the full guidance; audience boundaries and tool permissions are unchanged.

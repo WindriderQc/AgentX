@@ -85,6 +85,66 @@ test('invalid bounds and unsupported arguments refuse without source I/O', async
   expect(read).not.toHaveBeenCalled();
 });
 
+test('catalogue and envelopes share one bounded reading contract without invoking producers', async () => {
+  const brief = jest.fn();
+  const owner = forAudience('owner', { brief, now }).catalogue();
+  const family = forAudience('household', { brief, now }).catalogue();
+  expect(JSON.stringify(owner).length).toBeLessThan(4000);
+  expect(JSON.stringify(family).length).toBeLessThan(4000);
+  for (const catalogue of [owner, family]) {
+    for (const row of catalogue.sources) expect(row).toMatchObject({ answers: expect.any(String), notFor: expect.any(String) });
+    expect(catalogue.reading).toBe(owner.reading);
+    expect(catalogue.reading.timestamps.readAt).toMatch(/never proof the content is current/);
+    expect(catalogue.reading.timestamps.sourceUpdatedAt).toMatch(/null means the source exposes none/);
+  }
+  expect(family.sources.map(row => row.source)).toEqual(['weather', 'agentx']);
+  expect(brief).not.toHaveBeenCalled();
+});
+
+test('fresh read of old content stays available, never described as current', async () => {
+  const ambient = { weather: async () => ({ ...weather, fetchedAt: '2026-11-10T11:59:00Z', observedAt: '2026-11-09T11:55:00Z' }) };
+  const result = await forAudience('owner', { ambient, now }).read({ source: 'weather' });
+  expect(result).toMatchObject({ status: 'available', complete: true, readAt: '2026-11-10T12:00:00.000Z' });
+  expect(result.freshness).toMatchObject({ observationAgeMs: 86700000, observationFreshness: 'unknown' });
+  expect(result.freshness.warning).toMatch(/current observation freshness is not established/);
+  expect(result.reading).toBe(forAudience('owner', { ambient, now }).catalogue().reading);
+});
+
+test('unavailable brief read keeps unknown freshness with explicit evidence', async () => {
+  const brief = jest.fn(async () => ({ sections: { mail: { unavailable: 'Source unavailable' } } }));
+  const result = await forAudience('owner', { brief, now }).read({ source: 'secretary' });
+  expect(result).toMatchObject({ status: 'unavailable', sourceUpdatedAt: null });
+  expect(result.producerEvidence.recordUpdatedAt).toBeNull();
+  expect(result.reading.timestamps.producerEvidence).toMatch(/missing evidence, never absence/);
+});
+
+test('partial page keeps the guidance contract and a changed source still refuses', async () => {
+  const snapshot = { sections: { mail: { text: 'x'.repeat(3000) } } };
+  const brief = jest.fn(async () => snapshot);
+  const service = forAudience('owner', { brief, now });
+  const first = await service.read({ source: 'secretary', pageChars: 256 });
+  expect(first).toMatchObject({ complete: false, answers: expect.any(String), notFor: expect.any(String) });
+  expect(first.reading).toBe(service.catalogue().reading);
+  snapshot.sections.mail.text += ' changed';
+  await expect(service.read({ ...first.nextReadArgs, offset: first.nextOffset, expectedHash: first.contentHash }))
+    .rejects.toMatchObject({ code: 'SOURCE_CHANGED' });
+});
+
+test('read envelopes repeat the exact catalogue guidance for every visible source', async () => {
+  const brief = jest.fn(async () => ({ sections: {} }));
+  const service = forAudience('owner', { brief, now,
+    ambient: { weather: async () => weather },
+    reportsClient: { fetchBenchmarkAnalyticsSummary: async () => ({}), fetchRagStatus: async () => ({}) } });
+  const catalogue = service.catalogue();
+  for (const row of catalogue.sources) {
+    const result = await service.read({ source: row.source });
+    expect(result.answers).toBe(row.answers);
+    expect(result.notFor).toBe(row.notFor);
+    expect(result.reading).toBe(catalogue.reading);
+  }
+  expect(brief).toHaveBeenCalledTimes(2);
+});
+
 test('failed sole or all brief sections do not claim a successful read', async () => {
   for (const sections of [{ mail: { unavailable: 'Source unavailable' } },
     { mail: { unavailable: 'Source unavailable' }, actions: { unavailable: 'Source unavailable' } }]) {
