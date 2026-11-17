@@ -45,3 +45,23 @@ test('oversized catalogue fails explicitly rather than delivering silent truncat
     sources: { forAudience: () => ({ catalogue: () => ({ title: 'x'.repeat(MAX_CONTEXT_CHARS) }) }) } }),
   { code: 'LIVING_SOURCE_CONTEXT_TOO_LARGE' });
 });
+
+
+test('Family keeps the existing compact catalogue while owner retains detailed guidance', async () => {
+  const sources = require('../../../src/services/livingSourceService');
+  const ambient = { weather: async () => weather };
+  const fullFamily = sources.forAudience('household', { ambient }).catalogue();
+  const fullOwner = sources.forAudience('owner', { ambient }).catalogue();
+  const catalogueFrom = text => JSON.parse(text.split('Core living-source catalogue (metadata, not live results): ')[1].split('\n')[0]);
+  const child = catalogueFrom(await livingSourceContext({ ...family, ambient, sources, backend: 'agentx' }));
+  const adult = catalogueFrom(await livingSourceContext({ ...owner, ambient, sources, backend: 'hermes' }));
+  const { reading, ...expected } = fullFamily;
+  expected.sources = fullFamily.sources.map(({ answers, notFor, ...source }) => source);
+  assert.deepEqual(child, expected);
+  assert.deepEqual(adult, fullOwner);
+  assert.deepEqual(child.sources.map(row => row.source), ['weather', 'agentx']);
+  assert.equal(child.reading, undefined);
+  assert.ok(adult.reading.timestamps);
+  assert.ok(adult.sources.every(row => row.answers && row.notFor));
+  assert.ok(JSON.stringify(child).length < JSON.stringify(fullFamily).length);
+});

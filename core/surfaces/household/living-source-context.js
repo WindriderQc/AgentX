@@ -13,7 +13,16 @@ async function livingSourceContext({ pack, session, familyPackId, isLlmX = false
     : pack?.id === 'personal_operator' && !pack.childSafe && session?.scopeId === 'personal' ? 'owner' : null;
   if (!audience) return '';
   const service = sources || require('../../src/services/livingSourceService');
-  const catalogue = service.forAudience(audience, { ambient }).catalogue();
+  const fullCatalogue = service.forAudience(audience, { ambient }).catalogue();
+  // Keep the Family prompt's existing compact projection. Detailed reading
+  // guidance remains in source reads; it must not crowd out the relay budget.
+  const { reading, ...compactCatalogue } = fullCatalogue;
+  if (Array.isArray(fullCatalogue.sources)) compactCatalogue.sources = fullCatalogue.sources.map(source => {
+    if (!source || typeof source !== 'object') return source;
+    const { answers, notFor, ...compact } = source;
+    return compact;
+  });
+  const catalogue = audience === 'household' ? compactCatalogue : fullCatalogue;
   const available = guardian
     ? 'You are the tool-free guardian. Use supplied dated evidence only; leave new source reads to the principal already handling the request. Do not start a second consultation or claim it completed.'
     : ['openclaw', 'hermes'].includes(backend)

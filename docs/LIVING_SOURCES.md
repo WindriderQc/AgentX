@@ -138,3 +138,5 @@ Qualify native discovery and actual reads in each intended runtime, stale and
 failed sources, complete multi-page reads, private-source refusal in family,
 and conversation/guardian continuity. Queue model-based acceptance through the
 existing heavy-work entrance. Keep private receipts outside public Git.
+
+The Family inference prompt keeps its existing compact catalogue projection so detailed reading guidance cannot displace the relay budget. Owner catalogue and explicit source reads retain the full guidance; audience boundaries and tool permissions are unchanged.
