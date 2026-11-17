@@ -19,14 +19,19 @@ function absolute(value) {
   }
   return value;
 }
-function same(a, b) { return ['dev','ino','size','mtimeMs','ctimeMs','nlink','mode'].every(key => a[key] === b[key]); }
+function exact(stat) {
+  if (['dev','ino','size','mtimeNs','ctimeNs','nlink','mode'].some(key => typeof stat[key] !== 'bigint'))
+    throw fail('PHOTO_RELOCATION_STAT_PRECISION','Exact bigint filesystem observations are required');
+  return stat;
+}
+function same(a, b) { return ['dev','ino','size','mtimeNs','ctimeNs','nlink','mode'].every(key => a[key] === b[key]); }
 function createPhotoRelocationInventory({ fs = nativeFs, platform = process.platform, inspectReparse } = {}) {
   async function checked(file, directory) {
     const parsed = path.parse(file);
     let current = parsed.root, result;
     for (const part of ['', ...file.slice(parsed.root.length).split(path.sep).filter(Boolean)]) {
       if (part) current = path.join(current, part);
-      result = await fs.lstat(current);
+      result = exact(await fs.lstat(current, { bigint: true }));
       if (result.isSymbolicLink()) throw fail('PHOTO_RELOCATION_LINK', 'Symbolic links and junctions are not permitted');
       if (platform === 'win32') {
         if (typeof inspectReparse !== 'function' || await inspectReparse(current) !== false)
@@ -39,7 +44,7 @@ function createPhotoRelocationInventory({ fs = nativeFs, platform = process.plat
     return result;
   }
   async function absent(file) {
-    try { await fs.lstat(file); } catch (error) { if (error.code === 'ENOENT') return; throw error; }
+    try { await fs.lstat(file, { bigint: true }); } catch (error) { if (error.code === 'ENOENT') return; throw error; }
     throw fail('PHOTO_RELOCATION_COLLISION', 'Destination already exists, even if its bytes match');
   }
   async function inspectPair(input) {
@@ -56,11 +61,11 @@ function createPhotoRelocationInventory({ fs = nativeFs, platform = process.plat
     if (input.xmp.destination !== input.image.destination + '.xmp')
       throw fail('PHOTO_RELOCATION_PAIR', 'The destination XMP must remain adjacent to its image');
     const roots = [await checked(sourceRoot,true), await checked(destinationRoot,true)];
-    const results = [];
+    const results = [], observations = [];
     for (const item of pairs) {
       const before = await checked(item.source,false);
-      if (item === input.xmp && (before.nlink !== 1 || (results[0]
-          && before.dev === results[0].device && before.ino === results[0].inode)))
+      if (item === input.xmp && (before.nlink !== 1n || (observations[0]
+          && before.dev === observations[0].dev && before.ino === observations[0].ino)))
         throw fail('PHOTO_RELOCATION_SIDECAR_SHARED', 'Managed XMP must be an independent single-link file');
       const parent = await checked(path.dirname(item.destination),true);
       await absent(item.destination);
@@ -71,26 +76,31 @@ function createPhotoRelocationInventory({ fs = nativeFs, platform = process.plat
       const handle = await fs.open(item.source, 'r');
       let sha256, size = 0;
       try {
-        if (!same(before,await handle.stat())) throw fail('PHOTO_RELOCATION_CHANGED','File changed before reading');
+        if (!same(before,exact(await handle.stat({ bigint: true })))) throw fail('PHOTO_RELOCATION_CHANGED','File changed before reading');
         const hash = createHash('sha256'), buffer = Buffer.alloc(64 * 1024);
         for (;;) { const read = await handle.read(buffer,0,buffer.length,null); if (!read.bytesRead) break;
           size += read.bytesRead; if (size > item.size) throw fail('PHOTO_RELOCATION_CHANGED','File exceeds expected size');
           hash.update(buffer.subarray(0,read.bytesRead)); }
         sha256 = hash.digest('hex');
-        if (!same(before,await handle.stat())) throw fail('PHOTO_RELOCATION_CHANGED','File changed while reading');
+        if (!same(before,exact(await handle.stat({ bigint: true })))) throw fail('PHOTO_RELOCATION_CHANGED','File changed while reading');
       } finally { await handle.close(); }
       if (!same(before,await checked(item.source,false)) || !same(parent,await checked(path.dirname(item.destination),true)))
         throw fail('PHOTO_RELOCATION_CHANGED','Source or destination parent changed');
       await absent(item.destination);
       if (sha256 !== item.sha256 || size !== item.size) throw fail('PHOTO_RELOCATION_BYTES','File does not match expected bytes');
-      results.push({source:item.source,destination:item.destination,sha256,size,device:before.dev,inode:before.ino,
-        nlink:before.nlink,mtimeMs:before.mtimeMs,ctimeMs:before.ctimeMs});
+      if (before.nlink > BigInt(Number.MAX_SAFE_INTEGER))
+        throw fail('PHOTO_RELOCATION_STAT_RANGE','Link count exceeds exact JSON numeric range');
+      observations.push(before);
+      // Filesystem IDs may exceed Number.MAX_SAFE_INTEGER (notably on Windows).
+      // JSON evidence uses decimal strings, never rounded identity numbers.
+      results.push({source:item.source,destination:item.destination,sha256,size,device:String(before.dev),inode:String(before.ino),
+        nlink:Number(before.nlink),mtimeMs:String(before.mtimeMs),ctimeMs:String(before.ctimeMs),
+        mtimeNs:String(before.mtimeNs),ctimeNs:String(before.ctimeNs)});
     }
     // Recheck the first member after inspecting the second; still not a lock.
     for (let i=0;i<pairs.length;i++) {
-      const stat = await checked(pairs[i].source,false), evidence = results[i];
-      if (stat.dev !== evidence.device || stat.ino !== evidence.inode || stat.size !== evidence.size
-          || stat.mtimeMs !== evidence.mtimeMs || stat.ctimeMs !== evidence.ctimeMs || stat.nlink !== evidence.nlink)
+      const stat = await checked(pairs[i].source,false);
+      if (!same(stat, observations[i]))
         throw fail('PHOTO_RELOCATION_CHANGED','Pair changed during inventory');
       await absent(pairs[i].destination);
     }

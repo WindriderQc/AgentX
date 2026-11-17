@@ -57,7 +57,7 @@ test('refuses junction traversal',async()=>{
   catch(error) {
     if (!['EPERM','EACCES','ENOTSUP'].includes(error.code)) throw error;
     await fs.mkdir(alias);
-    options={fs:{...fs,lstat:async file=>{const stat=await fs.lstat(file);
+    options={fs:{...fs,lstat:async (file,options)=>{const stat=await fs.lstat(file,options);
       if(file===alias)stat.isSymbolicLink=()=>true;return stat;}}};
   }
   input.sourceRoot=alias; input.image.source=path.join(alias,'synthetic.jpg'); input.xmp.source=input.image.source+'.xmp';
@@ -68,12 +68,12 @@ test('Windows native reparse observation is required and fail closed',async()=>{
   await expect(make({platform:'win32',inspectReparse:async()=>true}).inspectPair(input)).rejects.toMatchObject({code:'PHOTO_RELOCATION_REPARSE_UNVERIFIED'});
 });
 test('cross-device observation refuses without copying',async()=>{
-  const wrapped={...fs,lstat:async file=>{const stat=await fs.lstat(file);if(file===input.destinationRoot)stat.dev+=1;return stat;}};
+  const wrapped={...fs,lstat:async (file,options)=>{const stat=await fs.lstat(file,options);if(file===input.destinationRoot)stat.dev+=1n;return stat;}};
   await expect(make({fs:wrapped}).inspectPair(input)).rejects.toMatchObject({code:'PHOTO_RELOCATION_CROSS_DEVICE'});
 });
 test('read handle identity change refuses',async()=>{
   const wrapped={...fs,open:async(...args)=>{const handle=await fs.open(...args); return {close:()=>handle.close(),
-    stat:async()=>{const stat=await handle.stat();stat.ino+=1;return stat;},read:(...a)=>handle.read(...a)};}};
+    stat:async(options)=>{const stat=await handle.stat(options);stat.ino+=1n;return stat;},read:(...a)=>handle.read(...a)};}};
   await expect(make({fs:wrapped}).inspectPair(input)).rejects.toMatchObject({code:'PHOTO_RELOCATION_CHANGED'});
 });
 test('hardlink count is recorded without claiming independent backup',async()=>{
@@ -103,4 +103,37 @@ test('managed sidecar cannot share image inode',async()=>{
 test('managed sidecar cannot have another hardlink even to a non-image file',async()=>{
  await fs.link(input.xmp.source,path.join(input.sourceRoot,'sidecar-alias'));
  await expect(make().inspectPair(input)).rejects.toMatchObject({code:'PHOTO_RELOCATION_SIDECAR_SHARED'});
+});
+// Reproduce IDs that IEEE-754 Number would collapse into one apparent inode.
+function largeIdentityFs({changeHandle=false,changeTime=false}={}) {
+ const base=9007199254740992n;
+ function patch(stat,file,handle=false){
+  if(file===input.image.source)stat.ino=base+(handle&&changeHandle?1n:0n);
+  if(file===input.xmp.source)stat.ino=base+1n;
+  if(handle&&changeTime)stat.mtimeNs+=1n;
+  return stat;
+ }
+ return {...fs,lstat:async(file,options)=>{
+  expect(options).toEqual({bigint:true});return patch(await fs.lstat(file,options),file);
+ },open:async(file,...args)=>{
+  const handle=await fs.open(file,...args);return {close:()=>handle.close(),read:(...values)=>handle.read(...values),
+   stat:async options=>{expect(options).toEqual({bigint:true});return patch(await handle.stat(options),file,true);}};
+ }};
+}
+test('distinct >2^53 inodes never become a falsely shared sidecar; evidence is exact JSON',async()=>{
+ expect(Number(9007199254740992n)).toBe(Number(9007199254740993n));
+ const output=await make({fs:largeIdentityFs()}).inspectPair(input);
+ expect(output.image.inode).toBe('9007199254740992');expect(output.xmp.inode).toBe('9007199254740993');
+ expect(typeof output.image.device).toBe('string');expect(output.image.mtimeNs).toMatch(/^-?\d+$/);
+ expect(()=>JSON.stringify(output)).not.toThrow();
+});
+test('one-unit >2^53 inode replacement cannot pass handle identity checks',async()=>{
+ await expect(make({fs:largeIdentityFs({changeHandle:true})}).inspectPair(input)).rejects.toMatchObject({code:'PHOTO_RELOCATION_CHANGED'});
+});
+test('one-nanosecond change cannot disappear through millisecond rounding',async()=>{
+ await expect(make({fs:largeIdentityFs({changeTime:true})}).inspectPair(input)).rejects.toMatchObject({code:'PHOTO_RELOCATION_CHANGED'});
+});
+test('adapter dropping bigint option is rejected instead of silently rounding identity',async()=>{
+ const wrapped={...fs,lstat:async file=>fs.lstat(file)};
+ await expect(make({fs:wrapped}).inspectPair(input)).rejects.toMatchObject({code:'PHOTO_RELOCATION_STAT_PRECISION'});
 });
