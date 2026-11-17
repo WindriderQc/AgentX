@@ -175,3 +175,26 @@ instructions or an authority to act.
 Synthetic qualification is separate from installation, callable runtime tools
 and actual Nestor acceptance. No live model or personal-data call is needed
 to verify this projection.
+
+## Targeted discovery guide
+
+The owner `source_catalogue` tool accepts optional `view: "discovery"`, `domain`,
+`limit` (1–10, default 5) and `offset` (0–1000). This returns metadata entries
+with native reader references and explicit required argument names. Continue
+with `nextCatalogueArgs`. Discovery performs no producer reads; availability
+stays `not_checked` and producer success stays unknown. The automatic context remains unchanged. The explicit owner catalogue also
+lists the bounded optional weather sections.
+
+In addition to the existing living-source readers, the owner guide references
+`mail_recall`, `pipeline_artifacts` and `find_files`. These retain their own
+schemas and boundaries: indexed archive, registered deliverables and indexed
+file metadata respectively. The extra entry IDs are not `source_read` IDs.
+There is no arbitrary reader dispatch, path fetch, URL execution or new store.
+Other tools and Data feeds are not implicitly exposed. Household discovery
+omits the private references; no Family tools are activated. HTTP and adapter
+no-argument catalogues retain their existing behavior.
+
+The [portable guide](../skills/agentx/references/living-sources.md) teaches one
+discover/read/deepen workflow, including freshness and incomplete coverage.
+Catalogue pagination is separate from native content pagination. Tool listing,
+actual runtime use and deployment remain independent qualification steps.

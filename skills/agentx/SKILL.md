@@ -80,6 +80,7 @@ These apply to every chapter. They are the owner's rules, not tool limits.
 | Add, change or complete a personal task | `add_personal_task`, `update_personal_task`, `complete_personal_task` | [assistant](references/assistant.md#personal-tasks) |
 | Create or change an event or reminder | `personal_calendar` | [assistant](references/assistant.md#calendar) |
 | Answer a photo question | `photo_search`, `photo_count`, `photo_details` | [assistant](references/assistant.md#photos) |
+| Discover producer records or agent artifacts | `source_catalogue` | [living sources](references/living-sources.md) |
 | Mail, priorities, accounting | `team_brief`, then `consult_team` | [assistant](references/assistant.md#team-secretary-and-accountant) |
 | Review an existing personal action | `personal_task_dossier` | [assistant](references/assistant.md#reviewing-a-personal-action) |
 | Read the page or chart on screen | `read_presentation`, `collaboration_context` | [assistant](references/assistant.md#what-is-on-screen) |
