@@ -124,3 +124,47 @@ test('instance configuration is bounded and rejects unconfined or malformed dire
     expect(() => loadFrameConfig(env)).toThrow('not configured');
   } finally { fs.rmSync(dir, { recursive: true }); }
 });
+
+test('recent window chooses unseen or least-recent image without altering scope',async()=>{
+ const ids=['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333'];
+ const {frame,client}=fixture({rows:ids.map(id=>({...asset(),id}))});
+ expect((await frame.next(undefined,ids.slice(0,2).join(','))).id).toBe(ids[2]);
+ expect(client.json.mock.calls[0][1].body.size).toBe(3);
+ expect((await frame.next(undefined,[ids[1],ids[2],ids[0]].join(','))).id).toBe(ids[1]);
+ expect(client.json.mock.calls[0][1].body.filter.originalPath).toEqual({startsWith:source+'/'});
+});
+test.each(['bad',Array(201).fill(ID).join(','),{id:ID}])('invalid history rejects before I/O %j',async recent=>{
+ const {frame,client}=fixture();await expect(frame.next(undefined,recent)).rejects.toMatchObject({code:'PHOTOS_BAD_REQUEST'});expect(client.json).not.toHaveBeenCalled();
+});
+test('duplicate upstream records and ignored immediate exclusion fail closed',async()=>{
+ await expect(fixture({rows:[asset(),asset()]}).frame.next(undefined,ID)).rejects.toMatchObject({code:'PHOTO_FRAME_INVALID_RESULT'});
+ await expect(fixture().frame.next(ID)).rejects.toMatchObject({code:'PHOTO_FRAME_INVALID_RESULT'});
+});
+test('history cannot make an out-of-scope image eligible',async()=>{
+ const {frame}=fixture({row:{...asset(),originalPath:'/private/other.jpg'}});
+ await expect(frame.next(undefined,ID)).rejects.toMatchObject({code:'PHOTO_FRAME_INVALID_RESULT'});
+});
+test('bounded history does not create global shared state',async()=>{
+ const ids=Array.from({length:200},(_,i)=>i.toString(16).padStart(8,'0')+'-1111-4111-8111-111111111111');const {frame,client}=fixture();
+ expect((await frame.next(undefined,ids.join(','))).id).toBe(ID);expect(client.json.mock.calls[0][1].body.size).toBe(201);
+ await frame.next();expect(client.json.mock.calls[1][1].body.size).toBe(1);
+});
+test('route forwards the recent window and rejects structured query injection',async()=>{
+ const {app,client}=fixture();const r=await request(app).get('/api/photos/frame/next').query({recent:ID});expect(r.status).toBe(200);expect(client.json.mock.calls[0][1].body.size).toBe(2);
+ expect((await request(app).get('/api/photos/frame/next?recent[id]=bad')).status).toBe(400);
+});
+
+test('structured previous ID rejects as400 and structured upstream ID rejects as502',async()=>{
+ const {app,client}=fixture();expect((await request(app).get('/api/photos/frame/next?exclude[]='+ID)).status).toBe(400);expect(client.json).not.toHaveBeenCalled();
+ await expect(fixture({row:{...asset(),id:[ID]}}).frame.next()).rejects.toMatchObject({code:'PHOTO_FRAME_INVALID_RESULT'});
+});
+
+test('empty pool stays empty and changed membership can introduce new unseen images',async()=>{
+ const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222';
+ const rows=[];const {frame}=fixture({rows});
+ expect(await frame.next(undefined,a)).toBeNull();
+ rows.push({...asset(),id:b});
+ expect((await frame.next(undefined,a)).id).toBe(b);
+ rows.length=0;
+ expect(await frame.next(undefined,[a,b].join(','))).toBeNull();
+});

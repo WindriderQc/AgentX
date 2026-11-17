@@ -52,7 +52,7 @@ function createPhotoRoutes({ service = createPhotoService(), frame = createPhoto
 
   router.get('/status', handle(() => service.status()));
   router.get('/frame/status', handle(() => frame.status()));
-  router.get('/frame/next', handle((req) => frame.next(req.query.exclude)));
+  router.get('/frame/next', handle((req) => frame.next(req.query.exclude, req.query.recent)));
   router.get('/frame/:id/image', async (req, res) => {
     try {
       const image = await frame.image(req.params.id);

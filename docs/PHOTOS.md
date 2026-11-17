@@ -294,3 +294,23 @@ analysis or conversion job. Immich documents this range-capable endpoint in its
 DiskX opens indexed videos in its media viewer. An unavailable codec, unfinished
 indexing or playback refusal remains explicit. Mock and synthetic browser tests
 do not attest the installed Immich version, its permission grants or real clips.
+
+### Bounded slideshow recency
+
+The frame retains the last 200 successfully decoded image IDs per browser and
+space, in local storage when available. Leaving standby or reconnecting does not
+erase that recency window; disabled or corrupt storage falls back to memory.
+Back/forward navigation remains separate. No global reservation coordinates
+different devices, and no captions, paths or image bytes are persisted here.
+
+`GET /api/photos/frame/next` accepts optional `recent`, a comma-separated list
+of at most 200 UUIDs, oldest first. Core requests one bounded native random
+sample of recent-count plus one and prefers an unseen image. If the eligible
+pool is exhausted, it selects the least recently seen candidate. The immediate
+previous image remains excluded. This avoids repeats within the bounded window
+when an eligible unseen candidate exists, not an infinite no-repeat promise.
+
+History never changes the configured directory/album scope, timeline visibility
+or membership checks. Removed images cannot be served using a retained URL;
+new eligible images can enter the next sample. Playback does not resume photo
+processing, scan a library or call a model.

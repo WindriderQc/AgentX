@@ -43,7 +43,7 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
   }
   // Also verify upstream results: a prefix without its slash must not match a sibling.
   function eligible(asset) {
-    return asset && UUID.test(String(asset.id)) && asset.type === 'IMAGE'
+    return asset && typeof asset.id === 'string' && UUID.test(asset.id) && asset.type === 'IMAGE'
       && asset.visibility === 'timeline' && !asset.isTrashed && !asset.isOffline;
   }
   async function allowed(asset, value) {
@@ -64,20 +64,36 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
         return { enabled: true, idleSeconds: value.idleSeconds, intervalSeconds: value.intervalSeconds };
       } catch { return { enabled: false }; }
     },
-    async next(exclude) {
+    async next(exclude, recent) {
       const value = settings();
-      if (exclude !== undefined && !UUID.test(String(exclude))) throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid previous image');
+      if (exclude !== undefined && (typeof exclude !== 'string' || !UUID.test(exclude))) throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid previous image');
+      if (recent !== undefined && (typeof recent !== 'string' || recent.length > 7400))
+        throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid recent images');
+      const seen = recent ? recent.split(',') : [];
+      if (seen.length > 200 || seen.some(id => !UUID.test(id)))
+        throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid recent images');
+      const ordered = [...new Set(seen.map(id => id.toLowerCase()))];
+      // A native random sample larger than the recent set contains an unseen
+      // candidate when one exists. Exhausted small pools use least-recently seen.
+      const size = ordered.length + 1;
       const scope = value.source === 'album' ? { albumIds: { any: [value.albumId] } }
         : value.albumId ? { or: [{ originalPath: { startsWith: value.prefix + '/' } }, { albumIds: { any: [value.albumId] } }] }
         : { originalPath: { startsWith: value.prefix + '/' } };
       const filter = { ...scope, type: { eq: 'IMAGE' },
         visibility: { eq: 'timeline' }, isOffline: { eq: false }, trashedAt: { eq: null } };
       if (exclude) filter.id = { ne: exclude };
-      const rows = await client.json('/search/random', { method: 'POST', body: { size: 1, filter } });
-      if (!Array.isArray(rows) || rows.length > 1 || (rows.length && !await allowed(rows[0], value))) {
+      const rows = await client.json('/search/random', { method: 'POST', body: { size, filter } });
+      if (!Array.isArray(rows) || rows.length > size || rows.some(row => !eligible(row))
+        || new Set(rows.map(row => row.id.toLowerCase())).size !== rows.length
+        || rows.some(row => exclude && row.id.toLowerCase() === exclude.toLowerCase())) {
         throw photoError(502, 'PHOTO_FRAME_INVALID_RESULT', 'Photo frame received an invalid image');
       }
-      const asset = rows[0];
+      const rank = new Map(ordered.map((id, index) => [id, index]));
+      const asset = rows.find(row => !rank.has(row.id.toLowerCase()))
+        || rows.reduce((oldest, row) => !oldest || rank.get(row.id.toLowerCase()) < rank.get(oldest.id.toLowerCase()) ? row : oldest, null);
+      if (asset && !await allowed(asset, value)) {
+        throw photoError(502, 'PHOTO_FRAME_INVALID_RESULT', 'Photo frame received an invalid image');
+      }
       return asset ? { id: asset.id, src: '/api/photos/frame/' + asset.id + '/image' } : null;
     },
     async image(id) {

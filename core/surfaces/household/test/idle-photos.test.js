@@ -16,7 +16,7 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 
-function harness() {
+function harness({ storage, space = 'personal' } = {}) {
   const listeners = new Map(), events = new Map();
   const add = (map, name, run) => { if (!map.has(name)) map.set(name, new Set()); map.get(name).add(run); };
   const emit = (map, event) => { for (const run of map.get(event.type) || []) run(event); };
@@ -40,7 +40,7 @@ function harness() {
   const host = new Element('main'); document.body.append(host);
   const h = { clock: 0, visibilityChanges: [], requests: [], queue: [], decodes: [], delayImages: false, failImage: false, blocked: false, voiceBusy: false, allocated: 0 };
   const root = {
-    document, CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
+    localStorage: storage, document, CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
     dispatchEvent(event) { if (event.type === 'nestor-idle-photos-visibility') h.visibilityChanges.push(!h.region.hidden); emit(listeners, event); return true; },
     NestorConversation: { WakeWindow }, setInterval: () => 1, clearInterval() {},
     addEventListener: (name, run) => add(listeners, name, run), removeEventListener: (name, run) => listeners.get(name)?.delete(run),
@@ -55,7 +55,7 @@ function harness() {
   };
   const context = vm.createContext(root);
   for (const name of ['screen-commands.js', 'idle-photos.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../public', name), 'utf8'), context);
-  h.frame = root.NestorIdlePhotos.mount({ host, api: async url => {
+  h.frame = root.NestorIdlePhotos.mount({ host, space, api: async url => {
     h.requests.push(url);
     if (url.endsWith('/status')) return { enabled: true, idleSeconds: 30, intervalSeconds: 5 };
     return h.queue.length ? h.queue.shift() : photo(++h.allocated);
@@ -331,4 +331,75 @@ test('photo visibility notifies after entry and exit only', async () => {
   await h.next(); h.back(); assert.deepEqual(h.visibilityChanges, [true]);
   h.activity(); assert.deepEqual(h.visibilityChanges, [true, false]);
   h.frame.dispose(); assert.deepEqual(h.visibilityChanges, [true, false]);
+});
+
+const recentKey = space => 'nestor-idle-photos:recent:v1:' + encodeURIComponent(space);
+const memoryStorage = () => {
+  const data = new Map();
+  return { getItem: key => data.get(key) || null, setItem: (key, value) => data.set(key, value), data };
+};
+const recentRequest = h => new URL(h.requests.filter(url => !url.endsWith('/status')).at(-1), 'https://synthetic.test').searchParams.get('recent')?.split(',') || [];
+
+test('recency survives leaving and page reload without reviving navigation history', async () => {
+  const storage = memoryStorage(); const h = harness({ storage }); await flush(); await h.enter(); await h.next();
+  assert.deepEqual(recentRequest(h), [photo(1).id]);
+  h.activity(); await h.enter();
+  assert.deepEqual(recentRequest(h), [photo(1).id, photo(2).id]);
+  h.back(); assert.equal(h.shown(), photo(3).src, 'navigation reset is independent'); h.frame.dispose();
+  const reload = harness({ storage }); await flush(); await reload.enter();
+  assert.deepEqual(recentRequest(reload), [photo(1).id, photo(2).id, photo(3).id]); reload.frame.dispose();
+});
+
+test('recency is bounded at 200 unique successful displays, including manual revisits', async () => {
+  const storage = memoryStorage(); const h = harness({ storage }); await flush(); await h.enter();
+  for (let i = 0; i < 204; i++) await h.next();
+  const ids = JSON.parse(storage.getItem(recentKey('personal')));
+  assert.equal(ids.length, 200); assert.equal(new Set(ids).size, 200);
+  assert.equal(ids[0], photo(6).id); assert.equal(ids.at(-1), photo(205).id);
+  h.back(); await h.next();
+  const revisited = JSON.parse(storage.getItem(recentKey('personal')));
+  assert.equal(revisited.length, 200); assert.equal(revisited.at(-1), photo(205).id);
+  await h.next(); assert.equal(recentRequest(h).length, 200); h.frame.dispose();
+});
+
+test('failed and cancelled image loads never enter persisted recency', async () => {
+  const storage = memoryStorage(); const h = harness({ storage }); await flush(); await h.enter();
+  h.failImage = true; await h.next(); h.failImage = false;
+  assert.deepEqual(JSON.parse(storage.getItem(recentKey('personal'))), [photo(1).id]);
+  h.delayImages = true; await h.next(); h.activity(); h.decodes[0].onload(); await flush();
+  assert.deepEqual(JSON.parse(storage.getItem(recentKey('personal'))), [photo(1).id]);
+  h.delayImages = false; await h.enter(); assert.deepEqual(recentRequest(h), [photo(1).id]); h.frame.dispose();
+});
+
+test('private and family frames have distinct persisted recency, not global reservations', async () => {
+  const storage = memoryStorage(); const personal = harness({ storage }); await flush(); await personal.enter();
+  const family = harness({ storage, space: 'family' }); await flush(); await family.enter();
+  assert.deepEqual(recentRequest(family), []); assert.equal(family.shown(), photo(1).src);
+  assert.ok(storage.getItem(recentKey('family'))); assert.ok(storage.getItem(recentKey('personal')));
+  // Another frame's display neither locks selection nor interrupts this frame.
+  await personal.next(); assert.deepEqual(recentRequest(personal), [photo(1).id]);
+  personal.frame.dispose(); family.frame.dispose();
+});
+
+test('unavailable storage never blocks rotation or in-memory recency', async () => {
+  const storage = { getItem() { throw Error('Synthetic disabled storage'); }, setItem() { throw Error('Synthetic quota'); } };
+  const h = harness({ storage }); await flush(); await h.enter(); await h.next();
+  assert.deepEqual(recentRequest(h), [photo(1).id]); h.activity(); await h.enter();
+  assert.deepEqual(recentRequest(h), [photo(1).id, photo(2).id]); h.frame.dispose();
+});
+
+test('corrupt or oversized storage is ignored, never forwarded as a path or instruction', async () => {
+  for (const saved of ['broken json', '{}', JSON.stringify(['https://synthetic.test/private']), JSON.stringify([photo(1).id, 5]),
+    JSON.stringify(Array(201).fill(photo(1).id)), ' '.repeat(9000)]) {
+    const storage = memoryStorage(); storage.setItem(recentKey('personal'), saved);
+    const h = harness({ storage }); await flush(); await h.enter();
+    assert.deepEqual(recentRequest(h), []);
+    assert.deepEqual(JSON.parse(storage.getItem(recentKey('personal'))), [photo(1).id]); h.frame.dispose();
+  }
+});
+
+test('restored IDs are normalized and deduplicated in recency order', async () => {
+  const storage = memoryStorage(); storage.setItem(recentKey('personal'), JSON.stringify([photo(2).id.toUpperCase(), photo(3).id, photo(2).id]));
+  const h = harness({ storage }); await flush(); await h.enter();
+  assert.deepEqual(recentRequest(h), [photo(3).id, photo(2).id]); h.frame.dispose();
 });
