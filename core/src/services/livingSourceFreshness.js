@@ -15,6 +15,9 @@ function producerEvidence(source, result, now) {
   if (source === 'weather') return { ...common, authority: 'data.ec-weather', mode: 'on_demand',
     lastSuccessfulRetrievalAt: iso(result.data?.fetchedAt, now),
     observedAt: iso(result.data?.observedAt, now),
+    ...(result.data?.section ? { forecastIssuedAt: iso(result.data.forecastIssuedAt, now),
+      sourceLastUpdatedAt: iso(result.data.lastUpdated, now),
+      forecastValidity: 'See requested section records; retrieval and issue time do not establish validity.' } : {}),
     observationAgeMs: result.freshness?.observationAgeMs ?? null,
     cadenceMeaning: 'Cache lifetime is not a periodic producer schedule.',
     missing: ['producer_run_history', 'last_failed_retrieval', 'effective_cadence'] };

@@ -51,7 +51,7 @@ test('Family keeps the existing compact catalogue while owner retains detailed g
   const sources = require('../../../src/services/livingSourceService');
   const ambient = { weather: async () => weather };
   const fullFamily = sources.forAudience('household', { ambient }).catalogue();
-  const fullOwner = sources.forAudience('owner', { ambient }).catalogue();
+  const fullOwner = sources.forAudience('owner', { ambient }).catalogue({ ownerSections: false });
   const catalogueFrom = text => JSON.parse(text.split('Core living-source catalogue (metadata, not live results): ')[1].split('\n')[0]);
   const child = catalogueFrom(await livingSourceContext({ ...family, ambient, sources, backend: 'agentx' }));
   const adult = catalogueFrom(await livingSourceContext({ ...owner, ambient, sources, backend: 'hermes' }));
@@ -64,4 +64,11 @@ test('Family keeps the existing compact catalogue while owner retains detailed g
   assert.ok(adult.reading.timestamps);
   assert.ok(adult.sources.every(row => row.answers && row.notFor));
   assert.ok(JSON.stringify(child).length < JSON.stringify(fullFamily).length);
+});
+
+test('explicit forecast catalogue additions do not enter automatic context', async () => {
+  const sources = require('../../../src/services/livingSourceService');
+  assert.deepEqual(sources.forAudience('owner').catalogue().sources[0].sections, ['forecasts', 'hourly', 'warnings']);
+  const text = await livingSourceContext({ ...owner, ambient: { weather: async () => weather }, sources });
+  assert.doesNotMatch(text, /"sections":\["forecasts"/);
 });
