@@ -51,7 +51,7 @@ test('Family keeps the existing compact catalogue while owner retains detailed g
   const sources = require('../../../src/services/livingSourceService');
   const ambient = { weather: async () => weather };
   const fullFamily = sources.forAudience('household', { ambient }).catalogue();
-  const fullOwner = sources.forAudience('owner', { ambient }).catalogue({ ownerSections: false });
+  const fullOwner = sources.forAudience('owner', { ambient, catalogueOwnerSections: false }).catalogue();
   const catalogueFrom = text => JSON.parse(text.split('Core living-source catalogue (metadata, not live results): ')[1].split('\n')[0]);
   const child = catalogueFrom(await livingSourceContext({ ...family, ambient, sources, backend: 'agentx' }));
   const adult = catalogueFrom(await livingSourceContext({ ...owner, ambient, sources, backend: 'hermes' }));

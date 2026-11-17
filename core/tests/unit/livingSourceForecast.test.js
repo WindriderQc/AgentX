@@ -36,7 +36,7 @@ test('household/default retain the current-only projection and do not call forec
   assert.equal(owner.calls.length + family.calls.length, 0);
   assert.equal(family.api.catalogue().sources[0].sections, undefined);
   assert.deepEqual(owner.api.catalogue().sources[0].sections, ['forecasts', 'hourly', 'warnings']);
-  assert.equal(owner.api.catalogue({ ownerSections: false }).sources[0].sections, undefined);
+  assert.equal(forAudience('owner', { catalogueOwnerSections: false }).catalogue().sources[0].sections, undefined);
   for (const section of ['forecasts', 'hourly', 'warnings'])
     await assert.rejects(family.api.read({ source: 'weather', section }), { code: 'SOURCE_ARGUMENT_INVALID' });
   assert.equal(family.calls.length, 0);
