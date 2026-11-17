@@ -71,9 +71,9 @@ async function agentxRead(client) {
 function forAudience(audience, deps = {}) {
   if (!['owner', 'household'].includes(audience)) throw fail('SOURCE_AUDIENCE_INVALID', 'A server-bound audience is required', 403);
   const visible = Object.entries(DEFINITIONS).filter(([, definition]) => definition.audiences.includes(audience));
-  const catalogue = ({ ownerSections = true } = {}) => ({ authority: 'agentx.core', kind: 'living_source_catalogue', version: 1, audience,
+  const catalogue = () => ({ authority: 'agentx.core', kind: 'living_source_catalogue', version: 1, audience,
     sources: visible.map(([source, { audiences, ...definition }]) => ({ source, ...definition,
-      ...(source === 'weather' && audience === 'owner' && ownerSections ? { sections: WEATHER_SECTIONS,
+      ...(source === 'weather' && audience === 'owner' && deps.catalogueOwnerSections !== false ? { sections: WEATHER_SECTIONS,
         coverage: 'Default: current conditions. Explicit section: forecasts, hourly or warnings; configured station only.',
         answers: 'Default observations or one owner-only forecast section.',
         notFor: 'Other locations or guaranteed freshness/safety. Retrieval, observation, issue and validity are separate.',
