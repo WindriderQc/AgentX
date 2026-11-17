@@ -158,3 +158,13 @@ test('structured previous ID rejects as400 and structured upstream ID rejects as
  const {app,client}=fixture();expect((await request(app).get('/api/photos/frame/next?exclude[]='+ID)).status).toBe(400);expect(client.json).not.toHaveBeenCalled();
  await expect(fixture({row:{...asset(),id:[ID]}}).frame.next()).rejects.toMatchObject({code:'PHOTO_FRAME_INVALID_RESULT'});
 });
+
+test('empty pool stays empty and changed membership can introduce new unseen images',async()=>{
+ const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222';
+ const rows=[];const {frame}=fixture({rows});
+ expect(await frame.next(undefined,a)).toBeNull();
+ rows.push({...asset(),id:b});
+ expect((await frame.next(undefined,a)).id).toBe(b);
+ rows.length=0;
+ expect(await frame.next(undefined,[a,b].join(','))).toBeNull();
+});
