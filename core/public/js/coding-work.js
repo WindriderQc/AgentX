@@ -3,7 +3,7 @@
   const $ = id => document.getElementById(id);
   const labels = { queued: 'En attente', in_progress: 'En cours', review: 'À revoir', blocked: 'Bloqué', done: 'Terminé' };
   const reasons = { no_useful_progress: 'Arrêt faute d’avancée utile', model_budget_reserve: 'Réserve du budget modèle atteinte',
-    model_call_limit: 'Nombre maximal d’appels modèle atteint', hard_budget: 'Budget maximal atteint', tests_failed: 'Tests échoués',
+    model_call_limit: 'Nombre maximal d’appels modèle atteint', hard_budget: 'Budget maximal atteint', tests_failed: 'Tests échoués', tests_unknown: 'Preuve des tests à vérifier',
     operator_stop: 'Arrêt demandé par l’opérateur', queue_window_closed: 'Créneau de travail terminé',
     worker_exit: 'Worker terminé', runner_error: 'Erreur du programme d’exécution', no_changes: 'Aucune modification produite',
     authorization_removed: 'Autorisation retirée', model_termination_unverified: 'Fin de l’appel modèle non confirmée' };

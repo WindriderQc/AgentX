@@ -26,6 +26,7 @@
     runtime_unavailable: ['Coding runtime unavailable', 'The configured coding runtime could not be validated.', 'Check the configured runtime before another pass.'],
     runtime_changed: ['Coding runtime changed', 'The configured coding runtime changed during preparation.', 'Check the configured runtime before another pass.'],
     tests_failed: ['Tests need correction', 'The last observed test did not pass. The checkpoint remains local.', 'Ask the team to correct the failure and rerun the relevant tests.'],
+    tests_unknown: ['Test execution proof needs checking', 'The last test outcome is inconclusive. The checkpoint remains local.', 'Inspect the original test call; keep its native output and exit together before deciding on another run.'],
     generated_artifacts: ['Checkpoint needs inspection', 'The branch contains generated runtime files that cannot be published.', 'Preserve the checkpoint privately and inspect the source changes.'],
   };
   function normalize(value, pipelineId) {
@@ -69,7 +70,7 @@
     if (!outcome) return null;
     const [title, detail, suggestion] = REASONS[outcome.reason];
     return { title, detail, suggestion, facts: `${Math.round(outcome.usage.workSeconds / 60)} min · ${outcome.usage.modelCalls} model calls`,
-      requiresInspection: ['model_termination_unverified', 'runner_error'].includes(outcome.reason) };
+      requiresInspection: ['model_termination_unverified', 'runner_error', 'tests_unknown'].includes(outcome.reason) };
   }
   function canResume(task, control, now = Date.now()) {
     const outcome = native(task, control, now);

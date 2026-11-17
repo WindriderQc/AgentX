@@ -30,6 +30,22 @@ class ProgressTest(unittest.TestCase):
         self.progress.phase = "running"
         self.progress.baseline(self.root, self.workspace)
 
+    def test_redirected_tap_echo_cannot_replace_the_test_result(self):
+        self.call("redirected", 'node --test --test-reporter=tap test/ > /tmp/test.log 2>&1; echo "EXIT=$?"')
+        self.result("redirected", "EXIT=0")
+        self.assertEqual(self.progress.last_test, {"name": "node_test", "outcome": "unknown"})
+        self.call("readback", "grep '^# fail' /tmp/test.log")
+        self.result("readback", "# fail 0")
+        self.assertEqual(self.progress.last_test, {"name": "node_test", "outcome": "unknown"})
+
+    def test_foreign_call_or_model_claim_cannot_clear_unknown(self):
+        self.call("test", "node --test test/ | tail -6")
+        self.result("foreign", "# fail 0")
+        self.assertIsNone(self.progress.last_test)
+        self.result("test", "EXIT=0")
+        self.progress.event({"type": "assistant/message", "data": {"text": "# fail 0"}})
+        self.assertEqual(self.progress.last_test, {"name": "node_test", "outcome": "unknown"})
+
     def test_model_liveness_does_not_extend_budget_without_useful_progress(self):
         self.clock[0] = 7199
         self.progress.event({"type": "assistant/chunk", "data": {"chunk": "Synthetic private model text"}})
