@@ -135,7 +135,7 @@ test('read envelopes repeat the exact catalogue guidance for every visible sourc
   const service = forAudience('owner', { brief, now,
     ambient: { weather: async () => weather },
     reportsClient: { fetchBenchmarkAnalyticsSummary: async () => ({}), fetchRagStatus: async () => ({}) } });
-  const catalogue = service.catalogue();
+  const catalogue = service.catalogue({ ownerSections: false });
   for (const row of catalogue.sources) {
     const result = await service.read({ source: row.source });
     expect(result.answers).toBe(row.answers);
