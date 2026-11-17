@@ -4,6 +4,27 @@
   function mount({ host, api, space = 'personal', busy = () => false, standby = () => false, controls = {}, now = () => Date.now() }) {
     let enabled = false, active = false, disposed = false, pending = null, epoch = 0;
     let voiceState = 'idle', history = [], position = -1;
+    // Per-browser, per-space recency is independent of navigation history. Only
+    // successfully decoded, still-current selections reach show(). Never store
+    // captions, paths or photo data, and never reserve photos across frames.
+    const recentKey = 'nestor-idle-photos:recent:v1:' + encodeURIComponent(space);
+    const photoId = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+    let recent = [];
+    try {
+      const saved = root.localStorage?.getItem(recentKey);
+      // A valid maximum-size record is below 8 KB. Reject damaged/oversized data.
+      const ids = saved && saved.length <= 8000 ? JSON.parse(saved) : null;
+      if (Array.isArray(ids) && ids.length <= 200 && ids.every(photoId)) {
+        for (const id of ids) { const normalized = id.toLowerCase(); recent = recent.filter(value => value !== normalized); recent.push(normalized); }
+      }
+    } catch { /* Storage disabled, corrupt or inaccessible: use this frame's memory. */ }
+    function rememberShown(id) {
+      if (!photoId(id)) return;
+      const normalized = id.toLowerCase();
+      recent = recent.filter(value => value !== normalized);
+      recent.push(normalized); recent = recent.slice(-200);
+      try { root.localStorage?.setItem(recentKey, JSON.stringify(recent)); } catch { /* Rotation does not depend on storage. */ }
+    }
     let idleMs = 120000, intervalMs = 30000, lastActivity = now(), nextImage = 0, focused;
     // The controls stay hidden over the photo until the mouse moves or Tab asks for them.
     let controlsUntil = 0, hovering = false, keyboardControls = false, lastPoint = null;
@@ -96,7 +117,7 @@
     function show(value) {
       const wasActive = active;
       if (!active) focused = document.activeElement;
-      image.src = value.src; active = true; region.hidden = false;
+      image.src = value.src; active = true; region.hidden = false; rememberShown(value.id);
       if (!wasActive) root.dispatchEvent(new CustomEvent('nestor-idle-photos-visibility'));
       back.disabled = position <= 0; status.textContent = 'Photo ' + (position + 1);
       nextImage = now() + intervalMs;
@@ -108,10 +129,13 @@
       const current = () => pending === request && epoch === request.epoch && available();
       const previous = history[position]?.id;
       try {
-        const value = await api('/api/photos/frame/next' + (previous ? '?exclude=' + encodeURIComponent(previous) : ''));
+        const query = [];
+        if (previous) query.push('exclude=' + encodeURIComponent(previous));
+        if (recent.length) query.push('recent=' + encodeURIComponent(recent.join(',')));
+        const value = await api('/api/photos/frame/next' + (query.length ? '?' + query.join('&') : ''));
         if (!current()) return;
         if (!value || value.id === previous) { nextImage = now() + intervalMs; return; }
-        if (!/^[0-9a-f-]{36}$/i.test(value.id) || value.src !== '/api/photos/frame/' + value.id + '/image') throw Error('Invalid image');
+        if (!photoId(value.id) || value.src !== '/api/photos/frame/' + value.id + '/image') throw Error('Invalid image');
         const loadingImage = new Image();
         await new Promise((resolve, reject) => { loadingImage.onload = resolve; loadingImage.onerror = reject; loadingImage.src = value.src; });
         if (!current()) return;
