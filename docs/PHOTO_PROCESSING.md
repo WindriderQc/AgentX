@@ -12,8 +12,13 @@ separate selected-cleanup confirmation.
 The Personal menu and DiskX link `/diskx/photos`, which browses completed image proposals from the configured managed
 library across all imports, one entry per content SHA-256. Search, review,
 privacy, frame and quality filters apply in Mongo before bounded 60-card
-pagination. Counts describe the entire eligible collection before filters;
-suggestions awaiting a frame choice exclude images already selected. Failed or
+pagination. Counts describe photos in the entire eligible collection before filters.
+Suggestions require a positive model proposal, good technical quality, no privacy
+review flag and no prior frame rejection. A conservative text gate excludes
+proposals describing documents, paper sheets, screenshots or cover art; it does
+not reclassify the original analysis or treat OCR alone as document evidence.
+These gates reduce obvious mistakes without guaranteeing editorial suitability.
+Already selected images stay in the frame view. Failed or
 unknown attempts, videos and metadata-only cards remain in the import workbench.
 Ordering has a deterministic content-identity tie breaker. The owner-only
 `POST /api/phone-media/processing` operation `library` returns only the current
@@ -22,11 +27,36 @@ without historical analysis or internal reconciliation journals.
 
 The UI retains filters in its URL, supports a page jump, comfortable/compact
 layouts, a large keyboard-accessible viewer and up to four comparison choices
-across pages. Human review and frame changes reuse the existing version-checked
+across pages. Each card exposes **Ajouter au Cadre**, or removal when selected,
+and **Écarter cette photo**. Rejection records an explicit false frame decision;
+the photo remains in all images and can be selected again. It does not approve
+metadata or reject its entire similar-image group. Human review and frame changes reuse the existing version-checked
 decision services and portable exports. Unacknowledged browser or Core intents
 remain visible and reuse their original identity; other decisions stay disabled
 until reconciliation. Unsaved description edits require confirmation before
 leaving the viewer. Comparisons alone write no decision.
+
+The optional `similarity: "grouped"` view presents one representative per close
+visual group, after filters and before pagination; `similarity: "all"` retains
+every image. Suggestions default to grouped, other views to individual photos.
+`group` opens one SHA-256 group identifier without collapsing its matching
+members. Group counts and matching photo counts remain separate; overview
+counters always count photos. Group representatives use the requested stable
+sort, not an aesthetic ranking. Search can reveal a different member of a group.
+
+Core's replaceable `PhotoLibrarySimilarity` index binds each member to its
+content SHA and exact current Immich asset ID. Missing or stale entries remain
+individual photos, with coverage visible. The operator-only command
+`core/scripts/photo-library-similarity.cjs` reads bounded existing previews,
+computes pHash/dHash plus colour and aspect checks, and atomically publishes one
+library-scoped index. It takes `{ operationId, queueId, dispatchId }` on stdin
+inside Core's configured environment and checks the existing operator queue
+dispatch/window before reads and publication. It never resumes processing,
+scans Immich, calls inference or changes a card, original, frame choice or review.
+At most 10,000 eligible cards are accepted per operation. Interrupted builds
+leave the prior index visible; the same completed operation returns its index.
+Similarities are indicative and require complete-link membership to avoid
+transitive chains. No group authorizes deleting or selecting its members.
 
 Both media entries show the durable photo control, including unknown reads and
 already admitted writers. Browsing never enrolls an import, scans Immich, resumes

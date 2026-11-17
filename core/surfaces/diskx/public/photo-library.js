@@ -8,10 +8,13 @@
   const qualities = ['all', 'bonne', 'moyenne', 'faible', 'inconnue'];
   let query, result, generation = 0, busy = false, controlRevision = -1;
   const compared = new Map();
+  const saving = new Set();
   function fromUrl() {
     const p = new URL(location.href).searchParams;
     return { filter: filters.includes(p.get('filter')) ? p.get('filter') : 'all', search: (p.get('search') || '').slice(0, 120),
       quality: qualities.includes(p.get('quality')) ? p.get('quality') : 'all', order: orders.includes(p.get('order')) ? p.get('order') : 'recent',
+      similarity: ['all','grouped'].includes(p.get('similarity')) ? p.get('similarity') : p.get('filter') === 'suggested' ? 'grouped' : 'all',
+      group: /^[a-f0-9]{64}$/.test(p.get('group') || '') ? p.get('group') : '',
       offset: Math.trunc(Math.min(1000000, Math.max(0, Number(p.get('offset')) || 0))), limit: 60 };
   }
   async function call(input) {
@@ -43,6 +46,7 @@
   }
   function controls() {
     $('global-search').value = query.search; $('global-quality').value = query.quality; $('global-order').value = query.order;
+    $('global-similarity').value = query.similarity;
     for (const button of $('library-tabs').querySelectorAll('button')) button.setAttribute('aria-pressed', String(button.dataset.filter === query.filter));
   }
   function remember(push) {
@@ -71,7 +75,8 @@
     const open = el('button', undefined, 'photo-open'); open.setAttribute('aria-label', 'Ouvrir la fiche : '+row.proposal.description);
     open.append(image(row)); open.addEventListener('click', () => detail.open(row, open)); box.append(open);
     const copy = el('div', undefined, 'photo-copy'), badges = el('div', undefined, 'photo-badges');
-    badges.append(el('span', row.frame?.selected ? '✓ Dans le cadre' : row.proposal.frameSuitability === 'oui' ? 'Cadre suggéré' : 'Choix libre'));
+    badges.append(el('span', row.frame?.selected ? '✓ Dans le cadre' : row.suggestion?.eligible ? 'À choisir pour le Cadre'
+      : row.suggestion?.reason === 'dismissed' ? 'Écartée des suggestions' : 'Choix libre'));
     if (row.proposal.privacyReview) badges.append(el('span', 'Contenu à vérifier', 'privacy'));
     if (row.review?.approved) badges.append(el('span', '✓ Fiche relue'));
     const text = row.review?.approved ? row.review.description : row.proposal.description;
@@ -80,7 +85,36 @@
     copy.append(el('p', [date, exif.city || exif.country, 'Qualité '+row.proposal.quality].filter(Boolean).join(' · '), 'photo-meta'));
     const actions = el('div', undefined, 'photo-actions'), read = el('button', 'Ouvrir la fiche'), compare = el('button', 'Comparer', 'compare-photo');
     read.addEventListener('click', () => detail.open(row, read)); compare.addEventListener('click', () => toggle(row));
-    actions.append(read, compare); copy.append(actions); box.append(copy); return box;
+    const frame = el('button', row.pendingIntent?.kind === 'frame' ? 'Reprendre mon choix Cadre' : row.frame?.selected ? 'Retirer du Cadre' : 'Ajouter au Cadre', 'frame-choice primary');
+    frame.disabled = saving.has(row.sha256) || !result?.frameEnabled || Boolean(row.pendingDecision && row.pendingIntent?.kind !== 'frame');
+    frame.addEventListener('click', () => quickFrame(row, !row.frame?.selected));
+    const frameActions = el('div', undefined, 'frame-actions'); frameActions.append(frame);
+    if (!row.frame?.selected && !row.pendingDecision && !row.frame?.revision) {
+      const dismiss = el('button', 'Écarter cette photo', 'dismiss-suggestion'); dismiss.disabled = saving.has(row.sha256) || !result?.frameEnabled;
+      dismiss.addEventListener('click', () => quickFrame(row, false)); frameActions.append(dismiss);
+    }
+    if (row.similarity?.size > 1) {
+      const group = el('button', 'Voir les '+row.similarity.size+' photos proches', 'near-photos');
+      group.addEventListener('click', () => { query.group = row.similarity.groupId; query.offset = 0; load({ push: true, reset: true }); });
+      copy.append(group);
+    }
+    actions.append(read, compare); copy.append(frameActions, actions); box.append(copy); return box;
+  }
+  async function quickFrame(row, selected) {
+    if (saving.has(row.sha256)) return;
+    saving.add(row.sha256);
+    const box = [...$('global-cards').children].find(card => card.dataset.sha256 === row.sha256);
+    box?.querySelectorAll('.frame-actions button').forEach(button => { button.disabled = true; });
+    $('library-feedback').textContent = 'Enregistrement et vérification de ton choix…';
+    try {
+      await decide(row, 'frame', { selected });
+      $('library-feedback').textContent = row.frame?.selected ? 'Photo ajoutée au Cadre.' : 'Photo écartée des suggestions et retirée du Cadre. Elle reste dans Toutes analysées.';
+    } catch (error) { $('library-feedback').textContent = error.message; }
+    finally {
+      saving.delete(row.sha256);
+      const current = [...$('global-cards').children].find(card => card.dataset.sha256 === row.sha256);
+      if (current) current.replaceWith(card(row)); selection();
+    }
   }
   function render(value) {
     for (const row of value.results) {
@@ -97,8 +131,14 @@
     result = value; control(value.control);
     for (const key of ['total', 'suggested', 'review', 'frame']) $(key+'-count').textContent = value.summary[key].toLocaleString('fr-CA');
     for (const badge of document.querySelectorAll('[data-count]')) badge.textContent = value.summary[badge.dataset.count].toLocaleString('fr-CA');
-    $('library-status').textContent = value.total ? (query.offset+1)+'–'+Math.min(query.offset+value.results.length, value.total)+' sur '+value.total.toLocaleString('fr-CA')+(value.total === 1 ? ' image' : ' images')
+    const grouped = value.similarity?.mode === 'grouped';
+    $('library-status').textContent = value.total ? (query.offset+1)+'–'+Math.min(query.offset+value.results.length, value.total)+' sur '+value.total.toLocaleString('fr-CA')
+      +(grouped ? ' groupes · '+value.similarity.images+' photos' : value.total === 1 ? ' image' : ' images')
       : 'Aucune image dans cette vue';
+    $('suggestion-policy').hidden = query.filter !== 'suggested'; $('group-context').hidden = !query.group;
+    const coverage = value.similarity;
+    $('similarity-status').textContent = coverage?.observedAt ? 'Comparaison visuelle : '+coverage.indexed+' / '+coverage.total+' photos indexées. Les ressemblances sont indicatives.'
+      : 'Comparaison visuelle pas encore disponible : les photos sont affichées individuellement.';
     const grid = $('global-cards'); grid.replaceChildren(...value.results.map(card));
     for (const row of value.results) if (compared.has(row.sha256)) compared.set(row.sha256, row);
     selection();
@@ -155,11 +195,13 @@
   }
   const detail = window.PhotoLibraryDetail.create({ $, el, image, decide, rows: () => result?.results || [] });
   query = fromUrl(); controls();
-  $('library-tabs').addEventListener('click', event => { const button = event.target.closest('[data-filter]'); if (button) { query.filter = button.dataset.filter; query.offset = 0; load({ push: true }); } });
+  $('library-tabs').addEventListener('click', event => { const button = event.target.closest('[data-filter]'); if (button) { query.filter = button.dataset.filter; query.offset = 0;
+    query.group = ''; query.similarity = query.filter === 'suggested' ? 'grouped' : 'all'; load({ push: true }); } });
   $('library-search').addEventListener('submit', event => { event.preventDefault(); query.search = $('global-search').value;
-    query.quality = $('global-quality').value; query.order = $('global-order').value; query.offset = 0; load({ push: true }); });
-  for (const id of ['global-quality','global-order']) $(id).addEventListener('change', () => $('library-search').requestSubmit());
-  function reset() { query = { filter: 'all', search: '', quality: 'all', order: 'recent', offset: 0, limit: 60 }; load({ push: true }); }
+    query.quality = $('global-quality').value; query.order = $('global-order').value; query.similarity = $('global-similarity').value; query.offset = 0; load({ push: true }); });
+  for (const id of ['global-quality','global-order','global-similarity']) $(id).addEventListener('change', () => $('library-search').requestSubmit());
+  $('leave-group').addEventListener('click', () => { query.group = ''; query.offset = 0; load({ push: true }); });
+  function reset() { query = { filter: 'all', search: '', quality: 'all', order: 'recent', similarity: 'all', group: '', offset: 0, limit: 60 }; load({ push: true }); }
   $('reset-filters').addEventListener('click', reset); $('empty-reset').addEventListener('click', reset);
   $('refresh-library').addEventListener('click', () => load()); $('retry-library').addEventListener('click', () => load());
   $('global-previous').addEventListener('click', () => { if (!busy) { query.offset = Math.max(0, query.offset-query.limit); load({ push: true, reset: true }); } });

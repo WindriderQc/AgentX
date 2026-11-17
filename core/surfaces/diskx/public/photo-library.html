@@ -37,17 +37,22 @@
       <label class="search-box">Retrouver un souvenir<input id="global-search" type="search" maxlength="120" placeholder="Description, étiquette, lieu, appareil…"></label>
       <label>Qualité proposée<select id="global-quality"><option value="all">Toutes les qualités</option><option value="bonne">Bonne</option><option value="moyenne">Moyenne</option><option value="faible">Faible</option><option value="inconnue">Inconnue</option></select></label>
       <label>Ordre<select id="global-order"><option value="recent">Dernières analyses</option><option value="oldest">Premières analyses</option><option value="taken">Prise de vue récente</option><option value="quality">Qualité proposée</option></select></label>
+      <label>Photos proches<select id="global-similarity"><option value="grouped">Regrouper les ressemblances</option><option value="all">Voir chaque photo</option></select></label>
       <button type="submit" class="primary">Rechercher</button><button id="reset-filters" type="button">Effacer les filtres</button>
     </form>
     <div class="result-line"><p id="library-status" role="status" aria-live="polite">Chargement de la collection…</p><label class="density-label">Affichage<select id="library-density"><option value="comfortable">Confort</option><option value="compact">Compact</option></select></label></div>
-    <p class="scope-note">Recherche et filtres sur toute la collection · Une entrée par image, même présente dans plusieurs imports · Compteurs avant filtres</p>
+    <p class="scope-note">Les fichiers strictement identiques sont réunis par empreinte. Les photos proches peuvent être regroupées pour faciliter ton choix ; chaque fichier reste conservé. Compteurs : nombre de photos avant filtres.</p>
+    <p id="suggestion-policy" class="scope-note" hidden>Suggestions prudentes : qualité bonne, avis positif et aucun contenu à vérifier. Les documents, pochettes et photos écartées restent dans « Toutes analysées ». Le modèle peut encore se tromper : ton choix confirme l’ajout.</p>
+    <p id="similarity-status" class="scope-note" role="status"></p>
+    <p id="group-context" class="scope-note" hidden>Photos proches, à comparer avant de choisir. <button id="leave-group" type="button">Revenir à la collection</button></p>
+    <p id="library-feedback" role="status" aria-live="polite"></p>
     <div id="library-error" class="library-error" role="alert" hidden><p id="library-error-message"></p><button id="retry-library">Réessayer</button></div>
     <div id="global-cards" class="global-cards" aria-busy="true"></div>
     <div id="library-empty" class="library-empty" hidden><span aria-hidden="true">▧</span><h3 id="empty-title">Aucune image dans cette vue</h3><p id="empty-message"></p><button id="empty-reset">Voir toutes les images analysées</button><a href="/diskx/phone">Voir les imports USB</a></div>
     <div class="global-pagination"><button id="global-previous">← Précédent</button><form id="jump-form"><label>Page <input id="jump-page" type="number" min="1" value="1" aria-label="Numéro de page"></label><span id="global-page-count"></span><button type="submit">Aller</button></form><button id="global-next">Suivant →</button></div>
   </section>
   <aside id="comparison-tray" class="comparison-tray" aria-label="Images à comparer" hidden><div><strong id="comparison-count">0 / 4 images</strong><p>Ta sélection reste ici quand tu changes de page.</p></div><div id="comparison-items"></div><button id="show-comparison" class="primary" disabled>Comparer</button><button id="clear-comparison">Vider</button></aside>
-  <footer class="library-footer"><p>Les propositions IA attendent ta relecture. Elles évaluent chaque image séparément et ne classent pas les prises d’une rafale. Ajouter au cadre est un choix distinct de la relecture de la fiche.</p><p>Les originaux restent sur Media. Pour les repères Garder / Archiver ou le retrait confirmé du téléphone, retrouve <a href="/diskx/phone#library">l’atelier des imports</a>.</p></footer>
+  <footer class="library-footer"><p>Les propositions IA attendent ta relecture. Les regroupements visuels sont indicatifs, sans suppression ni sélection automatique. Ajouter au cadre est un choix distinct de la relecture de la fiche.</p><p>Les originaux restent sur Media. Pour les repères Garder / Archiver ou le retrait confirmé du téléphone, retrouve <a href="/diskx/phone#library">l’atelier des imports</a>.</p></footer>
 </main>
 <dialog id="photo-detail" aria-labelledby="detail-title">
   <div class="detail-header"><div><p class="eyebrow" id="detail-mode">RELECTURE</p><h2 id="detail-title">Ton image</h2></div><button id="detail-close" autofocus>Fermer ×</button></div>

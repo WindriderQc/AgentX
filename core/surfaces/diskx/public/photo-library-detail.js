@@ -35,11 +35,16 @@
       layout.append(image(row, 'detail-image'), copy); $('detail-body').replaceChildren(layout);
       const feedback = el('p', '', 'detail-feedback'); feedback.setAttribute('role', 'status');
       copy.append(el('h3', 'La proposition'), el('p', row.proposal.description));
-      copy.append(el('p', 'Qualité proposée : '+row.proposal.quality+' · Cadre : '+row.proposal.frameSuitability));
+      copy.append(el('p', 'Qualité technique proposée : '+row.proposal.quality+' · Avis brut du modèle pour le Cadre : '+row.proposal.frameSuitability));
+      const explanations = { 'document-or-cover': 'Document, capture ou pochette repéré dans la description : hors suggestions automatiques.',
+        'privacy-review': 'Contenu à vérifier : hors suggestions automatiques avant ton choix.',
+        dismissed: 'Tu as écarté cette photo des suggestions. Tu peux toujours la choisir ici.',
+        quality: 'La qualité proposée ne suffit pas pour la sélection prudente.', model: 'Le modèle ne propose pas cette image pour le Cadre.' };
+      if (explanations[row.suggestion?.reason]) copy.append(el('p', explanations[row.suggestion.reason], 'suggestion-explanation'));
       if (row.proposal.reasons?.length) { const list = el('ul'); for (const reason of row.proposal.reasons) list.append(el('li', reason)); copy.append(list); }
       if (row.proposal.privacyReview) copy.append(el('p', 'Contenu personnel à vérifier avant de choisir sa diffusion.', 'frame-state'));
       const tags = el('p', (row.proposal.tags || []).join(' · ')); copy.append(tags);
-      const frame = el('button'), frameState = el('p', undefined, 'frame-state');
+      const frame = el('button', undefined, 'primary'), frameState = el('p', undefined, 'frame-state');
       const reviewDetails = el('details'), summary = el('summary', 'Relire et corriger la fiche'); reviewDetails.append(summary);
       const form = el('form'), descriptionLabel = el('label', 'Ta description'), description = el('textarea'); description.maxLength = 2000;
       description.setAttribute('aria-label', 'Ta description'); descriptionLabel.append(description);
@@ -58,7 +63,7 @@
         approve.textContent = pending === 'review' ? 'Reprendre ma relecture' : 'Enregistrer ma relecture';
         approve.disabled = saving || Boolean(row.pendingDecision && pending !== 'review');
         description.disabled = tagInput.disabled = saving || Boolean(row.pendingDecision);
-        frameState.textContent = row.frame?.selected ? '✓ Cette image est dans le Cadre Photo.' : row.proposal.frameSuitability === 'oui' ? 'Cadre suggéré · aucun ajout automatique.' : 'Le choix du cadre reste libre.';
+        frameState.textContent = row.frame?.selected ? '✓ Cette image est dans le Cadre Photo.' : row.suggestion?.eligible ? 'Suggestion à confirmer · aucun ajout automatique.' : 'Ton choix pour le cadre reste libre.';
         reviewState.textContent = row.review?.approved ? '✓ Fiche relue. Tu peux encore la corriger.' : 'Cette proposition attend ta relecture.';
         if (row.pendingDecision) feedback.textContent = pending ? 'Une décision attend confirmation. Reprends-la avec le bouton correspondant avant un nouveau choix.'
           : 'Une décision attend vérification. Actualise la collection avant de poursuivre.';
