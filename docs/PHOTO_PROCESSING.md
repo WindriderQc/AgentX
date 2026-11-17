@@ -9,7 +9,7 @@ separate selected-cleanup confirmation.
 
 ### Global owner photothèque
 
-`/diskx/photos` browses completed image proposals from the configured managed
+The Personal menu and DiskX link `/diskx/photos`, which browses completed image proposals from the configured managed
 library across all imports, one entry per content SHA-256. Search, review,
 privacy, frame and quality filters apply in Mongo before bounded 60-card
 pagination. Counts describe the entire eligible collection before filters;
