@@ -533,6 +533,13 @@ No note content or source-reference list is returned. All four global gaps and
 false/blocked execution flags remain; original contracts/reports are unchanged.
 See [current linked souvenirs](../../docs/SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
 
+The shared native source reader also reopens and byte-compares every qualified
+original, attachment and metadata file at each final fence. Same-size rewrites
+cannot pass merely because filesystem timestamps did not advance. The initial
+16 MiB source budget stays unchanged, and every additional verification pass
+reads at most that same source-set bound. This grants no atomic filesystem
+snapshot, mailbox approval or new write behavior.
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive

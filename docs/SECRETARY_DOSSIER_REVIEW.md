@@ -420,6 +420,13 @@ The native reader selects its own evidence root, verifies the pinned original,
 every recorded attachment and their full MIME decoding within a 16 MiB total
 read budget, 128 attachments and 4,096 MIME parts. Reads use POSIX no-follow
 file descriptors and refuse missing, escaped, changed or inconsistent sources.
+The final source fence reopens every qualified file and compares its current
+bytes with the buffered qualified bytes, checking metadata before and after.
+Each verification pass rereads at most the same 16 MiB source-set bound; the
+initial source/MIME budget is unchanged. Matching inode/size/timestamps alone
+cannot qualify a late same-size rewrite. Multiple finish passes used by native
+restoration retain the same bound per pass. This is not an atomic filesystem
+snapshot or a guarantee against changes after a completed verification.
 They write no archive, restore directory or provider record. Unsupported
 encapsulated MIME structures remain explicit refusals.
 
