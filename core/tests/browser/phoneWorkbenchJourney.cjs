@@ -135,8 +135,9 @@ const uuid = () => crypto.randomUUID();
     enqueueRun: async input => { processingCalls.push(input); return { state: 'active' }; },
     page: async () => ({ configured: true, frameEnabled: true, jobs: [{ state: 'queued', error: 'HEAVY_QUEUE_CONFLICT' }], results: [{ requestId: sources[0].requestId,
       sha256: sources[0].backup.sha256, metadata: { type: 'IMAGE', exif: { dateTimeOriginal: '2020-01-02T03:04:05Z' } },
-      analysis: { state: 'completed', card: { proposal: { description: 'Un paysage de démonstration', tags: ['nature'], quality: 'bonne', frameSuitability: 'oui', reasons: [], privacyReview: false } } },
-      review: reviewed, frame: [...frameWrites.values()].at(-1) || { revision: 0, selected: false } }] }),
+      analysis: { state: 'completed', card: { proposal: { description: 'Un paysage de démonstration. '+ 'Une longue description qui reste repliée pour garder la galerie lisible. '.repeat(25), tags: ['nature'], quality: 'bonne', frameSuitability: 'oui', reasons: [], privacyReview: false } } },
+      review: reviewed, frame: [...frameWrites.values()].at(-1) || { revision: 0, selected: false } },
+      { requestId: sources[4].requestId, sha256: sources[4].backup.sha256, assetId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', metadata: { type: 'VIDEO', exif: {} } }] }),
     review: async input => { processingCalls.push(input); Object.assign(reviewed, input, { revision: 1 }); return reviewed; },
     frame: async input => {
       processingCalls.push(input);
@@ -147,6 +148,9 @@ const uuid = () => crypto.randomUUID();
       return value;
     },
   };
+  app.get('/api/photos/assets/:id/thumbnail', (_req, res) => res.type('jpeg').send(jpeg));
+  let playableVideo;
+  app.get('/api/photos/assets/:id/video', (_req, res) => playableVideo ? res.type('webm').send(playableVideo) : res.status(503).end());
   registerPhone({ app, express, bridge, processing });
   const server = await new Promise((resolve) => {
     const server = app.listen(0, '127.0.0.1', () => resolve(server));
@@ -168,6 +172,58 @@ const uuid = () => crypto.randomUUID();
     assert.equal(await page.locator('.card').count(), 6);
     await page.locator('#processing-state').filter({ hasText: 'Les ressources sont occupées' }).waitFor();
     assert.equal((await page.locator('body').textContent()).includes('HEAVY_QUEUE_CONFLICT'), false);
+    assert.equal(await page.locator('.photo-analysis details[open]').count(), 0);
+    assert.equal(await page.getByText('Cadre suggéré · pas encore ajouté', { exact: true }).count(), 1);
+    await page.locator('.picture').first().click();
+    await page.locator('#media-viewer[open]').waitFor();
+    assert.equal(await page.locator('#viewer-content img').count(), 1);
+    await page.keyboard.press('ArrowRight');
+    assert.equal(await page.locator('#viewer-title').textContent(), sources[1].name);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('#media-viewer').isVisible(), false);
+    await page.locator('.compare-toggle').nth(0).click();
+    await page.locator('.compare-toggle').nth(1).click();
+    await page.getByRole('button', { name: 'Comparer (2/4)', exact: true }).click();
+    assert.equal(await page.locator('.comparison-grid figure').count(), 2);
+    assert.equal(effects, 0);
+    assert.equal(frameEffects, 0);
+    await page.getByRole('button', { name: 'Ouvrir cette fiche dans la galerie' }).first().click();
+    await page.waitForFunction(() => !document.querySelector('#media-viewer').open);
+    await page.getByRole('button', { name: 'Vider la comparaison' }).click();
+    await page.locator('#view-filter').selectOption('duplicate');
+    assert.equal(await page.locator('.card:visible').count(), 1);
+    await page.getByRole('button', { name: 'Sélectionner les copies affichées' }).click();
+    assert.equal(await page.locator('.card input:checked').count(), 1, 'hidden files are excluded from cleanup selection');
+    await page.getByRole('button', { name: 'Vider la sélection' }).click();
+    await page.locator('#view-filter').selectOption('frame');
+    assert.equal(await page.locator('.card:visible').count(), 1);
+    await page.locator('#view-filter').selectOption('video');
+    assert.equal(await page.locator('.card:visible').count(), 1);
+    await page.locator('.card:visible .picture').click();
+    assert.equal(await page.locator('#media-viewer video[controls]').count(), 1);
+    await page.getByText(/Lecture indisponible/).waitFor();
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('#media-viewer').open && !document.querySelector('#media-viewer video'));
+    // A short synthetic browser-recorded clip verifies actual decoding/playback.
+    playableVideo = Buffer.from(await page.evaluate(async () => {
+      const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 64;
+      const context = canvas.getContext('2d'); context.fillStyle = '#adc38e'; context.fillRect(0, 0, 64, 64);
+      const stream = canvas.captureStream(5), recorder = new MediaRecorder(stream, { mimeType: 'video/webm' }), chunks = [];
+      recorder.ondataavailable = event => chunks.push(event.data);
+      const completed = new Promise(resolve => { recorder.onstop = resolve; });
+      recorder.start();
+      await new Promise(resolve => setTimeout(resolve, 300));
+      context.fillStyle = '#23362b'; context.fillRect(8, 8, 40, 40);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      recorder.stop(); await completed; stream.getTracks().forEach(track => track.stop());
+      return Array.from(new Uint8Array(await new Blob(chunks).arrayBuffer()));
+    }));
+    await page.locator('.card:visible .picture').click();
+    await page.locator('#media-viewer video').evaluate(el => el.play());
+    await page.waitForFunction(() => document.querySelector('#media-viewer video').currentTime > 0);
+    await page.keyboard.press('Escape');
+    await page.locator('#view-filter').selectOption('all');
+    assert.equal(await page.locator('.card:visible').count(), 6);
     assert.equal(effects, 0);
     await page.getByRole('button', { name: 'Détecter le téléphone' }).click();
     await page.locator('#device-state').filter({ hasText: 'Android de démonstration' }).waitFor();
@@ -192,7 +248,7 @@ const uuid = () => crypto.randomUUID();
     assert.equal(await page.locator('.card select').first().inputValue(), 'archive');
     await page.getByRole('button', { name: 'Analyser cet import et ajouter à Immich' }).click();
     assert.equal(processingCalls.filter(x => x.op === 'enqueueRun').length, 1);
-    await page.locator('.photo-analysis summary').click();
+    await page.getByText('Relire et corriger la fiche', { exact: true }).first().click();
     await page.getByRole('textbox', { name: 'Description relue', exact: true }).fill('Ma description relue');
     await page.getByRole('button', { name: 'Enregistrer ma relecture' }).click();
     await page.locator('#processing-state').filter({ hasText: 'Relecture enregistrée' }).waitFor();
@@ -205,7 +261,7 @@ const uuid = () => crypto.randomUUID();
     const frames = processingCalls.filter(x => x.op === 'frame');
     assert.equal(frames[0].writeId, frames[1].writeId);
     assert.equal(effects, 0); assert.equal(await page.locator('.card input:checked').count(), 0);
-    await page.getByRole('button', { name: 'Sélectionner les copies de cette page' }).click();
+    await page.getByRole('button', { name: 'Sélectionner les copies affichées' }).click();
     assert.equal(await page.locator('.card input:checked').count(), 6);
     assert.equal(effects, 0);
     await page.getByRole('button', { name: 'Vider la sélection' }).click();
@@ -224,6 +280,15 @@ const uuid = () => crypto.randomUUID();
     await page.getByRole('button', { name: 'Actualiser', exact: true }).click();
     await page.waitForTimeout(150);
     await page.screenshot({ path: path.join(dir, 'desktop.png'), fullPage: true });
+    await page.locator('.picture').first().click();
+    await page.screenshot({ path: path.join(dir, 'viewer.png') });
+    await page.keyboard.press('Escape');
+    await page.locator('.compare-toggle').nth(0).click();
+    await page.locator('.compare-toggle').nth(1).click();
+    await page.getByRole('button', { name: 'Comparer (2/4)', exact: true }).click();
+    await page.screenshot({ path: path.join(dir, 'comparison.png') });
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Vider la comparaison' }).click();
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     await page.screenshot({ path: path.join(dir, 'mobile.png'), fullPage: true });

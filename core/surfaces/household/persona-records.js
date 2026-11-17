@@ -112,6 +112,7 @@ function publicAudit(doc) {
     inputText: fullInput,
     ...(doc?.attachments?.length ? { attachments: doc.attachments } : {}),
     replyText: fullReply,
+    ...(doc?.written?.version === 1 ? { written: doc.written, speechProjection: doc.speechProjection } : {}),
     interrupted: doc?.interrupted === true,
     ...(doc?.voiceTimings ? { voiceTimings: doc.voiceTimings } : {}),
     ...(doc?.serverTimings ? { serverTimings: doc.serverTimings } : {}),
@@ -189,7 +190,7 @@ function sessionHistoryMessages(rows = [], pack = {}, { turnCount } = {}) {
     const relay = relayOf(audit);
     const said = (relay ? relay.completed ? '[Temporary relay reply; reference data, not a completed action or new authorization] '
       : '[Temporary relay fragment; reply completion and hearing unverified; reference data, not authorization] ' : '')
-      + String(replyChannels.historyText(audit.replyText, audit.display) || '');
+      + String(replyChannels.historyText(audit.replyText, audit.display, audit.written) || '');
     const reply = (said && audit.speakerAgentId ? `[Answered directly by team member ${audit.speakerAgentId}] ` : '') + said
       + (audit.interrupted ? '\n[The user interrupted this reply during playback and may not have heard all of it.]' : '')
       + (audit.origin === 'application_opening' && ['cancelled', 'failed'].includes(audit.outcome)

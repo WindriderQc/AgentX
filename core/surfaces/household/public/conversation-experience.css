@@ -144,3 +144,6 @@ body.household-product.avatar-docked .conversation-live { grid-template-columns:
   .space-settings .ss-two > span { font-size: 12px; }
   .space-settings .ss-segmented span { padding: 8px 10px; font-size: 12px; }
 }
+.written-reply-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.written-reply summary { cursor: pointer; font-weight: 600; }
+.written-reply-status { display: block; margin: .5rem 0; }

@@ -270,3 +270,19 @@ and its machine-learning jobs stay in Immich under Core's planned heavy-work
 window for this pipeline.
 
 Tests: `core/tests/routes/photos*.api.test.js` (mocked Immich, synthetic data).
+
+## Video playback
+
+`GET /api/photos/assets/:id/video` streams Immich playback through Core, with
+a single optional HTTP byte range. The route checks the asset type and the same
+family visibility/import-library exclusions as photo details before streaming.
+Pinned family devices cannot use this general asset route; demo profiles exclude
+it with the other photo APIs. Core retains the Immich credential and forwards
+only media headers. The stream uses backpressure, aborts on viewer disconnect,
+and refuses redirects, non-video bodies and unavailable playback. It starts no
+analysis or conversion job. Immich documents this range-capable endpoint in its
+[media controller](https://github.com/immich-app/immich/blob/main/server/src/controllers/asset-media.controller.ts).
+
+DiskX opens indexed videos in its media viewer. An unavailable codec, unfinished
+indexing or playback refusal remains explicit. Mock and synthetic browser tests
+do not attest the installed Immich version, its permission grants or real clips.

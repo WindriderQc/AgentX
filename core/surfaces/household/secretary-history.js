@@ -7,6 +7,7 @@ const preservation = require('../../src/services/personalHistoryPreservation');
 const decisionState = require('../../src/services/personalHistoryDecisionState');
 const messageScope = require('../../src/services/personalHistoryMessageScope');
 const findingScope = require('../../src/services/personalHistoryFindingScope');
+const restorationScope = require('../../src/services/personalHistoryRestorationScope');
 
 function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' },
   preservationDeps = { audience: 'owner' }, decisionStateDeps = { audience: 'owner' }, messageScopeDeps = { audience: 'owner' },
@@ -22,6 +23,8 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDe
     () => messageScope.discover(req.body, messageScopeDeps)));
   router.post('/history/decision-state/findings', (req, res) => sourceResponse(res,
     () => findingScope.discover(req.body, findingScopeDeps)));
+  router.post('/history/preservation-scope', (req, res) => sourceResponse(res,
+    () => restorationScope.observe(req.body, preservationDeps)));
   router.get('/history/:id/decision-state', (req, res) => sourceResponse(res,
     () => decisionState.get(req.params.id, req.query, decisionStateDeps)));
   router.post('/history/:id/decision-state/check', (req, res) => sourceResponse(res,

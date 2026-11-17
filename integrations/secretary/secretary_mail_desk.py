@@ -6,9 +6,10 @@ calls it over the same SSH boundary as the other host controls. It lists the
 threads the triage labelled Urgent or Needs Reply, removes that one label when
 Dad has handled a thread, counts recent Inbox mail the triage has not labelled
 yet, and ranks the senders it most often leaves in Review so Dad can turn them
-into rules. Archived-source reading and preservation commands open bounded
-native archive bytes without Gmail authorization. It never sends, archives or
-trashes.
+into rules. Archived-source reading, preservation and restoration commands open
+bounded native archive bytes without Gmail authorization; restoration qualifies
+and removes a private temporary filesystem copy. It never sends, archives or
+trashes mail.
 """
 
 from __future__ import annotations
@@ -92,6 +93,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     preservation.add_argument("--thread", required=True)
     preservation.add_argument("--sha256", required=True)
     preservation.add_argument("--request-id", required=True)
+    restoration = commands.add_parser("restoration")
+    restoration.add_argument("--message", required=True)
+    restoration.add_argument("--thread", required=True)
+    restoration.add_argument("--sha256", required=True)
+    restoration.add_argument("--request-id", required=True)
     findings = commands.add_parser("findings")
     findings.add_argument("--message", required=True)
     findings.add_argument("--thread", required=True)
@@ -343,6 +349,14 @@ def main(argv: list[str] | None = None) -> int:
                           "message": "the Secretary mail request is not valid"}))
         return 0
     try:
+        if args.command == "restoration":
+            from archive_restoration import RestorationError, probe
+            try:
+                data = probe(args.evidence_root, args.message, args.thread, args.sha256, args.request_id)
+            except RestorationError as error:
+                raise MailDeskError(str(error), error.code, error.status) from None
+            print(json.dumps({"status": "success", "data": data}, ensure_ascii=False))
+            return 0
         if args.command == "findings":
             from archive_findings import FindingsError, probe
             try:

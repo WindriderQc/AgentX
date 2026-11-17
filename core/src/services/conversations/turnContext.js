@@ -15,6 +15,7 @@ async function readTurnContext(conversations, query) {
   const rows = await conversations.readTurns(query);
   const turns = rows.map(row => ({
     turnId: row.traceId, inputText: row.inputText, replyText: row.replyText, outcome: row.outcome,
+    ...(row.written?.version === 1 && { written: row.written, speechProjection: row.speechProjection }),
     createdAt: row.createdAt, origin: row.origin, interrupted: row.interrupted,
     ...(row.attachments?.length && { attachments: row.attachments }),
     ...(row.display?.length && { display: row.display.filter(block => block.kind !== 'secret') }),

@@ -171,7 +171,54 @@ an unknown writer fence; neither elapsed time nor a repeated command permits
 another inference. A malformed but completed response becomes a failed new
 card, without automatic retry. Completion requires portable export, settled
 indexing and release of that attempt's writer. The operator then records its
-native queue receipt and verifies ordinary FIFO processing resumes.
+native queue receipt and verifies the photo control retains the owner’s chosen
+state. A paused control refuses retry admission too: any temporary opening needs
+explicit owner authorization, and a requested pause is restored before closing
+the operator window. Completion never authorizes a broader FIFO restart.
+
+### Pausing new photo processing
+
+The owner pauses photo admission through the existing queue operator:
+
+```sh
+agentx-work-queue photo-status
+agentx-work-queue photo-pause --actor operator --id REQUEST_UUID --revision CURRENT_REVISION
+```
+
+`--id` identifies this control intent, not a batch or queue request. Read the
+current revision first and retain the same identity and arguments after a lost
+reply. `photo-status` reports the latest control receipt and any admitted photo
+writers; an uncertain response is a reason to observe, not launch again.
+
+The control is stored on Core's existing runtime coordination document, beside
+the photo writer fence. It has no expiry or scheduled resume and survives Core
+restart. Its admission check and writer acquisition share one atomic boundary.
+Paused processing skips discovery and new claims. Existing admitted work can
+finish; native observation and exact release remain available. An UNKNOWN writer
+keeps its original fence and needs its original reconciliation. Pause never
+cancels a batch or a queue request and never clears an active writer.
+
+Configuration remains present: the managed library's family exclusions, photo
+reads, review and frame choices retain their existing permissions. Public GET
+still returns configuration availability only. The existing owner-only POST
+adds `control`, `pause` and `resume`; control writes accept only a request UUID,
+an expected revision, and the explicit confirmation required for resume.
+
+Resuming requires `photo-resume` with a new control request UUID, the fresh
+revision and `--confirmation RESUME_PHOTO_PROCESSING`. It opens admission;
+native queue windows and resource checks still apply. Retained future
+reservations do not start work while paused. If an old reservation expires,
+move that same request through the native queue before a supervised restart.
+Selecting a later night window is a separate owner decision, never an automatic
+consequence of pausing or elapsed time.
+
+For the first installation, a reviewed copy of this same owner implementation
+can stage the control on the existing runtime document with a legacy model.
+That stored value is not enforced by an older Core: retain the native FIFO hold
+and bounded maintenance drain until the reviewed Core revision is installed.
+Verify the original control identity and paused state after the new process
+starts. Do not replace the shared configuration or remove library exclusions
+to imitate a pause.
 
 ### Draining before Core maintenance
 

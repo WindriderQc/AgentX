@@ -10,7 +10,8 @@ import re
 import uuid
 
 JOB_ID = re.compile(r"[a-z][a-z0-9-]{0,63}\Z")
-KINDS = {"codex-usage", "memory-review-submit", "offhost-backup", "archive-mirror", "bundle-delivery", "session-archive"}
+KINDS = {"codex-usage", "memory-review-submit", "offhost-backup", "archive-mirror", "bundle-delivery", "session-archive",
+         "recovery-capture", "recovery-replica"}
 TERMINAL = {"completed", "failed", "cancelled"}
 
 

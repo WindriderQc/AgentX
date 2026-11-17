@@ -17,6 +17,62 @@ describe('surface conversations in the canonical Core store', () => {
     packId: session.packId, scopeId: session.scopeId, modeId: session.modeId,
     inputText: 'Synthetic question', replyText: 'Synthetic reply', ...overrides });
 
+  test('ordered writing round-trips once on the canonical turn independently of speech and recovery', async () => {
+    const { attributedConversations } = require('../../surfaces/household/turn-attribution');
+    const { createReplyChannels } = require('../../surfaces/household/reply-channels');
+    const { publicAudit } = require('../../surfaces/household/persona-records');
+    const written = require('../../public/js/conversation-written');
+    const store = attributedConversations(conversations), channels = createReplyChannels();
+    const body = 'Complete synthetic retained detail. '.repeat(500) + 'UNIQUE_WRITTEN_END';
+    channels.push(`Brief speech. <show kind="text">${body}</show> Closing words.`);
+    const parsed = channels.end();
+    const recorded = await store.recordTurn(turn(session, { replyText: parsed.say, written: parsed.written,
+      display: parsed.display, toolEvidence: { runId: 'synthetic-original-run' } }));
+    const query = { sessionId: session.sessionId, traceId: recorded.traceId };
+    const reloaded = publicAudit(await store.getTurn(query));
+    expect(written.text(reloaded)).toContain(body);
+    expect(reloaded.written).toMatchObject({ version: 1, revision: 1, status: 'complete', sourceTurnId: recorded.traceId });
+    expect(reloaded.speechProjection.sourceRevision).toBe(1);
+    const root = await Conversation.findById(session.conversationId).lean();
+    expect(JSON.stringify(root).split('UNIQUE_WRITTEN_END')).toHaveLength(2);
+    expect(root.messages[1].content).toBe('Brief speech. Closing words.');
+    expect(root.surfaceSession.turnCount).toBe(1);
+    const context = await require('../../src/services/conversations/turnContext').readTurnContext(store,
+      { sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId });
+    expect(context.turns[0].written).toEqual(reloaded.written);
+    await store.updateTurn(query, { $set: { replyText: 'An even shorter spoken summary.', display: [] } });
+    const summarized = await store.getTurn(query);
+    expect(summarized.written).toEqual(reloaded.written);
+    expect(written.text(summarized)).toContain(body);
+    const recovered = createReplyChannels(); recovered.push('Verified late native answer.');
+    const final = recovered.end();
+    await store.updateTurn(query, { $set: { replyText: final.say, written: final.written, display: final.display,
+      toolEvidence: { runId: 'synthetic-recovered-run' } } });
+    expect((await store.getTurn(query)).written.revision).toBe(2);
+    expect(await conversations.updateTurn({ ...query, 'written.revision': 1 }, { $set: { replyText: 'Stale write' } })).toBeNull();
+    expect(await store.countTurns({ sessionId: session.sessionId })).toBe(1);
+  });
+
+  test('pending, interrupted, family and legacy turns retain their existing scope and source evidence', async () => {
+    const { attributedConversations } = require('../../surfaces/household/turn-attribution');
+    const store = attributedConversations(conversations);
+    const input = turn(session, { replyText: '', clientTurnId: randomUUID() });
+    const accepted = await conversations.acceptTurn(input);
+    expect(accepted.turn.written).toBeUndefined();
+    await store.settleTurn({ ...input, replyText: 'Interrupted fragment.', interrupted: true, outcome: 'cancelled' });
+    const partial = await store.getTurn({ traceId: input.traceId });
+    expect(partial.written.status).toBe('partial');
+    expect(await store.getTurn({ traceId: input.traceId, scopeId: 'family' })).toBeNull();
+    const legacy = await conversations.recordTurn(turn(session));
+    await store.updateTurn({ traceId: legacy.traceId }, { $set: { interrupted: true } });
+    expect((await store.getTurn({ traceId: legacy.traceId })).written).toBeUndefined();
+    const family = await store.createSession({ sessionId: randomUUID(), packId: 'kidx_nestor', scopeId: 'family', modeId: 'family' });
+    const result = await store.recordTurn(turn(family, { replyText: '<show kind="secret">NEVER_RETAIN_SYNTHETIC</show> Safe answer.' }));
+    expect(JSON.stringify(result)).not.toContain('NEVER_RETAIN_SYNTHETIC');
+    await store.deleteSession({ sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId });
+    expect(await store.getTurn({ traceId: input.traceId })).toBeNull();
+  });
+
   test('stores transcript, session and evidence together without a second text copy', async () => {
     const recorded = await conversations.recordTurn(turn(session, { toolEvidence: { status: 'verified', receipts: [{ tool: 'test' }] } }));
     const row = await Conversation.findById(session.conversationId).lean();

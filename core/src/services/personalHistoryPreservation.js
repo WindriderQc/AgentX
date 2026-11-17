@@ -4,6 +4,7 @@ const Entry = require('../../models/PersonalHistoryEntry');
 const privacy = require('./personalHistoryPrivacy');
 const { basis, digest, references, failure } = require('./personalHistorySourceReviewSources');
 const { collect, GAPS } = require('./personalHistoryPreservationContract');
+const restoration = require('./personalHistoryRestorationContract');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const ID = /^[a-f0-9]{24}$/;
 const MAIL_ID = /^[a-f0-9]{10,32}$/;
@@ -39,11 +40,20 @@ function find(row, key) {
     500, 'HISTORY_PRESERVATION_INTEGRITY');
   return check;
 }
+function verification(snapshot) {
+  if (snapshot?.contract === 'agentx.history-preservation/v1') return 'preservation';
+  if (snapshot?.contract === 'agentx.history-preservation/v2') return 'restoration';
+  throw failure('The stored preservation contract is unsupported.', 500, 'HISTORY_PRESERVATION_INTEGRITY');
+}
+const observe = (reference, deps, mode) => (mode === 'restoration' ? restoration.collect : collect)(reference, control(deps));
 function view(row, check, nativeState = 'not_rechecked') {
   return { requestId: check.requestId, observationId: check.observationId, entryRevision: check.entryRevision, sourceIndex: check.sourceIndex,
+    verification: verification(check.snapshot),
     preparedAt: check.preparedAt, snapshotHash: check.snapshotHash, snapshot: check.snapshot,
     entryCurrent: basis(row) === check.basisHash, nativeState, executionAllowed: false, cleanupStatus: 'blocked',
-    nativeValidationGaps: GAPS, meaning: 'Exact native byte and MIME checks on two machines; no semantic, whole-archive, storage-failure-domain or mailbox approval.' };
+    nativeValidationGaps: GAPS, meaning: verification(check.snapshot) === 'restoration'
+      ? 'Exact selected files copied to private temporary storage, reopened and MIME-checked on two machines, then removed; no semantic, whole-archive, storage-failure-domain or mailbox approval.'
+      : 'Exact native byte and MIME checks on two machines; no semantic, whole-archive, storage-failure-domain or mailbox approval.' };
 }
 function source(row, index) {
   const reference = references(row)[index];
@@ -62,16 +72,18 @@ async function fresh(id, check) {
 async function prepare(id, input, deps) {
   owner(deps);
   if (!input || typeof input !== 'object' || Array.isArray(input)
-    || Object.keys(input).some(key => !['requestId', 'revision', 'source'].includes(key))
+    || Object.keys(input).some(key => !['requestId', 'revision', 'source', 'verification'].includes(key))
+    || (input.verification !== undefined && !['preservation', 'restoration'].includes(input.verification))
     || !Number.isSafeInteger(input.revision) || input.revision < 0
     || !Number.isSafeInteger(input.source) || input.source < 0 || input.source > 18) {
     throw failure('Use only the displayed revision and selected source.', 400, 'HISTORY_PRESERVATION_INVALID');
   }
   requestId(input.requestId);
+  const mode = input.verification || 'preservation';
   const row = await load(id);
   const existing = (row.preservationChecks || []).find(check => check.requestId === input.requestId);
   if (existing) {
-    if (existing.entryRevision !== input.revision || existing.sourceIndex !== input.source) {
+    if (existing.entryRevision !== input.revision || existing.sourceIndex !== input.source || verification(existing.snapshot) !== mode) {
       throw failure('This request UUID already belongs to another preservation intent.');
     }
     return { replayed: true, receipt: view(row, find(row, input.requestId)) };
@@ -79,7 +91,7 @@ async function prepare(id, input, deps) {
   if (row.revision !== input.revision) throw failure('Refresh the assertion before preparing a check.');
   if ((row.preservationChecks || []).length >= 20) throw failure('This assertion retains its 20 existing receipts.', 409, 'HISTORY_PRESERVATION_CAPACITY');
   const reference = source(row, input.source);
-  const observed = await collect(reference, control(deps));
+  const observed = await observe(reference, deps, mode);
   const check = { requestId: input.requestId, observationId: observed.observationId, entryRevision: row.revision, sourceIndex: input.source,
     basisHash: basis(row), snapshot: observed.snapshot, snapshotHash: digest(observed.snapshot), preparedAt: new Date() };
   if (Buffer.byteLength(JSON.stringify(check)) > 128 * 1024) throw failure('The native proof exceeds its bounded capacity.', 413);
@@ -101,7 +113,9 @@ async function prepare(id, input, deps) {
       throw failure('The assertion changed during native verification; retain this intent and refresh.');
     }
     const retained = find(current, input.requestId);
-    if (retained.entryRevision !== input.revision || retained.sourceIndex !== input.source) throw failure('Conflicting preservation intent.');
+    if (retained.entryRevision !== input.revision || retained.sourceIndex !== input.source || verification(retained.snapshot) !== mode) {
+      throw failure('Conflicting preservation intent.');
+    }
     return { replayed: true, receipt: view(current, retained) };
   }
   const current = await fresh(id, check);
@@ -119,7 +133,7 @@ async function get(id, key, deps) {
   }
   const check = find(row, key);
   if (basis(row) !== check.basisHash) return { receipt: view(row, check, 'stale') };
-  const observed = await collect(check.snapshot.reference, control(deps));
+  const observed = await observe(check.snapshot.reference, deps, verification(check.snapshot));
   const current = await fresh(id, check), retained = find(current, key);
   const state = observed.snapshot.copies.some(copy => copy.status === 'unavailable') ? 'unknown'
     : digest(observed.snapshot) === retained.snapshotHash ? 'current' : 'stale';
@@ -132,6 +146,7 @@ async function list(id, deps) {
   return { receipts: (row.preservationChecks || []).map(check => {
     const value = find(row, check.requestId);
     return { requestId: value.requestId, preparedAt: value.preparedAt, sourceIndex: value.sourceIndex,
+      verification: verification(value.snapshot),
       entryRevision: value.entryRevision, entryCurrent: basis(row) === value.basisHash, nativeState: 'not_rechecked' };
   }), executionAllowed: false };
 }

@@ -4,8 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
-    <title>Téléphone · DiskX</title>
+    <title>Sauvegarde photo · DiskX</title>
     <link rel="stylesheet" href="/assets/diskx/phone.css" />
+    <script defer src="/assets/diskx/phone-gallery.js"></script>
     <script defer src="/assets/diskx/phone.js"></script>
     <script defer src="/assets/diskx/phone-processing.js"></script>
   </head>
@@ -15,10 +16,11 @@
       <header>
         <div>
           <p class="eyebrow">DISKX / MÉDIAS</p>
-          <h1>La place pour les prochains souvenirs.</h1>
+          <h1>Tes souvenirs, en sécurité.</h1>
           <p class="intro">
-            Brancher le téléphone, garder les originaux sur Media, puis choisir ce qui reste dans la poche.
+            Sauvegarde tes photos et vidéos, compare les prises et choisis celles du Cadre Photo.
           </p>
+          <a class="browse-link" href="#library">Parcourir mes sauvegardes ↓</a>
         </div>
         <div class="phone-mark" aria-hidden="true">▣</div>
       </header>
@@ -46,11 +48,11 @@
         <progress id="job-progress"></progress><button id="resume" hidden>Reprendre cet import</button>
         <button id="reconcile" hidden>Réconcilier cette opération</button>
       </section>
-      <section class="library">
+      <section class="library" id="library">
         <div class="library-heading">
           <div>
             <p class="eyebrow">LA RÉSERVE</p>
-            <h2>Sauvegardés, à toi de choisir.</h2>
+            <h2>Ta sauvegarde photo</h2>
           </div>
           <a href="/data-toolbox">Voir les sauvegardes existantes ↗</a>
         </div>
@@ -71,10 +73,32 @@
         </div>
         <p id="coverage" class="muted"></p>
         <p id="processing-state" class="muted" role="status"></p>
-        <button id="select-page">Sélectionner les copies de cette page</button>
-        <p class="muted">
-          « Garder » et « Archiver » enregistrent ton tri. Les originaux sur Media restent à leur emplacement.
-        </p>
+        <div class="review-guide">
+          <div><b>1 · Parcourir et comparer</b><p>Clique sur un aperçu pour l’agrandir. Compare jusqu’à quatre prises pour choisir tes préférées.</p></div>
+          <div><b>2 · Choisir pour le cadre</b><p>Une suggestion attend ton choix. Seul « Ajouter au Cadre Photo » sélectionne une photo.</p></div>
+          <div><b>3 · Faire de la place</b><p>La case « Retirer du téléphone » prépare une sélection à vérifier et confirmer séparément.</p></div>
+        </div>
+        <details class="help">
+          <summary>Doublons, photos similaires, archive : comment ça marche ?</summary>
+          <dl>
+            <dt>Doublon exact</dt><dd>Le même contenu (SHA-256 identique) existe déjà sur Media. L’import réutilise cette copie. Ce statut ne recommande aucune suppression.</dd>
+            <dt>Photos similaires ou rafales</dt><dd>Deux prises proches restent deux contenus différents. Il n’y a pas de regroupement automatique par ressemblance ici. Utilise « Comparer » pour les examiner côte à côte.</dd>
+            <dt>Suggestions du cadre</dt><dd>L’analyse évalue chaque image séparément, sans choisir la meilleure d’une rafale. Plusieurs prises similaires peuvent être suggérées. Aucun ajout automatique; les vidéos ne rejoignent pas le cadre.</dd>
+            <dt>Garder ou archiver</dt><dd>Ce sont des repères de tri. Archiver ne déplace aucun original et ne retire rien du téléphone ni du cadre.</dd>
+          </dl>
+        </details>
+        <div class="gallery-tools">
+          <label>Afficher sur cette page<select id="view-filter">
+            <option value="all">Tous les médias</option><option value="image">Photos</option>
+            <option value="video">Vidéos</option><option value="duplicate">Doublons exacts</option>
+            <option value="review">À trier</option><option value="frame">Suggestions du cadre</option>
+          </select></label>
+          <p id="view-count" class="muted" role="status"></p>
+          <button id="compare-open" disabled>Comparer (0/4)</button>
+          <button id="compare-clear" hidden>Vider la comparaison</button>
+        </div>
+        <p class="muted">Les filtres et la comparaison portent sur les 24 médias de la page courante.</p>
+        <p id="filter-empty" class="empty" hidden>Aucun média ne correspond sur cette page. Change le filtre ou passe à la page suivante.</p>
         <div id="cards" class="cards">
           <p class="empty">
             Les imports vérifiés apparaîtront ici. Aucune suppression n’est présélectionnée.
@@ -84,6 +108,10 @@
           <button id="previous" disabled>Précédent</button><span id="page-count"></span
           ><button id="next" disabled>Suivant</button>
         </div>
+      </section>
+      <section class="cleanup-options"><h2>Libérer de la place sur le téléphone</h2>
+        <p class="muted">Les copies Media restent conservées. Cette sélection est indépendante du tri et du Cadre Photo.</p>
+        <button id="select-page">Sélectionner les copies affichées</button>
       </section>
       <section class="selection" aria-label="Sélection pour le téléphone">
         <div>
@@ -114,6 +142,14 @@
           <button id="cancel-delete">Annuler</button
           ><button id="confirm-delete" class="danger" disabled>Supprimer du téléphone</button>
         </div>
+      </dialog>
+      <dialog id="media-viewer" aria-labelledby="viewer-title">
+        <div class="viewer-heading"><div><p class="eyebrow" id="viewer-mode">APERÇU</p><h2 id="viewer-title"></h2></div>
+          <button id="viewer-close" aria-label="Fermer la visionneuse">Fermer ×</button></div>
+        <p id="viewer-context" class="muted"></p>
+        <div id="viewer-content"></div>
+        <div class="viewer-navigation"><button id="viewer-previous">← Média précédent</button>
+          <span id="viewer-count" aria-live="polite"></span><button id="viewer-next">Média suivant →</button></div>
       </dialog>
     </main>
   </body>

@@ -45,6 +45,24 @@ test('pictures show their source and a thumbnail from an allowed address only', 
   assert.doesNotMatch(html, /javascript:/);
 });
 
+test('long written answers remain complete after speech was summarized', () => {
+  const body = 'Première étape\n' + 'Détail utile. '.repeat(800) + '\nDernière étape : <script>doNotRun()</script>';
+  const html = row({ ...BASE, replyText: 'Voici les points essentiels.', display: [{ kind: 'text', body }] }, { esc });
+  assert.match(html, /<summary>Full content<\/summary>/);
+  assert.ok(html.includes(esc(body)), 'the full stored answer, including its ending, is available');
+  assert.doesNotMatch(html, /<script>/);
+  assert.equal(body.endsWith('</script>'), true, 'presentation does not mutate the record');
+});
+
+test('full-content expansion neither exposes secrets nor changes short blocks', () => {
+  const secret = 'never-retain-this-secret'.repeat(30);
+  const hidden = shown({ display: [{ kind: 'secret', body: secret }] }, esc);
+  assert.doesNotMatch(hidden, /Full content|never-retain-this-secret/);
+  const short = shown({ display: [{ kind: 'text', body: 'Court.' }] }, esc);
+  assert.doesNotMatch(short, /journal-shown-complete/);
+  assert.match(short, /Court\./);
+});
+
 test('the math picture records whether it was drawn', () => {
   assert.match(shown({ sceneReceipt: { kind: 'add', a: 8, b: 5, status: 'applied' } }, esc), /3D<\/span> 8 \+ 5 = 13 · drawn/);
   assert.match(shown({ sceneReceipt: { kind: 'count', to: 12, status: 'rejected', reason: 'no-face' } }, esc),

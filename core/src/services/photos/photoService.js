@@ -467,6 +467,16 @@ function createPhotoService({ client = createImmichClient(), now = () => Date.no
       return client.image(`/assets/${safeId}/thumbnail?size=${wanted}`);
     },
 
+    async video(id, query = {}, options = {}) {
+      const safeId = immichId(id);
+      const audience = audienceOf(query.audience);
+      const asset = await client.json(`/assets/${safeId}`);
+      if (asset?.type !== 'VIDEO' || (audience === 'family' &&
+        ((asset.visibility && asset.visibility !== 'timeline') || (privateImportLibrary() && asset.libraryId === privateImportLibrary()))))
+        throw photoError(404, 'PHOTOS_NOT_FOUND', 'Immich has no such video');
+      return client.video(safeId, options);
+    },
+
     async setDescription(id, description) {
       const settings = client.settings();
       if (!settings.enabled) throw photoError(503, 'PHOTOS_NOT_CONFIGURED', 'Photos are not configured on this instance');

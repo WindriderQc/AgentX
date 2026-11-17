@@ -1,7 +1,7 @@
 """Bounded native transport; a lost launch answer is never a replacement launch."""
 import base64
 import json
-from pathlib import PureWindowsPath
+from pathlib import Path, PureWindowsPath
 import re
 import subprocess
 
@@ -32,10 +32,18 @@ def windows_command(host, verb, identifier=None, request_id=None, source_at=None
 
 def call(host, verb, identifier=None, request_id=None, timeout=20, source_at=None):
     target = host.get("sshTarget", "")
-    if not TARGET.fullmatch(target) or target.startswith("-"):
+    if host.get("transport") != "local" and (not TARGET.fullmatch(target) or target.startswith("-")):
         raise JobError("INVALID_HOST", "The executor host is invalid.", 503)
-    command = windows_command(host, verb, identifier, request_id, source_at)
-    args = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=8", target, command]
+    if host.get("transport") == "local":
+        args = [host["python"], str(Path(host["root"]) / "host_job_worker.py"),
+                "--root", host.get("stateRoot") or str(Path(host["root"]) / "state"), verb]
+        if identifier:
+            args += ["--job", exact_id(identifier)]
+        if request_id:
+            args += ["--request", exact_request(request_id)]
+    else:
+        command = windows_command(host, verb, identifier, request_id, source_at)
+        args = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=8", target, command]
     try:
         result = subprocess.run(args, capture_output=True, timeout=timeout, text=True, encoding="utf-8")
     except (subprocess.TimeoutExpired, OSError):

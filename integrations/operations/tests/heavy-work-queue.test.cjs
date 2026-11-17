@@ -4,6 +4,47 @@ const assert = require('node:assert/strict');
 const { parse, runJob, main } = require('../heavy-work-queue.cjs');
 const job = { id: '00000000-0000-4000-8000-000000000001', revision: 2, kind: 'benchmark', executor: { plan: 'synthetic' } };
 
+test('photo controls use the owner API and the current revision without reserving or starting a job', async () => {
+  const calls = [], core = 'http://localhost:3180';
+  const deps = { fetchImpl: async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body), headers: options.headers });
+    return { ok: true, json: async () => ({ ok: true, data: { paused: true, revision: 3 } }) };
+  } };
+  await main(['photo-status', '--core', core], deps);
+  await main(['photo-pause', '--core', core, '--actor', 'fixture', '--id', job.id, '--revision', '2'], deps);
+  assert.deepEqual(calls.map(x => x.url), [core+'/api/phone-media/processing', core+'/api/phone-media/processing']);
+  assert.deepEqual(calls.map(x => x.body), [{ op: 'control' }, { op: 'pause', requestId: job.id, expectedRevision: 2 }]);
+  assert.equal(calls[1].headers['x-service-caller'], 'fixture');
+});
+
+test('photo resume needs its explicit confirmation and accepts no clock-driven option', async () => {
+  const args = ['photo-resume', '--core', 'http://localhost:3180', '--actor', 'fixture', '--id', job.id, '--revision', '3'];
+  let calls = 0;
+  const deps = { fetchImpl: async (_url, options) => {
+    calls++; assert.deepEqual(JSON.parse(options.body), { op: 'resume', requestId: job.id,
+      expectedRevision: 3, confirmation: 'RESUME_PHOTO_PROCESSING' });
+    return { ok: true, json: async () => ({ ok: true, data: { paused: false, revision: 4 } }) };
+  } };
+  await assert.rejects(main(args, deps), /confirmation/); assert.equal(calls, 0);
+  assert.throws(() => parse([...args, '--start', '2099-01-01T00:00:00Z']), /no timed resume/);
+  await main([...args, '--confirmation', 'RESUME_PHOTO_PROCESSING'], deps);
+  assert.equal(calls, 1);
+});
+
+test('photo control transport loss stays uncertain with the same identity and never launches or retries', async () => {
+  let calls = 0;
+  await assert.rejects(main(['photo-pause', '--core', 'http://localhost:3180', '--actor', 'fixture', '--id', job.id, '--revision', '0'], {
+    fetchImpl: async () => { calls++; throw Error('Synthetic acknowledgement lost'); }
+  }), error => error.outcome === 'uncertain' && error.requestId === job.id);
+  assert.equal(calls, 1);
+});
+
+test('a native photo revision refusal is reported separately from an uncertain write', async () => {
+  await assert.rejects(main(['photo-pause', '--core', 'http://localhost:3180', '--actor', 'fixture', '--id', job.id, '--revision', '0'], {
+    fetchImpl: async () => ({ ok: false, status: 409, json: async () => ({ ok: false, code: 'PHOTO_CONTROL_CONFLICT', message: 'Read the current control' }) })
+  }), error => error.outcome === 'refused' && error.requestId === job.id);
+});
+
 test('requires an explicit instance and named actor; rejects unknown commands', () => {
   assert.throws(() => parse(['run', '--core', 'http://localhost:3180', '--id', job.id]), /actor/);
   assert.throws(() => parse(['shell', '--core', 'http://localhost:3180']), /Use/);

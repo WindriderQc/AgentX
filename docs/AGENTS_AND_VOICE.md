@@ -362,6 +362,14 @@ defaults to wake mode, Personal to open listening. Nonempty recognized responses
 including single digits, thanks and goodbye, are not discarded by a lexical noise
 blacklist. Acoustic noise/echo handling and recognition quality remain distinct.
 
+Tool-discovery activity (`tool_search`, `tool_describe`, `agents_list`) stays
+silent for 15 seconds. If discovery is still the current activity, its notice
+appears on screen and is offered to voice playback at most once per turn and
+once every five minutes across turns on the mounted conversation page. A new
+activity, reply text, completion, failure or interruption cancels a pending
+notice; repeated discovery events do not restart its delay. Other useful tool
+and team handoff notices retain their existing immediate behavior.
+
 The loop speaks clauses and prepares at most one ahead. Timed holding phrases
 are off by default, including Household: elapsed time is not evidence
 of delegated work. An adapter may opt in with `holdingDelayMs`; available text

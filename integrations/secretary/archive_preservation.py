@@ -245,7 +245,7 @@ def mime_scope(data):
     return message, decoded, attachments
 
 
-def _probe(root, message_id, thread_id, source_sha256, request_id):
+def _probe(root, message_id, thread_id, source_sha256, request_id, *, inspect_files=None):
     files = SourceFiles(root)
     try:
         receipt = files.metadata(f"raw-receipts/{message_id}.json")
@@ -311,11 +311,18 @@ def _probe(root, message_id, thread_id, source_sha256, request_id):
         files.finish()
         metadata = json.dumps({"threadId": thread_id, "message": selected, "rawReceipt": receipt},
                               sort_keys=True, ensure_ascii=False, allow_nan=False).encode()
-        return {"contract": CONTRACT, "requestId": request_id, "messageId": message_id, "threadId": thread_id,
+        proof = {"contract": CONTRACT, "requestId": request_id, "messageId": message_id, "threadId": thread_id,
                 "sourceSha256": source_sha256, "machineIdSha256": digest(machine),
                 "archiveIdSha256": digest(str(files.root).encode()), "raw": {"sha256": source_sha256, "bytes": len(raw)},
                 "attachments": sorted(attachments, key=lambda item: item["partId"]), "metadataSha256": digest(metadata),
                 "partsDecoded": parts_decoded, "attachmentsDecoded": len(decoded_attachments)}
+        if inspect_files is not None:
+            # A bounded internal qualification may consume this exact opened
+            # set. Keep its original descriptors alive and fence late source
+            # changes after that work, without changing the public v1 proof.
+            inspect_files(files, proof)
+            files.finish()
+        return proof
     finally:
         files.close()
 

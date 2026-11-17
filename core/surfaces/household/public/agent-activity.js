@@ -46,5 +46,40 @@
     return match ? { text: match[1](), spoken: true } : { text: `Outil : ${activity.tool}`, spoken: false };
   }
 
-  return Object.freeze({ describe });
+  // One policy per mounted conversation keeps the cooldown across user turns.
+  function createAnnouncements({ now = () => performance.now(), setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+    let lastDiscovery = -Infinity;
+    return {
+      begin(emit, { signal, agentName } = {}) {
+        let timer = null, ended = false, announced = false, replyStarted = false;
+        const cancelPending = () => { if (timer !== null) clearTimer(timer); timer = null; };
+        const end = () => { ended = true; cancelPending(); signal?.removeEventListener('abort', end); };
+        signal?.addEventListener('abort', end, { once: true });
+        return {
+          update(event) {
+            if (ended || signal?.aborted) return;
+            if (['done', 'error'].includes(event.type)) { end(); return; }
+            if (event.type === 'say_end' || (event.type === 'delta' && event.delta)) { replyStarted = true; cancelPending(); return; }
+            if (event.type !== 'status') return;
+            const activity = event.phase === 'activity' ? event.activity : null;
+            const discovery = activity?.kind === 'tool' && /^(tool_search|tool_describe|agents_list)$/.test(activity.tool);
+            if (!discovery) cancelPending();
+            const line = describe(activity, agentName);
+            if (!line) return;
+            if (!discovery) { emit(line); return; }
+            if (replyStarted || timer !== null || announced || now() - lastDiscovery < 300_000) return;
+            // A fast discovery stays silent and never becomes a transcript row.
+            timer = setTimer(() => {
+              timer = null;
+              if (ended || signal?.aborted || now() - lastDiscovery < 300_000) return;
+              announced = true; lastDiscovery = now(); emit(line);
+            }, 15_000);
+          },
+          end
+        };
+      }
+    };
+  }
+
+  return Object.freeze({ describe, createAnnouncements });
 }));

@@ -231,6 +231,15 @@ the receipt on the existing historical assertion; clients cannot submit local
 verification JSON as native evidence. See the
 [selected-source preservation contract](../../docs/SECRETARY_DOSSIER_REVIEW.md#native-preservation-of-a-selected-source)
 for bounds, refusal/revalidation and the independent acceptance gaps.
+The optional native `secretary_mail_desk.py restoration` command also copies
+that exact original, its recorded attachments and required metadata to private
+temporary storage, reopens and verifies them with the same native reader, and
+removes the temporary copy before returning evidence. Core selects it with
+`verification: "restoration"` on the same preservation API and retains a v2
+receipt. This is distinct from promoting a local `--sample` attestation: no
+client JSON supplies native restoration proof, and no v1 fallback is accepted.
+See [temporary disk restoration](../../docs/SECRETARY_DOSSIER_REVIEW.md#temporary-disk-restoration)
+for the exact file/byte bounds and the remaining global acceptance gaps.
 Hash verification and restoration of a large live archive use the instance's
 heavy-work queue; synthetic tests remain ordinary isolated checks.
 
@@ -482,6 +491,30 @@ for capacities, freshness fences and the important distinction between recorded
 analysis and semantic acceptance. The reader does not recalculate the complete
 evidence packet, qualify analysis, verify MIME/independent copies or authorize
 mailbox cleanup; all four global gaps and false execution flags remain.
+
+`--native-restoration-checks <private-file>` selects v5 and implies v4. Its JSON
+array contains exactly one retained native v2 restoration check for every saved
+message: `entryId`, `requestId`, `snapshotHash`, and exact `source` (`system`,
+`messageId`, `threadId`, `sourceSha256`). Missing, duplicate, additional or changed
+sources refuse before network calls. This command creates no new receipt.
+
+Core rechecks every original receipt through the existing native temporary disk
+restore on both machines, requires consistent archive identities throughout
+the selection, and fences all selected Core documents after the final native
+call. Two complete native scope observations must agree. The client then
+rechecks Core membership/decisions and local disposition pins before writing
+its private report. Standard output adds only restoration status/counts.
+Unavailable, changed or byte-only evidence cannot become partial success.
+
+This composes the exact selected originals and recorded attachments, not every
+archive file or one atomic snapshot. The canonical source-set hash does not
+authenticate an arbitrary manifest file. All four global gaps and false/blocked
+execution flags remain; exit zero means matching observations, not cleanup
+permission. Existing v1–v4 reports stay unchanged. Each observation is bounded
+to 20 messages, 2 MiB of response and 960 seconds without automatic retry.
+Real restoration requires its own authorization and heavy-work queue; no live
+corpus or instance change follows from installing this code. See the
+[complete selected restoration scope](../../docs/SECRETARY_DOSSIER_REVIEW.md#complete-selected-restoration-scope).
 
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only

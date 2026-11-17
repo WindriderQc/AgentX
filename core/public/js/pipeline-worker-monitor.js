@@ -21,7 +21,7 @@
     exhausted: 'Inference retry limit reached', failed: 'Inference failed', cancelled: 'Inference cancelled', recovery_required: 'Explicit recovery required' };
   const REASONS = new Set(['model_budget_reserve', 'hard_budget', 'soft_budget_no_progress', 'no_useful_progress', 'model_call_limit',
     'operator_stop', 'worker_exit', 'model_output_limit', 'no_changes', 'dependencies_failed', 'dependencies_changed', 'runner_error',
-    'tests_failed', 'generated_artifacts', 'ineligible_task', 'runtime_unavailable', 'runtime_changed', 'model_wait_inactive',
+    'tests_failed', 'tests_unknown', 'generated_artifacts', 'ineligible_task', 'runtime_unavailable', 'runtime_changed', 'model_wait_inactive',
     'model_generation_inactive', 'tool_inactive', 'test_inactive', 'continuation_checkpoint_changed', 'github_token_missing',
     'git_reconciliation', 'git_conflict_remaining', 'verification_profile_unknown', 'progress_history_limit', 'model_termination_unverified',
     'authorization_removed', 'queue_window_closed']);

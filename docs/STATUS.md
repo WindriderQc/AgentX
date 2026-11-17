@@ -11,7 +11,10 @@ Instance configuration, data and deployment receipts remain outside Git.
 
 - **Phone media workbench.** DiskX links `/diskx/phone`: resumable Android USB
   import, existing Media receipts, previews, persistent review choices and
-  explicitly selected phone cleanup. Core freezes the selection, rechecks
+  explicitly selected phone cleanup. Clickable media, a modal viewer, comparison
+  of up to four takes, page filters and folded descriptions clarify review.
+  Exact duplicates, frame suggestions and actual frame selection have separate
+  labels; indexed videos play through Core. Core freezes the selection, rechecks
   backup and source bytes, and receives exact native deletion results. Unknown
   dispatches stay fenced rather than replayed. Native cleanup is separately
   enabled; source and simulated browser checks remain distinct from deployment
@@ -73,7 +76,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   and device notification acceptance remain separate. See
   [personal calendar](PERSONAL_CALENDAR.md).
 
-- **Content presentation.** Personal Nestor selects pages, Markdown, lists,
+- **Content presentation.** Household retains an ordered, versioned complete
+  written answer on its canonical turn independently of speech. The live page,
+  resumed history and parent journal render this source with explicit partial
+  status; speech keeps its source revision. Personal Nestor selects pages, Markdown, lists,
   tables, code and images in one content workspace with retained navigation,
   copy, expansion and closure. Analytics' inference overview provides a bounded,
   dated Core read of the same summary response and selected window. Its live
@@ -290,6 +296,16 @@ Instance configuration, data and deployment receipts remain outside Git.
   Core retains a revalidatable receipt on the same assertion; erasure clears it.
   Missing or changed copies remain blocked, with no cleanup authority. See
   [native preservation](SECRETARY_DOSSIER_REVIEW.md#native-preservation-of-a-selected-source).
+  A bounded restoration scope composes retained checks for every exact selected
+  source, freshly rechecks both copies and fences all selected Core documents
+  after the native calls. The v5 reconciliation report checks complete selected
+  coverage and refreshes Core/archive pins after restoration; global semantic,
+  storage and mailbox approval gaps remain. See
+  [selected restoration scope](SECRETARY_DOSSIER_REVIEW.md#complete-selected-restoration-scope).
+  An optional restoration check copies that selected native file set into
+  private temporary storage, reopens and verifies its bytes and MIME, and removes
+  it before returning evidence. The same receipt retains each copy's file-set
+  hashes; this does not qualify the whole archive or authorize mailbox effects.
   A read-only native decision fingerprint also binds one committed entry's
   decisions, context and pending source-review intents. The optional retention
   reconciliation consumer rechecks these selected documents without claiming

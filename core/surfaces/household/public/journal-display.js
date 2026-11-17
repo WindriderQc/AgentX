@@ -5,6 +5,7 @@
 // picture's receipt come from the recorded turn; a secret is never retained, so
 // only the fact that one was shown appears.
 (function exposeJournalDisplay(root) {
+  const written = typeof module !== 'undefined' && module.exports ? require('../../../public/js/conversation-written') : root.ConversationWritten;
   const KIND_LABELS = { text: 'Note', list: 'List', table: 'Table', code: 'Code', link: 'Link', secret: 'Secret', image: 'Image' };
   const PREVIEW_CHARS = 280;
   const SOURCE_LABELS = { web: 'Internet', photos: 'Family photos', media: 'Media share', generated: 'Generated' };
@@ -35,7 +36,12 @@
         + (origin ? ` · <a href="${esc(origin)}" target="_blank" rel="noopener noreferrer">${esc(block.image?.originTitle || 'origin')}</a>` : '')
         + `<img class="journal-shown-image" src="${esc(href)}" alt="${esc(block.title || block.body)}" loading="lazy" referrerpolicy="no-referrer"></li>`;
     }
-    return `<li><span class="journal-shown-kind">${label}</span>${title}<div class="journal-shown-body">${esc(preview(block.body))}</div></li>`;
+    const body = String(block.body || '');
+    // The compact journal is a preview, not a second truncated transcript.
+    // Keep the complete recorded block reachable without another model call.
+    const complete = body.trim().length > PREVIEW_CHARS
+      ? `<details class="journal-shown-complete"><summary>Full content</summary><div class="journal-shown-body">${esc(body)}</div></details>` : '';
+    return `<li><span class="journal-shown-kind">${label}</span>${title}<div class="journal-shown-body">${esc(preview(body))}</div>${complete}</li>`;
   }
 
   function sceneHtml(receipt, esc) {
@@ -80,7 +86,9 @@
     const flags = Array.isArray(entry.safetyFlags) ? entry.safetyFlags : [];
     const soundNote = entry.soundId ? ` · offered ${esc(sound ? `${sound.emoji} ${sound.label.en}` : entry.soundId)}` : '';
     return `<div class="audit ${entry.parentAttention || flags.length ? 'danger-box' : ''}"><strong>${esc(entry.inputText || 'No retained preview')}</strong>`
-      + `<div>${esc(entry.replyText)}</div>${shown(entry, esc)}`
+      + (written?.valid(entry.written) ? `<details class="journal-written" open><summary>Réponse complète${entry.written.status === 'partial' ? ' — partielle' : ''}</summary><div class="journal-shown-body">${esc(written.text(entry))}</div></details>`
+        + shown({ ...entry, display: (entry.display || []).filter(block => ['image', 'math', 'page'].includes(block.kind)) }, esc)
+        : `<div>${esc(entry.replyText)}</div>${shown(entry, esc)}`)
       + `<small>${esc(new Date(entry.createdAt).toLocaleString())} · ${esc(entry.packId || 'unknown lane')} · ${esc(entry.channel)} · ${esc(entry.model || 'deterministic')} · ${entry.durationMs}ms${esc(voiceTimings(entry))}${soundNote}${flags.length ? ` · ${esc(flags.join(', '))}` : ''}</small></div>`;
   }
 

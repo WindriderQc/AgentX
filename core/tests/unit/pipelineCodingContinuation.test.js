@@ -296,7 +296,7 @@ test('a clean native no-progress stop receives a separately labelled grant witho
   await expect(grant(grantBody())).rejects.toThrow('different');
 });
 test.each(['pending', 'unknown', 'no-model', 'attempt-mismatch', 'unreceived-result', 'unreceived-settlement', 'settlement-time', 'duplicate-call',
-  'published', 'checkpoint', 'unclosed-campaign', 'unreceived-release', 'operator-stop', 'runner-error', 'native-hold'])
+  'published', 'checkpoint', 'unclosed-campaign', 'unreceived-release', 'operator-stop', 'runner-error', 'tests-unknown', 'native-hold'])
 ('native continuation refuses %s without credit or dispatch', async kind => {
   const previous = await nativeTerminal();
   const change = {};
@@ -315,7 +315,7 @@ test.each(['pending', 'unknown', 'no-model', 'attempt-mismatch', 'unreceived-res
   if (kind === 'checkpoint') change['codingAutonomy.runs.0.head'] = 'a'.repeat(40);
   if (kind === 'unclosed-campaign') previous.state = 'dispatching';
   if (kind === 'unreceived-release') delete previous.releaseReceipt.receiptSha256;
-  if (['operator-stop', 'runner-error'].includes(kind)) {
+  if (['operator-stop', 'runner-error', 'tests-unknown'].includes(kind)) {
     const reason = kind.replace('-', '_');
     change['automationAttempts.0.evidence.failureCodes'] = [reason];
     const host = await control.status(); host.run.progress.stopReason = reason; control.status.mockResolvedValue(host);
