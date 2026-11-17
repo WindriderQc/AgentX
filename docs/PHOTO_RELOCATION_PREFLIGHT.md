@@ -101,3 +101,39 @@ unknown effects require reconciliation before replay, and rollback refuses
 changed content or occupied sources. Its CAS is single-process in-memory, not
 durable or distributed. Passing these tests does not qualify a real executor,
 permission change, Immich rebind or crash recovery after process loss.
+
+## Persistent synthetic process-crash harness
+
+`core/tests/fixtures/photoRelocationCrashWorker.cjs` runs only against fixed
+sentinel filenames in freshly marked OS temporary directories. Separate Node
+processes persist an integrity-checked journal and a single-worker lock. Tests
+interrupt forward and rollback before/after each image/XMP rename, then require
+explicit observation before replay. Changed destinations, occupied originals,
+corrupted journals and live locks refuse progress. Only fictional text is used.
+
+This is not a production executor. SHA-256 detects accidental journal changes,
+not malicious rewriting. The controlled process exits do not simulate power
+loss or journal-write interruption. Directory fsync is explicitly unsupported on
+the tested Windows runtime; Linux support alone is not a storage durability
+proof. The collision check plus rename is not atomic no-replace against external
+writers. Network filesystems, ACLs, adversarial races and real Immich bindings
+remain unqualified. No runtime imports this test fixture.
+
+The [isolated Immich qualification plan](PHOTO_IMMICH_QUALIFICATION.md) describes
+future synthetic-instance checks; it is not a record of an executed migration.
+
+Filesystem identity observations use BigInt stat values internally, including
+nanosecond timestamps. Device/inode and timestamps are decimal strings in JSON
+evidence; adapters that discard exact integer precision are refused. This
+prevents distinct large Windows file IDs from collapsing into one Number.
+
+To run only the process-crash suite without database setup:
+
+```sh
+cd core
+node node_modules/jest/bin/jest.js --config '{"testEnvironment":"node","testMatch":["**/tests/services/photoRelocationCrash.test.js"]}' --runInBand
+```
+
+Run read-only registry/inventory/preflight tests separately with the repository's
+`shared/testing/noDatabase.js` guard. That guard intentionally forbids subprocess
+creation and must not be weakened to run the process-crash harness.
