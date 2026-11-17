@@ -333,3 +333,9 @@ is reconciled separately through the native queue operator and its receipt.
 
 Container installation, a real external-library scan, physical phone acceptance
 and actual frame delivery are separately verified instance receipts.
+
+## Private registry export
+
+The [portable registry export](PHOTO_PORTABLE_REGISTRY.md) reads the existing
+card and decision collections for an explicit private operator selection.
+It starts no processing and is not a relocation or complete backup.
