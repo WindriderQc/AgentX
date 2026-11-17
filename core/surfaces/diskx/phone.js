@@ -24,6 +24,8 @@ function registerPhone({ app, express, bridge = createPhoneWorkbenchBridge(), pr
       .type('html')
       .send(fs.readFileSync(path.join(__dirname, 'public', 'phone.html'), 'utf8')),
   );
+  app.get('/diskx/photos', (_req, res) => res.set('Cache-Control', 'no-store').type('html')
+    .send(fs.readFileSync(path.join(__dirname, 'public', 'photo-library.html'), 'utf8')));
   app.get('/api/phone-media', async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     try {

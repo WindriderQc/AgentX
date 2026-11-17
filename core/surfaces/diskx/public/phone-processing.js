@@ -3,7 +3,19 @@
 (() => {
   'use strict';
   const endpoint = '/api/phone-media/processing', $ = id => document.getElementById(id);
-  let generation = 0, page, latest;
+  let generation = 0, page, latest, processingControl, controlRevision = -1;
+  function showControl(value) {
+    if (value && Number.isSafeInteger(value.revision)) {
+      if (value.revision < controlRevision) return;
+      controlRevision = value.revision;
+    }
+    processingControl = value;
+    $('processing-control').textContent = !value ? 'État des analyses indisponible. Consultation et tri restent accessibles.'
+      : value.paused ? 'Analyses en pause · tes fiches et tes choix restent accessibles dans la Photothèque.' : 'Analyses autorisées.';
+    $('process-page').disabled = !page || !value || value.paused || !page.items.some(x => x.backup);
+    if (value?.paused && latest?.jobs.some(x => x.state === 'queued'))
+      $('processing-state').textContent = 'Analyses en pause · résultats existants consultables.';
+  }
   const node = (tag, text) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; return el; };
   const say = text => { $('processing-state').textContent = text; };
   async function call(input) {
@@ -140,7 +152,8 @@
       const reason = current.error === 'HEAVY_QUEUE_CONFLICT'
         ? 'Les ressources sont occupées. Le traitement reprendra automatiquement.'
         : current.error ? 'Une vérification du traitement est nécessaire.' : '';
-      say((labels[current.state] || 'État du traitement à vérifier')+(reason ? ' · '+reason : ''));
+      say(processingControl?.paused && current.state === 'queued' ? 'Analyses en pause · résultats existants consultables.'
+        : (labels[current.state] || 'État du traitement à vérifier')+(reason ? ' · '+reason : ''));
     }
   }
   async function load() {
@@ -148,8 +161,9 @@
     const own = ++generation, selected = page.items.filter(x => x.backup).map(x => x.requestId);
     const result = await call({ op: 'page', runId: page.runId, items: selected });
     if (own !== generation) return;
+    if (result.control) showControl(result.control);
     $('process-page').hidden = !result.configured;
-    $('process-page').disabled = !selected.length;
+    $('process-page').disabled = !selected.length || !processingControl || processingControl.paused;
     latest = result;
     render(result);
   }
@@ -160,14 +174,17 @@
   });
   window.addEventListener('phone-media-render', () => { if (latest) render(latest); });
   $('process-page').addEventListener('click', async () => {
-    if (!page) return;
+    if (!page || !processingControl || processingControl.paused) return;
     $('process-page').disabled = true;
     try {
       await intent('enqueue.'+page.runId, { op: 'enqueueRun', operationId: crypto.randomUUID(), runId: page.runId });
       say('Traitement enregistré dans la file Core. Les fiches apparaîtront après l’indexation et l’analyse.');
       await load();
     } catch (error) { say(error.message+' Réessaie pour retrouver la même demande.'); }
-    finally { $('process-page').disabled = false; }
+    finally { showControl(processingControl); }
   });
   call().then(value => { $('process-page').hidden = !value.configured; }).catch(error => say(error.message));
+  const refreshControl = () => call({ op: 'control' }).then(showControl).catch(() => showControl(null));
+  refreshControl();
+  setInterval(() => { if (!document.hidden) refreshControl(); }, 30000);
 })();

@@ -21,7 +21,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   and real-device deletion acceptance. Interrupted imports expose the source
   failure alongside verified progress; native transfers respect the WPD
   driver's buffer size without relaxing byte/source verification. See
-  [photo import](PHOTO_IMPORT.md).
+  [photo import](PHOTO_IMPORT.md). `/diskx/photos` groups completed image
+  proposals across imports with global search, quality/review/frame filters,
+  collection counts, comparison across pages and explicit review/frame choices.
+  Browsing retains the durable photo pause and starts no processing. See
+  [photo processing](PHOTO_PROCESSING.md).
 
   The native receiver can read Data inventory directly without the Core web
   process; bounded retries cover temporary read-only inventory outages.

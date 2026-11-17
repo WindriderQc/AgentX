@@ -275,7 +275,8 @@
     }
     if (previous && data.runs.some((x) => x.runId === previous)) select.value = previous;
     else if (data.runs.length) {
-      state.run = data.runs[0].runId;
+      const linked = new URL(location.href).searchParams.get('run');
+      state.run = data.runs.find(x => x.runId === linked)?.runId || data.runs[0].runId;
       select.value = state.run;
       state.offset = 0;
       state.selected.clear();

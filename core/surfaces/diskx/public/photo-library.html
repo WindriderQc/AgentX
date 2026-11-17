@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer"><title>Photothèque · DiskX</title>
+  <link rel="stylesheet" href="/assets/diskx/phone.css">
+  <link rel="stylesheet" href="/assets/diskx/photo-library.css">
+  <script defer src="/assets/diskx/photo-library-detail.js"></script>
+  <script defer src="/assets/diskx/photo-library.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#collection">Aller aux images</a>
+<main>
+  <nav aria-label="Médias DiskX"><a href="/diskx">← DiskX</a><div class="workspace-nav"><a href="/diskx/photos" aria-current="page">Photothèque</a><a href="/diskx/phone">Imports USB</a></div></nav>
+  <header class="library-hero"><div><p class="eyebrow">TES SOUVENIRS / LE TEMPS DE CHOISIR</p>
+    <h1>Tes images. Tes choix.</h1>
+    <p class="intro">Toutes tes images analysées, réunies ici. Retrouve un souvenir, compare les prises et compose ton Cadre Photo.</p>
+  </div><div class="hero-note"><span aria-hidden="true">▧</span><p>Une suggestion ouvre une piste.<br>Le choix reste le tien.</p></div></header>
+  <section id="analysis-control" class="control-note" aria-label="État des analyses" role="status"><strong>Vérification de l’état des analyses…</strong><span>La consultation ne lance aucune analyse.</span></section>
+  <section class="collection-summary" aria-label="Vue d’ensemble des images analysées">
+    <div><strong id="total-count">—</strong><span>images analysées</span></div>
+    <div><strong id="suggested-count">—</strong><span>suggestions à choisir</span></div>
+    <div><strong id="review-count">—</strong><span>fiches à relire</span></div>
+    <div><strong id="frame-count">—</strong><span>dans le Cadre Photo</span></div>
+  </section>
+  <section id="collection" class="global-library" aria-labelledby="collection-title">
+    <div class="collection-heading"><div><p class="eyebrow">LA PHOTOTHÈQUE</p><h2 id="collection-title" tabindex="-1">Tous tes imports, une seule collection.</h2></div><button id="refresh-library">Actualiser</button></div>
+    <div id="library-tabs" class="library-tabs" role="group" aria-label="Voir les images">
+      <button data-filter="all" aria-pressed="true">Toutes analysées <span data-count="total">—</span></button>
+      <button data-filter="suggested" aria-pressed="false">Suggestions Cadre <span data-count="suggested">—</span></button>
+      <button data-filter="frame" aria-pressed="false">Dans le cadre <span data-count="frame">—</span></button>
+      <button data-filter="review" aria-pressed="false">À relire <span data-count="review">—</span></button>
+      <button data-filter="reviewed" aria-pressed="false">Fiches relues <span data-count="reviewed">—</span></button>
+      <button data-filter="privacy" aria-pressed="false">Contenu à vérifier <span data-count="privacy">—</span></button>
+    </div>
+    <form id="library-search" class="library-search" role="search">
+      <label class="search-box">Retrouver un souvenir<input id="global-search" type="search" maxlength="120" placeholder="Description, étiquette, lieu, appareil…"></label>
+      <label>Qualité proposée<select id="global-quality"><option value="all">Toutes les qualités</option><option value="bonne">Bonne</option><option value="moyenne">Moyenne</option><option value="faible">Faible</option><option value="inconnue">Inconnue</option></select></label>
+      <label>Ordre<select id="global-order"><option value="recent">Dernières analyses</option><option value="oldest">Premières analyses</option><option value="taken">Prise de vue récente</option><option value="quality">Qualité proposée</option></select></label>
+      <button type="submit" class="primary">Rechercher</button><button id="reset-filters" type="button">Effacer les filtres</button>
+    </form>
+    <div class="result-line"><p id="library-status" role="status" aria-live="polite">Chargement de la collection…</p><label class="density-label">Affichage<select id="library-density"><option value="comfortable">Confort</option><option value="compact">Compact</option></select></label></div>
+    <p class="scope-note">Recherche et filtres sur toute la collection · Une entrée par image, même présente dans plusieurs imports · Compteurs avant filtres</p>
+    <div id="library-error" class="library-error" role="alert" hidden><p id="library-error-message"></p><button id="retry-library">Réessayer</button></div>
+    <div id="global-cards" class="global-cards" aria-busy="true"></div>
+    <div id="library-empty" class="library-empty" hidden><span aria-hidden="true">▧</span><h3 id="empty-title">Aucune image dans cette vue</h3><p id="empty-message"></p><button id="empty-reset">Voir toutes les images analysées</button><a href="/diskx/phone">Voir les imports USB</a></div>
+    <div class="global-pagination"><button id="global-previous">← Précédent</button><form id="jump-form"><label>Page <input id="jump-page" type="number" min="1" value="1" aria-label="Numéro de page"></label><span id="global-page-count"></span><button type="submit">Aller</button></form><button id="global-next">Suivant →</button></div>
+  </section>
+  <aside id="comparison-tray" class="comparison-tray" aria-label="Images à comparer" hidden><div><strong id="comparison-count">0 / 4 images</strong><p>Ta sélection reste ici quand tu changes de page.</p></div><div id="comparison-items"></div><button id="show-comparison" class="primary" disabled>Comparer</button><button id="clear-comparison">Vider</button></aside>
+  <footer class="library-footer"><p>Les propositions IA attendent ta relecture. Elles évaluent chaque image séparément et ne classent pas les prises d’une rafale. Ajouter au cadre est un choix distinct de la relecture de la fiche.</p><p>Les originaux restent sur Media. Pour les repères Garder / Archiver ou le retrait confirmé du téléphone, retrouve <a href="/diskx/phone#library">l’atelier des imports</a>.</p></footer>
+</main>
+<dialog id="photo-detail" aria-labelledby="detail-title">
+  <div class="detail-header"><div><p class="eyebrow" id="detail-mode">RELECTURE</p><h2 id="detail-title">Ton image</h2></div><button id="detail-close" autofocus>Fermer ×</button></div>
+  <div id="detail-body"></div>
+  <div class="detail-navigation"><button id="detail-previous">← Précédente</button><span id="detail-position"></span><button id="detail-next">Suivante →</button></div>
+</dialog>
+</body>
+</html>
