@@ -60,7 +60,8 @@
         description.disabled = tagInput.disabled = saving || Boolean(row.pendingDecision);
         frameState.textContent = row.frame?.selected ? '✓ Cette image est dans le Cadre Photo.' : row.proposal.frameSuitability === 'oui' ? 'Cadre suggéré · aucun ajout automatique.' : 'Le choix du cadre reste libre.';
         reviewState.textContent = row.review?.approved ? '✓ Fiche relue. Tu peux encore la corriger.' : 'Cette proposition attend ta relecture.';
-        if (row.pendingDecision) feedback.textContent = 'Une décision attend confirmation. Reprends-la avec le bouton correspondant avant un nouveau choix.';
+        if (row.pendingDecision) feedback.textContent = pending ? 'Une décision attend confirmation. Reprends-la avec le bouton correspondant avant un nouveau choix.'
+          : 'Une décision attend vérification. Actualise la collection avant de poursuivre.';
         navigation();
       }
       async function save(kind, value) {

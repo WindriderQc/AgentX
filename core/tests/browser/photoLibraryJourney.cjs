@@ -69,6 +69,8 @@ const { query } = require('../../src/services/photos/photoLibraryBrowse');
     await page.locator('.compare-photo').first().click();
     await page.locator('#show-comparison').click(); assert.equal(await page.locator('.library-comparison figure').count(),2);
     await page.locator('#detail-close').click();
+    paused.inFlight = [{ state: 'UNKNOWN' }]; await page.locator('#refresh-library').click();
+    await page.locator('#analysis-control').filter({hasText:'attend réconciliation'}).waitFor();
     await page.locator('[data-filter=suggested]').click(); await page.waitForFunction(()=>document.getElementById('library-status').textContent.includes('sur 22 images'));
     assert.equal(await page.locator('.global-photo').count(),22); assert.equal(await page.locator('#total-count').textContent(),'82');
     await page.locator('.photo-open').first().click(); await page.getByRole('button',{name:'Ajouter au Cadre Photo',exact:true}).click();

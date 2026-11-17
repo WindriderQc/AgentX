@@ -37,7 +37,8 @@
     const note = $('analysis-control'); note.replaceChildren(); note.classList.toggle('unknown', !state);
     note.append(el('strong', !state ? 'État des analyses indisponible' : state.paused ? 'Analyses en pause' : 'Analyses autorisées'));
     note.append(el('span', !state ? 'Réessaie pour vérifier la pause. La consultation ne lance aucune analyse.'
-      : state.paused ? (state.inFlight?.length ? 'Les travaux déjà admis finissent. Tu peux consulter et choisir tes images.' : 'Aucun traitement photo en cours. Tu peux consulter, relire et choisir pour le cadre.')
+      : state.paused ? (state.inFlight?.some(row => row.state === 'UNKNOWN') ? 'Un traitement attend réconciliation. Tes fiches restent consultables.'
+        : state.inFlight?.length ? 'Les travaux déjà admis finissent. Tu peux consulter et choisir tes images.' : 'Aucun traitement photo en cours. Tu peux consulter, relire et choisir pour le cadre.')
         : 'La consultation utilise les résultats existants, sans lancer de traitement supplémentaire.'));
   }
   function controls() {
