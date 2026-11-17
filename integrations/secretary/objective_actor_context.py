@@ -4,8 +4,9 @@ This changes new objectives only. Dates keep their existing conservative
 contract, and a supported actor remains a proposal, never owner confirmation.
 """
 import copy
-
-import objective_omission_policy as policy
+from email.utils import getaddresses
+import re
+import unicodedata
 
 CONTRACT = 'secretary.segment-actor-reading/v1'
 POLICY = ('Proposed actors use the frozen segment containing the entire primary excerpt. '
@@ -51,6 +52,41 @@ def segment_for(span, context):
     return segment if segment['start'] <= start < end <= segment['end'] else None
 
 
+def _author_identity(author):
+    """A single literal name/mailbox, never a substring or a selected list member."""
+    if not isinstance(author, str) or not author.strip() or any(c in author for c in '\r\n'):
+        return None
+    if not any(c in author for c in '@<>,;'):
+        return author.strip().strip('"'), None
+    try:
+        addresses = getaddresses([author])
+    except ValueError:
+        return None
+    if len(addresses) != 1:
+        return None
+    name, address = addresses[0]
+    if not re.fullmatch(r'[^<>\s@,;]+@[^<>\s@,;]+', address):
+        return None
+    return name, address
+
+
+def _owner_author(author, aliases):
+    identity = _author_identity(author)
+    if identity is None or not aliases:
+        return None
+    normalize = lambda s: unicodedata.normalize('NFC', ' '.join(s.split())).casefold()
+    name, address = identity
+    for alias in aliases:
+        candidate = _author_identity(alias)
+        if candidate is None:
+            continue
+        alias_name, alias_address = candidate
+        if alias_address and address and normalize(alias_address) == normalize(address) \
+                or alias_address is None and name and normalize(alias_name) == normalize(name):
+            return True
+    return False
+
+
 def reading_contexts(spans, context):
     aliases = context.get('ownerAliases', [])
     aliases = aliases if isinstance(aliases, list) else []
@@ -61,13 +97,14 @@ def reading_contexts(spans, context):
         if segment:
             relation = segment.get('relation')
             author = segment.get('author') if relation == 'authored' else segment.get('claimedAuthor')
+            matches_owner = _owner_author(author, aliases)
             if relation == 'authored' and context.get('actorDirection') != 'draft' and isinstance(author, str) and author.strip():
-                if context.get('actorDirection') == 'sent' and policy._owner_header(author, aliases):
+                if context.get('actorDirection') == 'sent' and matches_owner is True:
                     owner, basis = True, 'sent-authored-segment-reading-context'
-                elif aliases and not policy._owner_header(author, aliases):
+                elif matches_owner is False:
                     basis = 'other-authored-segment-reading-context'
-            elif relation == 'quoted' and isinstance(author, str) and author.strip():
-                owner = bool(policy._owner_header(author, aliases))
+            elif relation == 'quoted' and matches_owner is not None:
+                owner = matches_owner
                 basis = 'owner-alias-header-reading-context' if owner else 'quoted-speaker'
         result[span['id']] = owner, basis, None
     return result

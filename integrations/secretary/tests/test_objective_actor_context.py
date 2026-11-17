@@ -22,7 +22,7 @@ OWNER = 'Personne Exemple <owner@example.invalid>'
 OTHER = 'Autre Personne <other@example.invalid>'
 
 
-def context(body, *, offset=0, end=None, actor_contract=CONTRACT, direction='sent', sender=OWNER, kind='body'):
+def context(body, *, offset=0, end=None, actor_contract=CONTRACT, direction='sent', sender=OWNER, kind='body', owner_aliases=None):
     end = len(body) if end is None else end
     own = quotes.message('message01', body, {'from': sender, 'date': 'Mon, 4 May 2020 12:00:00 -0400'})
     record = {'mailDate': '2020-05-04', 'nativeRef': {
@@ -30,7 +30,7 @@ def context(body, *, offset=0, end=None, actor_contract=CONTRACT, direction='sen
         'sourceContext': quotes.context(own, offset, end - offset, [own], kind=kind)}}
     manifest = {'responseSchemaSha256': hashed(grounding.SCHEMA),
                 'attributionContract': quotes.OBJECTIVE_CONTRACT,
-                'config': {'ownerAliases': ['Personne Exemple']}}
+                'config': {'ownerAliases': ['Personne Exemple'] if owner_aliases is None else owner_aliases}}
     if actor_contract:
         manifest['actorReadingContract'] = actor_contract
     return grounding.extraction_context(record, manifest)
@@ -68,6 +68,37 @@ class SegmentActorContextTests(unittest.TestCase):
                        {'direction': 'unknown'}, {'sender': OTHER}):
             with self.subTest(kwargs=kwargs):
                 self.assertNotIn('owner', self.rows('Je débute la boxe.', **kwargs)[0]['allowedSubjects'])
+
+    def test_an_owner_alias_substring_in_another_authors_name_is_not_owner_evidence(self):
+        for author in ('Autre Personne pour Personne Exemple <other@example.invalid>',
+                       'Personne Exemple Jr <junior@example.invalid>'):
+            for body, sender in (('Je débute la boxe.', author),
+                                 ('From: ' + author + '\nJe débute la boxe.', OTHER)):
+                with self.subTest(author=author, body=body):
+                    self.assertNotIn('owner', self.rows(body, sender=sender)[-1]['allowedSubjects'])
+
+    def test_email_aliases_match_the_whole_address_not_a_prefix_or_display_comment(self):
+        for author in ('Autre <owner@example.invalid.extra>', 'Autre <other+owner@example.invalid>',
+                       'Pour owner@example.invalid <other@example.invalid>'):
+            with self.subTest(author=author):
+                self.assertNotIn('owner', self.rows('Je débute la boxe.', sender=author,
+                    owner_aliases=['owner@example.invalid'])[0]['allowedSubjects'])
+
+    def test_multiple_or_malformed_authors_cannot_select_a_single_identity(self):
+        for author in (OWNER + ', ' + OTHER, 'Personne Exemple <owner@>',
+                       'Personne Exemple <owner@example.invalid> junk'):
+            for body, sender in (('Je débute la boxe.', author),
+                                 ('From: ' + author + '\nJe débute la boxe.', OTHER)):
+                with self.subTest(author=author, body=body):
+                    self.assertEqual(self.rows(body, sender=sender)[-1]['allowedSubjects'], ['unknown'])
+
+    def test_complete_name_and_mailbox_aliases_still_support_owner_proposals(self):
+        for author, aliases in ((OWNER, ['Personne Exemple']), ('PERSONNE EXEMPLE', ['Personne Exemple']),
+                                ('Personne Exemple <OWNER@example.invalid>', ['owner@example.invalid']),
+                                ('owner@example.invalid', ['owner@example.invalid'])):
+            with self.subTest(author=author):
+                self.assertIn('owner', self.rows('Je débute la boxe.', sender=author,
+                    owner_aliases=aliases)[0]['allowedSubjects'])
 
     def test_attachment_never_inherits_a_sender_or_literal_header_actor(self):
         body = 'From: ' + OWNER + '\nJe débute la boxe.'
@@ -185,6 +216,25 @@ class SegmentActorWorkerTests(unittest.TestCase):
         self.assertEqual((objective / 'manifest.json').read_bytes(), before)
         self.assertNotIn('owner', grounding.work_actors.actors(grounding.catalog('Je débute la boxe.'),
             context('Je débute la boxe.\nFrom: ' + OTHER, actor_contract=None))[0]['allowedSubjects'])
+
+    def test_quoted_alias_substring_is_rejected_by_worker_without_retry_or_output_repair(self):
+        author = 'Autre Personne pour Personne fictive <other@example.invalid>'
+        self.mail('message01', 'Je débute la boxe.\nFrom: ' + author + '\nMon déménagement est terminé.')
+        def invalid(prompt, reply):
+            reply = self.reply(prompt, reply)
+            value = json.loads(reply['response'])
+            value['cueDecisions']['q3']['retainedMoments'][0].update(subject='owner', subjectName='Personne fictive')
+            reply['response'] = json.dumps(value)
+            return reply
+        client, calls = responses.DispositionTests.client(self, invalid)
+        self.assertEqual(self.run_worker(client, retain_rejected_pages=True)['newlyRejectedPages'], 1)
+        objective, _ = self.prepare()
+        native = next((objective / 'review-attempts').glob('*/result.json'))
+        original = native.read_bytes()
+        self.assertEqual(self.run_worker(client, retain_rejected_pages=True)['inferenceCalls'], 0)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(native.read_bytes(), original)
+        self.assertEqual(load(objective / 'findings.json'), [])
 
     def test_malformed_retention_lists_keep_exact_response_and_rejection_across_restart(self):
         self.mail('message01', 'Mon voyage...')

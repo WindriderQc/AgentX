@@ -34,6 +34,10 @@ claims; unresolved, missing, overlapping or cross-boundary context stays unknown
 Attachments cannot inherit the containing sender. A draft supplies no sent-owner
 context. Segment evidence accompanies the actor selection proof, and local
 validation rejects an actor that the model's own excerpt cannot support.
+Owner aliases match a complete display name or mailbox, ignoring case and
+normalizing whitespace and Unicode composition. A name mentioned inside another
+author's name, an address prefix, multiple authors or a malformed mailbox
+does not establish an owner reading. Ambiguous authors remain unknown.
 
 This actor contract changes neither date selection nor source-claim confidence,
 and never confirms identity, an event or publication. Existing manifests without
