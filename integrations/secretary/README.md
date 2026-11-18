@@ -562,6 +562,16 @@ scopes; final Core/archive pins still apply. Reports stay private, stdout shows
 counts, and all four global gaps remain. See the
 [global selected decision contract](../../docs/SECRETARY_GLOBAL_DECISIONS.md).
 
+`--native-review-restoration-checks <private-file>` selects v9 using retained
+native v3 `review-restoration` receipts for every saved message. It rechecks the
+current review-file graph on both machines, binds both to the same bounded local
+graph and the verified finding review hashes, then refreshes final Core/archive
+pins. It composes v6–v8 and is mutually exclusive with the earlier v5 restoration
+option. Only private reports and count/status summaries are produced; all four
+global acceptance/approval gaps remain. See the
+[current graph restoration contract](../../docs/SECRETARY_REVIEW_PACKET_RESTORATION.md)
+for exact scope, file/page/byte limits and separate real-corpus authorization.
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive

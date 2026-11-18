@@ -306,6 +306,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   coverage and refreshes Core/archive pins after restoration; global semantic,
   storage and mailbox approval gaps remain. See
   [selected restoration scope](SECRETARY_DOSSIER_REVIEW.md#complete-selected-restoration-scope).
+  An explicit [current review-file graph restoration](SECRETARY_REVIEW_PACKET_RESTORATION.md)
+  also qualifies current metadata, page receipts, declared extractions, cached
+  compound members and value lanes. Its distinct native v3 receipts compose in
+  optional v9 reconciliation, with matching local graph and final Core/archive
+  fences; Core/index restoration and global acceptance remain separate.
   An optional restoration check copies that selected native file set into
   private temporary storage, reopens and verifies its bytes and MIME, and removes
   it before returning evidence. The same receipt retains each copy's file-set

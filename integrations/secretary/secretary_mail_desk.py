@@ -98,6 +98,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     restoration.add_argument("--thread", required=True)
     restoration.add_argument("--sha256", required=True)
     restoration.add_argument("--request-id", required=True)
+    review_restore = commands.add_parser("review-restoration")
+    review_restore.add_argument("--message", required=True)
+    review_restore.add_argument("--thread", required=True)
+    review_restore.add_argument("--sha256", required=True)
+    review_restore.add_argument("--request-id", required=True)
     findings = commands.add_parser("findings")
     findings.add_argument("--message", required=True)
     findings.add_argument("--thread", required=True)
@@ -363,6 +368,15 @@ def main(argv: list[str] | None = None) -> int:
                           "message": "the Secretary mail request is not valid"}))
         return 0
     try:
+        if args.command == "review-restoration":
+            from archive_review_restoration import probe
+            from archive_review_packet import ReviewPacketError
+            try:
+                data = probe(args.evidence_root, args.message, args.thread, args.sha256, args.request_id)
+            except ReviewPacketError as error:
+                raise MailDeskError(str(error), error.code, error.status) from None
+            print(json.dumps({"status": "success", "data": data}, ensure_ascii=False))
+            return 0
         if args.command == "restoration":
             from archive_restoration import RestorationError, probe
             try:
