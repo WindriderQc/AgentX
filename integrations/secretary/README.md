@@ -540,6 +540,19 @@ cannot pass merely because filesystem timestamps did not advance. The initial
 reads at most that same source-set bound. This grants no atomic filesystem
 snapshot, mailbox approval or new write behavior.
 
+`--native-mailbox-scope` selects v7, implies v4 and composes the existing v5/v6
+options. Core reads each exact current Gmail message through the existing native
+Secretary transport, with `gmail.get --format=raw`, read-only access and sending
+blocked. It compares actual raw hashes, current thread/date/history IDs and
+label IDs with the selected source. Two native observations must agree with
+the verified Core member pins; final Core/archive fences still apply. Absence,
+source/thread changes, draft, Trash and dates outside the explicit cutoff stay
+held (exit 2). Provider errors never become absence without a typed not-found
+failure. There is no search expansion, archive fallback, cleanup or new grant.
+Reports stay private; stdout shows counts only. Previous modes and all four
+global gaps remain. See the [live source contract](../../docs/SECRETARY_DOSSIER_REVIEW.md#current-live-gmail-source-in-historical-reconciliation)
+for bounds, account-selector limitations and separate real mailbox acceptance.
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive

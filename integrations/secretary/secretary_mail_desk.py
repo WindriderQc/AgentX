@@ -103,6 +103,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     findings.add_argument("--thread", required=True)
     findings.add_argument("--sha256", required=True)
     findings.add_argument("--request-id", required=True)
+    mailbox = commands.add_parser("mailbox-scope")
+    mailbox.add_argument("--message", required=True)
+    mailbox.add_argument("--thread", required=True)
+    mailbox.add_argument("--sha256", required=True)
+    mailbox.add_argument("--request-id", required=True)
     return parser.parse_args(argv)
 
 
@@ -131,7 +136,8 @@ def failure(stdout: str, stderr: str, returncode: int) -> MailDeskError:
     return MailDeskError(f"the Gmail request exited {returncode}")
 
 
-def run_gog(args: argparse.Namespace, exact: str, command: list[str], *, readonly: bool = True) -> Any:
+def run_gog(args: argparse.Namespace, exact: str, command: list[str], *, readonly: bool = True,
+            typed_provider_errors: bool = False) -> Any:
     base = [
         args.gog,
         *(["--readonly"] if readonly else []),
@@ -153,10 +159,18 @@ def run_gog(args: argparse.Namespace, exact: str, command: list[str], *, readonl
     except subprocess.TimeoutExpired as exc:
         raise MailDeskError("the Gmail request timed out", "SECRETARY_MAIL_TIMEOUT") from exc
     if result.returncode != 0:
+        if typed_provider_errors:
+            from gmail_provider import GmailProviderError, failure_kind
+            raise GmailProviderError(exact, result.returncode, failure_kind(result))
         raise failure(result.stdout, result.stderr, result.returncode)
     try:
+        if typed_provider_errors:
+            from mailbox_source import unique_pairs, finite_constant
+            if len(result.stdout) > 24 * 1024 * 1024:
+                raise ValueError()
+            return json.loads(result.stdout, object_pairs_hook=unique_pairs, parse_constant=finite_constant)
         return json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
+    except ValueError as exc:
         raise MailDeskError("Gmail returned invalid JSON") from exc
 
 
@@ -389,7 +403,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if not args.account or not args.keyring_password_file:
             raise MailDeskError("Configure the Secretary account and keyring password file", "SECRETARY_MAIL_CONFIGURATION_INVALID")
-        if args.command == "dossier":
+        if args.command == "mailbox-scope":
+            from mailbox_source import MailboxSourceError, probe
+            try:
+                data = probe(args.message, args.thread, args.sha256, args.request_id, account_selection=args.account,
+                             read=lambda command: run_gog(args, "gmail.get", command, typed_provider_errors=True))
+            except MailboxSourceError as error:
+                raise MailDeskError(str(error), error.code, error.status) from None
+        elif args.command == "dossier":
             from dossier_sources import read_dossier
             from secretary_evidence import Archive
             if not THREAD_ID.fullmatch(args.thread):

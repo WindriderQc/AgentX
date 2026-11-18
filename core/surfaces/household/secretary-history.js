@@ -9,10 +9,11 @@ const messageScope = require('../../src/services/personalHistoryMessageScope');
 const findingScope = require('../../src/services/personalHistoryFindingScope');
 const restorationScope = require('../../src/services/personalHistoryRestorationScope');
 const downstreamScope = require('../../src/services/personalHistoryDownstreamScope');
+const mailboxScope = require('../../src/services/personalHistoryMailboxScope');
 
 function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' },
   preservationDeps = { audience: 'owner' }, decisionStateDeps = { audience: 'owner' }, messageScopeDeps = { audience: 'owner' },
-  findingScopeDeps = { audience: 'owner' } }) {
+  findingScopeDeps = { audience: 'owner' }, mailboxScopeDeps = { audience: 'owner' } }) {
   const respond = async (res, action) => {
     try { return envelope(res, await action()); }
     catch (error) { return fail(res, error.statusCode || 500, error.message, error.code || 'PERSONAL_HISTORY_FAILED'); }
@@ -26,6 +27,8 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDe
     () => findingScope.discover(req.body, findingScopeDeps)));
   router.post('/history/decision-state/downstream', (req, res) => sourceResponse(res,
     () => downstreamScope.discover(req.body, findingScopeDeps)));
+  router.post('/history/decision-state/mailbox', (req, res) => sourceResponse(res,
+    () => mailboxScope.discover(req.body, mailboxScopeDeps)));
   router.post('/history/preservation-scope', (req, res) => sourceResponse(res,
     () => restorationScope.observe(req.body, preservationDeps)));
   router.get('/history/:id/decision-state', (req, res) => sourceResponse(res,
