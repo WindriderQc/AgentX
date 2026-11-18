@@ -19,13 +19,16 @@ const TTL = 10 * 60 * 1000;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const terminal = ['completed', 'failed', 'cancelled', 'archive_failed'];
 
+// Family and the owner's personal Nestor show illustrations; no other conversation does.
+const ILLUSTRATED = [['kidx_nestor', 'family'], ['personal_operator', 'personal']];
+const illustratedScope = scope => scope?.surface === 'household' && ILLUSTRATED.some(([packId, scopeId]) => scope.packId === packId && scope.scopeId === scopeId);
 function validate(scope, input, body) {
-  if (scope?.surface !== 'household' || scope.packId !== 'kidx_nestor' || scope.scopeId !== 'family'
+  if (!illustratedScope(scope)
     || !/^[a-zA-Z0-9_.:-]{1,120}$/.test(scope.sessionId || '') || !input
     || (typeof input.epoch !== 'string' || !UUID.test(input.epoch)) || !Number.isFinite(Date.parse(input.expiresAt))
     || new Date(input.expiresAt).toISOString() !== input.expiresAt
     || body.parent || body.references?.length || body.expert || Number(body.width || 1024) * Number(body.height || 1024) > MAX_PIXELS) {
-    throw fail('An illustration requires its exact Family session, epoch, expiry and small text-only preset.', 400);
+    throw fail('An illustration requires its exact Family or personal session, epoch, expiry and small text-only preset.', 400);
   }
   return { epoch: input.epoch, expiresAt: input.expiresAt };
 }
@@ -54,7 +57,7 @@ async function capture(scope) {
 }
 
 async function touch(scope, at) {
-  if (scope.surface !== 'household' || scope.packId !== 'kidx_nestor' || scope.scopeId !== 'family') return;
+  if (!illustratedScope(scope)) return;
   return withSessionWrite(scope.surface, scope.sessionId, async () => {
     const service = forSurface(scope.surface), query = sessionScope(scope);
     const session = await service.getSession(query), state = session?.illustrationRetention;

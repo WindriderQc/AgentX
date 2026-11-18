@@ -14,13 +14,15 @@ function spaceFor(session) {
   if (session.packId === 'personal_operator' && session.scopeId === 'personal' && (session.agentId || 'main') === 'main') return 'private';
   return null;
 }
-// Family's illustrated mode (#1304): the reply names its subject in a hidden
+// The illustrated mode (#1304), for Family and, when configured, the personal
+// Nestor: the reply names its subject in a hidden
 // scene block; Core tries one picture on the instance's illustrated worker,
 // never elsewhere, and a busy worker simply leaves the previous picture.
 const SCENE_CONTRACT = ' Illustrated mode is on: a small frame beside you shows a picture of what the conversation is about. When the subject changes to something that can be pictured, end your reply with one <show kind="image" source="scene" title="">a short standalone visual description of the subject, under 30 words, no text or letters, no real person</show>. It is never spoken. Do not mention the frame or the picture unless asked. Omit the scene block when the subject has not changed or when you emit a draw block.';
 // The turn never waits longer than this for an illustration's admission: a
 // stopped or unreachable worker must not delay the end of the reply.
 const ILLUSTRATION_BUDGET_MS = 3000;
+const illustratedIn = (config, space) => Boolean(space && config?.illustrated && (config.illustrated.spaces || ['family']).includes(space));
 function createConversationImages({ conversations, service = images, visuals = null, now = Date.now, illustrationBudgetMs = ILLUSTRATION_BUDGET_MS,
   logger = require('../../config/logger') }) {
   const configuration = () => { try { return service.status(); } catch { return { configured: false, conversationProfile: null }; } };
@@ -52,7 +54,7 @@ function createConversationImages({ conversations, service = images, visuals = n
     if (!config.conversationProfile) return 'Local drawing is unavailable in this conversation. Do not emit a draw block or claim to create an image.';
     return 'Only when the user asks you to create a drawing or change a picture, emit one <show kind="image" source="draw" title="short caption">a precise standalone description of the requested image</show>. This is a bounded application request, not a native tool. Preserve requested objects, counts and relations; do not insert private information. ' + edit + ' Without from, describe the whole scene; this produces a new illustration. Never say the image is ready. The application accepts at most one drawing or change per turn, after your reply. It displays progress, the result and an atelier link. Never use draw for an image search or to replay an earlier request.'
       + (spaceFor(session) === 'family' ? ' Family drawings must be age-appropriate, non-sexual and non-graphic. Apply the family safety rules to the drawing description and to every change, as well as to speech. Offer a safe alternative or refuse an unsafe request without emitting draw. No uploads or custom generation settings are accepted here; only a picture on screen can be named, by its number.' : ' No file paths, addresses or custom generation settings are accepted in a draw block; only a picture on screen can be named, by its number.')
-      + (spaceFor(session) === 'family' && config.illustrated ? SCENE_CONTRACT : '');
+      + (illustratedIn(config, spaceFor(session)) ? SCENE_CONTRACT : '');
   }
   async function contextFor(session) {
     if (!spaceFor(session)) return '';
@@ -115,22 +117,24 @@ function createConversationImages({ conversations, service = images, visuals = n
       }
       onShow(block);
     }
-    if (space === 'family' && !requested && scenes.length) await illustrate(scenes.at(-1), { session, pack, turnId, signal, onShow });
-    else if (space === 'family' && configuration().illustrated) note(session, turnId, requested && scenes.length ? 'drawing_requested' : 'no_scene');
+    const illustrated = !native && illustratedIn(configuration(), space);
+    if (illustrated && !requested && scenes.length) await illustrate(scenes.at(-1), { session, space, pack, turnId, signal, onShow });
+    else if (illustrated) note(session, space, turnId, requested && scenes.length ? 'drawing_requested' : 'no_scene');
   }
-  // The description stays out of the log: a child's conversation is not copied there.
-  function note(session, turnId, outcome, details = {}) {
-    try { logger.info('Family illustration', { session: String(session.sessionId || '').slice(0, 8), turnId: turnId || '', outcome, ...details }); } catch { /* logging never affects the turn */ }
+  // The description stays out of the log: a conversation is not copied there.
+  function note(session, space, turnId, outcome, details = {}) {
+    try { logger.info('Conversation illustration', { space, session: String(session.sessionId || '').slice(0, 8), turnId: turnId || '', outcome, ...details }); } catch { /* logging never affects the turn */ }
   }
   // One attempt at most per interval and conversation. A refusal (worker busy,
   // off, or holding other models) waits for the next interval like a success.
-  async function illustrate(scene, { session, pack, turnId, signal, onShow }) {
-    const config = configuration(), plan = config.illustrated;
+  async function illustrate(scene, { session, space, pack, turnId, signal, onShow }) {
+    const config = configuration(), plan = config.illustrated, log = (...args) => note(session, space, ...args);
     const description = String(scene.body || '').replace(/\s+/g, ' ').trim().slice(0, 400);
-    const skip = !config.configured || !plan ? 'off' : !description ? 'empty' : signal.aborted ? 'aborted' : unsuitable(pack, description) ? 'unsuitable' : '';
-    if (skip) return note(session, turnId, skip);
+    const skip = !config.configured || !plan ? 'off' : !description ? 'empty' : signal.aborted ? 'aborted'
+      : space === 'family' && unsuitable(pack, description) ? 'unsuitable' : '';
+    if (skip) return log(turnId, skip);
     const at = now(), last = lastIllustration.get(session.sessionId);
-    if (last !== undefined && at - last < plan.intervalSeconds * 1000) return note(session, turnId, 'interval', { waitSeconds: Math.ceil((plan.intervalSeconds * 1000 - (at - last)) / 1000) });
+    if (last !== undefined && at - last < plan.intervalSeconds * 1000) return log(turnId, 'interval', { waitSeconds: Math.ceil((plan.intervalSeconds * 1000 - (at - last)) / 1000) });
     lastIllustration.set(session.sessionId, at);
     if (lastIllustration.size > 200) for (const [id, time] of lastIllustration) if (at - time > 3600000) lastIllustration.delete(id);
     // Past the budget the turn goes on; accept() stops before creating an
@@ -139,16 +143,16 @@ function createConversationImages({ conversations, service = images, visuals = n
     let open = true, timer;
     const actionKey = 'household-scene:' + createHash('sha256').update(JSON.stringify([scopeFor(session), turnId, 'scene'])).digest('hex');
     const attempt = Promise.resolve().then(() => service.acceptOpportunistic({ actionKey, profile: plan.profile, width: plan.width, height: plan.height,
-      prompt: 'Age-appropriate illustration for children. No text, letters or words in the picture.\n' + description },
+      prompt: (space === 'family' ? 'Age-appropriate illustration for children. ' : 'Illustration. ') + 'No text, letters or words in the picture.\n' + description },
     { workerId: plan.worker, conversation: scopeFor(session), signal: budget, temporary: true }))
       .then(operation => {
         const shown = open && !signal.aborted;
-        note(session, turnId, 'accepted', { worker: plan.worker, operation: operation.id, state: operation.state, shown, chars: description.length });
+        log(turnId, 'accepted', { worker: plan.worker, operation: operation.id, state: operation.state, shown, chars: description.length });
         if (shown) onShow(card(operation, session, '', description));
       })
       .catch(error => {
         // The frame keeps its previous picture.
-        note(session, turnId, budget.aborted && !signal.aborted ? 'budget' : 'refused', { worker: plan.worker,
+        log(turnId, budget.aborted && !signal.aborted ? 'budget' : 'refused', { worker: plan.worker,
           code: error?.code || '', status: error?.statusCode || 0, reason: String(error?.message || '').slice(0, 160) });
       });
     await Promise.race([attempt, new Promise(resolve => { timer = setTimeout(resolve, illustrationBudgetMs); timer.unref?.(); })]);

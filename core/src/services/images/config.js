@@ -67,7 +67,8 @@ function keptResidents(value) {
   }
   return [...new Set(value)];
 }
-// Family's illustrated mode: one named worker, one quick profile, one size.
+// The illustrated mode: one named worker, one quick profile, one size, and the
+// conversation spaces that show its frame (Family by default).
 // Absent means the mode is off.
 function illustrated(c) {
   const v = c.illustrated;
@@ -83,7 +84,10 @@ function illustrated(c) {
   if (!qualified(profile, width, height)) throw new Error('The illustrated image size is not qualified for its profile');
   const intervalSeconds = v.intervalSeconds === undefined ? 60 : v.intervalSeconds;
   if (!Number.isInteger(intervalSeconds) || intervalSeconds < 30 || intervalSeconds > 3600) throw new Error('The illustrated interval must be 30 to 3600 seconds');
-  return { worker: worker.id, profile: v.profile, width, height, intervalSeconds };
+  const spaces = v.spaces === undefined ? ['family'] : v.spaces;
+  if (!Array.isArray(spaces) || !spaces.length || spaces.length > 2 || new Set(spaces).size !== spaces.length
+    || !spaces.every(space => ['family', 'private'].includes(space))) throw new Error('The illustrated spaces must be family and/or private');
+  return { worker: worker.id, profile: v.profile, width, height, intervalSeconds, spaces };
 }
 
 function loadConfig() {

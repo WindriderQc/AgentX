@@ -31,6 +31,8 @@ window.ConversationEngines = {
 window.mountConversation = async function ({ app, api, esc, space = 'personal', autoStart = true }) {
   const P = PersonaPresentation, engines = window.ConversationEngines;
   const family = space === 'family';
+  // The corner frame (#1304) follows Family and the personal Nestor; Core's manifest decides which one gets pictures.
+  const framed = family || space === 'personal';
   const defaultListening = family ? 'wake' : 'open';
   const listeningKey = 'household.space.' + space + '.listening';
   const sessionBase = '/api/voice-personas/' + (family ? 'family' : 'private') + '/sessions';
@@ -436,7 +438,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (event.type === 'scene' && !interruptedTurns.has(turnId)) activity('scene', { scene: event.scene });
       // An illustration goes to its corner frame (#1304), never to the board.
       if (event.type === 'show' && !interruptedTurns.has(turnId)) {
-        if (event.block?.presentation === 'illustration') { if (family) window.IllustratedFrame?.show(event.block); }
+        if (event.block?.presentation === 'illustration') { if (framed) window.IllustratedFrame?.show(event.block); }
         else show(mathCard(event.block, session, turnId));
       }
       if (event.type === 'status' && event.phase === 'activity') voiceHealth.activity();
@@ -620,7 +622,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       partial = null;
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
-    localControl: (text, options) => (family && window.IllustratedFrame?.localControl(text, options)) || idlePhotos?.localControl(text, options) || screenCommand?.(text, options) || null,
+    localControl: (text, options) => (framed && window.IllustratedFrame?.localControl(text, options)) || idlePhotos?.localControl(text, options) || screenCommand?.(text, options) || null,
     transcriptionStarted: turnId => workflow?.capture(conversation.session?.sessionId, turnId),
     transcriptionDone: (turnId, values) => { latestVoiceTimings = values || {}; workflow?.timings(turnId, values); },
     transcriptionEnded: (turnId, receipt) => workflow?.captureEnd(turnId, receipt),
@@ -799,7 +801,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     summarize();
   }
   function describe() {
-    if (family) window.IllustratedFrame?.follow(conversation.session);
+    if (framed) window.IllustratedFrame?.follow(conversation.session);
     syncStyles(); renderTeam();
     const agent = agents.find(agent => agent.id === (conversation.session?.agentId || agentPicker.value)) || selectedAgent();
     const backend = conversation.session?.backend || backendPicker.value;
@@ -860,7 +862,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     return startVoice();
   };
   el('conversationNew').onclick = () => {
-    if (family) window.IllustratedFrame?.end();
+    if (framed) window.IllustratedFrame?.end();
     captureRequests?.reset(); privacyChoice.reset(open.checked); privacyBackend = null;
     recap?.clear();
     el('conversationResume').hidden = true; setHistoryOpen(false); conversation.stop(); work?.reset(); workflow?.reset(); void releaseOpen(); partial = null;
@@ -881,7 +883,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   el('conversationText').onsubmit = async event => {
     event.preventDefault();
     const typed = el('conversationMessage');
-    if (!drafts.hasFiles() && ((family && window.IllustratedFrame?.localControl(typed.value, { followup: true })) || screenCommand?.(typed.value))) { typed.value = ''; composer.sync(); return; }
+    if (!drafts.hasFiles() && ((framed && window.IllustratedFrame?.localControl(typed.value, { followup: true })) || screenCommand?.(typed.value))) { typed.value = ''; composer.sync(); return; }
     if (!textBusy && conversation.canType()) return typedDuringVoice();
     if (textBusy || !['idle', 'paused', 'error'].includes(conversation.state)) return;
     const input = el('conversationMessage'), text = input.value.trim(); if (!text) return;
@@ -967,7 +969,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   };
   // Opens a saved conversation from Core: the same on every device (#120).
   async function resumeSession(session, button) {
-    if (family) window.IllustratedFrame?.end();
+    if (framed) window.IllustratedFrame?.end();
     captureRequests?.reset(); recap?.clear();
     el('conversationResume').hidden = true; conversation.stop();
     void releaseOpen();

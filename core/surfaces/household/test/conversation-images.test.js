@@ -211,7 +211,7 @@ test('each family turn logs where its illustration stopped, without the descript
   f.advance(61); f.refuse = true;
   await f.complete([scene('A red kite')]);
   assert.deepEqual(lines.map(line => line.outcome), ['no_scene', 'accepted', 'interval', 'refused']);
-  assert.ok(lines.every(line => line.message === 'Family illustration'));
+  assert.ok(lines.every(line => line.message === 'Conversation illustration' && line.space === 'family'));
   assert.equal(lines[1].worker, 'desk'); assert.equal(lines[1].shown, true); assert.ok(lines[2].waitSeconds > 0);
   assert.equal(lines[3].status, 503); assert.match(lines[3].reason, /unavailable/);
   assert.doesNotMatch(JSON.stringify(lines), /dragon|lake|kite/);
@@ -228,4 +228,39 @@ test('an illustration past its admission budget is logged as such', async () => 
   await f.complete([scene('A dragon kite')]);
   await new Promise(resolve => setTimeout(resolve, 30));
   assert.deepEqual(lines.map(line => line.outcome), ['budget']);
+});
+
+test('the personal Nestor is illustrated only when the manifest lists it, without the children wording or filter', async () => {
+  const both = () => ({ configured: true, conversationProfile: { id: 'quick', width: 1024, height: 1024 }, illustrated: { ...plan, spaces: ['family', 'private'] } });
+  const personal = { session: privateSession, pack: packs.packById(privateSession.packId), backend: 'agentx' };
+  const f = illustrated(); f.service.status = both;
+  assert.match(f.images.contract(privateSession, 'agentx'), /source="scene"/);
+  await f.complete([scene('A storm over a lighthouse at night')], personal);
+  assert.equal(f.immediate.length, 1);
+  assert.match(f.immediate[0].body.prompt, /^Illustration\. No text, letters or words in the picture\.\nA storm/);
+  assert.doesNotMatch(f.immediate[0].body.prompt, /children/);
+  assert.deepEqual(f.immediate[0].opts.conversation, scopeFor(privateSession));
+  assert.equal(f.immediate[0].opts.temporary, true);
+  assert.equal(f.events[0].presentation, 'illustration');
+  assert.match(f.events[0].operation.statusUrl, /^\/api\/voice-personas\/private\/sessions\/private-session\/images\//);
+  // OpenClaw keeps its native image tool; a stray scene block is removed and ignored.
+  const native = illustrated(); native.service.status = both;
+  assert.doesNotMatch(native.images.contract(privateSession, 'openclaw'), /source="scene"/);
+  const shown = [scene('A lake')];
+  await native.complete(shown, { ...personal, backend: 'openclaw' });
+  assert.equal(native.immediate.length, 0); assert.equal(shown.length, 0);
+  // Family keeps its filter and its children wording.
+  const family = illustrated(); family.service.status = both;
+  await family.complete([scene('A nude person')]); assert.equal(family.immediate.length, 0);
+  await family.complete([scene('A red kite')]); assert.match(family.immediate[0].body.prompt, /^Age-appropriate illustration for children\./);
+});
+
+test('the log names the personal space', async () => {
+  const lines = [], logger = { info: (message, fields) => lines.push(fields) };
+  const f = illustrated({ logger });
+  f.service.status = () => ({ configured: true, conversationProfile: { id: 'quick', width: 1024, height: 1024 }, illustrated: { ...plan, spaces: ['private'] } });
+  const personal = { session: privateSession, pack: packs.packById(privateSession.packId), backend: 'agentx' };
+  await f.complete([{ id: 'b1', kind: 'text', title: '', body: 'Hello' }], personal);
+  await f.complete([{ id: 'b1', kind: 'text', title: '', body: 'Hello' }]);
+  assert.deepEqual(lines.map(line => [line.space, line.outcome]), [['private', 'no_scene']], 'Family is silent when only the personal space is listed');
 });
