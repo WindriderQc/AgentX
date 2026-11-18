@@ -325,6 +325,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   Its optional v4 report keeps missing references, open actions and pending
   reviews visible, without semantic acceptance or mailbox authority. See
   [recorded findings](SECRETARY_DOSSIER_REVIEW.md#recorded-findings-and-current-core-decisions).
+  A [global selected decision observation](SECRETARY_GLOBAL_DECISIONS.md)
+  composes two complete finding passes for 1–20 exact messages and fences all
+  selected Core members after the native reads. Optional v8 reconciliation
+  detects earlier-member changes during later work; all global acceptance and
+  approval gaps remain, without decision writes or mailbox effects.
   Optional v6 reconciliation also observes already linked current owner souvenirs,
   their source/context binding and native fingerprints. Missing or stale links
   stay held; owner corrections and unlinked assertions remain untouched. It

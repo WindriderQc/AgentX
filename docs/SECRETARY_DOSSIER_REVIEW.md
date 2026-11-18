@@ -405,6 +405,11 @@ linked note is not a complete downstream disposition, and an unlinked assertion
 is not evidence of either a failed projection or a wish to create memory.
 Older decision/finding contracts and v1–v5 reports keep their original behavior.
 
+The [global selected decision contract](SECRETARY_GLOBAL_DECISIONS.md) composes
+these observations across 1–20 exact messages, with two complete finding passes
+and a final Core membership/privacy fence over the entire selection. Its optional
+v8 report retains all global acceptance/approval gaps and changes no decision.
+
 ## Current live Gmail source in historical reconciliation
 
 `POST /api/secretary/history/decision-state/mailbox` observes one exact selected

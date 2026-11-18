@@ -240,16 +240,27 @@ test('production parser ordering accepts bounded reference uploads and raw origi
 });
 
 test.each([false, true])('two Core service instances atomically admit only one inspection (same client identity: %s)', async sameIdentity => {
-  let finish;
-  const analyze = jest.fn(input => new Promise(resolve => { finish = () => resolve(completed(input.requestId)); }));
-  const f = await fixture({ analyze });
+  let finish, entered, writing, releaseWrite, committed;
+  const started = new Promise(resolve => { entered = resolve; });
+  const completionWrite = new Promise(resolve => { writing = resolve; });
+  const writeAllowed = new Promise(resolve => { releaseWrite = resolve; });
+  const saved = new Promise(resolve => { committed = resolve; });
+  const conversations = forSurface('image-workshop');
+  const tracked = { ...conversations, updateTurn: async (scope, patch) => {
+    if (patch.$set?.outcome === 'completed') { writing(); await writeAllowed; }
+    const result = await conversations.updateTurn(scope, patch);
+    if (patch.$set?.outcome === 'completed') committed();
+    return result;
+  } };
+  const analyze = jest.fn(input => new Promise(resolve => { finish = () => resolve(completed(input.requestId)); entered(); }));
+  const f = await fixture({ analyze, conversations: tracked });
   let count = 0, release;
   const gate = new Promise(resolve => { release = resolve; });
   const resolver = createResolver();
   f.references.resolve.mockImplementation(async (...args) => {
     const resolved = await resolver.resolve(...args); if (++count === 2) release(); await gate; return resolved;
   });
-  const second = createService({ bridge: f.bridge, workshop, imageService, references: f.references, analyze });
+  const second = createService({ bridge: f.bridge, workshop, imageService, references: f.references, analyze, conversations: tracked });
   const results = await Promise.allSettled([f.service.accept(f.session.sessionId, f.input),
     second.accept(f.session.sessionId, { ...f.input, clientTurnId: sameIdentity ? f.input.clientTurnId : randomUUID() })]);
   if (sameIdentity) {
@@ -259,12 +270,16 @@ test.each([false, true])('two Core service instances atomically admit only one i
     expect(results.filter(row => row.status === 'fulfilled')).toHaveLength(1);
     expect(results.find(row => row.status === 'rejected').reason.statusCode).toBe(409);
   }
-  for (let i = 0; i < 100 && !finish; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  await started;
   expect(analyze).toHaveBeenCalledTimes(1); finish();
-  for (let i = 0; i < 100; i++) {
-    const rows = await forSurface('image-workshop').listTurns({ sessionId: f.session.sessionId });
-    if (rows[0]?.outcome === 'completed') break;
-    await new Promise(resolve => setTimeout(resolve, 5));
+  try {
+    // A native reply is not the final durable turn. Hold that write explicitly:
+    // busy Mongo/CI may legitimately take longer than the old 500 ms poll.
+    await completionWrite;
+    const pending = await conversations.listTurns({ sessionId: f.session.sessionId });
+    expect(pending).toHaveLength(1); expect(pending[0].outcome).toBe('running');
+  } finally {
+    releaseWrite(); await saved;
   }
   const rows = await forSurface('image-workshop').listTurns({ sessionId: f.session.sessionId });
   expect(rows).toHaveLength(1); expect(rows[0].outcome).toBe('completed'); expect(f.bridge.invoke).toHaveBeenCalledTimes(1);

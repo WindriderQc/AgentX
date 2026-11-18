@@ -553,6 +553,15 @@ Reports stay private; stdout shows counts only. Previous modes and all four
 global gaps remain. See the [live source contract](../../docs/SECRETARY_DOSSIER_REVIEW.md#current-live-gmail-source-in-historical-reconciliation)
 for bounds, account-selector limitations and separate real mailbox acceptance.
 
+The optional
+`--native-global-decisions` mode selects v8, implies v4 and composes v5–v7.
+It requires two complete native finding passes and a final Core fence over
+all selected messages, including earlier members changed or erased during later
+reads. Two complete HTTP observations must match the already verified finding
+scopes; final Core/archive pins still apply. Reports stay private, stdout shows
+counts, and all four global gaps remain. See the
+[global selected decision contract](../../docs/SECRETARY_GLOBAL_DECISIONS.md).
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive
