@@ -238,6 +238,38 @@ the operator window. Completion never authorizes a broader FIFO restart.
 
 ### Pausing new photo processing
 
+An owner can explicitly reconcile one or two unfinished images **without
+resuming general processing** with
+`core/scripts/reconcile-selected-photo-analyses.cjs`. Its stdin plan names
+`operationId`, `queueId`, `dispatchId`, `configHash`, `targetHash`,
+`controlRevision`, `controlRequestId`, `receiptRef`, the confirmation
+`ANALYZE_ONLY_SELECTED_IMAGES_WHILE_PAUSED`, and at most two `items`. Each item
+binds `sha256`, a new `analysisId`, `previousAnalysisId` (null for a first
+attempt) and `previousAnalysisSha256` (the digest of null when absent).
+Eligible content has no prior analysis, or an exactly identified completed
+invalid proposal (`failed` / `PHOTO_ANALYSIS_INVALID`); running, unknown,
+successful and other failed attempts refuse.
+
+The diagnostic operator queue key is `photo-analysis-reconcile:<operationId>`.
+Its hosts are the current NAS and routed analysis endpoints; its exact receipt,
+dispatch and window must match. The native writer checks a persisted selected
+batch and the unchanged pause receipt at the same CAS boundary as maintenance.
+Normal FIFO admission stays closed throughout, including after a restart or
+when another worker races the selected attempt. Each model dispatch rechecks
+the pause, window, original reference and exact Immich asset. Facts, human
+reviews and frame decisions stay unchanged; previous analyses are retained
+under the new attempt's history, and new cards are exported immutably.
+An uncertain claim, provider call, export or release keeps that exact writer
+fenced for observation. A completed invocation reads back its receipt without
+another model call. There is no automatic retry, scan or general resume.
+
+Historical failed batches retain their original outcomes and release receipts.
+Audit their occurrences against current import receipts, current content cards
+and queued occurrence identities before deciding what remains. An old partial
+progress count does not establish current coverage. Missing occurrences can be
+explicitly enrolled for later processing while the pause remains in force;
+enrollment does not replay their old failed operation.
+
 The owner pauses photo admission through the existing queue operator:
 
 ```sh
