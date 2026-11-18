@@ -31,10 +31,10 @@ const reply = op => ({ ok: true, json: async () => ({ ok: true, operation: op })
 async function until(predicate) { for (let i = 0; i < 200; i++) { if (predicate()) return; await new Promise(resolve => setTimeout(resolve, 2)); } assert.fail('frame did not reach the expected state'); }
 const frame = () => body.children.find(child => child.className === 'illustrated-frame');
 
-test('only a family illustration with its own status route is followed', () => {
+test('only a Family or personal illustration with its own status route is followed', () => {
   const fetcher = async () => assert.fail('no read expected');
   assert.equal(IllustratedFrame.show(block(operation(idA), null), { fetcher }), false);
-  assert.equal(IllustratedFrame.show(block({ ...operation(idA), statusUrl: `${base.replace('family', 'private')}/images/${idA}` }), { fetcher }), false);
+  assert.equal(IllustratedFrame.show(block({ ...operation(idA), statusUrl: `${base.replace('family', 'kids')}/images/${idA}` }), { fetcher }), false);
   assert.equal(IllustratedFrame.show(block({ ...operation(idA), id: idB }), { fetcher }), false);
 });
 test('a picture appears only once verified, fades over the previous one, and a failure keeps it', async () => {
@@ -77,4 +77,14 @@ test('a reopened conversation does not replay illustrations as drawing cards', a
   const blocks = [{ ...block(operation(idA)) }, { ...block(operation(idB), null) }];
   await ConversationImages.resume(base, row => added.push(row), { fetcher: async () => ({ ok: true, json: async () => ({ ok: true, blocks }) }) });
   assert.deepEqual(added.map(row => row.operation.id), [idB]);
+});
+
+test('a personal illustration is followed on its own private route', async () => {
+  const privateBase = base.replace('family', 'private'), reads = [];
+  const op = { ...operation(idB), statusUrl: `${privateBase}/images/${idB}` };
+  const ready = { ...op, state: 'completed', runtimeRestored: true, artifact: { url: `${privateBase}/images/${idB}/image`, sha256: 'b'.repeat(64) } };
+  assert.equal(IllustratedFrame.show(block(op), { delay: 1, fetcher: async url => { reads.push(url); return reply(ready); } }), true);
+  await until(() => reads.length > 0);
+  assert.ok(reads.every(url => url.startsWith(privateBase + '/images/')));
+  IllustratedFrame.clear();
 });

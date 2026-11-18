@@ -250,9 +250,15 @@ describe('residents kept by immediate images and the illustrated mode (#1304)', 
   test('the illustrated mode names one worker, a quick profile and a qualified size', () => {
     expect(load(twoWorkers()).illustrated).toBeUndefined();
     expect(load({ ...twoWorkers(), illustrated: { worker: 'desk', profile: 'fast' } }).illustrated)
-      .toEqual({ worker: 'desk', profile: 'fast', width: 768, height: 768, intervalSeconds: 60 });
+      .toEqual({ worker: 'desk', profile: 'fast', width: 768, height: 768, intervalSeconds: 60, spaces: ['family'] });
     expect(load({ ...twoWorkers(), illustrated: { worker: 'desk', profile: 'fast', width: 512, height: 640, intervalSeconds: 90 } }).illustrated)
-      .toEqual({ worker: 'desk', profile: 'fast', width: 512, height: 640, intervalSeconds: 90 });
+      .toEqual({ worker: 'desk', profile: 'fast', width: 512, height: 640, intervalSeconds: 90, spaces: ['family'] });
+    expect(load({ ...twoWorkers(), illustrated: { worker: 'desk', profile: 'fast', spaces: ['family', 'private'] } }).illustrated.spaces)
+      .toEqual(['family', 'private']);
+    expect(load({ ...twoWorkers(), illustrated: { worker: 'desk', profile: 'fast', spaces: ['private'] } }).illustrated.spaces).toEqual(['private']);
+  });
+  test.each([[[]], [['kids']], [['family', 'family']], ['family']])('illustrated spaces %j are refused', spaces => {
+    expect(() => load({ ...twoWorkers(), illustrated: { worker: 'desk', profile: 'fast', spaces } })).toThrow();
   });
   test.each([
     ['unknown worker', { worker: 'nope', profile: 'fast' }],

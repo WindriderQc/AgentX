@@ -331,3 +331,12 @@ test.each([false, true])('canonical Family intake completes under its existing f
     expect((await images.image(op._id)).bytes).toEqual(bytes);
   } else expect((await conversations.getSession(sessionScope)).illustrationRetention).toBeUndefined();
 });
+
+test('the personal Nestor scope is eligible for temporary illustrations; other conversations are not', () => {
+  const input = { epoch, expiresAt: new Date(Date.now() + 600000).toISOString() }, size = { width: 768, height: 768 };
+  const personal = { surface: 'household', sessionId: 'personal-session-1', packId: 'personal_operator', scopeId: 'personal' };
+  expect(storage.validate(personal, input, size)).toEqual(input);
+  for (const other of [{ ...personal, scopeId: 'family' }, { ...scope, packId: 'other_pack' }, { ...personal, surface: 'graphysx' }]) {
+    expect(() => storage.validate(other, input, size)).toThrow(expect.objectContaining({ statusCode: 400 }));
+  }
+});

@@ -1,12 +1,16 @@
 'use strict';
 
-// Family's existing frame keeps exact native retention identities; this is not
-// another mode or another archive. Parent household middleware owns access.
+// The illustrated frame (Family and the personal Nestor) keeps exact native
+// retention identities; this is not another mode or another archive. Parent
+// household middleware owns access to each space.
 const storage = require('../../src/services/images/illustrationStorage');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
-const scopeFor = sessionId => ({ surface: 'household', sessionId, packId: 'kidx_nestor', scopeId: 'family' });
+const SCOPES = { family: { packId: 'kidx_nestor', scopeId: 'family' }, private: { packId: 'personal_operator', scopeId: 'personal' } };
 function register(router, { service, view }) {
-  const base = '/family/sessions/:sessionId/images';
+  for (const [space, scope] of Object.entries(SCOPES)) routes(router, { service, view, base: `/${space}/sessions/:sessionId/images`,
+    scopeFor: sessionId => ({ surface: 'household', sessionId, ...scope }) });
+}
+function routes(router, { service, view, base, scopeFor }) {
   const wrap = handler => async (req, res) => {
     res.set('Cache-Control', 'private, no-store');
     try {

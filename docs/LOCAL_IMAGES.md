@@ -580,7 +580,7 @@ This admission keeps no image model warm and itself provides no ephemeral
 storage. Generic opportunistic images retain the ordinary archive behavior.
 Marked Family scenes use the separate [scene retention contract](#family-scene-retention) below.
 
-### Family's illustrated mode
+### The illustrated mode (Famille and the personal Nestor)
 
 An optional `illustrated` block turns on a small picture beside Famille's
 conversation that follows its subject:
@@ -594,6 +594,15 @@ conversation that follows its subject:
 `intervalSeconds` (30 to 3600, default 60) is the minimum time between two
 attempts in one conversation. Without the block the mode is off and Famille's
 instructions do not mention it.
+
+`spaces` lists the conversations that show the frame: `family` (Famille, the
+default) and/or `private` (the owner's personal Nestor, /dad). The personal
+Nestor uses the same hidden scene block, worker, interval, temporary retention
+and "garde cette image", without Family's drawing filter or its children
+wording. An OpenClaw personal session keeps its native image tool and gets no
+scene contract. Each turn in a listed space writes one `Conversation
+illustration` log line with its `space` and `outcome` (`no_scene`, `interval`,
+`accepted`, `refused`, `budget`…); the scene description is never logged.
 
 When it is on, Famille may end a reply with a hidden
 `<show kind="image" source="scene">` block describing the new subject. It is

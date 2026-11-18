@@ -1,12 +1,12 @@
 'use strict';
 
-// One lightweight Family frame: two image elements, opacity fading and bounded
+// One lightweight illustrated frame (Family and the personal Nestor): two image elements, opacity fading and bounded
 // reads. Core owns temporary bytes, keep receipts and epoch closure.
 (function exposeIllustratedFrame(root) {
   const UUID = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
   const ID = new RegExp('^' + UUID + '$', 'i');
-  const ROUTE = new RegExp('^(/api/voice-personas/family/sessions/([a-zA-Z0-9_-]{1,80})/images)/(' + UUID + ')$', 'i');
-  const END_ROUTE = /^\/api\/voice-personas\/family\/sessions\/[a-zA-Z0-9_-]{1,80}\/images\/retention\/end$/;
+  const ROUTE = new RegExp('^(/api/voice-personas/(?:family|private)/sessions/([a-zA-Z0-9_-]{1,80})/images)/(' + UUID + ')$', 'i');
+  const END_ROUTE = /^\/api\/voice-personas\/(?:family|private)\/sessions\/[a-zA-Z0-9_-]{1,80}\/images\/retention\/end$/;
   const ACTIVE = new Set(['queued', 'accepted', 'reserving', 'generating', 'archiving', 'restoring']);
   const KEY = 'agentx.illustrated.retention.v1';
   let frame = null, layers = [], front = 0, timer = null, epoch = 0, current = null, owned = null;
