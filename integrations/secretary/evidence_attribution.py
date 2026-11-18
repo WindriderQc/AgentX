@@ -123,7 +123,7 @@ def mime_overview(message):
             "allMimeRepresentationsRead": False}
 
 
-def review_pages(archive, manifest, *, load, message_text, sha, json, page_chars):
+def review_pages(archive, manifest, *, load, message_text, sha, json, page_chars, message_id=None):
     """Stable raw pages plus attribution computed before pagination.
 
     Metadata is deliberately outside the page identity. Installing this reader
@@ -135,6 +135,8 @@ def review_pages(archive, manifest, *, load, message_text, sha, json, page_chars
     originals = {m["id"]: m for m in payload.get("thread", payload)["messages"]}
     messages = sorted(manifest["messages"], key=lambda m: int(m.get("internalDate") or 0), reverse=True)
     for message in messages:
+        if message_id is not None and message["id"] != message_id:
+            continue
         h = {k.lower(): v for k, v in message["headers"].items()
              if k.lower() in ("from", "to", "cc", "bcc", "date", "subject")}
         body = message_text(originals[message["id"]])

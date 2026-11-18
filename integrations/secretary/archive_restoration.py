@@ -100,9 +100,10 @@ def set_hash(rows):
     return native.digest(json.dumps(rows, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode())
 
 
-def layout(files, proof):
+def layout(files, proof, *, maximum_files=None):
     rows = file_set(files)
-    if not 3 <= len(rows) <= min(MAX_FILES, 3 + len(proof["attachments"])) \
+    limit = min(MAX_FILES, 3 + len(proof["attachments"])) if maximum_files is None else maximum_files
+    if type(limit) is not int or not 3 <= limit <= 256 or not 3 <= len(rows) <= limit \
             or not 1 <= sum(row[1] for row in rows) <= native.MAX_BYTES:
         raise RestorationError("SECRETARY_RESTORATION_TOO_LARGE", 413)
     children = {(): {}}
@@ -429,8 +430,8 @@ def verify_written(owner, written):
             raise RestorationError()
 
 
-def restore(files, source_proof):
-    rows, children = layout(files, source_proof)
+def restore(files, source_proof, *, qualify=None, maximum_files=None):
+    rows, children = layout(files, source_proof, maximum_files=maximum_files)
     source_hash, restored_hash = set_hash(rows), None
     comparable = lambda proof: {key: value for key, value in proof.items() if key != "archiveIdSha256"}
     with scratch(files) as (path, owner, bound):
@@ -440,6 +441,8 @@ def restore(files, source_proof):
 
         def verified(restored_files, restored_proof):
             nonlocal restored_hash
+            if qualify is not None:
+                restored_proof = {**restored_proof, "reviewPacket": qualify(restored_files, restored_proof)}
             if comparable(restored_proof) != comparable(source_proof) \
                     or set(restored_files.files) != set(written) \
                     or any(before != written[name] for name, (_, before, _) in restored_files.files.items()):

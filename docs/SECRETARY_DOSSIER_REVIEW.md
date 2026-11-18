@@ -575,6 +575,12 @@ fixtures do not establish installed reader, two-host or storage acceptance.
 
 ### Temporary disk restoration
 
+The explicit [current review-file graph mode](SECRETARY_REVIEW_PACKET_RESTORATION.md)
+also restores original metadata, current packet/review/page receipts, declared
+extractions, compound indexes/member blobs and value lanes. It retains distinct
+v3 preservation receipts and composes them through the v9 private consumer;
+earlier originals/attachments receipts cannot answer this mode.
+
 The same `POST .../:id/preservation` optionally takes
 `verification: "restoration"`. An absent value or `"preservation"` keeps the
 original byte/MIME check. The selected mode belongs to the immutable UUID:

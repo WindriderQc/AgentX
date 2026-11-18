@@ -18,6 +18,7 @@ from history_coverage import content_hash
 from retention_plan import NATIVE_GAPS
 
 CONTRACT = "agentx.history-restoration-scope/v1"
+REVIEW_CONTRACT = "agentx.history-restoration-scope/v2"
 UUID = re.compile(r"[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\Z")
 MAX_RESPONSE = 2 * 1024 * 1024
 
@@ -43,10 +44,31 @@ def selection(saved, checks):
     return [by_message[ref["messageId"]] for ref in refs]
 
 
-def observe(core, checks, *, expected=None, opener=urllib.request.urlopen):
+def validate_review_copy(copy):
+    content = copy.get("content")
+    graph = content.get("reviewPacket") if isinstance(content, dict) else None
+    if not isinstance(graph, dict) or set(graph) != {"contract", "evidenceHash", "reviewSha256", "pagesSha256", "valueLanesSha256", "filesSha256", "counts"} \
+            or graph["contract"] != "secretary.archive-review-packet/v1" \
+            or any(not isinstance(graph.get(key), str) or not HASH.fullmatch(graph[key])
+                   for key in ("evidenceHash", "reviewSha256", "pagesSha256", "valueLanesSha256", "filesSha256")):
+        raise ValueError("Native restored review graph is unavailable")
+    counts, restored = graph["counts"], copy["restoration"]
+    if not isinstance(counts, dict) or set(counts) != {"files", "bytes", "pages", "attachments", "compoundMembers"} \
+            or any(type(count) is not int or count < 0 for count in counts.values()) \
+            or not 7 <= counts["files"] <= 256 or not 1 <= counts["pages"] <= 128 \
+            or counts["attachments"] > 128 or counts["compoundMembers"] > 128 or not 1 <= counts["bytes"] <= 16 * 1024 * 1024 \
+            or type(restored.get("filesCopied")) is not int or restored["filesCopied"] != counts["files"] \
+            or type(restored.get("bytesCopied")) is not int or restored["bytesCopied"] != counts["bytes"] \
+            or graph["filesSha256"] != restored.get("sourceFilesSha256") or graph["filesSha256"] != restored.get("restoredFilesSha256"):
+        raise ValueError("Native review graph restoration is incomplete")
+
+
+def observe(core, checks, *, expected=None, opener=urllib.request.urlopen, review_packet=False):
+    contract = REVIEW_CONTRACT if review_packet else CONTRACT
     observation_id = str(uuid.uuid4())
     request = urllib.request.Request(f"{core.rstrip('/')}/api/secretary/history/preservation-scope",
         data=json.dumps({"checks": checks, "observationId": observation_id,
+                         **({"verification": "review-restoration"} if review_packet else {}),
                          **({"expected": expected} if expected is not None else {})}, allow_nan=False).encode(),
         method="POST", headers={"x-service-caller": "secretary-retention-review", "Content-Type": "application/json"})
     try:
@@ -60,18 +82,18 @@ def observe(core, checks, *, expected=None, opener=urllib.request.urlopen):
         raise ValueError("Native restoration scope exceeds its response capacity")
     value = json.loads(raw, object_pairs_hook=pairs, parse_constant=invalid_constant)
     data = value.get("data") if isinstance(value, dict) and value.get("ok") is True else None
-    if not isinstance(data, dict) or data.get("authority") != "agentx.core" or data.get("contract") != CONTRACT \
+    if not isinstance(data, dict) or data.get("authority") != "agentx.core" or data.get("contract") != contract \
             or data.get("observationId") != observation_id \
             or data.get("status") != ("observed_match" if expected is not None else "observed") \
             or data.get("consistency") != "retained-restoration-rechecks-with-final-core-fence" \
-            or data.get("coverage") != "complete-selected-source-set" or data.get("atomicBatch") is not False \
+            or data.get("coverage") != ("complete-selected-review-packet-source-set" if review_packet else "complete-selected-source-set") or data.get("atomicBatch") is not False \
             or data.get("semanticAcceptance") is not False or "authenticatedPerson" not in data \
             or data["authenticatedPerson"] is not None or data.get("executionAllowed") is not False \
             or data.get("cleanupStatus") != "blocked" or data.get("nativeValidationGaps") != list(NATIVE_GAPS):
         raise ValueError("Core did not confirm the bounded native restoration contract")
     snapshot = data.get("snapshot")
     if not isinstance(snapshot, dict) or set(snapshot) != {"contract", "sourceSetSha256", "pins", "members"} \
-            or snapshot.get("contract") != CONTRACT \
+            or snapshot.get("contract") != contract \
             or snapshot.get("sourceSetSha256") != digest([check["source"] for check in checks]) \
             or not isinstance(snapshot.get("pins"), list) or len(snapshot["pins"]) != len(checks) \
             or not isinstance(snapshot.get("members"), list) or len(snapshot["members"]) != len(checks):
@@ -87,8 +109,8 @@ def observe(core, checks, *, expected=None, opener=urllib.request.urlopen):
             raise ValueError("Native restoration member pins changed")
         proof = member["snapshot"]
         if not isinstance(proof, dict) or digest(proof) != check["snapshotHash"] \
-                or proof.get("contract") != "agentx.history-preservation/v2" \
-                or proof.get("scope") != "selected-original-recorded-attachments-mime-and-temporary-disk-restore" \
+                or proof.get("contract") != ("agentx.history-preservation/v3" if review_packet else "agentx.history-preservation/v2") \
+                or proof.get("scope") != ("selected-original-attachments-mime-review-packet-and-temporary-disk-restore" if review_packet else "selected-original-recorded-attachments-mime-and-temporary-disk-restore") \
                 or proof.get("status") != "verified_scope" or proof.get("blockers") != [] \
                 or not isinstance(proof.get("reference"), dict) \
                 or any(proof["reference"].get(key) != item for key, item in check["source"].items()) \
@@ -102,9 +124,13 @@ def observe(core, checks, *, expected=None, opener=urllib.request.urlopen):
                     or not isinstance(copy.get("restoration"), dict) \
                     or copy["restoration"].get("temporaryCopyRemoved") is not True:
                 raise ValueError("Both native restored copies are required")
+            if review_packet:
+                validate_review_copy(copy)
             identities.append([name, copy["machineIdSha256"], copy["archiveIdSha256"]])
         if identities[0][1] == identities[1][1] or (copy_identities is not None and copy_identities != identities):
             raise ValueError("Native copy identities changed within the selection")
+        if review_packet and digest(proof["copies"][0]["content"]["reviewPacket"]) != digest(proof["copies"][1]["content"]["reviewPacket"]):
+            raise ValueError("Native review packet copies disagree")
         copy_identities = identities
     if not isinstance(data.get("fingerprint"), str) or not HASH.fullmatch(data["fingerprint"]) \
             or data["fingerprint"] != digest(snapshot) or (expected is not None and data["fingerprint"] != expected):
@@ -116,9 +142,9 @@ def observe(core, checks, *, expected=None, opener=urllib.request.urlopen):
     return data
 
 
-def capture(core, saved, checks, *, opener=urllib.request.urlopen):
+def capture(core, saved, checks, *, opener=urllib.request.urlopen, review_packet=False):
     selected = selection(saved, checks)
-    first = observe(core, selected, opener=opener)
-    second = observe(core, selected, expected=first["fingerprint"], opener=opener)
+    first = observe(core, selected, opener=opener, review_packet=review_packet)
+    second = observe(core, selected, expected=first["fingerprint"], opener=opener, review_packet=review_packet)
     return {**second, "initialObservationId": first["observationId"], "initialObservedAt": first["observedAt"],
             "savedDispositionsSha256": content_hash(saved)}

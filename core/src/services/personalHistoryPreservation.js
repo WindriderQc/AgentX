@@ -5,6 +5,7 @@ const privacy = require('./personalHistoryPrivacy');
 const { basis, digest, references, failure } = require('./personalHistorySourceReviewSources');
 const { collect, GAPS } = require('./personalHistoryPreservationContract');
 const restoration = require('./personalHistoryRestorationContract');
+const reviewRestoration = require('./personalHistoryReviewRestorationContract');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const ID = /^[a-f0-9]{24}$/;
 const MAIL_ID = /^[a-f0-9]{10,32}$/;
@@ -43,15 +44,19 @@ function find(row, key) {
 function verification(snapshot) {
   if (snapshot?.contract === 'agentx.history-preservation/v1') return 'preservation';
   if (snapshot?.contract === 'agentx.history-preservation/v2') return 'restoration';
+  if (snapshot?.contract === 'agentx.history-preservation/v3') return 'review-restoration';
   throw failure('The stored preservation contract is unsupported.', 500, 'HISTORY_PRESERVATION_INTEGRITY');
 }
-const observe = (reference, deps, mode) => (mode === 'restoration' ? restoration.collect : collect)(reference, control(deps));
+const observe = (reference, deps, mode) => (mode === 'review-restoration' ? reviewRestoration.collect
+  : mode === 'restoration' ? restoration.collect : collect)(reference, control(deps));
 function view(row, check, nativeState = 'not_rechecked') {
   return { requestId: check.requestId, observationId: check.observationId, entryRevision: check.entryRevision, sourceIndex: check.sourceIndex,
     verification: verification(check.snapshot),
     preparedAt: check.preparedAt, snapshotHash: check.snapshotHash, snapshot: check.snapshot,
     entryCurrent: basis(row) === check.basisHash, nativeState, executionAllowed: false, cleanupStatus: 'blocked',
-    nativeValidationGaps: GAPS, meaning: verification(check.snapshot) === 'restoration'
+    nativeValidationGaps: GAPS, meaning: verification(check.snapshot) === 'review-restoration'
+      ? 'Current selected review-file graph copied, reread and removed on two machines; no semantic, Core/index restoration, whole-archive or mailbox approval acceptance.'
+      : verification(check.snapshot) === 'restoration'
       ? 'Exact selected files copied to private temporary storage, reopened and MIME-checked on two machines, then removed; no semantic, whole-archive, storage-failure-domain or mailbox approval.'
       : 'Exact native byte and MIME checks on two machines; no semantic, whole-archive, storage-failure-domain or mailbox approval.' };
 }
@@ -73,7 +78,7 @@ async function prepare(id, input, deps) {
   owner(deps);
   if (!input || typeof input !== 'object' || Array.isArray(input)
     || Object.keys(input).some(key => !['requestId', 'revision', 'source', 'verification'].includes(key))
-    || (input.verification !== undefined && !['preservation', 'restoration'].includes(input.verification))
+    || (input.verification !== undefined && !['preservation', 'restoration', 'review-restoration'].includes(input.verification))
     || !Number.isSafeInteger(input.revision) || input.revision < 0
     || !Number.isSafeInteger(input.source) || input.source < 0 || input.source > 18) {
     throw failure('Use only the displayed revision and selected source.', 400, 'HISTORY_PRESERVATION_INVALID');

@@ -5,7 +5,7 @@ const CONTRACT = 'secretary.archive-restoration/v1';
 const HASH = /^[a-f0-9]{64}$/;
 const LIMIT = 16 * 1024 * 1024;
 
-function describe(value, requestId, reference) {
+function describe(value, requestId, reference, { maximumFiles } = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || value.contract !== CONTRACT) {
     throw new Error('Invalid native restoration proof');
   }
@@ -18,7 +18,7 @@ function describe(value, requestId, reference) {
     || typeof restoration.sourceFilesSha256 !== 'string' || !HASH.test(restoration.sourceFilesSha256)
     || restoration.sourceFilesSha256 !== restoration.restoredFilesSha256
     || !Number.isSafeInteger(restoration.filesCopied) || restoration.filesCopied < 3
-    || restoration.filesCopied > 3 + checked.content.attachments.length
+    || restoration.filesCopied > (maximumFiles === undefined ? 3 + checked.content.attachments.length : maximumFiles)
     || !Number.isSafeInteger(restoration.bytesCopied) || restoration.bytesCopied < checked.content.raw.bytes
     || restoration.bytesCopied > LIMIT || restoration.temporaryCopyRemoved !== true) {
     throw new Error('Invalid native restoration proof');

@@ -20,9 +20,11 @@ class SecretaryPreservationControl {
 
   async probeRestoration(copy, input) { return this.read(copy, input, 'restoration'); }
 
+  async probeReviewRestoration(copy, input) { return this.read(copy, input, 'review-restoration'); }
+
   async read(copy, { requestId, messageId, threadId, sourceSha256 } = {}, command) {
     if (![requestId, messageId, threadId, sourceSha256].every(value => typeof value === 'string')
-      || !['preservation', 'restoration'].includes(command)
+      || !['preservation', 'restoration', 'review-restoration'].includes(command)
       || !['primary', 'mirror'].includes(copy) || !UUID.test(requestId || '') || !ID.test(messageId || '')
       || !ID.test(threadId || '') || !HASH.test(sourceSha256 || '')) {
       throw new SecretaryMailError('Choose an exact native preservation source.', { code: 'SECRETARY_PRESERVATION_INVALID', statusCode: 400 });
