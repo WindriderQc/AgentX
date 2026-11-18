@@ -52,7 +52,7 @@ let browser, server;
   assert.equal(first.planets[0].rendered, true);
   assert.ok(await page.evaluate(point => circles.some(c => Math.abs(c.x / 1280 - point.x) < 0.001 && Math.abs(c.y / 720 - point.y) < 0.001), first.planets[0].screen));
   const caption = await page.evaluate(() => ambient.skyPlan().labels.find(l => l.id === 'saturn'));
-  assert.ok(Math.abs(label.x - (caption.x * 1280 + caption.fontPx * 0.4)) < 0.01);
+  assert.ok(Math.abs(label.x - (caption.x + caption.w / 2) * 1280) < 0.01);
   assert.equal(choices, 0);
   clock += 120001;
   await page.evaluate(value => { fixtureClock = value; ambient.decide(); }, clock);
@@ -67,7 +67,7 @@ let browser, server;
   assert.equal(rotated.panorama.centerAzimuthDeg, 180);
   assert.equal(moved.x, label.x, 'Moon occlusion does not move the sky or Saturn caption');
   assert.equal(rotated.moon.reason, 'face');
-  assert.match(rotated.moon.label, /derrière moi/);
+  assert.equal(rotated.moon.label, null, 'a hidden Moon is not named on screen');
   await page.screenshot({ path: path.join(report, 'saturn-panorama.png') });
   await page.evaluate(() => {
     const photos = document.createElement('div'); photos.className = 'nestor-idle-photos'; document.body.append(photos);

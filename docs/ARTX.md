@@ -75,17 +75,24 @@ and physical-device acceptance require separate evidence.
 `nestor-sky-layout.js` owns the fixed panorama, inverse projection, reserved
 face/clock/conversation zones and bounded caption placement. Core and the
 production painter use this same module. The panorama does not jump when the
-Moon crosses the face: its disc is omitted and a leader caption, when space
-permits, identifies its true anchor. Other bodies intersecting reserved zones
-are also omitted. Captions avoid those zones and one another; crowded labels
+Moon crosses the face: its disc is omitted and it gets no caption; Core still
+reports its true position and the reason it is hidden. Other bodies
+intersecting reserved zones, below the horizon or outside the panorama are also
+omitted and unnamed: only drawn objects are labelled. A constellation is named
+only when at least two thirds of its figure segments are drawn clear of the
+reserved zones. Captions are small unboxed sans-serif text with a thin dark
+halo, sized from the viewport height (bodies about 1.2 %, constellations in
+italics and compass marks about 1.05 %, with a 10–11 px floor). Captions avoid
+those zones and one another; crowded labels
 are suppressed rather than painted over the face. Layout uses the CSS viewport,
 independently of the canvas pixel ratio.
 The face zone reserves the full assembled portrait with a conservative envelope
 that follows the viewport aspect ratio, including its forehead and chin. It is
 a layout reservation, not a measured pixel silhouette. The laboratory outlines
 these same computed zones instead of maintaining separate CSS geometry.
-Compass captions stay centred on their projected azimuth; an obstructed direction
-is omitted instead of moved beside the portrait like a body caption with a leader.
+Only the four cardinal marks (N, E, S, O) are shown, dim, just under the
+horizon. They stay centred on their projected azimuth; a direction under the
+portrait or otherwise obstructed is omitted instead of moved.
 Body captions leave clearance around their discs, including the enlarged Sun
 and Moon, so their labels do not cover a lunar crescent or the solar disc.
 

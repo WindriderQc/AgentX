@@ -39,7 +39,7 @@ test('the display reader uses the renderer’s geometry and separates off-panora
   assert.equal(view.panorama.centerAzimuthDeg, 180);
   assert.equal(view.moon.rendered, false);
   assert.equal(view.moon.reason, 'face');
-  assert.match(view.moon.label, /derrière moi/);
+  assert.equal(view.moon.label, null, 'a hidden Moon is not named on screen');
   assert.equal(view.planets[0].screen.x, 0.25);
 });
 

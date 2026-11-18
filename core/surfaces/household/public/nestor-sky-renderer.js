@@ -3,6 +3,12 @@
   'use strict';
   const Layout = typeof module === 'object' && module.exports ? require('./nestor-sky-layout') : root.NestorSkyLayout;
   const COLORS = { venus: '#fffbe8', mars: '#ffb08a', jupiter: '#fff0d0', saturn: '#f3dca0' };
+  const LABEL_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const LABEL_STYLES = {
+    body: { font: 'normal', color: 'rgba(226,238,246,0.82)' },
+    figure: { font: 'italic', color: 'rgba(176,210,236,0.72)' },
+    compass: { font: '600', color: 'rgba(167,204,223,0.55)' }
+  };
   const STOPS = [
     [-18, '#02060d', '#08172a'], [-12, '#081027', '#25213b'], [-6, '#182747', '#845654'],
     [-2, '#294b70', '#bf8b78'], [2, '#367ba5', '#b9c7ca'], [10, '#287fae', '#b5dae6'], [30, '#207cba', '#bde4f1']
@@ -76,19 +82,15 @@
       }
       c.restore();
     }
-    c.textAlign = 'left'; c.textBaseline = 'middle';
+    // Unboxed captions: light sans-serif text with a thin dark halo, which
+    // stays readable on the night sky and on a bright day sky alike.
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+    c.strokeStyle = 'rgba(2,6,13,0.55)'; c.lineWidth = 3 * ratio;
     for (const label of plan.labels) {
-      const x = label.x * width, y = label.y * height, w = label.w * width, h = label.h * height;
-      const object = plan.objects.find(o => o.id === label.id);
-      if (object?.hiddenBy) {
-        c.strokeStyle = '#a7ccdf'; c.setLineDash([4 * ratio, 5 * ratio]); c.beginPath();
-        const ax = label.anchor.x * width, ay = label.anchor.y * height;
-        c.moveTo(ax, ay); c.lineTo(Math.max(x, Math.min(x + w, ax)), Math.max(y, Math.min(y + h, ay)));
-        c.stroke(); c.setLineDash([]);
-      }
-      c.fillStyle = 'rgba(2,6,13,0.8)'; c.fillRect(x, y, w, h);
-      c.font = `${label.fontPx * ratio}px monospace`; c.fillStyle = '#e2f1f8';
-      c.fillText(label.text, x + label.fontPx * ratio * 0.4, y + h / 2, w - label.fontPx * ratio * 0.8);
+      const style = LABEL_STYLES[label.kind] || LABEL_STYLES.body;
+      const x = (label.x + label.w / 2) * width, y = (label.y + label.h / 2) * height, w = label.w * width;
+      c.font = `${style.font} ${label.fontPx * ratio}px ${LABEL_FONT}`; c.fillStyle = style.color;
+      c.strokeText(label.text, x, y, w); c.fillText(label.text, x, y, w);
     }
     c.restore(); return plan;
   }
