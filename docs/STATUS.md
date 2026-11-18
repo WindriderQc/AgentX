@@ -337,7 +337,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   approval gaps remain, without decision writes or mailbox effects.
   Optional v6 reconciliation also observes already linked current owner souvenirs,
   their source/context binding and native fingerprints. Missing or stale links
-  stay held; owner corrections and unlinked assertions remain untouched. It
+  stay held; owner corrections and unlinked assertions remain untouched. A
+  [global linked-souvenir observation](SECRETARY_GLOBAL_DOWNSTREAM.md) adds two
+  complete downstream passes and a final joined Core/note fence for the selected
+  set. Optional v10 reconciliation binds this graph to the verified per-message
+  scopes, without global acceptance, restoration, indexing or mailbox effects. It
   creates no memory and establishes no semantic, atomic or mailbox acceptance.
   See [linked souvenirs](SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
   Retaining an action keeps it open; source review creates neither a personal

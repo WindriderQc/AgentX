@@ -9,6 +9,7 @@ const { scoreFloor } = require('../helpers/scoreFloor');
 const { memoryFactInput, memoryFactProjection, mergeMemoryFactMetadata } = require('../../../shared/memoryFactMetadata');
 const temporal = require('./personalHistoryTemporal');
 const historyContext = require('./personalHistorySouvenirContext');
+const souvenirProof = require('./memorySouvenirEvidence');
 
 // A note is recalled by meaning when its similarity to the request reaches
 // this floor. Measured with qllama/bge-m3:f16 on 24 owner questions
@@ -311,24 +312,14 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     if (!wanted.length) return [];
     const packets = await MemoryNote.aggregate([
       { $match: { ...active(), _id: { $in: wanted.map(id => new MemoryNote.base.Types.ObjectId(id)) }, kind: 'souvenir', status: 'active' } },
-      { $project: { embedding: 0 } },
-      { $project: { bytes: { $bsonSize: '$$ROOT' }, row: { $cond: [
-        { $lte: [{ $bsonSize: '$$ROOT' }, 512 * 1024] }, '$$ROOT', null] } } }
+      ...souvenirProof.stages()
     ]).option({ maxTimeMS: 5000 });
-    if (packets.some(packet => !packet.row) || packets.reduce((sum, packet) => sum + packet.bytes, 0) > 8 * 1024 * 1024) {
-      throw error('The complete souvenir evidence exceeds its bounded capacity', 413);
-    }
-    const fingerprint = require('./personalHistorySourceReviewSources').digest;
-    return packets.map(({ row }) => {
-      if (!Number.isSafeInteger(row.revision ?? 0) || (row.revision ?? 0) < 0
-        || !Array.isArray(row.sourceRefs) || row.sourceRefs.length > 125) throw error('Invalid native souvenir metadata', 409);
-      return { id: String(row._id), revision: row.revision ?? 0,
-        fingerprint: fingerprint({ note: project(row), status: row.status, contentHash: row.contentHash || null, sourceTraceId: row.sourceTraceId || null,
-          replacement: row.replacement || null, replacementKey: row.replacementKey || null, rollbackKey: row.rollbackKey || null }),
-        sourceRefs: row.sourceRefs.map(ref => ({ system: ref.system, id: ref.id })),
-        historyContextSha256: fingerprint(row.historyContext || null),
-        replacementPending: ['preparing', 'linked', 'undoing'].includes(row.replacement?.phase) };
-    }).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    return souvenirProof.summarize(packets, project);
+  }
+
+  function historyEvidenceLookup() {
+    if (audience !== 'owner') throw error('Souvenir evidence belongs to the owner space', 403);
+    return souvenirProof.historyLookup(active(), project);
   }
 
   async function forget(id) {
@@ -397,7 +388,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   const reindex = () => index.rebuild(boundary);
 
   const replacements = require('./memoryNoteReplacement').forNotes({ audience, boundary, seal, indexLater, forget });
-  return Object.freeze({ list, remember, record, keepSouvenir, finalizeSouvenir, editSouvenir, souvenirs, souvenirEvidence, forget, search, similar, reindex,
+  return Object.freeze({ list, remember, record, keepSouvenir, finalizeSouvenir, editSouvenir, souvenirs, souvenirEvidence, historyEvidenceLookup, forget, search, similar, reindex,
     ...replacements, count: () => MemoryNote.countDocuments(active()) });
 }
 

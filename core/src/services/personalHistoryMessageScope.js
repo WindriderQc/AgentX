@@ -39,7 +39,7 @@ function describe(row, reference) {
       && source.sourceSha256 === reference.sourceSha256) ? 'exact' : 'conflict' };
 }
 
-async function observeSelection(references) {
+async function observeSelection(references, { souvenirs } = {}) {
   // Match message identity first. A conflicting recorded thread/hash must be
   // visible as a conflict, not disappear behind an overly narrow hash filter.
   const filter = { scope: 'owner', reviewState: { $ne: 'forgotten' }, $or: [
@@ -47,28 +47,31 @@ async function observeSelection(references) {
     { relatedSources: { $elemMatch: { system: 'gmail', messageId: { $in: references.map(ref => ref.messageId) } } } }
   ] };
   const read = async () => {
+    const joined = souvenirs?.historyEvidenceLookup();
     // Enforce the individual byte bound inside Mongo before materializing any
     // full record in Node. A preflight size query alone would race with growth.
     const packets = await Entry.aggregate([
       { $match: filter }, { $sort: { _id: 1 } }, { $limit: LIMIT + 1 },
       { $project: { 'context.sources.body': 0 } },
       { $project: { _id: 0, bytes: { $bsonSize: '$$ROOT' },
-        row: { $cond: [{ $lte: [{ $bsonSize: '$$ROOT' }, MAX_RECORD_BYTES] }, '$$ROOT', null] } } }
+        row: { $cond: [{ $lte: [{ $bsonSize: '$$ROOT' }, MAX_RECORD_BYTES] }, '$$ROOT', null] } } },
+      ...(joined ? [joined.stage] : [])
     ]).option({ maxTimeMS: 5000 });
     if (packets.length > LIMIT || packets.some(packet => !packet.row)
       || packets.reduce((total, packet) => total + packet.bytes, 0) > MAX_SCOPE_BYTES) {
       throw failure('The complete selected message exceeds its record or byte capacity; no partial scope is returned.', 413, 'HISTORY_MESSAGE_SCOPE_CAPACITY');
     }
-    return packets.map(packet => packet.row);
+    return { rows: packets.map(packet => packet.row),
+      ...(joined && { souvenirs: joined.summarize(packets.flatMap(packet => packet.souvenirEvidence)) }) };
   };
   const before = await read();
   const messages = rows => references.map(reference => ({ reference, members: rows.filter(row =>
     [row.source, ...(row.relatedSources || [])].some(ref => ref?.system === 'gmail' && ref.messageId === reference.messageId))
     .map(row => describe(row, reference)) }));
-  const pins = messages(before);
+  const pins = messages(before.rows);
   const privacyGuards = rows => rows.map(row => [String(row._id), row.contentHash, row.source?.personalNoteId]);
-  const guardsHash = digest(privacyGuards(before));
-  for (const row of before) {
+  const guardsHash = digest(privacyGuards(before.rows));
+  for (const row of before.rows) {
     if (await privacy.forgottenSource({ noteId: row.source?.personalNoteId, contentHash: row.contentHash })) {
       await privacy.suppress({ _id: row._id }); throw changed();
     }
@@ -76,8 +79,9 @@ async function observeSelection(references) {
   // No pagination, count query, external note read or await follows this final
   // bounded membership query. Still not an atomic cross-document snapshot.
   const current = await read();
-  if (guardsHash !== digest(privacyGuards(current)) || digest(pins) !== digest(messages(current))) throw changed();
-  return { rows: current, messages: pins };
+  if (guardsHash !== digest(privacyGuards(current.rows)) || digest(pins) !== digest(messages(current.rows))
+    || (souvenirs && digest(before.souvenirs) !== digest(current.souvenirs))) throw changed();
+  return { ...current, messages: pins };
 }
 
 async function discover(input, deps) {

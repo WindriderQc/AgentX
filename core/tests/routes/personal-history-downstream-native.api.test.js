@@ -74,4 +74,23 @@ const URL = '/api/secretary/history/decision-state/downstream';
       expect(await MemoryNote.countDocuments()).toBe(1); expect(fixture.calls).toHaveLength(6);
     } finally { await new Promise(resolve => server.close(resolve)); }
   });
+  test('the actual Python global consumer composes native file observations with the joined Core/note fence', async () => {
+    const found = (await request(app).post('/api/secretary/history/decision-state/findings').send(input()).expect(200)).body.data;
+    const discovery = (await request(app).post('/api/secretary/history/decision-state/discover').send(input()).expect(200)).body.data;
+    const finding = { reference: reference(), snapshot: found.snapshot, fingerprint: found.fingerprint };
+    const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+    try {
+      const program = ['import sys,json', 'sys.path.insert(0,sys.argv[1])',
+        'from native_history_downstream_scope import capture as selected', 'from native_history_global_downstream import capture',
+        'saved,findings,entries=[json.loads(v) for v in sys.argv[3:6]]',
+        'scopes=selected(sys.argv[2],saved,findings,entries)', 'value=capture(sys.argv[2],saved,scopes)',
+        'print(json.dumps({"counts":value["snapshot"]["coverage"]["counts"],"stable":value["observationId"]!=value["initialObservationId"]}))'].join('\n');
+      const value = await promisify(execFile)(process.env.AGENTX_PYTHON_BIN || 'python3', ['-c', program,
+        path.resolve(__dirname, '../../../integrations/secretary'), `http://127.0.0.1:${server.address().port}`,
+        JSON.stringify([reference()]), JSON.stringify([finding]), JSON.stringify(discovery.entries)], { timeout: 30000, maxBuffer: 4096 });
+      expect(JSON.parse(value.stdout)).toMatchObject({ stable: true, counts: { messages: 1, entries: 1, observedNotes: 1, currentLinks: 1 } });
+      expect(await MemoryNote.countDocuments()).toBe(1);
+      expect(fixture.calls).toHaveLength(14);
+    } finally { await new Promise(resolve => server.close(resolve)); }
+  });
 });

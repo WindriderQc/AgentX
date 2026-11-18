@@ -43,7 +43,7 @@ def entry_set(entries):
     return content_hash(sorted(entries, key=lambda entry: entry["id"]))
 
 
-def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False, message_scope=False, finding_scope=False, restoration_checks=None, downstream_scope=False, mailbox_scope=False, global_decisions=False, review_restoration_checks=None):
+def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False, message_scope=False, finding_scope=False, restoration_checks=None, downstream_scope=False, mailbox_scope=False, global_decisions=False, review_restoration_checks=None, global_downstream=False):
     previous = indexed(saved)
     manifests = list(manifests)
     options = {} if opener is None else {"opener": opener}
@@ -57,6 +57,8 @@ def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native
         from native_history_restoration_scope import selection
         selection(saved, restoration_checks)  # Refuse omissions before the first external call.
         finding_scope = True
+    if global_downstream:
+        downstream_scope = True
     if downstream_scope or mailbox_scope or global_decisions:
         finding_scope = True
     if finding_scope:
@@ -129,6 +131,9 @@ def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native
     if global_decisions:
         from native_history_global_decisions import capture as capture_global
         native["nativeGlobalDecisions"] = capture_global(core, saved, native["nativeFindingScopes"], **options)
+    if global_downstream:
+        from native_history_global_downstream import capture as capture_global_downstream
+        native["nativeGlobalDownstream"] = capture_global_downstream(core, saved, native["nativeDownstreamScopes"], **options)
     if review_restoration_checks is not None:
         from native_history_review_restoration import capture as capture_review_restoration
         native["nativeReviewRestorationScope"] = capture_review_restoration(core, saved, review_restoration_checks,
@@ -147,7 +152,7 @@ def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native
             raise ValueError(f"Core or archive changed during {stage}; no complete observation was established")
         native["nativeDecisions"]["entries"] = final_native
         native["nativeDecisions"]["messageScopes"] = final_scopes
-    return {"schema": f"agentx.secretary-retention-reconciliation/v{9 if review_restoration_checks is not None else 8 if global_decisions else 7 if mailbox_scope else 6 if downstream_scope else 5 if restoration_checks is not None else 4 if finding_scope else 3 if message_scope else 2 if native_decisions else 1}", "at": now(),
+    return {"schema": f"agentx.secretary-retention-reconciliation/v{10 if global_downstream else 9 if review_restoration_checks is not None else 8 if global_decisions else 7 if mailbox_scope else 6 if downstream_scope else 5 if restoration_checks is not None else 4 if finding_scope else 3 if message_scope else 2 if native_decisions else 1}", "at": now(),
             "before": before.isoformat(), "decisionSource": "agentx.core",
             "observation": "two agreeing bounded reads; not an atomic snapshot or native acceptance",
             "savedDispositionsSha256": content_hash(saved), "coreEntriesSha256": entry_set(second),
@@ -180,6 +185,8 @@ def main(argv=None):
                         help="Read exact live Gmail source hash/date/labels through Core; implies native finding scope, grants no cleanup")
     parser.add_argument("--native-global-decisions", action="store_true",
                         help="Recheck the complete selected native finding/decision set with a final global Core fence; implies native finding scope")
+    parser.add_argument("--native-global-downstream", action="store_true",
+                        help="Recheck all selected linked souvenirs with a final joined Core/note fence; implies native downstream and finding scopes")
     args = parser.parse_args(argv)
     if args.output.resolve().is_relative_to(args.root.resolve()):
         parser.error("Reconciliation reports stay outside the evidence archive")
@@ -191,21 +198,22 @@ def main(argv=None):
                        message_scope=args.native_message_scope, finding_scope=args.native_finding_scope,
                        restoration_checks=load(args.native_restoration_checks) if args.native_restoration_checks is not None else None,
                        downstream_scope=args.native_downstream_scope, mailbox_scope=args.native_mailbox_scope, global_decisions=args.native_global_decisions,
-                       review_restoration_checks=load(args.native_review_restoration_checks) if args.native_review_restoration_checks is not None else None)
+                       review_restoration_checks=load(args.native_review_restoration_checks) if args.native_review_restoration_checks is not None else None,
+                       global_downstream=args.native_global_downstream)
     durable(args.output, report, exclusive=True)
     summary = {key: report[key] for key in ("schema", "at", "counts", "cleanupStatus", "executionAllowed")}
-    if args.native_decisions or args.native_message_scope or args.native_finding_scope or args.native_restoration_checks is not None or args.native_downstream_scope or args.native_mailbox_scope or args.native_global_decisions or args.native_review_restoration_checks is not None:
+    if args.native_decisions or args.native_message_scope or args.native_finding_scope or args.native_restoration_checks is not None or args.native_downstream_scope or args.native_mailbox_scope or args.native_global_decisions or args.native_review_restoration_checks is not None or args.native_global_downstream:
         native = report["nativeDecisions"]
         summary["nativeDecisions"] = {"status": native["status"], "selectedEntries": len(native["entries"]),
                                      "pendingEntries": native["pendingEntries"]}
-    if args.native_finding_scope or args.native_restoration_checks is not None or args.native_downstream_scope or args.native_mailbox_scope or args.native_global_decisions or args.native_review_restoration_checks is not None:
+    if args.native_finding_scope or args.native_restoration_checks is not None or args.native_downstream_scope or args.native_mailbox_scope or args.native_global_decisions or args.native_review_restoration_checks is not None or args.native_global_downstream:
         scopes = report["nativeFindingScopes"]
         summary["nativeFindings"] = {"messages": len(scopes), "heldMessages": sum(bool(scope["snapshot"]["coverage"]["blockers"]) for scope in scopes),
             "recordedFindings": sum(scope["snapshot"]["coverage"]["counts"]["recordedFindings"] for scope in scopes)}
     if args.native_restoration_checks is not None:
         summary["nativeRestoration"] = {"status": report["nativeRestorationScope"]["status"],
             "messages": len(report["nativeRestorationScope"]["snapshot"]["members"])}
-    if args.native_downstream_scope:
+    if args.native_downstream_scope or args.native_global_downstream:
         linked = {row["entryId"]: row for scope in report["nativeDownstreamScopes"] for row in scope["snapshot"]["entries"]}
         summary["nativeDownstream"] = {"messages": len(report["nativeDownstreamScopes"]),
             "heldMessages": sum(bool(scope["snapshot"]["coverage"]["blockers"]) for scope in report["nativeDownstreamScopes"]),
@@ -221,13 +229,16 @@ def main(argv=None):
     if args.native_review_restoration_checks is not None:
         scope = report["nativeReviewRestorationScope"]
         summary["nativeReviewRestoration"] = {"status": scope["status"], "messages": len(scope["snapshot"]["members"])}
+    if args.native_global_downstream:
+        summary["nativeGlobalDownstream"] = report["nativeGlobalDownstream"]["snapshot"]["coverage"]["counts"]
     print(json.dumps(summary))
     return 0 if all(row["status"] == "observed_match" for row in report["messages"]) \
         and not report.get("nativeDecisions", {}).get("pendingEntries") \
         and not any(scope["snapshot"]["coverage"]["blockers"] for scope in report.get("nativeFindingScopes", [])) \
         and not any(scope["snapshot"]["coverage"]["blockers"] for scope in report.get("nativeDownstreamScopes", [])) \
         and not any(scope["snapshot"]["coverage"]["blockers"] or scope["cutoffBlockers"] for scope in report.get("nativeMailboxScopes", [])) \
-        and not report.get("nativeGlobalDecisions", {}).get("snapshot", {}).get("coverage", {}).get("blockers") else 2
+        and not report.get("nativeGlobalDecisions", {}).get("snapshot", {}).get("coverage", {}).get("blockers") \
+        and not report.get("nativeGlobalDownstream", {}).get("snapshot", {}).get("coverage", {}).get("blockers") else 2
 
 
 if __name__ == "__main__":
