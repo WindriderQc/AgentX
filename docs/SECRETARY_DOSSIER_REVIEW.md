@@ -405,6 +405,54 @@ linked note is not a complete downstream disposition, and an unlinked assertion
 is not evidence of either a failed projection or a wish to create memory.
 Older decision/finding contracts and v1–v5 reports keep their original behavior.
 
+## Current live Gmail source in historical reconciliation
+
+`POST /api/secretary/history/decision-state/mailbox` observes one exact selected
+Gmail message through the Secretary's existing native account and SSH transport.
+The owner surface supplies the audience; input contains only the exact
+`source` (`system`, `messageId`, `threadId`, `sourceSha256`), a fresh
+`observationId` UUID and optional previous `expected` fingerprint. Caller
+headers, account names, search queries and approval flags grant no access.
+
+The native `mailbox-scope` command uses only read-only `gmail.get` with
+`--format=raw`, the exact selected message ID, `--gmail-no-send` and the existing
+keyring configuration. It qualifies canonical base64url bytes up to 16 MiB,
+hashes the actual bytes rather than trusting Gmail's estimated size, and returns
+only the hash/length, exact current message/thread IDs, internal date, history
+ID and sorted unique label IDs. History IDs remain decimal strings to avoid
+64-bit rounding. Metadata is bounded to 256 label IDs of 128 characters each.
+Only a typed provider not-found failure becomes `not_found`; authorization,
+timeout, transient, malformed or unknown replies refuse without exposing
+provider content. There is no archive fallback or provider write.
+
+Core requires two fresh native nonces and agreeing observations, followed by a
+final exact Core membership/decision/privacy fence. Conflicting recorded source
+bindings refuse before provider access. Absence, changed original hash/thread,
+draft and Trash remain explicit blockers. `SENT` and `DRAFT` are label
+observations; their absence does not establish receipt, an actor or authorship.
+The native account selector is hashed for consistency, not authenticated as an
+OAuth subject or a person. A matching source does not accept its meaning.
+
+The response is `agentx.history-mailbox-scope/v1`, private/no-store, and bounded
+to 128 KiB; native replies are bounded to 64 KiB. The optional reconciliation
+flag `--native-mailbox-scope` selects v7 and implies v4's finding, message and
+decision checks. It composes existing v5 restoration and v6 downstream options.
+Two complete live scopes per selected message must agree with the already
+verified finding scope's Core pins. Account selector hashes must stay equal
+across the selection. Replies are bounded to 1 MiB each, 16 MiB aggregate and
+60 seconds without automatic retry. Current Gmail internal dates at or beyond
+the explicit cutoff add `live_message_outside_cutoff`. Core/archive disposition
+pins are rechecked after all native calls. Held evidence yields exit 2; failed
+or changing evidence writes no success report. Standard output contains counts;
+native fingerprints and metadata remain in the immutable private report.
+
+These are observations across Gmail and Core, not an atomic snapshot, semantic
+or preservation acceptance, settled downstream state, an authenticated person,
+or a native manifest approval. All four global gaps remain, with
+`mailboxEffects: 0`, `approvalBound: false`, `executionAllowed: false` and
+`cleanupStatus: blocked`. No real mailbox qualification follows from isolated
+tests or installation; real corpus acceptance retains its separate authority.
+
 ## Native preservation of a selected source
 
 `POST /api/secretary/history/:id/preservation` takes only a stable UUID
