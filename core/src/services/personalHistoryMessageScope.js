@@ -39,14 +39,12 @@ function describe(row, reference) {
       && source.sourceSha256 === reference.sourceSha256) ? 'exact' : 'conflict' };
 }
 
-async function discover(input, deps) {
-  if (deps?.audience !== 'owner') throw failure('Historical message discovery belongs to the owner surface.', 403, 'HISTORY_MESSAGE_SCOPE_FORBIDDEN');
-  const reference = inputOf(input);
+async function observeSelection(references) {
   // Match message identity first. A conflicting recorded thread/hash must be
   // visible as a conflict, not disappear behind an overly narrow hash filter.
   const filter = { scope: 'owner', reviewState: { $ne: 'forgotten' }, $or: [
-    { 'source.system': 'gmail', 'source.messageId': reference.messageId },
-    { relatedSources: { $elemMatch: { system: 'gmail', messageId: reference.messageId } } }
+    { 'source.system': 'gmail', 'source.messageId': { $in: references.map(ref => ref.messageId) } },
+    { relatedSources: { $elemMatch: { system: 'gmail', messageId: { $in: references.map(ref => ref.messageId) } } } }
   ] };
   const read = async () => {
     // Enforce the individual byte bound inside Mongo before materializing any
@@ -64,7 +62,10 @@ async function discover(input, deps) {
     return packets.map(packet => packet.row);
   };
   const before = await read();
-  const pins = before.map(row => describe(row, reference));
+  const messages = rows => references.map(reference => ({ reference, members: rows.filter(row =>
+    [row.source, ...(row.relatedSources || [])].some(ref => ref?.system === 'gmail' && ref.messageId === reference.messageId))
+    .map(row => describe(row, reference)) }));
+  const pins = messages(before);
   const privacyGuards = rows => rows.map(row => [String(row._id), row.contentHash, row.source?.personalNoteId]);
   const guardsHash = digest(privacyGuards(before));
   for (const row of before) {
@@ -75,7 +76,15 @@ async function discover(input, deps) {
   // No pagination, count query, external note read or await follows this final
   // bounded membership query. Still not an atomic cross-document snapshot.
   const current = await read();
-  if (guardsHash !== digest(privacyGuards(current)) || digest(pins) !== digest(current.map(row => describe(row, reference)))) throw changed();
+  if (guardsHash !== digest(privacyGuards(current)) || digest(pins) !== digest(messages(current))) throw changed();
+  return { rows: current, messages: pins };
+}
+
+async function discover(input, deps) {
+  if (deps?.audience !== 'owner') throw failure('Historical message discovery belongs to the owner surface.', 403, 'HISTORY_MESSAGE_SCOPE_FORBIDDEN');
+  const reference = inputOf(input);
+  const selected = await observeSelection([reference]);
+  const current = selected.rows, pins = selected.messages[0].members;
   const snapshot = { contract: CONTRACT, reference, entries: pins };
   const fingerprint = digest(snapshot);
   const result = { authority: 'agentx.core', contract: CONTRACT, observationId: input.observationId,
@@ -90,4 +99,4 @@ async function discover(input, deps) {
   return result;
 }
 
-module.exports = { discover, inputOf, CONTRACT };
+module.exports = { discover, inputOf, observeSelection, CONTRACT };
