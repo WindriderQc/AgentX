@@ -182,6 +182,9 @@ class SourceSelectionTests(unittest.TestCase):
         self.assertEqual(selection.excluded(grounding.catalog(signature), META), {'q1'})
         postscript = 'Cordialement\nMorgan Other\nPS : mon déménagement est terminé.'
         self.assertNotIn('q3', selection.excluded(grounding.catalog(postscript), META))
+        for contact in ('https://example.test/is/confirmed', 'Web : https://example.test/is/a/guide',
+                        'has.confirmed@example.test'):
+            self.assertEqual(selection.excluded(grounding.catalog(contact), META), {'q1'})
 
     def test_v14_fingerprint_and_projection_remain_frozen(self):
         self.assertEqual(hashed(grounding.SCHEMA), 'b613321adff92920ce227f88c2f656743d1d97ac3f46c553b89dec006c8679e9')

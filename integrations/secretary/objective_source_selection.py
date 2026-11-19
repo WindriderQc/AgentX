@@ -24,6 +24,7 @@ DATA_ACTION = re.compile(r"\b(?:je\s+(?:g[eè]re|travaille|manipule|traite|pr[e�
                          r"I\s+(?:manage|am\s+working|handled|processed|prepared|compiled))\b", re.I)
 DATA_TOPIC = re.compile(r'\b(?:donn[eé]e?s?|inscriptions?|enregistrements?|registrations?|data)\b', re.I)
 CONTACT = re.compile(r'@|https?://|www\.|\b(?:t[eé]l(?:[eé]phone)?|phone|fax|mobile)\s*:|\+?\d[\d ().-]{7,}\d', re.I)
+ADDRESS = re.compile(r'https?://\S+|www\.\S+|[\w.+-]+@[\w.-]+', re.I)
 ROLE = re.compile(r'^(?:(?:instructeur|instructor|directeur|director|conseiller|consultant|administrat\w*|'
                   r'suivez[- ]nous|follow\s+us)\b[^.!?]*|[-_—]{2,})$', re.I)
 SIGNOFF = re.compile(r'^(?:cordialement|salutations|bien\s+[aà]\s+vous|regards|best\s+regards|--)[\s,.!]*$', re.I)
@@ -82,15 +83,17 @@ def excluded(spans, context=None):
         if policy.SPEAKER.match(span['text']) or FORWARDED.match(span['text']) or PARTIAL_REPLY.match(span['text']):
             signature = False
         following = spans[i + 1]['text'].strip() if i + 1 < len(spans) else ''
-        contact = CONTACT.search(text) and not PREDICATE.search(text)
+        # Verb-like tokens inside an address are not body declarations.
+        predicate = PREDICATE.search(ADDRESS.sub('', text))
+        contact = CONTACT.search(text) and not predicate
         bare_name = NAME.fullmatch(text) and (text == name or ROLE.fullmatch(following)
                                               or CONTACT.search(following))
         parts = re.split(r'\s+[—–|/-]\s+', text, maxsplit=1)
         signed_role = len(parts) == 2 and NAME.fullmatch(parts[0]) and ROLE.fullmatch(parts[1])
         if SIGNOFF.fullmatch(text):
             signature = True
-        if signature and not PREDICATE.search(text) or bare_name or signed_role \
-                or ROLE.fullmatch(text) and not PREDICATE.search(text) or contact or HEADER.match(text) \
+        if signature and not predicate or bare_name or signed_role \
+                or ROLE.fullmatch(text) and not predicate or contact or HEADER.match(text) \
                 or policy.GREETING.fullmatch(text):
             result.add(span['id'])
     return result
