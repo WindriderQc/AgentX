@@ -27,6 +27,12 @@ async function resolveScope(deps = {}) {
   ]);
   const cells = new Map();
   const known = new Map(hosts.map(host => [hostKey(host.url), host]));
+  const parkedHosts = new Set();
+  for (const preference of preferences || []) {
+    if (preference.live?.status === 'inactive' && preference.live.observation?.source === 'runtime_topology_parking') {
+      parkedHosts.add(hostKey(preference.hostUrl || preference.host));
+    }
+  }
 
   function cell(url, model) {
     const host = known.get(hostKey(url));
@@ -37,7 +43,8 @@ async function resolveScope(deps = {}) {
     if (!cells.has(key)) {
       cells.set(key, {
         hostUrl: host.url, hostName: host.name || host.id || host.url, residency: host.residency || 'gpu',
-        model: name, pinned: false, pinContext: 0, tasks: []
+        model: name, pinned: false, pinContext: 0, tasks: [],
+        ...(parkedHosts.has(hostKey(url)) && { parked: true })
       });
     }
     return cells.get(key);

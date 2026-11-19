@@ -23,6 +23,7 @@ async function validateIntent(intent, deps = {}) {
   const coverage = await (deps.buildCoverage || buildCoverage)();
   const current = coverage.cells.find(cell => hostKey(cell.hostUrl) === hostKey(intent.cell.hostUrl)
     && modelKey(cell.model) === modelKey(intent.cell.model));
+  if (current?.parked) throw refused('Core topology now parks the original coverage host');
   if (!current || current.hostId !== intent.cell.hostId || current.next !== intent.kind
     || !isDeepStrictEqual(current.artifact, intent.cell.artifact)
     || current.pinContext !== intent.cell.pinContext || current.residency !== intent.cell.residency

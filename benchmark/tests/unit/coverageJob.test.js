@@ -148,6 +148,20 @@ describe('coverage job', () => {
     expect(busy.prepare).not.toHaveBeenCalled();
   });
 
+  it('defers a prioritized parked pair and keeps its request for the active topology', async () => {
+    const pair = cell({ next: 'profile' });
+    const parked = { ...pair, parked: true };
+    const key = cellKey(pair);
+    const state = { last: null, cells: {}, requests: { [key]: { priority: 5 } } };
+    const other = cell({ hostUrl: 'http://active:11434' });
+    expect(orderCells([parked, other], state, 0)).toEqual([other]);
+    const h = harness({ cells: [parked], state });
+    expect((await h.job.tick()).reasons).toEqual(['pending measurement on a host parked by Core topology']);
+    expect(h.prepare).not.toHaveBeenCalled();
+    expect(h.state.requests[key]).toEqual({ priority: 5 });
+    expect(orderCells([pair, other], state, 0)).toEqual([pair, other]);
+  });
+
   it('persists one intent and follows it rather than creating a replacement', async () => {
     const { job, prepare, follow, state } = harness();
     expect((await job.tick()).started).toMatchObject({ requestId: 'intent-1', id: 'b1', state: 'running' });

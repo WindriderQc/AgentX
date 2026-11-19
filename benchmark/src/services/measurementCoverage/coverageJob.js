@@ -48,7 +48,7 @@ const progressOf = cell => `${cell.profile.state}:${cell.catalog.covered}`;
  */
 function orderCells(cells, state, now) {
   return cells
-    .filter(cell => cell.next && cell.hostId)
+    .filter(cell => cell.next && cell.hostId && !cell.parked)
     .filter(cell => {
       const record = state.cells[cellKey(cell)];
       if (!record) return true;
@@ -163,7 +163,9 @@ function createCoverageJob(deps = {}) {
         const cell = orderCells(coverage.cells, state, now())[0];
         if (!cell) {
           if (changed) await store.saveState(state);
-          return (lastCheck = { ...lastCheck, reasons: ['nothing left to measure'] });
+          const waitingOnParkedHost = coverage.cells.some(pair => pair.next && pair.parked);
+          return (lastCheck = { ...lastCheck, idle: !waitingOnParkedHost,
+            reasons: [waitingOnParkedHost ? 'pending measurement on a host parked by Core topology' : 'nothing left to measure'] });
         }
         attempt = await prepare(cell, settings, { attempts, now: () => new Date(now()) });
       }

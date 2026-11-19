@@ -69,6 +69,9 @@ Supported executors:
   window. It stays off until explicitly enabled. Core owns the reservation and
   dispatch; the existing batch route owns preflight, admission and execution.
   A profile bite uses the existing Profiler host queue with one explicit model.
+  Pairs parked by Core's runtime topology retain their coverage and requested
+  priorities. The scheduler defers them until Core reports an active mode
+  and checks the original target again before requesting dispatch.
   Both paths recheck coverage policy at launch, including a reservation whose
   automatic start an operator edits. The batch boundary also revalidates the
   frozen artifact, scorer, prompt and judge proofs; drift refuses without

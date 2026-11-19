@@ -137,6 +137,7 @@ async function loadAnswers(scope, catalog) {
 async function loadProfileRefusals(scope, hostIds, readiness, check = checkBenchmarkTargetEligibility) {
   const refusals = new Map();
   await Promise.all(scope.map(async entry => {
+    if (entry.parked) return;
     const hostId = hostIds.get(hostKey(entry.hostUrl));
     if (!hostId || profileState(readiness.get(`${hostId}::${modelKey(entry.model)}`)).state !== 'current') return;
     const verdict = await check(entry.model, entry.hostUrl).catch(() => null);

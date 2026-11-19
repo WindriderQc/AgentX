@@ -25,6 +25,7 @@ it('keeps a valid original selection and its native judge settings', async () =>
 
 it.each([
   ['out of scope', { buildCoverage: async () => ({ cells: [] }) }],
+  ['parked topology', { buildCoverage: async () => ({ cells: [{ ...cell, parked: true }] }) }],
   ['artifact', { buildCoverage: async () => ({ cells: [{ ...cell, artifact: { digest: 'new' } }] }) }],
   ['pin context', { buildCoverage: async () => ({ cells: [{ ...cell, pinContext: 32768 }] }) }],
   ['prompt version', { loadCatalogPrompts: async () => new Map([['edited-version', { id: 'p1' }]]) }],
