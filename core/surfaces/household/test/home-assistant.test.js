@@ -13,6 +13,7 @@ const request = require('supertest');
 const { configuration, readPlug } = require('../../../src/services/homeAssistantPlug');
 const { allowedForFamilyDevice } = require('../family-device');
 const { registerHomeAssistantRoutes } = require('../home-assistant-routes');
+const { readHouseEcosystem, ecosystemScene } = require('../housex-ecosystem');
 const { contract, createReplyChannels } = require('../reply-channels');
 const { createScreenServices, screenPolicy } = require('../screen-services');
 const { createConversationExecutor } = require('../conversation-executor');
@@ -37,6 +38,47 @@ function instance(t, baseUrl = 'http://example.invalid') {
   const env = { AGENTX_INSTANCE_ROOT: root, PLANNING_TIME_ZONE: 'America/Toronto' };
   return { env, save, config: configuration(env) };
 }
+
+test('HouseX renders a private ecosystem layer bound to configured Core observations', async t => {
+  const { env } = instance(t);
+  const config = name => join(env.AGENTX_INSTANCE_ROOT, 'config', name + '.json');
+  const save = (name, data) => writeFileSync(config(name), JSON.stringify(data));
+  save('housex-layout', { version:1, boxes:[{ position:[0,0,0], size:[2,1,2], color:'#112233', layer:1 }], rooms:[], pins:[] });
+  save('ecosystem-live', { version:1, nodes:[{ id:'service', services:['local-service'] },
+    { id:'work-one', hosts:['host-one'] }, { id:'work-two', hosts:['host-two'] }] });
+  const definition = { version:1, hub:{ id:'service', label:'Service' }, towers:[
+    { id:'work-one', label:'Work 1', color:'#77eecc', gpus:1 },
+    { id:'work-two', label:'Work 2', color:'#aa77ee', gpus:2 }
+  ] };
+  save('housex-ecosystem', definition);
+  const app = express();
+  const catalog = createScreenServices({ app, env, services:[] });
+  const page = 'housex-ecosystem';
+  assert.equal(catalog.homeAssistantPageFor('Montre-moi HouseX Écosystème'), page);
+  assert.equal(catalog.homeAssistantFocusPage(page), page);
+  assert.equal(catalog.homeAssistantPageFor('N’affiche pas HouseX Écosystème'), undefined);
+  assert.equal(catalog.family.parse(page), null);
+  const scene = ecosystemScene(readHouseEcosystem(env));
+  assert.deepEqual(scene.pins.map(pin => pin.id), ['service','work-one','work-two']);
+  assert.equal(scene.paths.length,2);
+  assert.deepEqual(scene.boxes.map(shape => shape.statusFor).filter(Boolean), ['service','work-one','work-two']);
+  let reads = 0;
+  app.use(screenPolicy(catalog));
+  registerHomeAssistantRoutes({ app, screenPages:catalog, env, read:async () => {
+    reads++;
+    return { label:'Prise', checkedAt:REPORT };
+  } });
+  await request(app).get('/dad/home-assistant?layer=bogus').expect(404);
+  assert.equal(reads,0);
+  const shown = await request(app).get(catalog.url(catalog.parse(page))).expect(200).expect('X-Frame-Options','SAMEORIGIN');
+  assert.match(shown.text, /data-home hidden/);
+  assert.match(shown.text, /data-infrastructure data-timezone/);
+  assert.match(shown.text, /data-pin="work-two"/);
+  assert.doesNotMatch(shown.text, /local-service|host-two/);
+  save('housex-ecosystem', { ...definition, hub:{ id:'unknown', label:'Service' } });
+  assert.equal(readHouseEcosystem(env),null);
+  await request(app).get(catalog.url(catalog.parse(page))).expect(404);
+});
 
 test('a completed native receipt without a streamed page retains Maison on the same Hermes turn', async t => {
   const { env } = instance(t);

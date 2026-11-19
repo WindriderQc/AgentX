@@ -4,6 +4,7 @@ const path = require('node:path');
 const ejs = require('ejs');
 const { configuration, readPlug, selectPlug } = require('../../src/services/homeAssistantPlug');
 const { readHouseLayout } = require('./housex-layout');
+const { readHouseEcosystem, ecosystemScene } = require('./housex-ecosystem');
 
 function registerHomeAssistantRoutes({ app, screenPages, env = process.env, read = readPlug }) {
   const dateOptions = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit',
@@ -23,6 +24,11 @@ function registerHomeAssistantRoutes({ app, screenPages, env = process.env, read
       const config = configuration(env);
       const selected = selectPlug(config, req.query.device);
       if (!selected) return res.sendStatus(404);
+      const layout = readHouseLayout(env);
+      const ecosystem = screenPages.url(screenPages.parse('ecosystem'));
+      const ecosystemConfig = layout && ecosystem ? readHouseEcosystem(env) : null;
+      const showEcosystem = req.query.layer === 'ecosystem';
+      if (req.query.layer !== undefined && (!showEcosystem || !ecosystemConfig)) return res.sendStatus(404);
       const plug = await read({ config: selected });
       const links = ['home-assistant', 'garage-camera'].map(id => screenPages.PAGES[id])
         .filter(link => link?.mode === 'link');
@@ -30,10 +36,9 @@ function registerHomeAssistantRoutes({ app, screenPages, env = process.env, read
         ...config.additionalPlugs.map(row => ({ id: row.id, label: row.label,
           href: screenPages.url(screenPages.parse('home-assistant-device-' + row.id)) }))].filter(row => row.href);
       const camera = links.find(link => link.id === 'garage-camera');
-      const layout = readHouseLayout(env);
-      const ecosystem = screenPages.url(screenPages.parse('ecosystem'));
+      const infrastructure = ecosystemConfig ? ecosystemScene(ecosystemConfig) : null;
       res.type('html').send(await ejs.renderFile(template, { plug, devices, selected: selected.id || 'default',
-        links, layout, camera, ecosystem, number, date }));
+        links, layout, camera, ecosystem, infrastructure, showEcosystem, number, date }));
     } catch (error) {
       next(error);
     }

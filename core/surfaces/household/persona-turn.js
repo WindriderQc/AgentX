@@ -431,7 +431,7 @@ function createPersonaTurnHandler({
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: mathFor(pack), allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
-          canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target || (screenPages.homeAssistantDeviceForPage?.(maison) && maison), onWritten: value => { if (!res.writableEnded) event('written', value); },
+          canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target || screenPages.homeAssistantFocusPage?.(maison), onWritten: value => { if (!res.writableEnded) event('written', value); },
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.

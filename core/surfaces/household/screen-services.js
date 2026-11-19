@@ -5,8 +5,11 @@ const { screenDestinations } = require('../../../shared/screenDestinations');
 const pages = require('../../public/js/screen-pages');
 const { getPublicUrls } = require('../../../shared/browserPublicUrls');
 const { configuration, foldDeviceName } = require('../../src/services/homeAssistantPlug');
+const { readHouseLayout } = require('./housex-layout');
+const { readHouseEcosystem } = require('./housex-ecosystem');
 
 const HOME_PANEL = 'home-assistant-panel';
+const HOUSEX_ECOSYSTEM = 'housex-ecosystem';
 const homeDevicePage = id => 'home-assistant-device-' + id;
 
 // Private instance configuration, never a model-controlled discovery/fetch URL.
@@ -31,6 +34,7 @@ function loadServices(env, logger) {
 
 function createScreenServices({ app, env = process.env, logger, services = loadServices(env, logger) } = {}) {
   const home = configuration(env);
+  const infrastructure = home && readHouseLayout(env) && readHouseEcosystem(env);
   let signature, catalog;
   function current() {
     // Household registers before optional runtime bridges. Resolve their
@@ -43,6 +47,9 @@ function createScreenServices({ app, env = process.env, logger, services = loadS
       if (menu.some(row => row.id === 'kids')) menu.push({ id: 'kids-tasks', label: 'Tâches des enfants · lecture seule', href: '/kids', mode: 'frame' });
       if (home && options.agentxProfile !== 'demo') {
         menu.push({ id: HOME_PANEL, label: 'Home Assistant · Maison', href: '/dad/home-assistant', mode: 'frame' });
+        if (infrastructure && menu.some(row => row.id === 'ecosystem')) {
+          menu.push({ id: HOUSEX_ECOSYSTEM, label: 'HouseX · Écosystème', href: '/dad/home-assistant?layer=ecosystem', mode: 'frame' });
+        }
         for (const plug of home.additionalPlugs) {
           menu.push({ id: homeDevicePage(plug.id), label: plug.label, href: '/dad/home-assistant?device=' + plug.id, mode: 'frame' });
         }
@@ -58,7 +65,7 @@ function createScreenServices({ app, env = process.env, logger, services = loadS
     get entries() { return current().entries; }, get PAGES() { return current().PAGES; },
     parse: value => current().parse(value), canonical: pages.canonical,
     homeAssistantPageFor: text => homeAssistantPageFor(text, current(), home),
-    homeAssistantDeviceForPage: page => home?.additionalPlugs.find(plug => homeDevicePage(plug.id) === page)?.id,
+    homeAssistantFocusPage: page => page && (page === HOUSEX_ECOSYSTEM || home?.additionalPlugs.some(plug => homeDevicePage(plug.id) === page)) ? page : null,
     homeAssistantDeviceForText: text => {
       const matches = mentionedPlugs(foldDeviceName(text), home);
       return matches.length === 1 ? matches[0].id : undefined;
@@ -74,6 +81,7 @@ function homeAssistantPageFor(text, catalog, home) {
   if (!catalog.PAGES[HOME_PANEL]) return undefined;
   const input = foldDeviceName(text);
   if (/\b(?:n ouvre pas|n affiche pas|ne montre pas|sans (?:ouvrir|afficher|montrer)|don t (?:open|show|display)|without (?:opening|showing|displaying))\b/.test(input)) return undefined;
+  if (catalog.PAGES[HOUSEX_ECOSYSTEM] && /\bhouse\s*x\b/.test(input) && /\becosysteme?\b/.test(input)) return HOUSEX_ECOSYSTEM;
   const plugs = mentionedPlugs(input, home);
   if (plugs.length === 1) return homeDevicePage(plugs[0].id);
   if (plugs.length > 1) return HOME_PANEL;
