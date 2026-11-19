@@ -40,7 +40,7 @@ function familyConversationBackend(env = process.env) {
 // These are transports, not two agent loops. OpenClaw runs its native agent;
 // AgentX runs the existing routed inference contract. A started turn is never
 // replayed through the other transport, including after an ambiguous failure.
-function createConversationExecutor({ agentClient, inference, consumerContract, env = process.env, personalRecaps = null, conversations, hermesClient, recordRuntimeUsage }) {
+function createConversationExecutor({ agentClient, inference, consumerContract, env = process.env, personalRecaps = null, conversations, hermesClient, recordRuntimeUsage, screenPages }) {
   const hermes = hermesClient || createHermesTransport({ env,
     recordUsage: recordRuntimeUsage || (receipt => require('../../src/services/runtimeUsageService').ingestRuntimeUsage(receipt)),
     archive: conversations ? async (session, state) => {
@@ -49,10 +49,14 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
     const scope = { sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId };
     const previous = await conversations.getTurn({ ...scope, 'toolEvidence.runId': state.runId })
       || (state.turnId ? await conversations.getTurn({ ...scope, traceId: state.turnId }) : null);
+    if (previous?.outcome === 'pending' && previous.traceId === state.turnId && previous.inputText !== state.requestText) {
+      throw new Error('The native receipt does not match its canonical request.');
+    }
     const presentation = require('./reply-channels');
-    const channels = presentation.createReplyChannels({ allowSecrets: true });
+    const fallbackPage = screenPages?.homeAssistantPageFor?.(state.requestText);
+    const channels = presentation.createReplyChannels({ allowSecrets: true, allowPages: Boolean(fallbackPage), pageCatalog: screenPages });
     channels.push(state.receipt.output || '');
-    const parsed = channels.end(), replyText = presentation.plainReply(parsed.say);
+    const parsed = channels.end({ fallbackPage }), replyText = presentation.plainReply(parsed.say);
     const receipts = state.toolReceipts || previous?.toolEvidence?.receipts || [];
     const recovered = { replyText, written: parsed.written, display: presentation.storedDisplay(parsed.display), outcome: 'completed',
       model: state.receipt.runtime?.model || '', routingSource: 'hermes/nestor', routeTier: 'agent',
@@ -60,7 +64,6 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
       knowledgeStatus: 'agent-managed', knowledgeUsed: receipts.some(row => /rag_search|memory_search|wiki_search/.test(row.tool)),
       toolEvidence: { authority: 'hermes', status: 'observed', runId: state.runId, receipts, recovered: true } };
     if (previous?.outcome === 'pending' && previous.traceId === state.turnId) {
-      if (previous.inputText !== state.requestText) throw new Error('The native receipt does not match its canonical request.');
       await conversations.settleTurn({ ...scope, traceId: previous.traceId, ...recovered });
     } else if (previous) {
       const updated = await conversations.updateTurn({ ...scope, traceId: previous.traceId }, { $set: recovered });
