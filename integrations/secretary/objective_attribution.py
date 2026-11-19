@@ -4,6 +4,7 @@ from pathlib import Path
 from evidence_store import load
 from review_attempts import durable, hashed
 import source_quote_context as quotes
+import objective_input_scope as input_scope
 
 CONTRACT = quotes.OBJECTIVE_CONTRACT
 
@@ -35,6 +36,12 @@ def source_time(source):
     return quotes.milliseconds(source.get("mailDate"))
 
 
+def _message(source, unit, scoped):
+    extra = input_scope.message_context(source, unit) if scoped else {}
+    return quotes.message(source['id'], unit['content'], source['headers'], source_time(source),
+                          sourceSha256=source['sha256'], direction=source['direction'], **extra)
+
+
 def bind_pages(root, objective, manifest, source, units, plan, *, create=True):
     """Verify only frozen same-thread originals, without downloading new mail.
 
@@ -45,21 +52,31 @@ def bind_pages(root, objective, manifest, source, units, plan, *, create=True):
         return
     from objective_sources import materialize
 
+    scope = input_scope.contract_for(manifest)
+    group = input_scope.group_for(scope, source) if scope is not None else None
     peers, gaps = [], []
     for ref in manifest["sources"]:
+        if group is not None and input_scope.key(ref) not in group:
+            continue
         if ref["system"] != source["system"] or ref["threadId"] != source["threadId"] or ref["id"] == source["id"]:
             continue
         try:
-            current, representations, _ = materialize(root, ref)
+            current, representations, _ = (materialize(root, ref, input_scope_config=scope) if scope is not None
+                                            else materialize(root, ref))
             bodies = [u["content"] for u in representations if u["representation"] == "mime-text"]
             # Conflicting MIME alternatives cannot verify another passage's
             # author. An exact alternative copy does not add testimony.
             if len(set(bodies)) != 1:
+                if scope is not None:
+                    raise ValueError('Selected input peer has no unique inline representation')
                 gaps.append({"sourceId": ref["id"], "reason": "ambiguous-inline-representations"})
                 continue
-            peers.append(quotes.message(current["id"], bodies[0], current["headers"],
-                source_time(current), sourceSha256=current["sha256"], direction=current["direction"]))
+            peers.append(_message(current, next(u for u in representations if u['representation'] == 'mime-text'), True)
+                         if scope is not None else quotes.message(current["id"], bodies[0], current["headers"],
+                         source_time(current), sourceSha256=current["sha256"], direction=current["direction"]))
         except (OSError, ValueError, KeyError):
+            if scope is not None:
+                raise
             gaps.append({"sourceId": ref["id"], "reason": "frozen-thread-source-unavailable"})
     for unit in units:
         key = hashed([manifest["objectiveSha256"], source["system"], source["id"], source["sha256"],
@@ -78,20 +95,27 @@ def bind_pages(root, objective, manifest, source, units, plan, *, create=True):
         else:
             if not create:
                 raise ValueError("Missing frozen attribution index")
-            own = quotes.message(source["id"], unit["content"], source["headers"],
-                source_time(source), sourceSha256=source["sha256"], direction=source["direction"])
+            own = _message(source, unit, scope is not None)
             evidence = {"schema": CONTRACT, "objectiveSha256": manifest["objectiveSha256"],
                         "own": own, "messages": [own, *peers], "gaps": gaps}
+            if scope is not None:
+                input_scope.packet(scope, source, evidence)  # Fail closed before persistence or inference.
             digest = hashed(evidence)
             file = Path(objective) / "attribution-evidence" / (digest + ".json")
             if not file.exists():
                 durable(file, evidence, exclusive=True)
             durable(index, {"evidenceSha256": digest}, exclusive=True)
+        if scope is not None and input_scope.packet(scope, source, evidence) != input_scope.packet(
+                scope, source, {'messages': [_message(source, unit, True), *peers]}):
+            raise ValueError('Selected input context differs from the current frozen sources')
         for page in plan:
             if page["representation"] != {k: v for k, v in unit.items() if k != "content"}:
                 continue
             page["sourceContext"] = source_context(own, page, evidence["messages"])
             page["attributionEvidenceSha256"] = digest
+            if scope is not None:
+                page['inputContext'] = input_scope.packet(scope, source, evidence)
+                page['inputContextSha256'] = hashed(page['inputContext'])
 
 
 def record_context(page, native):
@@ -99,6 +123,8 @@ def record_context(page, native):
         native.update(attributionContract=CONTRACT,
                       attributionEvidenceSha256=page["attributionEvidenceSha256"],
                       sourceContext=page["sourceContext"])
+    if 'inputContext' in page:
+        native.update(inputReadingContract=input_scope.CONTRACT, inputContextSha256=hashed(page['inputContext']))
 
 
 def project(objective, record, result, *, expected_objective=None):
@@ -127,6 +153,15 @@ def validate_receipt(objective, row, manifest):
     if not contract_for(manifest):
         return
     record = row["sourceRecord"]
+    scope = input_scope.contract_for(manifest)
+    native = record['nativeRef']
+    if scope is not None:
+        evidence = load(Path(objective) / 'attribution-evidence' / (native.get('attributionEvidenceSha256', '') + '.json'), {})
+        source = {'system': native['system'], 'id': native['messageId'], 'sha256': native['sourceSha256']}
+        if native.get('inputReadingContract') != input_scope.CONTRACT or native.get('inputContextSha256') != hashed(input_scope.packet(scope, source, evidence)):
+            raise ValueError('Selected input receipt differs from its frozen context')
+    elif native.get('inputReadingContract') is not None or native.get('inputContextSha256') is not None:
+        raise ValueError('Unversioned selected input receipt')
     if record["nativeRef"].get("attributionContract") != CONTRACT \
             or row.get("quoteAttribution") != project(objective, record, row["result"], expected_objective=manifest["objectiveSha256"]):
         raise ValueError("Objective quote attribution differs from its retained evidence")

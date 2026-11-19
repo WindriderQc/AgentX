@@ -12,6 +12,7 @@ from archive_read import MAX_BYTES, representations
 from evidence_attribution import body_segments, page_context
 from evidence_store import load
 from review_attempts import hashed
+import objective_input_scope as input_scope
 
 
 def inventory(root, selection=None):
@@ -59,13 +60,14 @@ def _unit(kind, text, **extra):
     return {"representation": kind, "content": text, "textSha256": hashlib.sha256(text.encode()).hexdigest(), **extra}
 
 
-def materialize(root, source):
+def materialize(root, source, *, input_scope_config=None):
     """Verify the original, then reuse Secretary's inert MIME representation reader.
 
     No download, OCR, decompression, rendering, external link or mailbox effect.
     Native existing text extractions remain qualified by their extraction status.
     """
     root = Path(root)
+    pin = input_scope.pin_for(input_scope_config, source) if input_scope_config is not None else None
     path = _file(root, source.get("path"))
     if path.stat().st_size > MAX_BYTES:
         raise ValueError("Original exceeds the native bounded reader")
@@ -73,7 +75,8 @@ def materialize(root, source):
     if len(data) != source.get("bytes") or hashlib.sha256(data).hexdigest() != source.get("sha256"):
         raise ValueError("Original does not match its native preservation receipt")
     parsed = email.message_from_bytes(data, policy=policy.default)
-    bodies, documents = representations(parsed)
+    bodies, documents = (representations(parsed, inline_part_indexes={pin['partIndex']}, include_document_text=False)
+                         if pin is not None else representations(parsed))
     headers = {key.lower(): str(parsed.get(key) or "") for key in ("From", "To", "Cc", "Date", "Subject")}
     source = {**source, "rfc822MessageId": str(parsed.get("Message-ID") or "").strip(), "headers": headers}
     try:
@@ -82,6 +85,8 @@ def materialize(root, source):
         source["mailDate"] = None
     labels = set(source.get("labels", []))
     source["direction"] = "draft" if "DRAFT" in labels else "sent" if "SENT" in labels else "received" if labels else "unknown"
+    if pin is not None:
+        return input_scope.selected_units(input_scope_config, source, bodies, documents)
     units = []
     gaps = []
     has_rtf = any(body.get("extraction") for body in bodies)

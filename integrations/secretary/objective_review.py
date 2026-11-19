@@ -31,6 +31,7 @@ import objective_dispositions as dispositions
 import objective_rejected_copies as rejected_copies
 import objective_attribution as attribution
 import objective_actor_context as actor_context
+import objective_input_scope as input_scope
 from objective_quote_reconciliation import reconcile as reconcile_quotes
 from objective_annual import aggregate as annual_coverage
 from review_attempts import ReviewUncertain, durable, extract_once, hashed, unsettled, blocked_phase, blocked_counts, result_file
@@ -44,7 +45,7 @@ UUID = re.compile(r"[a-f0-9-]{36}")
 
 def config_at(file):
     value = load(file, {})
-    if set(value) - {"id", "version", "kind", "ownerAliases", "instructions", "selection", "pageChars", "overlap", "thinking"}:
+    if set(value) - {"id", "version", "kind", "ownerAliases", "instructions", "selection", "pageChars", "overlap", "thinking", "inputScope"}:
         raise ValueError("Unknown objective configuration field")
     if "thinking" in value and type(value["thinking"]) is not bool:
         raise ValueError("Objective thinking must be an explicit boolean")
@@ -55,6 +56,8 @@ def config_at(file):
         raise ValueError("Private owner aliases must be explicit")
     if not isinstance(value.get("instructions", ""), str):
         raise ValueError("Instructions must be private text")
+    if 'inputScope' in value:
+        input_scope.validate(value['inputScope'])
     selection = value.get("selection", {})
     if not isinstance(selection, dict) or set(selection) - {"gmailMessageIds", "outlookSha256", "order"}:
         raise ValueError("Invalid native source selection")
@@ -78,13 +81,20 @@ def prepare(root, config, *, create=True):
     previous = load(file, {}) if file.exists() else None
     contract = attribution.contract_for(previous) if previous is not None else attribution.CONTRACT
     actors = actor_context.contract_for(previous) if previous is not None else actor_context.CONTRACT
+    scope = config.get('inputScope')
+    if previous is not None:
+        input_scope.contract_for(previous)
     system = attribution.system(INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + config["instructions"], contract)
     system = actor_context.system(system, actors)
+    if scope is not None:
+        system += '\n\n' + input_scope.POLICY
     identity = {"contract": CONTRACT, "config": config, "system": system, "schema": SCHEMA}
     if contract:
         identity["attributionContract"] = contract
     if actors:
         identity['actorReadingContract'] = actors
+    if scope is not None:
+        identity['inputReadingContract'] = input_scope.CONTRACT
     objective_sha = hashed(identity)
     if file.exists():
         manifest = previous
@@ -99,6 +109,9 @@ def prepare(root, config, *, create=True):
     manifest["attributionContract"] = contract
     if actors:
         manifest['actorReadingContract'] = actors
+    if scope is not None:
+        input_scope.validate_inventory(scope, manifest['sources'])
+        manifest['inputReadingContract'] = input_scope.CONTRACT
     try:
         durable(file, manifest, exclusive=True)
     except FileExistsError:
@@ -299,6 +312,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         raise ValueError("Every run needs a positive time budget")
     if getattr(client, "thinking", False) is not manifest["config"].get("thinking", False):
         raise ValueError("The native client thinking mode differs from the frozen objective")
+    scope = input_scope.contract_for(manifest)
     if not retain_rejected_pages and any((objective / "rejected-copy-reports").glob("*.json")):
         raise ValueError("Deferred rejected copies require the explicit review-only retention policy")
     fence = SimpleNamespace(root=objective)
@@ -319,6 +333,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
     system = attribution.system(INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + manifest["config"]["instructions"],
                                 attribution.contract_for(manifest))
     system = actor_context.system(system, actor_context.contract_for(manifest))
+    if scope is not None:
+        system += '\n\n' + input_scope.POLICY
     grounded = grounding.contract_for(manifest)
     started, made, rejected, deferred, inferences = clock(), 0, 0, 0, 0
     requested_stop = stop
@@ -375,7 +391,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
         # before source work and every live call. Core still owns model admission.
         client._call("POST", "/api/cluster/schedule/work-queue/" + queue_id + "/assert-dispatch", {"dispatchId": dispatch_id})
         try:
-            current, units, gaps = materialize(root, source)
+            current, units, gaps = (materialize(root, source, input_scope_config=scope) if scope is not None
+                                    else materialize(root, source))
             if rtf_scope.known_rtf(previous) and rtf_scope.had_headers(previous):
                 retain_header_scope(current, units)
             plan = list(pages(current, units, manifest["objectiveSha256"], manifest["config"]["pageChars"], manifest["config"]["overlap"]))
@@ -391,6 +408,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                                 "rtfReaderProfile": rtf_scope.materialized_profile(units, gaps)})
             reused = set()
             for unit in units:
+                if scope is not None:
+                    continue  # Primary-text equality cannot alias different grouped envelopes.
                 unit_pages = [p for p in plan if p["representation"] == equivalent.unit_ref(unit)]
                 if retain_rejected_pages:
                     rejected_copies.register(objective, manifest, current, unit, unit_pages)
@@ -429,8 +448,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
             unit = next(u for u in units if equivalent.unit_ref(u) == page["representation"])
             unit_pages = [p for p in plan if p["representation"] == page["representation"]]
             unit_rejected = any(dispositions.read(objective, manifest, p["pageId"], expected_identity=p["identity"]) for p in unit_pages)
-            unit_deferred = retain_rejected_pages and rejected_copies.matches(objective, manifest, current, unit, unit_pages)
-            canonical = None if unit_rejected or unit_deferred else equivalent.find(objective, current, unit, read_receipt, manifest)
+            unit_deferred = retain_rejected_pages and scope is None and rejected_copies.matches(objective, manifest, current, unit, unit_pages)
+            canonical = None if scope is not None or unit_rejected or unit_deferred else equivalent.find(objective, current, unit, read_receipt, manifest)
             if canonical:
                 equivalent.alias(objective, current, unit, unit_pages, canonical, equivalent_record)
                 reused.update(p["pageId"] for p in unit_pages)
@@ -439,7 +458,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                 return finish("partial" if not stop() else "stopped")
             if per_source_pages is not None and used >= per_source_pages:
                 break
-            if retain_rejected_pages and rejected_copies.defer(objective, manifest, current, unit, unit_pages, page):
+            if retain_rejected_pages and scope is None and rejected_copies.defer(objective, manifest, current, unit, unit_pages, page):
                 deferred += 1
                 used += 1
                 status.update(phase="reviewing", at=now(), newlyReviewedPages=made, newlyRejectedPages=rejected,
@@ -459,6 +478,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                         "offset": page["offset"], "totalChars": page["totalChars"],
                         "moreOfThisRepresentation": page["moreOfThisRepresentation"], "sourceContext": page["sourceContext"],
                         "untrustedContent": page["content"]}
+                    input_scope.add_payload(payload, page, manifest)
                     if grounded:
                         payload["citationCatalog"] = grounding.catalog(page["content"])
                         payload["groundingContract"] = grounded
@@ -517,7 +537,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     inferences += not saved
                     if retain_rejected_pages:
                         dispositions.retain(objective, manifest, page, error)
-                        rejected_copies.register(objective, manifest, current, unit, unit_pages)
+                        if scope is None:
+                            rejected_copies.register(objective, manifest, current, unit, unit_pages)
                         rejected += 1
                         break
                     return finish("validation-error", pageId=page["pageId"], errorType=type(error).__name__,
@@ -525,7 +546,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                 except (ValueError, RuntimeError) as error:
                     if retain_rejected_pages and isinstance(error, ValueError):
                         dispositions.retain(objective, manifest, page, error)
-                        rejected_copies.register(objective, manifest, current, unit, unit_pages)
+                        if scope is None:
+                            rejected_copies.register(objective, manifest, current, unit, unit_pages)
                         rejected += 1
                         break
                     return finish("validation-error", pageId=page["pageId"], errorType=type(error).__name__)
@@ -538,10 +560,12 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
             made += 1
             status.update(phase="reviewing", at=now(), newlyReviewedPages=made, lastPageId=page["pageId"])
             durable(objective / "status.json", status)
-            equivalent.register(objective, current, unit, unit_pages, read_receipt, manifest)
+            if scope is None:
+                equivalent.register(objective, current, unit, unit_pages, read_receipt, manifest)
         for unit in units:
             unit_pages = [p for p in plan if p["representation"] == equivalent.unit_ref(unit)]
-            equivalent.register(objective, current, unit, unit_pages, read_receipt, manifest)
+            if scope is None:
+                equivalent.register(objective, current, unit, unit_pages, read_receipt, manifest)
     return finish("done" if coverage(objective, manifest)["allTargetTextCovered"] else "partial")
 
 

@@ -32,7 +32,7 @@ def _text(part):
     return payload.decode(codec, errors="strict"), {"declaredCharset": charset, "resolvedCodec": codec, "errors": "strict"}
 
 
-def representations(message):
+def representations(message, *, inline_part_indexes=None, include_document_text=True):
     bodies, attachments, stack, index = [], [], [(message, False, 0)], 0
     while stack:
         part, blocked, depth = stack.pop()
@@ -42,8 +42,11 @@ def representations(message):
         kind = part.get_content_type()
         document = bool(part.get_filename() or part.get_content_disposition() == "attachment" or kind == "message/rfc822")
         if not blocked and (document or not part.is_multipart() and kind not in ("text/plain", "text/html")):
+            if inline_part_indexes is not None and len(str(part.get_filename() or '')) > 300:
+                raise ArchiveReadError('Selected MIME metadata exceeds its native bound', 'SECRETARY_ARCHIVE_TOO_LARGE', 413)
             attachments.append({"partIndex": current, "filename": str(part.get_filename() or "(sans nom)")[:300], "mimeType": kind})
-        if not blocked and not document and kind in ("text/plain", "text/html"):
+        if not blocked and not document and kind in ("text/plain", "text/html") \
+                and (inline_part_indexes is None or current in inline_part_indexes):
             value, readable, extra, decoding = "", True, None, None
             try:
                 value, decoding = _text(part)
@@ -59,7 +62,7 @@ def representations(message):
                            "textSha256": hashlib.sha256(value.encode()).hexdigest() if readable else None,
                            "content": value, "part": part, "htmlEvidence": extra,
                            **({"decoding": decoding} if decoding else {})})
-        if not blocked and not part.is_multipart() and is_rtf(kind, part.get_filename()):
+        if include_document_text and not blocked and not part.is_multipart() and is_rtf(kind, part.get_filename()):
             decoded = read_rtf_part(part)
             value = decoded["content"]
             bodies.append({"partIndex": current, "mimeType": kind, **decoded, "totalChars": len(value),

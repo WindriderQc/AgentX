@@ -351,6 +351,55 @@ prompt or schema under the same version refuses; use a new version. The source
 inventory is a snapshot: later arrivals require explicit new planning. Metadata
 planning cannot know the full page count before source materialization.
 
+An optional private `inputScope` freezes the explicit
+`secretary.selected-mail-input/v1` contract for a bounded source-only review:
+
+```json
+{
+  "contract": "secretary.selected-mail-input/v1",
+  "sources": [{
+    "sourceKey": "gmail:message001",
+    "sourceSha256": "<SHA-256 of preserved RFC822 bytes>",
+    "partIndex": 1,
+    "mimeType": "text/plain",
+    "textSha256": "<SHA-256 of exact decoded inline text>"
+  }],
+  "groups": [["gmail:message001"]],
+  "maxContextChars": 24000
+}
+```
+
+Use real 64-character lowercase hexadecimal hashes in configuration. The scope
+must pin the complete selected inventory (1–20 sources), with each source in
+exactly one group of 1–8 messages. Multi-message groups require the same preserved
+Gmail thread; no thread is guessed from a subject or an Outlook conversion.
+Each pin selects one inline `text/plain` or `text/html` MIME part before decoding.
+An unavailable part, changed original/text hash or attachment part refuses;
+there is no alternative-part fallback. HTML selection includes its text only.
+This path never reads attachment content, RTF documents, existing attachment
+extractions or HTML supplements. Filenames, MIME types and part indexes remain
+explicit metadata, with attachment contents marked as excluded.
+
+Every native page request receives `inputContext.members`: the complete selected
+text, From/To/Cc/Date/Subject headers, direction, source/representation pins and
+attachment metadata for each member of its explicit group. Calls remain per
+primary message/page. Context members retain separate provenance and chronological
+ordering when known; unknown chronology remains explicit. Missing peers or an
+envelope exceeding `maxContextChars` (1000–120000 serialized characters) refuse
+before inference rather than truncate. Metadata is also bounded (100 attachment
+entries, 300 characters per filename, 2000 per retained header).
+
+The existing attribution evidence stores and hashes this context; receipts bind
+its digest. The scope and policy enter the immutable objective identity, so a
+changed scope requires a new version. Legacy objectives omit these fields and
+retain their existing policy, identities and reading behavior. Scoped requests
+do not reuse body-only equivalence or rejection aliases across envelopes;
+unchanged page receipts still resume without another call. Peer text and
+filenames are untrusted source context: they grant no primary quotation authority,
+owner confirmation, attachment-content claim or publication. Primary passage
+grounding and actor guards remain in force. Unit tests with a fake client verify
+input delivery; they do not establish model interpretation quality.
+
 ```sh
 python3 integrations/secretary/objective_review.py plan --objective "$PRIVATE_OBJECTIVE"
 python3 integrations/secretary/objective_review.py status --objective "$PRIVATE_OBJECTIVE"
