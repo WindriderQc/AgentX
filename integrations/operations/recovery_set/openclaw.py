@@ -1,4 +1,5 @@
 """Prepare a relocation-safe copy; let OpenClaw own its backup exclusions."""
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -7,6 +8,25 @@ import stat
 import tarfile
 
 from .common import archive_paths, digest, run, save
+
+
+def is_sqlite(path):
+    with path.open('rb') as stream:
+        return stream.read(16) == b'SQLite format 3\x00'
+
+
+def is_sqlite_sidecar(path):
+    database_name, _, suffix = path.name.rpartition('-')
+    if not database_name or suffix not in ('wal', 'shm', 'journal'):
+        return False
+    database = path.with_name(database_name)
+    if database.suffix in ('.sqlite', '.db', '.sqlite3'):
+        return True
+    # SQLite also uses these suffixes for renamed or extensionless databases.
+    try:
+        return stat.S_ISREG(database.lstat().st_mode) and is_sqlite(database)
+    except FileNotFoundError:
+        return False
 
 
 def stage_home(source, stage, artifacts, historical):
@@ -36,15 +56,14 @@ def stage_home(source, stage, artifacts, historical):
                 continue
             if not stat.S_ISREG(info.st_mode):
                 continue
-            if any(str(path).endswith(ext + tail) for ext in ('.sqlite', '.db', '.sqlite3') for tail in ('-wal', '-shm', '-journal')):
+            if is_sqlite_sidecar(path):
                 continue
-            with path.open('rb') as stream:
-                is_db = stream.read(16) == b'SQLite format 3\x00'
+            is_db = is_sqlite(path)
             if is_db:
-                with sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=30) as origin:
+                with closing(sqlite3.connect(path.as_uri() + '?mode=ro', uri=True, timeout=30)) as origin:
                     origin.execute('BEGIN')
                     origin.execute('PRAGMA schema_version').fetchall()
-                    with sqlite3.connect(target) as copy:
+                    with closing(sqlite3.connect(target)) as copy:
                         origin.backup(copy)
                         if copy.execute('PRAGMA quick_check').fetchone() != ('ok',):
                             raise RuntimeError('SQLite recovery integrity check failed')

@@ -161,6 +161,32 @@ class RecoveryTests(unittest.TestCase):
         self.assertTrue((artifacts / 'openclaw-historical.tar.gz').exists())
         connection.close()
 
+    def test_migrated_sqlite_snapshot_skips_live_sidecars(self):
+        home, stage, artifacts = (self.root / name for name in ('home', 'stage', 'artifacts'))
+        home.mkdir()
+        artifacts.mkdir()
+        save(home / 'openclaw.json', {})
+        database = 'tasks.sqlite.migrated'
+        with contextlib.closing(sqlite3.connect(home / database)) as active:
+            active.execute('PRAGMA journal_mode=WAL')
+            active.execute('CREATE TABLE tasks (title TEXT)')
+            active.execute('INSERT INTO tasks VALUES (?)', ('Captured from WAL',))
+            active.commit()
+            live_sidecars = [home / (database + suffix) for suffix in ('-wal', '-shm')]
+            self.assertGreater(live_sidecars[0].stat().st_size, 0)
+            self.assertTrue(live_sidecars[1].is_file())
+            (home / 'notes-wal').write_text('ordinary file')
+            (home / 'tasks.sqlite-wal.migrated').write_bytes(b'archived WAL')
+
+            stage_home(home, stage, artifacts, [])
+
+            self.assertTrue(all(path.is_file() for path in live_sidecars))
+            self.assertTrue(all(not (stage / path.name).exists() for path in live_sidecars))
+            self.assertEqual((stage / 'notes-wal').read_text(), 'ordinary file')
+            self.assertEqual((stage / 'tasks.sqlite-wal.migrated').read_bytes(), b'archived WAL')
+            with contextlib.closing(sqlite3.connect(stage / database)) as restored:
+                self.assertEqual(restored.execute('SELECT title FROM tasks').fetchall(), [('Captured from WAL',)])
+
     def test_destination_outage_keeps_capture_and_does_not_claim_verified(self):
         source, _ = self.generation()
         with patch('recovery_set.replica.remote', side_effect=RuntimeError('Offline')):
