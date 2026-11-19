@@ -80,7 +80,47 @@ observation grants no execution or release: queue assertion, inference admission
 and the terminal Core recheck remain authoritative. Other workload owners and
 quarantines are never cleared. Unscoped catch-up retains its conservative guard.
 
-New objectives use `secretary.objective-grounding/v14` for model extraction.
+New objectives use `secretary.objective-grounding/v15` for model extraction.
+The native response has one `retainedMoments` array of complete anchored facts,
+`cueDecisions`, `documentDecisions`, `emptyAssessment`, `abstention` and `gaps`.
+Each required cue selects `{retained:true}` or its own cited omission. A retained
+marker requires an actual fact with that primary anchor, not another fact's
+index, actor or metadata. The positive schema requires at least one fact; the
+negative schemas require zero facts and a supported whole-passage abstention.
+Cue omissions cannot substitute for that whole-passage reason.
+
+Useful cancellation requests/confirmations and first-person data or registration
+activities receive explicit source decisions. Administrative signature wording
+cannot justify dropping an otherwise meaningful declaration. Registration work
+uses a neutral daily activity, without inferring employment, an employer or team
+membership. Quoted activities retain their own actors and omission evidence.
+Signatures, standalone contact lines and mail headers cannot anchor events.
+
+`dateCatalog` also supplies literal day/month expressions without a year.
+Selecting one preserves its exact wording in `originalDate`, its character
+offsets in `resultProcessing` and an explicit unknown-year limit. Its canonical
+date remains null with unknown precision; the message year is never borrowed.
+Partial dates cannot migrate to another fact's anchor or quoted header.
+
+For explicitly scoped mail input, `attachmentMetadataCatalog` exposes only the
+current message's frozen filenames, MIME types, part indexes and native source
+identity. Every metadata entry has a native `documentDecisions` choice:
+`retain-reference` or `omit`. Retained document references stay in the existing
+page receipt's `resultProcessing.sourceSelection` and a visible review gap.
+They create neither a timeline moment nor a body citation. They establish no
+document contents, attendance, certification or attachment ownership. Peers'
+metadata remains context. No attachment is opened for these references.
+
+The new prompt, schema and native decisions require a new objective version.
+Existing manifests reopen with their original schema and prompt; their native
+responses, rejection dispositions and projection fingerprints are unchanged.
+Optional `groundingContract` may explicitly select v14 or v15 when preparing a
+new version. Omitting it selects v15; it never upgrades an existing manifest.
+Code and synthetic CPU checks establish contract behavior only, not live model
+quality or permission to run, publish or deploy.
+
+The following source selection mechanics describe the frozen v14 contract,
+which remains the base for v15's per-fact type, actor and wording constraints.
 Each passage supplies a deterministic `citationCatalog` of exact nonempty lines
 and source offsets. The response schema restricts `citationIds` to that page;
 local validation resolves each ID back to the original span. The model selects
@@ -319,7 +359,7 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10`, `/v11`, `/v12` and `/v13` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10`, `/v11`, `/v12`, `/v13` and `/v14` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.
