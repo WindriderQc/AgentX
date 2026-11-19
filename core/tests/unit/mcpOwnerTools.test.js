@@ -15,6 +15,19 @@ test('services preserve structured results and validate fields before effects', 
   expect((await call('team_brief', { member: 'arbitrary-agent' }, { team_brief })).result.isError).toBe(true);
   expect(team_brief).toHaveBeenCalledTimes(1);
 });
+test('the Home Assistant reader takes no device selectors, actions or audience overrides', async () => {
+  const service = require('../../src/services/homeAssistantPlug');
+  const status = { status: 'partial', state: { value: 'on', reportedAt: '2026-10-12T12:34:56.000Z' }, power: null };
+  const read = jest.spyOn(service, 'readPlug').mockResolvedValue(status);
+  try {
+    expect(TOOLS.find(tool => tool.name === 'home_assistant_plug').annotations.readOnlyHint).toBe(true);
+    expect((await call('home_assistant_plug', {})).result.structuredContent).toEqual(status);
+    for (const refused of [{ action: 'toggle' }, { entityId: 'switch.other' }, { audience: 'family' }]) {
+      expect((await call('home_assistant_plug', refused)).result.isError).toBe(true);
+    }
+    expect(read).toHaveBeenCalledTimes(1);
+  } finally { read.mockRestore(); }
+});
 test('the owner Janitor reader reuses its domain service and rejects extra capabilities', async () => {
   const service = require('../../src/services/janitorReportView');
   const read = jest.spyOn(service, 'readJanitorReportView').mockResolvedValueOnce({ readOnly: true, screenPage: 'diskx' });

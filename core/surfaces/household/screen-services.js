@@ -4,6 +4,9 @@ const path = require('node:path');
 const { screenDestinations } = require('../../../shared/screenDestinations');
 const pages = require('../../public/js/screen-pages');
 const { getPublicUrls } = require('../../../shared/browserPublicUrls');
+const { configuration } = require('../../src/services/homeAssistantPlug');
+
+const HOME_PANEL = 'home-assistant-panel';
 
 // Private instance configuration, never a model-controlled discovery/fetch URL.
 function loadServices(env, logger) {
@@ -26,6 +29,7 @@ function loadServices(env, logger) {
 }
 
 function createScreenServices({ app, env = process.env, logger, services = loadServices(env, logger) } = {}) {
+  const home = configuration(env);
   let signature, catalog;
   function current() {
     // Household registers before optional runtime bridges. Resolve their
@@ -33,7 +37,13 @@ function createScreenServices({ app, env = process.env, logger, services = loadS
     const options = { publicUrls: app?.locals?.publicUrls || getPublicUrls(env),
       agentxProfile: app?.locals?.agentxProfile || 'full', trustedRuntimeNavItems: app?.locals?.trustedRuntimeNavItems || [] };
     const next = JSON.stringify(options);
-    if (next !== signature) { const menu = screenDestinations(options); catalog = pages.createCatalog([...menu, ...(menu.some(row => row.id === 'kids') ? [{id:'kids-tasks',label:'Tâches des enfants · lecture seule',href:'/kids',mode:'frame'}] : []), ...services]); signature = next; }
+    if (next !== signature) {
+      const menu = screenDestinations(options);
+      if (menu.some(row => row.id === 'kids')) menu.push({ id: 'kids-tasks', label: 'Tâches des enfants · lecture seule', href: '/kids', mode: 'frame' });
+      if (home && options.agentxProfile !== 'demo') menu.push({ id: HOME_PANEL, label: 'Home Assistant · Maison', href: '/dad/home-assistant', mode: 'frame' });
+      catalog = pages.createCatalog([...menu, ...services]);
+      signature = next;
+    }
     return catalog;
   }
   return Object.freeze({
@@ -41,8 +51,20 @@ function createScreenServices({ app, env = process.env, logger, services = loadS
       ...services.filter(row => row.family === true && ['earth', 'iss'].includes(row.id))]); },
     get entries() { return current().entries; }, get PAGES() { return current().PAGES; },
     parse: value => current().parse(value), canonical: pages.canonical,
+    homeAssistantPageFor: text => homeAssistantPageFor(text, current(), home?.label),
     url: (value, options) => current().url(value, options), label: value => current().label(value), mode: value => current().mode(value), keepsConversation: value => current().keepsConversation(value)
   });
+}
+
+function homeAssistantPageFor(text, catalog, plugLabel) {
+  if (!catalog.PAGES[HOME_PANEL]) return undefined;
+  const fold = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const input = fold(text);
+  if (/\b(?:n ouvre pas|n affiche pas|ne montre pas|sans (?:ouvrir|afficher|montrer)|don t (?:open|show|display)|without (?:opening|showing|displaying))\b/.test(input)) return undefined;
+  const label = fold(plugLabel);
+  if (/\b(?:home\s*ass(?:ist|it)ant|workshop (?:smart )?plug|prise (?:intelligente |connectee )?(?:(?:de l|d|du|a l) )?atelier|garage camera|camera (?:du )?garage)\b/.test(input)
+      || label && (' ' + input + ' ').includes(' ' + label + ' ')) return HOME_PANEL;
+  return undefined;
 }
 
 const { allowScreenFrame } = require('../../../shared/screenView');

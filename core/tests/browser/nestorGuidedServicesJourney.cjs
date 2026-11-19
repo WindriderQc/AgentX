@@ -7,22 +7,32 @@ const core = path.resolve(__dirname, '../..'), req = createRequire(core + '/pack
 const express = req('express'), { chromium } = require('playwright');
 const { registerScreenServices } = req('./surfaces/household/screen-services');
 const { workResultPresentation } = req('./surfaces/household/work-result-presentation');
+const { registerHomeAssistantRoutes } = req('./surfaces/household/home-assistant-routes');
+const { createReplyChannels } = req('./surfaces/household/reply-channels');
 const reportDir = process.env.GUIDED_SERVICES_REPORT_DIR;
 if (!reportDir || path.resolve(reportDir).startsWith(path.resolve(core, '..') + path.sep)) throw Error('Set GUIDED_SERVICES_REPORT_DIR outside the checkout');
 fs.mkdirSync(reportDir, { recursive: true });
-let server, browser;
+let server, browser, config;
 (async () => {
   const app = express(), router = express.Router();
   app.locals.publicUrls = { core: 'http://127.0.0.1', benchmark: 'http://127.0.0.1/benchmark', rag: 'http://127.0.0.1/rag' };
   app.locals.agentxProfile = 'full';
   app.use((_req, res, next) => { res.set('X-Frame-Options', 'DENY'); next(); });
-  const config = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'nestor-screen-browser-'));
+  config = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'nestor-screen-browser-'));
   fs.mkdirSync(config + '/config');
   fs.writeFileSync(config + '/config/screen-services.json', JSON.stringify({ version: 1,
-    services: [{ id: 'home-assistant', label: 'Home Assistant', href: 'http://127.0.0.1:1', mode: 'link' }] }));
-  const catalog = registerScreenServices({ app, router, env: { AGENTX_INSTANCE_ROOT: config },
+    services: [{ id: 'home-assistant', label: 'Home Assistant', href: 'http://127.0.0.1:1', mode: 'link' },
+      { id: 'garage-camera', label: 'Caméra du garage', href: 'http://127.0.0.1:1/cameras/direct', mode: 'link' }] }));
+  fs.writeFileSync(config + '/config/home-assistant.json', JSON.stringify({ baseUrl: 'http://127.0.0.1:1',
+    plug: { label: 'Prise de l’atelier', switchEntity: 'switch.fixture_plug', powerEntity: 'sensor.fixture_plug_power' } }));
+  const env = { AGENTX_INSTANCE_ROOT: config };
+  const catalog = registerScreenServices({ app, router, env,
     envelope: (res, data) => res.json({ ok: true, data }) });
-  fs.rmSync(config, { recursive: true });
+  const time = '2026-10-09T20:00:00.000Z';
+  registerHomeAssistantRoutes({ app, screenPages: catalog, env, read: async () => ({
+    label: 'Prise de l’atelier', state: { value: 'on', reportedAt: time },
+    power: { watts: 12.5, reportedAt: time }, checkedAt: time
+  }) });
   app.use('/api/voice-personas', router);
   app.use('/assets/household', express.static(core + '/surfaces/household/public'));
   app.use('/js', express.static(core + '/public/js'));
@@ -74,6 +84,19 @@ let server, browser;
     await page.evaluate(block => board.add(block), projected.display[0]);
     assert.equal(projected.spokenText, 'Voici votre journée.');
     assert.equal(await page.locator('iframe').count(), 1, 'a restored page replaces its preceding frame');
+    const channels = createReplyChannels({ allowPages: true, pageCatalog: catalog });
+    channels.push('La prise de l’atelier est allumée.');
+    const homeReply = channels.end({ fallbackPage: catalog.homeAssistantPageFor('La prise de l’atelier tire combien?') });
+    await page.evaluate(block => board.add(block), homeReply.display[0]);
+    const home = page.frameLocator('iframe[src^="/dad/home-assistant"]');
+    await home.getByRole('heading', { name: 'Maison' }).waitFor();
+    await home.getByText('Allumée', { exact: true }).waitFor();
+    await home.getByText('12,5 W', { exact: true }).waitFor();
+    assert.equal(await home.getByRole('link', { name: 'Caméra du garage' }).getAttribute('href'), 'http://127.0.0.1:1/cameras/direct');
+    const refresh = page.waitForResponse(response => new URL(response.url()).pathname === '/dad/home-assistant');
+    await home.getByRole('button', { name: 'Actualiser' }).click();
+    assert.equal((await refresh).status(), 200);
+    assert.equal(await home.locator('main').evaluate(node => node.ownerDocument.documentElement.scrollWidth <= node.ownerDocument.defaultView.innerWidth), true);
     const screenshot = path.join(reportDir, `guide-${viewport.width}.png`); await page.screenshot({ path: screenshot, fullPage: true });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     results.push({ viewport, observation, destinations: catalog.entries.length, screenshot });
@@ -82,4 +105,8 @@ let server, browser;
   assert.deepEqual(errors, []); assert.ok(requests.every(url => url === 'http://127.0.0.1:1/'));
   fs.writeFileSync(path.join(reportDir, 'browser-result.json'), JSON.stringify({ ok: true, modelCalls: 0, errors, blockedExternalRequests: requests, results }, null, 2));
   console.log(JSON.stringify({ ok: true, modelCalls: 0, viewports: results.length, destinations: catalog.entries.length, reportDir }));
-})().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => { await browser?.close(); await new Promise(resolve => server ? server.close(resolve) : resolve()); });
+})().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
+  await browser?.close();
+  await new Promise(resolve => server ? server.close(resolve) : resolve());
+  if (config) fs.rmSync(config, { recursive: true, force: true });
+});
