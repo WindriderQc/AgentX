@@ -343,6 +343,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   set. Optional v10 reconciliation binds this graph to the verified per-message
   scopes, without global acceptance, restoration, indexing or mailbox effects. It
   creates no memory and establishes no semantic, atomic or mailbox acceptance.
+  A [native review evidence manifest](SECRETARY_REVIEW_MANIFEST.md) consolidates
+  current decision, souvenir, review-restoration and live-mailbox proofs, then
+  applies a final common joined Core/note fence. Optional v11 reconciliation
+  binds the canonical manifest and final local archive checks; native acceptance
+  gaps still block every cleanup candidate and no approval is retained.
   See [linked souvenirs](SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a

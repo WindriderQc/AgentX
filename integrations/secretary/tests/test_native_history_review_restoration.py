@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from native_history_decisions import digest
-from native_history_review_restoration import capture
+from native_history_review_restoration import capture, bind_local
 from native_history_restoration_scope import REVIEW_CONTRACT
 from retention_plan import NATIVE_GAPS
 from evidence_store import save, load
@@ -60,6 +60,14 @@ class ReviewRestorationClientTests(unittest.TestCase):
         self.assertEqual(result['contract'], REVIEW_CONTRACT)
         self.assertNotEqual(result['observationId'], result['initialObservationId'])
         self.assertEqual(result['nativeValidationGaps'], list(NATIVE_GAPS)); self.assertFalse(result['executionAllowed'])
+
+    def test_local_only_binding_refuses_incomplete_or_reordered_selection_before_file_reads(self):
+        for members in ([], self.members[:1], list(reversed(self.members))):
+            with self.subTest(members=len(members)), patch('native_history_review_restoration.inventory') as read:
+                with self.assertRaisesRegex(ValueError, 'complete selected local review graph'):
+                    bind_local(self.saved, self.checks, SimpleNamespace(root=Path('/synthetic')), self.findings,
+                               {'snapshot': {'members': members}})
+                read.assert_not_called()
 
     def test_old_receipt_contract_or_malformed_graph_cannot_answer_new_mode(self):
         mutations = [lambda p: p.update(contract='agentx.history-preservation/v2'),

@@ -114,4 +114,4 @@ async function observe(input, deps) {
     executionAllowed: false, cleanupStatus: 'blocked', nativeValidationGaps: GAPS };
 }
 
-module.exports = { observe, CONTRACT, REVIEW_CONTRACT };
+module.exports = { observe, CONTRACT, REVIEW_CONTRACT, selection };

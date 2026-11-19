@@ -416,6 +416,12 @@ are fenced by a final joined Core/note query after privacy checks. Optional
 v10 reconciliation detects earlier-note changes during later work; all global
 acceptance/approval gaps remain and no note or index is written.
 
+The [native review evidence manifest](SECRETARY_REVIEW_MANIFEST.md) composes
+decision, souvenir, review-restoration and live-mailbox proofs for the same exact
+selection. Its final common Core/note fence follows every producer call. Optional
+v11 reconciliation binds this canonical snapshot to the verified components and
+local archive, while every cleanup candidate and native approval remains blocked.
+
 ## Current live Gmail source in historical reconciliation
 
 `POST /api/secretary/history/decision-state/mailbox` observes one exact selected
