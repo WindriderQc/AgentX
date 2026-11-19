@@ -6,6 +6,7 @@ const scope = require('./personalHistoryMessageScope');
 const contract = require('./personalHistoryCoreRestorationContract');
 const { digest, failure } = require('./personalHistorySourceReviewSources');
 const { GAPS } = require('./personalHistoryPreservationContract');
+const codec = require('./personalHistoryCoreDocuments');
 
 function unavailable() {
   return failure('The selected native Core storage cannot be qualified.', 503, 'HISTORY_CORE_RESTORATION_UNAVAILABLE');
@@ -19,7 +20,11 @@ async function read(sources, notes) {
       const info = await model.db.db.listCollections({ name: model.collection.name }, { nameOnly: false }).next();
       if (!info || info.type !== 'collection' || Object.keys(info.options || {}).length) throw unavailable();
     }
-    const indexes = { history: await Entry.collection.indexes(), souvenirs: await MemoryNote.collection.indexes() };
+    // Index key order is meaningful too. Native raw frames detect a lossy
+    // JavaScript representation (for example integer-looking field names).
+    const indexDocuments = async model => (await model.db.db.collection(model.collection.name)
+      .listIndexes({ raw: true }).toArray()).map(frame => codec.document(frame));
+    const indexes = { history: await indexDocuments(Entry), souvenirs: await indexDocuments(MemoryNote) };
     // Last source query follows index/catalog reads and all privacy awaits.
     const selected = await scope.observeSelection(sources, { souvenirs: notes, fullDocuments: true });
     return { selected, payload: { history: { documents: selected.documents.history, indexes: indexes.history },

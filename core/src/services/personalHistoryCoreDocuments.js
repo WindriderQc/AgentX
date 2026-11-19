@@ -31,4 +31,4 @@ function typedDocuments(buffers) {
   return { history, souvenirs };
 }
 
-module.exports = { packet, typedDocuments };
+module.exports = { packet, document, typedDocuments };

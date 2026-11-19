@@ -124,6 +124,15 @@ const URL = '/api/secretary/history/core-restoration';
     await request(app).post(URL).send(input()).expect(503);
     expect(restore).not.toHaveBeenCalled(); expect(await temporaries()).toEqual([]);
   });
+  test('native index order that JavaScript cannot represent refuses instead of being silently reordered', async () => {
+    const restore = jest.spyOn(engine, 'restore');
+    const source = Entry.db.db.collection(Entry.collection.name);
+    const name = await source.createIndex(new Map([['2', 1], ['1', 1]]), { name: 'synthetic_numeric_order' });
+    try {
+      await request(app).post(URL).send(input()).expect(503);
+      expect(restore).not.toHaveBeenCalled(); expect(await temporaries()).toEqual([]);
+    } finally { await source.dropIndex(name); }
+  });
   test('Python consumes native restoration bound to the already verified global downstream scope', async () => {
     const downstream = (await request(app).post('/api/secretary/history/decision-state/downstream/global').send(input()).expect(200)).body.data;
     const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));

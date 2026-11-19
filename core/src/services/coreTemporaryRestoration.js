@@ -38,11 +38,14 @@ function number(value) {
   return value?._bsontype === 'Int32' ? value.valueOf() : value;
 }
 
-function clone(value) {
-  const bytes = BSON.serialize(value, { checkKeys: false });
+function decode(bytes) {
   const document = BSON.deserialize(bytes, READ);
   if (!BSON.serialize(document).equals(bytes)) throw fail('BSON');
   return document;
+}
+
+function clone(value) {
+  return decode(BSON.serialize(value, { checkKeys: false }));
 }
 
 function normalizeIndex(raw) {
@@ -221,8 +224,8 @@ async function createOwned(db, entries, collation) {
 
 async function readState(db, entry) {
   await assertOwned(db, entry);
-  const documents = await entry.collection.find({}, READ).limit(101).toArray();
-  const indexes = await entry.collection.listIndexes(READ).toArray();
+  const documents = (await entry.collection.find({}, { ...READ, raw: true }).limit(101).toArray()).map(decode);
+  const indexes = (await entry.collection.listIndexes({ ...READ, raw: true }).toArray()).map(decode);
   const result = { data: documentState(documents), index: indexState(indexes) };
   await assertOwned(db, entry);
   return result;

@@ -304,6 +304,20 @@ describe('native private restoration and custody', () => {
     expect(await native().collection(tainted).countDocuments()).toBe(2);
   });
 
+  test('native numeric index reordering cannot hide behind JavaScript key normalization', async () => {
+    const input = payload();
+    input.history.indexes.push({ name: 'numeric_order', key: { 1: 1, 2: 1 } });
+    let tainted;
+    await expect(restore(native(), input, options(async ({ history }) => {
+      tainted = history.collectionName;
+      await history.dropIndex('numeric_order');
+      await history.createIndex(new Map([['2', 1], ['1', 1]]), { name: 'numeric_order' });
+      return SHA;
+    }))).rejects.toMatchObject({ code: 'CORE_RESTORATION_CUSTODY' });
+    expect(await temporaryNames()).toEqual([tainted]);
+    expect(await native().collection(tainted).countDocuments()).toBe(2);
+  });
+
   test('replacement between final precheck and native drop survives the UUID guard', async () => {
     const db = native();
     let target;

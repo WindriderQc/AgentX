@@ -45,7 +45,9 @@ removed where qualified. The trusted DB account is the boundary; adversarial
 same-account isolation is not established. No privilege or instance change is
 requested to bypass an unavailable guard.
 
-Documents and supported indexes are recreated and natively reread. Compound
+Documents and supported indexes are recreated and natively reread from raw BSON.
+Source and restored index definitions must serialize back exactly too; numeric
+field names whose native order JavaScript cannot represent refuse. Compound
 index key order is preserved. Both full-document and logical index-definition
 hashes must match. The existing Core queries, owner filters, projections and
 decision hashes then run against the restored collections through internal
