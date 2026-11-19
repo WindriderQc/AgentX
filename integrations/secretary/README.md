@@ -581,6 +581,34 @@ global acceptance/approval gaps remain. See the
 [current graph restoration contract](../../docs/SECRETARY_REVIEW_PACKET_RESTORATION.md)
 for exact scope, file/page/byte limits and separate real-corpus authorization.
 
+`--native-review-manifest` selects v11 and requires
+`--native-review-restoration-checks <private-file>` before any HTTP call. It
+implies the existing global decision, global downstream, live mailbox and
+current review restoration checks (v4/v6/v7/v8/v9/v10). The cutoff requires an
+explicit timezone and exact milliseconds; finer precision refuses rather than
+changing the selected date boundary. Previous modes keep their behavior.
+
+After all existing Core/archive fences, the client compares two complete fresh
+Core review manifests with the already verified components. Sources, retained
+checks, findings, linked souvenirs, current review graphs and live mailbox pins
+must match exactly; supplied local JSON never establishes native evidence. Each
+observation permits at most 2 MiB of response and 960 seconds without retry;
+the canonical snapshot permits at most 1 MiB. Core composes its native readers
+and ends with a joined Core/note fence. This does not establish an atomic
+provider/archive/Core snapshot or authenticate a person.
+
+After the final manifest HTTP call, only local checks follow: dispositions
+reuse the Core rows already observed, and the bounded current review graph
+must still bind the manifest's retained restoration proof. Changed or
+unavailable evidence writes no success report. The new immutable private report
+retains exact proofs; stdout adds only `nativeReviewManifest` counts. Messages
+with missing/changed live evidence or an internal date at or after the cutoff
+stay held. All four global acceptance gaps remain, every review candidate and
+mailbox effect remains false/zero, and v11 returns exit code 2 even when all
+selected evidence agrees. No approval, cleanup, memory/index restoration or
+storage acceptance follows. Real-corpus work requires separate authorization
+and the heavy-work queue.
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive
