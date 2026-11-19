@@ -84,6 +84,7 @@ function cellView(cell) {
     profile: cell.profile.state, profileDepth: cell.profile.depth, profileNote: cell.profile.reason,
     promptsScored: cell.catalog.covered, promptsTotal: cell.catalog.total, byCategory: cell.catalog.byCategory,
     complete: cell.complete, next: cell.next, request: cell.request || null,
+    ...(cell.parked === true && { parked: true }),
   };
 }
 

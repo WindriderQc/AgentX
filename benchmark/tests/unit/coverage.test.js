@@ -40,6 +40,23 @@ describe('coverage scope', () => {
     ]);
     expect(scope[0].residency).toBe('cpu');
   });
+
+  it('keeps parked pins and routes visible and distinguishes unknown runtime health', async () => {
+    const scope = await resolveScope({
+      hosts,
+      preferences: async () => [
+        { hostUrl: `${GPU}/`, pinnedModels: ['big:27b'],
+          live: { status: 'inactive', observation: { source: 'runtime_topology_parking' } } },
+        { hostUrl: CPU, pinnedModels: ['small:26b'], live: { status: 'unknown' } }
+      ],
+      routing: async () => ({
+        taskModels: { chat: { model: 'other:7b', host: 'primary' } }, hosts: { primary: { url: GPU } }
+      })
+    });
+    expect(scope.map(cell => [cell.model, cell.parked === true])).toEqual([
+      ['small:26b', false], ['big:27b', true], ['other:7b', true]
+    ]);
+  });
 });
 
 describe('coverage scope without a routing table', () => {
@@ -125,7 +142,8 @@ describe('coverage matrix', () => {
       ['primary::big:27b', current('bbb')],
       ['primary::old:7b', { ...current('ccc'), stale: true }]
     ]);
-    const pairs = [scope[0], scope[1], { ...scope[1], model: 'old:7b' }, { ...scope[1], model: 'other:3b' }];
+    const pairs = [scope[0], scope[1], { ...scope[1], parked: true },
+      { ...scope[1], model: 'old:7b' }, { ...scope[1], model: 'other:3b' }];
     const check = jest.fn(async model => (model === 'small:26b'
       ? { ok: false, source: 'profile-gate', reason: 'the served artifact changed' }
       : { ok: false, source: 'request', reason: 'another kind of refusal' }));

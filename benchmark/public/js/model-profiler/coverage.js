@@ -38,7 +38,7 @@
   }
 
   function row(cell) {
-    var next = cell.next === 'profile' ? 'Profile' : cell.next === 'benchmark' ? 'Benchmark' : 'Nothing';
+    var next = cell.parked ? 'Waiting for active topology' : cell.next === 'profile' ? 'Profile' : cell.next === 'benchmark' ? 'Benchmark' : 'Nothing';
     return '<tr>' +
       '<td><strong>' + escapeHtml(cell.hostName) + '</strong><small>' + escapeHtml(String(cell.residency).toUpperCase()) + '</small></td>' +
       '<td><strong>' + escapeHtml(cell.model) + '</strong><small>' + escapeHtml(scopeLabel(cell)) + '</small></td>' +

@@ -41,6 +41,12 @@ describe('coverage tools on the MCP bus', () => {
     await expect(COVERAGE_TOOL_HANDLERS.benchmark_results({ host: 'cpu-a' }, { benchmarkRequest })).rejects.toMatchObject({ code: 'INVALID_ARGUMENTS' });
   });
 
+  it('exposes topology parking alongside retained measurement coverage', async () => {
+    const benchmarkRequest = async () => ({ data: { cells: [{ ...cell, parked: true }] } });
+    const view = await COVERAGE_TOOL_HANDLERS.benchmark_coverage({}, { benchmarkRequest });
+    expect(view.pairs[0]).toMatchObject({ parked: true, promptsScored: 4, next: 'benchmark' });
+  });
+
   it('requests a measurement with a reason, and can withdraw it', async () => {
     const benchmarkRequest = jest.fn(async () => ({ data: { note: 'Queued.' } }));
     await COVERAGE_TOOL_HANDLERS.benchmark_request_measurement({ host: 'cpu-a', model: 'small:26b', reason: ' new artifact ', priority: 3 }, { benchmarkRequest });
