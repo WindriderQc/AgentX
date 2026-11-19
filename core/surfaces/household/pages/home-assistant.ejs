@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Home Assistant · Maison</title>
+  <link rel="stylesheet" href="/assets/household/home-assistant.css">
+</head>
+<body>
+  <main>
+    <h1>Maison</h1>
+    <section aria-labelledby="plug-name">
+      <h2 id="plug-name"><%= plug.label || 'Prise connectée' %></h2>
+      <dl>
+        <div>
+          <dt>État</dt>
+          <dd><%= plug.state ? (plug.state.value === 'on' ? 'Allumée' : 'Éteinte') : 'Indisponible' %></dd>
+          <% if (plug.state) { %><dd class="timestamp"><time datetime="<%= plug.state.reportedAt %>"><%= date.format(new Date(plug.state.reportedAt)) %></time></dd><% } %>
+        </div>
+        <div>
+          <dt>Puissance</dt>
+          <dd><%= plug.power ? number.format(plug.power.watts) + ' W' : 'Indisponible' %></dd>
+          <% if (plug.power) { %><dd class="timestamp"><time datetime="<%= plug.power.reportedAt %>"><%= date.format(new Date(plug.power.reportedAt)) %></time></dd><% } %>
+        </div>
+      </dl>
+      <p class="timestamp">Home Assistant consulté le <time datetime="<%= plug.checkedAt %>"><%= date.format(new Date(plug.checkedAt)) %></time></p>
+      <form method="get">
+        <input type="hidden" name="view" value="screen">
+        <input type="hidden" name="from" value="nestor">
+        <button type="submit">Actualiser</button>
+      </form>
+    </section>
+    <% if (links.length) { %>
+      <nav aria-label="Raccourcis">
+        <% for (const link of links) { %>
+          <a href="<%= link.href %>" target="_blank" rel="noopener noreferrer"><%= link.label %> <span aria-hidden="true">↗</span></a>
+        <% } %>
+      </nav>
+    <% } %>
+  </main>
+</body>
+</html>

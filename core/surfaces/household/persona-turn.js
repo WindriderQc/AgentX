@@ -503,7 +503,7 @@ function createPersonaTurnHandler({
         if (abort.signal.aborted) return;
         // `say_end`: every spoken word is sent, so a voice page says its last clause
         // now instead of waiting for pictures, tool receipts and the record before `done`.
-        if (channels) { ({ display } = channels.end()); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
+        if (channels) { ({ display } = channels.end({ fallbackPage: pack.id === 'personal_operator' && !member && screenPages.homeAssistantPageFor?.(userText) })); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
         if (channels && !abort.signal.aborted) await conversationImages?.complete({ session, pack, backend, display,
           evidence: toolEvidence, turnId: clientTurnId || entry.imageTurnId, signal: abort.signal, member: Boolean(member),
           onShow: block => event('show', { block }) });
