@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = require('node:fs');
 const { createServer } = require('node:http');
 const { once } = require('node:events');
+const { EventEmitter } = require('node:events');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const { test } = require('node:test');
@@ -14,6 +15,7 @@ const { allowedForFamilyDevice } = require('../family-device');
 const { registerHomeAssistantRoutes } = require('../home-assistant-routes');
 const { contract, createReplyChannels } = require('../reply-channels');
 const { createScreenServices, screenPolicy } = require('../screen-services');
+const { createConversationExecutor } = require('../conversation-executor');
 
 const REPORT = '2026-10-12T12:34:56.789123+00:00';
 const SWITCH = 'switch.test_plug';
@@ -32,6 +34,57 @@ function instance(t, baseUrl = 'http://example.invalid') {
   const env = { AGENTX_INSTANCE_ROOT: root, PLANNING_TIME_ZONE: 'America/Toronto' };
   return { env, save, config: configuration(env) };
 }
+
+test('a completed native receipt without a streamed page retains Maison on the same Hermes turn', async t => {
+  const { env } = instance(t);
+  env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED = 'true';
+  const screenPages = createScreenServices({ env });
+  const inputText = 'combien de watts tire la prise de l’atelier?';
+  const sessionId = 'synthetic-owner-session', traceId = 'synthetic-browser-turn', runId = 'run_synthetic';
+  const session = { sessionId, packId: 'personal_operator', scopeId: 'personal', backend: 'hermes',
+    hermesRuntime: { turnId: traceId, runId, requestText: inputText, sessionKey: 'agentx:personal:' + sessionId,
+      state: 'completed', receipt: { run_id: runId, status: 'completed', output: 'La prise tire 17 W.' } } };
+  const turn = { traceId, inputText, outcome: 'pending' };
+  let stored;
+  const run = createConversationExecutor({ env, screenPages, conversations: {
+    getTurn: async () => turn,
+    settleTurn: async record => { stored = record; },
+    recordTurn: async () => assert.fail('Recovery must settle the original turn')
+  } });
+  assert.deepEqual(await run.reconcile(session), { state: 'completed' });
+  assert.equal(stored.traceId, traceId);
+  assert.equal(stored.replyText, 'La prise tire 17 W.');
+  assert.deepEqual(stored.display.map(block => block.body), [PANEL]);
+  assert.equal(stored.written.segments.at(-1).blockId, stored.display[0].id);
+  assert.equal(stored.toolEvidence.runId, runId);
+});
+
+test('closing the browser stream after Hermes starts still saves Maison on the original turn', async t => {
+  const { env } = instance(t);
+  Object.assign(env, { HOUSEHOLD_HERMES_URL: 'http://hermes.example.invalid', HOUSEHOLD_HERMES_TOKEN: 'fixture-only' });
+  const screenPages = createScreenServices({ env });
+  const { harness } = require('./fixtures/persona-journey.cjs');
+  const res = new EventEmitter();
+  Object.assign(res, { writableEnded: false, status: () => res, set: () => res,
+    write: () => { if (res.closed) assert.fail('Cannot write to the disconnected response'); },
+    end: () => assert.fail('No final response can be sent over the closed connection') });
+  let calls = 0;
+  const journey = harness({ packId: 'personal_operator', backend: 'hermes', screenPages, conversationEnv: env,
+    validClientTurnId: () => true, hermesClient: async request => {
+      calls++;
+      res.closed = true;
+      res.emit('close');
+      assert.equal(request.signal.aborted, false);
+      request.onDelta('La prise tire 17 W.');
+      return { text: 'La prise tire 17 W.', metadata: {}, tools: { status: 'observed', receipts: [] } };
+    } });
+  await journey.handle({ params: { sessionId: journey.session.sessionId },
+    body: { text: 'combien de watts tire la prise de l’atelier?', stream: true, channel: 'text', turnId: 'synthetic-browser-turn' } }, res, 'private');
+  assert.equal(calls, 1);
+  assert.equal(journey.turns.length, 1);
+  assert.equal(journey.turns[0].clientTurnId, 'synthetic-browser-turn');
+  assert.deepEqual(journey.turns[0].display.map(block => block.body), [PANEL]);
+});
 
 test('Core only performs the two configured state GETs and keeps both report times', async t => {
   const calls = [];

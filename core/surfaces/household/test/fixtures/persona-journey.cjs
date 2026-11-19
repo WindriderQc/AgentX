@@ -5,7 +5,7 @@ const {createPersonaTurnHandler}=require('../../persona-turn');
 const {createConversationExecutor}=require('../../conversation-executor');
 const packs=require('../../packs'),prompt=require('../../persona-prompt'),records=require('../../persona-records');
 const RUN_ID='resp_33333333-3333-4333-8333-333333333333';
-function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages, validClientTurnId = () => false, conversationEnv = {}, artx = null, ambient = null }) {
+function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages, validClientTurnId = () => false, conversationEnv = {}, artx = null, ambient = null, hermesClient }) {
   const pack = packs.packById(packId);
   const session = { sessionId: 'synthetic-session', status: 'active', packId, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
@@ -28,6 +28,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     }
   };
   const executeConversation = createConversationExecutor({
+    hermesClient,
     inference: { execute: async body => {
       sent.push({ prefix: body.messages[0].content, messages: body.messages, request: body.messages.at(-1).content, taskType: body.taskType, tools: body.tools });
       return { ok: true, body: { response: typeof response === 'function' ? response(body) : response }, metadata: { model: 'synthetic' } };
