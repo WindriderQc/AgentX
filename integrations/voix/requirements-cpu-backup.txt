@@ -1,0 +1,13 @@
+# Optional Linux CPU speech peer; no speech models, GPU wheels or audio devices.
+faster-whisper
+fastapi
+httpx
+certifi
+kokoro-onnx
+numpy
+onnxruntime==1.24.4
+python-multipart
+python-dotenv
+requests
+soundfile
+uvicorn[standard]

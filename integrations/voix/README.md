@@ -129,6 +129,13 @@ is not advertised or dispatched as English. A worker without language evidence
 cannot satisfy language-specific synthesis. Update the relay and worker together;
 voice quality is still qualified separately on the actual devices.
 
+### Optional CPU backup peer
+
+[CPU backup packaging](docs/backup-peer.md) uses this same speech-only service,
+Whisper CPU/int8 and Kokoro ONNX without CUDA or audio-device dependencies.
+It is an optional image, not an enabled failover or on-demand supervisor;
+instance qualification and lifecycle remain tracked in #117.
+
 ### Other existing deployments
 
 Use Python 3.11 or newer on the voice host, from this directory:
@@ -178,6 +185,11 @@ cd integrations/voix
 python -m pip install -r requirements-test.txt
 python -m pytest -q
 ```
+
+The pytest suite ignores the service `.env`, inherited speech settings and saved
+speech preferences. `VOIX_SKIP_DOTENV=1` also disables dotenv loading for an
+explicit standalone check; ordinary service startup still reads its own `.env`
+and gives shell variables precedence.
 
 These tests need no speech model and no GPU: engines are replaced by fakes, so
 they cover the HTTP contract, request validation, the voice catalog, the stream
