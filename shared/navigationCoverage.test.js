@@ -41,7 +41,8 @@ const CONTEXTUAL = {
     '/images/guide': ['core/views/pages/images.ejs', 'href="/images/guide"'],
     '/voice-lab/devices': ['core/public/js/voice/voice-workshop-view.js', 'href="/voice-lab/devices"'],
     '/diskx': ['core/surfaces/data-toolbox/public/app.js', 'href="/diskx?janitor=latest"'],
-    '/diskx/phone': ['core/surfaces/diskx/index.js', 'href="/diskx/phone"']
+    '/diskx/phone': ['core/surfaces/diskx/index.js', 'href="/diskx/phone"'],
+    '/dad/home-assistant': ['core/surfaces/household/screen-services.js', "href: '/dad/home-assistant'"]
   },
   benchmark: {
     '/setup': ['benchmark/public/js/benchmark-v2/experience.js', "'/benchmark/setup'"]

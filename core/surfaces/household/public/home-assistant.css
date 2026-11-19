@@ -1,0 +1,13 @@
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101827; color: #edf2fa; }
+body { margin: 0; }
+main { max-width: 44rem; margin: auto; padding: clamp(.75rem, 3vw, 1.5rem); }
+h1 { margin: 0 0 1rem; font-size: 1.55rem; }
+h2 { margin: 0; font-size: 1.15rem; }
+section { border: 1px solid #405675; background: #182538; border-radius: .75rem; padding: 1rem; }
+dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: 1rem; }
+dt, .timestamp { color: #c1cedf; font-size: .9rem; }
+dd { margin: .3rem 0 0; font-size: 1.1rem; overflow-wrap: anywhere; }
+nav { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: .65rem; }
+a, button { font: inherit; color: #bde6ff; background: #1b3047; border: 1px solid #6285aa; border-radius: .5rem; padding: .65rem .85rem; }
+a:focus-visible, button:focus-visible { outline: 2px solid #bde6ff; outline-offset: 3px; }
+button { cursor: pointer; }
