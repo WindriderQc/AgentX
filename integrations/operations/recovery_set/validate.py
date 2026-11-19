@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import sqlite3
 import subprocess
+from tempfile import TemporaryDirectory
 import time
 import zipfile
 
@@ -62,34 +63,44 @@ def isolated(config, work, name, image, command):
                 raise Uncertain('Restore container release has not been acknowledged') from error
 
 
+def validate_hermes(runtimes, work, artifacts):
+    counts = {'hermesFiles': 0, 'hermesSQLite': 0}
+    # The native launcher bootstraps a dependency environment in HERMES_HOME.
+    # Use system scratch so the backup volume's package cloning behavior does
+    # not decide whether the isolated restore can start.
+    for runtime in runtimes:
+        with TemporaryDirectory(prefix='agentx-hermes-restore-') as scratch:
+            home = Path(scratch) / 'home'
+            home.mkdir(mode=0o700)
+            archive_path = artifacts / (runtime['id'] + '.zip')
+            run(runtime['command'] + ['import', '--force', str(archive_path)], work / (runtime['id'] + '-restore.log'),
+                env=dict(os.environ, HERMES_HOME=str(home)))
+            with zipfile.ZipFile(archive_path) as archive:
+                for member in archive.infolist():
+                    if member.is_dir() or Path(member.filename).name in {'gateway_state.json', 'gateway.pid', 'cron.pid', 'gateway.lock', 'processes.json'}:
+                        continue
+                    destination = home / member.filename
+                    if not destination.is_file():
+                        raise RuntimeError('Hermes restore omitted a durable file')
+                    data = archive.read(member)
+                    if data.startswith(b'SQLite format 3\x00'):
+                        source = Path(scratch) / 'compare.sqlite'
+                        source.write_bytes(data)
+                        if sqlite_rows(source) != sqlite_rows(destination):
+                            raise RuntimeError('Hermes restored SQLite contents differ')
+                        source.unlink()
+                        counts['hermesSQLite'] += 1
+                    elif hashlib.sha256(data).hexdigest() != digest(destination):
+                        raise RuntimeError('Hermes restored file differs')
+                    counts['hermesFiles'] += 1
+    return counts
+
+
 def validate(config, work, artifacts):
+    counts = validate_hermes(config.get('hermes', []), work, artifacts)
+    counts['openclawDurableFiles'] = 0
     restored = work / 'restore-check'
     restored.mkdir(mode=0o700)
-    counts = {'hermesFiles': 0, 'hermesSQLite': 0, 'openclawDurableFiles': 0}
-    for runtime in config.get('hermes', []):
-        home = restored / runtime['id']
-        home.mkdir(mode=0o700)
-        archive_path = artifacts / (runtime['id'] + '.zip')
-        run(runtime['command'] + ['import', '--force', str(archive_path)], work / (runtime['id'] + '-restore.log'),
-            env=dict(os.environ, HERMES_HOME=str(home)))
-        with zipfile.ZipFile(archive_path) as archive:
-            for member in archive.infolist():
-                if member.is_dir() or Path(member.filename).name in {'gateway_state.json', 'gateway.pid', 'cron.pid', 'gateway.lock', 'processes.json'}:
-                    continue
-                destination = home / member.filename
-                if not destination.is_file():
-                    raise RuntimeError('Hermes restore omitted a durable file')
-                data = archive.read(member)
-                if data.startswith(b'SQLite format 3\x00'):
-                    source = restored / 'compare.sqlite'
-                    source.write_bytes(data)
-                    if sqlite_rows(source) != sqlite_rows(destination):
-                        raise RuntimeError('Hermes restored SQLite contents differ')
-                    source.unlink()
-                    counts['hermesSQLite'] += 1
-                elif hashlib.sha256(data).hexdigest() != digest(destination):
-                    raise RuntimeError('Hermes restored file differs')
-                counts['hermesFiles'] += 1
     runtime = config.get('openclaw')
     if runtime:
         target, stage = restored / 'openclaw', work / 'portable-source'
