@@ -179,6 +179,11 @@ python -m pip install -r requirements-test.txt
 python -m pytest -q
 ```
 
+The pytest suite ignores the service `.env`, inherited speech settings and saved
+speech preferences. `VOIX_SKIP_DOTENV=1` also disables dotenv loading for an
+explicit standalone check; ordinary service startup still reads its own `.env`
+and gives shell variables precedence.
+
 These tests need no speech model and no GPU: engines are replaced by fakes, so
 they cover the HTTP contract, request validation, the voice catalog, the stream
 protocol and the cloned-voice worker logic. `node --test tests/voice-audio.test.cjs`

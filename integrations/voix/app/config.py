@@ -11,7 +11,8 @@ from dotenv import load_dotenv
 
 
 # Only this service's own file: never the .env of the repository around it.
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+if not os.getenv("VOIX_SKIP_DOTENV"):
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 TTS_PROVIDERS = ("kokoro", "windows_sapi", "voxcpm")
 
