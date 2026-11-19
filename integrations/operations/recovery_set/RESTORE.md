@@ -44,6 +44,9 @@ Mongo/Qdrant transaction. The recurring job rejects observed critical-source
 changes and rejects any RAG vector/payload mismatch in its isolated restoration.
 Later writes belong to a later generation. Historical coordination records,
 write plans and old queued deliveries are never instructions to replay effects.
+If OpenClaw exits before publishing an archive because its legacy audit lease
+acquisition timed out, the same private staged copy can make up to two more
+attempts. Each attempt retains its own log. Other failures end the capture.
 
 The restoration check starts no agent, model, mail action, calendar action or
 cluster controller. It restores data into empty isolated destinations, then

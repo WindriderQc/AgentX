@@ -6,8 +6,16 @@ from pathlib import Path
 import sqlite3
 import stat
 import tarfile
+import time
 
 from .common import archive_paths, digest, run, save
+
+
+AUDIT_LEASE_TIMEOUT = (
+    b'[openclaw] Reason: timed out waiting for legacy audit migration lease '
+    b'migration.legacy-audit/filesystem-sqlite-boundary'
+)
+AUDIT_LEASE_RETRY_DELAYS = (8, 60)
 
 
 def is_sqlite(path):
@@ -110,13 +118,37 @@ def stage_home(source, stage, artifacts, historical):
     return stage
 
 
+def audit_lease_timed_out(log):
+    # Match the native command's final reason, keeping any other failure visible.
+    with log.open('rb') as stream:
+        stream.seek(-min(log.stat().st_size, 65536), os.SEEK_END)
+        reasons = [line for line in stream.read().splitlines() if line.startswith(b'[openclaw] Reason: ')]
+    return reasons == [AUDIT_LEASE_TIMEOUT]
+
+
+def create_backup(command, stage, work, archive):
+    args = command + ['backup', 'create', '--output', str(archive), '--verify', '--json']
+    env = dict(os.environ, OPENCLAW_STATE_DIR=str(stage), OPENCLAW_CONFIG_PATH=str(stage / 'openclaw.json'))
+    for attempt, retry_delay in enumerate((*AUDIT_LEASE_RETRY_DELAYS, None), start=1):
+        log = work / ('openclaw.log' if attempt == 1 else f'openclaw-retry-{attempt}.log')
+        try:
+            run(args, log, env=env)
+            return
+        except RuntimeError:
+            # The synchronous CLI has exited. Reuse only the private staging
+            # copy after a known pre-publication refusal, under the same capture.
+            if retry_delay is None or archive.exists() or archive.is_symlink() or not audit_lease_timed_out(log):
+                raise
+            time.sleep(retry_delay)
+
+
 def capture(config, work, artifacts):
     stage = stage_home(config['home'], work / 'portable-source', artifacts, config.get('historicalTrees', []))
-    run(config['command'] + ['backup', 'create', '--output', str(artifacts / 'openclaw-portable.tar.gz'), '--verify', '--json'],
-        work / 'openclaw.log', env=dict(os.environ, OPENCLAW_STATE_DIR=str(stage), OPENCLAW_CONFIG_PATH=str(stage / 'openclaw.json')))
+    archive_path = artifacts / 'openclaw-portable.tar.gz'
+    create_backup(config['command'], stage, work, archive_path)
     # Read every member to detect compressed-stream truncation, without restoring
     # any live state or replacing the native verify receipt.
-    with tarfile.open(artifacts / 'openclaw-portable.tar.gz') as archive:
+    with tarfile.open(archive_path) as archive:
         for member in archive:
             if member.isfile():
                 stream = archive.extractfile(member)
