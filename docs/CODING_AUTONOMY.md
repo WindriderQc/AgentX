@@ -596,6 +596,10 @@ the task status and its dependency barriers remain in force, including original
 UNKNOWN outcomes. An identical retry preserves the same annotation. Archived
 qualifications and closed tasks remain accessible through the history toggle;
 the live panel counts waiting work, blocked cards and review separately.
+The delivery inbox excludes qualification dispositions from action cards and
+counters, including previously accepted Product attempts. Direct merge requests
+for these archived records refuse before GitHub or deployment effects. Task and
+attempt history remain unchanged.
 
 `agentx-benchmark-artifact-tests/v1` is a native network-isolated verifier for
 `artifactComparison*`, paired statistics and paired regression tests. Its Jest
