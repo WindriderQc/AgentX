@@ -54,7 +54,8 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
     }
     const presentation = require('./reply-channels');
     const fallbackPage = screenPages?.homeAssistantPageFor?.(state.requestText);
-    const channels = presentation.createReplyChannels({ allowSecrets: true, allowPages: Boolean(fallbackPage), pageCatalog: screenPages });
+    const channels = presentation.createReplyChannels({ allowSecrets: true, allowPages: Boolean(fallbackPage), pageCatalog: screenPages,
+      pageTarget: screenPages?.homeAssistantDeviceForPage?.(fallbackPage) ? fallbackPage : null });
     channels.push(state.receipt.output || '');
     const parsed = channels.end({ fallbackPage }), replyText = presentation.plainReply(parsed.say);
     const receipts = state.toolReceipts || previous?.toolEvidence?.receipts || [];
