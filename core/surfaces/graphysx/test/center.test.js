@@ -73,6 +73,7 @@ const rpc = (server, method, params, id = 1) => request(server).post('/mcp').sen
 test('the page frames the configured Center, loads the relayed host module, and allows that one origin as a frame', async () => {
   const server = app({ policy: "default-src 'self'; script-src 'self'" });
   const page = await request(server).get('/graphysx').expect(200);
+  assert.match(page.text, /<main aria-label="Centre GraphysX">\s*<graphysx-center\b/);
   assert.ok(page.text.includes('<graphysx-center center="https://graphysx.example/" api-base="/api/graphysx">'));
   assert.ok(page.text.includes(`<script type="module" src="${center.HOST_MODULE_ROUTE}">`));
   assert.equal(page.headers['content-security-policy'], "default-src 'self'; script-src 'self'; frame-src 'self' https://graphysx.example");
