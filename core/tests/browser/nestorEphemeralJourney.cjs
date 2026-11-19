@@ -10,6 +10,8 @@ const { generatedPersonas, snapshot } = require('../../surfaces/household/person
 const { privacyForNew, registerPrivacyRoutes } = require('../../surfaces/household/ephemeral-policy');
 const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture', version: 1 }));
 const sessions = new Map(), submissions = [], errors = [];
+const recoveredTurns = new Map(), recoveryReads = [];
+const maisonQuestion = 'combien de watts tire la prise de l’atelier?';
 let browser, server, pendingResponses = 0;
 const output = process.env.EPHEMERAL_BROWSER_OUTPUT_DIR || '/tmp/agentx-nestor-ephemeral-browser';
 fs.mkdirSync(output, { recursive: true });
@@ -31,8 +33,13 @@ fs.mkdirSync(output, { recursive: true });
       });</script></body>`);
     res.type('html').send(html);
   });
-  app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas, runtime: { defaultBackend: 'openclaw', openclawConfigured: true } } }));
+  app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas,
+    runtime: { defaultBackend: 'openclaw', openclawConfigured: true, hermesConfigured: true } } }));
   app.get('/api/voice-personas/private/agents', (_req, res) => res.json({ data: { agents: [{ id: 'main', name: 'Main' }] } }));
+  app.get('/api/voice-personas/private/screen-pages', (_req, res) => res.json({ data: { destinations: [{
+    id: 'home-assistant-panel', label: 'Home Assistant · Maison', href: '/dad/home-assistant', mode: 'frame'
+  }] } }));
+  app.get('/dad/home-assistant', (_req, res) => res.type('html').send('<h1>Maison</h1><p>17 W</p>'));
   app.post('/api/voice-personas/private/sessions', (req, res) => {
     const session = { ...req.body, ...privacyForNew(req.body, req.body.inference?.open), sessionId: randomUUID(), status: 'active', turnCount: 0 };
     sessions.set(session.sessionId, session); res.status(201).json({ data: { session } });
@@ -45,9 +52,23 @@ fs.mkdirSync(output, { recursive: true });
       createSession: async input => { const session = { ...input, turnCount: 0 }; sessions.set(input.sessionId, session); return session; } }
   });
   app.use('/api/voice-personas', privacyRouter);
+  app.get('/api/voice-personas/private/sessions/:id/history', (req, res) => {
+    if (!req.query.turnId) return res.json({ data: { turns: [] } });
+    recoveryReads.push({ id: req.params.id, turnId: req.query.turnId });
+    const turn = recoveredTurns.get(req.query.turnId);
+    return res.status(turn?.sessionId === req.params.id ? 200 : 202).json({ data: { turn: turn?.sessionId === req.params.id ? turn : null } });
+  });
   app.post('/api/voice-personas/private/sessions/:id/turns/text', (req, res) => {
     submissions.push({ sessionId: req.params.id, ...req.body });
     const session = sessions.get(req.params.id); session.turnCount++;
+    if (session.backend === 'hermes' && req.body.text === maisonQuestion) {
+      const { turnId } = req.body, replyText = 'La prise tire 17 W.';
+      const display = [{ id: 'b1', kind: 'page', title: 'Maison', body: 'home-assistant-panel' }];
+      const written = { version: 1, segments: [{ kind: 'text', text: replyText }, { kind: 'display', blockId: 'b1' }] };
+      setTimeout(() => recoveredTurns.set(turnId, { sessionId: session.sessionId, clientTurnId: turnId,
+        traceId: turnId, outcome: 'completed', replyText, written, display }), 250);
+      return res.type('application/x-ndjson').end(JSON.stringify({ type: 'delta', delta: 'La prise' }) + '\n');
+    }
     pendingResponses++;
     res.type('application/x-ndjson');
     res.write(JSON.stringify({ type: 'delta', delta: 'Réponse synthétique.' }) + '\n');
@@ -105,7 +126,21 @@ fs.mkdirSync(output, { recursive: true });
   assert.equal(await page.evaluate(() => window.fixtureError), undefined);
   assert.equal(await page.locator('#conversationTranscript .conversation-message').count(), 0);
   assert.equal(await page.locator('#conversationEphemeral').isChecked(), false);
+  await page.locator('#conversationSettingsToggle').click();
+  await page.locator('#conversationBackend').selectOption('hermes');
+  await page.locator('#conversationSettingsToggle').click();
+  assert.equal(await page.locator('iframe[src^="/dad/home-assistant"]').count(), 0);
+  await page.locator('#conversationMessage').fill(maisonQuestion);
+  await page.locator('#conversationText').evaluate(form => form.requestSubmit());
+  const maison = page.frameLocator('iframe[src^="/dad/home-assistant"]:visible');
+  await maison.getByRole('heading', { name: 'Maison' }).waitFor();
+  assert.equal(await maison.getByText('17 W').isVisible(), true);
+  await page.getByText('La prise tire 17 W.', { exact: true }).waitFor();
+  assert.equal(submissions.length, 3, 'a truncated response recovers the original instead of posting again');
+  assert.ok(recoveryReads.length > 0);
+  assert.ok(recoveryReads.every(r => r.id === submissions[2].sessionId && r.turnId === submissions[2].turnId));
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ browser: 'Chromium', submissions: submissions.length, policy: [true, false], reloadRestoresEphemeral: false, errors, output, liveModelCalls: 0 }));
+  console.log(JSON.stringify({ browser: 'Chromium', submissions: submissions.length, policy: [true, false], reloadRestoresEphemeral: false,
+    maisonRecovered: true, errors, output, liveModelCalls: 0 }));
 })().catch(error => { console.error(error.stack); process.exitCode = 1; })
   .finally(async () => { await browser?.close(); await new Promise(resolve => server ? server.close(resolve) : resolve()); });

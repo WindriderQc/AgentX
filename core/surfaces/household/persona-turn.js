@@ -91,19 +91,21 @@ function createPersonaTurnHandler({
       && validClientTurnId(req.body?.turnId) ? req.body.turnId : '';
     const startedAt = Date.now();
     const abort = new AbortController();
-    // A consulted member works like a detached member turn: nothing is streamed, its reply goes to member-work.
     const entry = { abort, clientTurnId, imageTurnId: crypto.randomUUID(), generated: '', interrupted: false, auditWritten: false, detached: Boolean(consult),
       llmx: isLlmX, profile: req.llmx?.profile || 'personal', opening: isOpening, dispatched: false };
     entry.ready = new Promise(resolve => { entry.markReady = resolve; });
     entry.finished = new Promise(resolve => { entry.finish = resolve; });
     if (consult) consult.cancel = () => { entry.interrupted = true; abort.abort(); };
     else { activePersonaTurns.set(req.params.sessionId, entry); brain.cancel(req.params.sessionId); }
-    // A detached member turn (member-work.js) keeps running without its request.
-    const disconnected = () => { if (!res.writableEnded && !entry.detached) abort.abort(); };
+    const disconnected = () => {
+      if (res.writableEnded || entry.detached) return;
+      entry.streamClosed = true;
+      if (!entry.recoverMaison || !entry.dispatched) abort.abort();
+    };
     res.on?.('close', disconnected);
     const streaming = req.body?.stream === true;
     const event = (type, data) => {
-      if (!streaming || abort.signal.aborted || entry.detached) return;
+      if (!streaming || abort.signal.aborted || entry.detached || entry.streamClosed) return;
       if (!res.headersSent) res.status(200).set({ 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
       res.write(JSON.stringify({ type, ...data }) + '\n');
     };
@@ -112,9 +114,10 @@ function createPersonaTurnHandler({
       if (!session || session.status !== 'active') {
         return fail(res, 404, 'Voice persona session not found', 'VOICE_PERSONA_SESSION_NOT_FOUND');
       }
-      // Policy is part of the immutable server context and frozen for this
-      // submission. A stale tab cannot silently reclassify an existing turn.
       entry.ephemeral = session.ephemeral === true;
+      const maison = access === 'private' && !isLlmX && !consult && session.packId === 'personal_operator' && session.scopeId === 'personal'
+        ? screenPages.homeAssistantPageFor?.(userText) : undefined;
+      entry.recoverMaison = Boolean(maison && streaming && session.backend === 'hermes' && clientTurnId);
       if (isLlmX && !llmx.matchesSession(session, entry.profile)) {
         return fail(res, 404, 'LLMx conversation not found', 'LLMX_SESSION_NOT_FOUND');
       }
@@ -438,7 +441,6 @@ function createPersonaTurnHandler({
             visualsWork.push(visuals.present(block, { family: pack.childSafe, language: replyLanguage, ephemeral: entry.ephemeral })
               .then(shown => { if (!res.writableEnded) event('show', { block: shown }); }));
           } });
-        // The opening warm-up shares this native session: its run ends before the first real turn starts.
         if (!member) {
           warmup?.noteTurn(session);
           // A canonical acknowledgment invokes no native turn and can finish
@@ -501,9 +503,7 @@ function createPersonaTurnHandler({
           parentAttention: safety.requiresParentAttention, soundId: sound?.id || '' };
         if (channels && !channels.received) channels.push(result.text);
         if (abort.signal.aborted) return;
-        // `say_end`: every spoken word is sent, so a voice page says its last clause
-        // now instead of waiting for pictures, tool receipts and the record before `done`.
-        if (channels) { ({ display } = channels.end({ fallbackPage: pack.id === 'personal_operator' && !member && screenPages.homeAssistantPageFor?.(userText) })); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
+        if (channels) { ({ display } = channels.end({ fallbackPage: !member && maison })); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
         if (channels && !abort.signal.aborted) await conversationImages?.complete({ session, pack, backend, display,
           evidence: toolEvidence, turnId: clientTurnId || entry.imageTurnId, signal: abort.signal, member: Boolean(member),
           onShow: block => event('show', { block }) });
@@ -599,6 +599,7 @@ function createPersonaTurnHandler({
           // A turn refused before it started settles here, so the page is not left waiting.
           .finally(() => memberWork.fail(session.sessionId, handoff.turnId, 'The consulted member did not answer.'));
       }
+      if (entry.streamClosed) return;
       const updated = await conversations.getSession({ sessionId: session.sessionId });
       const resultPayload = {
         traceId, speaker: audit.speaker, written: audit.written, speechProjection: audit.speechProjection, ...(consulted ? { consult: consulted } : {}),
@@ -653,7 +654,7 @@ function createPersonaTurnHandler({
         memberWork.fail(req.params.sessionId, clientTurnId, error.message);
         return;
       }
-      if (abort.signal.aborted) return;
+      if (abort.signal.aborted || entry.streamClosed) return;
       logger?.error?.('Household persona turn failed', entry.ephemeral ? { code: 'EPHEMERAL_TURN_FAILED' } : { error: error.message, ...(error.detail ? { detail: error.detail } : {}) });
       if (res.headersSent) { event('error', { message: error.message }); return res.end(); }
       return fail(res, error.statusCode || 502, error.message || 'Voice persona turn failed', error.code || 'VOICE_PERSONA_INFERENCE_FAILED');
@@ -697,5 +698,4 @@ function createPersonaTurnHandler({
   handle.openingInstructions = openingInstructions;
   return handle;
 }
-
 module.exports = { createPersonaTurnHandler, FAMILY_SURFACE_CONTRACT };
