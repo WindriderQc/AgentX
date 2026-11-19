@@ -4,17 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>Home Assistant · Maison</title>
-  <link rel="stylesheet" href="/assets/household/home-assistant.css?v=housex">
-  <% if (layout) { %><script src="/assets/household/housex.js" defer></script><% } %>
+  <title><%= showEcosystem ? 'HouseX · Écosystème' : 'Home Assistant · Maison' %></title>
+  <link rel="stylesheet" href="/assets/household/home-assistant.css?v=housex-ecosystem">
+  <% if (layout) { %><script src="/assets/household/housex.js?v=ecosystem" defer></script><% } %>
+  <% if (infrastructure) { %>
+  <script src="/js/utils/polling-controller-global.js" defer></script>
+  <script src="/assets/household/housex-ecosystem.js" defer></script>
+  <% } %>
 </head>
 <body>
   <main<% if (layout) { %> class="housex"<% } %>>
     <header class="housex-header">
-      <h1><% if (layout) { %><span>House<strong>X</strong></span> <small>Maison</small><% } else { %>Maison<% } %></h1>
-      <% if (layout && ecosystem) { %><nav aria-label="Vues"><button type="button" data-view="home" aria-pressed="true">Maison</button><button type="button" data-view="ecosystem" aria-pressed="false">Écosystème</button></nav><% } %>
+      <h1><% if (layout) { %>House<strong>X</strong><% } else { %>Maison<% } %></h1>
+      <% if (layout && ecosystem) { %><nav aria-label="Vues"><button type="button" data-view="home" aria-pressed="<%= !showEcosystem %>">Maison</button><button type="button" data-view="ecosystem" aria-pressed="<%= showEcosystem %>">Écosystème</button></nav><% } %>
     </header>
-    <div class="housex-home" data-home>
+    <div class="housex-home" data-home <% if (showEcosystem) { %>hidden<% } %>>
     <% if (layout) { %>
       <div class="housex-scene" data-layout="<%= JSON.stringify(layout) %>" data-selected="<%= selected %>" data-state="<%= plug.state?.value || 'unknown' %>">
         <canvas role="img" aria-label="Vue en coupe de la maison"></canvas>
@@ -74,7 +78,11 @@
       </nav>
     <% } %>
     </div>
-    <% if (layout && ecosystem) { %><iframe class="housex-ecosystem" title="Écosystème AgentX" data-ecosystem="<%= ecosystem %>" hidden></iframe><% } %>
+    <% if (infrastructure) { %>
+      <%- include('housex-ecosystem', { infrastructure, ecosystem, showEcosystem, timezone: date.resolvedOptions().timeZone }) %>
+    <% } else if (layout && ecosystem) { %>
+      <iframe class="housex-ecosystem" title="Écosystème AgentX" data-ecosystem-frame="<%= ecosystem %>" hidden></iframe>
+    <% } %>
   </main>
 </body>
 </html>

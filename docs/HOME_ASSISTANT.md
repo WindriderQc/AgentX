@@ -67,3 +67,13 @@ structures 2), `rooms` with a `label` and `position`, and `pins` with an
 or `garage-camera`. If the ecosystem destination is configured, the same
 HouseX page can show the existing ecosystem view. The layout and physical
 reference material belong to the private instance.
+
+To show the live ecosystem in the same HouseX window, add
+`config/housex-ecosystem.json` with `version: 1`, a `hub` with its live
+service `id` and display `label`, and two to four `towers` with a live
+host `id`, `label`, hex `color`, and `gpus` (one to three visible slots).
+The IDs come from the existing [ecosystem observations](ECOSYSTEM_LIVE.md)
+configuration. The lines represent architecture. The LEDs show the latest
+dated readings from the existing owner endpoint and go neutral on expiry.
+In personal Nestor, “HouseX Écosystème” opens this layer. The complete
+ecosystem map also remains available from the layer.
