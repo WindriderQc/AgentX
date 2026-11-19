@@ -23,7 +23,7 @@ import objective_grounding as grounding
 import objective_fact_policy as fact_policy
 import objective_claim_proofs as claim_proofs
 import objective_date_evidence as date_evidence
-from objective_grounding import SCHEMA
+from objective_grounding import CURRENT_SCHEMA as SCHEMA
 from objective_sources import inventory, materialize, pages, retain_header_scope
 import objective_rtf_scope as rtf_scope
 import objective_equivalence as equivalent
@@ -45,8 +45,10 @@ UUID = re.compile(r"[a-f0-9-]{36}")
 
 def config_at(file):
     value = load(file, {})
-    if set(value) - {"id", "version", "kind", "ownerAliases", "instructions", "selection", "pageChars", "overlap", "thinking", "inputScope"}:
+    if set(value) - {"id", "version", "kind", "ownerAliases", "instructions", "selection", "pageChars", "overlap", "thinking", "inputScope", "groundingContract"}:
         raise ValueError("Unknown objective configuration field")
+    if value.get('groundingContract', grounding.CURRENT_CONTRACT) not in (grounding.CONTRACT, grounding.CURRENT_CONTRACT):
+        raise ValueError('Unsupported requested grounding contract')
     if "thinking" in value and type(value["thinking"]) is not bool:
         raise ValueError("Objective thinking must be an explicit boolean")
     if value.get("kind") != "life-timeline" or any(not KEY.fullmatch(str(value.get(k, ""))) for k in ("id", "version")):
@@ -84,11 +86,16 @@ def prepare(root, config, *, create=True):
     scope = config.get('inputScope')
     if previous is not None:
         input_scope.contract_for(previous)
-    system = attribution.system(INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + config["instructions"], contract)
+    template = grounding.schema_template(previous) if previous is not None else (
+        grounding.SCHEMA if config.get('groundingContract') == grounding.CONTRACT else SCHEMA)
+    if template is None:
+        raise ValueError('Unsupported retained objective schema')
+    grounded = grounding.contract_for({'responseSchemaSha256': hashed(template)})
+    system = attribution.system(grounding.instructions(INSTRUCTIONS, grounded) + "\n\nPrivate owner instructions:\n" + config["instructions"], contract)
     system = actor_context.system(system, actors)
     if scope is not None:
         system += '\n\n' + input_scope.POLICY
-    identity = {"contract": CONTRACT, "config": config, "system": system, "schema": SCHEMA}
+    identity = {"contract": CONTRACT, "config": config, "system": system, "schema": template}
     if contract:
         identity["attributionContract"] = contract
     if actors:
@@ -105,7 +112,7 @@ def prepare(root, config, *, create=True):
         raise ValueError("This objective has not been planned; status never creates a campaign")
     manifest = {"schema": CONTRACT, "createdAt": now(), "objectiveSha256": objective_sha,
                 "config": config, "sources": inventory(root, config["selection"]),
-                "systemSha256": hashed(system), "responseSchemaSha256": hashed(SCHEMA)}
+                "systemSha256": hashed(system), "responseSchemaSha256": hashed(template)}
     manifest["attributionContract"] = contract
     if actors:
         manifest['actorReadingContract'] = actors
@@ -136,7 +143,7 @@ def read_receipt(file, manifest):
         raise ValueError("Objective receipt integrity does not match its saved identity")
     validate(row["result"], record["body"])
     grounded = grounding.contract_for(manifest)
-    if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT) and any(record.get("nativeRef", {}).get(key) != identity.get(key)
+    if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT, grounding.CURRENT_CONTRACT) and any(record.get("nativeRef", {}).get(key) != identity.get(key)
                                              for key in ("offset", "end")):
         raise ValueError("Source scope differs from the retained page identity")
     if grounded and "resultProcessing" not in row:
@@ -242,7 +249,7 @@ def coverage(objective, manifest, *, include_annual=False):
                        "Repeated MIME parts, RFC Message-IDs and quoted chains are not independent testimony."]}
 
 
-def _source_record(page):
+def _source_record(page, manifest=None):
     source = page["source"]
     sid = "objective-" + page["pageId"]
     native = {"system": source["system"], "messageId": source["id"], "threadId": source["threadId"],
@@ -251,6 +258,10 @@ def _source_record(page):
               "readerContract": CONTRACT, "representation": page["representation"],
               "offset": page["offset"], "end": page["end"], "totalChars": page["totalChars"]}
     attribution.record_context(page, native)
+    if manifest and grounding.contract_for(manifest) == grounding.CURRENT_CONTRACT:
+        native['primarySource'] = {'identity': {k: native[k] for k in ('system', 'messageId', 'threadId', 'sourceSha256')},
+            'headers': source['headers'], 'attachmentMetadata': source.get('attachmentMetadata', [])
+            if 'inputContext' in page and page['representation']['representation'] == 'mime-text' else []}
     return {"id": sid, "kind": "mail", "body": page["content"],
             "bodySha256": hashlib.sha256(page["content"].encode()).hexdigest(), "subject": source["headers"].get("subject", ""),
             "mailDate": source.get("mailDate"), "nativeRef": native,
@@ -330,7 +341,8 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                   "newlyReviewedPages": 0, "inferenceCalls": 0, "elapsedSeconds": 0, **blocked_counts(held)}
         durable(objective / "status.json", status)
         return {**status, "coverage": coverage(objective, manifest)}
-    system = attribution.system(INSTRUCTIONS + "\n\nPrivate owner instructions:\n" + manifest["config"]["instructions"],
+    grounded = grounding.contract_for(manifest)
+    system = attribution.system(grounding.instructions(INSTRUCTIONS, grounded) + "\n\nPrivate owner instructions:\n" + manifest["config"]["instructions"],
                                 attribution.contract_for(manifest))
     system = actor_context.system(system, actor_context.contract_for(manifest))
     if scope is not None:
@@ -402,7 +414,7 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                 # while the canonical receipt remains the actual model read.
                 alias_unit = {**alias_page["representation"], "content": alias_page["content"]}
                 attribution.bind_pages(root, objective, manifest, current, [alias_unit], [alias_page])
-                return _source_record(alias_page)
+                return _source_record(alias_page, manifest)
             durable(plan_file, {"source": current, "pageIds": [p["pageId"] for p in plan], "gaps": gaps,
                                 "representations": [{k: v for k, v in u.items() if k != "content"} for u in units],
                                 "rtfReaderProfile": rtf_scope.materialized_profile(units, gaps)})
@@ -482,8 +494,17 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     if grounded:
                         payload["citationCatalog"] = grounding.catalog(page["content"])
                         payload["groundingContract"] = grounded
-                        evidence_context = grounding.extraction_context(_source_record(page), manifest)
+                        evidence_context = grounding.extraction_context(_source_record(page, manifest), manifest)
                         client.schema = grounding.schema_for(page["content"], grounded, evidence_context)
+                        if grounded == grounding.CURRENT_CONTRACT:
+                            s = grounding.source_selection
+                            payload.update(selectionCues=s.catalog(payload['citationCatalog'], evidence_context),
+                                omissionReasonCatalog=s.omission_catalog(payload['citationCatalog'], evidence_context),
+                                actorReadingCatalog=grounding.work_actors.actors(payload['citationCatalog'], evidence_context),
+                                attachmentMetadataCatalog=s.documents(evidence_context),
+                                dateCatalog=date_evidence.catalog(payload['citationCatalog'], evidence_context) + s.partial_dates(payload['citationCatalog']),
+                                factTypeCatalog=claim_proofs.fact_catalog(payload['citationCatalog']),
+                                uncertaintyCatalog=grounding.source_observations.qualification_catalog(payload['citationCatalog']))
                         if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):
                             payload["selectionCues"] = fact_policy.career_cues(payload["citationCatalog"])
                             if grounded in (grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):
@@ -514,9 +535,9 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                     raw = extract_once(fence, client, system, prompt, page)
                     inferences += not saved
                     normalized, changes = normalize_representation(raw, page["content"], grounded,
-                        grounding.extraction_context(_source_record(page), manifest))
+                        grounding.extraction_context(_source_record(page, manifest), manifest))
                     validate(normalized, page["content"])
-                    record = _source_record(page)
+                    record = _source_record(page, manifest)
                     receipt = {
                         "schema": CONTRACT, "objectiveSha256": manifest["objectiveSha256"], "pageId": page["pageId"], "identity": page["identity"],
                         "at": now(), "sourceRecord": record, "result": normalized, "queueRequestId": queue_id, "dispatchId": dispatch_id}
