@@ -12,6 +12,7 @@ const downstreamScope = require('../../src/services/personalHistoryDownstreamSco
 const mailboxScope = require('../../src/services/personalHistoryMailboxScope');
 const globalDecisions = require('../../src/services/personalHistoryGlobalDecisions');
 const globalDownstream = require('../../src/services/personalHistoryGlobalDownstream');
+const reviewManifest = require('../../src/services/personalHistoryReviewManifest');
 
 function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' },
   preservationDeps = { audience: 'owner' }, decisionStateDeps = { audience: 'owner' }, messageScopeDeps = { audience: 'owner' },
@@ -37,6 +38,9 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDe
     () => mailboxScope.discover(req.body, mailboxScopeDeps)));
   router.post('/history/preservation-scope', (req, res) => sourceResponse(res,
     () => restorationScope.observe(req.body, preservationDeps)));
+  router.post('/history/review-manifest', (req, res) => sourceResponse(res,
+    () => reviewManifest.discover(req.body, { audience: findingScopeDeps.audience,
+      findings: findingScopeDeps, preservation: preservationDeps, mailbox: mailboxScopeDeps })));
   router.get('/history/:id/decision-state', (req, res) => sourceResponse(res,
     () => decisionState.get(req.params.id, req.query, decisionStateDeps)));
   router.post('/history/:id/decision-state/check', (req, res) => sourceResponse(res,
