@@ -129,6 +129,13 @@ is not advertised or dispatched as English. A worker without language evidence
 cannot satisfy language-specific synthesis. Update the relay and worker together;
 voice quality is still qualified separately on the actual devices.
 
+### Optional CPU backup peer
+
+[CPU backup packaging](docs/backup-peer.md) uses this same speech-only service,
+Whisper CPU/int8 and Kokoro ONNX without CUDA or audio-device dependencies.
+It is an optional image, not an enabled failover or on-demand supervisor;
+instance qualification and lifecycle remain tracked in #117.
+
 ### Other existing deployments
 
 Use Python 3.11 or newer on the voice host, from this directory:

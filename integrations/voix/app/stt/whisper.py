@@ -80,7 +80,8 @@ def _build_model(device: str, compute_type: str):
         from faster_whisper import WhisperModel
     except ImportError as exc:  # pragma: no cover - depends on runtime packages
         raise RuntimeError("faster-whisper is not installed.") from exc
-    return WhisperModel(settings.whisper_model, device=device, compute_type=compute_type)
+    options = {"cpu_threads": settings.whisper_cpu_threads} if device == "cpu" else {}
+    return WhisperModel(settings.whisper_model, device=device, compute_type=compute_type, **options)
 
 
 def _get_model(device: str, compute_type: str):

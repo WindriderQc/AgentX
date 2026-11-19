@@ -74,8 +74,12 @@ class Settings:
     # Matches the browser proxy's existing default request budget. This bounds
     # waiting only; it does not interrupt an already running native decoder.
     whisper_queue_timeout_seconds: float = 120.0
+    # CPU decoding only; zero preserves faster-whisper's thread default.
+    whisper_cpu_threads: int = 0
 
     def validate(self) -> None:
+        if self.whisper_cpu_threads < 0:
+            raise ValueError("WHISPER_CPU_THREADS must be non-negative")
         if not math.isfinite(self.whisper_queue_timeout_seconds) or self.whisper_queue_timeout_seconds <= 0:
             raise ValueError("WHISPER_QUEUE_TIMEOUT_SECONDS must be finite and positive")
         if not 0 < self.whisper_vad_threshold < 1:
@@ -104,6 +108,7 @@ def load_settings() -> Settings:
         whisper_model=os.getenv("WHISPER_MODEL", "large-v3-turbo"),
         whisper_device=os.getenv("WHISPER_DEVICE", "cuda"),
         whisper_compute_type=os.getenv("WHISPER_COMPUTE_TYPE", "float16"),
+        whisper_cpu_threads=_get_int("WHISPER_CPU_THREADS", 0),
         whisper_queue_timeout_seconds=_get_float("WHISPER_QUEUE_TIMEOUT_SECONDS", 120.0),
         whisper_cpu_fallback=_get_bool("WHISPER_CPU_FALLBACK", True),
         whisper_vad_threshold=_get_float("WHISPER_VAD_THRESHOLD", 0.85),

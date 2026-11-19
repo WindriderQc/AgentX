@@ -323,3 +323,23 @@ def test_recognition_preserves_exact_segment_timestamps():
     result = _run(Model(), "fixture.wav", "fr")
     assert result.segments == [{"start": .125, "end": 1.75, "text": "Bonjour."}]
     assert result.duration == 2
+
+
+@pytest.mark.parametrize("device,threads", [("cpu", 0), ("cpu", 4), ("cuda", 0), ("cuda", 4)])
+def test_cpu_thread_budget_is_only_forwarded_to_cpu_models(monkeypatch, device, threads):
+    from dataclasses import replace
+    import sys
+
+    calls = []
+    fake_model = object()
+    def build(model, **options):
+        calls.append((model, options))
+        return fake_model
+    monkeypatch.setitem(sys.modules, "faster_whisper", SimpleNamespace(WhisperModel=build))
+    monkeypatch.setattr(whisper, "settings", replace(whisper.settings, whisper_cpu_threads=threads))
+    compute = "int8" if device == "cpu" else "float16"
+    assert whisper._build_model(device, compute) is fake_model
+    expected = {"device": device, "compute_type": compute}
+    if device == "cpu":
+        expected["cpu_threads"] = threads
+    assert calls == [(whisper.settings.whisper_model, expected)]

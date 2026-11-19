@@ -1,0 +1,9 @@
+# Only executable speech source and this dependency set enter the image.
+**
+!requirements-cpu-backup.txt
+!app/
+!app/**/
+!app/**/*.py
+!app/web/voice-audio.js
+!agentx_voix_controls.py
+!voice_control.py

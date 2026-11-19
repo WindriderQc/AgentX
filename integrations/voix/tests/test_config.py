@@ -39,3 +39,15 @@ def test_dotenv_is_optional_and_shell_settings_keep_precedence(
     ], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == expected
+
+
+@pytest.mark.parametrize("value", ["0", "4"])
+def test_cpu_thread_budget_accepts_zero_and_explicit_limits(monkeypatch, value):
+    monkeypatch.setenv("WHISPER_CPU_THREADS", value)
+    assert config.load_settings().whisper_cpu_threads == int(value)
+
+
+def test_negative_cpu_thread_budget_is_rejected(monkeypatch):
+    monkeypatch.setenv("WHISPER_CPU_THREADS", "-1")
+    with pytest.raises(ValueError, match="WHISPER_CPU_THREADS"):
+        config.load_settings()

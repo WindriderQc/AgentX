@@ -76,6 +76,7 @@ def static_settings() -> dict:
         "whisper_model": settings.whisper_model,
         "whisper_device": settings.whisper_device,
         "whisper_compute_type": settings.whisper_compute_type,
+        "whisper_cpu_threads": settings.whisper_cpu_threads,
         "whisper_vad_threshold": settings.whisper_vad_threshold,
         "whisper_queue_timeout_seconds": settings.whisper_queue_timeout_seconds,
         "whisper_hotwords": settings.whisper_hotwords,

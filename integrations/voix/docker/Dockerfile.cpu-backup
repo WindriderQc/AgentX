@@ -1,0 +1,48 @@
+# Optional CPU speech peer. Build from integrations/voix; see docs/backup-peer.md.
+FROM python:3.11-slim
+
+ARG INSTALL_SPOKEN_CONTROLS=false
+ARG VOSK_VERSION=0.3.45
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY requirements-cpu-backup.txt ./
+RUN pip install -r requirements-cpu-backup.txt \
+    && if [ "$INSTALL_SPOKEN_CONTROLS" = "true" ]; then pip install "vosk==${VOSK_VERSION}"; fi
+
+COPY app ./app
+COPY agentx_voix_controls.py voice_control.py ./
+
+RUN useradd --create-home --uid 10001 voix \
+    && mkdir -p /models /app/cache \
+    && chown -R voix:voix /models /app/cache
+USER voix
+
+ENV VOIX_APP_MODULE=app.service:app \
+    VOIX_PORT=8091 \
+    VOIX_STARTUP_WARMUP=true \
+    VOIX_PREFERENCES_PATH=/models/voix/voice-preferences.json \
+    WHISPER_DEVICE=cpu \
+    WHISPER_COMPUTE_TYPE=int8 \
+    WHISPER_CPU_THREADS=0 \
+    TTS_PROVIDER=kokoro \
+    ONNX_PROVIDER=CPUExecutionProvider \
+    KOKORO_MODEL_PATH=/models/kokoro/kokoro-v1.0.onnx \
+    KOKORO_VOICES_PATH=/models/kokoro/voices-v1.0.bin \
+    HF_HOME=/models/huggingface
+
+VOLUME ["/models"]
+EXPOSE 8091
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ['VOIX_PORT'], timeout=4)"
+
+CMD ["sh", "-c", "exec uvicorn \"$VOIX_APP_MODULE\" --host 0.0.0.0 --port \"$VOIX_PORT\""]
