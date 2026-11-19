@@ -4,6 +4,9 @@ jest.mock('../../src/services/souvenirRecallSync', () => ({ scheduleSouvenirReca
 const express = require('express');
 const request = require('supertest');
 const fs = require('node:fs/promises');
+const path = require('node:path');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const { randomUUID } = require('node:crypto');
 const Entry = require('../../models/PersonalHistoryEntry');
 const MemoryNote = require('../../models/MemoryNote');
@@ -57,7 +60,7 @@ const URL = '/api/secretary/history/review-manifest';
     expect(value.snapshot.coverage.blockers).toEqual(expect.arrayContaining(GAPS));
     expect(value.snapshot.coverage.messages[0].candidateForOwnerReview).toBe(false);
     expect(fixture.mailboxCalls).toHaveLength(2); expect(await fs.readdir(fixture.temporaryRoot)).toEqual([]);
-    expect(JSON.stringify(value)).not.toMatch(/Synthetic private|synthetic@example|history-preservation-/);
+    expect(JSON.stringify(value)).not.toMatch(/Synthetic|synthetic@example|history-preservation-/);
     expect(await MemoryNote.findById(noteId).lean()).toEqual(before);
     expect((await observe({ expected: value.fingerprint })).status).toBe('observed_match');
   });
@@ -142,5 +145,24 @@ const URL = '/api/secretary/history/review-manifest';
       await request(app).post(URL).send(input(extra)).expect(400);
     }
     expect(fixture.calls).toHaveLength(before); expect(fixture.mailboxCalls).toEqual([]);
+  });
+  test('actual Python consumer -> composed Core -> all native readers -> final local graph binding', async () => {
+    const value = await observe(), snapshot = value.snapshot;
+    const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
+    try {
+      const program = ['import sys,json', 'from pathlib import Path', 'from datetime import datetime', 'from types import SimpleNamespace',
+        'sys.path.insert(0,sys.argv[1])', 'from native_history_review_manifest import capture',
+        'from native_history_review_restoration import bind_local',
+        'payload=json.loads(sys.argv[3]);s=payload["snapshot"];checks=payload["checks"];saved=s["sources"]',
+        'value=capture(sys.argv[2],saved,checks,datetime.fromisoformat(s["before"].replace("Z","+00:00")),s["decisions"],s["downstream"],s["restoration"],s["mailbox"])',
+        'bind_local(saved,checks,SimpleNamespace(root=Path(sys.argv[4])),s["decisions"]["snapshot"]["findings"],value["snapshot"]["restoration"])',
+        'print(json.dumps({"status":value["status"],"fingerprint":value["fingerprint"],"counts":value["snapshot"]["coverage"]["counts"]}))'].join('\n');
+      const result = await promisify(execFile)(process.env.AGENTX_PYTHON_BIN || 'python3', ['-c', program,
+        path.resolve(__dirname, '../../../integrations/secretary'), `http://127.0.0.1:${server.address().port}`,
+        JSON.stringify({ snapshot, checks }), fixture.roots.primary], { timeout: 60000, maxBuffer: 4096 });
+      expect(JSON.parse(result.stdout)).toMatchObject({ status: 'observed_match', fingerprint: value.fingerprint,
+        counts: { messages: 1, entries: 1, observedNotes: 1, livePresent: 1, candidatesForOwnerReview: 0 } });
+      expect(fixture.mailboxCalls).toHaveLength(6);
+    } finally { await new Promise(resolve => server.close(resolve)); }
   });
 });

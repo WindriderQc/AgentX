@@ -23,7 +23,13 @@ def bind_local(saved, checks, archive, findings, observed):
     scope through the native restoration or review-manifest capture first.
     """
     by_message = selected_findings(saved, checks, findings)
-    for member in observed['snapshot']['members']:
+    selected = selection(saved, checks)
+    members = observed.get('snapshot', {}).get('members')
+    if not isinstance(members, list) or len(members) != len(selected) \
+            or any(not isinstance(member, dict) or any(member.get(key) != value for key, value in check.items())
+                   for member, check in zip(members, selected)):
+        raise ValueError('The complete selected local review graph binding is unavailable')
+    for member in members:
         ref = member['source']; finding = by_message[ref['messageId']]
         try:
             local = inventory(archive.root, ref['messageId'], ref['threadId'], ref['sourceSha256'], str(uuid.uuid4()))
