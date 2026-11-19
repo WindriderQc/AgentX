@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import uuid
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recovery_set import cli
@@ -19,6 +20,7 @@ from recovery_set.common import digest, save, seal, verify
 from recovery_set.openclaw import stage_home
 from recovery_set.queue import Queue, Uncertain
 from recovery_set.replica import REMOTE, local_retention, replicate
+from recovery_set.validate import validate_hermes
 import importlib
 capture_module = importlib.import_module('recovery_set.capture')
 from host_jobs import handlers, transport
@@ -33,6 +35,28 @@ class RecoveryTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_hermes_import_uses_ephemeral_home_outside_backup_tree(self):
+        work = self.root / 'backup'
+        work.mkdir()
+        with zipfile.ZipFile(work / 'fixture.zip', 'w') as archive:
+            archive.writestr('SOUL.md', 'synthetic fixture')
+            archive.writestr('gateway.pid', '12345')
+        runtimes = [{'id': 'fixture', 'command': ['hermes']}]
+        homes = []
+
+        def run_import(command, log, env):
+            home = Path(env['HERMES_HOME'])
+            self.assertNotIn(work, home.parents)
+            self.assertEqual(list(home.iterdir()), [])
+            self.assertEqual(log, work / 'fixture-restore.log')
+            homes.append(home)
+            (home / 'SOUL.md').write_text('synthetic fixture')
+
+        with patch('recovery_set.validate.run', side_effect=run_import):
+            self.assertEqual(validate_hermes(runtimes, work, work), {'hermesFiles': 1, 'hermesSQLite': 0})
+        self.assertEqual(len(homes), 1)
+        self.assertFalse(homes[0].parent.exists())
 
     def generation(self, root=None, identifier=None, stamp='2026-01-01T00:00:00+00:00'):
         identifier = identifier or str(uuid.uuid4())
