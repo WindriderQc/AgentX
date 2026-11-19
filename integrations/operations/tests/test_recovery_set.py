@@ -17,7 +17,7 @@ import zipfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from recovery_set import cli
 from recovery_set.common import digest, save, seal, verify
-from recovery_set.openclaw import stage_home
+from recovery_set.openclaw import AUDIT_LEASE_TIMEOUT, create_backup, stage_home
 from recovery_set.queue import Queue, Uncertain
 from recovery_set.replica import REMOTE, local_retention, replicate
 from recovery_set.validate import validate_hermes
@@ -35,6 +35,44 @@ class RecoveryTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_openclaw_retries_only_the_original_staged_lease_timeout(self):
+        stage = self.root / 'portable-source'
+        archive = self.root / 'openclaw-portable.tar.gz'
+        calls = []
+
+        def native(args, log, env):
+            calls.append((args, log.name, env['OPENCLAW_STATE_DIR']))
+            if len(calls) < 3:
+                log.write_bytes(b'native diagnostic\n' + AUDIT_LEASE_TIMEOUT + b'\n[openclaw] Help: openclaw --help\n')
+                raise RuntimeError('native failure')
+            archive.touch()
+
+        with patch('recovery_set.openclaw.run', side_effect=native), patch('recovery_set.openclaw.time.sleep') as pause:
+            create_backup(['openclaw'], stage, self.root, archive)
+        self.assertEqual([row[1] for row in calls], ['openclaw.log', 'openclaw-retry-2.log', 'openclaw-retry-3.log'])
+        self.assertTrue(all(args == calls[0][0] and source == str(stage) for args, _, source in calls))
+        self.assertEqual([call.args for call in pause.call_args_list], [(8,), (60,)])
+        self.assertTrue(archive.is_file())
+
+    def test_openclaw_preserves_other_failures_and_stops_at_three_attempts(self):
+        stage = self.root / 'portable-source'
+        for reason, published, attempts in ((b'[openclaw] Reason: another failure', False, 1),
+                                             (AUDIT_LEASE_TIMEOUT, True, 1), (AUDIT_LEASE_TIMEOUT, False, 3)):
+            with self.subTest(reason=reason, published=published):
+                archive = self.root / 'openclaw-portable.tar.gz'
+                archive.unlink(missing_ok=True)
+
+                def native(_args, log, env):
+                    log.write_bytes(reason + b'\n')
+                    if published:
+                        archive.touch()
+                    raise RuntimeError('native failure')
+
+                with patch('recovery_set.openclaw.run', side_effect=native) as run, patch('recovery_set.openclaw.time.sleep'):
+                    with self.assertRaisesRegex(RuntimeError, 'native failure'):
+                        create_backup(['openclaw'], stage, self.root, archive)
+                    self.assertEqual(run.call_count, attempts)
 
     def test_hermes_import_uses_ephemeral_home_outside_backup_tree(self):
         work = self.root / 'backup'
