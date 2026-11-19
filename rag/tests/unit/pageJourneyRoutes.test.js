@@ -50,5 +50,6 @@ describe('RAG page journey identities', () => {
 
     expect(tag).toContain('is-current');
     expect(tag).toContain('aria-current="page"');
+    expect(response.text).toMatch(/<main\b[^>]*id="main-content"[^>]*>\s*<h1/);
   });
 });

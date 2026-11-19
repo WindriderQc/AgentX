@@ -107,9 +107,11 @@ function renderPage({ center }) {
 <script defer src="/assets/graphysx/center-page.js"></script>
 </head>
 <body>
+<main aria-label="Centre GraphysX">
 <graphysx-center center="${escapeAttribute(center)}" api-base="${API_BASE}"></graphysx-center>
 <p id="graphysx-status" role="status" aria-live="polite">Chargement du Centre GraphysX…</p>
 <noscript><p>Le Centre GraphysX a besoin de JavaScript.</p></noscript>
+</main>
 </body>
 </html>
 `;
@@ -118,7 +120,7 @@ function renderPage({ center }) {
 function errorPage(message) {
   return `<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><title>GraphysX</title><link rel="stylesheet" href="/assets/graphysx/center.css"></head>
-<body><p id="graphysx-status" class="error" role="alert">${escapeAttribute(message)}</p></body></html>
+<body><main aria-label="Centre GraphysX"><p id="graphysx-status" class="error" role="alert">${escapeAttribute(message)}</p></main></body></html>
 `;
 }
 
