@@ -13,7 +13,7 @@ async function livingSourceContext({ pack, session, familyPackId, isLlmX = false
     : pack?.id === 'personal_operator' && !pack.childSafe && session?.scopeId === 'personal' ? 'owner' : null;
   if (!audience) return '';
   const service = sources || require('../../src/services/livingSourceService');
-  const fullCatalogue = service.forAudience(audience, { ambient }).catalogue();
+  const fullCatalogue = service.forAudience(audience, { ambient, catalogueOwnerSections: false }).catalogue();
   // Keep the Family prompt's existing compact projection. Detailed reading
   // guidance remains in source reads; it must not crowd out the relay budget.
   const { reading, ...compactCatalogue } = fullCatalogue;

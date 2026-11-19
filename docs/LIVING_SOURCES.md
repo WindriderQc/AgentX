@@ -10,7 +10,7 @@ launch its producer, change its schedule, send mail or import a statement.
 
 | Source | Personal | Family | Native authority and coverage |
 |---|---|---|---|
-| weather | yes | yes | The existing Data/ambient current-conditions contract, without coordinates. Not forecasts. |
+| weather | yes | yes | Default: existing Data/ambient current conditions, without coordinates. Owner-only explicit sections: forecasts, hourly and warnings from the same Data producer. |
 | agentx | yes | yes | Core, Benchmark and RAG API reachability through the reports client. Not private operational reports, tasks, logs, inventories or functional acceptance. |
 | secretary | yes | no | Core mail journal and email actions through team_brief. Not the complete live mailbox. |
 | comptable | yes | no | Core finance balances, months, alerts and statement review through team_brief. |
@@ -140,3 +140,62 @@ and conversation/guardian continuity. Queue model-based acceptance through the
 existing heavy-work entrance. Keep private receipts outside public Git.
 
 The Family inference prompt keeps its existing compact catalogue projection so detailed reading guidance cannot displace the relay budget. Owner catalogue and explicit source reads retain the full guidance; audience boundaries and tool permissions are unchanged.
+
+## Explicit owner weather sections
+
+Owner source_read accepts source=weather with section=forecasts, hourly or
+warnings. Omit section for the unchanged current-conditions read. Household
+rejects these sections, even when its handler is called directly. No forecast
+results are added to automatic context or Family ambient. The owner catalogue
+lists the optional sections; listing a capability is not a successful tool call
+or evidence that Nestor used it.
+
+Reads reuse Data's configured Environment Canada endpoint and native cache.
+There is no new producer, cache, scheduler, store or arbitrary URL/location
+argument. Only allowlisted fields leave Core; configured coordinates, distance,
+raw payloads and producer URLs are not forwarded. Station identity remains.
+
+Each read returns one bounded section: at most 16 periods, 48 hours or 20
+warnings, with source count, returned count and explicit truncation. Text fields
+are bounded as well. Transport pagination and content hash apply to that
+bounded projection, not a claim of complete upstream coverage. No record cursor
+is offered for weather; days, limit, recordOffset and asOf are rejected.
+
+fetchedAt is retrieval, observedAt is the current observation, forecastIssuedAt
+is forecast issue, and lastUpdated is the source's update field. Missing or
+future issue/retrieval evidence stays unknown; availability based on retrieval
+age does not establish forecast freshness. Data currently supplies period
+names, not absolute period boundaries: validFrom/validUntil stay null.
+Hourly forecast time may legitimately be future; past times remain visibly
+past. Warning issue and expiry are separate, with missing, inconsistent or
+expired windows visible. An empty warning list is only what that source returned,
+never a global all-clear or safety guarantee. These are source reports, not
+instructions or an authority to act.
+
+Synthetic qualification is separate from installation, callable runtime tools
+and actual Nestor acceptance. No live model or personal-data call is needed
+to verify this projection.
+
+## Targeted discovery guide
+
+The owner `source_catalogue` tool accepts optional `view: "discovery"`, `domain`,
+`limit` (1–10, default 5) and `offset` (0–1000). This returns metadata entries
+with native reader references and explicit required argument names. Continue
+with `nextCatalogueArgs`. Discovery performs no producer reads; availability
+stays `not_checked` and producer success stays unknown. The automatic context remains unchanged. The explicit owner catalogue also
+lists the bounded optional weather sections.
+
+In addition to the existing living-source readers, the owner guide references
+`mail_recall`, `pipeline_artifacts` and `find_files`. These retain their own
+schemas and boundaries: indexed archive, registered deliverables and indexed
+file metadata respectively. The extra entry IDs are not `source_read` IDs.
+There is no arbitrary reader dispatch, path fetch, URL execution or new store.
+Other tools and Data feeds are not implicitly exposed. Household discovery
+omits the private references; no Family tools are activated. HTTP and adapter no-argument catalogues retain the directory shape; the owner
+weather entry additionally advertises its explicit sections. Family and the
+automatic context retain their previous metadata and current-weather payload.
+
+The [portable guide](../skills/agentx/references/living-sources.md) teaches one
+discover/read/deepen workflow, including freshness and incomplete coverage.
+Catalogue pagination is separate from native content pagination. Tool listing,
+actual runtime use and deployment remain independent qualification steps.
