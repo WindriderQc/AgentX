@@ -30,8 +30,16 @@ def facts(template, spans=None, context=None):
             if not anchors:
                 continue
             p['anchorCitationId']['enum'] = anchors
-        # Split only where new activity cues impose a distinct policy.
-        groups = [anchors] if anchors is None else [[a] for a in anchors]
+        # Keep identical policies grouped. Copying the full context schema for
+        # every ordinary line otherwise makes the native format grow quadratically.
+        grouped = {}
+        for anchor in anchors or []:
+            row = cues.get(anchor, {})
+            key = (bool(row.get('sourceActivity')), bool(row.get('directDeclaration')),
+                   row.get('requiredOccurrenceStatus'),
+                   tuple(r['id'] for r in partial if r['citationId'] == anchor))
+            grouped.setdefault(key, []).append(anchor)
+        groups = [None] if anchors is None else list(grouped.values())
         for group in groups:
             option = copy.deepcopy(node);fields = option['properties']
             if group is not None:
@@ -56,7 +64,8 @@ def facts(template, spans=None, context=None):
                 for o in available:
                     o = copy.deepcopy(o)
                     ids = o['properties']['citationId'].get('enum', [])
-                    ids = [k for k in ids if k not in blocked and k not in cues and (group is None or k not in group)]
+                    ids = [k for k in ids if k not in blocked and k not in cues
+                           and (group is None or len(group) > 1 or k not in group)]
                     if ids:
                         o['properties']['citationId']['enum'] = ids;allowed.append(o)
                 obs['items'] = {'anyOf': allowed} if allowed else policy._object({})

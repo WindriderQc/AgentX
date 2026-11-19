@@ -194,6 +194,18 @@ class SourceSelectionTests(unittest.TestCase):
         self.assertNotIn('sourceSelection', changes[0])
         self.assertEqual(grounding.contract_for({'responseSchemaSha256': hashed(grounding.CURRENT_SCHEMA)}), selection.CONTRACT)
 
+    def test_ordinary_lines_do_not_duplicate_the_full_context_schema_per_anchor(self):
+        sizes = []
+        for n in (8, 32):
+            body = '\n'.join('Une information générale numéro ' + str(i) + '.' for i in range(n))
+            schema = grounding.schema_for(body, selection.CONTRACT, SENT)
+            sizes.append(len(json.dumps(schema)))
+        self.assertLess(sizes[1], 6 * sizes[0])
+        body = 'Une information générale.\nUne autre information.'
+        value = raw(body, [fact('q1')]);value['retainedMoments'][0]['contextObservations'] = [
+            {'citationId': 'q1', 'qualificationIds': []}]
+        with self.assertRaises(ValueError):project(value, body)
+
 
 class SourceSelectionWorkerTests(unittest.TestCase):
     setUp = scoped.InputScopeTests.setUp
