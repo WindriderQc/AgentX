@@ -523,6 +523,15 @@ kept context. Missing/pending/inactive notes, stale bindings and unfinished
 replacements stay held. Owner text/date corrections remain untouched, and an
 unlinked assertion creates no memory or commitment. No recall index is qualified.
 
+`--native-global-downstream` selects v10 and implies the existing v6/v4 checks.
+It binds two complete native global observations to the already verified
+per-message downstream snapshots. Core finishes with a joined query of every
+selected entry and linked note after its privacy checks, catching changes to an
+earlier note during later work. Counts deduplicate shared entries and available
+notes. Other v5–v9 options compose; final Core/archive fences and all four global
+gaps remain. No memory, index, approval or mailbox effect follows. See the
+[global linked-souvenir contract](../../docs/SECRETARY_GLOBAL_DOWNSTREAM.md).
+
 Two native scope observations per selected message must agree with the verified
 finding scope. Shared entries/notes must retain the same pins across selected
 messages; final Core/archive checks precede the new immutable private report.

@@ -410,6 +410,12 @@ these observations across 1–20 exact messages, with two complete finding passe
 and a final Core membership/privacy fence over the entire selection. Its optional
 v8 report retains all global acceptance/approval gaps and changes no decision.
 
+The [global linked-souvenir contract](SECRETARY_GLOBAL_DOWNSTREAM.md) also
+observes the whole selected downstream graph. Two complete per-message passes
+are fenced by a final joined Core/note query after privacy checks. Optional
+v10 reconciliation detects earlier-note changes during later work; all global
+acceptance/approval gaps remain and no note or index is written.
+
 ## Current live Gmail source in historical reconciliation
 
 `POST /api/secretary/history/decision-state/mailbox` observes one exact selected

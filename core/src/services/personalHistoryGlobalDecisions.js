@@ -79,4 +79,4 @@ async function discover(input, deps) {
     executionAllowed: false, cleanupStatus: 'blocked', nativeValidationGaps: GAPS };
 }
 
-module.exports = { discover, CONTRACT };
+module.exports = { discover, CONTRACT, selection };
