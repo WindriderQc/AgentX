@@ -11,3 +11,33 @@ nav { margin-top: 1rem; display: flex; flex-wrap: wrap; gap: .65rem; }
 a, button { font: inherit; color: #bde6ff; background: #1b3047; border: 1px solid #6285aa; border-radius: .5rem; padding: .65rem .85rem; }
 a:focus-visible, button:focus-visible { outline: 2px solid #bde6ff; outline-offset: 3px; }
 button { cursor: pointer; }
+.housex { max-width: 76rem; }
+.housex-header { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: .75rem; }
+.housex-header h1 { margin: 0; }
+.housex-header strong { color: #8ff0d7; }
+.housex-header small { color: #b0c3d1; font-size: .8rem; font-weight: 500; margin-left: .45rem; }
+.housex-header nav, .housex-devices { margin-top: 0; }
+.housex-header button[aria-pressed="true"], .housex-orientation button[aria-pressed="true"], .housex-devices a[aria-current] {
+  color: #082923; background: #8ff0d7; border-color: #8ff0d7;
+}
+.housex-home { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(14rem, 1fr); align-items: start; gap: 1rem; }
+.housex-home[hidden] { display: none; }
+main:not(.housex) .housex-home { display: block; }
+.housex-home > nav { grid-column: 1/-1; margin-top: 0; }
+.housex-scene { position: relative; min-height: 26rem; border: 1px solid #405675; border-radius: .75rem; overflow: hidden; background: #09151e; }
+.housex-scene canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.housex-orientation { position: absolute; top: .65rem; left: .65rem; display: flex; gap: .35rem; }
+.housex-orientation button { padding: .35rem .6rem; }
+.housex-pin { position: absolute; min-width: 2.55rem; text-align: center; padding: .35rem .45rem; border-radius: .75rem; transform: translate(-50%, -50%); text-decoration: none; }
+.housex-pin[aria-current] { color: #102921; background: #8ff0d7; border-color: #8ff0d7; box-shadow: 0 0 0 .3rem #6fe2c329; }
+.housex-scene[data-state="off"] .housex-pin[aria-current], .housex-scene[data-state="unknown"] .housex-pin[aria-current] {
+  color: #122336; background: #c3d2dc; border-color: #c3d2dc; box-shadow: none;
+}
+.housex-caption { position: absolute; inset: auto .6rem .6rem; color: #c2d2dd; font-size: .75rem; pointer-events: none; }
+.housex-ecosystem { width: 100%; min-height: 36rem; border: 1px solid #405675; border-radius: .75rem; }
+.housex-devices { margin-bottom: 1rem; }
+.housex-devices a { padding: .35rem .55rem; }
+@media (max-width: 44rem) {
+  .housex-home { grid-template-columns: minmax(0, 1fr); }
+  .housex-scene { min-height: 19rem; }
+}

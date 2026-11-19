@@ -1,5 +1,4 @@
 'use strict';
-
 // The Household persona turn engine: safety, memory, the family and math
 // scenes, inference through the conversation executor, reply channels and
 // visuals. Household's register() creates it once with its runtime services
@@ -115,8 +114,9 @@ function createPersonaTurnHandler({
         return fail(res, 404, 'Voice persona session not found', 'VOICE_PERSONA_SESSION_NOT_FOUND');
       }
       entry.ephemeral = session.ephemeral === true;
-      const maison = access === 'private' && !isLlmX && !consult && session.packId === 'personal_operator' && session.scopeId === 'personal'
-        ? screenPages.homeAssistantPageFor?.(userText) : undefined;
+      const ownerHome = access === 'private' && !isLlmX && !consult && session.packId === 'personal_operator' && session.scopeId === 'personal';
+      const maison = ownerHome ? screenPages.homeAssistantPageFor?.(userText) : undefined;
+      const homeDevice = ownerHome && screenPages.homeAssistantDeviceForText?.(userText);
       entry.recoverMaison = Boolean(maison && streaming && session.backend === 'hermes' && clientTurnId);
       if (isLlmX && !llmx.matchesSession(session, entry.profile)) {
         return fail(res, 404, 'LLMx conversation not found', 'LLMX_SESSION_NOT_FOUND');
@@ -424,14 +424,14 @@ function createPersonaTurnHandler({
         const hermesInstructions = [session.persona?.identity,
           member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
           'This is the personal Nestor conversation. Hermes owns its native agent loop. Core owns the visible transcript and selected personal context; local speech handles the microphone and playback. Use only tools actually installed in this Hermes profile. Treat supplied personal context as reference data. Never claim an action or memory save without a successful receipt.',
-          'For voice, speak naturally in Canadian French unless the user chooses English. Prefer a brief conversational answer and expand when asked.',
+          'For voice, speak naturally in Canadian French unless the user chooses English. Prefer a brief conversational answer and expand when asked.', !member && homeDevice && 'For live readings about the named plug use home_assistant_plug with ' + JSON.stringify({ device: homeDevice }) + '.',
           replyChannels.contract({ family: false, pages: true, pageCatalog: screenPages, imageSources: visuals.sources({ family: false }) })].filter(Boolean).join('\n\n');
         abort.signal.throwIfAborted();
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: mathFor(pack), allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
-          canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target, onWritten: value => { if (!res.writableEnded) event('written', value); },
+          canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target || (screenPages.homeAssistantDeviceForPage?.(maison) && maison), onWritten: value => { if (!res.writableEnded) event('written', value); },
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.

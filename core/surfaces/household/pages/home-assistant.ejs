@@ -5,12 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>Home Assistant · Maison</title>
-  <link rel="stylesheet" href="/assets/household/home-assistant.css">
+  <link rel="stylesheet" href="/assets/household/home-assistant.css?v=housex">
+  <% if (layout) { %><script src="/assets/household/housex.js" defer></script><% } %>
 </head>
 <body>
-  <main>
-    <h1>Maison</h1>
+  <main<% if (layout) { %> class="housex"<% } %>>
+    <header class="housex-header">
+      <h1><% if (layout) { %><span>House<strong>X</strong></span> <small>Maison</small><% } else { %>Maison<% } %></h1>
+      <% if (layout && ecosystem) { %><nav aria-label="Vues"><button type="button" data-view="home" aria-pressed="true">Maison</button><button type="button" data-view="ecosystem" aria-pressed="false">Écosystème</button></nav><% } %>
+    </header>
+    <div class="housex-home" data-home>
+    <% if (layout) { %>
+      <div class="housex-scene" data-layout="<%= JSON.stringify(layout) %>" data-selected="<%= selected %>" data-state="<%= plug.state?.value || 'unknown' %>">
+        <canvas role="img" aria-label="Vue en coupe de la maison"></canvas>
+        <div class="housex-orientation" role="group" aria-label="Orientation">
+          <button type="button" data-angle="3d" aria-pressed="true">3D</button>
+          <button type="button" data-angle="plan" aria-pressed="false">Plan</button>
+          <button type="button" data-rotate aria-label="Pivoter la vue">↻</button>
+        </div>
+        <div class="housex-pins">
+          <% for (const [index, device] of devices.entries()) { %>
+            <a class="housex-pin" data-pin="<%= device.id %>" href="<%= device.href %>" aria-label="<%= device.label %>" <% if (device.id === selected) { %>aria-current="true"<% } %> hidden>P<%= index+1 %></a>
+          <% } %>
+          <% if (camera) { %><a class="housex-pin" data-pin="garage-camera" href="<%= camera.href %>" target="_blank" rel="noopener noreferrer" aria-label="<%= camera.label %>" hidden>Cam</a><% } %>
+        </div>
+        <% if (layout.approximate) { %><span class="housex-caption">Position des appareils et dimensions à confirmer</span><% } %>
+      </div>
+    <% } %>
     <section aria-labelledby="plug-name">
+      <% if (devices.length > 1) { %>
+        <nav class="housex-devices" aria-label="Appareils">
+          <% for (const device of devices) { %><a href="<%= device.href %>" <% if (device.id === selected) { %>aria-current="page"<% } %>><%= device.label %></a><% } %>
+        </nav>
+      <% } %>
       <h2 id="plug-name"><%= plug.label || 'Prise connectée' %></h2>
       <dl>
         <div>
@@ -23,11 +50,19 @@
           <dd><%= plug.power ? number.format(plug.power.watts) + ' W' : 'Indisponible' %></dd>
           <% if (plug.power) { %><dd class="timestamp"><time datetime="<%= plug.power.reportedAt %>"><%= date.format(new Date(plug.power.reportedAt)) %></time></dd><% } %>
         </div>
+        <% if (plug.energy !== undefined) { %>
+        <div>
+          <dt>Énergie cumulée</dt>
+          <dd><%= plug.energy ? number.format(plug.energy.kilowattHours) + ' kWh' : 'Indisponible' %></dd>
+          <% if (plug.energy) { %><dd class="timestamp"><time datetime="<%= plug.energy.reportedAt %>"><%= date.format(new Date(plug.energy.reportedAt)) %></time></dd><% } %>
+        </div>
+        <% } %>
       </dl>
       <p class="timestamp">Home Assistant consulté le <time datetime="<%= plug.checkedAt %>"><%= date.format(new Date(plug.checkedAt)) %></time></p>
       <form method="get">
         <input type="hidden" name="view" value="screen">
         <input type="hidden" name="from" value="nestor">
+        <% if (selected !== 'default') { %><input type="hidden" name="device" value="<%= selected %>"><% } %>
         <button type="submit">Actualiser</button>
       </form>
     </section>
@@ -38,6 +73,8 @@
         <% } %>
       </nav>
     <% } %>
+    </div>
+    <% if (layout && ecosystem) { %><iframe class="housex-ecosystem" title="Écosystème AgentX" data-ecosystem="<%= ecosystem %>" hidden></iframe><% } %>
   </main>
 </body>
 </html>
