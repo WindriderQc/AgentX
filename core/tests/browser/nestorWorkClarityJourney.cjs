@@ -2,11 +2,13 @@
 // Real request cards and controls against deterministic local Core responses.
 // No model, speech service, native executor or production database is used.
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
 const express = require('express'), { chromium } = require('playwright');
 const core = path.resolve(__dirname, '../..'), reportDir = process.env.WORK_CLARITY_REPORT_DIR;
 if (!reportDir || path.resolve(reportDir).startsWith(path.resolve(core, '..') + path.sep)) throw Error('Set WORK_CLARITY_REPORT_DIR outside the checkout');
 fs.mkdirSync(reportDir, { recursive: true });
 const row = (id, requestText, extra = {}) => ({ id, sessionId: 'synthetic-session', turnId: id, requestText, state: 'queued', revision: 1,
+  controlBasis: { version: 2, workId: id, revision: 1, requestSha256: createHash('sha256').update(requestText).digest('hex') },
   pending: true, controllable: true, classification: 'native_work', receivedAt: '2026-01-02T14:25:30Z', ...extra });
 let server, browser;
 (async () => {
@@ -22,20 +24,35 @@ let server, browser;
     <section id="transcript"><strong>Nestor</strong><p>Vous pouvez continuer la conversation pendant le travail.</p></section>
     <label for="message">Votre message</label><textarea id="message" rows="2" placeholder="Écrire à Nestor…"></textarea></main>
     <script src="/assets/household/conversation-work.js"></script><script>
-      window.posts=[];window.offline=false;window.language='fr';window.cursor=3;window.dispatch=null;
+      window.posts=[];window.receipts=[];window.readings=[];window.offline=false;window.language='fr';window.cursor=4;window.dispatch=null;
       window.rows=${JSON.stringify([
         row('request-a', 'Montre-moi la page d’activité.'),
         row('request-b', 'Lis mon prochain rendez-vous.'),
-        row('request-c', 'Explique ce résultat.', { classification: 'native_review', state: 'running', controllable: false, attempt: { id: 'synthetic-native' } })
+        row('request-c', 'Explique ce résultat.', { classification: 'native_review', state: 'running', controllable: false, attempt: { id: 'synthetic-native' } }),
+        row('request-d', 'Explique le ciel de nuit.', { state: 'completed', pending: false, controllable: false,
+          result: { deliveryId: 'sky-answer', version: 2, text: 'La réponse conservée sur le ciel de nuit.', presentation: 'interrupted', automaticSpeech: false } })
       ])};
+      const conversation={state:'listening',session:{sessionId:'synthetic-session'},async interject(reply,options){
+        readings.push({text:reply.text,readAloud:options.readAloud});options.onScheduled();return true;
+      }};
+      document.getElementById('voice').onclick=event=>{
+        const resuming=conversation.state==='paused';conversation.state=resuming?'listening':'paused';
+        event.currentTarget.textContent=resuming?'Pause de la voix':'Reprendre la voix';
+        if(resuming)void feed.naturalPause();else feed.refresh();
+      };
       window.feed=NestorWork.create({host:document.getElementById('work'),base:'/sessions',getLanguage:()=>language,
-        getConversation:()=>({state:'paused'}),pollMs:60000,api:async(url,options)=>{
+        getConversation:()=>conversation,pollMs:60000,api:async(url,options)=>{
           if(offline)throw Error('offline');
           if(options?.method==='POST'){
-            const command=JSON.parse(options.body);posts.push({url,...command});
+            const command=JSON.parse(options.body);
+            if(url.endsWith('/receipt')){receipts.push({url,...command});return {claimToken:'fixture-claim'};}
+            posts.push({url,...command});
             const id=url.split('/').at(-2),row=rows.find(row=>row.id===id);row.revision++;cursor++;
             row.state=command.action==='cancel'?'cancelled':command.action==='pause'?'paused':'queued';row.pending=row.state!=='cancelled';row.controllable=row.pending;
-            return {id,state:row.state,revision:row.revision};
+            row.controlBasis.revision=row.revision;
+            const commandReceipt={...command,baseRevision:command.revision,revision:row.revision,state:row.state};
+            (row.controlReceipts??=[]).push(commandReceipt);
+            return {...structuredClone(row),commandReceipt};
           }
           return {items:structuredClone(rows),cursor,dispatch,hasMore:false};
         }});feed.follow('synthetic-session');
@@ -72,8 +89,22 @@ let server, browser;
     assert.match(await first.innerText(), /État indisponible/);
     await page.evaluate(async () => { offline=false; await feed.poll(); });
     assert.equal(await first.getByRole('button', { name: /Annuler/ }).isDisabled(), false);
+    const answer = page.locator('[data-work-id="request-d"]');
+    await page.getByRole('button', { name: 'Pause de la voix', exact: true }).click();
+    await answer.getByRole('button', { name: /Écouter cette réponse/ }).click();
+    await answer.getByText('Reprenez la voix pour écouter cette réponse.', { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => receipts.map(receipt => receipt.stage)), ['displayed']);
+    await page.getByRole('button', { name: 'Reprendre la voix', exact: true }).click();
+    await answer.getByText('Réponse présentée', { exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => receipts.map(receipt => [receipt.stage, receipt.resultVersion])),
+      [['displayed', 2], ['replay', 2], ['started', 2], ['completed', 2]]);
+    assert.deepEqual(await page.evaluate(() => readings), [{ text: 'La réponse conservée sur le ciel de nuit.', readAloud: true }]);
     // Untrusted user text stays text, including a long request with identical prefixes.
-    await page.evaluate(async () => { rows[0].requestText='Long request '.repeat(40)+'<img src=x onerror="window.injected=true">';rows[0].revision++;await feed.poll(); });
+    const longRequest = 'Long request '.repeat(40) + '<img src=x onerror="window.injected=true">';
+    await page.evaluate(async ({ requestText, requestSha256 }) => {
+      rows[0].requestText = requestText; rows[0].revision++;
+      Object.assign(rows[0].controlBasis, { revision: rows[0].revision, requestSha256 }); await feed.poll();
+    }, { requestText: longRequest, requestSha256: createHash('sha256').update(longRequest).digest('hex') });
     await first.getByText('Lire la demande complète', { exact: true }).click();
     assert.match(await first.locator('details p').innerText(), /<img src=x onerror=/);
     assert.equal(await first.locator('img').count(), 0); assert.equal(await page.evaluate(() => window.injected), undefined);
