@@ -181,3 +181,6 @@ dd {
     font-size:1.45rem;
   }
 }
+
+/* Shared graph rows contain grouped dt/dd pairs, unlike the budget list. */
+.pipeline-code-graph-meta { grid-template-columns: minmax(0, 1fr); }

@@ -86,6 +86,9 @@
       pane.replaceChildren(node('span', labels[dossier.task.status] || dossier.task.status, 'badge'),
         node('h2', `#${id} · ${dossier.task.title}`), link('Ouvrir dans le Pipeline ↗', `/pipeline?task=${id}`));
       pane.append(node('p', summary.nextAction?.detail || 'Consulte les preuves consignées.', 'notice'));
+      const evidence = node('section', undefined, 'receipt');
+      evidence.innerHTML = window.CodingWorkEvidence.render(dossier.attempts);
+      pane.append(node('p', 'Dossier lu à ' + new Date().toLocaleTimeString('fr-CA') + ' · Actualiser relit les preuves, sans relancer le travail.'), evidence);
       pane.append(details('Demande et critères de réussite', dossier.task.spec || 'Aucune consigne consignée.', true));
       const execution = dossier.execution;
       pane.append(node('h3', 'Exécution et limites'));
