@@ -290,3 +290,53 @@ test('preview never writes state', async () => {
   assert.match(summary.items[0].preview, /^✅ Résolu/);
   assert.equal(mem.box.writes, 0);
 });
+
+test('historical cancelled expiry produces no resolution burst outside quiet hours; critical and other resolutions survive', async () => {
+  for (const severity of ['warning', 'critical']) {
+    const mem = memoryState({ relayed: { a1: { ruleId: 'heavy_work_queue', sentAt: '2026-09-27T19:55:00Z' } } });
+    const fetch = fakeFetch([
+      [/\/api\/alerts\?status=active/, 200, { data: { alerts: [] } }],
+      [/\/api\/alerts\/a1$/, 200, { data: { alert: alert({ ruleId: 'heavy_work_queue', severity, status: 'resolved',
+        context: { additionalData: { state: 'expired' } }, resolution: { resolvedBy: 'core-queue-cancellation', resolutionMethod: 'queue-expiry-cancelled-historical' } }) } }],
+      [/sendMessage/, 200, { ok: true, result: {} }],
+    ]);
+    const summary = await run(parseArgs(['--send']), { fetch, config: CONFIG, token: TOKEN, now: () => NOW,
+      readState: mem.readState, writeState: mem.writeState });
+    assert.equal(summary.resolved, severity === 'critical' ? 1 : 0);
+    assert.equal(fetch.calls.filter(call => /sendMessage/.test(call.url)).length, severity === 'critical' ? 1 : 0);
+  }
+});
+
+test('synthetic batch of 97 historical warnings never calls sender, even outside quiet hours', async () => {
+  const relayed = Object.fromEntries(Array.from({ length: 97 }, (_, i) => [`h${i}`, { ruleId: 'heavy_work_queue', sentAt: '2026-09-27T19:55:00Z' }]));
+  for (const send of [false, true]) {
+    const mem = memoryState({ relayed });
+    const fetch = fakeFetch([
+      [/\/api\/alerts\?status=active/, 200, { data: { alerts: [] } }],
+      [/\/api\/alerts\/h\d+$/, 200, { data: { alert: alert({ ruleId: 'heavy_work_queue', severity: 'warning', status: 'resolved',
+        context: { additionalData: { state: 'expired' } }, resolution: { resolvedBy: 'core-queue-cancellation', resolutionMethod: 'queue-expiry-cancelled-historical' } }) } }],
+    ]);
+    const summary = await run(parseArgs(send ? ['--send'] : []), { fetch, config: CONFIG, token: TOKEN, now: () => NOW,
+      readState: mem.readState, writeState: mem.writeState });
+    assert.equal(summary.resolved, 0);
+    assert.equal(summary.sent, 0);
+    assert.equal(fetch.calls.some(call => /telegram/.test(call.url)), false);
+    if (!send) assert.equal(mem.box.writes, 0);
+  }
+});
+
+test('historical marker alone never suppresses unrelated or real incident resolution', async () => {
+  for (const overrides of [ { ruleId: 'other' }, { context: { additionalData: { state: 'uncertain' } } },
+    { resolution: { resolvedBy: 'other', resolutionMethod: 'queue-expiry-cancelled-historical' } } ]) {
+    const mem = memoryState({ relayed: { a1: { ruleId: 'heavy_work_queue', sentAt: '2026-09-27T19:55:00Z' } } });
+    const fetch = fakeFetch([
+      [/\/api\/alerts\?status=active/, 200, { data: { alerts: [] } }],
+      [/\/api\/alerts\/a1$/, 200, { data: { alert: alert({ ruleId: 'heavy_work_queue', severity: 'warning', status: 'resolved',
+        context: { additionalData: { state: 'expired' } }, resolution: { resolvedBy: 'core-queue-cancellation', resolutionMethod: 'queue-expiry-cancelled-historical' }, ...overrides }) } }],
+      [/sendMessage/, 200, { ok: true, result: {} }],
+    ]);
+    const summary = await run(parseArgs(['--send']), { fetch, config: CONFIG, token: TOKEN, now: () => NOW,
+      readState: mem.readState, writeState: mem.writeState });
+    assert.equal(summary.resolved, 1);
+  }
+});
