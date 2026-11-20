@@ -15,7 +15,7 @@ const { allowedForFamilyDevice } = require('../family-device');
 const { registerHomeAssistantRoutes } = require('../home-assistant-routes');
 const { readHouseEcosystem, ecosystemScene } = require('../housex-ecosystem');
 const { contract, createReplyChannels } = require('../reply-channels');
-const { createScreenServices, screenPolicy } = require('../screen-services');
+const { createScreenServices, screenPolicy, requestsScreenVisit } = require('../screen-services');
 const { createConversationExecutor } = require('../conversation-executor');
 
 const REPORT = '2026-10-12T12:34:56.789123+00:00';
@@ -54,9 +54,8 @@ test('HouseX renders a private ecosystem layer bound to configured Core observat
   const app = express();
   const catalog = createScreenServices({ app, env, services:[] });
   const page = 'housex-ecosystem';
-  assert.equal(catalog.homeAssistantPageFor('Montre-moi HouseX Écosystème'), page);
-  assert.equal(catalog.homeAssistantFocusPage(page), page);
-  assert.equal(catalog.homeAssistantPageFor('N’affiche pas HouseX Écosystème'), undefined);
+  assert.deepEqual(catalog.automaticPage('Montre-moi HouseX Écosystème'), { page, force: true });
+  assert.equal(catalog.automaticPage('N’affiche pas HouseX Écosystème'), undefined);
   assert.equal(catalog.family.parse(page), null);
   const scene = ecosystemScene(readHouseEcosystem(env));
   assert.deepEqual(scene.pins.map(pin => pin.id), ['service','work-one','work-two']);
@@ -78,6 +77,27 @@ test('HouseX renders a private ecosystem layer bound to configured Core observat
   save('housex-ecosystem', { ...definition, hub:{ id:'unknown', label:'Service' } });
   assert.equal(readHouseEcosystem(env),null);
   await request(app).get(catalog.url(catalog.parse(page))).expect(404);
+});
+
+test('personal screen shortcuts select separate destinations and remain foreground requests', t => {
+  const { env } = instance(t);
+  const catalog = createScreenServices({ env, services: [] });
+  const ecosystemOnly = createScreenServices({ env: {}, services: [] });
+  for (const [text, page, pathname] of [
+    ['montre-moi l’écosystème', 'ecosystem', '/diskx'],
+    ['montre-moi la maison', PANEL, '/dad/home-assistant']
+  ]) {
+    assert.deepEqual(catalog.automaticPage(text), { page, force: true });
+    assert.equal(requestsScreenVisit(text, catalog), true);
+    const url = new URL(catalog.url(catalog.parse(page)), 'https://fixture.test');
+    assert.equal(url.pathname, pathname);
+    assert.equal(url.searchParams.get('app'), page === 'ecosystem' ? 'ecosystem' : null);
+    assert.equal(url.searchParams.has('layer'), false);
+  }
+  assert.equal(ecosystemOnly.automaticPage("Montre-moi l'écosystème")?.page, 'ecosystem');
+  assert.equal(ecosystemOnly.automaticPage('Montre-moi la maison'), undefined);
+  assert.equal(catalog.automaticPage('Ne me montre pas l’écosystème'), undefined);
+  assert.equal(catalog.automaticPage('Montre-moi l’écosystème et guide-moi dans la mémoire'), undefined);
 });
 
 test('a completed native receipt without a streamed page retains Maison on the same Hermes turn', async t => {
@@ -104,9 +124,13 @@ test('a completed native receipt without a streamed page retains Maison on the s
   assert.equal(stored.toolEvidence.runId, runId);
 });
 
-test('closing the browser stream after Hermes starts still saves the named plug on the original turn', async t => {
-  const { env, save } = instance(t);
-  save({}, [SECOND]);
+for (const [input, page, wrongPage, optionalHome] of [
+  ['combien de watts tire la prise 2 de l’atelier?', SECOND_PAGE, PANEL, true],
+  ['montre-moi la maison', PANEL, 'ecosystem', true],
+  ['montre-moi l’écosystème', 'ecosystem', PANEL, false]
+]) test('a cut Hermes stream preserves the exact display for: ' + input, async t => {
+  const { env, save } = optionalHome ? instance(t) : { env: {} };
+  if (optionalHome) save({}, [SECOND]);
   Object.assign(env, { HOUSEHOLD_HERMES_URL: 'http://hermes.example.invalid', HOUSEHOLD_HERMES_TOKEN: 'fixture-only' });
   const screenPages = createScreenServices({ env });
   const { harness } = require('./fixtures/persona-journey.cjs');
@@ -121,16 +145,16 @@ test('closing the browser stream after Hermes starts still saves the named plug 
       res.closed = true;
       res.emit('close');
       assert.equal(request.signal.aborted, false);
-      const reply = 'La prise tire 17 W.<show kind="page">home-assistant-panel</show>';
+      const reply = 'Voici la page.<show kind="page">' + wrongPage + '</show>';
       request.onDelta(reply);
       return { text: reply, metadata: {}, tools: { status: 'observed', receipts: [] } };
     } });
   await journey.handle({ params: { sessionId: journey.session.sessionId },
-    body: { text: 'combien de watts tire la prise 2 de l’atelier?', stream: true, channel: 'text', turnId: 'synthetic-browser-turn' } }, res, 'private');
+    body: { text: input, stream: true, channel: 'text', turnId: 'synthetic-browser-turn' } }, res, 'private');
   assert.equal(calls, 1);
   assert.equal(journey.turns.length, 1);
   assert.equal(journey.turns[0].clientTurnId, 'synthetic-browser-turn');
-  assert.deepEqual(journey.turns[0].display.map(block => block.body), [SECOND_PAGE]);
+  assert.deepEqual(journey.turns[0].display.map(block => block.body), [page]);
 });
 
 test('a named plug uses only its own configured sensor paths and opening Maison selects the same plug', async t => {
@@ -155,9 +179,9 @@ test('a named plug uses only its own configured sensor paths and opening Maison 
 
   const app = express();
   const catalog = createScreenServices({ app, env, services:[] });
-  assert.equal(catalog.homeAssistantPageFor('Est-ce que la deuxième prise est allumée?'), SECOND_PAGE);
-  assert.equal(catalog.homeAssistantPageFor('Combien tire la prise 1?'), PANEL);
-  assert.equal(catalog.homeAssistantPageFor('N’ouvre pas la vue, lis-moi la Kasa 2'), undefined);
+  assert.equal(catalog.automaticPage('Est-ce que la deuxième prise est allumée?')?.page, SECOND_PAGE);
+  assert.equal(catalog.automaticPage('Combien tire la prise 1?')?.page, PANEL);
+  assert.equal(catalog.automaticPage('N’ouvre pas la vue, lis-moi la Kasa 2')?.page, undefined);
   assert.equal(catalog.homeAssistantDeviceForText('N’ouvre pas la vue, lis-moi la Kasa 2'), SECOND.id);
   assert.equal(catalog.family.parse(SECOND_PAGE), null);
   const url = catalog.url(catalog.parse(SECOND_PAGE));
@@ -236,10 +260,10 @@ test('personal replies show the current home panel and the page preserves privat
     { id: 'garage-camera', label: 'Caméra du garage', href: cameraHref, mode: 'link' }
   ] });
   for (const text of ['Parle-moi de HomeAssitant', 'La prise de l’atelier tire combien?', 'Show me the garage camera']) {
-    assert.equal(catalog.homeAssistantPageFor(text), PANEL, text);
+    assert.equal(catalog.automaticPage(text)?.page, PANEL, text);
   }
   for (const text of ['Offre-moi un café', 'Quel GPU est allumé?', 'N’ouvre pas Home Assistant', 'Don’t show Home Assistant']) {
-    assert.equal(catalog.homeAssistantPageFor(text), undefined, text);
+    assert.equal(catalog.automaticPage(text)?.page, undefined, text);
   }
   assert.equal(catalog.family.parse(PANEL), null);
   assert.equal(catalog.family.parse('garage-camera'), null);
@@ -249,7 +273,7 @@ test('personal replies show the current home panel and the page preserves privat
     const events = [];
     const channels = createReplyChannels({ allowPages: true, pageCatalog: catalog, onShow: block => events.push(block) });
     channels.push('La prise est allumée.' + modelPage);
-    const answer = channels.end({ fallbackPage: catalog.homeAssistantPageFor('Home Assistant') });
+    const answer = channels.end({ fallbackPage: catalog.automaticPage('Home Assistant')?.page });
     assert.equal(answer.say, 'La prise est allumée.');
     assert.deepEqual(events.map(block => block.body), [PANEL]);
     assert.deepEqual(answer.display, events);

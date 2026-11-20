@@ -86,7 +86,7 @@ let server, browser, config;
     assert.equal(await page.locator('iframe').count(), 1, 'a restored page replaces its preceding frame');
     const channels = createReplyChannels({ allowPages: true, pageCatalog: catalog });
     channels.push('La prise de l’atelier est allumée.');
-    const homeReply = channels.end({ fallbackPage: catalog.homeAssistantPageFor('La prise de l’atelier tire combien?') });
+    const homeReply = channels.end({ fallbackPage: catalog.automaticPage('La prise de l’atelier tire combien?')?.page });
     await page.evaluate(block => board.add(block), homeReply.display[0]);
     const home = page.frameLocator('iframe[src^="/dad/home-assistant"]');
     await home.getByRole('heading', { name: 'Maison' }).waitFor();

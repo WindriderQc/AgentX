@@ -64,8 +64,7 @@ function createScreenServices({ app, env = process.env, logger, services = loadS
       ...services.filter(row => row.family === true && ['earth', 'iss'].includes(row.id))]); },
     get entries() { return current().entries; }, get PAGES() { return current().PAGES; },
     parse: value => current().parse(value), canonical: pages.canonical,
-    homeAssistantPageFor: text => homeAssistantPageFor(text, current(), home),
-    homeAssistantFocusPage: page => page && (page === HOUSEX_ECOSYSTEM || home?.additionalPlugs.some(plug => homeDevicePage(plug.id) === page)) ? page : null,
+    automaticPage: text => automaticPage(text, current(), home),
     homeAssistantDeviceForText: text => {
       const matches = mentionedPlugs(foldDeviceName(text), home);
       return matches.length === 1 ? matches[0].id : undefined;
@@ -77,9 +76,15 @@ function createScreenServices({ app, env = process.env, logger, services = loadS
 const containsName = (input, name) => (' ' + input + ' ').includes(' ' + name + ' ');
 const mentionedPlugs = (input, home) => home?.additionalPlugs.filter(plug => plug.aliases.some(name => containsName(input, name))) || [];
 
-function homeAssistantPageFor(text, catalog, home) {
+function directPage(input, catalog) {
+  const name = /^(?:montre(?: moi)?|ouvre|affiche(?: moi)?|peux tu me (?:montrer|ouvrir|afficher)|show(?: me)?|open) (?:l |le |la |the )?(ecosysteme?|maison|house\s*x)(?: s il te plait| svp| stp| please)?$/.exec(input)?.[1];
+  if (!name) return undefined;
+  const page = /^ecosystem/.test(name) ? 'ecosystem' : HOME_PANEL;
+  return catalog?.PAGES?.[page] ? page : undefined;
+}
+
+function homeAssistantPageFor(input, catalog, home) {
   if (!catalog.PAGES[HOME_PANEL]) return undefined;
-  const input = foldDeviceName(text);
   if (/\b(?:n ouvre pas|n affiche pas|ne montre pas|sans (?:ouvrir|afficher|montrer)|don t (?:open|show|display)|without (?:opening|showing|displaying))\b/.test(input)) return undefined;
   if (catalog.PAGES[HOUSEX_ECOSYSTEM] && /\bhouse\s*x\b/.test(input) && /\becosysteme?\b/.test(input)) return HOUSEX_ECOSYSTEM;
   const plugs = mentionedPlugs(input, home);
@@ -88,6 +93,14 @@ function homeAssistantPageFor(text, catalog, home) {
   if (/\b(?:home\s*ass(?:ist|it)ant|workshop (?:smart )?plug|prise (?:intelligente |connectee )?(?:(?:de l|d|du|a l) )?atelier|garage camera|camera (?:du )?garage)\b/.test(input)
       || home.aliases.some(name => containsName(input, name))) return HOME_PANEL;
   return undefined;
+}
+
+function automaticPage(text, catalog, home) {
+  const input = foldDeviceName(text);
+  const direct = directPage(input, catalog);
+  if (direct) return { page: direct, force: true };
+  const homePage = homeAssistantPageFor(input, catalog, home);
+  return homePage ? { page: homePage, force: homePage !== HOME_PANEL } : undefined;
 }
 
 const { allowScreenFrame } = require('../../../shared/screenView');
@@ -110,6 +123,7 @@ function screenPolicy(catalog) {
   };
 }
 function requestsScreenVisit(text, catalog) {
+  if (directPage(foldDeviceName(text), catalog)) return true;
   const fold = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[-_]/g, ' ');
   const input = fold(text);
   if (!/\b(?:ouvre|ouvrir|montre|montrer|affiche|afficher|visite|visiter|guide|guider|navigue|naviguer|emmene|amene|open|show|visit|guide|navigate|tour)\b/.test(input)) return false;

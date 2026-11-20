@@ -397,7 +397,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
     };
     const recoverReply = async () => {
-      if (family || session.ephemeral || session.backend !== 'hermes' || !window.AgentXScreenPages?.PAGES?.['home-assistant-panel'] || !current()) return null;
+      const pages = window.AgentXScreenPages?.PAGES;
+      if (family || session.ephemeral || session.backend !== 'hermes' || !(pages?.['home-assistant-panel'] || pages?.ecosystem) || !current()) return null;
       const url = `${sessionBase}/${encodeURIComponent(session.sessionId)}/history?turnId=${encodeURIComponent(turnId)}`;
       const recoverySignal = AbortSignal.any([signal, AbortSignal.timeout(65000)]);
       el('conversationStatus').textContent = turnLanguage === 'en' ? 'Reconnecting to the saved reply…' : 'Reprise de la réponse…';

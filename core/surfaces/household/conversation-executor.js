@@ -53,9 +53,10 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
       throw new Error('The native receipt does not match its canonical request.');
     }
     const presentation = require('./reply-channels');
-    const fallbackPage = screenPages?.homeAssistantPageFor?.(state.requestText);
+    const target = screenPages?.automaticPage?.(state.requestText);
+    const fallbackPage = target?.page;
     const channels = presentation.createReplyChannels({ allowSecrets: true, allowPages: Boolean(fallbackPage), pageCatalog: screenPages,
-      pageTarget: screenPages?.homeAssistantFocusPage?.(fallbackPage) });
+      pageTarget: target?.force ? fallbackPage : null });
     channels.push(state.receipt.output || '');
     const parsed = channels.end({ fallbackPage }), replyText = presentation.plainReply(parsed.say);
     const receipts = state.toolReceipts || previous?.toolEvidence?.receipts || [];

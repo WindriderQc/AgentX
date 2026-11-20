@@ -99,7 +99,7 @@ function createPersonaTurnHandler({
     const disconnected = () => {
       if (res.writableEnded || entry.detached) return;
       entry.streamClosed = true;
-      if (!entry.recoverMaison || !entry.dispatched) abort.abort();
+      if (!entry.recoverPage || !entry.dispatched) abort.abort();
     };
     res.on?.('close', disconnected);
     const streaming = req.body?.stream === true;
@@ -114,10 +114,10 @@ function createPersonaTurnHandler({
         return fail(res, 404, 'Voice persona session not found', 'VOICE_PERSONA_SESSION_NOT_FOUND');
       }
       entry.ephemeral = session.ephemeral === true;
-      const ownerHome = access === 'private' && !isLlmX && !consult && session.packId === 'personal_operator' && session.scopeId === 'personal';
-      const maison = ownerHome ? screenPages.homeAssistantPageFor?.(userText) : undefined;
-      const homeDevice = ownerHome && screenPages.homeAssistantDeviceForText?.(userText);
-      entry.recoverMaison = Boolean(maison && streaming && session.backend === 'hermes' && clientTurnId);
+      const ownerScreen = access === 'private' && !isLlmX && !consult && session.packId === 'personal_operator' && session.scopeId === 'personal';
+      const target = ownerScreen ? screenPages.automaticPage?.(userText) : undefined;
+      const homeDevice = ownerScreen && screenPages.homeAssistantDeviceForText?.(userText);
+      entry.recoverPage = Boolean(target && streaming && session.backend === 'hermes' && clientTurnId);
       if (isLlmX && !llmx.matchesSession(session, entry.profile)) {
         return fail(res, 404, 'LLMx conversation not found', 'LLMX_SESSION_NOT_FOUND');
       }
@@ -431,7 +431,7 @@ function createPersonaTurnHandler({
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
         const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: mathFor(pack), allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
-          canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target || screenPages.homeAssistantFocusPage?.(maison), onWritten: value => { if (!res.writableEnded) event('written', value); },
+          canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target || (target?.force ? target.page : null), onWritten: value => { if (!res.writableEnded) event('written', value); },
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },
           // One consultation per reply, and a member does not consult in turn.
@@ -503,7 +503,7 @@ function createPersonaTurnHandler({
           parentAttention: safety.requiresParentAttention, soundId: sound?.id || '' };
         if (channels && !channels.received) channels.push(result.text);
         if (abort.signal.aborted) return;
-        if (channels) { ({ display } = channels.end({ fallbackPage: !member && maison })); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
+        if (channels) { ({ display } = channels.end({ fallbackPage: !member && target?.page })); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
         if (channels && !abort.signal.aborted) await conversationImages?.complete({ session, pack, backend, display,
           evidence: toolEvidence, turnId: clientTurnId || entry.imageTurnId, signal: abort.signal, member: Boolean(member),
           onShow: block => event('show', { block }) });

@@ -16,9 +16,13 @@ report remains dated. The page reads on opening,
 and the refresh button requests another read.
 
 If the personal Hermes response stream closes after dispatch, Core keeps
-the admitted Maison turn. When the browser can reach Core again, it reads
-the exact saved turn and opens its Maison page alongside the recovered
+the admitted screen turn. When the browser can reach Core again, it reads
+the exact saved turn and opens its page alongside the recovered
 answer. An explicit stop still uses the normal interruption contract.
+
+“Montre-moi la maison” opens HouseX on Maison. “Montre-moi l’écosystème”
+opens the dedicated ecosystem map. Use “HouseX Écosystème” to open the
+ecosystem layer inside HouseX.
 
 Place the instance configuration under `AGENTX_INSTANCE_ROOT/config/home-assistant.json`.
 For example:

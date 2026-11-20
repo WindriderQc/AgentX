@@ -11,7 +11,10 @@ const { privacyForNew, registerPrivacyRoutes } = require('../../surfaces/househo
 const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture', version: 1 }));
 const sessions = new Map(), submissions = [], errors = [];
 const recoveredTurns = new Map(), recoveryReads = [];
-const maisonQuestion = 'combien de watts tire la prise de l’atelier?';
+const screenRequests = new Map([
+  ['montre-moi la maison', { page:'home-assistant-panel', href:'/dad/home-assistant', heading:'Maison' }],
+  ['montre-moi l’écosystème', { page:'ecosystem', href:'/diskx?app=ecosystem', heading:'Écosystème' }]
+]);
 let browser, server, pendingResponses = 0;
 const output = process.env.EPHEMERAL_BROWSER_OUTPUT_DIR || '/tmp/agentx-nestor-ephemeral-browser';
 fs.mkdirSync(output, { recursive: true });
@@ -36,10 +39,13 @@ fs.mkdirSync(output, { recursive: true });
   app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas,
     runtime: { defaultBackend: 'openclaw', openclawConfigured: true, hermesConfigured: true } } }));
   app.get('/api/voice-personas/private/agents', (_req, res) => res.json({ data: { agents: [{ id: 'main', name: 'Main' }] } }));
-  app.get('/api/voice-personas/private/screen-pages', (_req, res) => res.json({ data: { destinations: [{
-    id: 'home-assistant-panel', label: 'Home Assistant · Maison', href: '/dad/home-assistant', mode: 'frame'
-  }] } }));
+  app.get('/api/voice-personas/private/screen-pages', (req, res) => res.json({ data: { destinations:
+    [...screenRequests.values()].filter(row => !req.query.ecosystemOnly || row.page === 'ecosystem')
+      .map(row => ({ id:row.page, label:row.heading, href:row.href, mode:'frame' }))
+  } }));
   app.get('/dad/home-assistant', (_req, res) => res.type('html').send('<h1>Maison</h1><p>17 W</p>'));
+  app.get('/diskx', (req, res) => req.query.app === 'ecosystem'
+    ? res.type('html').send('<h1>Écosystème</h1>') : res.sendStatus(404));
   app.post('/api/voice-personas/private/sessions', (req, res) => {
     const session = { ...req.body, ...privacyForNew(req.body, req.body.inference?.open), sessionId: randomUUID(), status: 'active', turnCount: 0 };
     sessions.set(session.sessionId, session); res.status(201).json({ data: { session } });
@@ -61,13 +67,14 @@ fs.mkdirSync(output, { recursive: true });
   app.post('/api/voice-personas/private/sessions/:id/turns/text', (req, res) => {
     submissions.push({ sessionId: req.params.id, ...req.body });
     const session = sessions.get(req.params.id); session.turnCount++;
-    if (session.backend === 'hermes' && req.body.text === maisonQuestion) {
-      const { turnId } = req.body, replyText = 'La prise tire 17 W.';
-      const display = [{ id: 'b1', kind: 'page', title: 'Maison', body: 'home-assistant-panel' }];
+    const target = screenRequests.get(req.body.text);
+    if (session.backend === 'hermes' && target) {
+      const { turnId } = req.body, replyText = 'Voici la vue ' + target.heading + '.';
+      const display = [{ id: 'b1', kind: 'page', title: target.heading, body: target.page }];
       const written = { version: 1, segments: [{ kind: 'text', text: replyText }, { kind: 'display', blockId: 'b1' }] };
       setTimeout(() => recoveredTurns.set(turnId, { sessionId: session.sessionId, clientTurnId: turnId,
         traceId: turnId, outcome: 'completed', replyText, written, display }), 250);
-      return res.type('application/x-ndjson').end(JSON.stringify({ type: 'delta', delta: 'La prise' }) + '\n');
+      return res.type('application/x-ndjson').end(JSON.stringify({ type: 'delta', delta: 'Voici' }) + '\n');
     }
     pendingResponses++;
     res.type('application/x-ndjson');
@@ -129,18 +136,31 @@ fs.mkdirSync(output, { recursive: true });
   await page.locator('#conversationSettingsToggle').click();
   await page.locator('#conversationBackend').selectOption('hermes');
   await page.locator('#conversationSettingsToggle').click();
-  assert.equal(await page.locator('iframe[src^="/dad/home-assistant"]').count(), 0);
-  await page.locator('#conversationMessage').fill(maisonQuestion);
-  await page.locator('#conversationText').evaluate(form => form.requestSubmit());
-  const maison = page.frameLocator('iframe[src^="/dad/home-assistant"]:visible');
-  await maison.getByRole('heading', { name: 'Maison' }).waitFor();
-  assert.equal(await maison.getByText('17 W').isVisible(), true);
-  await page.getByText('La prise tire 17 W.', { exact: true }).waitFor();
-  assert.equal(submissions.length, 3, 'a truncated response recovers the original instead of posting again');
-  assert.ok(recoveryReads.length > 0);
-  assert.ok(recoveryReads.every(r => r.id === submissions[2].sessionId && r.turnId === submissions[2].turnId));
+  const recovered = [];
+  for (const [text, target] of screenRequests) {
+    if (target.page === 'ecosystem') {
+      await page.route('**/api/voice-personas/private/screen-pages', async route => {
+        const response = await route.fetch({ url:route.request().url() + '?ecosystemOnly=1' });
+        await route.fulfill({ response });
+      });
+      await page.reload(); await page.waitForFunction(() => window.fixtureReady || window.fixtureError);
+      assert.equal(await page.evaluate(() => window.fixtureError), undefined);
+      assert.equal(await page.locator('#conversationBackend').inputValue(), 'hermes');
+    }
+    const frame = 'iframe[src^="' + target.href + '"]:visible';
+    assert.equal(await page.locator(frame).count(), 0);
+    const before = submissions.length;
+    await page.locator('#conversationMessage').fill(text);
+    await page.locator('#conversationText').evaluate(form => form.requestSubmit());
+    await page.frameLocator(frame).getByRole('heading', { name:target.heading, exact:true }).waitFor();
+    await page.getByText('Voici la vue ' + target.heading + '.', { exact:true }).waitFor();
+    assert.equal(submissions.length, before + 1, 'a truncated response recovers the original instead of posting again');
+    recovered.push(submissions[before]);
+  }
+  assert.ok(recovered.every(turn => recoveryReads.some(r => r.id === turn.sessionId && r.turnId === turn.turnId)));
+  assert.ok(recoveryReads.every(r => recovered.some(turn => r.id === turn.sessionId && r.turnId === turn.turnId)));
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ browser: 'Chromium', submissions: submissions.length, policy: [true, false], reloadRestoresEphemeral: false,
-    maisonRecovered: true, errors, output, liveModelCalls: 0 }));
+    recoveredPages: [...screenRequests.values()].map(row => row.page), errors, output, liveModelCalls: 0 }));
 })().catch(error => { console.error(error.stack); process.exitCode = 1; })
   .finally(async () => { await browser?.close(); await new Promise(resolve => server ? server.close(resolve) : resolve()); });
