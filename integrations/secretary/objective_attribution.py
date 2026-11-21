@@ -161,8 +161,8 @@ def validate_receipt(objective, row, manifest):
     record = row["sourceRecord"]
     scope = input_scope.contract_for(manifest)
     native = record['nativeRef']
-    from objective_grounding import contract_for as grounding_contract, CURRENT_CONTRACT
-    if grounding_contract(manifest) == CURRENT_CONTRACT and 'primarySource' not in native:
+    from objective_grounding import contract_for as grounding_contract, SOURCE_SELECTION_CONTRACTS
+    if grounding_contract(manifest) in SOURCE_SELECTION_CONTRACTS and 'primarySource' not in native:
         raise ValueError('Source-selection receipt requires frozen primary metadata')
     if scope is not None:
         evidence = load(Path(objective) / 'attribution-evidence' / (native.get('attributionEvidenceSha256', '') + '.json'), {})

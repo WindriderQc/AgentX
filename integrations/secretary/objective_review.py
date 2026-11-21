@@ -47,7 +47,7 @@ def config_at(file):
     value = load(file, {})
     if set(value) - {"id", "version", "kind", "ownerAliases", "instructions", "selection", "pageChars", "overlap", "thinking", "inputScope", "groundingContract"}:
         raise ValueError("Unknown objective configuration field")
-    if value.get('groundingContract', grounding.CURRENT_CONTRACT) not in (grounding.CONTRACT, grounding.CURRENT_CONTRACT):
+    if value.get('groundingContract', grounding.CURRENT_CONTRACT) not in (grounding.CONTRACT, *grounding.SOURCE_SELECTION_CONTRACTS):
         raise ValueError('Unsupported requested grounding contract')
     if "thinking" in value and type(value["thinking"]) is not bool:
         raise ValueError("Objective thinking must be an explicit boolean")
@@ -87,7 +87,8 @@ def prepare(root, config, *, create=True):
     if previous is not None:
         input_scope.contract_for(previous)
     template = grounding.schema_template(previous) if previous is not None else (
-        grounding.SCHEMA if config.get('groundingContract') == grounding.CONTRACT else SCHEMA)
+        {grounding.CONTRACT: grounding.SCHEMA, grounding.SOURCE_SELECTION_CONTRACT: grounding.SCHEMA_V15}.get(
+            config.get('groundingContract'), SCHEMA))
     if template is None:
         raise ValueError('Unsupported retained objective schema')
     grounded = grounding.contract_for({'responseSchemaSha256': hashed(template)})
@@ -143,7 +144,7 @@ def read_receipt(file, manifest):
         raise ValueError("Objective receipt integrity does not match its saved identity")
     validate(row["result"], record["body"])
     grounded = grounding.contract_for(manifest)
-    if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT, grounding.CURRENT_CONTRACT) and any(record.get("nativeRef", {}).get(key) != identity.get(key)
+    if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT, *grounding.SOURCE_SELECTION_CONTRACTS) and any(record.get("nativeRef", {}).get(key) != identity.get(key)
                                              for key in ("offset", "end")):
         raise ValueError("Source scope differs from the retained page identity")
     if grounded and "resultProcessing" not in row:
@@ -258,7 +259,7 @@ def _source_record(page, manifest=None):
               "readerContract": CONTRACT, "representation": page["representation"],
               "offset": page["offset"], "end": page["end"], "totalChars": page["totalChars"]}
     attribution.record_context(page, native)
-    if manifest and grounding.contract_for(manifest) == grounding.CURRENT_CONTRACT:
+    if manifest and grounding.contract_for(manifest) in grounding.SOURCE_SELECTION_CONTRACTS:
         native['primarySource'] = {'identity': {k: native[k] for k in ('system', 'messageId', 'threadId', 'sourceSha256')},
             'headers': source['headers'], 'attachmentMetadata': source.get('attachmentMetadata', [])
             if 'inputContext' in page and page['representation']['representation'] == 'mime-text' else []}
@@ -496,13 +497,15 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                         payload["groundingContract"] = grounded
                         evidence_context = grounding.extraction_context(_source_record(page, manifest), manifest)
                         client.schema = grounding.schema_for(page["content"], grounded, evidence_context)
-                        if grounded == grounding.CURRENT_CONTRACT:
+                        if grounded in grounding.SOURCE_SELECTION_CONTRACTS:
                             s = grounding.source_selection
                             payload.update(selectionCues=s.catalog(payload['citationCatalog'], evidence_context),
                                 omissionReasonCatalog=s.omission_catalog(payload['citationCatalog'], evidence_context),
                                 actorReadingCatalog=grounding.work_actors.actors(payload['citationCatalog'], evidence_context),
                                 attachmentMetadataCatalog=s.documents(evidence_context),
-                                dateCatalog=date_evidence.catalog(payload['citationCatalog'], evidence_context) + s.partial_dates(payload['citationCatalog']),
+                                dateCatalog=grounding.date_selection.catalog(payload['citationCatalog'], evidence_context)
+                                if grounded == grounding.CURRENT_CONTRACT else date_evidence.catalog(
+                                    payload['citationCatalog'], evidence_context) + s.partial_dates(payload['citationCatalog']),
                                 factTypeCatalog=claim_proofs.fact_catalog(payload['citationCatalog']),
                                 uncertaintyCatalog=grounding.source_observations.qualification_catalog(payload['citationCatalog']))
                         if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):

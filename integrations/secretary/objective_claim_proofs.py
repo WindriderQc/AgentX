@@ -58,10 +58,11 @@ def context_for(value):
     return value
 
 
-def convert(value, spans, context, content, *, uncertainty_rows=None):
+def convert(value, spans, context, content, *, uncertainty_rows=None, date_rows=None):
     result = copy.deepcopy(value)
     context = context_for(context)
-    date_entries = {r["id"]: r for r in dates.catalog(list(spans.values()), context)}
+    date_entries = {r["id"]: r for r in (dates.catalog(list(spans.values()), context)
+                    if date_rows is None else date_rows)}
     uncertainty_entries = {r["id"]: r for r in (uncertainty_catalog(list(spans.values()))
                            if uncertainty_rows is None else uncertainty_rows)}
     kinds = {r["factType"]: r["citationIds"] for r in fact_catalog(list(spans.values()))}

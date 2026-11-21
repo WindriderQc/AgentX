@@ -275,17 +275,31 @@ work-correspondence alternatives. End dates and underlying activities cannot
 select them. Local validation retains these checks even if a backend ignores
 the schema. Event-date association within observations still needs review.
 
-Dates select `startDateRef` and `endDateRef` from `dateCatalog`, or null. The
-model cannot supply canonical date values, precision or `originalDate`. The
+New objectives use `secretary.objective-grounding/v16`. Dates select
+`startDateSelection` and `endDateSelection`, each null or
+`{reference, observation}`. `reference` selects `dateCatalog`; an event date's
+`observation` selects its exact `{citationId, qualificationIds}` in the same
+native field. The application includes that explicitly selected observation in
+the fact. A supporting date excerpt may differ from the primary anchor; the
+schema binds the date reference to its own excerpt and available local
+qualifications. Repeated excerpt selections must have consistent qualifications.
+Communication dates use `observation: null`, since they date the communication
+rather than the underlying activity. The model cannot supply canonical date
+values, precision or `originalDate`. The
 local catalog preserves literal, calendar-valid French, English and ISO date
 expressions at their actual precision and exact source offsets. An event date
 must occur in that moment's own observation citations. Retained message metadata
-and recognized mail headers are communication dates: only a career contact,
+and recognized mail headers (including quoted `Date d'envoi`, `Date d’envoi`,
+`Envoyé le` and `Sent on`) are communication dates: only a career contact,
 application or work correspondence may select one as its start date, with an
 explicit limitation. They cannot date an underlying move, trip or work activity.
 No relative-date calculation, missing-year completion or day-to-month rounding
 is offered. Bare date lines have no event association. Matching an event date
 within a cited line still requires source review for the actual association.
+The native decoder and local validator use the same closed alternatives. Invalid
+selections reject the whole page, without repairing or salvaging another fact or
+making a second inference call. `dateSelection` in the projection receipt keeps
+the selected references, observations and versioned catalog for replay.
 
 The model supplies no free `uncertainty` field. Local
 projection assembles concrete limits: scope of a contact/application/offer,
@@ -359,13 +373,17 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10`, `/v11`, `/v12`, `/v13` and `/v14` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10`, `/v11`, `/v12`, `/v13`, `/v14` and `/v15` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.
 Changed prompt/schema hashes require a new objective version; no prior objective
 or rejection is rewritten. This extraction contract grants no publication or
 owner confirmation and does not relax a campaign's existing review gate.
+An explicit `groundingContract` can select `/v14`, `/v15` or `/v16` when
+preparing a new objective; an existing manifest always selects its frozen
+template. In particular, v15 retains its flat `startDateRef`/`endDateRef`,
+original header catalog and rejection behavior.
 
 The first supported objective is `life-timeline`. Its private JSON configuration
 contains `id`, `version`, `kind`, explicit `ownerAliases`, optional `instructions`,
