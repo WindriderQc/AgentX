@@ -24,7 +24,8 @@ devices cannot open these pages.
 2. Verify `available`, `status`, `generatedAt` (UTC), age, and the
    evidence coverage behind verified groups and candidate groups.
    Report proven **logical** savings, the survivor rule and any outstanding
-   decisions. Physical freed space requires separate execution evidence.
+   decisions. Compare the UTC generation timestamp with the requested day
+   in the user's time zone. Physical freed space requires separate execution evidence.
 3. Open the returned private `link` or use `screenPage` in Nestor.
    The dated view is `/diskx?janitor=latest&report=<encoded generatedAt>`.
    `GET /api/diskx/presentation?report=<encoded generatedAt>` returns the

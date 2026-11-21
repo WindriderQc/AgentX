@@ -170,6 +170,9 @@ same views in `/pipeline`. Cite the actual blocker, its observed time
 and next actor. Check intake, dependencies, task lease and permissions.
 If there is a queue reference, read `work_queue` with `action: "show"` and
 that queue ID. Keep the task ID, queue ID and native request ID distinct.
+For example, follow `pipeline_tasks({"view":"dossier","pipelineId":"0042"})`
+to `<core>/pipeline?task=0042`. Page the dossier before deciding whether
+the attempt produced an openable artifact.
 
 **Coding Team.** The Pipeline launch view exposes eligible code/report
 candidates and compatible installed executors. For optional bridge status

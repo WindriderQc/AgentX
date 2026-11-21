@@ -58,8 +58,16 @@ function splitSheet(text) {
 function withInstanceDescription(skill, instanceDescription) {
   if (!instanceDescription) return skill;
   const { description } = splitSheet(skill);
-  const combined = [description, instanceDescription].filter(Boolean).join(' ');
-  return skill.replace(/^description:.*$/m, () => `description: ${JSON.stringify(combined)}`);
+  if (description === instanceDescription) return skill;
+  // Preserve product triggers and fit as many whole local words as the skill
+  // format allows. Use a callback so local names containing '$' stay literal.
+  let combined = description || '';
+  for (const word of instanceDescription.split(/\s+/)) {
+    const next = combined ? `${combined} ${word}` : word;
+    if (next.length > 1024) break;
+    combined = next;
+  }
+  return skill.replace(/^description:[^\r\n]*/m, () => `description: ${JSON.stringify(combined)}`);
 }
 
 async function buildOperatorSkill(options = {}) {

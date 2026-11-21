@@ -66,6 +66,14 @@ describe('operator skill', () => {
     expect(text('references/served.md')).toContain('included');
   });
 
+  test('a long instance hint fits the skill limit and preserves literal replacement characters', async () => {
+    sheet('---\ndescription: ' + '$& Maple '.repeat(180).trim() + '\n---\n# Local\n');
+    const skill = await build();
+    const description = splitSheet(skill.files.find(file => file.name === 'SKILL.md').text).description;
+    expect(description.length).toBeLessThanOrEqual(1024);
+    expect(description).toMatch(/ \$& Maple(?: \$& Maple)*(?: \$&)?$/);
+  });
+
   test('a sheet without front matter is taken whole', () => {
     expect(splitSheet('# Just a sheet\n')).toEqual({ description: null, body: '# Just a sheet\n' });
   });

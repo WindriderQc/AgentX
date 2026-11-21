@@ -22,10 +22,10 @@ grants. Read the chapter for the request.
 
 | Goal | First read or tool | Guide |
 |---|---|---|
-| Find the right tool or check whether a service works | Tool catalogue, `check_health`, `ecosystem_snapshot` | [Services and Ops](references/ops.md#health-and-hosts) |
+| Find the right tool or check whether a service works | Tool catalogue, `check_health`, `ecosystem_snapshot` | [Find a service's tool](references/services.md) · [Health and hosts](references/ops.md#health-and-hosts) |
 | Check a model route, pin, usage or memory review | Nerve Center and Analytics | [Ops](references/ops.md#models-routing-and-usage) |
 | Diagnose a waiting task or review what Coding Team delivered | `pipeline_tasks`, then the exact diagnosis or `pipeline_artifacts` | [Pipeline](references/dev.md#pipeline-tasks) |
-| Use free GPU capacity or follow a dispatched job | `gpu_status`, `work_queue`, native executor | [GPU to result](references/ops.md#from-free-gpu-to-an-open-result) |
+| Use free GPU capacity or follow a dispatched job | `gpu_status`, `work_queue`, native executor | [GPU to result](references/ops.md#from-free-gpu-to-an-open-result) · [Trace an exact request](references/compute.md#use-an-available-gpu) |
 | Interpret coverage, read scores or plan a Profiler measurement | `benchmark_coverage`, `benchmark_results` | [Benchmark and Profiler](references/benchmark.md) |
 | Find an indexed file, a dated DiskX/Janitor report or a phone import | `storage_summary`, `find_files`, `janitor_report_view` | [Data and DiskX](references/data.md) |
 | Read a Secretary or Accountant artifact, weather or AgentX reachability | `source_catalogue`, `source_read` | [Living Sources](references/sources.md) |
