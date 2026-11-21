@@ -368,7 +368,11 @@ async function run(options, deps = {}) {
       continue;
     }
     if (!alert || alert.status !== 'resolved') continue;
-    if (alert.resolution?.resolutionMethod === 'ops-watch-superseded') {
+    if (alert.resolution?.resolutionMethod === 'ops-watch-superseded' ||
+        (alert.resolution?.resolutionMethod === 'queue-expiry-cancelled-historical' &&
+         alert.ruleId === 'heavy_work_queue' && alert.severity === 'warning' &&
+         alert.context?.additionalData?.state === 'expired' &&
+         alert.resolution?.resolvedBy === 'core-queue-cancellation')) {
       delete state.relayed[id];
       stateChanged = true;
       continue;
