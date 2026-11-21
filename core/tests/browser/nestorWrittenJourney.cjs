@@ -13,11 +13,13 @@ const { captureWritten } = require('../../src/services/conversations/writtenPres
 const written = require('../../public/js/conversation-written');
 const body = 'Un détail utile qui reste entièrement disponible à l’écran. '.repeat(90) + 'DERNIER_DETAIL_UNIQUE';
 const source = `Voici les points essentiels. <show kind="text" title="Explication complète">${body}</show> Dernière réserve.`;
+const pauseRequest = 'Fixture interrupted voice request';
+const pauseAnswer = 'La réponse initiale reste disponible après la pause.';
 const persona = { id: 'nestor', name: 'Nestor', version: 1, voice: { provider: 'voxcpm', source: 'instance', voices: { fr: 'gazz', en: 'gazz' } } };
 const sessions = new Map(), calls = [], speech = [], errors = [];
 const mime = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.svg': 'image/svg+xml' };
-function wav() {
-  const pcm = Buffer.alloc(12000), header = Buffer.alloc(44);
+function wav(seconds = 0.25) {
+  const pcm = Buffer.alloc(48000 * seconds), header = Buffer.alloc(44);
   for (let i = 0; i < pcm.length / 2; i++) pcm.writeInt16LE(Math.round(2000 * Math.sin(i * 2 * Math.PI * 220 / 24000)), i * 2);
   header.write('RIFF'); header.writeUInt32LE(pcm.length + 36, 4); header.write('WAVEfmt ', 8);
   header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22);
@@ -40,7 +42,9 @@ const server = http.createServer(async (req, res) => {
         voices: ['fr', 'en'].map(language => ({ id: 'gazz', name: 'Gazz', provider: 'voxcpm', language, available: true })) });
       if (p === '/api/household/avatar/llmx-face.js') { res.statusCode = 503; return json({ error: 'Avatar is absent in this fixture' }); }
       if (p.endsWith('/synthesize/stream')) { speech.push(input.text); res.setHeader('Content-Type', 'audio/wav');
-        res.setHeader('X-Voix-Provider', 'voxcpm'); res.setHeader('X-Voix-Voice', 'gazz'); res.setHeader('X-Voix-Language', 'fr'); return res.end(wav()); }
+        res.setHeader('X-Voix-Provider', 'voxcpm'); res.setHeader('X-Voix-Voice', 'gazz'); res.setHeader('X-Voix-Language', 'fr');
+        return res.end(wav(input.text === pauseAnswer ? 2 : undefined)); }
+      if (p.endsWith('/transcribe')) return json({ text: pauseRequest, language: 'fr', detectedLanguage: 'fr' });
       if (p.includes('conversation-preferences')) return json({ revision: 0, preferences: {} });
       if (p.endsWith('/sessions/recap/latest')) return json({ recap: null });
       if (p.endsWith('/sessions/recent')) return json({ sessions: [...sessions.values()].map(({ session }) => session).reverse() });
@@ -51,7 +55,18 @@ const server = http.createServer(async (req, res) => {
         sessions.set(session.sessionId, { session, turns: [] }); return json({ session });
       }
       const match = /\/private\/sessions\/([^/]+)(.*)/.exec(p), state = match && sessions.get(match[1]);
-      if (state && match[2] === '/history') return json({ session: state.session, turns: state.turns, policy: { maximumDisplayedTurns: 100 } });
+      if (state && match[2] === '/history') {
+        if (url.searchParams.has('turnId')) {
+          const turn = state.turns.find(row => row.clientTurnId === url.searchParams.get('turnId'));
+          return json({ turn });
+        }
+        return json({ session: state.session, turns: state.turns, policy: { maximumDisplayedTurns: 100 } });
+      }
+      if (state && match[2] === '/voice-timings') {
+        const turn = state.turns.find(row => row.clientTurnId === input.turnId);
+        if (turn) turn.voiceTimings = input.timings;
+        return json({ turnId: input.turnId, voiceTimings: turn?.voiceTimings });
+      }
       if (state && match[2] === '/turns/text') {
         if (input.text === 'Fixture replay request') { const previous = state.turns.at(-1); res.statusCode = 202;
           return json({ traceId: previous.traceId, reply: { text: previous.replyText, language: 'fr' } }); }
@@ -59,10 +74,12 @@ const server = http.createServer(async (req, res) => {
         const event = (type, value = {}) => res.write(JSON.stringify({ type, ...value }) + '\n');
         const channels = createReplyChannels({ onWritten: value => event('written', value),
           onSay: delta => event('delta', { delta }), onShow: block => event('show', { block }) });
-        for (let i = 0; i < source.length; i += 31) channels.push(source.slice(i, i + 31));
+        const text = input.text === pauseRequest ? pauseAnswer : source;
+        for (let i = 0; i < text.length; i += 31) channels.push(text.slice(i, i + 31));
         const parsed = channels.end(), traceId = crypto.randomUUID();
         const presentation = captureWritten({ draft: parsed.written, traceId });
-        const turn = { ...presentation, traceId, clientTurnId: input.turnId, inputText: input.text,
+        const turn = { ...presentation, traceId, clientTurnId: input.turnId, inputText: input.text, sessionId: state.session.sessionId,
+          channel: input.channel, outcome: 'completed', textRetention: 'full', speechLanguage: 'fr',
           replyText: parsed.say, display: storedDisplay(parsed.display), createdAt: new Date().toISOString() };
         state.turns.push(turn); state.session.turnCount++; state.session.lastTurnAt = turn.createdAt;
         event('say_end'); event('done', { data: { ...presentation, traceId, session: state.session,
@@ -89,15 +106,19 @@ const server = http.createServer(async (req, res) => {
   let page;
   try {
     const context = await browser.newContext();
+    await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await context.addInitScript(() => {
       localStorage.setItem('household.avatar.personal.layout', 'cache');
       localStorage.setItem('household.conversation.preferences.v2', JSON.stringify({ personaId: 'nestor', profiles: { nestor: { language: 'fr' } } }));
       navigator.permissions.query = async () => ({ state: 'prompt' });
+      window.captureCalls = 0;
       navigator.mediaDevices.getUserMedia = async () => {
+        window.captureCalls++;
         const audio = new AudioContext(), destination = audio.createMediaStreamDestination();
         const oscillator = audio.createOscillator(), gain = audio.createGain();
         gain.gain.value = 0; oscillator.connect(gain); gain.connect(destination); oscillator.start(); await audio.resume();
+        window.fixtureSay = () => { gain.gain.value = 0.06; setTimeout(() => { gain.gain.value = 0; }, 650); };
         for (const track of destination.stream.getTracks()) track.addEventListener('ended', () => audio.close());
         return destination.stream;
       };
@@ -148,9 +169,30 @@ const server = http.createServer(async (req, res) => {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     await transcript.evaluate(node => { node.scrollTop = node.querySelector('.conversation-message.assistant:last-of-type').offsetTop; });
     await page.screenshot({ path: report + '/complete-written-mobile.png' });
+
+    await page.locator('#conversationStart').click();
+    await page.waitForFunction(() => document.getElementById('conversationPresence').dataset.state === 'listening');
+    await page.evaluate(() => window.fixtureSay());
+    await page.waitForFunction(() => document.getElementById('conversationPresence').dataset.state === 'speaking');
+    await page.locator('#conversationStart').click();
+    const replay = transcript.getByRole('button', { name: 'Réécouter cette réponse', exact: true });
+    await replay.waitFor();
+    await page.reload();
+    await page.locator('#conversationResume button').first().click();
+    await replay.waitFor();
+    assert.equal(await replay.count(), 1, 'only the interrupted voice answer is eligible after reload');
+    const beforeReplay = calls.length, beforeSpeech = speech.length;
+    await replay.click();
+    await transcript.getByText('Relecture terminée.', { exact: true }).waitFor();
+    assert.deepEqual(speech.slice(beforeSpeech), [pauseAnswer]);
+    assert.deepEqual(calls.slice(beforeReplay).filter(row => row.method === 'POST').map(row => row.path),
+      ['/api/voix/synthesize/stream']);
+    assert.equal(await page.evaluate(() => window.captureCalls), 0, 'replay leaves the microphone closed');
+    assert.equal(await page.locator('#conversationPresence').getAttribute('data-state'), 'paused');
+
     assert.deepEqual(errors, []);
     fs.writeFileSync(report + '/result.json', JSON.stringify({ passed: true, mode: 'synthetic CPU browser',
-      checks: ['typed complete answer', 'late fragment refused', 'playback interruption preserves source', 'copy and collapse', 'history reload', 'voice projection', '202 recovery without generation', 'mobile layout'],
+      checks: ['typed complete answer', 'late fragment refused', 'playback interruption preserves source', 'copy and collapse', 'history reload', 'voice projection', '202 recovery without generation', 'mobile layout', 'exact interrupted answer replay with microphone closed'],
       calls, speech, errors }, null, 2));
     console.log(JSON.stringify({ passed: true, report }));
   } catch (error) {

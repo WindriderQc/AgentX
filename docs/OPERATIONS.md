@@ -1346,6 +1346,9 @@ Opening a saved conversation, from that offer or from the recent list, starts
 listening again by itself on a device whose microphone is already granted, in
 standby when the wake word is required; elsewhere the conversation opens with
 the microphone off and Reprendre asks for it.
+For a saved complete voice answer whose playback was interrupted, the original
+message offers **Réécouter cette réponse**. The control reads the retained reply
+through speech synthesis with the microphone paused.
 Famille keeps the Nestor personality but replaces its adult temperament with a
 playful, curious tone for children (`FAMILY_TONE` in
 `core/surfaces/household/family-context.js`), sent with the family surface

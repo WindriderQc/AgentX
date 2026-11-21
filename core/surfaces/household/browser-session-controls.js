@@ -74,12 +74,12 @@ function createBrowserSessionControls({
         }
         if (req.query?.turnId !== undefined) {
           const { turnId } = req.query;
-          if (prefix !== '/private' || consumer || session.scopeId !== 'personal' || session.backend !== 'hermes' || !validClientTurnId(turnId)) {
-            return fail(res, 400, 'An exact personal Hermes turn is required.', 'VOICE_PERSONA_TURN_LOOKUP_INVALID');
+          if (prefix !== '/private' || consumer || session.scopeId !== 'personal' || !validClientTurnId(turnId)) {
+            return fail(res, 400, 'An exact personal turn is required.', 'VOICE_PERSONA_TURN_LOOKUP_INVALID');
           }
           const lookup = { sessionId: session.sessionId, packId, scopeId: session.scopeId, clientTurnId: turnId };
           let turn = await conversations.getTurn(lookup);
-          if ((!turn || turn.outcome === 'pending') && session.hermesRuntime?.turnId === turnId && reconcileConversation) {
+          if ((!turn || turn.outcome === 'pending') && session.backend === 'hermes' && session.hermesRuntime?.turnId === turnId && reconcileConversation) {
             await Promise.resolve().then(() => reconcileConversation(session)).catch(() => null);
             turn = await conversations.getTurn(lookup);
           }
