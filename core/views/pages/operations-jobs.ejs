@@ -52,7 +52,8 @@
     <form id="operationsSettingsForm">
       <div class="oj-dialog-header"><div><p class="oj-eyebrow">FRÉQUENCE</p><h2 id="settingsTitle">Régler un traitement</h2></div><button type="button" class="oj-icon-button" id="settingsClose" aria-label="Fermer"><i class="fas fa-xmark" aria-hidden="true"></i></button></div>
       <p id="settingsDependency" class="oj-dependency-note"></p>
-      <label class="oj-field">Rythme<select name="type"><option value="interval">À intervalle régulier</option><option value="daily">Chaque jour</option></select></label>
+      <label class="oj-field">Rythme<select name="type"><option value="interval">À intervalle régulier</option><option value="daily">Chaque jour</option><option value="weekly">Chaque semaine</option></select></label>
+      <label class="oj-field" id="settingsWeekday" hidden>Jour<select name="weekday"><option value="0">Lundi</option><option value="1">Mardi</option><option value="2">Mercredi</option><option value="3">Jeudi</option><option value="4">Vendredi</option><option value="5">Samedi</option><option value="6">Dimanche</option></select></label>
       <label class="oj-field" id="settingsInterval">Intervalle<select name="minutes"><option value="5">5 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 heure</option><option value="120">2 heures</option><option value="240">4 heures</option><option value="720">12 heures</option><option value="1440">24 heures</option></select></label>
       <label class="oj-field" id="settingsDaily" hidden>Heure locale<input name="at" type="time" value="03:45"></label>
       <label class="oj-field">Fuseau horaire<input name="timezone" required autocomplete="off" placeholder="America/Toronto"></label>

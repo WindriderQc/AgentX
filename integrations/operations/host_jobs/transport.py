@@ -1,8 +1,9 @@
 """Bounded native transport; a lost launch answer is never a replacement launch."""
 import base64
 import json
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
+import shlex
 import subprocess
 
 from .store import JobError, exact_id, exact_request
@@ -30,6 +31,21 @@ def windows_command(host, verb, identifier=None, request_id=None, source_at=None
     return "powershell.exe -NoProfile -NonInteractive -EncodedCommand " + base64.b64encode(script.encode("utf-16le")).decode()
 
 
+def posix_command(host, verb, identifier=None, request_id=None, source_at=None):
+    if verb not in {"run", "status", "inventory"}:
+        raise JobError("INVALID_ACTION", "The native worker action is invalid.", 400)
+    args = [host["python"], str(PurePosixPath(host["root"]) / "host_job_worker.py"), "--root",
+            host.get("stateRoot") or str(PurePosixPath(host["root"]) / "state"), verb]
+    if identifier:
+        args += ["--job", exact_id(identifier)]
+    if request_id:
+        args += ["--request", exact_request(request_id)]
+    if source_at:
+        from .schedule import instant
+        args += ["--source-at", instant(source_at).isoformat()]
+    return shlex.join(args)
+
+
 def call(host, verb, identifier=None, request_id=None, timeout=20, source_at=None):
     target = host.get("sshTarget", "")
     if host.get("transport") != "local" and (not TARGET.fullmatch(target) or target.startswith("-")):
@@ -41,8 +57,12 @@ def call(host, verb, identifier=None, request_id=None, timeout=20, source_at=Non
             args += ["--job", exact_id(identifier)]
         if request_id:
             args += ["--request", exact_request(request_id)]
+        if source_at:
+            from .schedule import instant
+            args += ["--source-at", instant(source_at).isoformat()]
     else:
-        command = windows_command(host, verb, identifier, request_id, source_at)
+        builder = posix_command if host.get("platform") == "posix" else windows_command
+        command = builder(host, verb, identifier, request_id, source_at)
         args = ["ssh", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=8", target, command]
     try:
         result = subprocess.run(args, capture_output=True, timeout=timeout, text=True, encoding="utf-8")

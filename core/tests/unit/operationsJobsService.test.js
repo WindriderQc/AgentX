@@ -65,3 +65,17 @@ test('native revision refusal stays a conflict and settings are encoded rather t
 test('an unexpected native protocol cannot silently become a healthy empty list', () => {
   expect(() => projectSnapshot({jobs: []})).toThrow('incomplete');
 });
+
+test('weekly maintenance retains its native cadence and projects simulation counts without a manifest', async () => {
+  const native = snapshot();
+  native.jobs[0].kind = 'apt-maintenance-plan';
+  native.jobs[0].schedule = {type: 'weekly', weekday: 6, at: '04:00', timezone: 'America/Toronto'};
+  native.jobs[0].lastRun = {requestId: id, jobId: 'usage', state: 'completed', metrics: {simulationOnly: true,
+    pendingPackages: 47, selectedPackages: 3, excludedPackages: 44, indexesFresh: false, privateManifest: 'secret', policyPath: '/secret'}};
+  const data = await createOperationsService({env, runner: runnerFor(native)}).status();
+  expect(data.jobs[0].schedule).toMatchObject({type: 'weekly', weekday: 6, at: '04:00'});
+  expect(data.jobs[0].lastRun.metrics).toEqual({simulationOnly: true, pendingPackages: 47, selectedPackages: 3, excludedPackages: 44, indexesFresh: false});
+  expect(JSON.stringify(data)).not.toContain('secret');
+  const entries = require('../../src/services/clusterScheduleService').syncEntries.mock.calls.at(-1)[0];
+  expect(entries[0].schedule).toEqual({type: 'cron', cron: '0 4 * * 0', timezone: 'America/Toronto'});
+});
