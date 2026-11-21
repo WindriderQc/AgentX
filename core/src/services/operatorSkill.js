@@ -45,7 +45,8 @@ async function productDir(candidates) {
   return null;
 }
 
-// The instance front matter adds local names to the product's usage triggers.
+// An instance sheet can add local trigger terms in a one-line description.
+// Keep the product triggers in the served skill as well.
 function splitSheet(text) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
   if (!match) return { description: null, body: text };
@@ -54,16 +55,17 @@ function splitSheet(text) {
   return { description: description || null, body: text.slice(match[0].length) };
 }
 
-function withDescription(skill, description) {
-  if (!description) return skill;
-  const product = splitSheet(skill).description;
-  if (!product || product === description) return skill;
-  // The skill format allows 1024 characters. Keep the complete product
-  // description and as many whole words of the instance hint as fit.
-  let combined = product;
-  for (const word of description.split(/\s+/)) {
-    if (combined.length + word.length + 1 > 1024) break;
-    combined += ' ' + word;
+function withInstanceDescription(skill, instanceDescription) {
+  if (!instanceDescription) return skill;
+  const { description } = splitSheet(skill);
+  if (description === instanceDescription) return skill;
+  // Preserve product triggers and fit as many whole local words as the skill
+  // format allows. Use a callback so local names containing '$' stay literal.
+  let combined = description || '';
+  for (const word of instanceDescription.split(/\s+/)) {
+    const next = combined ? `${combined} ${word}` : word;
+    if (next.length > 1024) break;
+    combined = next;
   }
   return skill.replace(/^description:[^\r\n]*/m, () => `description: ${JSON.stringify(combined)}`);
 }
@@ -84,7 +86,7 @@ async function buildOperatorSkill(options = {}) {
   for (const name of await listFiles(dir)) {
     if (['references/instance.md', 'references/served.md'].includes(name)) continue;
     const text = await readBounded(path.join(dir, name));
-    files.push({ name, text: name === 'SKILL.md' ? withDescription(text, sheet?.description) : text });
+    files.push({ name, text: name === 'SKILL.md' ? withInstanceDescription(text, sheet?.description) : text });
   }
   if (sheet) files.push({ name: 'references/instance.md', text: sheet.body });
   files.push({

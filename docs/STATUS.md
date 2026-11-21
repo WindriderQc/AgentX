@@ -348,6 +348,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   applies a final common joined Core/note fence. Optional v11 reconciliation
   binds the canonical manifest and final local archive checks; native acceptance
   gaps still block every cleanup candidate and no approval is retained.
+  [Selected Core record restoration](SECRETARY_CORE_RESTORATION.md) qualifies
+  complete current documents and Mongo index definitions in private temporary
+  collections through the existing Core queries. Optional v12 reconciliation
+  fences the full source after copying and keeps every native acceptance gap;
+  no canonical restore, recall-index qualification or mailbox effect follows.
   See [linked souvenirs](SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a

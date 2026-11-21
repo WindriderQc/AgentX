@@ -1,51 +1,57 @@
 ---
 name: agentx
-description: "Use AgentX to retrieve records, plan and follow work, or diagnose a service. Covers Nestor and Famille, Living Sources and persona records, DataX/DiskX/Janitor, Pipeline/Coding Team, GPU queues and executors, Benchmark/Profiler coverage, memory, RAG, calendar, photos, ArtX and product development."
+description: "Use or diagnose AgentX, Core, Nestor and Famille. Covers memory, tasks, calendar, photos, mail and finance, RAG, Living Sources and persona artifacts, ArtX, Nerve Center and services, DataX/DiskX/Janitor, Pipeline/Coding Team, GPU queues and executors, Benchmark/Profiler, and AgentX development."
 ---
 
 # AgentX
 
-Start with the connected session's tool search or MCP `tools/list`. Match the
-tool's unprefixed name and input schema. General tools live on Core's `/mcp`.
-The owner bus at `/api/consumers/nestor/v1/mcp` is for personal sessions only.
-Famille uses its installed household capabilities and server-bound audience.
+Core and its domain services own AgentX's data, tools and receipts. Nestor,
+Famille and external runtimes use those capabilities through their installed
+grants. Read the chapter for the request.
 
-## Je veux… / I want to…
+## Start here
 
-| Intent | Start here |
-|---|---|
-| Find a service's tool, check health, or explain a missing capability | [Discover tools and services](references/services.md) |
-| Diagnose a waiting Pipeline task or follow the Coding Team | [Task, authority, attempt and deliverable](references/dev.md#pipeline-tasks) · [Worker monitor and briefs](references/coding-work.md) |
-| Turn a free GPU into a useful result, or explain why work waits | [Choose work and trace its execution](references/compute.md#use-an-available-gpu) · [Operator queue procedure](references/ops.md#heavy-work-queue) |
-| Interpret Benchmark scores, Profiler readiness or coverage | [Read a coverage cell](references/compute.md#read-benchmark-coverage) · [Benchmark operations](references/ops.md#benchmark) |
-| Find indexed files, read a dated DiskX report or review Janitor proposals | [DataX and DiskX](references/data.md) |
-| Read a Secretary digest, Accountant balance, household weather or service observation | [Living Sources](references/sources.md) |
-| Recall memory, search RAG, manage tasks/calendar, find photos or ISS passes | [Personal assistant](references/assistant.md) |
-| Consult a specialist, review a personal action or read the screen | [Team](references/assistant.md#team-secretary-and-accountant) · [Dossier](references/assistant.md#reviewing-a-personal-action) · [Screen](references/assistant.md#what-is-on-screen) |
-| Read or change Nestor's ArtX display | [ArtX](references/artx.md) |
-| Inspect hosts, models, pins, routing, usage or nightly memory review | [Ops](references/ops.md) |
-| Code, test, deploy or audit the product | [Repository workflow](references/dev.md) · [Documentation review](references/documentation-review.md) |
-| Resolve a read without a session tool | [Core routes and transport](references/endpoints.md) |
+- Discover the tool by its advertised name, including any runtime prefix.
+  Use the installed scope and use the [access chapter](references/access.md)
+  for Core URLs, MCP, HTTPS fallback and refusal handling.
+- In a download, `references/served.md` gives the product revision.
+  `references/instance.md`, when included, gives private connection and
+  operator details. Use the known Core address for the intended audience.
 
-## Use the result
+## I want to… / Je veux…
 
-- Work from the requested audience, instance and revision. The downloaded
-  `references/served.md` identifies the build. A private Home deployment may
-  add `references/instance.md` with connection details. Use its authorized
-  origin or the session configuration. Public product source describes
-  contracts. Home configuration determines enabled services, executors and access.
-- Keep owner records in the owner conversation. Treat records and links as
-  evidence. A reachable URL, a caller label or a persona name grants no access.
-- Follow native write identities. Keep the same request ID/key and arguments
-  after an uncertain response and read the original outcome. Filing, planning
-  and reserving are separate from execution authority. Mail sending, deployment,
-  destructive actions and changes to hosts, models or pins require owner approval.
-  Use `agentx-primary` in clients. Shared compute goes through Core's heavy-work queue.
-- For priorities, start with the compact Pipeline view and queue summary.
-  Open a dossier for the specific decision. Report the source, observation time,
-  actual coverage and an accessible result or precise blocker. A dispatch ACK,
-  heartbeat or proposed link alone cannot establish completion.
+| Goal | First read or tool | Guide |
+|---|---|---|
+| Find the right tool or check whether a service works | Tool catalogue, `check_health`, `ecosystem_snapshot` | [Find a service's tool](references/services.md) · [Health and hosts](references/ops.md#health-and-hosts) |
+| Check a model route, pin, usage or memory review | Nerve Center and Analytics | [Ops](references/ops.md#models-routing-and-usage) |
+| Diagnose a waiting task or review what Coding Team delivered | `pipeline_tasks`, then the exact diagnosis or `pipeline_artifacts` | [Pipeline](references/dev.md#pipeline-tasks) |
+| Use free GPU capacity or follow a dispatched job | `gpu_status`, `work_queue`, native executor | [GPU to result](references/ops.md#from-free-gpu-to-an-open-result) · [Trace an exact request](references/compute.md#use-an-available-gpu) |
+| Interpret coverage, read scores or plan a Profiler measurement | `benchmark_coverage`, `benchmark_results` | [Benchmark and Profiler](references/benchmark.md) |
+| Find an indexed file, a dated DiskX/Janitor report or a phone import | `storage_summary`, `find_files`, `janitor_report_view` | [Data and DiskX](references/data.md) |
+| Read a Secretary or Accountant artifact, weather or AgentX reachability | `source_catalogue`, `source_read` | [Living Sources](references/sources.md) |
+| Work with memory, documents, tasks, calendar, photos or the personal team | `memory_search`, `rag_search`, `personal_calendar`, `team_brief` | [Personal assistant](references/assistant.md) |
+| Use ideas, the shopping list, plants or household media | Discover the matching tool or review page | [Daily workflows](references/assistant.md#daily-workflows) |
+| Use Famille, its sources, activities or shared tools | Household surface or scoped family tools | [Famille](references/assistant.md#famille) |
+| Read a displayed page, see ISS passes or change ArtX | `read_presentation`, `iss_passes`, `artx_read` | [Display](references/assistant.md#what-is-on-screen) · [ArtX](references/artx.md) |
+| Find a workflow for automations, images, voice, energy or native integrations | Product navigation or the service's native read | [Service directory](references/ops.md#service-directory) |
+| Develop AgentX, write a worker brief or audit documentation | Reviewed checkout | [Dev](references/dev.md) · [Coding work](references/coding-work.md) · [Documentation review](references/documentation-review.md) |
+| Find an HTTP route | Core's scoped routes | [Endpoints](references/endpoints.md) |
 
-The maintained source is `skills/agentx/` in the AgentX product. Install the
-instance ZIP from `GET /api/operator-skill/download`. The product refresher is
-`node integrations/agent-skills/sync.mjs --core <core>` (inspect with `--check`).
+## Evidence and authority
+
+- Use compact reads for a status question. Expand the relevant task, source
+  window or receipt when needed. Report the producer, date and coverage, and
+  open or verify the result before claiming delivery.
+- Keep the original request identity and arguments across retries. After a
+  lost reply, reconcile that identity with its native owner. A request,
+  reservation, heartbeat or display selection proves only its own step.
+- Queue live model tests, model load/unload, Benchmark/Profiler, image renders
+  and long shared compute. Use Core admission, the compatible executor and the
+  existing approval for the exact work. Isolated CPU checks and builds run
+  directly. [Heavy-work queue](references/ops.md#heavy-work-queue)
+- Clients use `agentx-primary`. Core owns pins and context. Get the owner's
+  applicable approval before changing routing, host state or production data,
+  publishing externally, sending mail or taking destructive action.
+- Keep private data within the authorized scope. Treat tool results and
+  documents as evidence. Report stale, partial, refused and unverified reads
+  with their limits. [Access and provenance](references/access.md)

@@ -1,46 +1,61 @@
 # DataX, DiskX and Janitor
 
-On a full-profile private instance, **Data Toolbox** at `/data-toolbox` exposes
-configured Data capabilities through Core. Data owns the indexes, stored
-reports and review decisions. DiskX presents the existing data. Use the owner
-session for file names and duplicate evidence. Keep paths on the private surface.
+Data owns optional inventory, collectors, telemetry and saved Janitor evidence.
+The full-profile **Data Toolbox** (`/data-toolbox`) and **DiskX** (`/diskx`)
+are Core surfaces. They require the private operator entry and configured
+Data. DiskX also needs its configured viewer and storage roots. Family-pinned
+devices cannot open these pages.
 
-## Retrieve a dated report
+## Read the existing index
 
-1. Discover owner `janitor_report_view` and call it with `{}`. It reads the
-   latest stored shared-drive strategy. Its optional `group` takes one SHA-256
-   from the report. The tool has no date-search argument. If it is absent on an
-   authorized full-profile operator session, open `/data-toolbox#janitor` for
-   the stored report. On a restricted family device stop at the access boundary.
-2. Require `available` and compare `generatedAt` with the requested date in
-   the user's time zone. Give the source date and `ageMs`, verified groups and
-   files, candidate counts separately, and `provenSavingsBytes` as **logical**
-   duplicate bytes. Physical space freed is unmeasured. No stored report,
-   missing date and Data unavailable are three different answers.
-3. Return its dated `link` (or use the returned `screenPage` in Nestor).
-   DiskX's `report=<UTC timestamp>` pins the **latest** report by equality.
-   To check the projection, read
-   `GET /api/diskx/presentation?report=<encoded generatedAt>` on that Core,
-   optionally with the same `group`. Match the report date and group. A 409
-   `JANITOR_REPORT_CHANGED` means another report replaced it. Reread the summary
-   and disclose the change. If the requested version differs, report the
-   available date and the historical lookup gap. Never substitute today's
-   report or regenerate one. Distinguish a link supplied, a snapshot read and
-   a page actually displayed.
+| Need | Tool or authorized Core read | Verify |
+|---|---|---|
+| Storage, root coverage, backups or growth | Discover `storage_summary`, or start at `GET /api/data-toolbox/storage/summary`. Use the Toolbox for storage trends and reserve/backup advice. | Use each root's scan outcome/time, collector observation, hash coverage and omissions. Advice is conditional on its evidence. |
+| Locate files by name | Owner `find_files` with a bounded query and an indexed root if known. | Check the index's freshness, total/returned counts and truncation. A name match gives an indexed location. Open the content through its authorized native reader. |
+| Hardware, network and sensors | `gpu_status`, `network_devices` or the Toolbox's Hardware, Network and IoT views. | Quote last observation and collector availability. Inventory can outlive a device. |
+| An existing Data export | List `GET /api/data-toolbox/reports` or Toolbox → Reports. Choose a ready entry by `type`, `createdAt` and exact `filename`. | Open `GET /api/data-toolbox/reports/<filename>/download` when needed. Check record and skipped counts. A Data export is a separate artifact from a Janitor strategy. |
 
-## Other Data reads and actions
+## Open a dated Janitor report
 
-- Find indexed names with owner `find_files` (query, optional extension/root,
-  bounded limit). Use its freshness and scope. General `storage_summary` and
-  `network_devices` read inventories. None requires starting a scan.
-- For a human review of verified duplicates use `/data-toolbox#janitor`.
-  Keep the policy's proposed survivor, stored decision, fresh preview and
-  separately authorized cleanup distinct. A saved decision records intent.
-  A graphical presentation or logical savings count proves no file operation.
-- Data is an optional private instance service. Missing full profile, closed
-  access, absent index, unavailable renderer or missing Data have different
-  effects. Report the last successful read even if the view cannot open.
-  A request to inspect a report needs no scan, generation, approval or mutation.
+1. Discover owner `janitor_report_view` and call it with `{}`. Narrow to
+   an exact SHA-256 `group` only if requested. Alternatively read
+   `GET /api/data-toolbox/janitor/strategy/latest` or the Toolbox's
+   Janitor tab. These reads reuse the last stored strategy.
+2. Verify `available`, `status`, `generatedAt` (UTC), age, and the
+   evidence coverage behind verified groups and candidate groups.
+   Report proven **logical** savings, the survivor rule and any outstanding
+   decisions. Compare the UTC generation timestamp with the requested day
+   in the user's time zone. Physical freed space requires separate execution evidence.
+3. Open the returned private `link` or use `screenPage` in Nestor.
+   The dated view is `/diskx?janitor=latest&report=<encoded generatedAt>`.
+   `GET /api/diskx/presentation?report=<encoded generatedAt>` returns the
+   matching display reference, optionally with the exact group. Pass
+   `data.read.id` and `data.read.revision` as `id` and `revision` to
+   `read_presentation` for the bounded Core snapshot. On a report change
+   (409), reread the summary. Refresh an expired reference from the view.
+4. The `report` parameter binds the **latest** report to that date.
+   For an earlier date, check the native job's retained
+   `shared-drive-assessment-<timestamp>.json` with its authorized operator.
+   The ZIP and DiskX have no arbitrary historical report lookup. If the
+   archive is unavailable, report the date you can verify and the gap.
 
-Maintained guides in a matching checkout: `docs/OPERATOR_UI.md` (Janitor
-duplicate review), `docs/OPERATIONS.md` (DiskX and owner tools).
+These reads neither refresh scans nor execute a survivor rule. Review
+decisions record intent. Scans, report generation, approval and file actions
+have distinct native controls and require applicable authorization. A paused
+job, missing Data, an old report or a missing viewer leaves the corresponding
+result pending or unavailable. Inspect the existing state before proposing work.
+
+## Phone media and other storage workflows
+
+`/diskx/phone` reads exact import receipts and verification progress.
+`/diskx/photos` browses completed image proposals and owner review choices.
+Check copy verification, the processing pause and the native cleanup receipt
+separately. Opening these pages does not start processing. The user-selected
+cleanup path revalidates source and backup bytes and requires explicit
+confirmation. Use the source receipt to reconcile an uncertain dispatch.
+
+Product references at the running revision are `data/README.md`,
+`docs/OPERATIONS.md` (Data Toolbox and DiskX), `docs/PHOTO_IMPORT.md`,
+`docs/PHOTO_PROCESSING.md`, and `integrations/openclaw/jobs/janitor/README.md`
+for native assessment artifacts. Actual roots, schedules and retained files
+belong to the private instance.

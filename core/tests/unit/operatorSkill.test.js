@@ -52,15 +52,17 @@ describe('operator skill', () => {
     expect(skill.files.find((file) => file.name === 'references/served.md').text).toContain('abc1234def');
   });
 
-  test('a mounted sheet keeps product discovery and adds instance triggers', async () => {
-    const generic = await build();
-    const productDescription = splitSheet(generic.files.find(file => file.name === 'SKILL.md').text).description;
+  test('a mounted sheet adds local triggers and keeps the product description', async () => {
+    const product = await build();
     sheet('---\ndescription: "Operate the Maple house instance; use for Maple or Juniper."\n---\n# Maple house\n\nCore: https://maple.test\n');
     const skill = await build();
     const text = (name) => skill.files.find((file) => file.name === name).text;
     expect(skill.instanceSheet).toBe(true);
     expect(text('references/instance.md')).toBe('# Maple house\n\nCore: https://maple.test\n');
-    expect(splitSheet(text('SKILL.md')).description).toBe(productDescription + ' Operate the Maple house instance; use for Maple or Juniper.');
+    const original = splitSheet(product.files.find((file) => file.name === 'SKILL.md').text);
+    const served = splitSheet(text('SKILL.md'));
+    expect(served.description).toBe(`${original.description} Operate the Maple house instance; use for Maple or Juniper.`);
+    expect(served.body).toBe(original.body);
     expect(text('references/served.md')).toContain('included');
   });
 

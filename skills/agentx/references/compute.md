@@ -2,6 +2,9 @@
 
 ## Read Benchmark coverage
 
+For the native Profiler progress and pinned-fit readers, see
+[Benchmark and Profiler](benchmark.md).
+
 Use general `benchmark_coverage({})` for the matrix of pinned or routed
 host/model pairs. Its HTTP equivalent is `GET /benchmark/api/benchmark/coverage`
 under Core's configured prefix. Quote `generatedAt`, `scorerVersion`, exact

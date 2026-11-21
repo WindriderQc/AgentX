@@ -120,8 +120,19 @@ source checks stay direct.
 `skills/agentx/` is served by Core at `/api/operator-skill/download` (with the
 instance sheet) and copied into the Core image. `references/artx.md` is also the
 system prompt of Nestor's silent ArtX task (`core/src/services/artxDecision.js`):
-keep it self-contained. Keep `SKILL.md` a one-page entry; detail goes in a
-chapter. Check every link after a rename.
+keep it self-contained. Keep `SKILL.md` short and route to ZIP-local
+chapters. The optional one-line description in the mounted instance sheet
+adds local trigger terms after the product description.
+
+Validate the exact archive using the Core download route in an isolated
+fixture. Check revision, relative chapter links, and a build with a synthetic
+sheet. Product ZIPs carry no private sheet. For a deployment, follow
+`docs/OPERATIONS.md` under Updating a running instance. Compare the
+redownloaded product chapters byte for byte, the combined trigger
+description, the full revision and the intended private sheet. Download
+generation time and ZIP entry timestamps vary per request. Use
+`integrations/agent-skills/sync.mjs --core <core> --check` to check installed
+copies after publication.
 
 ## Delivering
 
@@ -137,23 +148,6 @@ chapter. Check every link after a rename.
 
 ## Pipeline tasks
 
-For "why is task 0042 waiting?", use the four-digit ID as a string:
-
-1. Read owner `pipeline_tasks({"view":"dossier","pipelineId":"0042"})`.
-   Read all pages as described below. Compare the intake decision, assignment,
-   dependencies and earliest start with the task's own next action.
-2. Read `GET /api/pipeline/tasks/0042/eligibility` and `/api/pipeline/tasks/0042/diagnosis`
-   on authorized Core. Use `work_authority` for disputed execution authority.
-   If a queue request is linked, read owner `work_queue` with `action:"show"`
-   and its exact ID. Keep an explicit pause, unassigned executor, rejected
-   admission and unknown runtime outcome distinct. A free GPU resolves none
-   of those conditions on its own.
-3. Return the observed blocker, who owns the next step and the dated evidence
-   in `<core>/pipeline?task=0042`. For a recorded attempt, follow its native
-   receipt and open the registered text via `pipeline_artifacts` with the ID
-   of that deliverable. Binary receipts and an unreadable output have narrower
-   evidentiary value. A diagnosis request needs no claim, launch or edit.
-
 For a status/priority overview, `ecosystem_snapshot` with `mode: "pipeline"`
 and `maxChars: 5000` reads canonical Pipeline summaries without runtime or
 health collectors. Counts, private-row exclusions and incomplete coverage
@@ -167,6 +161,37 @@ Pipeline holds engineering and report work; Core renders briefs, follows
 workers and keeps evidence. Writing a brief, following the local worker and
 reporting what evidence proves: [coding-work](coding-work.md). Documentation
 audits: [documentation-review](documentation-review.md).
+
+Use the [owner scope](access.md) for Pipeline and Coding Team. For **a
+waiting task**, start with the task ID and the compact `pipeline_tasks`
+summary if needed. Open the dossier and read
+`GET /api/pipeline/tasks/<id>/diagnosis` and `/eligibility` or the
+same views in `/pipeline`. Cite the actual blocker, its observed time
+and next actor. Check intake, dependencies, task lease and permissions.
+If there is a queue reference, read `work_queue` with `action: "show"` and
+that queue ID. Keep the task ID, queue ID and native request ID distinct.
+For example, follow `pipeline_tasks({"view":"dossier","pipelineId":"0042"})`
+to `<core>/pipeline?task=0042`. Page the dossier before deciding whether
+the attempt produced an openable artifact.
+
+**Coding Team.** The Pipeline launch view exposes eligible code/report
+candidates and compatible installed executors. For optional bridge status
+use `GET /api/runtime-bridges/coding-dispatch/status` with the original
+`requestId` and `executorId` when known. Inspect autonomy with
+`GET /api/pipeline/coding-autonomy`. Core's product registry supports DSH
+and OpenCode. Use the installed registry and current native evidence to
+decide which is available. Paused automation, draining/unreachable executors
+and missing launch authority block new work. An accepted or uncertain
+request remains with its original executor.
+
+A run can deliver an artifact with the task still in review. Open a registered
+deliverable with `pipeline_artifacts {pipelineId, deliverableId}` for verified
+bounded text, or the authorized Pipeline download for larger/binary delivery.
+Record the exact task, request, artifact/commit, and independent review or
+deployment receipts where applicable. For native run evidence see
+[coding-work](coding-work.md#follow-the-worker-in-pipeline). Product procedures
+are in `docs/OPERATOR_UI.md`, `docs/CODING_TEAM_ARCHITECTURE.md`,
+`docs/WORK_LIFECYCLE.md` and `integrations/coding/README.md`.
 
 - **Read:** `pipeline_tasks` (owner bus) or `GET /api/pipeline/tasks?scope=engineering`.
   Before reviewing a task, read `view=dossier` with its 4-digit `pipelineId`

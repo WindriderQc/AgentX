@@ -14,6 +14,31 @@ scope, or asked first). Exact routes: [endpoints](endpoints.md).
 - Keep timestamps, stale or partial states and unavailable components in the
   answer. A read is a moment: it does not prove a model is active now.
 
+## Service directory
+
+Start with the domain for the question. Owner and operator reads require
+the [authorized instance entry](access.md). A working dependency route
+attests reachability at its check time. Use the native functional receipt
+for a claim that the service delivered.
+
+| Service or question | Read first | Evidence |
+|---|---|---|
+| Core and its dependencies | `check_health {includeDetails: true}`, `GET /health`, `GET /api/operations/health` | Per-component verdict and check time. Record Core's revision separately from other services. |
+| Benchmark and RAG availability | Gateway `/benchmark/health` and `/rag/health`, or the scoped [Living Source](sources.md) | Service revision and reachability. For stored scores, use [Benchmark](benchmark.md). For document results, use [RAG](assistant.md#memory-and-documents) and cite the returned sources. |
+| Runtime, host placement or GPU | `ecosystem_snapshot`, `gpu_status`, Nerve Center | Compare declared service placement, native runtime observations and collector sample age. Use the exact host or service identity in the result. |
+| Jobs, pause, backups and agent activity | `GET /api/automations` or **Automations** → Calendar/History. Agent Ops shows runtime evidence and obligations. | Each scheduler owns its job identity, freshness and run receipt. Review pause and incomplete sources before proposing a change. See `docs/OPERATIONS_JOBS.md` and `docs/RECOVERY_SETS.md`. |
+| Data, DiskX, Janitor and sensor history | [Data Toolbox and DiskX](data.md). `/energy` reads the configured meter timeline. | Check collector times and data coverage. Keep measured meter readings and estimates distinct. |
+| Home Assistant power | Owner `home_assistant_plug` with the configured device key, or Maison at `/dad/home-assistant` | The authorized page lists configured plugs and opens the chosen `?device=<key>`. Read report times for state, watts and optional cumulative kWh. See `docs/HOME_ASSISTANT.md`. |
+| Speech, transcriptions or images | `GET /api/voix/health`, `/transcriptions` and its status read, or the image operation's studio link and native `local_image status` when installed | Open the exact transcript or artifact after the native result. Image readiness needs verified bytes and runtime restoration. See `docs/AGENTS_AND_VOICE.md`, `docs/LOCAL_TRANSCRIPTIONS.md`, `docs/LOCAL_IMAGES.md`. |
+| World proposals in GraphysX | Owner `propose_world_change` and `world_proposal_status` when the installed Centre is linked | Keep the proposal ID. Verify the page's decision and revision before claiming a world change. See `docs/STATUS.md`. |
+| Optional native apps or persona integrations | Nestor's **Pages et services** and the authorized instance inventory | A registered page or persona describes a destination. Read the app or capability's own evidence with its existing authentication. See `docs/NESTOR_WEB_GUIDE.md`. |
+
+To find an unfamiliar service, check [tool discovery](access.md#discover-and-call-tools)
+and the product's `docs/STATUS.md` and `docs/ARCHITECTURE.md` at the running
+revision. The private instance inventory explains which optional services and
+native runtimes are actually installed. If the service has no granted read,
+report the missing integration or permission with the supported human entry.
+
 ## Models, routing and usage
 
 - What is loaded and pinned on each host: `GET /api/models/cluster-summary`.
@@ -45,6 +70,9 @@ scope, or asked first). Exact routes: [endpoints](endpoints.md).
   `autoRoute: true`; leave the model and host to the router. OpenAI-compatible
   clients use `<core>/api/llm/v1` (with their gateway client token) and model
   `agentx-primary`.
+- For authorized heavy cloud delegation, first read
+  `get_escalation_recommendation` and honor the live budget verdict. If the
+  budget read is unavailable, leave delegation pending.
 - Never write a concrete model name into a client or script. Core's host pin
   owns the model and its context.
 
@@ -61,8 +89,7 @@ scope, or asked first). Exact routes: [endpoints](endpoints.md).
   "Cancelling a standalone judge calibration". Never substitute queue cancel
   for stopping an already-dispatched calibration.
 
-- Results and coverage: `benchmark_results`, `benchmark_coverage`; HTTP under
-  `<core>/benchmark/api/benchmark/*` and `/benchmark/api/profiler/*`.
+- For results, coverage and Profiler evidence, see [Benchmark and Profiler](benchmark.md).
 - `benchmark_request_measurement` records a request; it does not run one.
 - A Benchmark or Profiler run is heavy work: queue it, one batch at a time, and
   wait for `/benchmark/api/benchmark/batches/active` to be empty before the next.
@@ -127,6 +154,44 @@ takes `--actor <stable-id>` and the request's current `--revision`:
 A planned slot is a prerequisite, not campaign approval. Saved executors
 (Benchmark, images, named jobs) run through `run` instead of steps 3 to 6.
 Restore through the native owner; never delete claims or clear quarantine.
+
+## From free GPU to an open result
+
+1. **Observe availability.** Read `gpu_status` or the Data Toolbox hardware
+   read at `GET /api/data-toolbox/hardware/latest`. Compare the timestamp,
+   topology, physical GPU and shared lanes with Core runtime inventory and
+   Cluster Schedule claims (`GET /api/cluster/schedule/claims`). A free
+   utilization sample alone does not grant admission. If telemetry or claims
+   are unavailable, say which evidence is missing.
+2. **Select useful, eligible work.** Start from the owner's accepted
+   [Pipeline need](dev.md#pipeline-tasks), a named approved queue request or a
+   [Benchmark coverage gap](benchmark.md) the operator actually wants filled.
+   Correlate the task, queue ID and latest `presentation.nextAction`. Check
+   pause, dependencies, authority, remaining budgets and start window. A paused
+   native producer or unaccepted proposal stays waiting until its owner acts.
+3. **Use a compatible executor.** Check the native capability, host/topology,
+   model artifact and required profile. For Coding Team check the installed
+   executor's supported profile, reachability and whether it accepts new work.
+   A Nestor planning request lacks an executor. If authorized, the operator
+   submits a reviewed supported manifest under a new stable key with the
+   existing task/issue references and `source.ref: "queue-request:<proposal-id>"`.
+   Verify the new request before withdrawing the old proposal. For a custom
+   check, use the operator receipt path above. Otherwise report whose action
+   is needed. Automatic start requires the executor's native eligibility and
+   any applicable per-slot consent. Keep manual modes manual.
+4. **Read proof of execution.** Follow the original queue and dispatch IDs,
+   plus the task/campaign and native run or workload ID. Verify its observed
+   start, terminal verdict and release/restoration. A lost reply or a missing
+   terminal receipt means unverified or uncertain work. Follow the original
+   executor and preserve its admission fences. See the
+   [Profiler receipt reads](benchmark.md#inspect-a-profile-or-launch-receipt)
+   for an existing measurement request.
+5. **Open the result.** Read the linked Benchmark result or Profiler
+   profile, Pipeline deliverable, image, transcript or operator receipt.
+   Verify it belongs to the same execution, with its date, source and
+   artifact identity when available. Report verified, partial, blocked or
+   unavailable evidence. Task review, merge and deployment have their own
+   receipts.
 
 ## Memory review
 
