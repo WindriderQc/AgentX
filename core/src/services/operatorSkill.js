@@ -45,8 +45,7 @@ async function productDir(candidates) {
   return null;
 }
 
-// An instance sheet may open with `description: ...` between `---` lines. That
-// sentence replaces the product's so the skill answers to the home's own names.
+// The instance front matter adds local names to the product's usage triggers.
 function splitSheet(text) {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text);
   if (!match) return { description: null, body: text };
@@ -57,7 +56,16 @@ function splitSheet(text) {
 
 function withDescription(skill, description) {
   if (!description) return skill;
-  return skill.replace(/^description:.*$/m, `description: ${JSON.stringify(description)}`);
+  const product = splitSheet(skill).description;
+  if (!product || product === description) return skill;
+  // The skill format allows 1024 characters. Keep the complete product
+  // description and as many whole words of the instance hint as fit.
+  let combined = product;
+  for (const word of description.split(/\s+/)) {
+    if (combined.length + word.length + 1 > 1024) break;
+    combined += ' ' + word;
+  }
+  return skill.replace(/^description:[^\r\n]*/m, () => `description: ${JSON.stringify(combined)}`);
 }
 
 async function buildOperatorSkill(options = {}) {

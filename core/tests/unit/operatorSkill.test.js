@@ -52,14 +52,24 @@ describe('operator skill', () => {
     expect(skill.files.find((file) => file.name === 'references/served.md').text).toContain('abc1234def');
   });
 
-  test('a mounted sheet is added and its description replaces the product one', async () => {
+  test('a mounted sheet keeps product discovery and adds instance triggers', async () => {
+    const generic = await build();
+    const productDescription = splitSheet(generic.files.find(file => file.name === 'SKILL.md').text).description;
     sheet('---\ndescription: "Operate the Maple house instance; use for Maple or Juniper."\n---\n# Maple house\n\nCore: https://maple.test\n');
     const skill = await build();
     const text = (name) => skill.files.find((file) => file.name === name).text;
     expect(skill.instanceSheet).toBe(true);
     expect(text('references/instance.md')).toBe('# Maple house\n\nCore: https://maple.test\n');
-    expect(text('SKILL.md')).toMatch(/^---\nname: agentx\ndescription: "Operate the Maple house instance; use for Maple or Juniper\."\n---/);
+    expect(splitSheet(text('SKILL.md')).description).toBe(productDescription + ' Operate the Maple house instance; use for Maple or Juniper.');
     expect(text('references/served.md')).toContain('included');
+  });
+
+  test('a long instance hint fits the skill limit and preserves literal replacement characters', async () => {
+    sheet('---\ndescription: ' + '$& Maple '.repeat(180).trim() + '\n---\n# Local\n');
+    const skill = await build();
+    const description = splitSheet(skill.files.find(file => file.name === 'SKILL.md').text).description;
+    expect(description.length).toBeLessThanOrEqual(1024);
+    expect(description).toMatch(/ \$& Maple(?: \$& Maple)*(?: \$&)?$/);
   });
 
   test('a sheet without front matter is taken whole', () => {

@@ -2,7 +2,7 @@
 
 This is a product route reference, not an instance health receipt. Resolve the address from the private instance sheet and check the served revision and enabled capabilities before calling a route. A missing route in this list proves nothing; check its exact contract in the product source. `references/served.md` identifies the revision serving this skill.
 
-Base: the Core entry given in `references/instance.md`.
+Base: the authorized Core entry in the session or its private instance sheet.
 
 ## Read routes
 
@@ -70,9 +70,11 @@ Read the memory-review state through:
 
 ## Tool buses
 
-Both answer JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) from the
-private network without a token. Call `tools/list` for the current catalogue
-rather than trusting a copied list.
+Use JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) on the configured
+private connection. Send `x-service-caller` for attribution. A local-command
+client can use the product's `integrations/mcp-relay`; relay and
+`integrations/codex` document catalogue refresh. Discover the current schema
+in your runtime before calling a tool. Respect device and audience refusals.
 
 - `POST /mcp`: the general bus. `POST /mcp/memory` is a narrower view of it
   (memory search/save and RAG search).

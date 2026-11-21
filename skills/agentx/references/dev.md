@@ -137,6 +137,23 @@ chapter. Check every link after a rename.
 
 ## Pipeline tasks
 
+For "why is task 0042 waiting?", use the four-digit ID as a string:
+
+1. Read owner `pipeline_tasks({"view":"dossier","pipelineId":"0042"})`.
+   Read all pages as described below. Compare the intake decision, assignment,
+   dependencies and earliest start with the task's own next action.
+2. Read `GET /api/pipeline/tasks/0042/eligibility` and `/api/pipeline/tasks/0042/diagnosis`
+   on authorized Core. Use `work_authority` for disputed execution authority.
+   If a queue request is linked, read owner `work_queue` with `action:"show"`
+   and its exact ID. Keep an explicit pause, unassigned executor, rejected
+   admission and unknown runtime outcome distinct. A free GPU resolves none
+   of those conditions on its own.
+3. Return the observed blocker, who owns the next step and the dated evidence
+   in `<core>/pipeline?task=0042`. For a recorded attempt, follow its native
+   receipt and open the registered text via `pipeline_artifacts` with the ID
+   of that deliverable. Binary receipts and an unreadable output have narrower
+   evidentiary value. A diagnosis request needs no claim, launch or edit.
+
 For a status/priority overview, `ecosystem_snapshot` with `mode: "pipeline"`
 and `maxChars: 5000` reads canonical Pipeline summaries without runtime or
 health collectors. Counts, private-row exclusions and incomplete coverage
