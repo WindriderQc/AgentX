@@ -87,6 +87,16 @@ and only named worker verbs and validated identities cross SSH. Worker runs keep
 the existing stable-request receipts and unresolved-outcome fences. Weekly days
 are Monday (0) to Sunday (6); local time follows the configured time zone.
 
+For an executor without an existing trusted SSH entrance, authorize the server's
+public key with an OpenSSH forced command rather than a general login. Use
+`restrict,from="<server-address>",command="/usr/bin/python3 <operations-root>/host_job_ssh.py --root <private-state-root>"`
+before the public key in `authorized_keys`. Verify the executor's host key through
+an independently trusted channel before adding it to the server's known hosts.
+The forced entry accepts only the exact configured Python/worker/state prefix
+and `run`, `status` or `inventory` with bounded identifiers. Shells, extra paths,
+duplicate parameters and arbitrary commands refuse before worker state is opened.
+It delegates to the same worker and adds no scheduler, privilege or apply action.
+
 The existing operations supervisor is the sole owner of this proposed cadence.
 Keep any native Mint automatic-installer timer disabled rather than duplicating
 the same occurrence. The planner checks its policy's real weekly window before
