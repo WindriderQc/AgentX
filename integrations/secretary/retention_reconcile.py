@@ -43,10 +43,14 @@ def entry_set(entries):
     return content_hash(sorted(entries, key=lambda entry: entry["id"]))
 
 
-def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False, message_scope=False, finding_scope=False, restoration_checks=None, downstream_scope=False, mailbox_scope=False, global_decisions=False, review_restoration_checks=None, global_downstream=False, review_manifest=False, core_restoration=False):
+def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False, message_scope=False, finding_scope=False, restoration_checks=None, downstream_scope=False, mailbox_scope=False, global_decisions=False, review_restoration_checks=None, global_downstream=False, review_manifest=False, core_restoration=False, manifest_confirmation=None):
     previous = indexed(saved)
     manifests = list(manifests)
     options = {} if opener is None else {"opener": opener}
+    if manifest_confirmation is not None:
+        from native_history_manifest_confirmation import request_identity
+        request_identity(manifest_confirmation)
+        review_manifest = core_restoration = True
     if core_restoration:
         global_downstream = True
     if review_manifest:
@@ -168,18 +172,22 @@ def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native
     if core_restoration:
         from native_history_core_restoration import capture as capture_core_restoration
         native["nativeCoreRestoration"] = capture_core_restoration(core, saved, native["nativeGlobalDownstream"], **options)
+    if manifest_confirmation is not None:
+        from native_history_manifest_confirmation import capture as capture_confirmation
+        native["nativeManifestConfirmation"] = capture_confirmation(core, manifest_confirmation, saved,
+            review_restoration_checks, before, native["nativeReviewManifest"], native["nativeCoreRestoration"], **options)
     if review_manifest or core_restoration:
         # The final native observation owns the last Core fence. Only local
         # reads follow; reuse the Core rows observed before its HTTP calls.
         local_rows, _ = dispositions(archive, before, final_entries, manifests)
         if content_hash([comparable(row) for row in local_rows]) != content_hash([comparable(row) for row in second_rows]):
-            stage = "native Core restoration" if core_restoration else "native review manifest"
+            stage = "native manifest confirmation" if manifest_confirmation is not None else "native Core restoration" if core_restoration else "native review manifest"
             raise ValueError(f"Archive changed during {stage}; no complete observation was established")
         if review_restoration_checks is not None:
             from native_history_review_restoration import bind_local
             restored = native["nativeReviewManifest"]["snapshot"]["restoration"] if review_manifest else native["nativeReviewRestorationScope"]
             bind_local(saved, review_restoration_checks, archive, native["nativeFindingScopes"], restored)
-    return {"schema": f"agentx.secretary-retention-reconciliation/v{12 if core_restoration else 11 if review_manifest else 10 if global_downstream else 9 if review_restoration_checks is not None else 8 if global_decisions else 7 if mailbox_scope else 6 if downstream_scope else 5 if restoration_checks is not None else 4 if finding_scope else 3 if message_scope else 2 if native_decisions else 1}", "at": now(),
+    return {"schema": f"agentx.secretary-retention-reconciliation/v{13 if manifest_confirmation is not None else 12 if core_restoration else 11 if review_manifest else 10 if global_downstream else 9 if review_restoration_checks is not None else 8 if global_decisions else 7 if mailbox_scope else 6 if downstream_scope else 5 if restoration_checks is not None else 4 if finding_scope else 3 if message_scope else 2 if native_decisions else 1}", "at": now(),
             "before": before.isoformat(), "decisionSource": "agentx.core",
             "observation": "two agreeing bounded reads; not an atomic snapshot or native acceptance",
             "savedDispositionsSha256": content_hash(saved), "coreEntriesSha256": entry_set(second),
@@ -218,7 +226,16 @@ def main(argv=None):
                         help="Compare the complete native review manifest; requires retained review restoration checks and implies global decisions/downstream and live mailbox scopes")
     parser.add_argument("--native-core-restoration", action="store_true",
                         help="Recheck temporary native restoration of selected Core history and linked souvenirs; implies global downstream scope and keeps cleanup blocked")
+    parser.add_argument("--native-manifest-confirmation", metavar="REQUEST_UUID",
+                        help="Read current native binding of the original human receipt; requires retained review checks and implies review manifest/Core restoration, without granting cleanup")
     args = parser.parse_args(argv)
+    if args.native_manifest_confirmation is not None:
+        from native_history_manifest_confirmation import request_identity
+        try:
+            request_identity(args.native_manifest_confirmation)
+        except ValueError as error:
+            parser.error(str(error))
+        args.native_review_manifest = args.native_core_restoration = True
     if args.native_review_manifest and args.native_review_restoration_checks is None:
         parser.error("--native-review-manifest requires --native-review-restoration-checks")
     if args.native_review_manifest:
@@ -237,7 +254,7 @@ def main(argv=None):
                        downstream_scope=args.native_downstream_scope, mailbox_scope=args.native_mailbox_scope, global_decisions=args.native_global_decisions,
                        review_restoration_checks=load(args.native_review_restoration_checks) if args.native_review_restoration_checks is not None else None,
                        global_downstream=args.native_global_downstream, review_manifest=args.native_review_manifest,
-                       core_restoration=args.native_core_restoration)
+                       core_restoration=args.native_core_restoration, manifest_confirmation=args.native_manifest_confirmation)
     durable(args.output, report, exclusive=True)
     summary = {key: report[key] for key in ("schema", "at", "counts", "cleanupStatus", "executionAllowed")}
     if args.native_decisions or args.native_message_scope or args.native_finding_scope or args.native_restoration_checks is not None or args.native_downstream_scope or args.native_mailbox_scope or args.native_global_decisions or args.native_review_restoration_checks is not None or args.native_global_downstream:
@@ -274,6 +291,9 @@ def main(argv=None):
     if args.native_core_restoration:
         summary["nativeCoreRestoration"] = {name: {key: group[key] for key in ("documents", "bytes", "indexes")}
             for name, group in report["nativeCoreRestoration"]["snapshot"]["restoration"]["collections"].items()}
+    if args.native_manifest_confirmation is not None:
+        snapshot = report["nativeManifestConfirmation"]["snapshot"]
+        summary["nativeManifestConfirmation"] = {key: snapshot[key] for key in ("selectedMessages", "confirmationStatus")}
     print(json.dumps(summary))
     return 0 if all(row["status"] == "observed_match" for row in report["messages"]) \
         and not report.get("nativeDecisions", {}).get("pendingEntries") \

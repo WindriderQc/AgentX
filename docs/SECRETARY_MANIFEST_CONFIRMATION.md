@@ -53,6 +53,8 @@ temporary copy. Forgotten sources cannot be reopened from the historical receipt
 
 `GET` and confirmed replays return no preview and report `nativeState:
 not_rechecked`; a historical confirmation never establishes current availability.
+The separate [current native binding](SECRETARY_CONFIRMATION_CURRENT.md) can
+requalify that confirmed identity without modifying it or issuing new consent.
 The composed native reads are not an atomic cross-service snapshot. The existing
 native reader boundaries and capacity limits still apply.
 

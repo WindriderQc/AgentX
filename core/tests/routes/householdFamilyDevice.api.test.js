@@ -84,6 +84,7 @@ describe('family device pinning', () => {
     expect((await tablet.get(confirmation)).status).toBe(403);
     expect((await tablet.post(`${confirmation}/reopen`).send({})).status).toBe(403);
     expect((await tablet.post(`${confirmation}/confirm`).send({})).status).toBe(403);
+    expect((await tablet.post(`${confirmation}/current`).send({})).status).toBe(403);
     expect((await tablet.get('/api/household/family-devices')).status).toBe(403);
     expect((await tablet.get('/api/household/family-device')).body.data).toMatchObject({ pinned: true, label: 'Tablet' });
 
