@@ -9,7 +9,7 @@ import objective_work_actors as work
 from objective_claim_typing import KINDS
 
 
-def project(value, content, spans, context, legacy_schema, source_template):
+def project(value, content, spans, context, legacy_schema, source_template, *, date_rows=None, contract=selection.CONTRACT):
     rows = selection.catalog(list(spans.values()), context)
     reasons = selection.omission_catalog(list(spans.values()), context)
     if not wire.matches(value, wire.schema(legacy_schema, list(spans.values()), context)):
@@ -58,14 +58,14 @@ def project(value, content, spans, context, legacy_schema, source_template):
         omitted = [r['id'] for r in legacy_facts.career_cues(list(spans.values())) if r['id'] not in observed]
         result, changes = observations.project({'emptyAssessment': value['emptyAssessment'], 'moments': converted,
             'gaps': copy.deepcopy(value['gaps']), 'summaryCitationIds': summary_ids, 'omittedCueIds': omitted},
-            content, spans, context, source_template, selection.CONTRACT)
+            content, spans, context, source_template, contract, date_rows=date_rows)
     else:
         reason = next(r for r in reasons if r.get('scope') == 'passage' and r['id'] == native['abstention']['reasonRef'])
         text = selection.selection.REASONS[reason['reasonCode']]
         quotes = ' '.join('« ' + s['text'] + ' »' for s in reason['sourceSpans'])
         result = {'summary': ('Abstention à relire : ' + text + '. ' + quotes)[:2000],
                   'classification': value['emptyAssessment'], 'moments': [], 'gaps': copy.deepcopy(value['gaps'])}
-        changes = [{'path': '', 'contract': selection.CONTRACT, 'claims': [], 'emptyAssessmentUsed': True,
+        changes = [{'path': '', 'contract': contract, 'claims': [], 'emptyAssessmentUsed': True,
                     'reason': 'Native cited whole-passage abstention; no model output repaired.', 'abstention': reason}]
     for b in partial_bindings:
         m = result['moments'][b['momentIndex']]
@@ -78,7 +78,7 @@ def project(value, content, spans, context, legacy_schema, source_template):
     for ref in references:
         result['gaps'].append('Référence de document retenue (métadonnées uniquement) : « ' + ref['filename'] +
                               ' » ; contenu non lu, aucun événement ou rôle déduit.')
-    changes[0]['sourceSelection'] = {'contract': selection.CONTRACT,
+    changes[0]['sourceSelection'] = {'contract': contract,
         'nativeCueDecisions': copy.deepcopy(value['cueDecisions']), 'selectionCatalog': rows,
         'bindings': bindings, 'omissions': omissions, 'partialDates': partial_bindings,
         'nativeDocumentDecisions': copy.deepcopy(value['documentDecisions']),

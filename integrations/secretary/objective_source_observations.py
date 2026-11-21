@@ -92,7 +92,7 @@ def _title(kind, category, span):
     return text if len(text) <= 500 else label + ' à relire — voir les extraits complets'
 
 
-def project(value, content, spans, context, template, contract):
+def project(value, content, spans, context, template, contract, *, date_rows=None):
     if not isinstance(value, dict) or set(value) != set(template['required']) \
             or value.get('emptyAssessment') not in ('no-life-event', 'uncertain') \
             or not isinstance(value.get('moments'), list):
@@ -144,7 +144,7 @@ def project(value, content, spans, context, template, contract):
         moment['hypotheses'] = []
         selections.append(selected)
         bindings.append(local_bindings)
-    converted, fact_proof, date_quotes = proofs.convert(converted, spans, context, content, uncertainty_rows=[])
+    converted, fact_proof, date_quotes = proofs.convert(converted, spans, context, content, uncertainty_rows=[], date_rows=date_rows)
     summary, summary_proof = language.summary(converted['summaryCitationIds'], spans,
                                                len(converted['moments']), converted['emptyAssessment'])
     moments = []

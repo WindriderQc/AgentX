@@ -192,7 +192,7 @@ class SourceSelectionTests(unittest.TestCase):
         r, changes = v14.project(value, body)
         self.assertEqual(changes[0]['contract'], grounding.CONTRACT)
         self.assertNotIn('sourceSelection', changes[0])
-        self.assertEqual(grounding.contract_for({'responseSchemaSha256': hashed(grounding.CURRENT_SCHEMA)}), selection.CONTRACT)
+        self.assertEqual(grounding.contract_for({'responseSchemaSha256': hashed(grounding.SCHEMA_V15)}), selection.CONTRACT)
 
     def test_ordinary_lines_do_not_duplicate_the_full_context_schema_per_anchor(self):
         sizes = []
@@ -210,7 +210,9 @@ class SourceSelectionTests(unittest.TestCase):
 class SourceSelectionWorkerTests(unittest.TestCase):
     setUp = scoped.InputScopeTests.setUp
     mail = scoped.InputScopeTests.mail
-    prepare = scoped.InputScopeTests.prepare
+    def prepare(self):
+        self.config["groundingContract"] = selection.CONTRACT
+        return scoped.InputScopeTests.prepare(self)
     no_attachment_reads = scoped.InputScopeTests.no_attachment_reads
     def test_native_transport_receipts_metadata_replay_and_no_attachment_open(self):
         self.mail('message01', 'Riley Sample\nInstructeur\n555-012-9876', filename='navigation.docx')
