@@ -42,8 +42,8 @@ source service remains local. Expose the capability set intentionally and do
 not treat all private data as automatically needed for every conversation.
 
 Portable operating guidance lives in one skill, [agentx](../skills/agentx/SKILL.md):
-a short entry page and chapters for the assistant, operations, development
-and ArtX. Install it in each participating runtime through that runtime's
+a short entry page and chapters for access, the personal and family assistant,
+Living Sources, operations, Benchmark, Data, development and ArtX. Install it in each participating runtime through that runtime's
 native skill mechanism, from the instance (`/api/operator-skill/download`)
 or by reading the deployed checkout's `skills/` directory directly. A repository `AGENTS.md` guides development;
 it is not automatically loaded by deployed agents. The skill explains how to
