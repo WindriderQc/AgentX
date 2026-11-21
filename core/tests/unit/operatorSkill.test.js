@@ -88,7 +88,10 @@ describe('operator skill', () => {
 
   test('routes describe the skill and send it as an attachment', async () => {
     const app = express();
-    app.use('/api/operator-skill', createOperatorSkillRouter({ build: (options) => build(options), revision: () => 'abc1234def' }));
+    app.use('/api/operator-skill', createOperatorSkillRouter({
+      env: { CORE_PUBLIC_URL: 'https://core.example.test:8443/operator/' },
+      build: (options) => build(options), revision: () => 'abc1234def',
+    }));
     const info = await request(app).get('/api/operator-skill').expect(200);
     expect(info.body.data).toMatchObject({ name: 'agentx', revision: 'abc1234def', download: '/api/operator-skill/download' });
     const download = await request(app).get('/api/operator-skill/download').buffer(true)
@@ -96,7 +99,17 @@ describe('operator skill', () => {
       .expect(200);
     expect(download.headers['content-type']).toBe('application/zip');
     expect(download.headers['content-disposition']).toBe('attachment; filename="agentx-skill-abc1234d.zip"');
-    expect(Object.keys(unzip(download.body))).toContain('agentx/SKILL.md');
+    const files = unzip(download.body);
+    expect(Object.keys(files)).toContain('agentx/SKILL.md');
+    expect(files['agentx/references/served.md']).toContain('- Served by: https://core.example.test:8443\n');
+  });
+
+  test.each([undefined, 'bad URL', 'file:///example'])('standalone origin with configuration %s', async (value) => {
+    const builder = jest.fn(options => build(options));
+    const app = express();
+    app.use('/skill', createOperatorSkillRouter({ build: builder, env: { CORE_PUBLIC_URL: value } }));
+    await request(app).get('/skill').set('Host', 'core.example.test:3080').expect(200);
+    expect(builder).toHaveBeenCalledWith(expect.objectContaining({ origin: 'http://core.example.test:3080' }));
   });
 
   test('a build without the skill answers 404 instead of an empty archive', async () => {
