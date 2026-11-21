@@ -187,6 +187,7 @@ print(json.dumps({"priority": c.priority_updates_available,
 
 def qualify(policy_path, receipt_path, request_id, backend=None, at=None, enforce_window=False):
     exact_request(request_id)
+    receipt_path = Path(receipt_path)
     policy, digest = policy_at(policy_path)
     existing = load(receipt_path)
     if existing:

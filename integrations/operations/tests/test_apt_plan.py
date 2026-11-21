@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import shlex
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -134,6 +135,21 @@ class PlanTests(unittest.TestCase):
         save(self.policy_path, self.policy)
         with self.assertRaises(JobError):
             self.run_plan()
+
+    def test_string_receipt_path_from_cli_is_supported_for_new_qualification(self):
+        result = qualify(str(self.policy_path), str(self.receipt), self.request, self.backend)
+        self.assertEqual(result["state"], "completed")
+        self.assertEqual(load(self.receipt)["requestId"], self.request)
+
+    def test_actual_cli_replays_its_receipt_without_loading_native_apt(self):
+        self.run_plan()
+        before = self.receipt.read_bytes()
+        script = Path(__file__).resolve().parents[1] / "apt-maintenance-plan.py"
+        result = subprocess.run([sys.executable, str(script), "--policy", str(self.policy_path),
+                                 "--receipt", str(self.receipt), "--request", self.request],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.receipt.read_bytes(), before)
 
     def test_apply_and_arbitrary_policy_fields_are_not_supported(self):
         for change in [{"mode": "apply"}, {"command": "apt-get upgrade"}, {"maxPackages": True}]:
