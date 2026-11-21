@@ -713,6 +713,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }, (state, detail) => {
     if (conversation.session?.sessionId && !conversation.session.ephemeral) { workflow?.follow(conversation.session.sessionId); work?.follow(conversation.session.sessionId); }
     if (state === 'listening') void work?.naturalPause();
+    if (state === 'paused') work?.refresh();
     if (state === 'idle' && !open.checked) void releaseOpen();
     if (state === 'starting') void speechFallback.probe(() => api('/api/voix/health'));
     speechFallback.sync();

@@ -17,15 +17,64 @@ const row = (id, requestText, extra = {}) => ({ id, sessionId: 'session', turnId
 const receiptOf = (body, state) => ({ version: 2, requestId: body.requestId, workId: body.workId, action: body.action,
   requestSha256: body.requestSha256, baseRevision: body.revision, revision: body.revision + 1, state });
 const storage = () => { const values = new Map(); return { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) }; };
-function panel(api, commandStorage = storage()) {
+function panel(api, commandStorage = storage(), conversation = { state: 'paused' }) {
   const host = new Element(), context = { document: { createElement: () => new Element() }, crypto: { randomUUID }, sessionStorage: commandStorage,
     AbortSignal, AbortController, setTimeout, clearTimeout, setInterval: () => ({ unref() {} }), clearInterval() {} };
   vm.runInNewContext(fs.readFileSync(require.resolve('../public/conversation-work'), 'utf8'), context);
-  const work = context.NestorWork.create({ host, base: '/sessions', api, getLanguage: () => 'fr', getConversation: () => ({ state: 'paused' }) });
+  const work = context.NestorWork.create({ host, base: '/sessions', api, getLanguage: () => 'fr', getConversation: () => conversation });
   return { host, work, get cards() { return host.children.filter(node => node.className === 'conversation-work-card'); } };
 }
 const actions = card => card.children.find(node => node.className === 'conversation-work-actions')?.children || [];
 const text = card => card.children.map(node => node.textContent).join('\n');
+
+test('replay waits for voice to resume, then a lost playback receipt requires another click', async () => {
+  const posts = [], readings = [];
+  let finishPlayback;
+  const conversation = { state: 'paused', session: { sessionId: 'session' }, async interject(reply, options) {
+    readings.push({ reply, readAloud: options.readAloud });
+    options.onScheduled();
+    if (readings.length === 1) await new Promise(resolve => { finishPlayback = resolve; });
+    return true;
+  } };
+  const saved = row('saved', 'Explain how the night sky changes.', { state: 'completed', pending: false, controllable: false,
+    result: { deliveryId: 'delivery', version: 2, presentation: 'interrupted', automaticSpeech: false,
+      language: 'fr', text: 'Saved answer', readingText: 'La réponse complète.' } });
+  const h = panel(async (url, options) => {
+    if (options.method !== 'POST') return { items: [structuredClone(saved)], cursor: 1 };
+    const body = JSON.parse(options.body);
+    posts.push({ url, ...body });
+    if (body.stage === 'completed' && readings.length === 1) throw Error('Receipt lost');
+    return { claimToken: 'claim' };
+  }, storage(), conversation);
+  try {
+    h.work.follow('session'); await tick();
+    const listen = () => h.cards[0].children.find(node => node.textContent === 'Écouter cette réponse');
+    listen().onclick();
+    assert.match(text(h.cards[0]), /Reprenez la voix pour écouter cette réponse/);
+    assert.equal(listen().disabled, true);
+    assert.deepEqual(posts.map(post => post.stage), ['displayed']);
+
+    conversation.state = 'listening';
+    const playback = h.work.naturalPause(); await tick();
+    assert.match(text(h.cards[0]), /Lecture en cours/);
+    listen().onclick();
+    await h.work.poll();
+    finishPlayback(); await playback;
+    await h.work.poll(); await h.work.poll();
+    assert.match(text(h.cards[0]), /lecture non confirmée/);
+    assert.equal(listen().disabled, false);
+    assert.deepEqual(posts.map(post => post.stage), ['displayed', 'replay', 'started', 'completed']);
+
+    listen().onclick(); await tick();
+    assert.deepEqual(posts.map(post => post.stage), ['displayed', 'replay', 'started', 'completed', 'replay', 'started', 'completed']);
+    assert.ok(posts.every(post => post.resultVersion === 2 && post.url === '/sessions/session/work-deliveries/delivery/receipt'));
+    assert.equal(readings.length, 2);
+    assert.equal(readings[0].reply.text, 'La réponse complète.');
+    assert.equal(readings[0].readAloud, true);
+    assert.deepEqual(readings[0], readings[1]);
+    assert.match(text(h.cards[0]), /Réponse présentée/);
+  } finally { h.work.dispose(); }
+});
 
 test('three requests identify their own controls; cancellation disables both buttons and keeps its receipt', async () => {
   const rows = [row('first', 'Open the activity page.'), row('second', 'Read my next appointment.'), row('third', 'Read my next appointment.')];

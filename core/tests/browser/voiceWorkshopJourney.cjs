@@ -16,6 +16,7 @@ if(p.startsWith('/api/')){
  if(p==='/api/voix/catalog')return json(catalog);
  if(p==='/api/voix/settings')return json({owner:'speech-service',editable:false,model:'test-whisper',device:'cpu-test',computeType:'fixture',vadThreshold:.85,queueTimeoutSeconds:120});
  if(p==='/api/voix/upstream')return json({active:'primary'});
+ if(p==='/api/family/ambient/activity'&&req.method==='POST')return json({});
  if(p==='/api/household/avatar/llmx-face.js'){res.statusCode=503;return json({error:'Avatar not configured in this fixture'});}
  if(p.endsWith('/sessions/recap/latest'))return json({recap:null});
  if(p.includes('/sessions/recent'))return json({sessions:[]});
@@ -39,7 +40,9 @@ if(fs.existsSync(file)&&fs.statSync(file).isFile()){res.setHeader('Content-Type'
 res.statusCode=404;res.end('missing');
 }catch(e){res.statusCode=500;res.end(e.message);}});
 (async()=>{await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port,browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required']});
-try{const context=await browser.newContext();await context.addInitScript(()=>{window.captureCalls=0;localStorage.setItem('household.avatar.personal.layout','cache');if(!localStorage.getItem('agentx.voice.capture.v1.personal'))localStorage.setItem('agentx.voice.capture.v1.personal',JSON.stringify({inputDeviceId:'saved-mic'}));if(!localStorage.getItem('household.conversation.preferences.v2'))localStorage.setItem('household.conversation.preferences.v2',JSON.stringify({personaId:'nestor',profiles:{nestor:{language:'fr',selections:{fr:'voxcpm|gazz'}}}}));navigator.permissions.query=async()=>({state:'prompt'});navigator.mediaDevices.getUserMedia=async constraints=>{window.lastAudioConstraints=constraints;window.captureCalls++;const c=new AudioContext(),dest=c.createMediaStreamDestination(),osc=c.createOscillator(),gain=c.createGain();osc.connect(gain);gain.connect(dest);gain.gain.value=.035;osc.start();await c.resume();setTimeout(()=>gain.gain.value=0,1100);window.testMicrophonePhrase=()=>{gain.gain.value=.035;setTimeout(()=>gain.gain.value=0,1100);};for(const track of dest.stream.getTracks())track.addEventListener('ended',()=>c.close());return dest.stream;};});
+try{const context=await browser.newContext();
+await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
+await context.addInitScript(()=>{window.captureCalls=0;localStorage.setItem('household.avatar.personal.layout','cache');if(!localStorage.getItem('agentx.voice.capture.v1.personal'))localStorage.setItem('agentx.voice.capture.v1.personal',JSON.stringify({inputDeviceId:'saved-mic'}));if(!localStorage.getItem('household.conversation.preferences.v2'))localStorage.setItem('household.conversation.preferences.v2',JSON.stringify({personaId:'nestor',profiles:{nestor:{language:'fr',selections:{fr:'voxcpm|gazz'}}}}));navigator.permissions.query=async()=>({state:'prompt'});navigator.mediaDevices.getUserMedia=async constraints=>{window.lastAudioConstraints=constraints;window.captureCalls++;const c=new AudioContext(),dest=c.createMediaStreamDestination(),osc=c.createOscillator(),gain=c.createGain();osc.connect(gain);gain.connect(dest);gain.gain.value=.035;osc.start();await c.resume();setTimeout(()=>gain.gain.value=0,1100);window.testMicrophonePhrase=()=>{gain.gain.value=.035;setTimeout(()=>gain.gain.value=0,1100);};for(const track of dest.stream.getTracks())track.addEventListener('ended',()=>c.close());return dest.stream;};});
 await context.addInitScript(() => {
   window.playbackEvents = [];
   for (const method of ['start', 'stop']) {
@@ -261,7 +264,6 @@ await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:report+'/work
 await page.locator('[data-step="capture"]').click();assert.equal(await page.locator('[data-panel="microphone"]').isVisible(),true);
 for(const width of [1024,736,360,320]){await page.setViewportSize({width,height:1000});for(const tab of ['microphone','speech','conversation','settings']){await page.locator('[data-tab="'+tab+'"]').click();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'overflow '+width+' '+tab);}}
 await page.setViewportSize({width:1024,height:1000});await page.locator('[data-tab="microphone"]').click();await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:report+'/workshop-desktop.png',fullPage:true});await page.setViewportSize({width:360,height:1100});await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:report+'/workshop-mobile.png',fullPage:true});
-assert.deepEqual(errors,[]);assert.equal(calls.filter(c=>c.method==='POST'&&!/\/transcribe$|\/synthesize\/stream$/.test(c.path)).length,0);
 await page.evaluate(() => localStorage.setItem('household.reading.language.v1', 'en'));
 await page.goto(origin+'/voice-lab?scope=reading&tab=speech');
 await page.locator('[data-field="testLanguage"]').waitFor();
@@ -275,5 +277,7 @@ await page.locator('[data-field="language"]').selectOption('en');
 assert.equal(await page.locator('[data-field="speechText"]').inputValue(), initialEnglish);
 await page.goto(origin+'/voice-lab?tab=settings&persona=missing-personality');await page.locator('[data-action="sharedVoice"]').waitFor();await page.locator('[data-role="sharedStatus"]').filter({hasText:'indisponible'}).waitFor();assert.equal(await page.locator('[data-action="sharedVoice"]').isDisabled(),true);
 
+assert.deepEqual(errors,[]);
+assert.deepEqual(calls.filter(c=>c.method==='POST'&&c.path!=='/api/family/ambient/activity'&&!/\/transcribe$|\/synthesize\/stream$/.test(c.path)).map(c=>c.path),[]);
 fs.writeFileSync(report+'/browser-check.json',JSON.stringify({state:'passed',errors,unknown,calls: calls.map(({body,...r})=>r),physicalDevice:false,liveModels:0},null,2));console.log(JSON.stringify({state:'passed',networkRequests:calls.length,transcriptions:calls.filter(c=>c.path.endsWith('/transcribe')).length,scriptErrors:0,realModelCalls:0,unknown}));
 }finally{await browser.close();server.close();}})().catch(e=>{fs.writeFileSync(report+'/browser-errors.json',JSON.stringify({error:e.message,stack:e.stack,errors,unknown,calls},null,2));console.error(e);server.close();process.exitCode=1;});

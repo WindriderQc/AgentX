@@ -25,7 +25,8 @@
       commandConfirmed: 'Confirmed command',
       storageUnavailable: 'The pending command cannot be retained on this browser. No command was sent.',
       stale: 'Status unavailable. Showing the last received state; controls are disabled until it refreshes.',
-      listen: 'Listen to this answer', requested: 'Playback requested at the next pause',
+      listen: 'Listen to this answer', requested: 'Playback will start when the conversation is ready.',
+      resumeVoice: 'Resume voice to listen to this answer.', playing: 'Playback in progress…',
       playback: 'Answer kept · playback not confirmed', summary: 'Nestor’s requests', updated: 'Last update', unknownTime: 'time unavailable'
     },
     fr: {
@@ -51,15 +52,16 @@
       commandConfirmed: 'Commande confirmée',
       storageUnavailable: 'Ce navigateur ne peut pas conserver la commande en attente. Aucune commande envoyée.',
       stale: 'État indisponible. Le dernier état reçu est affiché; les commandes sont désactivées jusqu’à son actualisation.',
-      listen: 'Écouter cette réponse', requested: 'Lecture demandée à la prochaine pause',
+      listen: 'Écouter cette réponse', requested: 'La lecture commencera quand la conversation sera prête.',
+      resumeVoice: 'Reprenez la voix pour écouter cette réponse.', playing: 'Lecture en cours…',
       playback: 'Réponse conservée · lecture non confirmée', summary: 'Demandes de Nestor', updated: 'Dernière mise à jour', unknownTime: 'heure indisponible'
     }
   };
   function create({ host, base, api, getConversation, getLanguage = () => getConversation()?.selection?.language || 'en',
     maySpeak = () => true, onShow = () => {}, onSnapshot = () => {}, onPollError = () => {}, pollMs = 2000,
     commandStorage = (() => { try { return root.sessionStorage; } catch { return null; } })() }) {
-    const deviceSession = root.crypto.randomUUID(), items = new Map(), cards = new Map(), attempted = new Set(), requested = new Set(), commands = new Map();
-    let sessionId, cursor = 0, sequence = 0, timer, pollController, presenting = false, disposed = false, generation = 0, stale = false, refreshQueued = false, summary, dispatch;
+    const deviceSession = root.crypto.randomUUID(), items = new Map(), cards = new Map(), attempted = new Set(), playbackStatus = new Map(), commands = new Map();
+    let sessionId, cursor = 0, sequence = 0, timer, pollController, presenting = null, disposed = false, generation = 0, stale = false, refreshQueued = false, summary, dispatch;
     const language = () => getLanguage() === 'fr' ? 'fr' : 'en';
     const copy = () => COPY[language()];
     const url = () => `${base}/${encodeURIComponent(sessionId)}`;
@@ -138,11 +140,19 @@
       const confirmed = item.controlReceipts?.at(-1);
       if (confirmed) card.append(node('p', 'conversation-work-meta', `${c.commandConfirmed} : ${c[confirmed.action]}`));
       if (item.result) {
+        const key = identity(item), status = playbackStatus.get(key), playing = presenting === key;
         const text = node('p', 'conversation-work-answer', item.result.displayText ?? item.result.text);
-        const button = node('button', 'button', requested.has(identity(item)) ? c.requested : c.listen); button.type = 'button';
+        const button = node('button', 'button', c.listen); button.type = 'button';
+        button.disabled = playing || status === 'requested';
         button.setAttribute('aria-label', `${c.listen} : ${request || c.missing} · ${requestIdentity(item)}`);
-        button.onclick = () => { requested.add(identity(item)); render(item); void naturalPause(); };
+        button.onclick = () => {
+          if (items.get(item.id) !== item || presenting === key || playbackStatus.get(key) === 'requested') return;
+          playbackStatus.set(key, 'requested'); render(item); void naturalPause();
+        };
         card.append(text, button);
+        const notice = playing ? c.playing : status === 'requested'
+          ? (getConversation()?.state === 'paused' ? c.resumeVoice : c.requested) : c[status];
+        if (notice) card.append(node('p', 'conversation-work-notice', notice));
       }
       if (item.controllable && request && item.controlBasis?.version === 2 && item.controlBasis.workId === item.id && item.controlBasis.revision === item.revision) {
         const actions = document.createElement('div'); actions.className = 'conversation-work-actions';
@@ -193,7 +203,8 @@
     }
     async function present(item, replay) {
       const currentGeneration = generation, currentSession = sessionId;
-      const key = identity(item); attempted.add(key); presenting = true;
+      const key = identity(item);
+      attempted.add(key); playbackStatus.delete(key); presenting = key; render(item);
       let claim, scheduled = false, startedReceipt;
       try {
         claim = await receipt(item, replay ? 'replay' : 'claim');
@@ -205,27 +216,30 @@
         } });
         if (startedReceipt) await startedReceipt;
         if (currentGeneration !== generation) { await receipt(item, scheduled ? 'interrupted' : 'deferred', claim.claimToken); return; }
-        await receipt(item, spoken && scheduled ? 'completed' : scheduled ? 'interrupted' : 'deferred', claim.claimToken);
-        item.result.presentation = spoken && scheduled ? 'completed' : scheduled ? 'interrupted' : 'deferred';
-        requested.delete(key); render(item);
+        const presentation = spoken && scheduled ? 'completed' : scheduled ? 'interrupted' : 'deferred';
+        await receipt(item, presentation, claim.claimToken);
+        const latest = items.get(item.id);
+        if (currentGeneration === generation && latest && identity(latest) === key) latest.result.presentation = presentation;
       } catch {
         // A lost presentation receipt is not completion and does not authorize
         // automatic replay. The saved text remains available for explicit listening.
-        if (currentGeneration === generation) {
-          const status = cards.get(item.id)?.querySelector('.conversation-work-status');
-          if (status) status.textContent = copy().playback;
-        }
-      } finally { presenting = false; }
+        if (currentGeneration === generation) playbackStatus.set(key, 'playback');
+      } finally {
+        presenting = null;
+        const latest = items.get(item.id);
+        if (currentGeneration === generation && latest && identity(latest) === key) render(latest);
+      }
     }
     async function naturalPause() {
       const conversation = getConversation();
       if (disposed || presenting || !sessionId || conversation?.session?.sessionId !== sessionId || !maySpeak()
           || conversation.state !== 'listening' || conversation.activeTurn || conversation.turnPending
           || conversation.selection?.wakeWord && !conversation.wake.active()) return;
-      const item = [...items.values()].find(row => row.result && (requested.has(identity(row))
+      const replayRequested = row => playbackStatus.get(identity(row)) === 'requested';
+      const item = [...items.values()].find(row => row.result && (replayRequested(row)
         || (row.result.automaticSpeech === true || row.result.automaticSpeech !== false && row.classification !== 'native_review')
           && !attempted.has(identity(row)) && ['available', 'displayed', 'deferred'].includes(row.result.presentation)));
-      if (item) await present(item, requested.has(identity(item)));
+      if (item) await present(item, replayRequested(item));
     }
     async function poll({ refresh: fullRead = false } = {}) {
       refreshQueued ||= fullRead;
@@ -277,7 +291,7 @@
     function follow(id) {
       if (disposed || !id || id === sessionId) return;
       pollController?.abort(); pollController = null;
-      ++generation; sessionId = id; cursor = 0; dispatch = null; stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); attempted.clear(); requested.clear();
+      ++generation; sessionId = id; cursor = 0; dispatch = null; stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); attempted.clear(); playbackStatus.clear();
       restoreCommands(); questions?.reset(id);
       summary = node('h2', 'conversation-work-summary', '');
       host.replaceChildren(summary); host.hidden = true; clearInterval(timer);
@@ -285,7 +299,7 @@
     }
     function reset() {
       pollController?.abort(); pollController = null;
-      ++generation; questions?.reset(null); sessionId = null; dispatch = null; clearInterval(timer); stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); host.replaceChildren(); host.hidden = true;
+      ++generation; questions?.reset(null); sessionId = null; dispatch = null; clearInterval(timer); stale = false; refreshQueued = false; commands.clear(); items.clear(); cards.clear(); playbackStatus.clear(); host.replaceChildren(); host.hidden = true;
     }
     function dispose() { disposed = true; reset(); }
     return { follow, reset, dispose, poll, naturalPause, refresh };
