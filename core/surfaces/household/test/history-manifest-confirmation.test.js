@@ -145,6 +145,29 @@ test('local journal write/read failures prevent every manifest write', async () 
   assert.equal(writes(pending).length, 1);
 });
 
+test('known preparation can remain unconfirmed without replacing an uncertain confirmation', async () => {
+  const view = harness(); await prepare(view);
+  const original = clone(view.journal);
+  await view.click('data-manifest-reconcile');
+  assert.equal(view.enabled('data-manifest-leave-prepared'), true);
+  await view.click('data-manifest-leave-prepared');
+  assert.equal(view.journal.acknowledged, true); assert.equal(writes(view).length, 1);
+  await prepare(view);
+  assert.notEqual(view.journal.requestId, original.requestId);
+  assert.deepEqual(JSON.parse(view.storage.get(`${KEY}:${original.requestId}`)).input, original.input);
+  assert.equal(writes(view).filter(row => row.url.endsWith('/confirm')).length, 0);
+
+  const pending = harness({ handler: (url, options) => {
+    if (url.endsWith('/confirm') && options.method === 'POST') throw Error('Unknown confirmation ACK');
+  } });
+  await prepare(pending); const key = pending.journal.requestId;
+  pending.change('data-manifest-reviewed', { checked: true }); await pending.click('data-manifest-confirm');
+  assert.equal(pending.journal.phase, 'confirming'); assert.equal(pending.enabled('data-manifest-leave-prepared'), false);
+  await pending.click('data-manifest-leave-prepared'); await pending.click('data-manifest-prepare');
+  assert.equal(pending.journal.requestId, key); assert.equal(pending.journal.acknowledged, undefined);
+  assert.equal(writes(pending).length, 2);
+});
+
 test('lost preparation response reads only the original identity and requires an explicit reopen', async () => {
   const view = harness({ handler: (url, options) => { if (url === BASE && options.method === 'POST') throw Error('Lost ACK'); } });
   await prepare(view); const original = view.journal.requestId;

@@ -65,6 +65,14 @@ receipt, or an earlier prepared state after an uncertain confirmation, does not
 prove that the original request finished. Pending transport cannot create a new
 identity or silently change its input. Reloading a known prepared receipt requires
 an explicit matching preview reopen before confirmation is enabled again.
+Complete native evidence with a different binding during reopening blocks the original receipt
+without replacing its hashes. After acknowledging that outcome, the owner can
+explicitly prepare a new identity. Transient unavailable reads retain the original
+prepared state and do not establish an empty or unchanged source. A native HTTP
+409 alone does not distinguish those cases. The owner can explicitly leave a
+known prepared receipt unconfirmed and prepare another selection; its original
+journal and Core receipt remain preserved. Pending or uncertain confirmation
+cannot use that path or acquire a new identity.
 
 The response always keeps `reviewOnly: true`, `authenticatedPerson: null`,
 `semanticAcceptance: false`, `approvalBound: false`, `mailboxEffects: 0`,

@@ -109,7 +109,7 @@
         if (unreadable || localStorage.getItem(KEY) !== stored) throw storageFailure();
         if (journal && !fresh && (value.requestId !== journal.requestId || !same(value.input, journal.input)
           || (journal.bindingSha256 && value.bindingSha256 !== journal.bindingSha256))) throw storageFailure();
-        if (fresh && journal && (!terminal(journal.phase) || !journal.acknowledged)) throw storageFailure();
+        if (fresh && journal && ((!terminal(journal.phase) && journal.phase !== 'prepared') || !journal.acknowledged)) throw storageFailure();
         const encoded = JSON.stringify(value);
         // Keep completed original identities accessible while advancing the active journal.
         if (fresh && journal) {
@@ -157,6 +157,7 @@
       }
     }
     const list = codes => `<ul>${codes.map(code => `<li>${esc(limits[code] || `Limite signalée par le producteur : ${code}`)}</li>`).join('')}</ul>`;
+    const canLeavePrepared = () => journal?.phase === 'prepared' && receipt?.state === 'prepared' && !preview && !journal.acknowledged;
     function previewHtml() {
       const manifest = preview.manifest.snapshot || preview.manifest;
       const core = preview.coreRestoration.snapshot || preview.coreRestoration;
@@ -189,7 +190,8 @@
       const frozen = journal && !journal.acknowledged;
       const disabled = busy || !isAvailable() || unreadable;
       const statuses = { preparing: 'Préparation en attente. Retrouvez le reçu original sans relancer la préparation.',
-        prepared: preview ? 'Preuves du manifeste exact affichées. Relisez le périmètre et ses réserves avant de confirmer.' : 'Reçu préparé. Ouvrez explicitement ses preuves actuelles avant de confirmer.',
+        prepared: journal?.acknowledged ? 'Préparation conservée sans confirmation. Une autre sélection peut être préparée explicitement.'
+          : preview ? 'Preuves du manifeste exact affichées. Relisez le périmètre et ses réserves avant de confirmer.' : 'Reçu préparé. Ouvrez explicitement ses preuves actuelles avant de confirmer.',
         reopening: 'Réouverture en attente. Retrouvez d’abord le reçu original.',
         confirming: 'Confirmation en attente ou incertaine. Seul le reçu original peut établir son résultat ; aucune nouvelle confirmation n’est envoyée.',
         confirmed: 'Revue du manifeste exact confirmée. Ce reçu est historique ; il ne prouve pas la disponibilité actuelle des sources.',
@@ -208,7 +210,8 @@
           ${receipt?.confirmedAt ? `<p>Confirmation enregistrée le ${esc(receipt.confirmedAt)}.</p>` : ''}
           ${receipt?.blockedCode ? `<details><summary>Référence technique du blocage</summary><p>${esc(receipt.blockedCode)}</p></details>` : ''}
           <button type="button" data-manifest-reconcile${disabled ? ' disabled' : ''}>Retrouver le reçu original</button>
-          ${journal.phase === 'prepared' && !preview ? `<button type="button" data-manifest-reopen${disabled || !receipt ? ' disabled' : ''}>Rouvrir les preuves de cette demande</button>` : ''}
+          ${journal.phase === 'prepared' && !journal.acknowledged && !preview ? `<button type="button" data-manifest-reopen${disabled || !receipt ? ' disabled' : ''}>Rouvrir les preuves de cette demande</button>` : ''}
+          ${canLeavePrepared() ? `<button type="button" data-manifest-leave-prepared${disabled ? ' disabled' : ''}>Conserver cette préparation sans la confirmer</button><p>La demande originale restera conservée dans Core. Vous pourrez préparer explicitement une autre sélection, sans confirmer celle-ci.</p>` : ''}
           ${terminal(journal.phase) && !journal.acknowledged ? `<button type="button" data-manifest-acknowledge${disabled ? ' disabled' : ''}>Prendre acte du reçu et permettre une nouvelle préparation explicite</button>` : ''}
           ${preview ? previewHtml() : ''}` : ''}</section>`;
     }
@@ -238,17 +241,21 @@
       });
       if (event.target.matches('[data-manifest-reconcile]')) void action(reconcile);
       if (event.target.matches('[data-manifest-reopen]')) void action(async () => {
-        if (journal.phase !== 'prepared' || !receipt) return;
+        if (journal.phase !== 'prepared' || journal.acknowledged || !receipt) return;
         await write(`/${encodeURIComponent(journal.requestId)}/reopen`, 'reopening', journal.input);
       });
       if (event.target.matches('[data-manifest-confirm]')) void action(async () => {
-        if (!reviewed || !preview || journal.phase !== 'prepared') return;
+        if (!reviewed || !preview || journal.phase !== 'prepared' || journal.acknowledged) return;
         await write(`/${encodeURIComponent(journal.requestId)}/confirm`, 'confirming', { ...journal.input,
           bindingSha256: journal.bindingSha256, confirmation: 'reviewed_selected_manifest' });
       });
       if (event.target.matches('[data-manifest-acknowledge]')) void action(async () => {
         if (!terminal(journal.phase)) return;
         save({ ...journal, acknowledged: true }); preview = null;
+      });
+      if (event.target.matches('[data-manifest-leave-prepared]')) void action(async () => {
+        if (!canLeavePrepared()) return;
+        save({ ...journal, acknowledged: true }); preview = null; reviewed = false;
       });
     });
     render();

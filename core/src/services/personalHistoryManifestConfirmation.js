@@ -24,7 +24,7 @@ async function get(requestId, deps) {
 
 async function blocked(row, requestId, error) {
   const blockedCode = error.statusCode === 413 ? 'evidence_capacity'
-    : error.statusCode === 409 ? 'evidence_changed' : 'evidence_unavailable';
+    : error.code === 'HISTORY_MANIFEST_CONFIRMATION_CHANGED' ? 'evidence_changed' : 'evidence_unavailable';
   try {
     const saved = await Confirmation.findOneAndUpdate({ _id: row._id, state: row.state },
       { $set: { state: 'blocked', blockedCode } }, { new: true, runValidators: true }).lean();
@@ -69,9 +69,11 @@ async function reopen(requestId, value, deps) {
   const row = original(await load(requestId), selected);
   if (row.state !== 'prepared') return contract.view(row, requestId);
   const observed = await evidence.observe(selected, deps);
-  if (observed.bindingSha256 !== row.bindingSha256) throw contract.changed();
-  // Reopening never replaces the prepared binding or changes state. If a
-  // confirmation started while its read was pending, return that original.
+  // Legacy native readers can report unavailability as HTTP409 as well.
+  // Only a COMPLETE new proof whose binding differs proves a changed view.
+  if (observed.bindingSha256 !== row.bindingSha256) return blocked(row, requestId, contract.changed());
+  // Reopening never replaces the prepared binding. If a confirmation started
+  // while its read was pending, return that original pending/terminal state.
   const current = original(await load(requestId), selected);
   const displayed = current.state === 'prepared' && current.bindingSha256 === row.bindingSha256;
   if (displayed) await evidence.assertCurrent(observed.preview, deps);

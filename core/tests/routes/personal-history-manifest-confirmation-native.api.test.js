@@ -76,11 +76,29 @@ const URL = '/api/secretary/history/manifest-confirmations';
     const key = randomUUID(), prepared = (await prepare(key).expect(200)).body.data;
     if (kind === 'body') await Entry.collection.updateOne({ _id: entryId() }, { $set: { syntheticUnversionedBody: 'changed synthetic source' } });
     else await MemoryNote.collection.updateOne({ _id: new Entry.base.Types.ObjectId(noteId) }, { $set: { embedding: [0.5] } });
-    const result = (await confirm(key, prepared).expect(200)).body.data;
+    const result = (kind === 'body'
+      ? await request(app).post(`${URL}/${key}/reopen`).send(selected()).expect(200)
+      : await confirm(key, prepared).expect(200)).body.data;
     expect(result).toMatchObject({ state: 'blocked', blockedCode: 'evidence_changed', bindingSha256: prepared.bindingSha256 });
     expect((await Confirmation.findById(digest(key)).lean()).confirmedAt).toBeNull(); await noCopies();
   });
   const entryId = () => new Entry.base.Types.ObjectId(id);
+
+  test('native mirror unavailability cannot masquerade as a changed prepared manifest', async () => {
+    const key = randomUUID(), prepared = (await prepare(key).expect(200)).body.data;
+    const original = fixture.control.probeReviewRestoration.bind(fixture.control);
+    fixture.control.probeReviewRestoration = (copy, input) => {
+      if (copy === 'mirror') throw new Error('Synthetic temporary mirror outage');
+      return original(copy, input);
+    };
+    await request(app).post(`${URL}/${key}/reopen`).send(selected()).expect(409);
+    const retained = (await request(app).get(`${URL}/${key}`).expect(200)).body.data;
+    expect(retained).toMatchObject({ state: 'prepared', bindingSha256: prepared.bindingSha256, blockedCode: null });
+    fixture.control.probeReviewRestoration = original;
+    const reopened = (await request(app).post(`${URL}/${key}/reopen`).send(selected()).expect(200)).body.data;
+    expect(reopened).toMatchObject({ state: 'prepared', bindingSha256: prepared.bindingSha256, nativeState: 'observed' });
+    await noCopies();
+  });
 
   test('forgetting during preparation storage acknowledgement cannot release the old private preview', async () => {
     const original = Confirmation.findOneAndUpdate.bind(Confirmation), key = randomUUID();

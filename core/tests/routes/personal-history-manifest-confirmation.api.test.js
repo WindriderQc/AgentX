@@ -129,12 +129,13 @@ describe('native exact-manifest confirmation ownership and uncertain replies', (
   });
   test('source changes block confirmation and never replace prepared evidence', async () => {
     const key = randomUUID(), prepared = await prepare(key); evidence.observe.mockResolvedValue(packet('changed'));
-    await request(app).post(`${URL}/${key}/reopen`).send(selection()).expect(409);
+    const reopened = (await request(app).post(`${URL}/${key}/reopen`).send(selection()).expect(200)).body.data;
+    expect(reopened).toMatchObject({ state: 'blocked', blockedCode: 'evidence_changed', bindingSha256: prepared.bindingSha256 });
     const result = (await request(app).post(`${URL}/${key}/confirm`).send(confirmBody(prepared)).expect(200)).body.data;
     expect(result).toMatchObject({ state: 'blocked', blockedCode: 'evidence_changed', bindingSha256: prepared.bindingSha256 });
     expect(result.preview).toBeUndefined();
     await request(app).post(`${URL}/${key}/confirm`).send(confirmBody(prepared)).expect(200);
-    expect(evidence.observe).toHaveBeenCalledTimes(3);
+    expect(evidence.observe).toHaveBeenCalledTimes(2);
   });
   test('native failures and DB errors never export private errors or claim confirmation', async () => {
     const key = randomUUID(); evidence.observe.mockRejectedValue(new Error('private DB address and body'));
@@ -143,6 +144,14 @@ describe('native exact-manifest confirmation ownership and uncertain replies', (
     jest.spyOn(Confirmation, 'findById').mockImplementation(() => { throw new Error('private DB address'); });
     const failed = await request(app).get(`${URL}/${key}`).expect(503);
     expect(JSON.stringify(failed.body)).not.toContain('private DB');
+  });
+  test('transient reopen failure retains the prepared binding without declaring sources changed', async () => {
+    const key = randomUUID(), prepared = await prepare(key);
+    evidence.observe.mockRejectedValue(Object.assign(new Error('synthetic unavailable native read'), { statusCode: 503 }));
+    await request(app).post(`${URL}/${key}/reopen`).send(selection()).expect(503);
+    const retained = (await request(app).get(`${URL}/${key}`).expect(200)).body.data;
+    expect(retained).toMatchObject({ state: 'prepared', bindingSha256: prepared.bindingSha256, blockedCode: null });
+    expect(retained.preview).toBeUndefined(); expect(retained.confirmedAt).toBeNull();
   });
   test('late display privacy failure withholds the preview even after preparation persisted', async () => {
     const key = randomUUID(); evidence.assertCurrent.mockRejectedValue(contract.changed());
