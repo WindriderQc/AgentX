@@ -357,6 +357,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   binds the native review and full Core restoration proofs on the existing LAN
   surface. Its durable opaque receipt, immutable browser journal and original-id
   recovery confer no authenticated identity, new permission or cleanup authority.
+  A separate [native currency observation](SECRETARY_CONFIRMATION_CURRENT.md)
+  binds that original human receipt to current complete evidence. Optional
+  private v13 reconciliation checks two agreeing observations after v11/v12,
+  without new consent, source changes or mailbox authority.
   See [linked souvenirs](SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a
