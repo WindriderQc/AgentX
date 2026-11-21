@@ -353,6 +353,10 @@ Instance configuration, data and deployment receipts remain outside Git.
   collections through the existing Core queries. Optional v12 reconciliation
   fences the full source after copying and keeps every native acceptance gap;
   no canonical restore, recall-index qualification or mailbox effect follows.
+  An [exact-manifest human confirmation](SECRETARY_MANIFEST_CONFIRMATION.md)
+  binds the native review and full Core restoration proofs on the existing LAN
+  surface. Its durable opaque receipt, immutable browser journal and original-id
+  recovery confer no authenticated identity, new permission or cleanup authority.
   See [linked souvenirs](SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a

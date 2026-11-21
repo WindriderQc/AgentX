@@ -22,18 +22,19 @@
       <div class="history-batch row wrap" data-history-batch><button type="button" data-history-select-all>Tout sélectionner sur la page</button>
       <button type="button" data-history-keep-selected disabled>Garder la sélection comme souvenirs</button>
       <p class="muted" data-history-selection>Aucune information sélectionnée.</p></div><p data-history-status role="status" aria-live="polite"></p>
-      <div data-history-list class="history-list"></div><nav class="row wrap" aria-label="Pages de l’histoire"><button type="button" data-history-prev>Précédents</button><button type="button" data-history-next>Suivants</button></nav></section>`;
+      <div data-history-manifest></div><div data-history-list class="history-list"></div><nav class="row wrap" aria-label="Pages de l’histoire"><button type="button" data-history-prev>Précédents</button><button type="button" data-history-next>Suivants</button></nav></section>`;
     const get = name => app.querySelector(`[data-history-${name}]`);
     let rows = [], offset = 0, next = null, loading = false, epoch = 0;
     let maximum = 20;
     const selected = new Set();
     const sourceStates = new WeakMap();
+    let manifest;
     // An action is followed up and closed; the other kinds can become souvenirs.
     const canKeep = entry => entry.kind !== 'action' && !entry.souvenirNoteId;
-    const lock = value => { loading = value; app.querySelectorAll('button, input, select, textarea').forEach(el => { el.disabled = value; }); };
+    const lock = value => { loading = value; app.querySelectorAll('button, input, select, textarea').forEach(el => { el.disabled = value; }); manifest?.refresh(); };
     const card = entry => `<article class="history-entry" data-entry="${esc(entry.id)}"><header><p class="card-kicker">${esc(kinds[entry.kind] || entry.kind)} · ${esc(states[entry.reviewState] || entry.reviewState)}</p>
       ${entry.souvenirNoteId ? '<p class="history-souvenir">Souvenir gardé dans votre mémoire</p>' : ''}
-      ${canKeep(entry) ? `<label class="history-pick"><input type="checkbox" data-history-pick="${esc(entry.id)}"${selected.has(entry.id) ? ' checked' : ''}> Sélectionner pour garder comme souvenir</label>` : ''}
+      <label class="history-pick"><input type="checkbox" data-history-pick="${esc(entry.id)}"${selected.has(entry.id) ? ' checked' : ''}> Sélectionner ce relevé</label>
       <h2>${esc(entry.text)}</h2>${entry.people?.length ? `<p>Personnes associées, à vérifier : ${esc(entry.people.join(', '))}</p>` : `<p>${entry.actor ? `${['action', 'deliverable'].includes(entry.kind) ? 'Personne qui doit agir, selon le relevé' : 'Personne associée, à vérifier'} : ${esc(entry.actor)}` : 'Personne à préciser'}</p>`}
       ${entry.places?.length ? `<p>Lieux : ${esc(entry.places.join(', '))}</p>` : ''}${entry.relatedSources?.length ? `<p class="muted">Regroupe ${entry.relatedSources.length + 1} courriels sources; le souvenir les citera tous.</p>` : ''}</header>
       <dl><div><dt>Date de la source</dt><dd>${esc(day(entry.sourceDate))}</dd></div><div><dt>Date de l’événement</dt><dd>${entry.eventDate ? esc(entry.eventDatePrecision === 'day' ? entry.eventDate : day(entry.eventDate)) : 'À préciser'}${entry.eventDateAsWritten ? `<small>Dans la source : ${esc(entry.eventDateAsWritten)}</small>` : ''}</dd></div></dl>
@@ -68,7 +69,7 @@
         const result = await api(`/api/secretary/history?${params}`);
         if (current !== epoch) return;
         rows = result.entries; next = result.nextOffset;
-        for (const key of [...selected]) if (!rows.some(row => row.id === key && canKeep(row))) selected.delete(key);
+        for (const key of [...selected]) if (!rows.some(row => row.id === key)) selected.delete(key);
         get('list').innerHTML = rows.length ? rows.map(card).join('') : '<p class="empty">Aucun relevé dans cette sélection.</p>';
         showSelection();
         get('status').textContent = `${result.total} relevé(s) · sources de la plus ancienne à la plus récente${rows.length ? ` · ${offset + 1}–${offset + rows.length}` : ''}`;
@@ -79,8 +80,9 @@
     }
     function showSelection() {
       get('selection').textContent = selected.size ? `${selected.size} information(s) sélectionnée(s) sur cette page.` : 'Aucune information sélectionnée.';
-      get('keep-selected').disabled = loading || !selected.size;
-      get('select-all').disabled = loading || !rows.some(canKeep);
+      get('keep-selected').disabled = loading || !rows.some(row => selected.has(row.id) && canKeep(row));
+      get('select-all').disabled = loading || !rows.length;
+      manifest?.refresh();
     }
     const keep = (entry, extra = {}) => api(`/api/secretary/history/${encodeURIComponent(entry.id)}/souvenir`,
       { method: 'POST', body: JSON.stringify({ revision: entry.revision, ...extra }) });
@@ -92,13 +94,14 @@
     });
     get('select-all').onclick = () => {
       if (loading) return;
-      rows.filter(canKeep).forEach(row => selected.add(row.id));
+      rows.forEach(row => selected.add(row.id));
       app.querySelectorAll('[data-history-pick]').forEach(box => { box.checked = true; });
       showSelection();
     };
     get('keep-selected').onclick = async () => {
       if (loading || !selected.size) return;
       const chosen = rows.filter(row => selected.has(row.id) && canKeep(row));
+      if (!chosen.length) return;
       const preview = chosen.slice(0, 5).map(row => `• ${row.text.slice(0, 90)}`).join('\n');
       if (!window.confirm(`Garder ${chosen.length} information(s) comme souvenirs permanents dans votre mémoire ?\n\n${preview}${chosen.length > 5 ? '\n…' : ''}`)) return;
       lock(true);
@@ -382,6 +385,8 @@
         lock(false); await load();
       } catch { lock(false); get('status').textContent = 'La décision n’a pas pu être confirmée. Rechargez la liste avec Afficher avant de réessayer.'; }
     });
+    manifest = window.mountHistoryManifestConfirmation?.({ container: get('manifest'), api, esc,
+      getSelection: () => rows.filter(row => selected.has(row.id)), isAvailable: () => !loading });
     await load();
   };
 })();

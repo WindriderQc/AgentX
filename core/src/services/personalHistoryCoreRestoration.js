@@ -76,4 +76,19 @@ async function discover(input, deps) {
     authenticatedPerson: null, canonicalEffects: 0, executionAllowed: false, cleanupStatus: 'blocked', nativeValidationGaps: GAPS };
 }
 
-module.exports = { discover, CONTRACT: contract.CONTRACT };
+// Internal final display fence. This reuses the native full reader without
+// creating another temporary copy or accepting a caller-supplied HTTP proof.
+async function assertCurrentSnapshot(snapshot, deps) {
+  if (deps?.audience !== 'owner') throw failure('Core restoration evidence belongs to the owner surface.', 403, 'HISTORY_CORE_RESTORATION_SCOPE');
+  const notes = deps.notes || require('./memoryNoteService').personal();
+  const selected = await read(snapshot.bindings.sources, notes);
+  const engine = require('./coreTemporaryRestoration'), actual = engine.describe(selected.payload);
+  if (digest(contract.bindings(snapshot.bindings.sources, selected.selected)) !== snapshot.bindingsSha256) throw contract.changed();
+  for (const group of ['history', 'souvenirs']) {
+    const expected = snapshot.restoration.collections[group];
+    if (actual[group].documentsSha256 !== expected.sourceDocumentsSha256
+      || actual[group].indexesSha256 !== expected.sourceIndexesSha256) throw contract.changed();
+  }
+}
+
+module.exports = { discover, assertCurrentSnapshot, CONTRACT: contract.CONTRACT };
