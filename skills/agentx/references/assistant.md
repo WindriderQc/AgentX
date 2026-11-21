@@ -19,12 +19,41 @@ Personal tasks and coding Pipeline tasks are separate capabilities; never
 substitute one for the other. Delegate to Secretary only for mail work that
 needs her tools, not for an ordinary task or calendar entry.
 
+## Daily workflows
+
+| Need | Start with | Verify |
+|---|---|---|
+| Current owner briefing | `personal_briefing` or My day | Check which sections are available, their dates and accepted tasks. |
+| Keep an idea or propose a chore | `add_idea` or `propose_family_chore` in an authorized personal runtime | Open the idea receipt. A submitted chore still needs the parent review. |
+| Shared shopping | `shopping_list` in a granted runtime, or the Household UI | Read the returned list after an authorized add or purchase check. |
+| Animal recording | `get_sound` or Famille's Sounds page | Open the returned local asset with its kind and playback gain. Confirm actual playback separately when asked. |
+| Identify a plant from its attached photo | `draft_plant_card` in the owner session, or the Plants review page | The draft and identification have their own state. Verify the selected source photo and native result before owner publication. See `docs/PLANT_IMPORT.md` for batch import. |
+| File a vault draft | `write_vault_note` in the owner scope with the vault configured | Verify its inbox receipt. The owner moves a kept file into the indexed documents folder. |
+
+## Famille
+
+Start in the Household surface (`/panel`) or its installed conversation tools.
+Use the family view for chores, shared shopping, Reader, sounds and reviewed
+documents. Family chore proposals retain the parent decision step. Read the
+current card, revision and due date before describing a task as assigned or
+complete. Use the shared shopping UI or the scoped `shopping_list` where
+advertised. A voice reply is separate from the retained written turn.
+
+For producer reads, use the [family Living Sources](sources.md#choose-the-scoped-reader).
+Weather, AgentX reachability, ISS passes and ArtX are available through their
+installed family grants. Use the family-approved copies of documents and
+memory context. Owner notes, Pipeline, mail, finance and private data tools
+require their own authorized owner session. See `docs/PARENTAL_ACCESS.md`
+and `docs/HOUSEHOLD_DOCUMENT_REVIEW.md`.
+
 ## Memory and documents
 
 - **Personal notes** (`memory_search`) hold durable facts, preferences and
   decisions. Save one (`memory_remember`) only when the owner asks or the
-  active memory policy allows it, then confirm the result. Infrastructure notes
-  and development decisions belong in project docs, not memory.
+  active memory policy allows it, then confirm the result. The owner bus's
+  `personal_memory` reads current and replaced notes with their provenance
+  and edits the same store under its existing policy. Keep infrastructure
+  notes and development decisions in project docs.
 - **Documents** (`rag_search`): cite the source and keep an excerpt distinct
   from verified current state.
 - Private archive candidates are reviewed at `/dad/documents`: preparation,
@@ -138,8 +167,15 @@ request for that photo. Details: `docs/PHOTOS.md`.
 
 ## Team: Secretary and Accountant
 
+Use [Living Sources](sources.md) to discover and read their dated Core
+artifacts without dispatching a persona. Use the native team only when the
+request needs the collaborator's own capability.
+
 - Read `team_brief` first when their standing Core records answer the question
   (it includes freshness and unavailable sections).
+- For public queries, use `web_search` if granted in this runtime and cite
+  the source pages. For an exact page visit use the configured page service
+  or authorized native Main workflow.
 - For exact current mail, drafts or triage, consult `secretary`; for ledger
   operations, `comptable`; `main` provides SuperDad workflows such as page
   reading and coding delegation through the Pipeline.
@@ -150,6 +186,10 @@ request for that photo. Details: `docs/PHOTOS.md`.
   seconds per pending call, so call again without adding `sleep`; honor any
   returned retry delay. Report only the returned answer and evidence. If
   uncertain, keep polling the original identity; never submit a replacement.
+- The authorized Secretary workflow uses `add_email_action` for an
+  inspected thread in the restricted Leantime Email Actions project. Keep
+  the exact Gmail thread ID and verify the returned card. Owner-task
+  extraction and acceptance follow the personal task review flow.
 - Mail history: `mail_journal` and `mail_recall`. A recall result's `links`
   point to digests, moments, souvenirs and open personal tasks that share its
   exact message or thread; read the linked record before relying on it, and
