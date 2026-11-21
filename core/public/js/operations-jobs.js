@@ -35,6 +35,7 @@
     return `<span class="oj-badge oj-badge-${tone}">${esc(labels[status] || status || '—')}</span>`;
   }
   function cadence(job) {
+    if (job.schedule.type === 'weekly') return `Chaque ${['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'][job.schedule.weekday]} à ${job.schedule.at}`;
     if (job.schedule.type === 'daily') return `Chaque jour à ${job.schedule.at}`;
     const minutes = job.schedule.minutes;
     return minutes < 60 ? `Toutes les ${minutes} minutes` : minutes === 60 ? 'Toutes les heures' : `Toutes les ${minutes / 60} heures`;
@@ -52,6 +53,7 @@
     if (run.state === 'failed') return `Dernière exécution en erreur${run.exitCode != null ? ` · code ${run.exitCode}` : ''}.`;
     if (['running', 'accepted'].includes(run.state)) return 'La demande est reçue. Le résultat sera ajouté à l’historique.';
     const metrics = run.metrics || {};
+    if (metrics.simulationOnly === true) return `Simulation · ${count(metrics.selectedPackages)} paquet(s) proposé(s) sur ${count(metrics.pendingPackages)} en attente · ${count(metrics.excludedPackages)} hors périmètre · aucun paquet installé${metrics.indexesFresh ? '' : ' · fraîcheur des index à confirmer'}`;
     const parts = [];
     if ('sessions' in metrics) parts.push(`${count(metrics.sessions)} session${metrics.sessions === 1 ? '' : 's'}`);
     if ('files' in metrics && (metrics.files > 0 || !metrics.unchanged)) parts.push(`${count(metrics.files)} fichier${metrics.files === 1 ? '' : 's'}`);
@@ -231,6 +233,7 @@
     const form = $('operationsSettingsForm');
     $('settingsTitle').textContent = job.name;
     form.elements.type.value = job.schedule.type;
+    form.elements.weekday.value = job.schedule.weekday ?? 6;
     form.elements.minutes.value = String(job.schedule.minutes || 60);
     if (!form.elements.minutes.value) {
       const option = document.createElement('option'); option.value = String(job.schedule.minutes); option.textContent = `${job.schedule.minutes} minutes`; form.elements.minutes.add(option); form.elements.minutes.value = option.value;
@@ -240,7 +243,7 @@
     $('settingsDependency').textContent = job.gateType ? `${dependency(job)}. La fréquence règle la vérification de la source ; la dépendance reste requise.` : 'Choisissez le rythme adapté à la fraîcheur des données dont vous avez besoin.';
     $('settingsError').textContent = ''; settingsType(); $('operationsSettings').showModal();
   }
-  function settingsType() {const daily = $('operationsSettingsForm').elements.type.value === 'daily'; $('settingsInterval').hidden = daily; $('settingsDaily').hidden = !daily;}
+  function settingsType() {const type = $('operationsSettingsForm').elements.type.value; $('settingsInterval').hidden = type !== 'interval'; $('settingsDaily').hidden = type === 'interval'; $('settingsWeekday').hidden = type !== 'weekly';}
   async function act(action, identifier) {
     const job = state.snapshot.jobs.find(item => item.id === identifier);
     if (!job || job.owner !== 'operations' || !state.connected || !state.snapshot.operationsAvailable) return;
@@ -290,7 +293,8 @@
     event.preventDefault();
     const form = event.currentTarget;
     const schedule = {type: form.elements.type.value, timezone: form.elements.timezone.value.trim()};
-    if (schedule.type === 'daily') schedule.at = form.elements.at.value; else schedule.minutes = Number(form.elements.minutes.value);
+    if (schedule.type === 'weekly') schedule.weekday = Number(form.elements.weekday.value);
+    if (schedule.type !== 'interval') schedule.at = form.elements.at.value; else schedule.minutes = Number(form.elements.minutes.value);
     const submit = form.querySelector('[type="submit"]'); submit.disabled = true;
     try {
       await api(`/${editing}`, {method: 'PATCH', body: JSON.stringify({revision: editRevision, schedule})});

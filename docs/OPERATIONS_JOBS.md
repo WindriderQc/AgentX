@@ -52,6 +52,54 @@ memory. Existing synthesis remains under its native owner. These handlers do not
 invoke inference or change model pins. Heavy coding/qualification work still uses
 [the heavy-work queue](HEAVY_WORK_QUEUE.md) and existing native ownership.
 
+### Mint/APT qualification
+
+The `apt-maintenance-plan` handler runs as an **unprivileged** Linux user and
+has only a simulation action. `apt-maintenance-plan.py` imports Mint's installed
+security classifier, resolves the complete dependency batch with python-apt and
+calls APT with fixed `--simulate --no-remove --only-upgrade` arguments. It never
+refreshes indexes, downloads packages, applies changes, closes applications,
+restarts services or reboots. No configuration or browser field enables an apply
+action. It requires Linux Mint's installed `mintupdate`, `python3-apt` and Gio.
+
+The versioned local policy explicitly allows source packages and trusted origin
+names. Exclusions win over the allowlist, including dependencies. Removals,
+downgrades, new packages, holds, unexpected origins, priority update-tool changes
+and oversized batches refuse qualification. Dpkg audit, real APT exit status for a nonempty batch and
+unchanged package/index/configuration inputs condition the completed receipt.
+The native index-success marker is reported separately: its absence or age never
+becomes proof of fresh signed indexes. A completed simulation is not installation
+coverage, a refreshed index or confirmation that an already running browser uses
+the candidate version.
+
+Start with `host_jobs/apt-plan.policy.example.json` and a disabled native job:
+
+```json
+{"id":"security-plan","kind":"apt-maintenance-plan","hostId":"terminal",
+ "enabled":false,"schedule":{"type":"weekly","weekday":6,"at":"04:00","timezone":"UTC"},
+ "timeoutSeconds":300}
+```
+
+The worker job adds only local options `python`, `policy` and `stateRoot`.
+The server host sets `platform: "posix"`, `sshTarget`, `python`, `root` and
+`stateRoot`; Windows remains the default transport. POSIX arguments are quoted
+and only named worker verbs and validated identities cross SSH. Worker runs keep
+the existing stable-request receipts and unresolved-outcome fences. Weekly days
+are Monday (0) to Sunday (6); local time follows the configured time zone.
+
+The existing operations supervisor is the sole owner of this proposed cadence.
+Keep any native Mint automatic-installer timer disabled rather than duplicating
+the same occurrence. The planner checks its policy's real weekly window before
+reading package inputs and again before accepting success, including resume or
+offline catch-up. Direct qualification without `--enforce-window` is read-only
+and reports whether it occurred inside that window. Installation into a runtime
+and enabling its recurrence remain separate operator actions.
+
+Private per-request manifests stay beside the native worker. Core's existing
+operations hub/history/calendar show only the simulation flag, candidate,
+selected and excluded counts, freshness indication and receipt dates. No package
+manifest, policy path or executor privilege is exposed to a browser.
+
 Session transcript archiving runs beside the transcripts and pushes only new or
 changed files; it has no source gate because its own state skips unchanged files.
 Backup copies require a recorded complete Core backup. Archive mirroring requires

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "revision": 1,
+  "mode": "simulate",
+  "allowedSources": ["chromium", "firefox", "thunderbird"],
+  "excludedSources": ["linux*", "*dkms*", "systemd", "glibc", "nvidia*"],
+  "allowedOrigins": ["Ubuntu", "linuxmint"],
+  "maxPackages": 20,
+  "maxIndexAgeHours": 48,
+  "window": {"timezone": "UTC", "weekday": 6, "start": "04:00", "end": "05:00"}
+}

@@ -16,7 +16,11 @@ def prepare(job, request_id, source_at=None):
     environment["AGENTX_OPERATION_REQUEST_ID"] = request_id
     kind = job["kind"]
     cwd, receipt = None, None
-    if kind == "codex-usage":
+    if kind == "apt-maintenance-plan":
+        receipt = Path(options["stateRoot"]) / "plans" / (request_id + ".json")
+        command = [options["python"], str(Path(__file__).resolve().parents[1] / "apt-maintenance-plan.py"),
+                   "--policy", options["policy"], "--receipt", str(receipt), "--request", request_id, "--enforce-window"]
+    elif kind == "codex-usage":
         command = [options["node"], options["script"], "--endpoint", options["endpoint"], "--lookback-days", str(options.get("lookbackDays", 7))]
     elif kind == "memory-review-submit":
         if options.get("environmentFile"):
@@ -68,7 +72,12 @@ def prepare(job, request_id, source_at=None):
 def metrics(job, receipt, stdout):
     value = load(receipt, {}) if receipt else {}
     result = {}
-    if job["kind"] == "offhost-backup":
+    if job["kind"] == "apt-maintenance-plan":
+        # Never project package names, local paths or the private manifest.
+        if value.get("state") == "completed" and value.get("mode") == "simulate":
+            result = {key: value.get("metrics", {}).get(key) for key in
+                      ("simulationOnly", "pendingPackages", "selectedPackages", "excludedPackages", "indexesFresh", "withinWindow", "verified")}
+    elif job["kind"] == "offhost-backup":
         result = {"files": value.get("files", 0), "bytes": sum(a.get("bytes", 0) for a in value.get("artifacts", [])),
                   "verified": value.get("hashesVerified", False)}
     elif job["kind"] == "archive-mirror":
