@@ -101,7 +101,7 @@ test('every selected entry and related source must match; deduplication never hi
   assert.equal(view.requests.filter(row => /\/preservation\//.test(row.url)).length, 2);
   const missing = harness({ entries: [clone(entry), duplicate], handler: url => url.includes(duplicate.id) ? { receipts: [] } : undefined });
   await prepare(missing); assert.equal(writes(missing).length, 0); assert.equal(missing.journal, null);
-  assert.match(missing.container.innerHTML, /n’a pas de reçu/);
+  assert.match(missing.container.innerHTML, /n’a pas de preuve/);
   const related = harness({ entries: [{ ...clone(entry), relatedSources: [{ ...source, messageId: 'b000000000000001' }] }] });
   await prepare(related); assert.equal(writes(related).length, 0); assert.match(related.container.innerHTML, /source 2/);
 });
@@ -123,9 +123,17 @@ test('latest current v3 is chosen instead of a newer v2; more than 20 exact mess
     { ...receipt(), verification: 'restoration', requestId: randomUUID(), preparedAt: '2030-01-01T00:00:00.000Z' }] } : undefined });
   await prepare(view); assert.equal(view.journal.input.checks[0].requestId, checkId);
   const entries = Array.from({ length: 21 }, (_, i) => ({ ...clone(entry), source: { ...source, messageId: i.toString(16).padStart(16, '0') } }));
-  const many = harness({ entries, handler: url => /\/preservation\//.test(url) ? { receipt: { ...receipt(), snapshot: {
-    ...receipt().snapshot, reference: entries.filter((_entry, i) => i === Math.floor((many.requests.length - 1) / 2))[0].source } } } : undefined });
-  await prepare(many); assert.equal(writes(many).length, 0); assert.match(many.container.innerHTML, /dépasse 20/);
+  const many = harness({ entries });
+  await prepare(many); assert.equal(many.requests.length, 0); assert.equal(many.journal, null);
+  assert.match(many.container.innerHTML, /dépasse 20/);
+});
+
+test('all selected sources are prevalidated before any native read, including later invalid or conflicting sources', async () => {
+  for (const invalid of [{ ...source, system: 'outlook' }, { ...source, sourceSha256: hash('e') }]) {
+    const view = harness({ entries: [clone(entry), { ...clone(entry), id: 'b'.repeat(24), source: invalid }] });
+    await prepare(view);
+    assert.equal(view.requests.length, 0); assert.equal(view.journal, null);
+  }
 });
 
 test('local journal write/read failures prevent every manifest write', async () => {

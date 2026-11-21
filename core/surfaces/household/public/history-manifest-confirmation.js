@@ -42,8 +42,8 @@
 
   async function collectChecks(entries, api) {
     if (!entries.length) throw Error('Sélectionnez au moins un relevé existant.');
-    const byMessage = new Map();
-    for (const entry of entries) {
+    const selectedMessages = new Map();
+    const selection = entries.map(entry => {
       // Match the native sourceIndex order, including deduplication of aliases.
       const seen = new Set();
       const sources = [entry.source, ...(entry.relatedSources || [])].filter(Boolean).filter(source => {
@@ -54,27 +54,35 @@
       if (!sources.length || sources.some(source => !validSource(source))) {
         throw Error(`Le relevé « ${entry.text} » contient une source qui n’est pas un message Gmail exact admissible.`);
       }
+      for (const source of sources) {
+        const existing = selectedMessages.get(source.messageId);
+        if (existing && sourceKey(existing) !== sourceKey(source)) throw Error('Un même message porte deux références différentes. Actualisez la sélection avant de préparer le manifeste.');
+        selectedMessages.set(source.messageId, source);
+      }
+      return { entry, sources };
+    });
+    if (selectedMessages.size > 20) throw Error('La sélection dépasse 20 messages Gmail distincts. Réduisez-la avant de préparer le manifeste.');
+    const byMessage = new Map();
+    for (const { entry, sources } of selection) {
       const listed = await api(`/api/secretary/history/${encodeURIComponent(entry.id)}/preservation`);
       for (const [index, source] of sources.entries()) {
         const latest = (listed.receipts || []).filter(receipt => receipt.sourceIndex === index
           && receipt.verification === 'review-restoration' && receipt.entryCurrent === true)
           .sort((a, b) => Date.parse(b.preparedAt) - Date.parse(a.preparedAt))[0];
-        if (!latest) throw Error(`Le relevé « ${entry.text} » n’a pas de reçu de préservation v3 courant pour la source ${index + 1}. Préparez ce reçu dans le parcours de préservation avant de reprendre.`);
+        if (!latest) throw Error(`Le relevé « ${entry.text} » n’a pas de preuve courante de restauration du dossier pour la source ${index + 1}. Faites préparer cette preuve avant de reprendre.`);
         const result = await api(`/api/secretary/history/${encodeURIComponent(entry.id)}/preservation/${encodeURIComponent(latest.requestId)}`);
         const receipt = result.receipt;
         if (!receipt || receipt.requestId !== latest.requestId || receipt.entryCurrent !== true || receipt.nativeState !== 'current'
           || receipt.verification !== 'review-restoration' || receipt.snapshot?.contract !== 'agentx.history-preservation/v3'
           || receipt.snapshot.status !== 'verified_scope' || !HASH.test(receipt.snapshotHash || '')
           || sourceKey(receipt.snapshot.reference) !== sourceKey(source)) {
-          throw Error(`Le reçu v3 du relevé « ${entry.text} », source ${index + 1}, n’est plus vérifiable sur ce périmètre exact. Aucune source sélectionnée n’est omise.`);
+          throw Error(`La preuve de restauration du dossier du relevé « ${entry.text} », source ${index + 1}, n’est plus vérifiable sur ce périmètre exact. Aucune source sélectionnée n’est omise.`);
         }
         const check = { entryId: entry.id, requestId: receipt.requestId, snapshotHash: receipt.snapshotHash, source: reference(source) };
         const existing = byMessage.get(source.messageId);
-        if (existing && sourceKey(existing.source) !== sourceKey(source)) throw Error('Un même message porte deux références différentes. Actualisez la sélection avant de préparer le manifeste.');
         if (!existing) byMessage.set(source.messageId, check);
       }
     }
-    if (byMessage.size > 20) throw Error('La sélection dépasse 20 messages Gmail distincts. Réduisez-la avant de préparer le manifeste.');
     return [...byMessage.values()].sort((a, b) => a.source.messageId.localeCompare(b.source.messageId));
   }
 
@@ -163,15 +171,15 @@
           const findings = manifest.decisions?.snapshot?.findings?.[index]?.snapshot?.coverage?.counts || {};
           const links = manifest.downstream?.snapshot?.members?.[index]?.snapshot?.coverage?.counts || {};
           const live = manifest.mailbox?.[index]?.snapshot?.mailbox;
-          return `<details open><summary>Source ${index + 1} · message ${esc(message.reference?.messageId)}</summary>
-            <dl><dt>Échange Gmail</dt><dd>${esc(message.reference?.threadId)}</dd><dt>Empreinte du contenu archivé</dt><dd>${esc(message.reference?.sourceSha256)}</dd></dl>
+          return `<section><h4>Source ${index + 1}</h4>
+            <details><summary>Identifiants de la source et empreinte</summary><dl><dt>Message Gmail</dt><dd>${esc(message.reference?.messageId)}</dd><dt>Échange Gmail</dt><dd>${esc(message.reference?.threadId)}</dd><dt>Empreinte du contenu archivé</dt><dd>${esc(message.reference?.sourceSha256)}</dd></dl></details>
             <p>Relevés natifs : ${esc(findings.recordedFindings ?? 'inconnu')} · Décisions observées : ${esc(findings.observedDecision ?? 'inconnu')} · Éléments à examiner : ${esc(findings.needsReview ?? 'inconnu')} · Souvenirs liés courants : ${esc(links.currentLinks ?? 'inconnu')}.</p>
             <p>Gmail : ${live?.status === 'present' ? 'message présent' : live?.status === 'not_found' ? 'message introuvable' : 'état inconnu'}${live?.current ? ` · étiquettes : ${esc(live.current.labelIds.join(', '))}` : ''}.</p>
             ${copies.map((copy, copyIndex) => `<p>Copie ${copyIndex + 1} : ${copy.status === 'available' ? 'disponible' : 'indisponible'} · Fichiers du dossier de revue : ${esc(copy.content?.reviewPacket?.counts?.files ?? 'inconnu')} · Pages : ${esc(copy.content?.reviewPacket?.counts?.pages ?? 'inconnu')} · Pièces jointes : ${esc(copy.content?.reviewPacket?.counts?.attachments ?? 'inconnu')}.</p>`).join('')}
-            ${message.blockers?.length ? list(message.blockers) : '<p>Aucune réserve supplémentaire signalée pour ce message.</p>'}</details>`;
+            ${message.blockers?.length ? list(message.blockers) : '<p>Aucune réserve supplémentaire signalée pour ce message.</p>'}</section>`;
         }).join('')}
         <p>Restauration Core temporaire : ${esc(collections.history?.documents ?? 'inconnu')} relevé(s), ${esc(collections.souvenirs?.documents ?? 'inconnu')} souvenir(s), ${esc(collections.history?.indexes ?? 'inconnu')} index des relevés et ${esc(collections.souvenirs?.indexes ?? 'inconnu')} index des souvenirs. Copie temporaire retirée : ${core.restoration?.temporaryCopyRemoved === true ? 'oui' : 'non vérifié'}.</p>
-        <dl><dt>Empreinte du manifeste</dt><dd>${esc(receipt.manifestSha256)}</dd><dt>Empreinte de la restauration Core</dt><dd>${esc(receipt.coreRestorationSha256)}</dd><dt>Liaison exacte des deux preuves</dt><dd>${esc(journal.bindingSha256)}</dd></dl>
+        <details><summary>Empreintes des preuves</summary><dl><dt>Empreinte du manifeste</dt><dd>${esc(receipt.manifestSha256)}</dd><dt>Empreinte de la restauration Core</dt><dd>${esc(receipt.coreRestorationSha256)}</dd><dt>Liaison exacte des deux preuves</dt><dd>${esc(journal.bindingSha256)}</dd></dl></details>
         <label class="history-pick"><input type="checkbox" data-manifest-reviewed${reviewed ? ' checked' : ''}> J’ai relu ce périmètre exact et ses réserves. Ma confirmation porte uniquement sur cette revue, sans autoriser de suppression.</label>
         <button type="button" data-manifest-confirm${!reviewed || busy || !isAvailable() ? ' disabled' : ''}>Confirmer la revue de ce manifeste exact</button></section>`;
     }
@@ -188,16 +196,17 @@
         blocked: 'Cette demande est bloquée. Son identité et ses empreintes originales restent conservées.' };
       container.innerHTML = `<section class="history-manifest" aria-label="Confirmation du manifeste des sources"><h2>Revoir le manifeste des sources sélectionnées</h2>
         <p>Confirmation humaine sur le réseau privé, sans personne authentifiée. Elle atteste la revue des preuves affichées, sans valider le sens des informations ni autoriser de nettoyage. Aucune suppression ; aucun effet sur la boîte Gmail.</p>
-        <p>Sélection actuelle : ${selected.length} relevé(s). Chaque source doit disposer d’un reçu de préservation v3 courant ; aucun reçu manquant n’est créé automatiquement.</p>
+        <p>Sélection actuelle : ${selected.length} relevé(s). Chaque source doit disposer d’une preuve courante de restauration du dossier ; aucune preuve manquante n’est créée automatiquement.</p>
         ${selected.length ? `<ul>${selected.map(entry => `<li>${esc(entry.text)}</li>`).join('')}</ul>` : ''}
         <label>Messages strictement antérieurs au jour choisi (00:00 UTC)<input type="date" data-manifest-before value="${esc(cutoff)}"${disabled || frozen ? ' disabled' : ''}></label>
         <button type="button" data-manifest-prepare${disabled || frozen || !selected.length || !cutoff ? ' disabled' : ''}>Préparer le manifeste de la sélection</button>
         <p role="status" aria-live="polite" data-manifest-status>${esc(error || (journal ? statuses[journal.phase] : 'Choisissez une date limite explicite, puis préparez les preuves.'))}</p>
-        ${journal ? `${error ? `<p>${esc(statuses[journal.phase])}</p>` : ''}<dl><dt>Demande originale</dt><dd>${esc(journal.requestId)}</dd><dt>Date limite figée</dt><dd>${esc(journal.input.before)}</dd><dt>Sources figées</dt><dd>${esc(journal.input.checks.length)} message(s)</dd></dl>
-          <ul>${journal.input.checks.map(check => `<li>Message ${esc(check.source.messageId)} · échange ${esc(check.source.threadId)} · empreinte ${esc(check.source.sourceSha256)}</li>`).join('')}</ul>
+        ${journal ? `${error ? `<p>${esc(statuses[journal.phase])}</p>` : ''}<dl><dt>Date limite figée</dt><dd>${esc(journal.input.before)}</dd><dt>Sources figées</dt><dd>${esc(journal.input.checks.length)} message(s)</dd></dl>
+          <details><summary>Identifiants et empreintes de la demande</summary><dl><dt>Demande originale</dt><dd>${esc(journal.requestId)}</dd></dl>
+          <ul>${journal.input.checks.map(check => `<li>Message ${esc(check.source.messageId)} · échange ${esc(check.source.threadId)} · empreinte ${esc(check.source.sourceSha256)}</li>`).join('')}</ul></details>
           <p>La sélection actuelle et la date ne modifient jamais cette demande.</p>
           ${receipt?.confirmedAt ? `<p>Confirmation enregistrée le ${esc(receipt.confirmedAt)}.</p>` : ''}
-          ${receipt?.blockedCode ? `<p>Motif du blocage : ${esc(receipt.blockedCode)}.</p>` : ''}
+          ${receipt?.blockedCode ? `<details><summary>Référence technique du blocage</summary><p>${esc(receipt.blockedCode)}</p></details>` : ''}
           <button type="button" data-manifest-reconcile${disabled ? ' disabled' : ''}>Retrouver le reçu original</button>
           ${journal.phase === 'prepared' && !preview ? `<button type="button" data-manifest-reopen${disabled || !receipt ? ' disabled' : ''}>Rouvrir les preuves de cette demande</button>` : ''}
           ${terminal(journal.phase) && !journal.acknowledged ? `<button type="button" data-manifest-acknowledge${disabled ? ' disabled' : ''}>Prendre acte du reçu et permettre une nouvelle préparation explicite</button>` : ''}

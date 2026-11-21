@@ -14,7 +14,7 @@ const KEY = 'history-manifest-confirmation:v1';
 const BASE = '/api/secretary/history/manifest-confirmations';
 const source = { system: 'gmail', messageId: 'a000000000000001', threadId: 'a000000000000002', sourceSha256: 'a'.repeat(64) };
 const entries = [{ id: 'a'.repeat(24), text: 'Suivi synthétique <img src=x onerror=alert(1)>', source, kind: 'action', revision: 1, reviewState: 'retained', assertionState: 'reported' },
-  { id: 'b'.repeat(24), text: 'Information synthétique sans reçu v3', source: { ...source, messageId: 'b000000000000001' }, kind: 'fact', revision: 1, reviewState: 'candidate', assertionState: 'reported' }];
+  { id: 'b'.repeat(24), text: 'Information synthétique sans preuve de restauration', source: { ...source, messageId: 'b000000000000001' }, kind: 'fact', revision: 1, reviewState: 'candidate', assertionState: 'reported' }];
 const check = { requestId: '11111111-1111-4111-8111-111111111111', sourceIndex: 0, verification: 'review-restoration',
   preparedAt: '2026-01-01T00:00:00.000Z', entryCurrent: true, nativeState: 'current', snapshotHash: 'b'.repeat(64),
   snapshot: { contract: 'agentx.history-preservation/v3', reference: source, status: 'verified_scope' } };
@@ -123,7 +123,7 @@ const result = (id, includePreview = false) => ({ contract: 'agentx.history-mani
   await page.locator('[data-manifest-acknowledge]').click();
   await page.locator('[data-history-pick]').nth(1).check();
   await page.locator('[data-manifest-before]').fill('2026-02-03'); await page.locator('[data-manifest-prepare]').click();
-  await page.waitForFunction(() => document.querySelector('[data-manifest-status]').textContent.includes('n’a pas de reçu'));
+  await page.waitForFunction(() => document.querySelector('[data-manifest-status]').textContent.includes('n’a pas de preuve'));
   assert.equal(writes.length, 3, 'missing selected source never silently omitted');
   await page.locator('[data-history-pick]').nth(1).uncheck(); await page.locator('[data-history-pick]').first().check();
   await page.evaluate(() => { Storage.prototype.setItem = () => { throw Error('Unavailable storage'); }; });
