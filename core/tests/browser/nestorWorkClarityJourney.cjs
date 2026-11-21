@@ -2,12 +2,17 @@
 // Real request cards and controls against deterministic local Core responses.
 // No model, speech service, native executor or production database is used.
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
 const express = require('express'), { chromium } = require('playwright');
 const core = path.resolve(__dirname, '../..'), reportDir = process.env.WORK_CLARITY_REPORT_DIR;
 if (!reportDir || path.resolve(reportDir).startsWith(path.resolve(core, '..') + path.sep)) throw Error('Set WORK_CLARITY_REPORT_DIR outside the checkout');
 fs.mkdirSync(reportDir, { recursive: true });
-const row = (id, requestText, extra = {}) => ({ id, sessionId: 'synthetic-session', turnId: id, requestText, state: 'queued', revision: 1,
-  pending: true, controllable: true, classification: 'native_work', receivedAt: '2026-01-02T14:25:30Z', ...extra });
+const row = (id, requestText, extra = {}) => {
+  const requestSha256 = createHash('sha256').update(requestText).digest('hex');
+  return { id, sessionId: 'synthetic-session', turnId: id, requestText, state: 'queued', revision: 1,
+    pending: true, controllable: true, classification: 'native_work', receivedAt: '2026-01-02T14:25:30Z',
+    controlBasis: { version: 2, workId: id, revision: 1, requestSha256 }, controlReceipts: [], ...extra };
+};
 let server, browser;
 (async () => {
   const app = express(); app.use('/assets/household', express.static(core + '/surfaces/household/public'));
@@ -33,9 +38,20 @@ let server, browser;
           if(offline)throw Error('offline');
           if(options?.method==='POST'){
             const command=JSON.parse(options.body);posts.push({url,...command});
-            const id=url.split('/').at(-2),row=rows.find(row=>row.id===id);row.revision++;cursor++;
-            row.state=command.action==='cancel'?'cancelled':command.action==='pause'?'paused':'queued';row.pending=row.state!=='cancelled';row.controllable=row.pending;
-            return {id,state:row.state,revision:row.revision};
+            const id = url.split('/').at(-2);
+            const row = rows.find(row => row.id === id);
+            for (const key of ['version', 'workId', 'revision', 'requestSha256']) {
+              if (command[key] !== row.controlBasis[key]) throw Error('Unexpected control basis');
+            }
+            const state = { cancel: 'cancelled', pause: 'paused', resume: 'queued' }[command.action];
+            const revision = row.revision + 1;
+            const commandReceipt = { version: 2, requestId: command.requestId, workId: id, action: command.action,
+              requestSha256: row.controlBasis.requestSha256, baseRevision: row.revision, revision, state };
+            row.controlReceipts.push(commandReceipt);
+            row.controlBasis.revision = revision;
+            Object.assign(row, { state, revision, pending: state !== 'cancelled', controllable: state !== 'cancelled' });
+            cursor++;
+            return { id, state, revision, commandReceipt };
           }
           return {items:structuredClone(rows),cursor,dispatch,hasMore:false};
         }});feed.follow('synthetic-session');
@@ -73,10 +89,12 @@ let server, browser;
     await page.evaluate(async () => { offline=false; await feed.poll(); });
     assert.equal(await first.getByRole('button', { name: /Annuler/ }).isDisabled(), false);
     // Untrusted user text stays text, including a long request with identical prefixes.
-    await page.evaluate(async () => { rows[0].requestText='Long request '.repeat(40)+'<img src=x onerror="window.injected=true">';rows[0].revision++;await feed.poll(); });
-    await first.getByText('Lire la demande complète', { exact: true }).click();
-    assert.match(await first.locator('details p').innerText(), /<img src=x onerror=/);
-    assert.equal(await first.locator('img').count(), 0); assert.equal(await page.evaluate(() => window.injected), undefined);
+    const longRequest = row('request-long', 'Long request '.repeat(40) + '<img src=x onerror="window.injected=true">');
+    await page.evaluate(async item => { rows.push(item); cursor++; await feed.poll(); }, longRequest);
+    const longCard = page.locator('[data-work-id="request-long"]');
+    await longCard.getByText('Lire la demande complète', { exact: true }).click();
+    assert.match(await longCard.locator('details p').innerText(), /<img src=x onerror=/);
+    assert.equal(await longCard.locator('img').count(), 0); assert.equal(await page.evaluate(() => window.injected), undefined);
     await page.evaluate(() => { language='en';feed.refresh(); });
     assert.equal(await first.getByRole('button', { name: /Cancel this request/ }).count(), 1);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
