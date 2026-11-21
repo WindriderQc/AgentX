@@ -627,8 +627,8 @@ confirmed temporary copy removal. Full documents, context bodies, embeddings
 and collection names stay inside Core. A supplied JSON file is never native
 restoration evidence.
 
-The Core restoration observations run after every earlier HTTP call,
-including the v11 manifest. Only local disposition checks follow, using
+The Core restoration observations run after the v11 manifest and earlier
+HTTP calls. Without the optional v13 mode, only local disposition checks follow, using
 already observed Core rows. When v9/v11 graph checks are present, the current
 local graph must still bind their retained restoration proof. Changed or
 unavailable evidence prevents a success report. The immutable private report
@@ -640,6 +640,34 @@ vault/tombstone recovery, recall/index qualification, semantic acceptance or
 cleanup approval. Canonical records are not rewritten. Real-corpus execution
 requires separate authorization and the heavy-work queue; synthetic client
 tests remain distinct from native Mongo and instance acceptance.
+
+`--native-manifest-confirmation REQUEST_UUID` selects v13. It requires the
+original human confirmation UUID and `--native-review-restoration-checks`
+before the first HTTP request, and implies both the complete v11 manifest and
+v12 Core restoration checks. The client recomposes their complete selected
+proof graph, exact retained checks and canonical cutoff before reading the
+receipt's current native binding. It never prepares or confirms a receipt.
+
+Two fresh observations of
+`POST /api/secretary/history/manifest-confirmations/:requestId/current` must
+agree on the complete metadata snapshot. The second request carries the
+first fingerprint. The original request, selection and input hashes must
+match; original and current manifest/restoration/binding hashes must equal
+the verified v11/v12 proofs. Human preparation and confirmation dates must
+be canonical UTC milliseconds, ordered before the observation and unchanged
+between reads. An expected hash alone cannot make a historical confirmation
+current. Changed, unavailable or malformed evidence prevents a success report;
+there is no retry or replacement identity. Each response permits at most
+64 KiB and 1,200 seconds, with a 16 KiB metadata snapshot.
+
+These are the final HTTP calls, after v11 and v12. Only the final local
+disposition and current review graph fences follow. The immutable private
+report adds `nativeManifestConfirmation`; stdout adds only `selectedMessages`
+and `confirmationStatus` for that proof. v13 returns exit code 2, retains all
+four global gaps, keeps execution false and cleanup blocked, and grants no
+new approval or mailbox authority. The historical human receipt remains
+unchanged. Synthetic CPU tests do not establish deployment, native instance
+acceptance or permission for a real corpus.
 
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
