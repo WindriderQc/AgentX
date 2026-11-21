@@ -3,7 +3,7 @@
 const MemoryNote = require('../../models/MemoryNote');
 const { digest } = require('./personalHistorySourceReviewSources');
 const error = (message, statusCode) => Object.assign(new Error(message), { statusCode, code: 'MEMORY_NOTE_INVALID' });
-const stages = () => [{ $project: { embedding: 0 } }, { $project: { bytes: { $bsonSize: '$$ROOT' },
+const stages = ({ includeEmbedding = false } = {}) => [...(includeEmbedding ? [] : [{ $project: { embedding: 0 } }]), { $project: { bytes: { $bsonSize: '$$ROOT' },
   row: { $cond: [{ $lte: [{ $bsonSize: '$$ROOT' }, 512 * 1024] }, '$$ROOT', null] } } }];
 
 function summarize(packets, project) {
@@ -28,11 +28,11 @@ function summarize(packets, project) {
 
 // Called only from the trusted owner memory space: its active filter and
 // projection remain the same as the ordinary selected souvenir reader.
-function historyLookup(active, project) {
+function historyLookup(active, project, options) {
   return { stage: { $lookup: { from: MemoryNote.collection.name,
     let: { selectedNote: { $convert: { input: '$row.souvenirNoteId', to: 'objectId', onError: null, onNull: null } } },
     pipeline: [{ $match: { ...active, kind: 'souvenir', status: 'active',
-      $expr: { $eq: ['$_id', '$$selectedNote'] } } }, ...stages()], as: 'souvenirEvidence' } },
+      $expr: { $eq: ['$_id', '$$selectedNote'] } } }, ...stages(options)], as: 'souvenirEvidence' } },
   summarize: packets => summarize(packets, project) };
 }
 

@@ -597,7 +597,7 @@ the canonical snapshot permits at most 1 MiB. Core composes its native readers
 and ends with a joined Core/note fence. This does not establish an atomic
 provider/archive/Core snapshot or authenticate a person.
 
-After the final manifest HTTP call, only local checks follow: dispositions
+After the final native HTTP call, only local checks follow: dispositions
 reuse the Core rows already observed, and the bounded current review graph
 must still bind the manifest's retained restoration proof. Changed or
 unavailable evidence writes no success report. The new immutable private report
@@ -608,6 +608,38 @@ mailbox effect remains false/zero, and v11 returns exit code 2 even when all
 selected evidence agrees. No approval, cleanup, memory/index restoration or
 storage acceptance follows. Real-corpus work requires separate authorization
 and the heavy-work queue.
+
+`--native-core-restoration` selects v12 and implies the existing global
+downstream/finding checks (v10/v6/v4). It composes v5–v11; v11 still requires
+its retained v3 review restoration checks. Two complete Core observations
+must agree, with fresh identities, an exact expected binding hash from the
+already verified v10 scope and the first observation's fingerprint on the
+second request. Each response is bounded to 2 MiB and 240 seconds without
+automatic retry; its canonical snapshot stays within 1 MiB.
+
+Core copies only the selected current history records and directly linked
+active owner souvenirs into private temporary Mongo collections, preserves
+their BSON representations and supported Mongo index definitions, rereads
+them and exercises its existing business queries. The client requires exact
+selected bindings, matching source/restored data and index hashes, integer
+counts matching distinct entries/notes, successful query verification and
+confirmed temporary copy removal. Full documents, context bodies, embeddings
+and collection names stay inside Core. A supplied JSON file is never native
+restoration evidence.
+
+The Core restoration observations run after every earlier HTTP call,
+including the v11 manifest. Only local disposition checks follow, using
+already observed Core rows. When v9/v11 graph checks are present, the current
+local graph must still bind their retained restoration proof. Changed or
+unavailable evidence prevents a success report. The immutable private report
+adds `nativeCoreRestoration`; stdout adds only document, byte and index counts
+for history and souvenirs. v12 returns exit code 2 and retains all four global
+acceptance gaps and false/blocked execution flags. This bounded mechanical
+check does not establish complete Core recovery, independent storage,
+vault/tombstone recovery, recall/index qualification, semantic acceptance or
+cleanup approval. Canonical records are not rewritten. Real-corpus execution
+requires separate authorization and the heavy-work queue; synthetic client
+tests remain distinct from native Mongo and instance acceptance.
 
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
