@@ -152,7 +152,11 @@ class DecisionAcceptanceTests(unittest.TestCase):
     def test_explicit_states_and_existing_blockers_define_only_recorded_scope_acceptance(self):
         for kind in ('action', 'deliverable', 'invoice', 'fact', 'other'):
             for state in ('retained', 'resolved', 'dismissed', 'proposed'):
-                def mutate(f, d): f['coverage']['findings'][0]['records'][0].update(kind=kind, state=state)
+                def mutate(f, d):
+                    section = {'action': 'actions', 'fact': 'memories', 'deliverable': 'deliverables', 'invoice': 'invoices'}.get(kind, 'memories')
+                    f['inventory']['findings'][0]['section'] = section
+                    f['coverage']['findings'][0]['section'] = section
+                    f['coverage']['findings'][0]['records'][0].update(kind=kind, state=state)
                 snapshot = self.policy(mutate)
                 accepted = state in ('resolved', 'dismissed') or kind == 'fact' and state == 'retained'
                 accepted = accepted and kind != 'other'
@@ -192,6 +196,15 @@ class DecisionAcceptanceTests(unittest.TestCase):
             d['entries'][0].update(state='not_linked', note=None)
             d['coverage']['counts'].update(currentLinks=0, notLinked=1)
         self.assertTrue(self.policy(unlinked)['decisionReconciliationAccepted'])
+
+    def test_kind_section_mismatch_blocks_even_with_observed_status_and_no_native_blockers(self):
+        def mismatch(finding, downstream):
+            finding['coverage']['findings'][0]['records'][0].update(kind='invoice', state='resolved')
+        result = self.policy(mismatch)
+        self.assertEqual(result['messages'][0]['blockers'], ['recorded_decision_not_observed'])
+        self.assertEqual(result['acceptanceStatus'], 'blocked_scope')
+        self.assertFalse(result['decisionReconciliationAccepted'])
+        self.assertEqual(result['remainingNativeValidationGaps'], list(NATIVE_GAPS))
 
     def test_current_human_receipt_cannot_accept_mailbox_or_cutoff_blockers(self):
         for code in ('live_message_outside_cutoff', 'live_source_changed', 'live_source_missing'):

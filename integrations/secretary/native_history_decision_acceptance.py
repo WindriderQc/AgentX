@@ -92,7 +92,8 @@ def message(reference, finding, downstream, manifest_message, current):
                     and record['fingerprint'] == pins[record['entryId']]['fingerprint']
                     and isinstance(record['kind'], str) and isinstance(record['state'], str) and codes(record['blockers']))
             record_ids.add(record['entryId'])
-            if record['blockers']:
+            expected_kind = {'actions': 'action', 'memories': 'fact', 'deliverables': 'deliverable', 'invoices': 'invoice'}[row['section']]
+            if record['blockers'] or record['kind'] != expected_kind:
                 blockers.add('recorded_decision_not_observed')
             if record['kind'] in ('action', 'deliverable', 'invoice'):
                 if record['state'] not in ('resolved', 'dismissed'):
