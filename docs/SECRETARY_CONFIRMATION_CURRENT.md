@@ -73,3 +73,7 @@ approval. `authenticatedPerson` remains null, `approvalBound` and
 `executionAllowed` remain false, `mailboxEffects` remains zero and cleanup stays
 blocked with all four global native acceptance gaps. No real campaign, model,
 deployment, instance change or mailbox effect follows from this contract.
+
+The optional [selected recorded-decision acceptance](SECRETARY_DECISION_ACCEPTANCE.md)
+reuses this same native current-binding reader with a separate policy and private
+v14 report. The v13 response and its four gaps retain their existing meanings.

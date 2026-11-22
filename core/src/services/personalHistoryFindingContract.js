@@ -79,4 +79,4 @@ function reconcile(inventory, entries, nativeStates) {
     meaning: 'Recorded finding/reference/decision observations only; no comprehension, authenticated person, downstream settlement or cleanup acceptance.' };
 }
 
-module.exports = { CONTRACT, collect, describe, reconcile };
+module.exports = { CONTRACT, SECTIONS, collect, describe, reconcile };

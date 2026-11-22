@@ -57,11 +57,12 @@ async function discover(requestId, input, deps) {
   if (Buffer.byteLength(JSON.stringify(snapshot)) > 16 * 1024) throw failure('The complete confirmation metadata exceeds its capacity.',
     413, 'HISTORY_MANIFEST_CONFIRMATION_CURRENT_CAPACITY');
   const fingerprint = digest(snapshot);
-  return { authority: 'agentx.core', contract: CONTRACT, observationId: input.observationId, observedAt: new Date().toISOString(),
+  const observation = { authority: 'agentx.core', contract: CONTRACT, observationId: input.observationId, observedAt: new Date().toISOString(),
     snapshot, fingerprint, status: input.expected === undefined ? 'observed' : input.expected === fingerprint ? 'observed_match' : 'changed',
     consistency: 'native-confirmation-binding-with-final-source-fence', reviewOnly: true, atomicBatch: false,
     semanticAcceptance: false, authenticatedPerson: null, approvalBound: false, mailboxEffects: 0,
     executionAllowed: false, cleanupStatus: 'blocked', nativeValidationGaps: GAPS };
+  return { observation, preview: observed.preview };
 }
 
 async function safe(...args) {
@@ -76,4 +77,6 @@ async function safe(...args) {
   }
 }
 
-module.exports = { discover: safe, CONTRACT };
+// Only trusted Core composition receives the ephemeral evidence. The public
+// reader keeps exactly its original metadata-only contract.
+module.exports = { discover: async (...args) => (await safe(...args)).observation, observeWithEvidence: safe, CONTRACT };

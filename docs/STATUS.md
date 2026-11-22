@@ -361,6 +361,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   binds that original human receipt to current complete evidence. Optional
   private v13 reconciliation checks two agreeing observations after v11/v12,
   without new consent, source changes or mailbox authority.
+  Optional [recorded-decision acceptance](SECRETARY_DECISION_ACCEPTANCE.md)
+  evaluates the complete selected scope under that current human binding:
+  actions, deliveries and invoices require explicit closure or dismissal;
+  retained information requires a dated decision and current existing links.
+  Private v14 reconciliation removes only its decision-reconciliation gap when
+  every selected message passes. Three other native gaps, exit code 2 and the
+  cleanup block remain.
   See [linked souvenirs](SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a
