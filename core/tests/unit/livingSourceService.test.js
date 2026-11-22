@@ -89,7 +89,7 @@ test('catalogue and envelopes share one bounded reading contract without invokin
   const brief = jest.fn();
   const owner = forAudience('owner', { brief, now }).catalogue();
   const family = forAudience('household', { brief, now }).catalogue();
-  expect(JSON.stringify(owner).length).toBeLessThan(4000);
+  expect(JSON.stringify(owner).length).toBeLessThan(4100);
   expect(JSON.stringify(family).length).toBeLessThan(4000);
   for (const catalogue of [owner, family]) {
     for (const row of catalogue.sources) expect(row).toMatchObject({ answers: expect.any(String), notFor: expect.any(String) });
@@ -143,6 +143,15 @@ test('read envelopes repeat the exact catalogue guidance for every visible sourc
     expect(result.reading).toBe(catalogue.reading);
   }
   expect(brief).toHaveBeenCalledTimes(2);
+});
+
+test('owner catalogue carries a compact pipeline_artifacts pointer, household has none', () => {
+  const owner = forAudience('owner').catalogue();
+  const family = forAudience('household').catalogue();
+  expect(owner.pipelineArtifacts).toEqual({ tool: 'pipeline_artifacts', requiredArgument: 'pipelineId' });
+  expect(family).not.toHaveProperty('pipelineArtifacts');
+  expect(family.sources.map(row => row.source)).toEqual(['weather', 'agentx']);
+  expect(owner.sources.map(row => row.source)).toEqual(['weather', 'agentx', 'secretary', 'comptable']);
 });
 
 test('failed sole or all brief sections do not claim a successful read', async () => {
