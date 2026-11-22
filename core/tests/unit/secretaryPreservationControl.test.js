@@ -6,19 +6,20 @@ const { SecretaryPreservationControl } = require('../../integrations/runtime-bri
 
 const input = () => ({ requestId: randomUUID(), messageId: '1234567890abcdef', threadId: '1234567890abcdea', sourceSha256: 'a'.repeat(64) });
 
-test.each(['preservation', 'restoration'])('both operator-selected readers use the bounded native %s command', async command => {
+test.each(['preservation', 'restoration', 'review-restoration', 'storage-evidence'])('both operator-selected readers use the bounded native %s command', async command => {
   const calls = [];
   const reader = target => new SecretaryMailControl({ sshTarget: target, remoteRoot: '/opt/product',
     sshRunner: async (host, command) => { calls.push({ host, command }); return { stdout: JSON.stringify({ status: 'success', data: { observed: true } }) }; } });
   const control = new SecretaryPreservationControl({ primary: reader('primary.example.invalid'), mirror: reader('mirror.example.invalid') });
   const request = input();
-  const read = command === 'restoration' ? control.probeRestoration.bind(control) : control.probe.bind(control);
+  const methods = { preservation: 'probe', restoration: 'probeRestoration', 'review-restoration': 'probeReviewRestoration', 'storage-evidence': 'probeStorageEvidence' };
+  const read = control[methods[command]].bind(control);
   await read('primary', request); await read('mirror', request);
   expect(calls.map(call => call.host)).toEqual(['primary.example.invalid', 'mirror.example.invalid']);
   for (const call of calls) expect(call.command).toBe(`/usr/bin/python3 /opt/product/integrations/secretary/secretary_mail_desk.py ${command} --message ${request.messageId} --thread ${request.threadId} --sha256 ${request.sourceSha256} --request-id ${request.requestId}`);
 });
 
-test.each(['probe', 'probeRestoration'])('an unconfigured mirror cannot silently select the primary host in %s', async method => {
+test.each(['probe', 'probeRestoration', 'probeReviewRestoration', 'probeStorageEvidence'])('an unconfigured mirror cannot silently select the primary host in %s', async method => {
   const oldTarget = process.env.SECRETARY_ARCHIVE_MIRROR_SSH_TARGET;
   const oldRoot = process.env.SECRETARY_ARCHIVE_MIRROR_REMOTE_ROOT;
   delete process.env.SECRETARY_ARCHIVE_MIRROR_SSH_TARGET; delete process.env.SECRETARY_ARCHIVE_MIRROR_REMOTE_ROOT;
@@ -40,5 +41,6 @@ test.each([
   const control = new SecretaryPreservationControl({ primary: { available: true, call } });
   await expect(control.probe('primary', { ...input(), ...extra })).rejects.toMatchObject({ statusCode: 400 });
   await expect(control.probeRestoration('primary', { ...input(), ...extra })).rejects.toMatchObject({ statusCode: 400 });
+  await expect(control.probeStorageEvidence('primary', { ...input(), ...extra })).rejects.toMatchObject({ statusCode: 400 });
   expect(call).not.toHaveBeenCalled();
 });

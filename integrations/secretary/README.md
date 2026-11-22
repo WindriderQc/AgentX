@@ -740,6 +740,23 @@ writer cannot replace a plan that already owns that output identity.
 python3 integrations/secretary/retention_plan.py --root "$GMAIL_SECRETARY_ROOT" --before "$HISTORICAL_CUTOFF" --inventory "$PRIVATE_GMAIL_INVENTORY" --primary-proof "$PRIVATE_PRIMARY_PROOF" --mirror-proof "$PRIVATE_MIRROR_PROOF" --qualification "$PRIVATE_QUALIFICATION" --decisions "$PRIVATE_ANALYSIS_RECEIPTS" --output "$PRIVATE_RETENTION_PLAN"
 ```
 
+### Native storage observations
+
+`secretary_mail_desk.py storage-evidence` binds the selected current review-file
+restoration to native Linux mount/block-device observations. Core's owner-only
+`POST /api/secretary/history/storage-scope` observes both configured copies in two
+complete selected passes and applies a final Core/privacy fence. Unknown topology,
+matching machines, shared device hashes and unequal content remain held.
+
+The standalone `native_history_storage_scope.capture(core, saved, scopes,
+review_restoration)` consumes verified native message receipts and the nested v9
+review-restoration scope, then validates two complete agreeing native observations.
+It adds no reconciliation CLI mode. Existing reports retain their behavior;
+all four generic native gaps and false physical/semantic/approval/execution flags
+remain in this observation. Kernel IDs are not hardware attestation or permission
+to clean a mailbox. See [native storage evidence](../../docs/SECRETARY_STORAGE_EVIDENCE.md)
+for bounds, unsupported topologies, transport and test limits.
+
 ### Labelling an approved retention batch
 
 `retention_label.py` remains a separate legacy label-only operation. It rejects
