@@ -67,7 +67,9 @@ body.avatar-docked .conversation-presence { display: none; }
 .avatar-scene-bar { position: fixed; z-index: 115; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translateX(-50%);
   display: grid; justify-items: center; gap: 10px; width: min(680px, calc(100vw - 32px)); pointer-events: none; }
 .avatar-scene-bar[hidden], .avatar-scene-bar [hidden], .avatar-scene-clock[hidden] { display: none; }
-.avatar-scene-status { margin: 0; color: var(--soft); text-align: center; text-wrap: balance; text-shadow: 0 1px 8px #060d14; }
+.avatar-scene-status { box-sizing: border-box; max-width: 100%; margin: 0; padding: 4px 10px; border-radius: 12px;
+  background: #0b1620eb; color: #f2f7fb; text-align: center; text-wrap: balance; overflow-wrap: anywhere; }
+.avatar-scene-status:empty { display: none; }
 body[data-avatar-view=montre] :is(.avatar-scene-status, .avatar-scene-reply) { display: none; }
 /* His last reply, under him: scrolls inside itself, never over the line to type. */
 .avatar-scene-reply { box-sizing: border-box; width: 100%; max-height: 28dvh; margin: 0; padding: 10px 16px; overflow-y: auto; overscroll-behavior: contain;
