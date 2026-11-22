@@ -15,6 +15,28 @@ devices cannot open these pages.
 | Hardware, network and sensors | `gpu_status`, `network_devices` or the Toolbox's Hardware, Network and IoT views. | Quote last observation and collector availability. Inventory can outlive a device. |
 | An existing Data export | List `GET /api/data-toolbox/reports` or Toolbox → Reports. Choose a ready entry by `type`, `createdAt` and exact `filename`. | Open `GET /api/data-toolbox/reports/<filename>/download` when needed. Check record and skipped counts. A Data export is a separate artifact from a Janitor strategy. |
 
+## Claude.ai in a browser
+
+1. For a DiskX report, use the instance's remote DiskX connector first. Find its
+   name in `instance.md` when present and check the tools enabled in the chat.
+   Call its `janitor_report_view` with `{}`. The remote connection works
+   independently of Claude Desktop.
+2. The connector offers one read-only tool for the latest stored report. It
+   returns availability, status, the UTC generation date and the private
+   DiskX link. The input schema is empty. File details, duplicate groups,
+   older reports, scans, generation and approvals have separate native
+   workflows and access requirements.
+3. Check `available`, `status` and `generatedAt`. For an available report,
+   return the exact dated `link` and tell the user it opens from the private
+   network. Its `report` parameter binds the link to that generation of the
+   latest report. Verify the page from the LAN when you have access and report
+   the verification status. If a new report replaces it, check the latest
+   result again.
+4. If the connector is missing or refuses access, report that separately
+   from a missing report or a private link the cloud cannot open. The private
+   [owner path](#open-a-dated-janitor-report) requires its own installed grant
+   or an authorized LAN session. An access refusal ends the read.
+
 ## Open a dated Janitor report
 
 1. Discover owner `janitor_report_view` and call it with `{}`. Narrow to
