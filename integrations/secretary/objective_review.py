@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 from collections import Counter
 import hashlib
 import json
@@ -87,7 +88,8 @@ def prepare(root, config, *, create=True):
     if previous is not None:
         input_scope.contract_for(previous)
     template = grounding.schema_template(previous) if previous is not None else (
-        {grounding.CONTRACT: grounding.SCHEMA, grounding.SOURCE_SELECTION_CONTRACT: grounding.SCHEMA_V15}.get(
+        {grounding.CONTRACT: grounding.SCHEMA, grounding.SOURCE_SELECTION_CONTRACT: grounding.SCHEMA_V15,
+         grounding.DATE_SELECTION_CONTRACT: grounding.SCHEMA_V16}.get(
             config.get('groundingContract'), SCHEMA))
     if template is None:
         raise ValueError('Unsupported retained objective schema')
@@ -263,6 +265,8 @@ def _source_record(page, manifest=None):
         native['primarySource'] = {'identity': {k: native[k] for k in ('system', 'messageId', 'threadId', 'sourceSha256')},
             'headers': source['headers'], 'attachmentMetadata': source.get('attachmentMetadata', [])
             if 'inputContext' in page and page['representation']['representation'] == 'mime-text' else []}
+    if manifest and grounding.contract_for(manifest) == grounding.CURRENT_CONTRACT:
+        native['selectedInputContext'] = copy.deepcopy(page.get('inputContext'))
     return {"id": sid, "kind": "mail", "body": page["content"],
             "bodySha256": hashlib.sha256(page["content"].encode()).hexdigest(), "subject": source["headers"].get("subject", ""),
             "mailDate": source.get("mailDate"), "nativeRef": native,
@@ -498,16 +502,19 @@ def run(root, objective, manifest, client, *, max_pages, queue_id, dispatch_id, 
                         evidence_context = grounding.extraction_context(_source_record(page, manifest), manifest)
                         client.schema = grounding.schema_for(page["content"], grounded, evidence_context)
                         if grounded in grounding.SOURCE_SELECTION_CONTRACTS:
-                            s = grounding.source_selection
+                            s = grounding.primary_reading.SELECTOR if grounded == grounding.CURRENT_CONTRACT else grounding.source_selection
                             payload.update(selectionCues=s.catalog(payload['citationCatalog'], evidence_context),
                                 omissionReasonCatalog=s.omission_catalog(payload['citationCatalog'], evidence_context),
                                 actorReadingCatalog=grounding.work_actors.actors(payload['citationCatalog'], evidence_context),
                                 attachmentMetadataCatalog=s.documents(evidence_context),
                                 dateCatalog=grounding.date_selection.catalog(payload['citationCatalog'], evidence_context)
-                                if grounded == grounding.CURRENT_CONTRACT else date_evidence.catalog(
+                                if grounded in (grounding.DATE_SELECTION_CONTRACT, grounding.CURRENT_CONTRACT) else date_evidence.catalog(
                                     payload['citationCatalog'], evidence_context) + s.partial_dates(payload['citationCatalog']),
                                 factTypeCatalog=claim_proofs.fact_catalog(payload['citationCatalog']),
                                 uncertaintyCatalog=grounding.source_observations.qualification_catalog(payload['citationCatalog']))
+                            if grounded == grounding.CURRENT_CONTRACT:
+                                payload['quotedSourceRepeatCatalog'] = grounding.primary_reading.repetitions.catalog(
+                                    payload['citationCatalog'], evidence_context)
                         if grounded in (grounding.FACT_CONTRACT, grounding.PROOF_CONTRACT, grounding.CONDITIONAL_CONTRACT, grounding.SOURCE_CONTRACT, grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):
                             payload["selectionCues"] = fact_policy.career_cues(payload["citationCatalog"])
                             if grounded in (grounding.SELECTION_CONTRACT, grounding.OMISSION_CONTRACT, grounding.EXPLICIT_CONTRACT, grounding.CUE_CONTRACT, grounding.ANCHORED_CONTRACT, grounding.CLAIM_CONTRACT, grounding.CONTRACT):

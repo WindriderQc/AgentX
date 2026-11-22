@@ -80,14 +80,40 @@ observation grants no execution or release: queue assertion, inference admission
 and the terminal Core recheck remain authoritative. Other workload owners and
 quarantines are never cleared. Unscoped catch-up retains its conservative guard.
 
-New objectives use `secretary.objective-grounding/v15` for model extraction.
-The native response has one `retainedMoments` array of complete anchored facts,
+New objectives use `secretary.objective-grounding/v17` for model extraction.
+The native response includes `readingContract` and one `retainedMoments` array of complete anchored facts,
 `cueDecisions`, `documentDecisions`, `emptyAssessment`, `abstention` and `gaps`.
 Each required cue selects `{retained:true}` or its own cited omission. A retained
 marker requires an actual fact with that primary anchor, not another fact's
 index, actor or metadata. The positive schema requires at least one fact; the
 negative schemas require zero facts and a supported whole-passage abstention.
 Cue omissions cannot substitute for that whole-passage reason.
+
+Each v17 fact selects `primaryObservation: {citationId, qualificationIds}`.
+Its closed alternatives pair each primary excerpt with only its own local
+qualification references; a plain excerpt requires an empty selection. There
+are no independent top-level `anchorCitationId` or `qualificationIds` fields.
+Context observations and date observations retain their own excerpt-local
+qualifications. Generation and local validation use these same alternatives,
+without silently dropping a misplaced reference or repairing model output.
+
+For selected mail input, `quotedSourceRepeatCatalog` identifies quoted excerpts
+whose literal text is already in an earlier member's authored passage in the
+frozen ordered group, with known chronology flags. The existing quote engine
+supplies segmentation and whitespace/quote-prefix normalization, preserving
+case and original character offsets. Matches do not establish identity or event
+equivalence. Contradictory explicit sender addresses or complete dated headers
+do not suppress another statement. Such copies cannot anchor another primary fact or require
+another cue decision on the reply; they remain usable as locally qualified
+context, including repeated work requests. A page containing only copies can
+select its cited context-only abstention. Unmatched quotes, later peers, unknown
+chronology and unscoped objectives retain their existing primary choices.
+
+The v17 receipt freezes the selected input packet alongside its existing digest
+and rechecks it against native attribution evidence during replay. Its
+`primaryReading` proof retains native primary observations and exact quote/peer
+overlaps. No event is merged or deleted after inference; changed selections
+require a distinct objective version, and invalid outputs remain rejections.
 
 Useful cancellation requests/confirmations and first-person data or registration
 activities receive explicit source decisions. Administrative signature wording
@@ -114,8 +140,8 @@ metadata remains context. No attachment is opened for these references.
 The new prompt, schema and native decisions require a new objective version.
 Existing manifests reopen with their original schema and prompt; their native
 responses, rejection dispositions and projection fingerprints are unchanged.
-Optional `groundingContract` may explicitly select v14 or v15 when preparing a
-new version. Omitting it selects v15; it never upgrades an existing manifest.
+Optional `groundingContract` may explicitly select v14, v15, v16 or v17 when preparing a
+new version. Omitting it selects v17; it never upgrades an existing manifest.
 Code and synthetic CPU checks establish contract behavior only, not live model
 quality or permission to run, publish or deploy.
 
@@ -275,7 +301,7 @@ work-correspondence alternatives. End dates and underlying activities cannot
 select them. Local validation retains these checks even if a backend ignores
 the schema. Event-date association within observations still needs review.
 
-New objectives use `secretary.objective-grounding/v16`. Dates select
+Current v17 objectives retain v16's date-selection fields. Dates select
 `startDateSelection` and `endDateSelection`, each null or
 `{reference, observation}`. `reference` selects `dateCatalog`; an event date's
 `observation` selects its exact `{citationId, qualificationIds}` in the same
@@ -373,17 +399,18 @@ Native responses stay immutable. `resultProcessing` records the source-span
 projection and claim mappings, which are recalculated when receipts are read,
 including after an interrupted local projection. The canonical result and
 publisher contracts stay the same. Legacy canonical receipts and frozen
-`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10`, `/v11`, `/v12`, `/v13`, `/v14` and `/v15` responses retain their original
+`secretary.objective-grounding/v1`, `/v2`, `/v3`, `/v4`, `/v5`, `/v6`, `/v7`, `/v8`, `/v9`, `/v10`, `/v11`, `/v12`, `/v13`, `/v14`, `/v15` and `/v16` responses retain their original
 projections, schema fingerprints and change descriptions. Each frozen grounding
 version requires its own verified projection; an old contract cannot bypass the
 new attribution controls.
 Changed prompt/schema hashes require a new objective version; no prior objective
 or rejection is rewritten. This extraction contract grants no publication or
 owner confirmation and does not relax a campaign's existing review gate.
-An explicit `groundingContract` can select `/v14`, `/v15` or `/v16` when
+An explicit `groundingContract` can select `/v14`, `/v15`, `/v16` or `/v17` when
 preparing a new objective; an existing manifest always selects its frozen
 template. In particular, v15 retains its flat `startDateRef`/`endDateRef`,
-original header catalog and rejection behavior.
+original header catalog and rejection behavior. V16 retains its independent
+primary anchor/qualification fields and original projections and rejections.
 
 The first supported objective is `life-timeline`. Its private JSON configuration
 contains `id`, `version`, `kind`, explicit `ownerAliases`, optional `instructions`,

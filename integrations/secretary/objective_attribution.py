@@ -156,12 +156,14 @@ def project(objective, record, result, *, expected_objective=None):
 
 
 def validate_receipt(objective, row, manifest):
+    from objective_grounding import contract_for as grounding_contract, SOURCE_SELECTION_CONTRACTS, CURRENT_CONTRACT
     if not contract_for(manifest):
+        if grounding_contract(manifest) == CURRENT_CONTRACT:
+            raise ValueError('Primary-reading receipt requires frozen source attribution')
         return
     record = row["sourceRecord"]
     scope = input_scope.contract_for(manifest)
     native = record['nativeRef']
-    from objective_grounding import contract_for as grounding_contract, SOURCE_SELECTION_CONTRACTS
     if grounding_contract(manifest) in SOURCE_SELECTION_CONTRACTS and 'primarySource' not in native:
         raise ValueError('Source-selection receipt requires frozen primary metadata')
     if scope is not None:
@@ -171,6 +173,10 @@ def validate_receipt(objective, row, manifest):
             raise ValueError('Selected input receipt differs from its frozen context')
     elif native.get('inputReadingContract') is not None or native.get('inputContextSha256') is not None:
         raise ValueError('Unversioned selected input receipt')
+    if grounding_contract(manifest) == CURRENT_CONTRACT:
+        expected = input_scope.packet(scope, source, evidence) if scope is not None else None
+        if 'selectedInputContext' not in native or native['selectedInputContext'] != expected:
+            raise ValueError('Primary-reading receipt differs from its frozen selected input packet')
     if record["nativeRef"].get("attributionContract") != CONTRACT \
             or row.get("quoteAttribution") != project(objective, record, row["result"], expected_objective=manifest["objectiveSha256"]):
         raise ValueError("Objective quote attribution differs from its retained evidence")

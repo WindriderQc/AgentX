@@ -9,10 +9,11 @@ import objective_work_actors as work
 from objective_claim_typing import KINDS
 
 
-def project(value, content, spans, context, legacy_schema, source_template, *, date_rows=None, contract=selection.CONTRACT):
+def project(value, content, spans, context, legacy_schema, source_template, *, date_rows=None, contract=selection.CONTRACT, selection_model=selection):
+    selection = selection_model
     rows = selection.catalog(list(spans.values()), context)
     reasons = selection.omission_catalog(list(spans.values()), context)
-    if not wire.matches(value, wire.schema(legacy_schema, list(spans.values()), context)):
+    if not wire.matches(value, wire.schema(legacy_schema, list(spans.values()), context, selection_model=selection)):
         raise ValueError('Native source-selection result violates its frozen page schema')
     native = copy.deepcopy(value)
     selected = {m['anchorCitationId'] for m in native['retainedMoments']}
