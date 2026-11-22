@@ -77,7 +77,11 @@ let browser, server;
   const origin = `http://127.0.0.1:${server.address().port}`;
   browser = await chromium.launch({ headless: true });
   const checks = [];
-  for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mobile', { width: 390, height: 844 }]]) {
+  for (const [name, viewport] of [
+    ['desktop', { width: 1440, height: 1000 }],
+    ['mobile', { width: 390, height: 844 }],
+    ['narrow', { width: 320, height: 740 }]
+  ]) {
     const context = await browser.newContext({ viewport });
     await context.route('**/*', route => {
       if (!route.request().url().startsWith(origin + '/')) { external.push(route.request().url()); return route.abort(); }
@@ -92,6 +96,12 @@ let browser, server;
     await page.addInitScript(() => { window.copiedText = []; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async text => { window.copiedText.push(text); } } }); });
     await page.goto(origin + '/playground');
     await page.waitForFunction(() => window.fixture?.loaded === true);
+    const composerButtonsFit = await page.locator('#composerModeBtn, #captureScreenBtn, #sendBtn').evaluateAll(nodes =>
+      nodes.every(node => {
+        const bounds = node.getBoundingClientRect();
+        return bounds.left >= 0 && bounds.right <= document.documentElement.clientWidth + 1;
+      }));
+    assert.ok(composerButtonsFit, 'Playground composer controls fit the viewport');
     const assistant = page.locator('.bubble[data-id="333333333333333333333333"]');
     await assistant.locator('.answer-blocks').waitFor();
     assert.equal(await assistant.locator('table.answer-block-table').count(), 2);

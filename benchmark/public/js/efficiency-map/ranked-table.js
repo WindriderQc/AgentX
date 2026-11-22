@@ -97,9 +97,11 @@ export function renderRankedTable(container, entries) {
         doSort();
 
         const thCells = COLUMNS.map(col => {
-            const arrow = col.key === sortKey ? (sortAsc ? ' \u25B2' : ' \u25BC') : '';
-            const cls = col.sortable ? 'eff-th-sort' : '';
-            return `<th class="${cls}" data-key="${col.key}">${col.label}${arrow}</th>`;
+            if (!col.sortable) return `<th scope="col">${col.label}</th>`;
+            const active = col.key === sortKey;
+            const arrow = active ? ` <span aria-hidden="true">${sortAsc ? '▲' : '▼'}</span>` : '';
+            const order = active ? ` aria-sort="${sortAsc ? 'ascending' : 'descending'}"` : '';
+            return `<th scope="col"${order}><button type="button" class="eff-th-sort" data-key="${col.key}">${col.label}${arrow}</button></th>`;
         }).join('');
 
         const rows = sorted.map((e, i) => {
@@ -115,7 +117,7 @@ export function renderRankedTable(container, entries) {
             <div class="eff-table-actions">
                 <button class="eff-export-btn" id="eff-export-csv"><i class="fas fa-download"></i> Export CSV</button>
             </div>
-            <div class="eff-table-wrap">
+            <div class="eff-table-wrap" tabindex="0" role="region" aria-label="Ranked efficiency observations">
                 <table class="eff-table">
                     <thead><tr>${thCells}</tr></thead>
                     <tbody>${rows}</tbody>
@@ -123,12 +125,17 @@ export function renderRankedTable(container, entries) {
             </div>
         `;
 
-        container.querySelectorAll('.eff-th-sort').forEach(th => {
-            th.addEventListener('click', () => {
-                const key = th.dataset.key;
+        const scrollArea = container.querySelector('.eff-table-wrap');
+        container.querySelectorAll('.eff-th-sort').forEach(button => {
+            button.addEventListener('click', () => {
+                const { key } = button.dataset;
+                const offset = scrollArea.scrollLeft;
+                const wasFocused = button === button.ownerDocument.activeElement;
                 if (sortKey === key) { sortAsc = !sortAsc; }
                 else { sortKey = key; sortAsc = false; }
                 render();
+                container.querySelector('.eff-table-wrap').scrollLeft = offset;
+                if (wasFocused) container.querySelector(`.eff-th-sort[data-key="${key}"]`).focus({ preventScroll: true });
             });
         });
 

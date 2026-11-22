@@ -256,8 +256,16 @@
 }
 
 .eff-th-sort {
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+    text-transform: inherit;
     cursor: pointer;
-    user-select: none;
 }
 
 .eff-th-sort:hover {

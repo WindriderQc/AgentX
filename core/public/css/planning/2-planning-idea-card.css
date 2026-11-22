@@ -482,15 +482,13 @@
   .planning-navigation {
     position: static;
     display: flex;
-    overflow-x: auto;
-  }
-
-  .planning-nav-section {
-    flex: 0 0 auto;
+    flex-wrap: wrap;
+    row-gap: 8px;
   }
 
   .planning-view-tabs {
     display: flex;
+    flex-wrap: wrap;
   }
 
   .planning-view-tabs button {
