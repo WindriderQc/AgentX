@@ -26,6 +26,11 @@
 
 ## Discover and call tools
 
+In Claude.ai on the web, start a Janitor report read with the configured
+[remote DiskX connector](data.md#claudeai-in-a-browser). The remote connector
+has its own narrow grant. Use the Core buses below from their authorized private
+network and runtime.
+
 1. Search the runtime tool catalogue for the exact unprefixed name from the
    chapter. The client may prefix names or hide definitions until searched.
    Check both the intended bus's catalogue and the client grant when one is

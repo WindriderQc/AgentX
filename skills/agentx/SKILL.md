@@ -28,6 +28,7 @@ grants. Read the chapter for the request.
 | Use free GPU capacity or follow a dispatched job | `gpu_status`, `work_queue`, native executor | [GPU to result](references/ops.md#from-free-gpu-to-an-open-result) · [Trace an exact request](references/compute.md#use-an-available-gpu) |
 | Interpret coverage, read scores or plan a Profiler measurement | `benchmark_coverage`, `benchmark_results` | [Benchmark and Profiler](references/benchmark.md) |
 | Find an indexed file, a dated DiskX/Janitor report or a phone import | `storage_summary`, `find_files`, `janitor_report_view` | [Data and DiskX](references/data.md) |
+| Read a DiskX report from Claude.ai in a browser | Remote DiskX connector, `janitor_report_view` | [Claude.ai DiskX](references/data.md#claudeai-in-a-browser) |
 | Read a Secretary or Accountant artifact, weather or AgentX reachability | `source_catalogue`, `source_read` | [Living Sources](references/sources.md) |
 | Work with memory, documents, tasks, calendar, photos or the personal team | `memory_search`, `rag_search`, `personal_calendar`, `team_brief` | [Personal assistant](references/assistant.md) |
 | Use ideas, the shopping list, plants or household media | Discover the matching tool or review page | [Daily workflows](references/assistant.md#daily-workflows) |
