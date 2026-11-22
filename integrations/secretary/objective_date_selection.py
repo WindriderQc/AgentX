@@ -94,9 +94,9 @@ def uses_wire(value):
         for m in value.get('retainedMoments', []) if isinstance(m, dict))
 
 
-def project(value, content, spans, context, legacy_schema, source_template):
+def project(value, content, spans, context, legacy_schema, source_template, *, selection_model=selection, contract=CONTRACT):
     span_list = list(spans.values())
-    template = schema(wire.schema(legacy_schema, span_list, context), span_list, context)
+    template = schema(wire.schema(legacy_schema, span_list, context, selection_model=selection_model), span_list, context)
     if not wire.matches(value, template):
         raise ValueError('Native date-selection result violates its frozen page schema')
     converted = copy.deepcopy(value)
@@ -123,7 +123,7 @@ def project(value, content, spans, context, legacy_schema, source_template):
                     seen[key] = obs['qualificationIds']
     rows = catalog(span_list, context)
     result, changes = projection.project(converted, content, spans, context, legacy_schema,
-        source_template, date_rows=[r for r in rows if r['kind'] != 'partial-event-expression'], contract=CONTRACT)
-    changes[0]['dateSelection'] = {'contract': CONTRACT, 'nativeSelections': bindings,
+        source_template, date_rows=[r for r in rows if r['kind'] != 'partial-event-expression'], contract=contract, selection_model=selection_model)
+    changes[0]['dateSelection'] = {'contract': contract, 'nativeSelections': bindings,
                                   'dateCatalog': rows, 'locallyInventedObservations': 0}
     return result, changes

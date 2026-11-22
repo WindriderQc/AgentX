@@ -48,6 +48,9 @@ class Client:
         if self.fail:
             raise TimeoutError("uncertain transport")
         payload = json.loads(prompt)
+        if payload.get('groundingContract') == 'secretary.objective-grounding/v17':
+            from test_objective_primary_reading import response
+            return response(payload, self.invalid)
         if payload.get('groundingContract') == 'secretary.objective-grounding/v16':
             from test_objective_date_selection import response
             return response(payload, self.invalid)

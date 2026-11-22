@@ -169,9 +169,9 @@ class DateSelectionTests(unittest.TestCase):
         value = v15.raw(body, [v15.fact('q1', category='home')])
         value['retainedMoments'][0]['startDateRef'] = rows[0]['id']
         with self.assertRaisesRegex(ValueError, "event's own observations"):v15.project(value, body)
-        self.assertNotEqual(hashed(grounding.CURRENT_SCHEMA), hashed(grounding.SCHEMA_V15))
-        self.assertEqual(hashed(grounding.CURRENT_SCHEMA), '98d09e37139c961e4ed7bb634b3f661349ebc0428431635f16f454261d8e240c')
-        self.assertEqual(grounding.contract_for({'responseSchemaSha256': hashed(grounding.CURRENT_SCHEMA)}), dates.CONTRACT)
+        self.assertNotEqual(hashed(grounding.SCHEMA_V16), hashed(grounding.SCHEMA_V15))
+        self.assertEqual(hashed(grounding.SCHEMA_V16), '98d09e37139c961e4ed7bb634b3f661349ebc0428431635f16f454261d8e240c')
+        self.assertEqual(grounding.contract_for({'responseSchemaSha256': hashed(grounding.SCHEMA_V16)}), dates.CONTRACT)
 
     def test_schema_growth_stays_bounded_for_ordinary_lines(self):
         sizes = []
@@ -184,7 +184,9 @@ class DateSelectionTests(unittest.TestCase):
 class DateSelectionWorkerTests(unittest.TestCase):
     setUp = scoped.InputScopeTests.setUp
     mail = scoped.InputScopeTests.mail
-    prepare = scoped.InputScopeTests.prepare
+    def prepare(self):
+        self.config.setdefault("groundingContract", dates.CONTRACT)
+        return scoped.InputScopeTests.prepare(self)
     no_attachment_reads = scoped.InputScopeTests.no_attachment_reads
 
     def test_invalid_header_selection_is_retained_without_partial_salvage_or_retry(self):

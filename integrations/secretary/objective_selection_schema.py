@@ -3,6 +3,7 @@ import copy
 
 import objective_omission_policy as policy
 import objective_source_selection as selection
+import objective_source_observations as observations
 
 
 def fact_options(node):
@@ -17,16 +18,19 @@ def fact_options(node):
                 yield from fact_options(child)
 
 
-def facts(template, spans=None, context=None):
+def facts(template, spans=None, context=None, *, selection_model=selection):
+    selection = selection_model
     blocked = set() if spans is None else selection.excluded(spans, context)
     cues = {} if spans is None else {r['id']: r for r in selection.catalog(spans, context)}
     partial = [] if spans is None else selection.partial_dates(spans)
+    primary_blocked = set() if spans is None else getattr(
+        selection, 'primary_excluded', lambda spans, ctx: set())(spans, context)
     options, seen = [], set()
     for original in fact_options(template):
         node = copy.deepcopy(original);p = node['properties']
         anchors = p['anchorCitationId'].get('enum')
         if anchors is not None:
-            anchors = [a for a in anchors if a not in blocked]
+            anchors = [a for a in anchors if a not in blocked and a not in primary_blocked]
             if not anchors:
                 continue
             p['anchorCitationId']['enum'] = anchors
@@ -71,17 +75,31 @@ def facts(template, spans=None, context=None):
                 obs['items'] = {'anyOf': allowed} if allowed else policy._object({})
                 if not allowed:
                     obs['maxItems'] = 0
+            # An earlier selected work cue may have been excluded by the frozen
+            # work schema. In this reading policy it is context only, so retain
+            # its own locally qualified observation rather than losing the quote.
+            if primary_blocked:
+                present = obs['items'].get('anyOf', []) if obs.get('maxItems') != 0 else []
+                known = {key for o in present for key in o['properties']['citationId'].get('enum', [])}
+                refs = observations.qualification_catalog(spans)
+                extra = [observations._observation([key], [r['id'] for r in refs if r['citationIds'] == [key]])
+                         for key in sorted(primary_blocked - blocked - known)]
+                if extra:
+                    obs['items'] = {'anyOf': [*present, *extra]}
+                    if obs.get('maxItems') == 0:
+                        obs['maxItems'] = observations.MAX_OBSERVATIONS - 1
             key = repr(option)
             if key not in seen:
                 seen.add(key);options.append(option)
     return {'anyOf': options} if options else False
 
 
-def schema(template, spans=None, context=None):
+def schema(template, spans=None, context=None, *, selection_model=selection):
+    selection = selection_model
     rows = None if spans is None else selection.catalog(spans, context)
     reasons = None if spans is None else selection.omission_catalog(spans, context)
     documents = None if spans is None else selection.documents(context)
-    items = facts(template, spans, context)
+    items = facts(template, spans, context, selection_model=selection)
     branches = []
     for outcome in ('retained', 'no-life-event', 'uncertain'):
         negative = outcome != 'retained'

@@ -234,8 +234,8 @@ def page_context(spans, offset, length, *, kind, newer_messages, text):
     return context
 
 
-def normalized(text):
-    """Casefolded text without quote prefixes or whitespace runs, with original offsets."""
+def normalized(text, *, casefold=True):
+    """Quote/whitespace normalization with original offsets; legacy casefold by default."""
     out, index, position, line_start, space = [], [], 0, True, False
     while position < len(text):
         if line_start:
@@ -250,7 +250,7 @@ def normalized(text):
             out.append(" ")
             index.append(position)
         space = False
-        for folded in char.casefold():
+        for folded in char.casefold() if casefold else char:
             out.append(folded)
             index.append(position)
         position += 1

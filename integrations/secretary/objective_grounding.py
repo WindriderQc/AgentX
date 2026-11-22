@@ -28,6 +28,7 @@ import objective_work_actors as work_actors
 import objective_actor_context as actor_context
 import objective_source_selection as source_selection
 import objective_date_selection as date_selection
+import objective_primary_reading as primary_reading
 import objective_selection_schema as selection_schema
 import objective_selection_projection as selection_projection
 
@@ -129,21 +130,24 @@ SCHEMA = work_actors.schema(SCHEMA_V13)
 # uses CURRENT_SCHEMA; retained manifests select their own original fingerprint.
 SOURCE_SELECTION_CONTRACT = source_selection.CONTRACT
 SCHEMA_V15 = selection_schema.schema(SCHEMA)
-CURRENT_CONTRACT = date_selection.CONTRACT
-CURRENT_SCHEMA = date_selection.schema(SCHEMA_V15)
-SOURCE_SELECTION_CONTRACTS = (SOURCE_SELECTION_CONTRACT, CURRENT_CONTRACT)
+DATE_SELECTION_CONTRACT = date_selection.CONTRACT
+SCHEMA_V16 = date_selection.schema(SCHEMA_V15)
+CURRENT_CONTRACT = primary_reading.CONTRACT
+CURRENT_SCHEMA = primary_reading.schema(SCHEMA_V16)
+SOURCE_SELECTION_CONTRACTS = (SOURCE_SELECTION_CONTRACT, DATE_SELECTION_CONTRACT, CURRENT_CONTRACT)
 
 
 def instructions(base, contract):
     if contract not in SOURCE_SELECTION_CONTRACTS:
         return base
-    policy = date_selection.POLICY if contract == CURRENT_CONTRACT else source_selection.POLICY
+    policy = {CURRENT_CONTRACT: primary_reading.POLICY, DATE_SELECTION_CONTRACT: date_selection.POLICY,
+              SOURCE_SELECTION_CONTRACT: source_selection.POLICY}[contract]
     return base.split('Use the source-span grounding contract ', 1)[0] + policy
 
 
 def schema_template(manifest):
     digest = manifest.get('responseSchemaSha256')
-    candidates = [CURRENT_SCHEMA, SCHEMA_V15, SCHEMA] + [globals()['SCHEMA_V' + str(n)] for n in range(1, 14)]
+    candidates = [CURRENT_SCHEMA, SCHEMA_V16, SCHEMA_V15, SCHEMA] + [globals()['SCHEMA_V' + str(n)] for n in range(1, 14)]
     from objective_schema import SCHEMA as canonical
     return next((s for s in [*candidates, canonical] if hashed(s) == digest), None)
 
@@ -152,7 +156,7 @@ def contract_for(manifest):
     digest = manifest.get("responseSchemaSha256")
     if digest == hashed(CURRENT_SCHEMA):
         return CURRENT_CONTRACT
-    for contract, schema in ((SOURCE_SELECTION_CONTRACT, SCHEMA_V15), (CONTRACT, SCHEMA), (CLAIM_CONTRACT, SCHEMA_V13), (ANCHORED_CONTRACT, SCHEMA_V12), (CUE_CONTRACT, SCHEMA_V11), (EXPLICIT_CONTRACT, SCHEMA_V10), (OMISSION_CONTRACT, SCHEMA_V9), (SELECTION_CONTRACT, SCHEMA_V8), (SOURCE_CONTRACT, SCHEMA_V7), (CONDITIONAL_CONTRACT, SCHEMA_V6), (PROOF_CONTRACT, SCHEMA_V5), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
+    for contract, schema in ((DATE_SELECTION_CONTRACT, SCHEMA_V16), (SOURCE_SELECTION_CONTRACT, SCHEMA_V15), (CONTRACT, SCHEMA), (CLAIM_CONTRACT, SCHEMA_V13), (ANCHORED_CONTRACT, SCHEMA_V12), (CUE_CONTRACT, SCHEMA_V11), (EXPLICIT_CONTRACT, SCHEMA_V10), (OMISSION_CONTRACT, SCHEMA_V9), (SELECTION_CONTRACT, SCHEMA_V8), (SOURCE_CONTRACT, SCHEMA_V7), (CONDITIONAL_CONTRACT, SCHEMA_V6), (PROOF_CONTRACT, SCHEMA_V5), (FACT_CONTRACT, SCHEMA_V4), (PROXIMITY_CONTRACT, SCHEMA_V3),
                              (WORDING_CONTRACT, SCHEMA_V2), (LEGACY_CONTRACT, SCHEMA_V1)):
         if digest == hashed(schema):
             return contract
@@ -161,14 +165,17 @@ def contract_for(manifest):
 
 def extraction_context(record, manifest):
     context = proofs.context_for(record)
-    if contract_for(manifest) in (EXPLICIT_CONTRACT, CUE_CONTRACT, ANCHORED_CONTRACT, CLAIM_CONTRACT, CONTRACT, SOURCE_SELECTION_CONTRACT, CURRENT_CONTRACT) and isinstance(record, dict) and isinstance(record.get('source'), dict):
+    if contract_for(manifest) in (EXPLICIT_CONTRACT, CUE_CONTRACT, ANCHORED_CONTRACT, CLAIM_CONTRACT, CONTRACT, SOURCE_SELECTION_CONTRACT, DATE_SELECTION_CONTRACT, CURRENT_CONTRACT) and isinstance(record, dict) and isinstance(record.get('source'), dict):
         context = {**(context or {}), 'direction': record['source'].get('direction', 'unknown')}
-    if contract_for(manifest) in (OMISSION_CONTRACT, EXPLICIT_CONTRACT, CUE_CONTRACT, ANCHORED_CONTRACT, CLAIM_CONTRACT, CONTRACT, SOURCE_SELECTION_CONTRACT, CURRENT_CONTRACT):
+    if contract_for(manifest) in (OMISSION_CONTRACT, EXPLICIT_CONTRACT, CUE_CONTRACT, ANCHORED_CONTRACT, CLAIM_CONTRACT, CONTRACT, SOURCE_SELECTION_CONTRACT, DATE_SELECTION_CONTRACT, CURRENT_CONTRACT):
         context = {**(context or {}), 'ownerAliases': manifest['config'].get('ownerAliases', [])}
     from objective_attribution import extraction_context as attributed_context
     result = actor_context.extraction_context(attributed_context(context, record, manifest), context, record, manifest)
     if contract_for(manifest) in SOURCE_SELECTION_CONTRACTS:
         result = {**(result or {}), 'primarySource': copy.deepcopy(record.get('nativeRef', {}).get('primarySource', {}))}
+    if contract_for(manifest) == CURRENT_CONTRACT:
+        result = {**(result or {}), 'selectedInputContext': copy.deepcopy(
+            record.get('nativeRef', {}).get('selectedInputContext'))}
     return result
 
 
@@ -184,6 +191,11 @@ def catalog(content):
 
 def schema_for(content, contract=CONTRACT, source_context=None):
     if contract == CURRENT_CONTRACT:
+        spans = catalog(content)
+        selected = selection_schema.schema(schema_for(content, CONTRACT, source_context), spans, source_context,
+                                           selection_model=primary_reading.SELECTOR)
+        return primary_reading.schema(date_selection.schema(selected, spans, source_context), spans, source_context)
+    if contract == DATE_SELECTION_CONTRACT:
         return date_selection.schema(schema_for(content, SOURCE_SELECTION_CONTRACT, source_context), catalog(content), source_context)
     if contract == SOURCE_SELECTION_CONTRACT:
         return selection_schema.schema(schema_for(content, CONTRACT, source_context), catalog(content), source_context)
@@ -307,7 +319,12 @@ def _project_v1(value, content):
 
 
 def project(value, content, contract=None, source_context=None):
-    if contract == CURRENT_CONTRACT or not contract and date_selection.uses_wire(value):
+    if contract == CURRENT_CONTRACT or not contract and isinstance(value, dict) and value.get('readingContract') == CURRENT_CONTRACT:
+        if not isinstance(content, str):
+            raise ValueError('Grounded extraction requires the exact supplied passage')
+        return primary_reading.project(value, content, {r['id']: r for r in catalog(content)}, source_context,
+                                       schema_for(content, CONTRACT, source_context), SCHEMA_V7)
+    if contract == DATE_SELECTION_CONTRACT or not contract and date_selection.uses_wire(value):
         if not isinstance(content, str):
             raise ValueError('Grounded extraction requires the exact supplied passage')
         return date_selection.project(value, content, {r['id']: r for r in catalog(content)}, source_context,

@@ -211,7 +211,7 @@ class SourceSelectionWorkerTests(unittest.TestCase):
     setUp = scoped.InputScopeTests.setUp
     mail = scoped.InputScopeTests.mail
     def prepare(self):
-        self.config["groundingContract"] = selection.CONTRACT
+        self.config.setdefault("groundingContract", selection.CONTRACT)
         return scoped.InputScopeTests.prepare(self)
     no_attachment_reads = scoped.InputScopeTests.no_attachment_reads
     def test_native_transport_receipts_metadata_replay_and_no_attachment_open(self):
@@ -244,9 +244,11 @@ class SourceSelectionWorkerTests(unittest.TestCase):
         with self.assertRaises(ValueError):worker.read_receipt(path, manifest)
 
     def test_old_preparation_reopens_with_identical_manifest_without_new_default(self):
+        self.config['groundingContract'] = grounding.CONTRACT
         self.mail('message01', 'Synthetic note.')
         with patch.object(worker, 'SCHEMA', grounding.SCHEMA):
             objective, old = self.prepare()
+        self.assertEqual(grounding.contract_for(old), grounding.CONTRACT)
         digest = hashed(load(objective / 'manifest.json'))
         _, reopened = worker.prepare(self.root, worker.config_at(self.file))
         self.assertEqual(old, reopened);self.assertEqual(digest, hashed(load(objective / 'manifest.json')))
