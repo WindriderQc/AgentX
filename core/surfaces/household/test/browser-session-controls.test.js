@@ -10,6 +10,40 @@ const runId = 'resp_22222222-2222-4222-8222-222222222222';
 const env = { OPENCLAW_GATEWAY_URL: 'ws://gateway:18789', OPENCLAW_GATEWAY_TOKEN: 'test-only' };
 const row = data => Buffer.from('data: ' + JSON.stringify(data) + '\n\n');
 
+test('the exact Hermes result read reconciles only its matching pending native turn', async () => {
+  const routes = {}, reads = [];
+  const router = { get(path, handler) { routes[path] = handler; }, post() {} };
+  const session = { sessionId, packId: 'personal_operator', scopeId: 'personal', modeId: 'personal',
+    backend: 'hermes', hermesRuntime: { turnId } };
+  let recovered = false;
+  const register = createBrowserSessionControls({ personas: router, activePersonaTurns: new Map(),
+    conversations: {
+      getSession: async () => session,
+      getTurn: async filter => {
+        reads.push(filter);
+        if (filter.clientTurnId !== turnId) return null;
+        return { sessionId, clientTurnId: turnId, outcome: recovered ? 'completed' : 'pending', replyText: recovered ? '17 W' : '',
+          display: recovered ? [{ id: 'b1', kind: 'page', body: 'home-assistant-panel' }] : [] };
+      }
+    },
+    reconcileConversation: async () => { recovered = true; },
+    envelope: (res, data, status = 200) => res.reply(status, data),
+    fail: (res, status, message) => res.reply(status, { message }),
+    cleanText: value => String(value), validClientTurnId: value => /^[a-z0-9-]{36}$/.test(value) });
+  session.modeId = require('../packs').packById('personal_operator').defaultMode;
+  register('/private', session.packId);
+  const lookup = id => new Promise(resolve => routes['/private/sessions/:sessionId/history'](
+    { params: { sessionId }, query: { turnId: id } }, { reply: (status, body) => resolve({ status, body }) }));
+  const other = '44444444-4444-4444-8444-444444444444';
+  assert.deepEqual(await lookup(other), { status: 202, body: { turn: null } });
+  assert.equal(recovered, false);
+  const { status, body } = await lookup(turnId);
+  assert.equal(status, 200);
+  assert.equal(body.turn.clientTurnId, turnId);
+  assert.equal(body.turn.display[0].body, 'home-assistant-panel');
+  assert.deepEqual(reads.map(r => [r.scopeId, r.clientTurnId]), [['personal', other], ['personal', turnId], ['personal', turnId]]);
+});
+
 // The /interrupt route over a synthetic in-flight turn. The turn records its
 // settlement as persona-turn does: onSettled marks the native run as ended,
 // and a stop that was never confirmed leaves an error.

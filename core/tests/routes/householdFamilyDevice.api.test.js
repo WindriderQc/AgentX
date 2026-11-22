@@ -79,6 +79,12 @@ describe('family device pinning', () => {
     expect((await tablet.post('/api/voice-personas/private/sessions')).body.code).toBe('FAMILY_DEVICE_PINNED');
     expect((await tablet.post('/api/voice-personas/memory/search')).status).toBe(403);
     expect((await tablet.get('/api/memory/notes')).status).toBe(403);
+    const confirmation = '/api/secretary/history/manifest-confirmations/00000000-0000-4000-8000-000000000001';
+    expect((await tablet.post('/api/secretary/history/manifest-confirmations').send({})).status).toBe(403);
+    expect((await tablet.get(confirmation)).status).toBe(403);
+    expect((await tablet.post(`${confirmation}/reopen`).send({})).status).toBe(403);
+    expect((await tablet.post(`${confirmation}/confirm`).send({})).status).toBe(403);
+    expect((await tablet.post(`${confirmation}/current`).send({})).status).toBe(403);
     expect((await tablet.get('/api/household/family-devices')).status).toBe(403);
     expect((await tablet.get('/api/household/family-device')).body.data).toMatchObject({ pinned: true, label: 'Tablet' });
 

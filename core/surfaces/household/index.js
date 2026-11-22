@@ -176,7 +176,6 @@ function register(api) {
   const personalRecaps = runtimeServices.conversationRecaps.forSession({
     surface: 'household', packId: 'personal_operator', scopeId: 'personal'
   });
-  const executeConversation = createConversationExecutor({ agentClient, conversations, inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, env: conversationEnv, personalRecaps });
   const ambient = require('./family-ambient').createFamilyAmbient({ paintings: require('./family-paintings').createFamilyPaintings() });
   const artx = require('../../src/services/artxService').configureArtx(require('../../src/services/artxService').createArtxService({ ambient,
     decide: require('../../src/services/artxDecision').createArtxDecision({ inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT,
@@ -223,6 +222,7 @@ function register(api) {
   const publicRoot = path.join(extensionRoot, 'public');
   const personas = express.Router();
   const screenPages = require('./screen-services').registerScreenServices({ app, router: personas, env: conversationEnv, logger, envelope });
+  const executeConversation = createConversationExecutor({ agentClient, conversations, inference: runtimeServices.inference, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT, env: conversationEnv, personalRecaps, screenPages });
   const presentationCompanion = require('./presentation-companion').registerPresentationCompanion({ router: personas,
     conversations, memory: ownerMemory, inference: runtimeServices.inference, catalog: screenPages, consumerContract: HOUSEHOLD_CONSUMER_CONTRACT,
     env: conversationEnv, envelope, fail });

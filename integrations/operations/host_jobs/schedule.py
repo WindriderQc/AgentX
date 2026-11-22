@@ -16,8 +16,8 @@ def instant(value):
 
 
 def validate(schedule):
-    if not isinstance(schedule, dict) or schedule.get("type") not in {"interval", "daily"}:
-        raise JobError("INVALID_SCHEDULE", "Choose an interval or a daily schedule.", 400)
+    if not isinstance(schedule, dict) or schedule.get("type") not in {"interval", "daily", "weekly"}:
+        raise JobError("INVALID_SCHEDULE", "Choose an interval, daily or weekly schedule.", 400)
     try:
         ZoneInfo(schedule.get("timezone", "UTC"))
     except (KeyError, ValueError):
@@ -32,6 +32,8 @@ def validate(schedule):
             except (ValueError, TypeError):
                 raise JobError("INVALID_ANCHOR", "The interval anchor is invalid.", 400)
     else:
+        if schedule["type"] == "weekly" and (type(schedule.get("weekday")) is not int or not 0 <= schedule["weekday"] <= 6):
+            raise JobError("INVALID_WEEKDAY", "Choose a weekday from Monday (0) to Sunday (6).", 400)
         at = schedule.get("at", "")
         try:
             if len(at) != 5 or at[2] != ":":
@@ -57,6 +59,11 @@ def window(schedule, at=None):
     local = at.astimezone(zone)
     hour, minute = map(int, schedule["at"].split(":"))
     due = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if schedule["type"] == "weekly":
+        due -= timedelta(days=(local.weekday() - schedule["weekday"]) % 7)
+        if due > local:
+            due -= timedelta(days=7)
+        return due.astimezone(timezone.utc), (due + timedelta(days=7)).astimezone(timezone.utc)
     if due > local:
         previous, following = due - timedelta(days=1), due
     else:

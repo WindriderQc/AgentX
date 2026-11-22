@@ -101,6 +101,11 @@ class GroundedWorkerTests(unittest.TestCase):
     def setUp(self):
         fixtures.ObjectiveTests.setUp(self)
         self.legacy_schema.stop()
+        # These fixtures exercise the frozen v14 wire. V15 has independent
+        # native schema/projection and worker regression tests.
+        frozen = patch.object(worker, 'SCHEMA', grounding.SCHEMA)
+        frozen.start()
+        self.addCleanup(frozen.stop)
 
     def test_worker_exports_candidates_with_verified_projection_and_no_reinference(self):
         client = fixtures.Client()

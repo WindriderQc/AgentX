@@ -7,14 +7,14 @@ from host_jobs.store import JobError
 from host_jobs.worker import Worker
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", required=True)
     parser.add_argument("action", choices=("run", "status", "inventory"))
     parser.add_argument("--job")
     parser.add_argument("--request")
     parser.add_argument("--source-at")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     worker = Worker(args.root)
     try:
         if args.action == "run":

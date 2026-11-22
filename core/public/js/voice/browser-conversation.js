@@ -796,7 +796,7 @@
       if (!this.owns(turn)) return;
       this.turnPending = false;
       if (reply.sound) turn.timeline?.planClip(reply.sound.id);
-      this.io.message('assistant', reply.text, false, reply.sound);
+      this.io.message('assistant', reply.text, false, reply.sound, [], undefined, turn.id);
       // An unstreamed reply names its own language; a chosen preference still wins.
       if (!streamed && reply.language && !speechLanguage.explicitSpeechLanguage(this.selection.language)) spokenLanguage = reply.language;
       dropHolding();

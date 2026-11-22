@@ -819,12 +819,12 @@ Janitor duplicate report from the optional Data service, through Core. Four
 read-only tools join `network_devices`, each with a French `summary` sentence
 the agent relays:
 
-| Core tool on `/mcp` | Nestor plugin tool | Answers | Bounds |
+| Core MCP tool and catalogue | Nestor plugin tool | Answers | Bounds |
 |---|---|---|---|
-| `storage_summary` | `nestor_storage` | Indexed files and size, each storage root, scan outcome and age, hash coverage, collector alive or not; dated observations plus policy-based reserve, backup-verification and conditional copy advice | No argument; 8 roots, 8 collectors; assessment/advice: 8 sources, 8 volumes, at most 64 pairs each, omitted counts |
-| `find_files` | `nestor_files` | Files whose name contains a fragment: name, folder, size, modified date, newest first, with the total matched and a `truncated` flag | `query` 2-80 characters; `extension` or `category`; `root` must be a source Data declares; `limit` 10 by default, 25 at most |
-| `gpu_status` | `nestor_gpus` | Per host its freshness and sample age; per GPU its name, utilisation, video memory, temperature and power; on request the busy share over 24 hours | Optional `host`; 8 hosts, 8 GPUs each |
-| `janitor_report_view` | `nestor_janitor_report` | The latest stored shared-drive strategy report: status and age, verified duplicate groups and files, proven logical savings, executable actions, pending policy decisions, the survivor rule, and the DiskX link (`/diskx?janitor=latest[&group=…]`, absolute under `CORE_PUBLIC_URL` when set) | Optional `group` (one SHA-256); counts and bytes only, no path |
+| `storage_summary` (/mcp) | `nestor_storage` | Indexed files and size, each storage root, scan outcome and age, hash coverage, collector alive or not; dated observations plus policy-based reserve, backup-verification and conditional copy advice | No argument; 8 roots, 8 collectors; assessment/advice: 8 sources, 8 volumes, at most 64 pairs each, omitted counts |
+| `find_files` (owner bus) | `nestor_files` | Files whose name contains a fragment: name, folder, size, modified date, newest first, with the total matched and a `truncated` flag | `query` 2-80 characters; `extension` or `category`; `root` must be a source Data declares; `limit` 10 by default, 25 at most |
+| `gpu_status` (/mcp) | `nestor_gpus` | Per host its freshness and sample age; per GPU its name, utilisation, video memory, temperature and power; on request the busy share over 24 hours | Optional `host`; 8 hosts, 8 GPUs each |
+| `janitor_report_view` (owner bus) | `nestor_janitor_report` | The latest stored shared-drive strategy report: status and age, verified duplicate groups and files, proven logical savings, executable actions, pending policy decisions, the survivor rule, and the DiskX link (`/diskx?janitor=latest[&group=…]`, absolute under `CORE_PUBLIC_URL` when set) | Optional `group` (one SHA-256); counts and bytes only, no path |
 
 They read the index the storage collector last wrote, never the disks, and say
 so with the age of that scan; a partial, failed or interrupted last scan and a
@@ -1346,6 +1346,9 @@ Opening a saved conversation, from that offer or from the recent list, starts
 listening again by itself on a device whose microphone is already granted, in
 standby when the wake word is required; elsewhere the conversation opens with
 the microphone off and Reprendre asks for it.
+For a saved complete voice answer whose playback was interrupted, the original
+message offers **Réécouter cette réponse**. The control reads the retained reply
+through speech synthesis with the microphone paused.
 Famille keeps the Nestor personality but replaces its adult temperament with a
 playful, curious tone for children (`FAMILY_TONE` in
 `core/surfaces/household/family-context.js`), sent with the family surface

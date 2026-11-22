@@ -23,6 +23,7 @@ class ObjectiveRtfTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.config = {'id':'synthetic','version':'v1','kind':'life-timeline','ownerAliases':['Synthetic owner'],
+                       'groundingContract':'secretary.objective-grounding/v14',
                        'instructions':'','pageChars':6000,'overlap':300,
                        'selection':{'gmailMessageIds':['message01'],'outlookSha256':[]}}
         self.objective,self.manifest = None,None

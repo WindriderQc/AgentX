@@ -1,0 +1,26 @@
+<div class="housex-home housex-infrastructure" data-infrastructure data-timezone="<%= timezone %>"
+    <% if (!showEcosystem) { %>hidden<% } %>>
+  <div class="housex-scene" data-network-scene data-layout="<%= JSON.stringify(infrastructure) %>">
+    <canvas role="img" aria-label="Tours et liens de l’écosystème AgentX en trois dimensions"></canvas>
+    <div class="housex-orientation" role="group" aria-label="Orientation">
+      <button type="button" data-angle="3d" aria-pressed="true">3D</button>
+      <button type="button" data-angle="plan" aria-pressed="false">Plan</button>
+      <button type="button" data-rotate aria-label="Pivoter la vue">↻</button>
+    </div>
+    <div class="housex-pins">
+      <% for (const [index, pin] of infrastructure.pins.entries()) { %>
+        <button type="button" class="housex-pin housex-tower" data-pin="<%= pin.id %>" aria-pressed="<%= index === 0 %>"><%= pin.label %></button>
+      <% } %>
+    </div>
+    <span class="housex-caption">Liens d’architecture</span>
+  </div>
+  <section class="housex-observation" aria-labelledby="housex-observed-node">
+    <h2 id="housex-observed-node" data-observed-node><%= infrastructure.pins[0].label %></h2>
+    <dl aria-live="polite">
+      <div><dt>État</dt><dd data-node-state>En attente d’un relevé</dd></div>
+      <div><dt>Portée</dt><dd data-node-source>Indisponible</dd></div>
+      <div><dt>Relevé</dt><dd data-node-time>Indisponible</dd></div>
+    </dl>
+    <a href="<%= ecosystem %>" target="_blank" rel="noopener noreferrer">Carte complète ↗</a>
+  </section>
+</div>

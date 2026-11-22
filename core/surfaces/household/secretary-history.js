@@ -13,6 +13,9 @@ const mailboxScope = require('../../src/services/personalHistoryMailboxScope');
 const globalDecisions = require('../../src/services/personalHistoryGlobalDecisions');
 const globalDownstream = require('../../src/services/personalHistoryGlobalDownstream');
 const reviewManifest = require('../../src/services/personalHistoryReviewManifest');
+const coreRestoration = require('../../src/services/personalHistoryCoreRestoration');
+const manifestConfirmation = require('../../src/services/personalHistoryManifestConfirmation');
+const currentConfirmation = require('../../src/services/personalHistoryManifestConfirmationCurrent');
 
 function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' },
   preservationDeps = { audience: 'owner' }, decisionStateDeps = { audience: 'owner' }, messageScopeDeps = { audience: 'owner' },
@@ -41,6 +44,20 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDe
   router.post('/history/review-manifest', (req, res) => sourceResponse(res,
     () => reviewManifest.discover(req.body, { audience: findingScopeDeps.audience,
       findings: findingScopeDeps, preservation: preservationDeps, mailbox: mailboxScopeDeps })));
+  router.post('/history/core-restoration', (req, res) => sourceResponse(res,
+    () => coreRestoration.discover(req.body, findingScopeDeps)));
+  const confirmationDeps = { audience: findingScopeDeps.audience, findings: findingScopeDeps,
+    preservation: preservationDeps, mailbox: mailboxScopeDeps };
+  router.post('/history/manifest-confirmations', (req, res) => sourceResponse(res,
+    () => manifestConfirmation.prepare(req.body, confirmationDeps)));
+  router.get('/history/manifest-confirmations/:requestId', (req, res) => sourceResponse(res,
+    () => manifestConfirmation.get(req.params.requestId, confirmationDeps)));
+  router.post('/history/manifest-confirmations/:requestId/reopen', (req, res) => sourceResponse(res,
+    () => manifestConfirmation.reopen(req.params.requestId, req.body, confirmationDeps)));
+  router.post('/history/manifest-confirmations/:requestId/confirm', (req, res) => sourceResponse(res,
+    () => manifestConfirmation.confirm(req.params.requestId, req.body, confirmationDeps)));
+  router.post('/history/manifest-confirmations/:requestId/current', (req, res) => sourceResponse(res,
+    () => currentConfirmation.discover(req.params.requestId, req.body, confirmationDeps)));
   router.get('/history/:id/decision-state', (req, res) => sourceResponse(res,
     () => decisionState.get(req.params.id, req.query, decisionStateDeps)));
   router.post('/history/:id/decision-state/check', (req, res) => sourceResponse(res,

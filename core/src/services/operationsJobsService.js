@@ -7,7 +7,8 @@ const execFileAsync = promisify(execFile);
 const JOB_ID = /^[a-z][a-z0-9-]{0,63}$/;
 const REQUEST_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const RUN_STATES = new Set(['accepted', 'running', 'completed', 'failed', 'cancelled', 'unknown', 'waiting-host']);
-const METRICS = ['files', 'bytes', 'unchanged', 'sourceFiles', 'accepted', 'sessions', 'filesScanned', 'verified', 'noModelCall'];
+const METRICS = ['files', 'bytes', 'unchanged', 'sourceFiles', 'accepted', 'sessions', 'filesScanned', 'verified', 'noModelCall',
+  'simulationOnly', 'pendingPackages', 'selectedPackages', 'excludedPackages', 'indexesFresh', 'withinWindow'];
 
 class OperationsError extends Error {
   constructor(code, message, status = 503) { super(message); this.code = code; this.status = status; }
@@ -46,7 +47,8 @@ function projectJob(row) {
   const source = row.source || {};
   return { id: row.id, name: text(row.name, 120), description: text(row.description, 500), kind: text(row.kind, 40),
     enabled: row.enabled === true, state: text(row.state, 40), hostLabel: text(row.hostLabel, 100), supervisorLabel: text(row.supervisorLabel, 100),
-    schedule: { type: cadence.type === 'daily' ? 'daily' : 'interval', minutes: Number(cadence.minutes) || null,
+    schedule: { type: ['daily', 'weekly'].includes(cadence.type) ? cadence.type : 'interval', minutes: Number(cadence.minutes) || null,
+      weekday: Number.isInteger(cadence.weekday) && cadence.weekday >= 0 && cadence.weekday <= 6 ? cadence.weekday : null,
       at: /^\d{2}:\d{2}$/.test(cadence.at || '') ? cadence.at : null, timezone: text(cadence.timezone, 80) || 'UTC' },
     nextRunAt: date(row.nextRunAt), lastSuccessAt: date(row.lastSuccessAt), lastRun: projectRun(row.lastRun),
     failureCount: Number(row.failureCount) || 0, gateType: ['core-backup', 'file', 'snapshot'].includes(row.gateType) ? row.gateType : null,
@@ -85,8 +87,8 @@ async function mirrorSnapshot(snapshot) {
   const cluster = require('./clusterScheduleService');
   const entries = snapshot.jobs.map(job => ({ source: 'agentx-system', sourceId: `operations-${job.id}`, name: job.name,
     taskType: ['offhost-backup', 'archive-mirror', 'session-archive'].includes(job.kind) ? 'backup' : 'sync', host: null, model: null, agent: null,
-    schedule: job.schedule.type === 'daily'
-      ? {type: 'cron', cron: `${Number(job.schedule.at.slice(3))} ${Number(job.schedule.at.slice(0, 2))} * * *`, timezone: job.schedule.timezone}
+    schedule: ['daily', 'weekly'].includes(job.schedule.type)
+      ? {type: 'cron', cron: `${Number(job.schedule.at.slice(3))} ${Number(job.schedule.at.slice(0, 2))} * * ${job.schedule.type === 'weekly' ? (job.schedule.weekday + 1) % 7 : '*'}`, timezone: job.schedule.timezone}
       : {type: 'interval', intervalMs: job.schedule.minutes * 60_000, timezone: job.schedule.timezone},
     enabled: job.enabled, lastRun: job.lastRun?.startedAt || null,
     estimatedDurationMs: job.lastRun?.durationMs || null, vramMb: 0,
@@ -146,7 +148,7 @@ function createOperationsService(options = {}) {
         changes.enabled = body.enabled;
       }
       if ('schedule' in body) {
-        if (!body.schedule || Object.keys(body.schedule).some(key => !['type','minutes','at','timezone'].includes(key))) throw new OperationsError('INVALID_SCHEDULE', 'Unexpected cadence fields.', 400);
+        if (!body.schedule || Object.keys(body.schedule).some(key => !['type','minutes','at','timezone','weekday'].includes(key))) throw new OperationsError('INVALID_SCHEDULE', 'Unexpected cadence fields.', 400);
         changes.schedule = body.schedule;
       }
       if (!Object.keys(changes).length) throw new OperationsError('INVALID_CHANGE', 'Choose a setting to change.', 400);

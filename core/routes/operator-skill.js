@@ -11,9 +11,13 @@ const { createServiceIdentity } = require('../../shared/serviceIdentity');
 
 function createOperatorSkillRouter(options = {}) {
   const router = express.Router();
+  // Core may sit behind a TLS-terminating gateway. Record the configured
+  // browser origin when available; retain direct HTTP for standalone Core.
+  const publicUrl = URL.parse((options.env || process.env).CORE_PUBLIC_URL || '');
+  const publicOrigin = publicUrl && ['https:', 'http:'].includes(publicUrl.protocol) && publicUrl.origin;
   const build = (req) => (options.build || buildOperatorSkill)({
     revision: (options.revision || (() => createServiceIdentity({ service: 'agentx-core' }).revision))(),
-    origin: `${req.protocol}://${req.get('host') || 'unknown'}`,
+    origin: publicOrigin || `${req.protocol}://${req.get('host') || 'unknown'}`,
   });
   const missing = (res) => res.status(404).json({
     ok: false, error: { code: 'OPERATOR_SKILL_UNAVAILABLE', message: 'This build does not carry the operator skill.' },

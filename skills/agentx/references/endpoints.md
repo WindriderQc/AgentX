@@ -2,7 +2,8 @@
 
 This is a product route reference, not an instance health receipt. Resolve the address from the private instance sheet and check the served revision and enabled capabilities before calling a route. A missing route in this list proves nothing; check its exact contract in the product source. `references/served.md` identifies the revision serving this skill.
 
-Base: the Core entry given in `references/instance.md`.
+Resolve the base with [access and discovery](access.md). Benchmark and RAG
+reads below use their configured prefixes on the shared gateway.
 
 ## Read routes
 
@@ -27,8 +28,23 @@ Base: the Core entry given in `references/instance.md`.
 **Other services through Core**
 `/api/rag/status` · `/api/rag/metrics` · `/api/data-toolbox/network/devices` · `/api/data-toolbox/storage/summary` · `/api/data-toolbox/hardware/latest` · `/api/voix/health` · `/api/llm/v1/models` (OpenAI-compatible list; needs a gateway client token)
 
-**Benchmark** (under `/benchmark`): `/benchmark/health` · `/benchmark/api/benchmark/batches/active` · `/benchmark/api/profiler/hosts`
+**Benchmark** (under `/benchmark`): `/benchmark/health` · `/benchmark/api/benchmark/coverage` · `/benchmark/api/benchmark/coverage/results?host=&model=` · `/benchmark/api/benchmark/batches/active` · `/benchmark/api/profiler/hosts` · `/benchmark/api/profiler/readiness`
 **RAG** (under `/rag`): `/rag/health`
+
+## Authorized fallback paths
+
+- **Heavy work:** `GET /api/cluster/schedule/work-queue` and
+  `GET /api/cluster/schedule/work-queue/:id`. Read the summary and the
+  original dispatch receipt from its named executor. [Queue](ops.md#heavy-work-queue)
+- **Native jobs:** `GET /api/automations` for scheduler-owned catalogue state
+  and evidence. [Service directory](ops.md#service-directory)
+- **Storage:** `GET /api/data-toolbox/janitor/strategy/latest` and
+  `GET /api/diskx/presentation?report=<encoded UTC date>`.
+  [Data and DiskX](data.md)
+- **Living Sources:** choose the scoped catalogue and read routes in
+  [Living Sources](sources.md#choose-the-scoped-reader).
+- **Skill:** `GET /api/operator-skill` and `GET /api/operator-skill/download`
+  for manifest and ZIP. [Access and provenance](access.md#install-or-refresh)
 
 ## Photo reads verified in source
 
@@ -45,7 +61,14 @@ relying on the optional
 bridge. No live model call is needed to inspect them.
 
 - `GET /api/pipeline/tasks?scope=engineering`: scoped counts, rows and coverage.
+- `GET /api/pipeline/work`: compact engineering summary equivalent to
+  `pipeline_tasks` summary.
 - `GET /api/pipeline/tasks/:id`: human dossier and its task-content `editToken`.
+- `GET /api/pipeline/tasks/:id/dossier`: bounded complete-spec/evidence read.
+  Continue with `offset`, `expectedHash` and optional `pageChars`.
+- `GET /api/pipeline/tasks/:id/deliverables` and
+  `GET /api/pipeline/tasks/:id/deliverables/:deliverableId/download`:
+  registered inventory and verified authorized download.
 - `GET /api/pipeline/tasks/:id/worker?agent=<worker>`: bounded worker task and
   privacy-filtered Planning references; it does not claim or start the task.
 - `GET /api/pipeline/tasks/:id/eligibility` and `/diagnosis`: read-only start
@@ -70,9 +93,9 @@ Read the memory-review state through:
 
 ## Tool buses
 
-Both answer JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) from the
-private network without a token. Call `tools/list` for the current catalogue
-rather than trusting a copied list.
+Both answer JSON-RPC 2.0 (`initialize`, `tools/list`, `tools/call`) through
+the authorized private instance entry. Discover the current
+[tool catalogue and grants](access.md#discover-and-call-tools).
 
 - `POST /mcp`: the general bus. `POST /mcp/memory` is a narrower view of it
   (memory search/save and RAG search).

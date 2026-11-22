@@ -52,14 +52,26 @@ describe('operator skill', () => {
     expect(skill.files.find((file) => file.name === 'references/served.md').text).toContain('abc1234def');
   });
 
-  test('a mounted sheet is added and its description replaces the product one', async () => {
+  test('a mounted sheet adds local triggers and keeps the product description', async () => {
+    const product = await build();
     sheet('---\ndescription: "Operate the Maple house instance; use for Maple or Juniper."\n---\n# Maple house\n\nCore: https://maple.test\n');
     const skill = await build();
     const text = (name) => skill.files.find((file) => file.name === name).text;
     expect(skill.instanceSheet).toBe(true);
     expect(text('references/instance.md')).toBe('# Maple house\n\nCore: https://maple.test\n');
-    expect(text('SKILL.md')).toMatch(/^---\nname: agentx\ndescription: "Operate the Maple house instance; use for Maple or Juniper\."\n---/);
+    const original = splitSheet(product.files.find((file) => file.name === 'SKILL.md').text);
+    const served = splitSheet(text('SKILL.md'));
+    expect(served.description).toBe(`${original.description} Operate the Maple house instance; use for Maple or Juniper.`);
+    expect(served.body).toBe(original.body);
     expect(text('references/served.md')).toContain('included');
+  });
+
+  test('a long instance hint fits the skill limit and preserves literal replacement characters', async () => {
+    sheet('---\ndescription: ' + '$& Maple '.repeat(180).trim() + '\n---\n# Local\n');
+    const skill = await build();
+    const description = splitSheet(skill.files.find(file => file.name === 'SKILL.md').text).description;
+    expect(description.length).toBeLessThanOrEqual(1024);
+    expect(description).toMatch(/ \$& Maple(?: \$& Maple)*(?: \$&)?$/);
   });
 
   test('a sheet without front matter is taken whole', () => {
@@ -76,7 +88,10 @@ describe('operator skill', () => {
 
   test('routes describe the skill and send it as an attachment', async () => {
     const app = express();
-    app.use('/api/operator-skill', createOperatorSkillRouter({ build: (options) => build(options), revision: () => 'abc1234def' }));
+    app.use('/api/operator-skill', createOperatorSkillRouter({
+      env: { CORE_PUBLIC_URL: 'https://core.example.test:8443/operator/' },
+      build: (options) => build(options), revision: () => 'abc1234def',
+    }));
     const info = await request(app).get('/api/operator-skill').expect(200);
     expect(info.body.data).toMatchObject({ name: 'agentx', revision: 'abc1234def', download: '/api/operator-skill/download' });
     const download = await request(app).get('/api/operator-skill/download').buffer(true)
@@ -84,7 +99,17 @@ describe('operator skill', () => {
       .expect(200);
     expect(download.headers['content-type']).toBe('application/zip');
     expect(download.headers['content-disposition']).toBe('attachment; filename="agentx-skill-abc1234d.zip"');
-    expect(Object.keys(unzip(download.body))).toContain('agentx/SKILL.md');
+    const files = unzip(download.body);
+    expect(Object.keys(files)).toContain('agentx/SKILL.md');
+    expect(files['agentx/references/served.md']).toContain('- Served by: https://core.example.test:8443\n');
+  });
+
+  test.each([undefined, 'bad URL', 'file:///example'])('standalone origin with configuration %s', async (value) => {
+    const builder = jest.fn(options => build(options));
+    const app = express();
+    app.use('/skill', createOperatorSkillRouter({ build: builder, env: { CORE_PUBLIC_URL: value } }));
+    await request(app).get('/skill').set('Host', 'core.example.test:3080').expect(200);
+    expect(builder).toHaveBeenCalledWith(expect.objectContaining({ origin: 'http://core.example.test:3080' }));
   });
 
   test('a build without the skill answers 404 instead of an empty archive', async () => {

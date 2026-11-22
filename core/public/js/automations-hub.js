@@ -5,7 +5,7 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const when = value => value ? new Intl.DateTimeFormat('fr-CA', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: timezone}).format(new Date(value)) : 'Non communiqué';
-  const kinds = {command: ['fa-terminal', 'Commande'], agent: ['fa-user-gear', 'Agent'], 'native-core': ['fa-gears', 'Fonction native'], backup: ['fa-box-archive', 'Sauvegarde'], archive: ['fa-clock-rotate-left', 'Archive']};
+  const kinds = {command: ['fa-terminal', 'Commande'], agent: ['fa-user-gear', 'Agent'], 'native-core': ['fa-gears', 'Fonction native'], backup: ['fa-box-archive', 'Sauvegarde'], archive: ['fa-clock-rotate-left', 'Archive'], 'apt-maintenance-plan': ['fa-list-check', 'Simulation des correctifs']};
   const states = {completed: ['good', 'Réussie'], failed: ['error', 'En erreur'], running: ['live', 'En cours'], unknown: ['warning', 'À vérifier'], attention: ['error', 'À surveiller'], paused: ['neutral', 'En pause'], archived: ['neutral', 'Archivée'], never: ['neutral', 'À valider'], skipped: ['neutral', 'Ignorée'], cancelled: ['neutral', 'Annulée']};
   let snapshot = null;
   const expanded = new Set();
@@ -16,6 +16,7 @@
     const schedule = job.schedule || {};
     if (schedule.type === 'once') return `Une fois · ${when(schedule.at)}`;
     if (schedule.type === 'daily') return `Chaque jour à ${schedule.at}`;
+    if (schedule.type === 'weekly') return `Chaque ${['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'][schedule.weekday]} à ${schedule.at}`;
     if (schedule.type === 'interval') return schedule.minutes < 60 ? `Toutes les ${schedule.minutes} minutes` : `Toutes les ${schedule.minutes / 60} heures`;
     const parts = (schedule.cron || '').split(' ');
     if (parts.length === 5 && /^\d+$/.test(parts[0]) && /^\d+$/.test(parts[1]) && parts[2] === '*' && parts[3] === '*') {
@@ -30,6 +31,8 @@
   function card(job) {
     const [icon, kind] = kinds[job.kind] || kinds.agent;
     const last = job.lastRun;
+    const simulation = last?.state === 'completed' && last.metrics?.simulationOnly === true
+      ? `Simulation : ${last.metrics.selectedPackages} paquet(s) proposé(s), ${last.metrics.excludedPackages} hors périmètre. Aucun paquet installé.${last.metrics.indexesFresh ? '' : ' Fraîcheur des index à confirmer.'}` : null;
     const available = snapshot?.sources.find(source => source.id === job.owner)?.available;
     const ownerAction = job.archived ? '<span class="oj-subtle">Référence conservée · aucun départ</span>' : available
       ? `<a class="oj-button oj-button-quiet" href="${esc(job.controlUrl)}${job.agentId && job.owner === 'openclaw' ? `?agent=${encodeURIComponent(job.agentId)}` : ''}" ${job.owner === 'openclaw' ? 'target="_blank" rel="noopener noreferrer"' : ''}>Gérer dans ${esc(job.ownerLabel)} <i class="fas fa-arrow-up-right-from-square" aria-hidden="true"></i></a>`
@@ -39,7 +42,7 @@
       <p class="oj-job-description">${esc(job.description || (job.kind === 'native-core' ? 'Traitement interne du runtime OpenClaw.' : 'Planification et exécution conservées dans le runtime natif.'))}</p>
       <div class="oj-route"><span class="oj-route-node"><i class="fas fa-gears" aria-hidden="true"></i>${esc(job.ownerLabel)}</span>${job.agentId ? `<i class="fas fa-arrow-right oj-route-arrow" aria-hidden="true"></i><span class="oj-route-node">${esc(job.agentId)}</span>` : ''}</div>
       <div class="oj-job-details"><div><span class="oj-detail-label">DÉCLENCHEMENT</span><strong class="oj-detail-value">${esc(job.archived ? 'Ancienne projection' : cadence(job))}</strong><span class="oj-detail-caption">${esc(job.schedule.timezone || 'Fuseau natif non communiqué')}</span></div><div><span class="oj-detail-label">PROCHAIN DÉPART</span><strong class="oj-detail-value">${esc(job.archived ? 'Aucun' : job.enabled ? when(job.nextRunAt) : 'Départs automatiques en pause')}</strong><span class="oj-detail-caption">${esc(last ? `Dernier départ : ${when(last.startedAt)}` : 'Aucun reçu communiqué')}</span></div></div>
-      <p class="oj-result${last?.state === 'failed' ? ' oj-result-error' : ''}"><i class="fas ${last?.state === 'failed' ? 'fa-circle-exclamation' : 'fa-clock-rotate-left'}" aria-hidden="true"></i><span>${esc(last ? `${states[last.state]?.[1] || 'Résultat à vérifier'} · détails et historique dans ${job.ownerLabel}` : job.archived ? 'Historique conservé dans la projection.' : 'Première exécution à valider.')}</span></p>
+      <p class="oj-result${last?.state === 'failed' ? ' oj-result-error' : ''}"><i class="fas ${last?.state === 'failed' ? 'fa-circle-exclamation' : 'fa-clock-rotate-left'}" aria-hidden="true"></i><span>${esc(simulation || (last ? `${states[last.state]?.[1] || 'Résultat à vérifier'} · détails et historique dans ${job.ownerLabel}` : job.archived ? 'Historique conservé dans la projection.' : 'Première exécution à valider.'))}</span></p>
       <div class="oj-job-actions">${ownerAction}</div></article>`;
   }
   function update(value, query = '') {

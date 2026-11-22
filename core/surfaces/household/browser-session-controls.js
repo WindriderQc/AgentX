@@ -72,6 +72,22 @@ function createBrowserSessionControls({
         if (!pack.modes.some((mode) => mode.id === session.modeId)) {
           return fail(res, 409, 'This session uses a retired mode and cannot be resumed.', 'VOICE_PERSONA_SESSION_MODE_UNAVAILABLE');
         }
+        if (req.query?.turnId !== undefined) {
+          const { turnId } = req.query;
+          if (prefix !== '/private' || consumer || session.scopeId !== 'personal' || !validClientTurnId(turnId)) {
+            return fail(res, 400, 'An exact personal turn is required.', 'VOICE_PERSONA_TURN_LOOKUP_INVALID');
+          }
+          const lookup = { sessionId: session.sessionId, packId, scopeId: session.scopeId, clientTurnId: turnId };
+          let turn = await conversations.getTurn(lookup);
+          if ((!turn || turn.outcome === 'pending') && session.backend === 'hermes' && session.hermesRuntime?.turnId === turnId && reconcileConversation) {
+            await Promise.resolve().then(() => reconcileConversation(session)).catch(() => null);
+            turn = await conversations.getTurn(lookup);
+          }
+          res.set?.('Cache-Control', 'private, no-store');
+          return turn && turn.outcome !== 'pending'
+            ? envelope(res, { turn: publicAudit(turn) })
+            : envelope(res, { turn: null }, 202);
+        }
         const nativeRecovery = reconcileConversation ? await Promise.resolve().then(() => reconcileConversation(session))
           .catch(() => ({ state: 'unknown' })) : null;
         // `turns` is what the page shows: the saved conversation, not the model window that bounds `history`.

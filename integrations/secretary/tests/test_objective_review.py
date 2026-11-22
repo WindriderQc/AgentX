@@ -48,6 +48,12 @@ class Client:
         if self.fail:
             raise TimeoutError("uncertain transport")
         payload = json.loads(prompt)
+        if payload.get('groundingContract') == 'secretary.objective-grounding/v16':
+            from test_objective_date_selection import response
+            return response(payload, self.invalid)
+        if payload.get('groundingContract') == 'secretary.objective-grounding/v15':
+            from test_objective_source_selection import response
+            return response(payload, invalid=self.invalid)
         passage = payload["untrustedContent"]
         found = "Mon déménagement" in passage
         value = {"summary": "Ce passage contient une déclaration de déménagement." if found else "Aucun fait de vie personnel dans ce passage.",

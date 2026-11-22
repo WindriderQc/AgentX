@@ -137,6 +137,12 @@ def project(objective, record, result, *, expected_objective=None):
             or expected_objective is not None and evidence.get("objectiveSha256") != expected_objective:
         raise ValueError("Frozen attribution evidence failed integrity validation")
     own, messages = evidence["own"], evidence["messages"]
+    if 'primarySource' in native:
+        expected = {'identity': {k: native[k] for k in ('system', 'messageId', 'threadId', 'sourceSha256')},
+                    'headers': own['headers'], 'attachmentMetadata': own.get('attachmentMetadata', [])
+                    if native['representation']['representation'] == 'mime-text' else []}
+        if native['primarySource'] != expected:
+            raise ValueError('Primary metadata differs from its frozen source evidence')
     if own["id"] != native["messageId"] or own["sourceSha256"] != native["sourceSha256"] \
             or own["body"][native["offset"]:native["end"]] != record["body"]:
         raise ValueError("Attribution evidence differs from the exact retained source")
@@ -155,6 +161,9 @@ def validate_receipt(objective, row, manifest):
     record = row["sourceRecord"]
     scope = input_scope.contract_for(manifest)
     native = record['nativeRef']
+    from objective_grounding import contract_for as grounding_contract, SOURCE_SELECTION_CONTRACTS
+    if grounding_contract(manifest) in SOURCE_SELECTION_CONTRACTS and 'primarySource' not in native:
+        raise ValueError('Source-selection receipt requires frozen primary metadata')
     if scope is not None:
         evidence = load(Path(objective) / 'attribution-evidence' / (native.get('attributionEvidenceSha256', '') + '.json'), {})
         source = {'system': native['system'], 'id': native['messageId'], 'sha256': native['sourceSha256']}

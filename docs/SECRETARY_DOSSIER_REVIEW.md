@@ -422,6 +422,13 @@ selection. Its final common Core/note fence follows every producer call. Optiona
 v11 reconciliation binds this canonical snapshot to the verified components and
 local archive, while every cleanup candidate and native approval remains blocked.
 
+The [selected Core restoration contract](SECRETARY_CORE_RESTORATION.md) also
+copies current history records and directly linked active souvenirs as full
+typed BSON, recreates Mongo index definitions and runs the existing Core queries
+on private temporary collections. Optional v12 reconciliation binds that native
+proof to the verified global downstream state; canonical records and all native
+acceptance/approval gaps retain their existing owners and meanings.
+
 ## Current live Gmail source in historical reconciliation
 
 `POST /api/secretary/history/decision-state/mailbox` observes one exact selected

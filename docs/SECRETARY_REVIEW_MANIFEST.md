@@ -1,5 +1,9 @@
 # Native selected review evidence manifest
 
+The owner can separately retain a [human confirmation of the exact selected
+manifest](SECRETARY_MANIFEST_CONFIRMATION.md), including its full Core restoration
+binding. That historical receipt keeps every cleanup and native acceptance block.
+
 `POST /api/secretary/history/review-manifest` composes the existing native
 decision, linked-souvenir, review-graph restoration and live-mailbox scopes as
 one `agentx.history-review-manifest/v1` snapshot. The existing private owner

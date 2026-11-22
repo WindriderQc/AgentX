@@ -317,9 +317,10 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     return souvenirProof.summarize(packets, project);
   }
 
-  function historyEvidenceLookup() {
+  function historyEvidenceLookup({ includeEmbedding = false } = {}) {
     if (audience !== 'owner') throw error('Souvenir evidence belongs to the owner space', 403);
-    return souvenirProof.historyLookup(active(), project);
+    if (typeof includeEmbedding !== 'boolean') throw error('Choose a native document projection');
+    return souvenirProof.historyLookup(active(), project, { includeEmbedding });
   }
 
   async function forget(id) {
