@@ -16,6 +16,7 @@ const reviewManifest = require('../../src/services/personalHistoryReviewManifest
 const coreRestoration = require('../../src/services/personalHistoryCoreRestoration');
 const manifestConfirmation = require('../../src/services/personalHistoryManifestConfirmation');
 const currentConfirmation = require('../../src/services/personalHistoryManifestConfirmationCurrent');
+const decisionAcceptance = require('../../src/services/personalHistoryDecisionAcceptance');
 
 function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' },
   preservationDeps = { audience: 'owner' }, decisionStateDeps = { audience: 'owner' }, messageScopeDeps = { audience: 'owner' },
@@ -58,6 +59,8 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDe
     () => manifestConfirmation.confirm(req.params.requestId, req.body, confirmationDeps)));
   router.post('/history/manifest-confirmations/:requestId/current', (req, res) => sourceResponse(res,
     () => currentConfirmation.discover(req.params.requestId, req.body, confirmationDeps)));
+  router.post('/history/manifest-confirmations/:requestId/decision-acceptance', (req, res) => sourceResponse(res,
+    () => decisionAcceptance.discover(req.params.requestId, req.body, confirmationDeps)));
   router.get('/history/:id/decision-state', (req, res) => sourceResponse(res,
     () => decisionState.get(req.params.id, req.query, decisionStateDeps)));
   router.post('/history/:id/decision-state/check', (req, res) => sourceResponse(res,

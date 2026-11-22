@@ -40,6 +40,9 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
     // A consolidated assertion: its people, place and a second source.
     ...(n === 5 ? { people: ['Amie fictive', 'Cousin fictif'], places: ['Lac fictif'],
       relatedSources: [{ ...source, messageId: '1a00000000000002', sourceSha256: 'b'.repeat(64), findingId: '6'.repeat(64) }] } : {}) });
+  const invoice = (await history.record({ kind: 'invoice', text: 'Facture fictive encore ouverte', sourceDate: '2026-04-01T12:00:00Z',
+    source: { ...source, findingId: '7'.repeat(64) } })).entry;
+  await history.review(invoice.id, { state: 'retained', revision: 0, reason: 'Suivi fictif encore ouvert' });
   const app = express(); app.use(express.json());
   app.use('/assets/household', express.static(root + '/core/surfaces/household/public'));
   const router = express.Router();
@@ -70,7 +73,7 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
     return route.continue();
   });
   await page.goto(base + '/dad/history');
-  await page.waitForFunction(() => document.querySelectorAll('.history-entry').length === 5);
+  await page.waitForFunction(() => document.querySelectorAll('.history-entry').length === 6);
   assert.match(await page.locator('.history-entry').first().textContent(), /Souvenir fictif 4/);
   assert.equal(await page.locator('.history-entry img').count(), 0);
   await page.locator('[name=kind]').selectOption('fact');
@@ -112,7 +115,7 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
   await page.locator('[name=kind]').selectOption('');
   await page.locator('[name=state]').selectOption('pending');
   await page.locator('[data-history-filters] button').click();
-  await page.waitForFunction(() => document.querySelectorAll('.history-entry').length === 2);
+  await page.waitForFunction(() => document.querySelectorAll('.history-entry').length === 3);
   assert.equal(await page.locator('.history-entry', { hasText: 'Ancien suivi fictif' }).getByRole('button', { name: 'Garder comme souvenir' }).count(), 0);
   const card = page.locator('.history-entry', { hasText: 'Ancien suivi fictif' });
   await card.locator('[data-history-source] > summary').click();
@@ -126,8 +129,15 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
   assert.equal(await card.locator('[data-source-body] img').count(), 0);
   await card.locator('[name=reason]').fill('La source fictive confirme que ce suivi a été réalisé.');
   await card.getByRole('button', { name: 'Clore ce suivi' }).click();
-  await page.waitForFunction(() => document.querySelectorAll('.history-entry').length === 1);
+  await page.waitForFunction(() => document.querySelectorAll('.history-entry').length === 2);
   assert.equal((await Entry.findById(first.entry.id).lean()).reviewState, 'resolved');
+  const invoiceCard = page.locator('.history-entry', { hasText: 'Facture fictive encore ouverte' });
+  assert.equal(await invoiceCard.getByRole('button', { name: 'Garder ce suivi ouvert' }).count(), 1);
+  await invoiceCard.locator('[name=reason]').fill('Décision explicite fictive de clore cette pièce.');
+  await invoiceCard.getByRole('button', { name: 'Clore ce suivi' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.history-entry').length === 1);
+  const closedInvoice = await Entry.findById(invoice.id).lean();
+  assert.equal(closedInvoice.reviewState, 'resolved'); assert.equal(closedInvoice.revision, 2);
   assert.equal(await mongoose.connection.db.collection('pipelinetasks').countDocuments({}), 0);
   await page.screenshot({ path: reportDir + '/desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 1000 });
@@ -135,7 +145,7 @@ const source = { system: 'gmail', threadId: id, messageId: id, sourceSha256: 'a'
   await page.screenshot({ path: reportDir + '/mobile.png', fullPage: true });
   assert.deepEqual(errors, []); assert.deepEqual(external, []);
   fs.writeFileSync(reportDir + '/result.json', JSON.stringify({ passed: true, errors, external,
-    checks: ['oldest-first', 'filters', 'source-pagination', 'mime-text-versions', 'inert-source-html', 'explicit-resolution', 'souvenir-single', 'souvenir-batch-confirmed', 'consolidated-people-places-sources', 'souvenir-filters', 'action-not-a-souvenir', 'no-personal-task-created', 'mobile-width'] }, null, 2));
+    checks: ['oldest-first', 'filters', 'source-pagination', 'mime-text-versions', 'inert-source-html', 'explicit-resolution', 'retained-invoice-pending', 'explicit-invoice-resolution', 'souvenir-single', 'souvenir-batch-confirmed', 'consolidated-people-places-sources', 'souvenir-filters', 'action-not-a-souvenir', 'no-personal-task-created', 'mobile-width'] }, null, 2));
   console.log('Historical review browser journey passed');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(async () => {
   if (browser) await browser.close();

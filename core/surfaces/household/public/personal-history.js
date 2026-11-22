@@ -51,8 +51,8 @@
       <form data-history-review="${esc(entry.id)}"><label>Votre constat<textarea name="reason" rows="2" maxlength="2000" required placeholder="Ce que la source établit, ou pourquoi ce suivi est clos."></textarea></label>
       <div class="row wrap"><label>Date de l’événement, si établie<input name="eventDate" type="date" value="${entry.eventDatePrecision === 'day' ? esc(entry.eventDate) : ''}"></label>
       <label>Ce que la source permet d’établir<select name="assertionState">${Object.entries(assertions).map(([key, label]) => `<option value="${key}"${key === entry.assertionState ? ' selected' : ''}>${label}</option>`).join('')}</select></label></div>
-      <div class="row wrap"><button type="submit" value="retained">${['action', 'deliverable'].includes(entry.kind) ? 'Garder ce suivi ouvert' : 'Conserver dans mon histoire'}</button>
-      ${['action', 'deliverable'].includes(entry.kind) ? '<button type="submit" value="resolved">Clore ce suivi</button>' : ''}<button type="submit" value="dismissed">Écarter</button>
+      <div class="row wrap"><button type="submit" value="retained">${['action', 'deliverable', 'invoice'].includes(entry.kind) ? 'Garder ce suivi ouvert' : 'Conserver dans mon histoire'}</button>
+      ${['action', 'deliverable', 'invoice'].includes(entry.kind) ? '<button type="submit" value="resolved">Clore ce suivi</button>' : ''}<button type="submit" value="dismissed">Écarter</button>
       ${canKeep(entry) ? '<button type="submit" value="souvenir" formnovalidate>Garder comme souvenir</button>' : ''}</div></form></article>`;
     async function load() {
       const current = ++epoch;

@@ -152,7 +152,7 @@ async function record(input, { context, importKey } = {}) {
 async function list(input = {}) {
   const filter = { scope: 'owner' };
   if (input.state === 'pending') filter.$and = [{ $or: [
-    { reviewState: 'candidate' }, { reviewState: 'retained', kind: { $in: ['action', 'deliverable'] } }
+    { reviewState: 'candidate' }, { reviewState: 'retained', kind: { $in: ['action', 'deliverable', 'invoice'] } }
   ] }];
   else filter.reviewState = input.state ? enumValue(input.state, STATES) : { $ne: 'forgotten' };
   if (input.kind) filter.kind = enumValue(input.kind, KINDS);
@@ -213,7 +213,7 @@ async function review(id, input = {}) {
   const entry = await Entry.findOne({ _id: id, scope: 'owner' }).lean();
   if (!entry || entry.reviewState === 'forgotten') throw failure('History entry is unavailable', 404);
   if ((entry.reviewHistory || []).length >= 1000) throw failure('History decision capacity reached; retain the existing audit before continuing', 409);
-  if (state === 'resolved' && !['action', 'deliverable'].includes(entry.kind)) throw failure('Only an action or deliverable can be resolved');
+  if (state === 'resolved' && !['action', 'deliverable', 'invoice'].includes(entry.kind)) throw failure('Only an action, deliverable or invoice can be resolved');
   const assertion = input.assertionState === undefined ? entry.assertionState : enumValue(input.assertionState, ASSERTIONS);
   const confirmsContext = state !== 'forgotten' && input.assertionState === 'confirmed' && Boolean(entry.context);
   if (confirmsContext && (!Number.isSafeInteger(input.contextRevision) || input.contextRevision < 1)) throw failure('The displayed contextRevision is required to confirm this assertion');

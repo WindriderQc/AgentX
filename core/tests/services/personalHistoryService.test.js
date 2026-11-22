@@ -50,6 +50,18 @@ describe('owner historical source assertions', () => {
     expect(saved.reviewHistory).toHaveLength(1);
   });
 
+  test('a retained invoice remains pending until explicitly closed with a dated reason and current revision', async () => {
+    const { entry } = await history.record({ ...input(), kind: 'invoice' });
+    await history.review(entry.id, { state: 'retained', reason: 'Synthetic invoice remains open', revision: 0 });
+    expect((await history.list({ state: 'pending' })).entries.map(row => row.id)).toContain(entry.id);
+    await expect(history.review(entry.id, { state: 'resolved', reason: '', revision: 1 })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(history.review(entry.id, { state: 'resolved', reason: 'Synthetic stale close', revision: 0 })).rejects.toMatchObject({ statusCode: 409 });
+    const closed = await history.review(entry.id, { state: 'resolved', reason: 'Synthetic explicit invoice closure', revision: 1 });
+    expect(closed.entry).toMatchObject({ reviewState: 'resolved', revision: 2, decision: { reason: 'Synthetic explicit invoice closure' } });
+    expect(Number.isFinite(Date.parse(closed.entry.decision.at))).toBe(true);
+    expect((await history.list({ state: 'pending' })).total).toBe(0);
+  });
+
   test('forget retains a suppression identity and reimport cannot resurrect its text', async () => {
     const { entry } = await history.record(input());
     await history.review(entry.id, { state: 'forgotten', revision: 0 });
