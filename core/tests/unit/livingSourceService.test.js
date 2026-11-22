@@ -89,7 +89,7 @@ test('catalogue and envelopes share one bounded reading contract without invokin
   const brief = jest.fn();
   const owner = forAudience('owner', { brief, now }).catalogue();
   const family = forAudience('household', { brief, now }).catalogue();
-  expect(JSON.stringify(owner).length).toBeLessThan(4100);
+  expect(JSON.stringify(owner).length).toBeLessThan(4000);
   expect(JSON.stringify(family).length).toBeLessThan(4000);
   for (const catalogue of [owner, family]) {
     for (const row of catalogue.sources) expect(row).toMatchObject({ answers: expect.any(String), notFor: expect.any(String) });
