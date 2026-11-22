@@ -103,6 +103,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     review_restore.add_argument("--thread", required=True)
     review_restore.add_argument("--sha256", required=True)
     review_restore.add_argument("--request-id", required=True)
+    storage = commands.add_parser("storage-evidence")
+    storage.add_argument("--message", required=True)
+    storage.add_argument("--thread", required=True)
+    storage.add_argument("--sha256", required=True)
+    storage.add_argument("--request-id", required=True)
     findings = commands.add_parser("findings")
     findings.add_argument("--message", required=True)
     findings.add_argument("--thread", required=True)
@@ -368,8 +373,11 @@ def main(argv: list[str] | None = None) -> int:
                           "message": "the Secretary mail request is not valid"}))
         return 0
     try:
-        if args.command == "review-restoration":
-            from archive_review_restoration import probe
+        if args.command in ("review-restoration", "storage-evidence"):
+            if args.command == "storage-evidence":
+                from archive_storage_evidence import probe
+            else:
+                from archive_review_restoration import probe
             from archive_review_packet import ReviewPacketError
             try:
                 data = probe(args.evidence_root, args.message, args.thread, args.sha256, args.request_id)
