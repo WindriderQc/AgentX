@@ -31,9 +31,25 @@ for (const [route, [view, ...styles]] of Object.entries(pages)) {
     activePage: route.slice(1),
     pageView: '../pages/' + view,
     headCss: ['styles.css', ...styles.map(style => 'css/' + style)]
-      .map(style => `<link rel="stylesheet" href="/${style}">`).join('')
+      .map(style => `<link rel="stylesheet" href="/${style}">`).join(''),
+    footerJs: view === 'memory-review' ? ['memory-review-copy', 'memory-review-keys', 'memory-review']
+      .map(script => `<script src="/js/${script}.js"></script>`).join('') : ''
   }));
 }
+const memoryRun = {
+  runId: 'responsive-fixture',
+  status: 'completed',
+  mode: 'propose',
+  collectors: [
+    { runtime: 'claude-code', host: 'fixture-development-workstation-with-a-long-hostname.example',
+      agentOrProfile: 'Collector profile', eligibleObservations: 1234, rejectedObservations: 567,
+      drift: ['Fixture advisory'] }
+  ]
+};
+app.get(['/api/memory-review/config', '/api/alerts'], (_req, res) => res.json({ data: {} }));
+app.get('/api/memory-review/insights', (_req, res) => res.sendStatus(503));
+app.get('/api/memory-review/runs', (_req, res) => res.json({ data: { runs: [memoryRun] } }));
+app.get('/api/memory-review/runs/responsive-fixture', (_req, res) => res.json({ data: memoryRun }));
 const benchmarkAssets = express.Router();
 require('../../../shared/csvCell').mountBrowserCsvCell(benchmarkAssets);
 benchmarkAssets.use(express.static(path.resolve(core, '../benchmark/public')));
@@ -68,6 +84,14 @@ async function assertKeyboardScroll(page, region) {
 async function verifyResponsiveSurfaces(page, origin, width) {
   await page.goto(origin + '/memory-review');
   await assertWithinViewport(page.locator('.mr-run-tools input, #mrRunStatus'), 'Memory Review filters fit the viewport');
+  const summary = page.locator('#mrCollectors details summary');
+  await summary.waitFor();
+  await assertWithinViewport(summary, 'Collapsed Memory Review collector fits with loaded data');
+  await summary.click();
+  await page.getByText('Fixture advisory').waitFor();
+  await assertWithinViewport(page.locator('#mrCollectors .mr-collector-detail'), 'Open Memory Review collector fits');
+  assert.ok(await page.evaluate(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1), 'Loaded collectors do not widen the page');
   if (width < 560) {
     await page.locator('.mr-shortcuts summary').click();
     await assertWithinViewport(page.locator('.mr-shortcuts > div'), 'Memory Review shortcuts fit when open');
