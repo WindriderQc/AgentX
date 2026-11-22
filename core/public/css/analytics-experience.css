@@ -301,6 +301,7 @@ a.wb-chip:hover { border-color: #73e1d155; }
 .wb-tag-cloud { color: #eeb0ff; border-color: #eeb0ff55; }
 .wb-pair { gap: 14px; }
 .wb-chart { height: 170px !important; }
+.wb-chart > canvas, #costBreakdownChart { max-width: 100%; }
 .wb-radio { display: flex; gap: 10px; font-size: .62rem; color: var(--ao-muted); }
 .wb-rag { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 .wb-rag .wb-strip { grid-template-columns: repeat(auto-fit, minmax(108px, 1fr)); }

@@ -105,7 +105,7 @@ kbd { display: inline-grid; min-width: 20px; height: 20px; place-items: center; 
 .mr-panel-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 11px; }
 .mr-panel-header h2, .mr-panel-header h3 { margin: 0; font-size: 1rem; }
 .mr-panel-header p { margin: 0; color: rgba(225,231,245,.64); font-size: .73rem; }
-.mr-run-tools { display: grid; grid-template-columns: 1fr 105px; gap: 6px; margin-bottom: 9px; }
+.mr-run-tools { display: grid; grid-template-columns: minmax(0,1fr) 105px; gap: 6px; margin-bottom: 9px; }
 .mr-run-tools label { position: relative; }
 .mr-run-tools label i { position: absolute; top: 9px; left: 9px; color: rgba(225,231,245,.36); font-size: .65rem; }
 .mr-run-tools input, .mr-run-tools select { width: 100%; height: 31px; border: 1px solid rgba(128,148,190,.27); border-radius: 8px; color: rgba(245,247,253,.88); background: rgba(8,13,23,.4); font-size: .72rem; }
@@ -238,7 +238,7 @@ body.mr-modal-open { overflow: hidden; }
 @media (max-width: 920px) {
   .mr-overview { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .mr-flow { justify-content: flex-start; overflow-x: auto; white-space: nowrap; }
-  .mr-main-grid { grid-template-columns: 1fr; }
+  .mr-main-grid { grid-template-columns: minmax(0,1fr); }
   .mr-insights-grid { grid-template-columns: 1fr 1fr; }
   .mr-runtime-card { grid-column: 1/-1; }
   .mr-runs-panel { position: static; }
@@ -250,6 +250,7 @@ body.mr-modal-open { overflow: hidden; }
   .mr-actions { width: 100%; flex-wrap: wrap; }
   .mr-actions .mr-btn, .mr-actions .mr-shortcuts { flex: 1 1 auto; }
   .mr-shortcuts > summary { width: 100%; }
+  .mr-shortcuts > div { left: 0; right: auto; }
   .mr-overview { grid-template-columns: 1fr 1fr; gap: 8px; }
   .mr-overview article { min-height: 67px; padding: 10px; }
   .mr-flow { display: none; }

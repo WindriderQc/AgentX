@@ -271,7 +271,9 @@ body[data-agentx-profile="demo"] .chat-command-bar { padding-left: 186px; }
   .chat-welcome h1 { font-size: clamp(28px, 7vw, 38px); }
   .chat-layout .composer { padding: 16px; border-radius: 8px; }
   .chat-layout .composer textarea { min-height: 80px; font-size: 16px; }
-  .chat-layout .composer-actions { gap: 5px; }
+  .chat-layout .composer-actions { flex-wrap: wrap; gap: 5px; }
+  .chat-layout .composer-actions > .flex-spacer { display: none; }
+  .chat-layout .composer-actions #sendBtn { margin-inline-start: auto; }
   .chat-layout .composer-actions .chat-command-mode { max-width: calc(100% - 142px); font-size: 11px; }
   .chat-command-mode small { display: none; }
   .composer-tools__menu { left: auto; right: -58px; }
