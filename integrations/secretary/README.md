@@ -628,8 +628,8 @@ and collection names stay inside Core. A supplied JSON file is never native
 restoration evidence.
 
 The Core restoration observations run after the v11 manifest and earlier
-HTTP calls. Without the optional v13 mode, only local disposition checks follow, using
-already observed Core rows. When v9/v11 graph checks are present, the current
+HTTP calls. Without the optional v13 or v14 mode, only local disposition checks
+follow, using already observed Core rows. When v9/v11 graph checks are present, the current
 local graph must still bind their retained restoration proof. Changed or
 unavailable evidence prevents a success report. The immutable private report
 adds `nativeCoreRestoration`; stdout adds only document, byte and index counts
@@ -668,6 +668,40 @@ four global gaps, keeps execution false and cleanup blocked, and grants no
 new approval or mailbox authority. The historical human receipt remains
 unchanged. Synthetic CPU tests do not establish deployment, native instance
 acceptance or permission for a real corpus.
+
+`--native-decision-acceptance REQUEST_UUID` selects v14. It requires the
+original human UUID and exact retained v3 review restoration checks before
+HTTP, and implies v11/v12. If `--native-manifest-confirmation` is also supplied,
+its UUID must match. Two final POSTs to
+`/api/secretary/history/manifest-confirmations/:requestId/decision-acceptance`
+carry the retained checks and canonical cutoff. Each response embeds the full
+current v13 observation with the same observation UUID. The second request
+carries separate `expected` and `expectedCurrent` fingerprints. There are no
+additional `/current` requests, retries, or new human confirmations. Responses
+are bounded to 128 KiB and 1,200 seconds, with a 64 KiB parent snapshot.
+
+The client independently reconstructs the native policy from the verified
+v11 graph and validates both embedded v13 envelopes. Every recorded finding
+needs a current observed decision: actions, deliverables and invoices require
+`resolved` or `dismissed`; facts allow `retained`, `resolved` or `dismissed`.
+Existing native decision checks still require dated reasons and reject pending
+intent. A retained fact may remain unlinked; selected linked souvenirs must be
+current. Empty findings, unresolved thread questions, unmatched Core references
+and existing manifest, finding or downstream blockers keep the selected scope
+blocked, including current-mailbox and cutoff failures.
+Unavailable, malformed or stale human confirmation prevents a v14 report.
+
+The immutable private report adds `nativeDecisionAcceptance` and reuses its
+nested evidence for `nativeManifestConfirmation`. An accepted selected scope
+removes only `native_decision_reconciliation_unavailable` from that report's
+`nativeValidationGaps`; the other three gaps remain. A blocked decision scope
+keeps all four. Stdout adds acceptance counts, status and remaining gap codes,
+without source IDs, hashes or private content. v14 always returns exit code 2,
+keeps execution and approval binding false and cleanup blocked. This evidence
+establishes recorded decisions for the exact selection; it grants no semantic,
+source-completeness, preservation, mailbox or execution approval. Earlier modes
+retain their existing contracts and four generic gaps. Only local disposition
+and review graph fences follow the final v14 HTTP calls.
 
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only

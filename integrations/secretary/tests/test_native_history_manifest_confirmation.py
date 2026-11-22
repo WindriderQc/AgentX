@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from evidence_store import load, save
 from native_history_decisions import digest
 from native_history_manifest_confirmation import (
-    capture, components, CONTRACT, CONFIRMATION_CONTRACT, CONSISTENCY, MAX_RESPONSE,
+    capture, components, validate_observation, CONTRACT, CONFIRMATION_CONTRACT, CONSISTENCY, MAX_RESPONSE,
 )
 from native_history_review_manifest import expected_snapshot as manifest_snapshot
 from retention_plan import NATIVE_GAPS
@@ -76,6 +76,18 @@ class ManifestConfirmationTests(unittest.TestCase):
         with patch('native_history_review_restoration.inventory', side_effect=lambda *a: deepcopy(self.fx.graph)):
             return reconcile(self.fx.fx.archive, self.before, self.saved, 'http://core.invalid',
                 manifest_confirmation=REQUEST_ID, review_restoration_checks=self.checks, **options)
+
+    def test_pure_validator_uses_complete_expected_snapshot_and_previous_without_http(self):
+        _, expected = components(self.saved, self.checks, self.before, self.manifest, self.restored)
+        expected['requestId'] = REQUEST_ID
+        first = self.response({'observationId': 'first'})
+        second = self.response({'observationId': 'second', 'expected': first['fingerprint']})
+        with patch('urllib.request.urlopen', side_effect=AssertionError('Pure validation only')):
+            self.assertIs(validate_observation(first, expected, 'first'), first)
+            self.assertIs(validate_observation(second, expected, 'second', first), second)
+            second['snapshot']['confirmation']['confirmedAt'] = '2026-01-01T10:30:00.000Z'
+            second['fingerprint'] = digest(second['snapshot'])
+            with self.assertRaises(ValueError): validate_observation(second, expected, 'second', first)
 
     def test_two_fresh_observations_reuse_original_identity_and_exact_verified_graph(self):
         value = self.observed()

@@ -111,6 +111,12 @@ def observe(core, request_id, checks, snapshot, *, previous=None, opener=urllib.
         raise ValueError('The native confirmation exceeds its response capacity')
     value = json.loads(raw, object_pairs_hook=pairs, parse_constant=invalid_constant)
     data = value.get('data') if isinstance(value, dict) and value.get('ok') is True else None
+    return validate_observation(data, snapshot, observation_id, previous)
+
+
+def validate_observation(data, expected_snapshot, observation_id, previous=None):
+    """Validate a native v13 envelope without transport or other side effects."""
+    expected = previous['fingerprint'] if previous is not None else None
     if not keys(data, 'authority contract observationId observedAt snapshot fingerprint status consistency reviewOnly atomicBatch semanticAcceptance authenticatedPerson approvalBound mailboxEffects executionAllowed cleanupStatus nativeValidationGaps') \
             or data['authority'] != 'agentx.core' or data['contract'] != CONTRACT \
             or data['observationId'] != observation_id \
@@ -123,7 +129,7 @@ def observe(core, request_id, checks, snapshot, *, previous=None, opener=urllib.
             or data['nativeValidationGaps'] != list(NATIVE_GAPS):
         raise ValueError('Core did not confirm the current native human confirmation contract')
     at = date(data['observedAt'])
-    validate_snapshot(data['snapshot'], snapshot, at)
+    validate_snapshot(data['snapshot'], expected_snapshot, at)
     fingerprint = data['fingerprint']
     if not isinstance(fingerprint, str) or not HASH.fullmatch(fingerprint) \
             or digest(data['snapshot']) != fingerprint \
