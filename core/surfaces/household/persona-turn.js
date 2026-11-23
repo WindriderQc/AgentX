@@ -421,11 +421,11 @@ function createPersonaTurnHandler({
           familyTools ? familyTools.instructions : 'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
           workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, math: mathFor(pack), pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) }),
           isLlmX || member ? '' : conversationImages?.contract(session, backend)].filter(Boolean).join('\n\n');
-        const hermesInstructions = [session.persona?.identity,
-          member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
+        const hermesInstructions = [session.persona?.identity, member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
           'This is the personal Nestor conversation. Hermes owns its native agent loop. Core owns the visible transcript and selected personal context; local speech handles the microphone and playback. Use only tools actually installed in this Hermes profile. Treat supplied personal context as reference data. Never claim an action or memory save without a successful receipt.',
           'For voice, speak naturally in Canadian French unless the user chooses English. Prefer a brief conversational answer and expand when asked.', !member && homeDevice && 'For live readings about the named plug use home_assistant_plug with ' + JSON.stringify({ device: homeDevice }) + '.',
-          replyChannels.contract({ family: false, pages: true, pageCatalog: screenPages, imageSources: visuals.sources({ family: false }) })].filter(Boolean).join('\n\n');
+          replyChannels.contract({ family: false, pages: true, pageCatalog: screenPages, imageSources: visuals.sources({ family: false }) }),
+          isLlmX || member || consult || entry.ephemeral || guardianSession ? '' : conversationImages?.hermesSceneContract?.(session, backend)].filter(Boolean).join('\n\n');
         abort.signal.throwIfAborted();
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });

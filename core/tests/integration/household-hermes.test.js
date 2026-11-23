@@ -44,6 +44,38 @@ test('the personal surface persists Hermes, streams through its existing reply p
   expect(body.instructions).not.toContain('This Household conversation uses the selected OpenClaw agent');
 });
 
+test('native Hermes receives only the scene contract when the private illustrated lane is ready', async () => {
+  const imageService = require('../../src/services/images/imageService');
+  const status = jest.spyOn(imageService, 'status');
+  const admit = jest.spyOn(imageService, 'acceptOpportunistic').mockRejectedValue(new Error('Unexpected image request in synthetic Hermes test'));
+  const { randomUUID } = require('node:crypto');
+  const config = { configured: true, conversationProfile: { id: 'synthetic-quick' },
+    illustrated: { spaces: ['private'] } };
+  try {
+    for (const [configuration, expectScene] of [
+      [config, true], [{ ...config, illustrated: { spaces: ['family'] } }, false],
+      [{ ...config, conversationProfile: null }, false], [{ ...config, configured: false }, false]
+    ]) {
+      status.mockReturnValue(configuration);
+      const session = (await request(app).post(base).send({ packId: 'personal_operator', backend: 'hermes' }).expect(201)).body.data.session;
+      const before = nativeCalls.length;
+      const response = await request(app).post(`${base}/${session.sessionId}/turns/text`)
+        .send({ text: 'Explique le vent dans une forêt fictive.', turnId: randomUUID(), stream: true }).expect(200);
+      expect(response.text.trim().split('\n').map(line => JSON.parse(line)).filter(event => event.type === 'error')).toEqual([]);
+      const post = nativeCalls.slice(before).filter(call => call.path === '/v1/runs');
+      expect(post).toHaveLength(1);
+      const { instructions } = JSON.parse(post[0].body);
+      expect(instructions.includes('source="scene"')).toBe(expectScene);
+      expect(instructions).not.toContain('source="draw"');
+      expect(instructions).not.toContain('local_image create');
+    }
+    expect(admit).not.toHaveBeenCalled();
+  } finally {
+    status.mockRestore();
+    admit.mockRestore();
+  }
+});
+
 test('family and open-model sessions cannot select Hermes', async () => {
   const before = nativeCalls.length;
   await request(app).post('/api/voice-personas/sessions').send({ packId: 'kidx_nestor', backend: 'hermes' }).expect(403);
