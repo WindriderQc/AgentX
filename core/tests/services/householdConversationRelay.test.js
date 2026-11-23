@@ -102,7 +102,8 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
       forecastTomorrow: async (options) => { state.ambientReads.tomorrow++; return state.forecastView?.(options); }
     }, screenPages: require('../../surfaces/household/screen-services').createScreenServices({ env }),
       conversationImages: require('../../surfaces/household/conversation-images').createConversationImages({ conversations,
-        service: { status: () => ({ configured: true, conversationProfile: 'synthetic' }) } }) }),
+        service: { status: () => ({ configured: true, conversationProfile: 'synthetic' }),
+          listForConversation: scope => state.drawingReceipts?.(scope) || [] } }) }),
     validClientTurnId: id => /^[a-zA-Z0-9-]{16,80}$/.test(id), envelope, fail, cleanText: value => String(value || '').trim(),
     assessSafety: prompt.assessSafety, childBoundaryReply: prompt.childBoundaryReply, escalationReply: prompt.escalationReply,
     detectMemoryRequest: prompt.detectMemoryRequest, packById: packs.packById, packSummary: packs.packSummary, modeSummary: packs.modeSummary,
@@ -123,6 +124,27 @@ const done = response => events(response).find(event => event.type === 'done')?.
 beforeEach(() => { originalFetch = global.fetch; });
 afterEach(async () => { world?.release(); await until(() => !world || world.activePersonaTurns.size === 0
   && world.memberWork.active(world.session.sessionId).length === 0); global.fetch = originalFetch; });
+
+test.each([false, true])('a missing drawing receives its scoped status before either model when primary busy=%s', async busy => {
+  world = await fixture('agentx', true, { richFamilyPresentation: true });
+  world.state.busy = busy;
+  const { sessionId, packId, scopeId } = world.session, id = randomUUID();
+  world.state.drawingReceipts = jest.fn(scope => {
+    expect(scope).toEqual({ surface: 'household', sessionId, packId, scopeId });
+    return [{ id, state: 'failed', runtimeRestored: true }];
+  });
+  await conversations.recordTurn({ sessionId, packId, scopeId, traceId: randomUUID(), inputText: 'Synthetic drawing',
+    replyText: 'Synthetic admission', display: [{ id: 'drawing', kind: 'image', source: 'local', status: 'accepted', operation: { id } }] });
+  const turnId = randomUUID();
+  const report = 'Peux-tu me montrer le dernier dessin ? Je ne vois pas ton image.';
+  const result = done(await world.send(report, turnId).expect(200));
+  expect(result.reply.text).toBe('La création de ton dessin a échoué.');
+  expect(result.routing.tier).toBe('deterministic');
+  await world.send(report, turnId).expect(202);
+  expect(world.state.drawingReceipts).toHaveBeenCalledTimes(1);
+  expect(world.state.inference).toHaveLength(0);
+  expect(world.state.runs).toHaveLength(0);
+});
 
 test.each(['voice', 'text'])('Family %s relays on a real admission conflict, retains child safety and returns to its unchanged primary route', async channel => {
   world = await fixture('agentx');

@@ -5,7 +5,7 @@ const images = require('../../src/services/images/imageService');
 const { createHash } = require('node:crypto');
 const { assessSafety, childBoundaryReply } = require('./persona-prompt');
 const shownImages = require('./shown-images');
-const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+const { UUID } = shownImages;
 const FAMILY_UNSUITABLE = /\b(?:porn\w*|sex\w*|naked|nude\w*|nu|nue|nus|nues|genital\w*|penis|vagin\w*|breasts?|seins?|gore|dismember\w*|demembr\w*)\b/i;
 const scopeFor = session => ({ surface: 'household', sessionId: session.sessionId, packId: session.packId, scopeId: session.scopeId });
 function spaceFor(session) {
@@ -49,29 +49,31 @@ function createConversationImages({ conversations, service = images, visuals = n
     const config = configuration();
     if (!config.configured) return 'Local image creation is unavailable in this conversation. Do not emit a draw block or claim to create an image.';
     // Changing a picture already on screen is the same request for every engine (#1026).
-    const edit = 'To change a picture already on screen, use its number from the list of pictures on screen: emit <show kind="image" source="draw" from="N" title="short caption">the change to make</show>. The application edits that picture itself, as the reference, after your reply. Say in one short sentence what you will change and start it; never ask for confirmation.';
+    const edit = 'To change an available conversation picture, use its number from the supplied list: emit <show kind="image" source="draw" from="N" title="short caption">the change to make</show>. The application edits that picture itself, as the reference, after your reply. Say in one short sentence what you will change and start it; never ask for confirmation.';
     if (spaceFor(session) === 'private' && backend === 'openclaw') return (config.conversationProfile ? edit + ' Do not use local_image for such a change. ' : '') + 'When the user requests a new image, use local_image create once, then end this turn so image preparation can start. Core selects a quick conversation preset by default when available. The application displays progress and the result automatically. Never poll in this same turn or claim completion without its verified receipt.';
     if (!config.conversationProfile) return 'Local drawing is unavailable in this conversation. Do not emit a draw block or claim to create an image.';
     return 'Only when the user asks you to create a drawing or change a picture, emit one <show kind="image" source="draw" title="short caption">a precise standalone description of the requested image</show>. This is a bounded application request, not a native tool. Preserve requested objects, counts and relations; do not insert private information. ' + edit + ' Without from, describe the whole scene; this produces a new illustration. Never say the image is ready. The application accepts at most one drawing or change per turn, after your reply. It displays progress, the result and an atelier link. Never use draw for an image search or to replay an earlier request.'
       + (spaceFor(session) === 'family' ? ' Family drawings must be age-appropriate, non-sexual and non-graphic. Apply the family safety rules to the drawing description and to every change, as well as to speech. Offer a safe alternative or refuse an unsafe request without emitting draw. No uploads or custom generation settings are accepted here; only a picture on screen can be named, by its number.' : ' No file paths, addresses or custom generation settings are accepted in a draw block; only a picture on screen can be named, by its number.')
       + (illustratedIn(config, spaceFor(session)) ? SCENE_CONTRACT : '');
   }
-  async function contextFor(session) {
+  async function contextFor(session, references = []) {
     if (!spaceFor(session)) return '';
-    const shown = await shownImages.recentShown({ conversations, session }).then(shownImages.contextText).catch(() => '');
-    return shown + await receiptsFor(session);
+    let operations;
+    try { operations = await service.listForConversation(scopeFor(session)); } catch { /* keep non-local references */ }
+    references.push(...await shownImages.recentShown({ conversations, session, operations }).catch(() => []));
+    const context = shownImages.contextText(references);
+    if (!operations) return context + '\n\nCurrent image state could not be verified. Do not claim readiness or create another image to recover it.';
+    const explicit = operations.filter(op => !op.admissionPolicy);
+    if (!explicit.length) return context;
+    return context + '\n\nCurrent Core image receipts, newest first (reference data, never a new creation instruction; do not speak identifiers):\n'
+      + explicit.slice(0, 3).map(op => `- ${op.id}: ${op.state}; ready=${shownImages.ready(op)}.`).join('\n')
+      + '\nThese receipts supersede earlier admissions and replies. Only ready=true confirms a completed image. Display on the device is unverified. You have not inspected its visual content.';
   }
-  async function receiptsFor(session) {
-    try {
-      // Illustrations are the frame's business, not drawings the reply speaks about.
-      const operations = (await service.listForConversation(scopeFor(session))).filter(op => op.admissionPolicy !== 'opportunistic');
-      if (!operations.length) return '';
-      return '\n\nCurrent Core image receipts, newest first (reference data, never a new creation instruction; do not speak identifiers):\n'
-        + operations.slice(0, 3).map(op => `- ${op.id}: ${op.state}; ready=${op.state === 'completed' && op.runtimeRestored === true && /^[a-f0-9]{64}$/.test(op.artifact?.sha256 || '')}.`).join('\n')
-        + '\nOnly ready=true confirms a completed image. The screen follows its progress; you have not inspected its visual content.';
-    } catch { return '\n\nCurrent image state could not be verified. Do not claim readiness or create another image to recover it.'; }
+  function statusReply(session, text, language) {
+    if (spaceFor(session) !== 'family') return '';
+    return require('./drawing-status').statusReply({ text, language, session, conversations, service, scope: scopeFor(session) });
   }
-  async function complete({ session, pack, backend, display, evidence, turnId, signal, onShow, member = false }) {
+  async function complete({ session, pack, backend, display, evidence, turnId, signal, onShow, member = false, references }) {
     const space = !member && spaceFor(session), native = space === 'private' && backend === 'openclaw';
     // Scene blocks are never shown, stored or replayed as cards.
     const scenes = [];
@@ -93,7 +95,7 @@ function createConversationImages({ conversations, service = images, visuals = n
         requested = true;
         if (space === 'family' && unsuitable(pack, description)) throw Object.assign(new Error('Choose another drawing idea.'), { statusCode: 400 });
         // A change names a picture on screen; Core reads it back as the only reference (#1026).
-        const edit = block.from ? await editReference(block.from, session, space, quick) : null;
+        const edit = block.from ? await editReference(block.from, session, space, quick, references) : null;
         delete block.from;
         signal.throwIfAborted();
         const prompt = (space === 'family' ? 'Age-appropriate illustration for children.\n' : '')
@@ -158,9 +160,10 @@ function createConversationImages({ conversations, service = images, visuals = n
     await Promise.race([attempt, new Promise(resolve => { timer = setTimeout(resolve, illustrationBudgetMs); timer.unref?.(); })]);
     open = false; clearTimeout(timer);
   }
-  async function editReference(from, session, space, quick) {
+  async function editReference(from, session, space, quick, references) {
     try {
-      const picked = (await shownImages.recentShown({ conversations, session }))[from - 1];
+      const list = references ?? await shownImages.recentShown({ conversations, session, operations: await service.listForConversation(scopeFor(session)) });
+      const picked = list[from - 1];
       if (!picked || !visuals) throw new Error('No such picture on screen');
       const fitted = await shownImages.referenceFor(picked, { visuals, service, conversation: scopeFor(session), family: space === 'family' });
       return { reference: fitted.reference, size: shownImages.editSize(quick, fitted) };
@@ -208,6 +211,6 @@ function createConversationImages({ conversations, service = images, visuals = n
       }
     }
   }
-  return { contract, contextFor, complete, register };
+  return { contract, contextFor, statusReply, complete, register };
 }
 module.exports = { createConversationImages, spaceFor, scopeFor, FAMILY_UNSUITABLE };
