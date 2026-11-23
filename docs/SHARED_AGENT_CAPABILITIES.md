@@ -33,6 +33,24 @@ execution history and session memory; these are not a replacement store for
 Core's shared personal facts, tasks or documents. An action is confirmed only
 after its successful result, with the available domain and execution receipts.
 
+For current personal recall, the native owner adapters read `turn-context`
+through `POST /api/consumers/nestor/v1/memory/notes` on each turn. Core projects
+a bounded lexical match of active notes and returns the source-precedence
+policy. A match to a retired note signals a protected recall turn without
+returning its text. The runtime refreshes this evidence even in continued chats
+and limits native history tools during protected turns. A missing value stays
+unknown. Explicit transcript requests keep their history tools and report past
+conversation as historical evidence. The live note read and the native
+transcript retain their own access scopes. Family and delegated turns do not
+receive this owner projection.
+
+OpenClaw's personal harness registers the turn hooks. For Hermes, install the
+opt-in [owner memory plugin](../integrations/hermes/owner-memory-turn) only in
+the trusted personal API profile with its `agentx-owner` MCP connection. The
+plugin applies the current turn evidence to the provider request and leaves the
+native session and stored transcript in place. It can qualify both the native
+Responses request and the existing chat-completion fallback.
+
 [Work lifecycle](WORK_LIFECYCLE.md) defines task/issue routing, fact ownership,
 actor roles and queue interpretation. Runtime adapters preserve Core's read
 projections rather than infer automatic execution from a stored status.

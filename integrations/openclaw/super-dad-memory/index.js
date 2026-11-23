@@ -23,6 +23,7 @@ import { registerPresentation } from './presentation.js';
 import { registerDossier } from './core-dossier.js';
 import { registerSources } from './core-sources.js';
 import { createNativeQuestions } from './native-questions.js';
+import { registerOwnerMemoryTurn } from './owner-memory-turn.js';
 const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value) }], details: value });
 export default definePluginEntry({
   id: "super-dad-memory",
@@ -40,6 +41,7 @@ export default definePluginEntry({
     registerPresentation(api);
     registerDossier(api);
     registerSources(api);
+    registerOwnerMemoryTurn(api);
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });

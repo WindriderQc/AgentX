@@ -16,6 +16,7 @@
     "local-images.js",
     "data-tools.js",
     "core-notes.js",
+    "owner-memory-turn.js",
     "core-vault.js",
     "core-journal.js",
     "core-identifiers.js",
