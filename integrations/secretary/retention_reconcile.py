@@ -43,10 +43,17 @@ def entry_set(entries):
     return content_hash(sorted(entries, key=lambda entry: entry["id"]))
 
 
-def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False, message_scope=False, finding_scope=False, restoration_checks=None, downstream_scope=False, mailbox_scope=False, global_decisions=False, review_restoration_checks=None, global_downstream=False, review_manifest=False, core_restoration=False, manifest_confirmation=None, decision_acceptance=None):
+def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native_decisions=False, message_scope=False, finding_scope=False, restoration_checks=None, downstream_scope=False, mailbox_scope=False, global_decisions=False, review_restoration_checks=None, global_downstream=False, review_manifest=False, core_restoration=False, manifest_confirmation=None, decision_acceptance=None, preservation_acceptance=None):
     previous = indexed(saved)
     manifests = list(manifests)
     options = {} if opener is None else {"opener": opener}
+    if preservation_acceptance is not None:
+        from native_history_manifest_confirmation import request_identity
+        request_identity(preservation_acceptance)
+        if any(value is not None and value != preservation_acceptance
+               for value in (manifest_confirmation, decision_acceptance)):
+            raise ValueError("Native preservation, decision acceptance and manifest confirmation require the same original UUID")
+        review_manifest = core_restoration = True
     if decision_acceptance is not None:
         from native_history_manifest_confirmation import request_identity
         request_identity(decision_acceptance)
@@ -178,7 +185,15 @@ def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native
     if core_restoration:
         from native_history_core_restoration import capture as capture_core_restoration
         native["nativeCoreRestoration"] = capture_core_restoration(core, saved, native["nativeGlobalDownstream"], **options)
-    if decision_acceptance is not None:
+    if preservation_acceptance is not None:
+        from native_history_preservation_acceptance import capture as capture_preservation
+        accepted = capture_preservation(core, preservation_acceptance, saved, review_restoration_checks, before,
+            native["nativeReviewManifest"], native["nativeCoreRestoration"], **options)
+        native["nativePreservationAcceptance"] = accepted["preservation"]
+        native["nativeDecisionAcceptance"] = accepted["acceptance"]
+        native["nativeManifestConfirmation"] = accepted["confirmation"]
+        native["nativeStorageScope"] = accepted["storage"]
+    elif decision_acceptance is not None:
         from native_history_decision_acceptance import capture as capture_acceptance
         accepted = capture_acceptance(core, decision_acceptance, saved, review_restoration_checks, before,
             native["nativeReviewManifest"], native["nativeCoreRestoration"], **options)
@@ -193,18 +208,18 @@ def reconcile(archive, before, saved, core, manifests=(), *, opener=None, native
         # reads follow; reuse the Core rows observed before its HTTP calls.
         local_rows, _ = dispositions(archive, before, final_entries, manifests)
         if content_hash([comparable(row) for row in local_rows]) != content_hash([comparable(row) for row in second_rows]):
-            stage = "native decision acceptance" if decision_acceptance is not None else "native manifest confirmation" if manifest_confirmation is not None else "native Core restoration" if core_restoration else "native review manifest"
+            stage = "native preservation acceptance" if preservation_acceptance is not None else "native decision acceptance" if decision_acceptance is not None else "native manifest confirmation" if manifest_confirmation is not None else "native Core restoration" if core_restoration else "native review manifest"
             raise ValueError(f"Archive changed during {stage}; no complete observation was established")
         if review_restoration_checks is not None:
             from native_history_review_restoration import bind_local
             restored = native["nativeReviewManifest"]["snapshot"]["restoration"] if review_manifest else native["nativeReviewRestorationScope"]
             bind_local(saved, review_restoration_checks, archive, native["nativeFindingScopes"], restored)
-    return {"schema": f"agentx.secretary-retention-reconciliation/v{14 if decision_acceptance is not None else 13 if manifest_confirmation is not None else 12 if core_restoration else 11 if review_manifest else 10 if global_downstream else 9 if review_restoration_checks is not None else 8 if global_decisions else 7 if mailbox_scope else 6 if downstream_scope else 5 if restoration_checks is not None else 4 if finding_scope else 3 if message_scope else 2 if native_decisions else 1}", "at": now(),
+    return {"schema": f"agentx.secretary-retention-reconciliation/v{15 if preservation_acceptance is not None else 14 if decision_acceptance is not None else 13 if manifest_confirmation is not None else 12 if core_restoration else 11 if review_manifest else 10 if global_downstream else 9 if review_restoration_checks is not None else 8 if global_decisions else 7 if mailbox_scope else 6 if downstream_scope else 5 if restoration_checks is not None else 4 if finding_scope else 3 if message_scope else 2 if native_decisions else 1}", "at": now(),
             "before": before.isoformat(), "decisionSource": "agentx.core",
-            "observation": "two agreeing bounded reads of selected recorded-decision acceptance and current human confirmation" if decision_acceptance is not None else "two agreeing bounded reads; not an atomic snapshot or native acceptance",
+            "observation": "two agreeing bounded reads of selected preservation and recorded-decision acceptance" if preservation_acceptance is not None else "two agreeing bounded reads of selected recorded-decision acceptance and current human confirmation" if decision_acceptance is not None else "two agreeing bounded reads; not an atomic snapshot or native acceptance",
             "savedDispositionsSha256": content_hash(saved), "coreEntriesSha256": entry_set(second),
             "manifestsSha256": content_hash(list(manifests)), "counts": dict(counts), "messages": rows,
-            "nativeValidationGaps": native["nativeDecisionAcceptance"]["nativeValidationGaps"] if decision_acceptance is not None else list(NATIVE_GAPS), "cleanupStatus": "blocked", "executionAllowed": False, **native}
+            "nativeValidationGaps": native["nativePreservationAcceptance"]["nativeValidationGaps"] if preservation_acceptance is not None else native["nativeDecisionAcceptance"]["nativeValidationGaps"] if decision_acceptance is not None else list(NATIVE_GAPS), "cleanupStatus": "blocked", "executionAllowed": False, **native}
 
 
 def main(argv=None):
@@ -242,7 +257,19 @@ def main(argv=None):
                         help="Read current native binding of the original human receipt; requires retained review checks and implies review manifest/Core restoration, without granting cleanup")
     parser.add_argument("--native-decision-acceptance", metavar="REQUEST_UUID",
                         help="Observe recorded-decision acceptance with nested current human confirmation; requires retained review checks and keeps cleanup blocked")
+    parser.add_argument("--native-preservation-acceptance", metavar="REQUEST_UUID",
+                        help="Observe distinct native machines/devices and verified preservation with current human confirmation; requires retained review checks and keeps cleanup blocked")
     args = parser.parse_args(argv)
+    if args.native_preservation_acceptance is not None:
+        from native_history_manifest_confirmation import request_identity
+        try:
+            request_identity(args.native_preservation_acceptance)
+        except ValueError as error:
+            parser.error(str(error))
+        if any(value is not None and value != args.native_preservation_acceptance
+               for value in (args.native_manifest_confirmation, args.native_decision_acceptance)):
+            parser.error("Native preservation, decision acceptance and manifest confirmation require the same original UUID")
+        args.native_review_manifest = args.native_core_restoration = True
     if args.native_decision_acceptance is not None:
         from native_history_manifest_confirmation import request_identity
         try:
@@ -277,7 +304,7 @@ def main(argv=None):
                        downstream_scope=args.native_downstream_scope, mailbox_scope=args.native_mailbox_scope, global_decisions=args.native_global_decisions,
                        review_restoration_checks=load(args.native_review_restoration_checks) if args.native_review_restoration_checks is not None else None,
                        global_downstream=args.native_global_downstream, review_manifest=args.native_review_manifest,
-                       core_restoration=args.native_core_restoration, manifest_confirmation=args.native_manifest_confirmation, decision_acceptance=args.native_decision_acceptance)
+                       core_restoration=args.native_core_restoration, manifest_confirmation=args.native_manifest_confirmation, decision_acceptance=args.native_decision_acceptance, preservation_acceptance=args.native_preservation_acceptance)
     durable(args.output, report, exclusive=True)
     summary = {key: report[key] for key in ("schema", "at", "counts", "cleanupStatus", "executionAllowed")}
     if args.native_decisions or args.native_message_scope or args.native_finding_scope or args.native_restoration_checks is not None or args.native_downstream_scope or args.native_mailbox_scope or args.native_global_decisions or args.native_review_restoration_checks is not None or args.native_global_downstream:
@@ -314,14 +341,21 @@ def main(argv=None):
     if args.native_core_restoration:
         summary["nativeCoreRestoration"] = {name: {key: group[key] for key in ("documents", "bytes", "indexes")}
             for name, group in report["nativeCoreRestoration"]["snapshot"]["restoration"]["collections"].items()}
-    if args.native_manifest_confirmation is not None or args.native_decision_acceptance is not None:
+    if args.native_manifest_confirmation is not None or args.native_decision_acceptance is not None or args.native_preservation_acceptance is not None:
         snapshot = report["nativeManifestConfirmation"]["snapshot"]
         summary["nativeManifestConfirmation"] = {key: snapshot[key] for key in ("selectedMessages", "confirmationStatus")}
-    if args.native_decision_acceptance is not None:
+    if args.native_decision_acceptance is not None or args.native_preservation_acceptance is not None:
         snapshot = report["nativeDecisionAcceptance"]["snapshot"]
         summary["nativeDecisionAcceptance"] = {key: snapshot[key] for key in
             ("counts", "acceptanceStatus", "decisionReconciliationAccepted", "remainingNativeValidationGaps")}
+    if args.native_preservation_acceptance is not None:
+        snapshot = report["nativePreservationAcceptance"]["snapshot"]
+        summary["nativePreservationAcceptance"] = {key: snapshot[key] for key in
+            ("counts", "preservationStatus", "preservationAccepted", "decisionReconciliationAccepted", "remainingNativeValidationGaps")}
+        summary["nativeStorageScope"] = report["nativeStorageScope"]["snapshot"]["coverage"]["counts"]
     print(json.dumps(summary))
+    if args.native_preservation_acceptance is not None:
+        return 2
     return 0 if all(row["status"] == "observed_match" for row in report["messages"]) \
         and not report.get("nativeDecisions", {}).get("pendingEntries") \
         and not any(scope["snapshot"]["coverage"]["blockers"] for scope in report.get("nativeFindingScopes", [])) \

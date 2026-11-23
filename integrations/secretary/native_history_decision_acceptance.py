@@ -12,7 +12,7 @@ import uuid
 
 from native_history_core_restoration import keys
 from native_history_decisions import HASH, ID, digest, pairs, invalid_constant
-from native_history_manifest_confirmation import components, date, request_identity, validate_observation
+from native_history_manifest_confirmation import components, date, request_identity, validate_observation as validate_confirmation
 from retention_plan import NATIVE_GAPS
 
 CONTRACT = 'agentx.history-decision-reconciliation-acceptance/v1'
@@ -201,6 +201,11 @@ def observe(core, request_id, selected, current, manifest, *, previous=None, ope
         raise ValueError('Native decision acceptance exceeds its response capacity')
     value = json.loads(raw, object_pairs_hook=pairs, parse_constant=invalid_constant)
     data = value.get('data') if isinstance(value, dict) and value.get('ok') is True else None
+    return validate_observation(data, current, manifest, observation_id, previous)
+
+
+def validate_observation(data, current, manifest, observation_id, previous=None):
+    """Validate native v14 evidence without transport or side effects."""
     if not keys(data, 'authority contract observationId observedAt fingerprint snapshot status consistency currentObservation reviewOnly atomicBatch semanticAcceptance authenticatedPerson approvalBound mailboxEffects executionAllowed cleanupStatus decisionReconciliationAccepted nativeValidationGaps') \
             or data['authority'] != 'agentx.core' or data['contract'] != CONTRACT \
             or data['observationId'] != observation_id or data['status'] != ('observed_match' if previous is not None else 'observed') \
@@ -210,7 +215,7 @@ def observe(core, request_id, selected, current, manifest, *, previous=None, ope
             or type(data['mailboxEffects']) is not int or data['mailboxEffects'] != 0 \
             or data['executionAllowed'] is not False or data['cleanupStatus'] != 'blocked':
         raise ValueError('Core did not confirm the native recorded-decision acceptance contract')
-    child = validate_observation(data['currentObservation'], current, observation_id,
+    child = validate_confirmation(data['currentObservation'], current, observation_id,
                                  previous['currentObservation'] if previous is not None else None)
     snapshot = expected_snapshot(manifest, child)
     at = date(data['observedAt'])
