@@ -26,6 +26,7 @@ const request = require('supertest');
 const mongoose = require('mongoose');
 const { app } = require('../../src/app');
 const { executeForTest } = require('../../src/extensions/trustedRuntimeServices');
+const { projection } = require('../../src/services/ownerMemoryTurn');
 const messages = [{ role: 'user', content: 'Synthetic request' }];
 
 describe('optional integrations registered in canonical Core', () => {
@@ -55,6 +56,29 @@ describe('optional integrations registered in canonical Core', () => {
     expect(typeof app.locals.aioOpsConversationTarget).toBe('function');
     await expect(app.locals.aioOpsConversationTarget('synthetic-model')).resolves.toBeNull();
     expect(app.locals.aioOpsRuntimeEvidence.contractVersion).toBe(1);
+  });
+
+  test.each([
+    '/api/openclaw-ollama/api/chat',
+    '/api/llm/v1/chat/completions',
+    '/api/llm/v1/responses'
+  ])('keeps superseded transcript values out of the provider request on %s', async path => {
+    const { policy, context } = projection({ protectRecall: true, notes: [{ id: 'boat', text: 'Current boat is Alder.' }] });
+    const prior = [
+      { role: 'user', content: 'What is my boat and my crew?' },
+      { role: 'assistant', content: 'Your boat is Ruby and your crew is Slate.' }
+    ];
+    const current = { role: 'user', content: `${context}\nWhat is my boat and my crew?` };
+    const body = path.endsWith('/responses') ? { instructions: policy, input: [...prior, current] }
+      : { messages: [{ role: 'system', content: policy }, ...prior, current] };
+    await request(app).post(path).set('Authorization', 'Bearer synthetic-hermes-token')
+      .send({ model: 'synthetic-model', ...body }).expect(200);
+    const [input] = executeForTest.mock.calls.at(-1);
+    expect(input.messages.map(message => message.role)).toEqual(['system', 'user']);
+    expect(input.messages[1]).toEqual(current);
+    const sent = JSON.stringify(input.messages);
+    expect(sent).toContain('Current boat is Alder.');
+    expect(sent).not.toMatch(/Ruby|Slate|agentx:owner-memory-current-turn/);
   });
 
   test('host reservation refusal remains a conflict and never looks like a successful turn', async () => {
