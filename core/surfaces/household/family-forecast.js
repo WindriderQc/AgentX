@@ -70,4 +70,22 @@ function isExplicitTomorrowWeather(text) {
   return /^(?:(?:quelle (?:est la )?|(?:c est quoi la |donne moi la |la ))?(?:meteo|(?:les )?previsions meteo) (?:pour |de )?demain|(?:quel temps (?:fera t il|va t il faire)|il va faire quel temps) demain|(?:what(?: s| is) the )?weather (?:for )?tomorrow|tomorrow s weather)$/.test(words.replace(/-/g, ' '));
 }
 
-module.exports = { projectTomorrowHours, isExplicitTomorrowWeather };
+// No catalogue duplicate, location coordinates or provider prose in the limited relay.
+function compactRelayForecast(forecast, { timeZone, requestAt = new Date() } = {}) {
+  const clock = familyClock({ timeZone, now: requestAt });
+  const date = clock ? nextCalendarDate(clock.localDate) : null;
+  const target = date ? ' for ' + date : ' for the requested local date';
+  const unavailable = 'Environnement Canada: no verified daytime forecast coverage' + target
+    + '. Say that briefly. Current observations are not a forecast.';
+  if (!date || forecast?.targetDate !== date || !forecast.hourly.length) return unavailable;
+  const rows = forecast.hourly.filter(h => Number.isFinite(h.temperatureC) || Number.isFinite(h.precipitationChancePct))
+    .map(h => [h.localTime, h.offset, h.temperatureC ?? null, h.precipitationChancePct ?? null]);
+  if (!rows.some(([hour]) => hour >= '06:00' && hour < '18:00')) return unavailable;
+  const text = 'Environnement Canada hourly forecast' + target
+    + ' (local time, UTC offset, °C, precipitation %; null means unknown): ' + JSON.stringify(rows)
+    + '. Only these listed hours are verified, not the full day. State the covered hours or gaps. Never extrapolate current conditions.';
+  return text.length <= 1600 ? text
+    : 'Environnement Canada forecast coverage could not be delivered' + target + '. Do not substitute current conditions.';
+}
+
+module.exports = { projectTomorrowHours, isExplicitTomorrowWeather, compactRelayForecast };

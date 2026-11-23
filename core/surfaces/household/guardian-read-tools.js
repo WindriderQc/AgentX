@@ -23,10 +23,10 @@ const CATALOGUE = [
 const validators = new Map(CATALOGUE.map(tool => [tool.name, new Ajv({ strict: false }).compile(tool.parameters)]));
 const hash = value => createHash('sha256').update(value).digest('hex');
 const MAX_RESULT_CHARS = 8000;
-function guardianReadTools(env = process.env, { ambient, now = () => new Date(), readIss = issPasses } = {}) {
+function guardianReadTools(env = process.env, { ambient, now = () => new Date(), readIss = issPasses, excludeWeather = false } = {}) {
   const requested = String(env.HOUSEHOLD_GUARDIAN_TOOLS || '').split(',').map(name => name.trim()).filter(Boolean);
   if (requested.some(name => !validators.has(name))) return null; // Bad policy never widens authority.
-  const names = [...new Set(requested)];
+  const names = [...new Set(requested)].filter(name => !excludeWeather || name !== 'weather');
   if (!names.length) return null;
   const cache = new Map(), identity = randomUUID();
   const accept = call => {
@@ -88,8 +88,8 @@ function guardianReadTools(env = process.env, { ambient, now = () => new Date(),
     }
   };
 }
-function forTurn(env, { backend, packId, blocked, ambient }) {
+function forTurn(env, { backend, packId, blocked, ambient, excludeWeather = false }) {
   return !blocked && ['agentx', 'hermes'].includes(backend) && ['kidx_nestor', 'personal_operator'].includes(packId)
-    ? guardianReadTools(env, { ambient }) : null;
+    ? guardianReadTools(env, { ambient, excludeWeather }) : null;
 }
 module.exports = { guardianReadTools, CATALOGUE, forTurn };

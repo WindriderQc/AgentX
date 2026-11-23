@@ -185,3 +185,26 @@ test('invalid calendar stamps and future issue cannot normalize into a trusted f
     assert.equal(projectTomorrowHours({ ...data, hourly: [{ time, condition: 'Clair' }] }, options), null);
   }
 });
+
+test('bounded relay compact projection carries all supported rows without catalogue, provider prose or current data', async () => {
+  const { prepareLivingSourceContext } = require('../living-source-context');
+  const { compactRelayForecast } = require('../family-forecast');
+  const forecast = { targetDate: '2026-11-24', timeZone, hourly: Array.from({ length: 25 }, (_, index) => ({
+    localTime: String(index === 24 ? 1 : index).padStart(2, '0') + ':00', offset: index === 24 ? 'GMT-4' : 'GMT-5',
+    temperatureC: 0, precipitationChancePct: 10, condition: 'raw-condition ' + 'x'.repeat(65)
+  })) };
+  const options = { pack: { id: 'family', childSafe: true }, familyPackId: 'family', backend: 'agentx', channel: 'voice',
+    userText: 'Quelle météo demain?', requestAt: now, timeZone,
+    ambient: { forecastTomorrow: async () => forecast },
+    sources: { forAudience: () => ({ catalogue: () => ({ label: 'catalogue-sentinel' }) }) } };
+  const prepared = await prepareLivingSourceContext(options);
+  assert.match(prepared.text, /catalogue-sentinel|raw-condition/);
+  assert.doesNotMatch(prepared.relayForecastContext, /catalogue-sentinel|raw-condition/);
+  assert.ok(prepared.relayForecastContext.length <= 1600);
+  assert.match(prepared.relayForecastContext, /\["01:00","GMT-4",0,10\]/);
+  assert.match(prepared.relayForecastContext, /\["23:00","GMT-5",0,10\]/);
+  const tooLarge = compactRelayForecast({ ...forecast, hourly: [...forecast.hourly, ...forecast.hourly, ...forecast.hourly] },
+    { timeZone, requestAt: now });
+  assert.match(tooLarge, /coverage could not be delivered/);
+  assert.doesNotMatch(tooLarge, /01:00/);
+});

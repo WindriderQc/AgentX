@@ -369,7 +369,7 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const familyWeatherContext = await require('./living-source-context').livingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
+        const { text: familyWeatherContext, relayForecastContext } = await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
           channel: req.body?.channel, userText, timeZone: conversationEnv.PLANNING_TIME_ZONE, requestAt: new Date(startedAt) });
         const contextBase = [familyWeatherContext, systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
@@ -463,7 +463,7 @@ function createPersonaTurnHandler({
             requirePrimaryRelay: () => requireNativeAgent(agentIdFor(turnSession)) } : {}),
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
-          instructions: nativeInstructions, agentxInstructions, familyWeatherContext, guardianTools: require('./guardian-read-tools').forTurn(conversationEnv, { backend, packId: pack.id, blocked: isLlmX || isOpening || Boolean(member), ambient }), ...(familyTools ? { familyTools } : {}), ...(turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
+          instructions: nativeInstructions, agentxInstructions, familyWeatherContext, relayForecastContext, guardianTools: require('./guardian-read-tools').forTurn(conversationEnv, { backend, packId: pack.id, blocked: isLlmX || isOpening || Boolean(member), excludeWeather: Boolean(relayForecastContext), ambient }), ...(familyTools ? { familyTools } : {}), ...(turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
           ...(currentDirective ? { turnDirective: currentDirective } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
