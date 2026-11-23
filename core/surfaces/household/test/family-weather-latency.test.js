@@ -82,6 +82,29 @@ test('explicit weather still uses current source freshness, including French and
   assert.equal(reads, questions.length);
 });
 
+test('a polite request for outdoor weather reads current conditions on a cold cache', async () => {
+  let reads = 0, forecasts = 0;
+  const observedAt = new Date().toISOString();
+  const ambient = {
+    peekWeather: () => null,
+    weather: async () => { reads++; return { observedAt, fetchedAt: observedAt, temperatureC: 14 }; },
+    forecastTomorrow: async () => { forecasts++; return null; }
+  };
+  const context = userText => livingSourceContext({ ...initial, ambient, userText });
+  for (const unrelated of ['Est-ce que tu peux me dire la météo extérieure à Paris?',
+    'Est-ce que tu peux me dire comment on prévoit la météo?', 'Est-ce que tu peux me dire une blague?']) {
+    assert.doesNotMatch(await context(unrelated), /Household weather/);
+  }
+  assert.match(await context('La météo demain?'), /Household forecast/);
+  assert.equal(forecasts, 1);
+  assert.equal(reads, 0);
+  for (const current of ['Quelle est la météo?', 'Est-ce que tu peux me dire la météo extérieure?']) {
+    assert.match(await context(current), /"temperatureC":14/);
+  }
+  assert.equal(reads, 2);
+  assert.equal(forecasts, 1);
+});
+
 test('scope remains limited to the local Famille voice principal', async () => {
   let reads = 0;
   const ambient = { weather: async () => { reads++; return null; } };
