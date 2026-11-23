@@ -596,7 +596,9 @@
           // before wake acknowledgement. Never start a model turn to say
           // speech has stopped. A correction/question still runs below.
           this.activeTurn = null; this.turnPending = false;
-          this.listen(epoch); return;
+          this.listen(epoch);
+          if (local?.action === 'wake') this.acknowledgeWake(epoch);
+          return;
         }
         if (this.selection.wakeWord && text.trim()) {
           const accepted = this.wake.accept(text, wakeFollowup);

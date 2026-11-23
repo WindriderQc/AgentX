@@ -231,9 +231,10 @@ skip identical text/state writes and wait while the tab or photo overlay hides
 them. Received work updates remain available when the indicators resume.
 
 Existing speech capture and its `WakeWindow` grammar supply voice return:
-**Hey Nestor** (including existing Eille variants) returns locally without a
-model turn. Addressed close/back/shrink commands also work; ordinary requests
-retain the conversation path. While the existing wake gate is armed, ambient
+**Hey Nestor** on its own (including existing Eille variants) closes the frame
+and plays the usual wake acknowledgement without a model turn. Addressed
+close/back/shrink commands also work. Ordinary requests retain the
+conversation path. While the existing wake gate is armed, ambient
 speech does not exit the photos. The microphone must already be active;
 when it is off, the on-screen button and touch/click/Escape remain available.
 This feature changes no listening preference and enables no

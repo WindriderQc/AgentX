@@ -1,10 +1,7 @@
 'use strict';
 
-// Screen commands on the real Nestor page (#924): typed and spoken "agrandis",
-// "ferme", "suivant"… act on the content workspace without a model turn.
-// Loopback CPU fixtures only: no model, microphone, speech service or live data.
-// The microphone and speech recognition are simulated; the page, conversation
-// loop and content workspace are the shipped code.
+// Photo controls and voice wake on the Famille page, using loopback fixtures.
+// The page and conversation loop are real; capture, recognition and speech are simulated.
 const { chromium } = require(process.env.AGENTX_PLAYWRIGHT_MODULE || 'playwright');
 const express = require('express');
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
@@ -19,9 +16,10 @@ fs.mkdirSync(output, { recursive: true });
 
 // A fake microphone: `say()` delivers one finished utterance to the conversation loop.
 const fakeAudio = `window.NestorConversation.openAudio = async () => {
+  window.playbackCount = 0;
   const audio = { canInterrupt: false,
     listen(callback) { audio.utterance = callback; }, quiet() {}, close() {}, holdPlayback() {}, resumePlayback() {},
-    async play() {}, async settle() {} };
+    async play() { window.playbackCount++; }, async settle() {} };
   window.say = () => audio.utterance(new Blob(['speech']), {});
   return audio;
 };`;
@@ -31,6 +29,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   // The simulated recognizer answers before JSON parsing: the page posts the audio as a form.
   app.post('/api/voix/transcribe', (_req, res) => { const text = heard; if (delayTranscription) finishTranscription = () => res.json({data:{text}}); else res.json({data:{text}}); });
   app.use(express.json());
+  app.post('/api/voix/synthesize/stream', (_req, res) => res.type('audio/wav').send('synthetic speech'));
   app.use('/assets/household', express.static(publicDir));
   app.use('/js', express.static(path.join(core, 'public/js')));
   app.use('/css', express.static(path.join(core, 'public/css')));
@@ -133,8 +132,28 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   assert.equal(await image.getAttribute('src'),secondPhoto,'bare follow-up shares keyboard history');
   assert.equal(photoRequests,loadedPhotos,'voice and keyboard reuse cached history');
   assert.equal(submissions.length,0,'photo navigation never submits a model turn');
-  heard='Hey Nestor'; await page.evaluate(() => say()); await frame.waitFor({state:'hidden'}); await listening();
-  assert.equal(submissions.length,0,'wake return creates no model request');
+
+  heard = 'Dors Nestor';
+  await page.evaluate(() => say());
+  await frame.waitFor({ state: 'hidden' });
+  await listening();
+  assert.match(await page.locator('#conversationStatus').textContent(), /En veille|Standby/);
+  await enter();
+  const playbackBeforeWake = await page.evaluate(() => window.playbackCount);
+  heard = 'Hey Nestor';
+  await page.evaluate(() => say());
+  await frame.waitFor({ state: 'hidden' });
+  await listening();
+  await page.clock.runFor(250);
+  await page.waitForFunction(before => window.playbackCount > before, playbackBeforeWake);
+  await listening();
+  assert.equal(await page.evaluate(() => window.playbackCount), playbackBeforeWake + 1, 'one wake phrase plays one acknowledgement');
+  assert.equal(submissions.length, 0, 'wake return creates no model request');
+  heard = 'recule';
+  await page.evaluate(() => say());
+  await listening();
+  assert.deepEqual(submissions, ['recule'], 'the first follow-up needs no repeated wake phrase and uses the normal request path');
+
   for(const label of ['Settings','Flow','Diagnostic micro']) {
     await enter();
     if(label!=='Settings') await page.evaluate(() => { AgentXVoiceWorkshop.open = async opts => { window.workshopScope=opts.scope; return {refresh(){}}; }; });
@@ -146,9 +165,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   await enter(); await frame.locator('img').click({position:{x:20,y:20}}); await frame.waitFor({state:'hidden'});
   heard='avance le rendez-vous'; await enter(); await page.evaluate(() => say()); await listening();
   assert.equal(await frame.isVisible(),false,'a real request leaves photos for Nestor');
-  assert.deepEqual(submissions,['avance le rendez-vous']);
-  heard='recule'; await page.evaluate(() => say()); await listening();
-  assert.deepEqual(submissions,['avance le rendez-vous','recule'],'out-of-context alias remains a normal request');
+  assert.deepEqual(submissions,['recule','avance le rendez-vous']);
   assert.deepEqual(errors,[]);
   console.log(JSON.stringify({ok:true,scope:'family',backend:'openclaw',liveModelCalls:0,submissions:submissions.length,errors}));
 })().catch(error => { console.error(error.stack); process.exitCode=1; })
