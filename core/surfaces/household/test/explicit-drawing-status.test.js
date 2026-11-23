@@ -90,6 +90,38 @@ test('commands and other scopes never trigger the status shortcut', async () => 
   assert.equal(reads.length, 0);
 });
 
+test('a missing-picture report can accompany only a request to show the existing drawing', async () => {
+  const { images, h, reads, operations } = fixture();
+  for (const text of ['Je ne vois pas ton image.', 'Je vois pas le dessin !',
+    'Peux-tu me montrer le dernier dessin, s’il te plaît ? Je ne vois pas ton image.',
+    'Je ne vois pas ton image. Est-ce que tu peux me montrer le dessin que tu as fait ?',
+    'Montre-moi le dernier dessin, car je ne vois pas ton image.',
+    'Peux-tu me montrer le dessin que tu as fait parce que je ne vois pas ton image ?',
+    "I can't see your picture.", 'Could you please show me the last drawing? I don’t see your image.',
+    'I cannot see the drawing; please show me the last drawing.',
+    'Show me the last drawing because I cannot see the drawing.']) {
+    assert.match(await images.statusReply(h.session, text, 'fr'), /échoué/, text);
+  }
+  const missing = 'Je ne vois pas ton image.';
+  operations[0] = ready;
+  assert.match(await images.statusReply(h.session, missing, 'fr'), /prêt.*ne peux pas vérifier/i);
+  assert.match(await images.statusReply(h.session, "I can't see your picture.", 'en'), /ready.*cannot verify/i);
+  assert.equal(await images.statusReply({ ...h.session, sessionId: 'other-session' }, missing, 'fr'), '');
+  operations[0] = { ...ready, admissionPolicy: 'opportunistic' };
+  assert.equal(await images.statusReply(h.session, missing, 'fr'), '');
+  const before = reads.length;
+  for (const text of ['Ne me montre pas le dernier dessin. Je ne vois pas ton image.',
+    'Je ne vois pas ton image. Dessine un bateau.', 'Je ne vois pas ton image, refais le dessin.',
+    'Je ne vois pas ton image, ajoute des étoiles.', 'Montre-moi le radar. Je ne vois pas ton image.',
+    'Je ne vois pas ton image sur la page météo.', 'Je ne veux pas voir ton image.',
+    'Je ne vois pas ton image. Quelle heure est-il ?', 'Montre-moi le dernier dessin.',
+    "I can’t see your picture. Please draw another.", "Don't show me the drawing. I can't see your picture.",
+    'I cannot see the radar image.', 'I cannot see your picture. Try again.', 'I cannot see it.']) {
+    assert.equal(await images.statusReply(h.session, text, 'fr'), '', text);
+  }
+  assert.equal(reads.length, before);
+});
+
 test('a configured relay keeps its intake and duplicate protection without running inference', async () => {
   const { h, reads } = fixture('agentx', { validClientTurnId: () => true, conversationEnv: { HOUSEHOLD_CONVERSATION_RELAY_ENABLED: 'true' } });
   const turnId = '23456789-1234-4123-8123-123456789abc';
