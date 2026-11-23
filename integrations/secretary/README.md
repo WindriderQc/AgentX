@@ -703,6 +703,41 @@ source-completeness, preservation, mailbox or execution approval. Earlier modes
 retain their existing contracts and four generic gaps. Only local disposition
 and review graph fences follow the final v14 HTTP calls.
 
+`--native-preservation-acceptance REQUEST_UUID` selects v15 and implies v11/v12.
+It requires the original human confirmation UUID and exact retained v3 review
+restoration checks. Any supplied v13/v14 UUID must match before HTTP. Two final
+POSTs to `/api/secretary/history/manifest-confirmations/:requestId/preservation-acceptance`
+embed the unchanged v14 decision/current-human proof and storage-v1 observation.
+The second request carries separate parent, decision, current and storage
+expectations. No standalone current, decision-acceptance or storage calls follow.
+The client bounds responses to 2 MiB, snapshots to 64 KiB and requests to 1,800
+seconds, without retries. It derives storage bindings directly from the verified
+v11 manifest and uses pure validators for the embedded native envelopes.
+
+Preservation requires current human confirmation, verified source/review-file
+and Core roundtrips, distinct machines and disjoint whole-device unions across
+all selected messages. Per-message device separation cannot hide cross-message
+overlap. Unqualified topology, changing copy identities, shared machines/devices
+or held storage evidence retain the preservation gap. Ambiguous, incomplete,
+changed or unavailable native evidence cannot produce a successful observation.
+A current human confirmation with held physical evidence can produce a held
+private report. These kernel identities use the trusted native OS view; source
+and temporary destination recovery and whole-archive disaster recovery remain
+outside this selected acceptance.
+
+The immutable private v15 report adds `nativePreservationAcceptance` and
+`nativeStorageScope`, and reuses the nested `nativeDecisionAcceptance` and
+`nativeManifestConfirmation`. Preservation and recorded-decision acceptance are
+independent: a retained invoice can keep the decision gap while preservation is
+accepted. Each acceptance removes only its own native gap; semantic acceptance
+and manifest approval binding remain unavailable. Earlier contracts keep their
+meanings and storage-v1 keeps all four gaps and physical acceptance false.
+Stdout shows only counts, statuses, acceptance flags and remaining gap codes.
+v15 always exits 2, with cleanup blocked, execution disabled and no mailbox
+changes. The existing local disposition and review graph fences run after the
+last native parent observation. Synthetic CPU checks remain separate from
+installed hardware, deployment and real-corpus acceptance.
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive

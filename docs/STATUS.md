@@ -373,6 +373,13 @@ Instance configuration, data and deployment receipts remain outside Git.
   source descriptors. Two complete selected passes and a final Core/privacy
   fence protect the metadata-only observation. Unknown topologies and shared
   device identities remain held; no physical-independence acceptance follows.
+  A separate [selected preservation contract](SECRETARY_PRESERVATION_ACCEPTANCE.md)
+  binds the current human-confirmed manifest, full Core roundtrip and matching
+  storage observations. It requires distinct machines and disjoint whole-device
+  unions across the entire selection; ambiguities remain held. Private v15
+  removes only the accepted preservation/decision gaps for that scope. Semantic
+  acceptance and mailbox approval still block cleanup, with exit code 2 and no
+  execution authority.
   See [linked souvenirs](SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a

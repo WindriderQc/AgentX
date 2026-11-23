@@ -11,15 +11,11 @@ const keys = (value, names) => value && typeof value === 'object' && !Array.isAr
   && Object.keys(value).length === names.length && names.every(name => Object.hasOwn(value, name));
 const unavailable = () => failure('The complete selected native storage evidence is unavailable.', 503, 'HISTORY_STORAGE_UNAVAILABLE');
 
-function describe(value, nonce, reference) {
-  if (value?.contract !== CONTRACT) throw unavailable();
-  const { storage, ...original } = value;
-  const proof = reviewed.describe({ ...original, contract: reviewed.CONTRACT }, nonce, reference);
-  const checked = preservation.describe(proof.packet, nonce, reference);
+function describeStorage(storage, restoration) {
   if (!keys(storage, ['contract', 'scope', 'status', 'files', 'filesSha256', 'physicalDiskIdsSha256', 'blockers', 'physicalIndependenceAccepted'])
     || storage.contract !== TOPOLOGY || storage.scope !== 'selected-current-review-files-kernel-device-identities'
-    || !Number.isSafeInteger(storage.files) || storage.files !== proof.restoration.filesCopied
-    || storage.filesSha256 !== proof.restoration.sourceFilesSha256 || storage.physicalIndependenceAccepted !== false
+    || !Number.isSafeInteger(storage.files) || storage.files !== restoration.filesCopied
+    || storage.filesSha256 !== restoration.sourceFilesSha256 || storage.physicalIndependenceAccepted !== false
     || !Array.isArray(storage.physicalDiskIdsSha256) || storage.physicalDiskIdsSha256.length > 32
     || !storage.physicalDiskIdsSha256.every(hash)
     || digest(storage.physicalDiskIdsSha256) !== digest([...new Set(storage.physicalDiskIdsSha256)].sort())
@@ -29,6 +25,15 @@ function describe(value, nonce, reference) {
     || !['observed_local_devices', 'unqualified'].includes(storage.status)
     || (storage.status === 'observed_local_devices' ? !storage.physicalDiskIdsSha256.length || storage.blockers.length
       : storage.physicalDiskIdsSha256.length || !storage.blockers.length)) throw unavailable();
+  return storage;
+}
+
+function describe(value, nonce, reference) {
+  if (value?.contract !== CONTRACT) throw unavailable();
+  const { storage, ...original } = value;
+  const proof = reviewed.describe({ ...original, contract: reviewed.CONTRACT }, nonce, reference);
+  const checked = preservation.describe(proof.packet, nonce, reference);
+  describeStorage(storage, proof.restoration);
   return { machineIdSha256: checked.machineIdSha256, archiveIdSha256: checked.archiveIdSha256,
     content: { ...checked.content, reviewPacket: proof.reviewPacket }, restoration: proof.restoration, storage };
 }
@@ -42,4 +47,4 @@ function coverage(copies) {
   return { state: blockers.length ? 'held' : 'distinct_kernel_devices_observed', blockers };
 }
 
-module.exports = { CONTRACT, TOPOLOGY, describe, coverage, unavailable };
+module.exports = { CONTRACT, TOPOLOGY, describe, describeStorage, coverage, unavailable };

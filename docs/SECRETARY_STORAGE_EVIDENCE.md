@@ -93,3 +93,8 @@ temporary restoration, HTTP and disposable MongoDB. Their machine and sysfs/
 mount metadata are explicitly synthetic; they qualify the code path, not the
 installed disks. Namespace identities differ from physical-device identities;
 see the [kernel NVMe ABI](https://docs.kernel.org/admin-guide/abi-stable.html).
+
+The separate [selected preservation acceptance](SECRETARY_PRESERVATION_ACCEPTANCE.md)
+binds these observations to the current human-confirmed review/Core restoration
+and applies the approved native whole-device policy to global copy unions.
+The raw storage-v1 contract retains its existing observation-only meaning.

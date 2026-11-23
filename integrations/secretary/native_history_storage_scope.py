@@ -255,6 +255,11 @@ def observe(core, refs, scopes, copies, *, expected=None, opener=urllib.request.
         raise ValueError('Native storage scope exceeds its response capacity')
     value = json.loads(raw, object_pairs_hook=pairs, parse_constant=invalid_constant)
     data = value.get('data') if isinstance(value, dict) and value.get('ok') is True else None
+    return validate_observation(data, refs, scopes, copies, observation_id, expected)
+
+
+def validate_observation(data, refs, scopes, copies, observation_id, expected=None):
+    """Validate native storage-v1 evidence without transport or side effects."""
     if not keys(data, 'authority contract observationId observedAt snapshot fingerprint status consistency atomicBatch reviewOnly physicalIndependenceAccepted semanticAcceptance authenticatedPerson approvalBound mailboxEffects executionAllowed cleanupStatus nativeValidationGaps') \
             or data['authority'] != 'agentx.core' or data['contract'] != CONTRACT \
             or data['observationId'] != observation_id or data['status'] != ('observed_match' if expected is not None else 'observed') \

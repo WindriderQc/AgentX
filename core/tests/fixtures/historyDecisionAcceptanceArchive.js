@@ -6,8 +6,7 @@ const { randomUUID } = require('node:crypto');
 const { manifestArchive } = require('./historyReviewManifestArchive');
 
 // Real native readers consume synthetic review files on both disposable copies.
-async function decisionArchive() {
-  const fixture = await manifestArchive();
+async function recordedFindings(fixture) {
   try {
     for (const root of Object.values(fixture.roots)) {
       const file = path.join(root, 'reviews', fixture.source.threadId + '.json');
@@ -23,4 +22,6 @@ async function decisionArchive() {
   } catch (error) { await fixture.cleanup(); throw error; }
 }
 
-module.exports = { decisionArchive };
+async function decisionArchive() { return recordedFindings(await manifestArchive()); }
+
+module.exports = { decisionArchive, recordedFindings };

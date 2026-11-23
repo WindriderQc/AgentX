@@ -79,4 +79,15 @@ async function safe(...args) {
 
 // Only trusted Core composition receives the ephemeral evidence. The public
 // reader keeps exactly its original metadata-only contract.
-module.exports = { discover: async (...args) => (await safe(...args)).observation, observeWithEvidence: safe, CONTRACT };
+async function assertEvidenceCurrent({ observation, preview }, deps) {
+  original.owner(deps);
+  const retained = await receipt(observation.snapshot.requestId, deps);
+  if (digest(retained) !== digest(observation.snapshot.confirmation)) throw changed();
+  // This full native source/index/privacy fence follows the receipt await and
+  // every external producer in the enclosing trusted Core composition.
+  try { await evidence.assertCurrent(preview, deps); }
+  catch { throw unavailable(); }
+}
+
+module.exports = { discover: async (...args) => (await safe(...args)).observation,
+  observeWithEvidence: safe, assertEvidenceCurrent, CONTRACT };
