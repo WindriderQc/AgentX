@@ -67,3 +67,7 @@ independent physical preservation and mailbox-cleanup approval remain unaccepted
 `authenticatedPerson` remains null, `mailboxEffects` is zero and cleanup stays
 blocked. No whole-corpus qualification, real campaign, deployment or instance
 change follows from this contract.
+
+The separate [selected preservation acceptance](SECRETARY_PRESERVATION_ACCEPTANCE.md)
+embeds this decision result in a private v15 composition. It evaluates
+preservation independently and retains the same decision policy and v14 meaning.

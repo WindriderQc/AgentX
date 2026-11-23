@@ -18,8 +18,8 @@ const DRIVER = ['import sys,json,subprocess', 'from unittest.mock import patch',
   'with patch.object(desk,"native_settings",return_value={}), patch.object(desk,"gmail_environment",return_value={}), patch.object(desk.subprocess,"run",side_effect=fake):',
   ' desk.main(["--account","synthetic@example.invalid","--keyring-password-file","/unused/synthetic-key","--gog","fake-gog",*sys.argv[3:]])'].join('\n');
 
-async function manifestArchive() {
-  const fixture = await reviewArchive();
+async function manifestArchive({ reviewFixture } = {}) {
+  const fixture = reviewFixture || await reviewArchive();
   try {
     const receipt = JSON.parse(await fs.readFile(path.join(fixture.roots.primary, 'raw-receipts', fixture.source.messageId + '.json')));
     const raw = await fs.readFile(path.join(fixture.roots.primary, receipt.path));

@@ -19,12 +19,13 @@ async function discover(requestId, input, deps) {
   // Policy is synchronous: the current reader's full native source fence is
   // still the final awaited evidence read. No actor or outcome is supplied.
   const snapshot = policy.build(observation, preview), fingerprint = digest(snapshot);
-  return { authority: 'agentx.core', contract: policy.CONTRACT, observationId, observedAt: new Date().toISOString(), snapshot, fingerprint,
+  const result = { authority: 'agentx.core', contract: policy.CONTRACT, observationId, observedAt: new Date().toISOString(), snapshot, fingerprint,
     status: input.expected === undefined ? 'observed' : input.expected === fingerprint ? 'observed_match' : 'changed',
     consistency: 'native-recorded-decisions-with-current-human-confirmation', currentObservation: observation,
     reviewOnly: true, atomicBatch: false, semanticAcceptance: false, authenticatedPerson: null, approvalBound: false,
     mailboxEffects: 0, executionAllowed: false, cleanupStatus: 'blocked', decisionReconciliationAccepted: snapshot.decisionReconciliationAccepted,
     nativeValidationGaps: snapshot.remainingNativeValidationGaps };
+  return { observation: result, preview };
 }
 
 async function safe(...args) {
@@ -37,4 +38,4 @@ async function safe(...args) {
   }
 }
 
-module.exports = { discover: safe, CONTRACT: policy.CONTRACT };
+module.exports = { discover: async (...args) => (await safe(...args)).observation, observeWithEvidence: safe, CONTRACT: policy.CONTRACT };
