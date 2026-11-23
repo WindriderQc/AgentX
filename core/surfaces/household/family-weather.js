@@ -24,7 +24,14 @@ function observationIntroductions(observedAt, current) {
 async function familyWeatherContext(ambient, { now = new Date(), timeZone } = {}) {
   let weather;
   try { weather = await ambient?.weather?.(); } catch { /* report unavailable below */ }
+  return familyWeatherReadingContext(weather, { now, timeZone });
+}
+
+function familyWeatherReadingContext(weather, { now = new Date(), timeZone, freshOnly = false } = {}) {
   const result = projectWeather(weather, now);
+  if (freshOnly && (result.status !== 'available' || result.freshness.observationAgeMs === null
+    || Date.parse(result.data.observedAt) > now.getTime() || result.freshness.observationAgeMs >= 30 * 60000)) return '';
+
   if (result.unavailableReason === 'no_usable_conditions') {
     return '\n\nHousehold weather: the latest retrieval contains no usable current conditions. Do not invent them or claim that you have no weather capability. Explain this actual data limitation if asked; use an available public search tool for a forecast.';
   }
@@ -51,4 +58,4 @@ async function familyWeatherContext(ambient, { now = new Date(), timeZone } = {}
     + 'Never invent missing values or ask a child for their address.';
 }
 
-module.exports = { familyWeatherContext };
+module.exports = { familyWeatherContext, familyWeatherReadingContext };
