@@ -14,6 +14,7 @@
 const { fetchData: defaultFetchData } = require('../../src/services/dataServiceClient');
 const { issPasses: defaultIssPasses, readHomeObserver } = require('../../src/services/mcpIssTools');
 const { getOpsWatch: defaultGetOpsWatch } = require('../../src/services/opsWatchService');
+const { projectTomorrowHours } = require('./family-forecast');
 const { createFamilyPaintings } = require('./family-paintings');
 const { skyView } = require('../../src/services/sky/nightSky');
 const { readNodeHints, nodeFor, alertView } = require('./family-ambient-nodes');
@@ -121,11 +122,34 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
     return pending;
   }
 
-  async function readWeather() {
+  async function readWeatherBundle() {
     const result = await fetchData('/api/v1/livedata/ec-weather', { query: 'lang=fr', timeoutMs: READ_TIMEOUT_MS });
     if (!result?.response?.ok || result.body?.status !== 'success') throw new Error(`Data answered ${result?.response?.status}`);
-    const current = result.body.data?.current;
-    if (!current) throw new Error('no current conditions');
+    const data = result.body.data;
+    if (!data?.current && !Array.isArray(data?.hourly)) throw new Error('no weather data');
+    const fetchedAt = typeof data.fetchedAt === 'string' ? data.fetchedAt.slice(0, 100) : null;
+    const hourly = Array.isArray(data.hourly) ? data.hourly.slice(0, 48).map(row => ({
+      time: typeof row?.time === 'string' ? row.time.slice(0, 100) : null,
+      condition: typeof row?.condition === 'string' ? row.condition.slice(0, 80) : null,
+      temperatureC: finite(row?.temperatureC),
+      precipitationChancePct: finite(row?.precipitationChancePct),
+      windKmh: finite(row?.windKmh)
+    })) : [];
+    if (!data.current && !hourly.length) throw new Error('no weather data');
+    // Only the existing current view and bounded forecast inputs enter this cache.
+    // Data selects its configured location; coordinates and raw payload stay out.
+    return { current: currentWeatherFrom(data.current, fetchedAt), hourly, fetchedAt,
+      forecastIssuedAt: typeof data.forecastIssuedAt === 'string' ? data.forecastIssuedAt.slice(0, 100) : null };
+  }
+
+  const weatherBundle = () => cached('weather', WEATHER_TTL_MS, readWeatherBundle);
+  async function readCurrentWeather() {
+    const view = (await weatherBundle())?.current;
+    return view ? { ...view } : null;
+  }
+
+  function currentWeatherFrom(current, fetchedAt) {
+    if (!current) return null;
     return {
       condition: typeof current.condition === 'string' ? current.condition.slice(0, 80) : null,
       kind: weatherKind(current),
@@ -134,7 +158,7 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
       windKmh: finite(current.windKmh),
       gustKmh: finite(current.gustKmh),
       windDirection: typeof current.windDirection === 'string' ? current.windDirection.slice(0, 8) : null,
-      fetchedAt: result.body.data.fetchedAt || null,
+      fetchedAt,
       observedAt: typeof current.observedAt === 'string' ? current.observedAt.slice(0, 100) : null,
       source: 'Environnement Canada'
     };
@@ -146,7 +170,7 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
 
   async function snapshot() {
     const [weather, position, iss, pictures] = await Promise.all([
-      cached('weather', WEATHER_TTL_MS, readWeather),
+      readCurrentWeather(),
       // The sky moves; its positions are recomputed from a cached observer.
       cached('observer', ISS_TTL_MS, () => observer(fetchData, null)),
       cached('iss', ISS_TTL_MS, readIss),
@@ -161,7 +185,16 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
     return { at: at.toISOString(), weather, sun, iss, alerts, paintings: pictures || null, sky };
   }
 
-  return { snapshot, weather: () => cached('weather', WEATHER_TTL_MS, readWeather), painting: id => (paintings ? paintings.image(id) : null) };
+  function peekWeather() {
+    const hit = cache.get('weather');
+    const view = hit && !hit.pending && hit.until > now().getTime() ? hit.value?.current : null;
+    return view ? { ...view } : null;
+  }
+
+  return { snapshot, weather: readCurrentWeather, peekWeather, forecastTomorrow: async ({ timeZone, requestAt = now() } = {}) => {
+    const data = await weatherBundle();
+    return projectTomorrowHours(data, { timeZone, requestAt, now: now() });
+  }, painting: id => (paintings ? paintings.image(id) : null) };
 }
 
 function registerFamilyAmbient(router, ambient = createFamilyAmbient({ paintings: createFamilyPaintings() }), artx = null) {

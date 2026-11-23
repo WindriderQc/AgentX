@@ -64,7 +64,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
         const continued = await inference.conversation({ ...body, ...(request.relayOccupation ? { model: 'agentx-primary' } : {}) }, {
           ...options, taskRoute: !request.relayOccupation, requireOccupied: true, relayTools: request.guardianTools,
           allowUnavailable: !request.relayOccupation,
-          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack, env), request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext].filter(Boolean).join('\n\n') }),
+          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack, env), request.relayForecastContext || (request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext)].filter(Boolean).join('\n\n') }),
           relayRequest: { ...body, messages: [...(request.history || []), { role: 'user', content: request.text }] }
         });
         if (continued) return continued;

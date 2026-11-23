@@ -26,7 +26,8 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
   const env = { HOUSEHOLD_GUARDIAN_TOOLS: guardianTools, HOUSEHOLD_HERMES_URL: 'http://hermes.fixture', HOUSEHOLD_HERMES_TOKEN: 'synthetic-private-relay-token',
     ...(richFamilyPresentation && { HOUSEHOLD_FAMILY_TOOLS: 'iss_passes,web_search,network_devices' }),
     ...(enabled && { HOUSEHOLD_CONVERSATION_RELAY_ENABLED: 'true' }) };
-  const state = { busy: true, failure: null, backup: true, held: true, runs: [], inference: [], releases: [], completed: new Set(), active: new Map() };
+  const state = { busy: true, failure: null, backup: true, held: true, runs: [], inference: [], releases: [], completed: new Set(), active: new Map(),
+    ambientReads: { current: 0, tomorrow: 0 }, forecastView: null };
   global.fetch = jest.fn(async (url, options = {}) => {
     const path = new URL(url).pathname;
     if (path === '/v1/runs') {
@@ -60,9 +61,12 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
       { host: PRIMARY, mode: input.exclusiveHost ? 'exclusive' : 'shared', resourceIds: [] }, now);
       throw Object.assign(Error('Refused before dispatch'), { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', failure });
     }
-    if (guardianTools && input.model === 'synthetic-guardian' && !input.messages.some(message => message.role === 'tool')) return { ok: true,
-      body: { message: { content: '', tool_calls: [{ function: { name: 'math', arguments: { operation: 'add', a: 8, b: 5 } } },
-        { function: { name: 'weather', arguments: {} } }] } }, metadata: { model: input.model } };
+    if (guardianTools && input.model === 'synthetic-guardian' && !input.messages.some(message => message.role === 'tool')) {
+      const names = new Set((input.tools || []).map(tool => tool.function.name));
+      const tool_calls = [{ function: { name: 'math', arguments: { operation: 'add', a: 8, b: 5 } } },
+        { function: { name: 'weather', arguments: {} } }].filter(call => names.has(call.function.name));
+      if (tool_calls.length) return { ok: true, body: { message: { content: '', tool_calls } }, metadata: { model: input.model } };
+    }
     if (state.backupStream && input.model === 'synthetic-guardian') return { ok: true,
       stream: (async function* () {
         yield Buffer.from(JSON.stringify({ message: { content: 'Je peux continuer la discussion.' }, done: true }) + '\n');
@@ -93,7 +97,10 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
     openHold: {}, openingPayload: () => ({}), sounds: { select: () => null, get: () => null }, visuals: { sources: () => richFamilyPresentation ? ['web', 'photos'] : [] },
     ...(guardianTools && { ambient: { weather: async () => ({ temperatureC: 4, fetchedAt: new Date().toISOString() }) } }),
     brain: { cancel() {}, schedule() { state.reviews = (state.reviews || 0) + 1; }, contextFor: () => '' }, memberWork, activePersonaTurns,
-    ...(richFamilyPresentation && { ambient: { weather: async () => ({ condition: 'Nuageux', temperatureC: 4.5, fetchedAt: new Date().toISOString() }) }, screenPages: require('../../surfaces/household/screen-services').createScreenServices({ env }),
+    ...(richFamilyPresentation && { ambient: {
+      weather: async () => { state.ambientReads.current++; return { condition: 'Nuageux', temperatureC: 4.5, fetchedAt: new Date().toISOString() }; },
+      forecastTomorrow: async (options) => { state.ambientReads.tomorrow++; return state.forecastView?.(options); }
+    }, screenPages: require('../../surfaces/household/screen-services').createScreenServices({ env }),
       conversationImages: require('../../surfaces/household/conversation-images').createConversationImages({ conversations,
         service: { status: () => ({ configured: true, conversationProfile: 'synthetic' }) } }) }),
     validClientTurnId: id => /^[a-zA-Z0-9-]{16,80}$/.test(id), envelope, fail, cleanText: value => String(value || '').trim(),
@@ -395,16 +402,48 @@ test('Family remains usable with a valid family-only route and no personal daily
   expect(world.state.inference.map(input => input.model)).toEqual(['synthetic-main', 'synthetic-main', 'synthetic-guardian']);
 });
 
-test('Family relay fits the unchanged budget with real view, image and tool presentation contracts', async () => {
-  world = await fixture('agentx', true, { richFamilyPresentation: true });
-  const text = 'Dans cet exercice fictif, décris une luciole en une phrase.';
+test.each([
+  ['unrelated turn', 'Dans cet exercice fictif, décris une luciole en une phrase.', null],
+  ['explicit current weather', 'Quelle est la météo?', null],
+  ['partial tomorrow daytime', 'Quelle est la météo demain?', '07:00'],
+  ['overnight only tomorrow', 'Quelle est la météo demain?', '04:00'],
+  ['partial tomorrow with current-only tool configured', 'Quelle est la météo demain?', '07:00', 'weather']
+])('Family relay fits the unchanged budget and retains only relevant weather: %s', async (scenario, text, forecastHour, guardianTools = '') => {
+  world = await fixture('agentx', true, { richFamilyPresentation: true, guardianTools });
+  const { familyClock } = require('../../surfaces/household/family-clock');
+  let targetDate;
+  if (forecastHour) world.state.forecastView = ({ requestAt, timeZone }) => {
+    const day = new Date(familyClock({ now: requestAt, timeZone }).localDate + 'T00:00:00Z');
+    day.setUTCDate(day.getUTCDate() + 1);
+    targetDate = day.toISOString().slice(0, 10);
+    return { source: 'Environnement Canada', targetDate, timeZone: 'America/Toronto',
+      hourly: [{ localTime: forecastHour, offset: 'GMT-5', temperatureC: 1, condition: 'Nuageux' }] };
+  };
   const response = await world.send(text).expect(200);
   expect(done(response).tools.conversationRelay).toMatchObject({ role: 'relay', completed: true });
   const backup = world.state.inference.at(-1);
   expect(backup.model).toBe('synthetic-guardian');
   expect(backup.messages[0].content).toContain(packs.packById('kidx_nestor').systemPrompt);
-  expect(backup.messages[0].content).toContain('"temperatureC":4.5');
-  expect(backup.messages[0].content).toContain('Environnement Canada');
+  const context = backup.messages[0].content;
+  expect(world.state.ambientReads).toEqual({ current: Number(scenario === 'explicit current weather'), tomorrow: Number(Boolean(forecastHour)) });
+  if (scenario === 'explicit current weather') {
+    expect(context).toContain('"temperatureC":4.5');
+    expect(context).toContain('Environnement Canada');
+  } else {
+    expect(context).not.toContain('"temperatureC":4.5');
+  }
+  if (forecastHour === '07:00') {
+    expect(context).toContain('hourly forecast for ' + targetDate);
+    expect(context).toContain('["07:00","GMT-5",1,null]');
+    expect(context).toContain('Only these listed hours are verified, not the full day');
+    expect(context).not.toContain('Core living-source catalogue');
+    expect(context).toContain('Environnement Canada');
+  } else if (forecastHour === '04:00') {
+    expect(context).toContain('no verified daytime forecast coverage');
+    expect(context).not.toContain('["04:00"');
+  } else {
+    expect(context).not.toContain('Household hourly forecast');
+  }
   expect(backup.messages[0].content).not.toContain('iss_passes');
   expect(backup.messages[0].content).not.toContain('source="draw"');
   expect(backup.messages[0].content).not.toContain('destination-id');
