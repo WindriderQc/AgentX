@@ -17,6 +17,7 @@ const coreRestoration = require('../../src/services/personalHistoryCoreRestorati
 const manifestConfirmation = require('../../src/services/personalHistoryManifestConfirmation');
 const currentConfirmation = require('../../src/services/personalHistoryManifestConfirmationCurrent');
 const decisionAcceptance = require('../../src/services/personalHistoryDecisionAcceptance');
+const storageScope = require('../../src/services/personalHistoryStorageScope');
 
 function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' },
   preservationDeps = { audience: 'owner' }, decisionStateDeps = { audience: 'owner' }, messageScopeDeps = { audience: 'owner' },
@@ -47,6 +48,8 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDe
       findings: findingScopeDeps, preservation: preservationDeps, mailbox: mailboxScopeDeps })));
   router.post('/history/core-restoration', (req, res) => sourceResponse(res,
     () => coreRestoration.discover(req.body, findingScopeDeps)));
+  router.post('/history/storage-scope', (req, res) => sourceResponse(res,
+    () => storageScope.discover(req.body, preservationDeps)));
   const confirmationDeps = { audience: findingScopeDeps.audience, findings: findingScopeDeps,
     preservation: preservationDeps, mailbox: mailboxScopeDeps };
   router.post('/history/manifest-confirmations', (req, res) => sourceResponse(res,

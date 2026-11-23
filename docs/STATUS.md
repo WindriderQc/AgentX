@@ -368,6 +368,11 @@ Instance configuration, data and deployment receipts remain outside Git.
   Private v14 reconciliation removes only its decision-reconciliation gap when
   every selected message passes. Three other native gaps, exit code 2 and the
   cleanup block remain.
+  [Selected storage observations](SECRETARY_STORAGE_EVIDENCE.md) bind current
+  review-file restorations to kernel-reported whole-device identities through
+  source descriptors. Two complete selected passes and a final Core/privacy
+  fence protect the metadata-only observation. Unknown topologies and shared
+  device identities remain held; no physical-independence acceptance follows.
   See [linked souvenirs](SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a
