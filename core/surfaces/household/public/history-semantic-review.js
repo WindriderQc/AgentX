@@ -187,7 +187,7 @@
       if (depth >= 6) return `<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify(value))}</pre>`;
       if (Array.isArray(value)) return value.length ? `<ul>${value.map(item => `<li>${fields(item, depth + 1)}</li>`).join('')}</ul>` : '<span>aucun élément déclaré</span>';
       const entries = Object.entries(value).filter(([key]) => !technical.has(key));
-      return entries.length ? `<dl>${entries.map(([key, item]) => `<dt>${esc(fieldLabels[key] || key)}</dt><dd>${fields(item, depth + 1, key)}</dd>`).join('')}</dl>` : '<span>Voir les données complètes pour les références techniques.</span>';
+      return entries.length ? `<dl>${entries.map(([key, item]) => `<dt>${esc(Object.hasOwn(fieldLabels, key) ? fieldLabels[key] : key)}</dt><dd>${fields(item, depth + 1, key)}</dd>`).join('')}</dl>` : '<span>Voir les données complètes pour les références techniques.</span>';
     }
     function analysisHtml(value) {
       const analysis = value.analysis;
