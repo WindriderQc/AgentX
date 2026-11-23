@@ -9,6 +9,7 @@ const { createVisuals, publicAddress } = require('../visuals');
 const packs = require('../packs');
 
 const opId = '44444444-4444-4444-8444-444444444444';
+const ready = { id: opId, state: 'completed', runtimeRestored: true, artifact: { sha256: 'a'.repeat(64) } };
 const family = { sessionId: 'family-session', packId: 'kidx_nestor', scopeId: 'family', status: 'active', agentId: 'family' };
 const privateSession = { sessionId: 'private-session', packId: 'personal_operator', scopeId: 'personal', status: 'active', agentId: 'main' };
 const picture = (title, url, source = 'web') => ({ id: 'b1', kind: 'image', source, title, body: title, status: 'found', image: { url } });
@@ -30,8 +31,8 @@ function fixture({ bytes = photo(1600, 900) } = {}) {
       if (body.width !== 1024 && body.height !== 1024 && body.profile === 'square-only') throw Object.assign(new Error('Resolution not qualified for this profile.'), { statusCode: 400 });
       return { id: opId, state: 'accepted', runtimeRestored: false };
     },
-    async getForConversation() { return { id: opId, state: 'completed', artifact: { sha256: 'a'.repeat(64) } }; },
-    async listForConversation() { return []; },
+    async getForConversation() { return ready; },
+    async listForConversation() { return [ready]; },
     image: async () => ({ bytes: photo(512, 512), mimeType: 'image/jpeg' })
   };
   const conversations = { listTurns: async () => turns };
@@ -44,7 +45,7 @@ function fixture({ bytes = photo(1600, 900) } = {}) {
 const change = (from, body = 'Ajoute une moustache de shérif') => ({ id: 'b1', kind: 'image', source: 'draw', from, title: 'Shérif', body });
 
 test('pictures on screen are numbered newest first, without missing ones', async () => {
-  const shown = await recentShown({ conversations: { listTurns: async () => turns }, session: family });
+  const shown = await recentShown({ conversations: { listTurns: async () => turns }, session: family, operations: [ready] });
   assert.deepEqual(shown.map(block => block.title), ['Renard roux', 'Dragon', 'Cabane']);
   const text = contextText(shown);
   assert.match(text, /1\. Renard roux \(Internet\)\n2\. Dragon \(local creation\)\n3\. Cabane \(family photo\)/);
@@ -89,6 +90,19 @@ test('a local creation is read back from the image service', async () => {
   await complete([change(2)]);
   assert.equal(reads.length, 0);
   assert.equal(calls[0].body.width, 1024); assert.equal(calls[0].body.height, 1024);
+});
+
+test('an edit keeps its original number and checks readiness again before reading bytes', async () => {
+  const f = fixture();
+  const references = [];
+  await f.images.contextFor(family, references);
+  assert.equal(references[1].operation.id, opId);
+  f.service.listForConversation = async () => [];
+  f.service.getForConversation = async () => ({ id: opId, state: 'failed', runtimeRestored: true });
+  await f.complete([change(2)], { references });
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.reads.length, 0);
+  assert.equal(f.events[0].status, 'failed');
 });
 
 test('an unknown number or an unusable picture fails with a clear card and no request', async () => {
