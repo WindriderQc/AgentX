@@ -380,6 +380,12 @@ Instance configuration, data and deployment receipts remain outside Git.
   removes only the accepted preservation/decision gaps for that scope. Semantic
   acceptance and mailbox approval still block cleanup, with exit code 2 and no
   execution authority.
+  A separate [explicit human semantic review](SECRETARY_HUMAN_SEMANTIC_REVIEW.md)
+  delivers pinned original, attachment and recorded-analysis bytes, then retains
+  the human's distinct judgment on that exact selection. Its current native
+  observation can remove only the semantic gap after full revalidation; the
+  original inspection receipt, automatic qualification and mailbox authorization
+  keep their separate purposes. Cleanup remains blocked.
   See [linked souvenirs](SECRETARY_DOSSIER_REVIEW.md#current-linked-souvenirs-in-historical-reconciliation).
   Retaining an action keeps it open; source review creates neither a personal
   commitment nor selected memory unless the owner keeps an assertion as a

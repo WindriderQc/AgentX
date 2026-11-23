@@ -19,6 +19,8 @@ const currentConfirmation = require('../../src/services/personalHistoryManifestC
 const decisionAcceptance = require('../../src/services/personalHistoryDecisionAcceptance');
 const storageScope = require('../../src/services/personalHistoryStorageScope');
 const preservationAcceptance = require('../../src/services/personalHistoryPreservationAcceptance');
+const semanticReview = require('../../src/services/personalHistorySemanticReview');
+const semanticAcceptance = require('../../src/services/personalHistorySemanticAcceptance');
 
 function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDeps = { audience: 'owner' },
   preservationDeps = { audience: 'owner' }, decisionStateDeps = { audience: 'owner' }, messageScopeDeps = { audience: 'owner' },
@@ -67,6 +69,14 @@ function registerSecretaryHistoryRoutes({ router, envelope, fail, sourceReviewDe
     () => decisionAcceptance.discover(req.params.requestId, req.body, confirmationDeps)));
   router.post('/history/manifest-confirmations/:requestId/preservation-acceptance', (req, res) => sourceResponse(res,
     () => preservationAcceptance.discover(req.params.requestId, req.body, confirmationDeps)));
+  router.post('/history/manifest-confirmations/:requestId/semantic-reviews', (req, res) => sourceResponse(res,
+    () => semanticReview.prepare(req.params.requestId, req.body, confirmationDeps)));
+  router.post('/history/manifest-confirmations/:requestId/semantic-acceptance', (req, res) => sourceResponse(res,
+    () => semanticAcceptance.discover(req.params.requestId, req.body, confirmationDeps)));
+  router.get('/history/semantic-reviews/:requestId', (req, res) => sourceResponse(res,
+    () => semanticReview.get(req.params.requestId, confirmationDeps)));
+  for (const action of ['reopen', 'read', 'decide']) router.post(`/history/semantic-reviews/:requestId/${action}`, (req, res) => sourceResponse(res,
+    () => semanticReview[action](req.params.requestId, req.body, confirmationDeps)));
   router.get('/history/:id/decision-state', (req, res) => sourceResponse(res,
     () => decisionState.get(req.params.id, req.query, decisionStateDeps)));
   router.post('/history/:id/decision-state/check', (req, res) => sourceResponse(res,

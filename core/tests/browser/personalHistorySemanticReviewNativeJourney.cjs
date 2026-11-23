@@ -91,7 +91,8 @@ const writes = [], errors = [], external = [];
   assert.equal(confirmed.state, 'confirmed');
   const unchanged = await Entry.find({}).lean(), originalReceipt = await Confirmation.find({}).lean();
   const semanticKey = `history-human-semantic-review:v1:${manifestId}`;
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+    ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 }, acceptDownloads: true });
   page.setDefaultTimeout(120000);
   page.on('pageerror', error => errors.push(error.message));

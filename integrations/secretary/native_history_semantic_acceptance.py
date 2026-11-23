@@ -54,15 +54,17 @@ def validate_binding(binding, selected, manifest, current):
     resource_count, total_bytes = 0, 0
     for source, ref, restored in zip(binding['sources'], manifest['sources'], manifest['restoration']['snapshot']['members']):
         require(keys(source, 'resources') and isinstance(source['resources'], list) and 2 <= len(source['resources']) <= 256)
-        resources, seen = source['resources'], set()
+        resources, seen = source['resources'], {}
         size = 0
         for resource in resources:
             require(keys(resource, 'kind key sha256 bytes')
                 and resource['kind'] in ('original', 'attachment', 'analysis', 'compound_member')
                 and isinstance(resource['key'], str) and KEY.fullmatch(resource['key'])
                 and hash_value(resource['sha256']) and integer(resource['bytes'], 16 * 1024 * 1024)
-                and (resource['kind'], resource['key']) not in seen)
-            seen.add((resource['kind'], resource['key'])); size += resource['bytes']
+                and ((resource['kind'], resource['key']) not in seen
+                    or resource['kind'] == 'compound_member'
+                    and resource == seen[(resource['kind'], resource['key'])]))
+            seen[(resource['kind'], resource['key'])] = resource; size += resource['bytes']
         content = restored['snapshot']['copies'][0]['content']
         originals = [resource for resource in resources if resource['kind'] == 'original']
         require(originals == [{'kind': 'original', 'key': 'original', 'sha256': ref['sourceSha256'], 'bytes': content['raw']['bytes']}])

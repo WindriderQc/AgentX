@@ -196,6 +196,12 @@ request needs the collaborator's own capability.
   mention `linkStatus.unavailable` when present. Never send mail or do
   anything destructive without the owner's explicit request. Cloud budget,
   campaign approval and native admission still apply.
+- Historical mail review uses the owner human surface at `/dad/history`.
+  Exact-manifest inspection and explicit human semantic judgment are separate
+  purposes. Served bytes, a processed label or an old verdict cannot establish
+  current semantic acceptance. Native v16 reconciliation reads the retained
+  judgment; it cannot create one or authorize cleanup. See
+  `docs/SECRETARY_HUMAN_SEMANTIC_REVIEW.md` in the product checkout.
 
 ## Reviewing a personal action
 
