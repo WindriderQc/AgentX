@@ -364,29 +364,39 @@
       this.wakeAck = null;
       clearTimeout(ack.timer);
       ack.speech.abort();
+      discardSpeech(ack.response);
     }
     acknowledgeWake(epoch) {
+      const session = this.session;
       const ack = { speech: new AbortController(), timer: null };
       this.wakeAck = ack;
+      const current = () => this.current(epoch) && this.session === session;
+      const owns = () => this.wakeAck === ack && current();
+      const finish = () => {
+        if (this.wakeAck !== ack) return;
+        this.cancelWakeAck();
+        if (ack.response && current() && !this.wakeAck && !this.activeTurn && !this.turnPending && this.state === 'speaking') {
+          this.show('listening'); // Capture and its speech callback stayed active.
+        }
+      };
       // Keep the microphone live. A command begun during this short gap, TTS,
       // or playback cancels the acknowledgement and takes the normal turn path.
       ack.timer = setTimeout(async () => {
+        ack.timer = setTimeout(finish, 4000);
         try {
-          if (!this.current(epoch) || this.wakeAck !== ack || this.state !== 'listening') return;
+          if (!owns() || this.state !== 'listening') return;
           const response = await this.io.synthesize(this.io.wakeReply?.() || { text: "Je t'écoute.", language: 'fr' }, ack.speech.signal);
-          if (!this.current(epoch) || this.wakeAck !== ack || this.state !== 'listening') return;
+          if (!owns() || this.state !== 'listening') { discardSpeech(response); return; }
+          if (!response) return;
+          ack.response = response;
           this.show('speaking');
+          if (!owns() || this.state !== 'speaking') return;
           await this.audio.play(response, ack.speech.signal);
+          if (!owns() || this.state !== 'speaking') return;
           await this.audio.settle?.(ack.speech.signal);
-          if (this.current(epoch) && this.wakeAck === ack && this.state === 'speaking') {
-            this.wake.extend();
-            this.listen(epoch);
-          }
-        } catch {
-          if (this.current(epoch) && this.wakeAck === ack && this.state === 'speaking') this.listen(epoch);
-        } finally {
-          if (this.wakeAck === ack) this.wakeAck = null;
-        }
+          if (owns() && this.state === 'speaking') this.wake.extend();
+        } catch { /* Wake speech is optional. */ }
+        finally { finish(); }
       }, this.io.wakeAckDelayMs ?? 200);
     }
     // The background brain may add one short remark at a natural pause (#169):
