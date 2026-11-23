@@ -17,6 +17,26 @@
   const sha = async bytes => [...new Uint8Array(await window.crypto.subtle.digest('SHA-256', bytes))]
     .map(byte => byte.toString(16).padStart(2, '0')).join('');
 
+  function parseAnalysis(text, reference) {
+    let value;
+    try { value = JSON.parse(text); } catch { throw invalid(); }
+    const object = item => item && typeof item === 'object' && !Array.isArray(item);
+    if (!object(value) || value.contract !== 'secretary.selected-semantic-analysis/v1'
+      || value.messageId !== reference.messageId || value.threadId !== reference.threadId || value.sourceSha256 !== reference.sourceSha256
+      || !Array.isArray(value.findings) || value.findings.length > 256
+      || value.findings.some(row => !object(row) || !HASH.test(row.findingId || '')
+        || !['actions', 'memories', 'deliverables', 'invoices'].includes(row.section)
+        || !object(row.item) || row.item.messageId !== reference.messageId)
+      || !Array.isArray(value.threadQuestions) || value.threadQuestions.length > 128
+      || value.threadQuestions.some(item => typeof item !== 'string')
+      || !Array.isArray(value.pages) || !value.pages.length || value.pages.length > 128
+      || value.pages.some(row => !object(row) || !object(row.source) || !object(row.review)
+        || row.source.messageId !== reference.messageId || row.source.threadId !== reference.threadId
+        || !HASH.test(row.source.pageId || '') || row.review.pageId !== row.source.pageId || row.review.threadId !== reference.threadId
+        || !['body', 'attachment'].includes(row.source.kind) || typeof row.source.externalUntrustedContent !== 'string')) throw invalid();
+    return value;
+  }
+
   window.mountHistorySemanticReview = function ({ container, api, esc, getManifest, isAvailable = () => true }) {
     const manifest = getManifest();
     if (!manifest || manifest.state !== 'confirmed' || !UUID.test(manifest.requestId || '')) return { refresh() {} };
@@ -125,7 +145,8 @@
       for (const chunk of chunks) { bytes.set(chunk, copied); copied += chunk.length; }
       if (await sha(bytes) !== descriptor.sha256) throw invalid();
       const text = descriptor.kind === 'analysis' ? new TextDecoder('utf-8', { fatal: true }).decode(bytes) : null;
-      downloaded.set(`${source}:${resource}`, { bytes, text }); reviewed = false;
+      const analysis = text === null ? null : parseAnalysis(text, preview.sources[source].reference);
+      downloaded.set(`${source}:${resource}`, { bytes, text, analysis }); reviewed = false;
       save({ ...journal, pendingRead: null });
     }
     function download(source, resource) {
@@ -135,6 +156,52 @@
       const address = URL.createObjectURL(blob), anchor = document.createElement('a');
       anchor.href = address; anchor.download = `source-${source + 1}-${resource + 1}${descriptor.kind === 'original' ? '.eml' : descriptor.kind === 'analysis' ? '.json' : '.bin'}`;
       anchor.rel = 'noopener'; anchor.click(); setTimeout(() => URL.revokeObjectURL(address), 1000);
+    }
+    const technical = new Set(['contract', 'schema', 'messageId', 'threadId', 'sourceId', 'pageId', 'pageIds',
+      'findingId', 'evidenceHash', 'sourceSha256', 'attachmentSha256', 'gmailUrl', 'path', 'textPath',
+      'offset', 'offsetUnit', 'start', 'end', 'segmentStart', 'segmentEnd', 'segmentIndex']);
+    const fieldLabels = { text: 'Texte', summary: 'Analyse enregistrée', quote: 'Citation', quotes: 'Citations',
+      subject: 'Objet', from: 'De', to: 'À', cc: 'Copie', bcc: 'Copie cachée', date: 'Date',
+      actions: 'Actions', memories: 'Informations', deliverables: 'Livraisons', invoices: 'Factures',
+      unresolved: 'Questions non résolues', uncertainty: 'Incertitude', uncertainties: 'Incertitudes',
+      warnings: 'Réserves', limitations: 'Limites', coverage: 'Couverture déclarée',
+      relation: 'Relation au message', attribution: 'Attribution', author: 'Auteur', claimedAuthor: 'Auteur déclaré dans la citation',
+      claimedDate: 'Date déclarée dans la citation', quotedHeader: 'En-tête cité, non vérifié', enclosingQuotedHeader: 'En-tête de la citation englobante',
+      quoteDepth: 'Niveau de citation', policy: 'Limites de lecture', messageDirection: 'Sens du message',
+      containerHasNewerMessages: 'Des messages plus récents existent', newerMessageCount: 'Nombre de messages plus récents',
+      mimeOverview: 'Représentations MIME', pageScope: 'Périmètre de cette représentation',
+      allMimeRepresentationsRead: 'Toutes les représentations MIME sont lues', contentAvailable: 'Contenu disponible',
+      structureAvailable: 'Structure disponible', structureTruncated: 'Structure tronquée', declaredTextParts: 'Parties texte déclarées',
+      mimeType: 'Type de contenu', filename: 'Nom du fichier', status: 'État déclaré', reason: 'Motif',
+      segments: 'Passages et attribution', boundary: 'Contexte adjacent à cette page', untrustedTextBefore: 'Texte précédent, non vérifié',
+      untrustedTextAfter: 'Texte suivant, non vérifié', startsBeforePage: 'Passage commencé sur une page précédente',
+      continuesAfterPage: 'Passage continuant sur une page suivante' };
+    const enumFields = new Set(['relation', 'attribution', 'messageDirection', 'pageScope']);
+    const enumLabels = { authored: 'texte du message', quoted: 'passage cité', attachment: 'pièce jointe', unknown: 'inconnu',
+      'container-header': 'en-tête du message englobant', 'unverified-quoted-header': 'en-tête cité non vérifié',
+      sent: 'envoyé', received: 'reçu', draft: 'brouillon', 'preferred-body-view-only': 'vue principale du texte uniquement' };
+    function fields(value, depth = 0, keyName = '') {
+      if (value === null) return '<span>inconnu</span>';
+      if (typeof value !== 'object') return esc(typeof value === 'boolean' ? (value ? 'oui' : 'non')
+        : enumFields.has(keyName) && Object.hasOwn(enumLabels, value) ? enumLabels[value] : value);
+      if (depth >= 6) return `<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify(value))}</pre>`;
+      if (Array.isArray(value)) return value.length ? `<ul>${value.map(item => `<li>${fields(item, depth + 1)}</li>`).join('')}</ul>` : '<span>aucun élément déclaré</span>';
+      const entries = Object.entries(value).filter(([key]) => !technical.has(key));
+      return entries.length ? `<dl>${entries.map(([key, item]) => `<dt>${esc(fieldLabels[key] || key)}</dt><dd>${fields(item, depth + 1, key)}</dd>`).join('')}</dl>` : '<span>Voir les données complètes pour les références techniques.</span>';
+    }
+    function analysisHtml(value) {
+      const analysis = value.analysis;
+      return `<div data-semantic-analysis><h5>Informations et suivis enregistrés pour cette source</h5>
+        ${analysis.findings.length ? analysis.findings.map(row => `<section><h6>${esc(fieldLabels[row.section])}</h6>${fields(row.item)}</section>`).join('') : '<p>Aucun relevé enregistré. Vérifiez vous-même si une information pertinente a été omise.</p>'}
+        <h5>Questions non résolues</h5>${analysis.threadQuestions.length ? `<ul>${analysis.threadQuestions.map(item => `<li>${esc(item)}</li>`).join('')}</ul>` : '<p>Aucune question enregistrée. Cela ne garantit pas l’absence d’ambiguïté.</p>'}
+        <h5>Sources paginées et analyses correspondantes</h5>
+        ${analysis.pages.map((page, index) => `<section><h6>Page ${index + 1} · ${page.source.kind === 'body' ? 'Texte du message' : 'Pièce jointe'}</h6>
+          ${page.source.headers ? fields(page.source.headers) : ''}
+          ${page.source.sourceContext ? `<p>Les en-têtes du message ne prouvent pas l’auteur ni la date des passages cités. Les attributions inconnues restent inconnues.</p>${fields(page.source.sourceContext)}` : '<p>Contexte d’attribution indisponible : vérifiez l’original avant toute validation.</p>'}
+          <p>Texte exact de cette page :</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:45vh;overflow:auto">${esc(page.source.externalUntrustedContent)}</pre>
+          ${page.source.moreOfThisSource === true ? '<p>Cette page ne contient pas la fin de cette représentation : lisez les pages suivantes et l’original.</p>' : ''}
+          <p>Analyse enregistrée pour cette page :</p>${fields(page.review)}</section>`).join('')}
+        <details><summary>Données complètes de l’analyse</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:55vh;overflow:auto">${esc(JSON.stringify(analysis, null, 2))}</pre></details></div>`;
     }
     const statuses = { preparing: 'Préparation en attente ; retrouvez le reçu original.', prepared: 'Revue préparée. Chaque original, pièce jointe et analyse doit être ouvert et examiné.',
       deciding: 'Décision en attente ou incertaine. Retrouvez uniquement son reçu original.', accepted: 'Validation sémantique humaine enregistrée. Ce jugement historique doit être revérifié nativement avant toute utilisation.',
@@ -156,7 +223,7 @@
         ${preview && journal.phase === 'prepared' ? `<div data-semantic-preview>${preview.sources.map((source, i) => `<section><h4>Source ${i + 1}</h4><p>Message ${esc(source.reference.messageId)} · empreinte ${esc(source.reference.sourceSha256)}</p>
           ${source.resources.map((descriptor, j) => { const value = downloaded.get(`${i}:${j}`); return `<section><p>${esc(labels[descriptor.kind])} · ${esc(descriptor.key)} · ${esc(descriptor.bytes)} octets</p>
             <button type="button" data-semantic-read="${i}:${j}"${disabled ? ' disabled' : ''}>Charger et vérifier cette ressource</button>
-            ${value ? `<button type="button" data-semantic-download="${i}:${j}"${disabled ? ' disabled' : ''}>Télécharger les octets vérifiés</button>${value.text !== null ? `<pre style="white-space:pre-wrap;overflow-wrap:anywhere" data-semantic-analysis>${esc(value.text)}</pre>` : '<p>Octets vérifiés. Téléchargez puis examinez ce document avec un lecteur adapté ; toute impossibilité de lecture doit rester en attente.</p>'}` : ''}</section>`; }).join('')}</section>`).join('')}
+            ${value ? `<button type="button" data-semantic-download="${i}:${j}"${disabled ? ' disabled' : ''}>Télécharger les octets vérifiés</button>${value.analysis ? analysisHtml(value) : '<p>Octets vérifiés. Téléchargez puis examinez ce document avec un lecteur adapté ; toute impossibilité de lecture doit rester en attente.</p>'}` : ''}</section>`; }).join('')}</section>`).join('')}
           ${preview.blockers.length ? `<p>Des réserves natives empêchent la validation de cette sélection.</p><ul>${preview.blockers.map(code => `<li>${esc(code)}</li>`).join('')}</ul>` : ''}
           <label class="history-pick"><input type="checkbox" data-semantic-reviewed${reviewed ? ' checked' : ''}${disabled || !complete() || preview.blockers.length ? ' disabled' : ''}> J’ai examiné les originaux, toutes les pièces et les analyses affichées. Leur sens et leurs informations pertinentes sont correctement représentés ; aucune ambiguïté ni lecture nécessaire ne reste ouverte.</label>
           <button type="button" data-semantic-accept${disabled || !reviewed || !complete() || preview.blockers.length ? ' disabled' : ''}>Enregistrer cette validation sémantique humaine</button>

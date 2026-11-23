@@ -12,13 +12,27 @@ const manifest = () => ({ requestId: '11111111-1111-4111-8111-111111111111', sta
   checks: [{ entryId: 'a'.repeat(24), requestId: '22222222-2222-4222-8222-222222222222', snapshotHash: 'b'.repeat(64), source }],
   before: '2026-01-01T00:00:00.000Z' } });
 const KEY = `history-human-semantic-review:v1:${manifest().requestId}`;
-const content = [Buffer.from('Synthetic original source bytes'), Buffer.from('{"analysis":"<img src=x onerror=alert(1)>","link":"https://external.invalid/never-fetch"}')];
+const analysis = { contract: 'secretary.selected-semantic-analysis/v1', messageId: source.messageId, threadId: source.threadId,
+  sourceSha256: source.sourceSha256, findings: [{ section: 'actions', findingId: 'e'.repeat(64),
+    item: { messageId: source.messageId, text: 'Synthetic action <img src=x onerror=alert(1)>', dueDate: 'unknown', warnings: ['Synthetic uncertainty retained'] } }],
+  threadQuestions: [], pages: [{ source: { pageId: 'f'.repeat(64), threadId: source.threadId, messageId: source.messageId,
+    kind: 'body', externalUntrustedContent: 'Original exact body <script>alert(1)</script>', moreOfThisSource: true,
+    headers: { from: 'Synthetic source <source@example.invalid>', date: 'Synthetic date' },
+    sourceContext: { schema: 'secretary.source-context/v2', policy: 'Synthetic attribution policy retained verbatim',
+      segments: [{ start: 0, end: 25, relation: 'quoted', attribution: 'unknown', author: null, claimedAuthor: 'Synthetic quoted author', claimedDate: 'Synthetic quoted date' }],
+      containerHasNewerMessages: true, newerMessageCount: 1,
+      mimeOverview: { allMimeRepresentationsRead: false, pageScope: 'preferred-body-view-only', structureTruncated: true } } },
+    review: { pageId: 'f'.repeat(64), threadId: source.threadId, summary: 'Native analysis <img src=x onerror=alert(1)>',
+      unresolved: ['Synthetic page uncertainty'], notes: ['https://external.invalid/never-fetch'] } }] };
+const content = [Buffer.from('Synthetic original source bytes'), Buffer.from(JSON.stringify(analysis))];
 const descriptors = content.map((bytes, i) => ({ kind: i ? 'analysis' : 'original', key: i ? 'selected-analysis' : 'original', sha256: hash(bytes), bytes: bytes.length, nextOffset: 0, served: false }));
 const clone = value => JSON.parse(JSON.stringify(value));
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-function harness({ storage = new Map(), handler, failStorage = false, failRead = false, sourcePreview, savedReceipt } = {}) {
+function harness({ storage = new Map(), handler, failStorage = false, failRead = false, sourcePreview, savedReceipt, analysisContent } = {}) {
   const listeners = {}, requests = [], downloads = [];
   let badStorage = failStorage, latest = savedReceipt || null;
+  const values = analysisContent ? [content[0], Buffer.from(JSON.stringify(analysisContent))] : content;
+  const resourceDescriptors = values.map((bytes, i) => ({ ...descriptors[i], sha256: hash(bytes), bytes: bytes.length }));
   const progress = [0, 0];
   const container = { innerHTML: '', isConnected: true, addEventListener: (type, fn) => { listeners[type] = fn; } };
   const localStorage = { getItem: key => { if (failRead) throw Error('Read unavailable'); return storage.get(key) ?? null; },
@@ -28,11 +42,11 @@ function harness({ storage = new Map(), handler, failStorage = false, failRead =
     return { contract: 'agentx.history-human-semantic-review/v1', requestId: journal.requestId, state,
       inputSha256: 'c'.repeat(64), bindingSha256: 'd'.repeat(64), preparedAt: '2026-01-01T00:00:00.000Z',
       decidedAt: ['accepted', 'held'].includes(state) ? '2026-01-02T00:00:00.000Z' : null,
-      coverage: { resources: 2, totalBytes: content.reduce((n, b) => n + b.length, 0), servedResources: progress.filter((n, i) => n === content[i].length).length,
-        servedBytes: progress.reduce((n, m) => n + m, 0), complete: progress.every((n, i) => n === content[i].length) },
+      coverage: { resources: 2, totalBytes: values.reduce((n, b) => n + b.length, 0), servedResources: progress.filter((n, i) => n === values[i].length).length,
+        servedBytes: progress.reduce((n, m) => n + m, 0), complete: progress.every((n, i) => n === values[i].length) },
       authenticatedPerson: null, semanticAcceptance: false, approvalBound: false, executionAllowed: false, cleanupStatus: 'blocked', mailboxEffects: 0,
       nativeState: withPreview ? 'observed' : 'not_rechecked', replayed: false,
-      ...(withPreview ? { preview: sourcePreview || { sources: [{ reference: source, resources: descriptors }], blockers: [] } } : {}) };
+      ...(withPreview ? { preview: sourcePreview || { sources: [{ reference: source, resources: resourceDescriptors }], blockers: [] } } : {}) };
   }
   const api = async (url, options = {}) => {
     const body = options.body ? JSON.parse(options.body) : undefined;
@@ -50,11 +64,11 @@ function harness({ storage = new Map(), handler, failStorage = false, failRead =
     if (custom !== undefined) return clone(custom);
     if (options.method !== 'POST') return clone(latest || receipt('prepared'));
     if (url.endsWith('/read')) {
-      const bytes = content[body.resource].subarray(body.offset, body.offset + 13);
+      const bytes = values[body.resource].subarray(body.offset, body.offset + 512);
       progress[body.resource] = Math.max(progress[body.resource], body.offset + bytes.length);
       latest = receipt('prepared');
       return { receipt: clone(latest), page: { source: body.source, resource: body.resource, offset: body.offset,
-        nextOffset: body.offset + bytes.length === content[body.resource].length ? null : body.offset + bytes.length,
+        nextOffset: body.offset + bytes.length === values[body.resource].length ? null : body.offset + bytes.length,
         contentBase64: bytes.toString('base64'), chunkSha256: hash(bytes) } };
     }
     if (url.endsWith('/decide')) { latest = receipt(body.decision === 'held_ambiguous' ? 'held' : 'accepted'); return clone(latest); }
@@ -95,6 +109,18 @@ test('complete exact bytes are verified, hostile analysis is inert, and human ac
   await readAll(view);
   assert.match(view.container.innerHTML, /&lt;img/); assert.doesNotMatch(view.container.innerHTML, /<img/);
   assert.equal(view.requests.some(row => row.url.startsWith('http')), false);
+  assert.match(view.container.innerHTML, /Original exact body &lt;script&gt;/);
+  assert.match(view.container.innerHTML, /Synthetic action &lt;img/);
+  assert.match(view.container.innerHTML, /Synthetic uncertainty retained/);
+  assert.match(view.container.innerHTML, /Synthetic page uncertainty/);
+  assert.match(view.container.innerHTML, /Synthetic attribution policy retained verbatim/);
+  assert.match(view.container.innerHTML, /Auteur déclaré dans la citation/);
+  assert.match(view.container.innerHTML, /Attribution<\/dt><dd>inconnu/);
+  assert.match(view.container.innerHTML, /Toutes les représentations MIME sont lues<\/dt><dd>non/);
+  assert.match(view.container.innerHTML, /Structure tronquée<\/dt><dd>oui/);
+  assert.match(view.container.innerHTML, /ne contient pas la fin de cette représentation/);
+  assert.match(view.container.innerHTML, /<details><summary>Données complètes de l’analyse<\/summary>/);
+  assert.doesNotMatch(view.container.innerHTML, /<details open/);
   await view.click('data-semantic-download', { semanticDownload: '0:0' });
   assert.equal(view.downloads.length, 1); assert.match(view.downloads[0].href, /^blob:/); assert.match(view.downloads[0].name, /\.eml$/);
   view.change(true); assert.equal(view.enabled('data-semantic-accept'), true);
@@ -186,6 +212,18 @@ test('terminal receipt must be acknowledged before explicit new review and retai
   await view.click('data-semantic-acknowledge'); await prepare(view);
   assert.notEqual(view.journal.requestId, original);
   assert.equal(JSON.parse(view.storage.get(`${KEY}:${original}`)).requestId, original);
+});
+
+for (const fault of ['contract', 'messageId', 'sourceSha256', 'pageIdentity', 'missingSourceText']) test(`invalid native analysis ${fault} cannot enable human acceptance`, async () => {
+  const wrong = clone(analysis);
+  if (fault === 'contract') wrong.contract = 'caller-invented';
+  if (fault === 'messageId') wrong.messageId = 'b000000000000001';
+  if (fault === 'sourceSha256') wrong.sourceSha256 = 'b'.repeat(64);
+  if (fault === 'pageIdentity') wrong.pages[0].review.pageId = 'a'.repeat(64);
+  if (fault === 'missingSourceText') delete wrong.pages[0].source.externalUntrustedContent;
+  const view = harness({ analysisContent: wrong }); await prepare(view); await readAll(view); view.change(true);
+  assert.equal(view.enabled('data-semantic-accept'), false);
+  assert.doesNotMatch(view.container.innerHTML, /data-semantic-analysis/);
 });
 
 test('production loads semantics before manifest composition and keeps inspection purpose unchanged', () => {
