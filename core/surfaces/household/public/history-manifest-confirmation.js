@@ -213,7 +213,11 @@
           ${journal.phase === 'prepared' && !journal.acknowledged && !preview ? `<button type="button" data-manifest-reopen${disabled || !receipt ? ' disabled' : ''}>Rouvrir les preuves de cette demande</button>` : ''}
           ${canLeavePrepared() ? `<button type="button" data-manifest-leave-prepared${disabled ? ' disabled' : ''}>Conserver cette préparation sans la confirmer</button><p>La demande originale restera conservée dans Core. Vous pourrez préparer explicitement une autre sélection, sans confirmer celle-ci.</p>` : ''}
           ${terminal(journal.phase) && !journal.acknowledged ? `<button type="button" data-manifest-acknowledge${disabled ? ' disabled' : ''}>Prendre acte du reçu et permettre une nouvelle préparation explicite</button>` : ''}
-          ${preview ? previewHtml() : ''}` : ''}</section>`;
+          ${preview ? previewHtml() : ''}` : ''}<div data-history-semantic></div></section>`;
+      if (journal?.phase === 'confirmed' && receipt?.state === 'confirmed') {
+        window.mountHistorySemanticReview?.({ container: container.querySelector('[data-history-semantic]'), api, esc, isAvailable,
+          getManifest: () => ({ requestId: journal.requestId, input: journal.input, state: receipt.state }) });
+      }
     }
     async function action(run) {
       if (busy || !isAvailable() || unreadable) return;
