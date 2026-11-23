@@ -20,6 +20,7 @@ const { isPreRoutingValidationRefusal } = require('../../../src/extensions/trust
 const { approvedModels, modelCatalog, resolveGatewayTarget } = require('./model-catalog');
 const { busyMessage, claimOf } = require('../openclaw/busy-reply');
 const { qualifiedToolExecution } = require('../../../src/services/qualifiedToolExecution');
+const { currentMemoryInput } = require('../../../src/services/ownerMemoryTurn');
 
 const HARNESS_VERSION = '1.2.0';
 
@@ -212,7 +213,7 @@ const CHAT_RENDER = Object.freeze({ json: body => body, stream: stream => stream
 // `body` is an OpenAI chat-completions request. `render` turns the chat-shaped
 // answer into the front-end's protocol: `json(completion)` for one answer and
 // `stream(chatSse)` for a stream of `data:` chunks ending with `[DONE]`.
-async function handleChat(req, res, { runtimeServices, logger, client, body, render = CHAT_RENDER, waitMs = 0 }) {
+async function handleChat(req, res, { runtimeServices, logger, client, body: payload, render = CHAT_RENDER, waitMs = 0 }) {
   const abort = requestAbort(req, res);
   let streaming = false;
   let coding;
@@ -228,6 +229,7 @@ async function handleChat(req, res, { runtimeServices, logger, client, body, ren
     }
   };
   try {
+    const body = currentMemoryInput(payload);
     if (!Array.isArray(body.messages) || body.messages.length === 0) {
       return res.status(400).json({
         error: { message: 'messages must be a non-empty array', type: 'invalid_request_error' }

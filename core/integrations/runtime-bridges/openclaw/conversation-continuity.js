@@ -5,11 +5,10 @@
 const { applyRoutingHeaders, pipeRuntimeStream, publicError } = require('../common');
 const { settledStream } = require('./settled-stream');
 
-async function serveContinuity(req, res, { mode, runtimeServices, signal, resolveConversationTarget, noThinkModels }) {
+async function serveContinuity(req, res, { body = req.body || {}, mode, runtimeServices, signal, resolveConversationTarget, noThinkModels }) {
   if (!['chat', 'generate'].includes(mode) || req.get('x-agentx-continuity') !== 'conversation'
     || req.get('x-agentx-busy-reply') !== 'conversation' || req.get('x-agentx-benchmark-claims')
-    || req.body?.model === 'agentx-pipeline' || typeof runtimeServices.inference.conversation !== 'function') return false;
-  const body = req.body || {};
+    || body.model === 'agentx-pipeline' || typeof runtimeServices.inference.conversation !== 'function') return false;
   const declared = String(req.get('x-agentx-think') || '').trim().toLowerCase();
   if (declared && !['on', 'off'].includes(declared)) throw Object.assign(new Error('x-agentx-think must be on or off'),
     { code: 'OPENCLAW_THINK_HEADER_INVALID', statusCode: 400 });

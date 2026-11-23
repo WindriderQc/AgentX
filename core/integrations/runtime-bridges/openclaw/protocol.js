@@ -11,6 +11,7 @@ const {
 } = require('../common');
 const { PIPELINE_MODEL_ALIAS } = require('../pipeline-attribution');
 const { PRINCIPAL_MODEL_ALIAS, resolvePrincipalAlias } = require('../principal-model');
+const { currentMemoryInput } = require('../../../src/services/ownerMemoryTurn');
 const { settledStream } = require('./settled-stream');
 const { admitCellCall, isCellBudgetRefusal, meteredStream, responseCounts } = require('./cell-budget');
 const { sendBusyReply, wantsBusyReply } = require('./busy-reply');
@@ -145,8 +146,8 @@ function registerOpenClawProtocol({
     let pipeline = null;
     let cellTurn = null;
     try {
-      const body = req.body || {};
-      if (await serveContinuity(req, res, { mode, runtimeServices, signal: abort.signal, resolveConversationTarget, noThinkModels })) {
+      const body = mode === 'chat' ? currentMemoryInput(req.body || {}) : req.body || {};
+      if (await serveContinuity(req, res, { body, mode, runtimeServices, signal: abort.signal, resolveConversationTarget, noThinkModels })) {
         streaming = body.stream === true;
         return;
       }
