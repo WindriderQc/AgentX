@@ -276,24 +276,44 @@
         this.session = session; this.selection = selection;
         this.wake.arm();
         this.warmRecognition(); // the greeting leaves it time to finish before the first utterance
+        clearTimeout(timeout);
         if (fresh && this.io.greet) await this.greet(epoch);
-        this.listen(epoch);
+        if (this.current(epoch)) this.listen(epoch);
       } catch (error) { this.fail(error, epoch); }
       finally { clearTimeout(timeout); }
     }
     // A new session speaks once its microphone, session and voice are ready, so
     // the user knows when to talk. A failed greeting never blocks listening.
     async greet(epoch) {
-      try {
-        const [bytes] = await Promise.all([
-          this.io.greet(this.session, this.abort.signal),
-          this.io.readyToSpeak?.(this.abort.signal)
-        ]);
-        if (!bytes || !this.current(epoch)) return;
+      const parent = this.abort.signal, controller = new AbortController(), { signal } = controller;
+      const cancel = () => controller.abort();
+      parent.addEventListener('abort', cancel, { once: true });
+      const timeout = setTimeout(cancel, 8000);
+      let speech;
+      const stopped = new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+      const active = () => !signal.aborted && this.current(epoch);
+      const play = async () => {
+        // Take ownership as soon as synthesis resolves, even if the avatar never does.
+        const received = Promise.resolve(this.io.greet(this.session, signal)).then(response => {
+          if (active()) speech = response;
+          else discardSpeech(response);
+        });
+        await Promise.all([received, Promise.resolve().then(() => this.io.readyToSpeak?.(signal))]);
+        if (!speech || !active()) return;
         this.show('speaking');
-        await this.audio.play(bytes, this.abort.signal);
-        await this.audio.settle?.(this.abort.signal);
+        if (!active()) return;
+        await this.audio.play(speech, signal);
+        if (active()) await this.audio.settle?.(signal);
+      };
+      try {
+        await Promise.race([play(), stopped]);
       } catch { /* listening starts regardless */ }
+      finally {
+        clearTimeout(timeout);
+        parent.removeEventListener('abort', cancel);
+        cancel(); // Also releases an active VoiX reader.
+        discardSpeech(speech);
+      }
     }
     // The language of recognition and of the spoken reply, and whether speech may
     // interrupt a reply, are read at each turn: they can change while the
