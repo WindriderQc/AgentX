@@ -22,6 +22,11 @@ agents' sessions do not gain this access. Recommendations stay in the reply.
 `personal_memory` uses `/api/consumers/nestor/v1/memory/notes`. A failed or
 ambiguous write is never retried automatically or redirected to a local note
 file. List/search coverage and Core receipts are returned to the native tool.
+In a private owner turn, the prompt hook reads Core's `turn-context` projection
+and refreshes the current note evidence. Core's protection flag temporarily
+blocks native session searches and history reads for current recall. Explicit
+transcript requests retain their history tools. See the
+[shared memory contract](../../../docs/SHARED_AGENT_CAPABILITIES.md#runtime-contract).
 `mail_journal` records and searches the owner-only mail journal through
 `/api/consumers/nestor/v1/mail-journal` (one dated digest per thread or
 message). It is offered to the owner context and to the configured

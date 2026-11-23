@@ -10,6 +10,7 @@ const { memoryFactInput, memoryFactProjection, mergeMemoryFactMetadata } = requi
 const temporal = require('./personalHistoryTemporal');
 const historyContext = require('./personalHistorySouvenirContext');
 const souvenirProof = require('./memorySouvenirEvidence');
+const ownerMemoryTurn = require('./ownerMemoryTurn');
 
 // A note is recalled by meaning when its similarity to the request reaches
 // this floor. Measured with qllama/bge-m3:f16 on 24 owner questions
@@ -337,7 +338,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     return { ok: true, authority: 'agentx.core', id, removed: Boolean(row) };
   }
 
-  async function search(query, { limit = 8, minMatchedTerms = 1 } = {}) {
+  async function search(query, { limit = 8, minMatchedTerms = 1, lexicalOnly = false } = {}) {
     cleanText(query, 4000);
     const terms = words(query);
     const matchingTerms = new Set(terms);
@@ -365,7 +366,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     const cap = limitOf(limit, 8);
     const floor = meaningFloor();
     let byMeaning = [];
-    if (floor < 1) {
+    if (!lexicalOnly && floor < 1) {
       try {
         const found = await index.nearest(active(), [query],
           { limit: cap, minScore: floor, embedOptions: { timeoutMs: MEANING_TIMEOUT_MS } });
@@ -375,6 +376,23 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     const seen = new Set(byMeaning.map(note => note.id));
     const notes = [...byMeaning, ...best.map(entry => entry.note).filter(note => !seen.has(note.id))].slice(0, cap);
     return { ok: true, authority: 'agentx.core', notes, total: page.total };
+  }
+
+  async function turnContext(query) {
+    if (audience !== 'owner') throw error('Current personal memory belongs to the owner space', 403);
+    const text = cleanText(query);
+    const terms = new Set(words(text));
+    if (terms.size < 2 || ownerMemoryTurn.explicitlyRequestsHistory(text)) return ownerMemoryTurn.projection();
+    const current = await search(text, { limit: 6, minMatchedTerms: 2, lexicalOnly: true });
+    if (current.notes.length) return ownerMemoryTurn.projection({ notes: current.notes, protectRecall: true });
+
+    // A relevant retired note still signals a current-memory question. Its
+    // identifiers and contents do not leave the store through this read.
+    const retired = await MemoryNote.find({ ...boundary, $or: [
+      { status: 'forgotten' }, { invalidatedAt: { $lte: new Date() } }, { expiresAt: { $lte: new Date() } },
+    ] }).select('text').sort({ updatedAt: -1 }).limit(100).lean();
+    const protectRecall = retired.some(note => words(note.text).filter(word => terms.has(word)).length >= 2);
+    return ownerMemoryTurn.projection({ protectRecall });
   }
 
   // Notes of this space closest in meaning to each text. Same boundary as
@@ -389,7 +407,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
   const reindex = () => index.rebuild(boundary);
 
   const replacements = require('./memoryNoteReplacement').forNotes({ audience, boundary, seal, indexLater, forget });
-  return Object.freeze({ list, remember, record, keepSouvenir, finalizeSouvenir, editSouvenir, souvenirs, souvenirEvidence, historyEvidenceLookup, forget, search, similar, reindex,
+  return Object.freeze({ list, remember, record, keepSouvenir, finalizeSouvenir, editSouvenir, souvenirs, souvenirEvidence, historyEvidenceLookup, forget, search, turnContext, similar, reindex,
     ...replacements, count: () => MemoryNote.countDocuments(active()) });
 }
 
@@ -402,6 +420,7 @@ async function operatePersonal(input = {}) {
   let result;
   if (operation === 'list') result = await notes.list(input);
   else if (operation === 'search') result = await notes.search(input.query, input);
+  else if (operation === 'turn-context') result = await notes.turnContext(input.query);
   else if (operation === 'context') {
     const matched = await notes.search(input.query, input);
     const preferences = await notes.list({ kind: 'preference', limit: input.limit || 4 });
@@ -412,7 +431,7 @@ async function operatePersonal(input = {}) {
   else if (operation === 'remember') result = await notes.remember({ ...input,
     source: input.provenance === undefined ? undefined : AGENT_PROVENANCE[input.provenance] || 'nestor-conversation' });
   else if (operation === 'forget') result = await notes.forget(input.id);
-  else throw error('Choose list, search, remember or forget');
+  else throw error('Choose list, search, remember, forget or turn-context');
   return { ...result, operation };
 }
 

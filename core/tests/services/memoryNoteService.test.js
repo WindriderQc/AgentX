@@ -51,6 +51,39 @@ describe('Core selected-note ownership with real Mongo', () => {
     expect(result.notes.map(note => note.id)).toEqual([match.id, preference.id]);
   });
 
+  test('current turn evidence follows correction and forget without projecting retired text', async () => {
+    const fix = await owner.remember({ text: 'On the astronomy trip my telescope is the old reflector.' });
+    const forget = await owner.remember({ text: 'On the astronomy trip my campsite is Juniper Point.' });
+    await owner.remember({ text: 'On the astronomy trip my notebook is orange.' });
+    await owner.remember({ text: 'Private unrelated dance lessons.' });
+    const request = { action: 'turn-context', query: 'Which telescope, campsite and notebook do I use on my astronomy trip?' };
+    const before = await operatePersonal(request);
+    expect(before).toMatchObject({ authority: 'agentx.core', schema: 'agentx.owner-memory-turn/v1', protectRecall: true });
+    expect(before.context).toContain('old reflector');
+    expect(before.context).toContain('Juniper Point');
+
+    await owner.remember({ id: fix.id, text: 'On the astronomy trip my telescope is the new refractor.' });
+    await owner.forget(forget.id);
+    const after = await operatePersonal(request);
+    expect(after.context).toContain(fix.id);
+    expect(after.context).toContain('new refractor');
+    expect(after.context).toContain('notebook is orange');
+    expect(after.context).not.toMatch(/Juniper Point|old reflector|dance lessons/);
+    expect(after.policy).toMatch(/cannot establish a current saved fact/);
+  });
+
+  test('only retired matches protect a recall turn without leaking their text or disabling explicit transcript reads', async () => {
+    const note = await owner.remember({ text: 'The treehouse telescope cabinet has a silver handle.' });
+    await owner.forget(note.id);
+    const recall = await owner.turnContext('What handle does the treehouse telescope cabinet have?');
+    expect(recall.protectRecall).toBe(true);
+    expect(recall.context).toContain('[]');
+    expect(JSON.stringify(recall)).not.toContain('silver handle');
+    expect(await owner.turnContext('Show the previous conversation about the treehouse telescope cabinet')).toMatchObject({ protectRecall: false, context: '' });
+    expect(await owner.turnContext('Explain the solar cycle')).toMatchObject({ protectRecall: false, context: '' });
+    await expect(family.turnContext('treehouse telescope')).rejects.toMatchObject({ statusCode: 403 });
+  });
+
   test('a broad children request recalls separate son and daughter facts without widening family access', async () => {
     const son = await owner.remember({ text: 'Mon fils fictif aime dessiner.' });
     const daughter = await owner.remember({ text: 'Ma fille fictive aime les étoiles.' });

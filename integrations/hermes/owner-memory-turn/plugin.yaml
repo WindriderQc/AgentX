@@ -1,0 +1,8 @@
+name: agentx-owner-memory-turn
+version: "1.0.0"
+description: "Fetch AgentX Core's current owner-memory evidence for each personal API turn."
+provides_hooks:
+  - pre_llm_call
+  - pre_tool_call
+provides_middleware:
+  - llm_request
