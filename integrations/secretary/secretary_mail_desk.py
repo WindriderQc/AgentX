@@ -108,6 +108,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     storage.add_argument("--thread", required=True)
     storage.add_argument("--sha256", required=True)
     storage.add_argument("--request-id", required=True)
+    semantic = commands.add_parser("semantic-review")
+    semantic.add_argument("--message", required=True)
+    semantic.add_argument("--thread", required=True)
+    semantic.add_argument("--sha256", required=True)
+    semantic.add_argument("--request-id", required=True)
+    semantic.add_argument("--resource", type=int)
+    semantic.add_argument("--offset", type=int, default=0)
     findings = commands.add_parser("findings")
     findings.add_argument("--message", required=True)
     findings.add_argument("--thread", required=True)
@@ -373,6 +380,15 @@ def main(argv: list[str] | None = None) -> int:
                           "message": "the Secretary mail request is not valid"}))
         return 0
     try:
+        if args.command == "semantic-review":
+            from archive_semantic_review import SemanticReviewError, probe
+            try:
+                data = probe(args.evidence_root, args.message, args.thread, args.sha256, args.request_id,
+                             resource=args.resource, offset=args.offset)
+            except SemanticReviewError as error:
+                raise MailDeskError(str(error), error.code, error.status) from None
+            print(json.dumps({"status": "success", "data": data}, ensure_ascii=False))
+            return 0
         if args.command in ("review-restoration", "storage-evidence"):
             if args.command == "storage-evidence":
                 from archive_storage_evidence import probe

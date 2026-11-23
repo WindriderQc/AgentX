@@ -738,6 +738,44 @@ changes. The existing local disposition and review graph fences run after the
 last native parent observation. Synthetic CPU checks remain separate from
 installed hardware, deployment and real-corpus acceptance.
 
+`--native-semantic-acceptance SEMANTIC_REQUEST_UUID` selects v16. It requires
+`--native-manifest-confirmation MANIFEST_REQUEST_UUID` for the separate original
+inspection and the retained v3 review restoration checks. Any supplied v14/v15
+UUID still denotes that original manifest confirmation and must agree before
+HTTP. The semantic UUID denotes the new explicit human judgement in Core;
+this command neither prepares nor submits that judgement.
+
+Two final POSTs to
+`/api/secretary/history/manifest-confirmations/:manifestRequestId/semantic-acceptance`
+carry the semantic UUID and exact selection. The second carries the original
+parent fingerprint. Each parent embeds the unchanged v15 P/D/current/storage
+envelopes as fresh `observed` children; the client independently validates their
+contracts and requires their fingerprints and dates to remain stable across
+the two parent reads. No standalone v13/v14/v15 or storage calls follow.
+Responses are bounded to 3 MiB, semantic snapshots to 1 MiB and requests to
+1,800 seconds, without retries.
+
+The client recomposes the semantic binding from the selected original hashes,
+attachment descriptors, native selected-analysis resource, current complete
+manifest/Core proofs and original human confirmation. It validates the new
+historical human receipt, explicit semantic purpose, native byte-delivery
+coverage, dates and unchanged identity. Complete byte delivery alone does not
+accept meaning: a prepared, uncertain, held or blocked human verdict retains
+the semantic gap. Unresolved native thread questions remain held. The private
+LAN surface records no authenticated person, and the historical receipt itself
+keeps `semanticAcceptance: false`; only current native composition can accept
+the selected judgement. This is human review of exact selected sources and
+recorded analyses, separate from automatic Secretary qualification.
+
+The immutable private v16 report adds `nativeSemanticAcceptance` and retains
+the embedded v15 children. Semantic, preservation and decision acceptance
+remain independent. The native mailbox approval binding gap always remains;
+the report is review-only, always exits 2 and cannot authorize or execute a
+mailbox operation. Stdout contains only counts, status/acceptance flags and
+generic blocker/gap codes, without private identifiers, fingerprints or text.
+Existing local disposition and review graph fences follow the final native
+HTTP calls. Earlier modes retain their contracts and meanings.
+
 Every finding needs a disposition even for bulk mail. Retained actions and
 deliverables remain open (`retained_action_still_open`); local review only
 considers them addressed when resolved or dismissed. Bulk mail cannot waive

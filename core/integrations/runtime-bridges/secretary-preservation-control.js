@@ -24,6 +24,29 @@ class SecretaryPreservationControl {
 
   async probeStorageEvidence(copy, input) { return this.read(copy, input, 'storage-evidence'); }
 
+  async probeSemanticReview(copy, input) {
+    const keys = ['requestId', 'messageId', 'threadId', 'sourceSha256', 'resource', 'offset'];
+    if (!input || typeof input !== 'object' || Array.isArray(input)
+      || Object.keys(input).some(key => !keys.includes(key))
+      || !['requestId', 'messageId', 'threadId', 'sourceSha256'].every(key => typeof input[key] === 'string')
+      || !UUID.test(input.requestId) || !ID.test(input.messageId) || !ID.test(input.threadId) || !HASH.test(input.sourceSha256)
+      || !['primary', 'mirror'].includes(copy)
+      || input.resource !== undefined && (!Number.isSafeInteger(input.resource) || input.resource < 0 || input.resource >= 256)
+      || input.offset !== undefined && (!Number.isSafeInteger(input.offset) || input.offset < 0 || input.offset > 16 * 1024 * 1024)
+      || input.resource === undefined && input.offset !== undefined) {
+      throw new SecretaryMailError('Choose an exact bounded native semantic review resource.', {
+        code: 'SECRETARY_SEMANTIC_REVIEW_INVALID', statusCode: 400
+      });
+    }
+    const reader = this[copy];
+    if (!reader || !reader.available) throw new SecretaryMailError('This native archive copy is not configured.', {
+      code: 'SECRETARY_PRESERVATION_UNAVAILABLE', statusCode: 503
+    });
+    const { messageId, threadId, sourceSha256, requestId, resource, offset = 0 } = input;
+    return reader.call(`semantic-review --message ${messageId} --thread ${threadId} --sha256 ${sourceSha256} --request-id ${requestId}`
+      + (resource === undefined ? '' : ` --resource ${resource} --offset ${offset}`));
+  }
+
   async read(copy, { requestId, messageId, threadId, sourceSha256 } = {}, command) {
     if (![requestId, messageId, threadId, sourceSha256].every(value => typeof value === 'string')
       || !['preservation', 'restoration', 'review-restoration', 'storage-evidence'].includes(command)
