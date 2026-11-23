@@ -56,6 +56,13 @@ function createConversationImages({ conversations, service = images, visuals = n
       + (spaceFor(session) === 'family' ? ' Family drawings must be age-appropriate, non-sexual and non-graphic. Apply the family safety rules to the drawing description and to every change, as well as to speech. Offer a safe alternative or refuse an unsafe request without emitting draw. No uploads or custom generation settings are accepted here; only a picture on screen can be named, by its number.' : ' No file paths, addresses or custom generation settings are accepted in a draw block; only a picture on screen can be named, by its number.')
       + (illustratedIn(config, spaceFor(session)) ? SCENE_CONTRACT : '');
   }
+  // Hermes owns its native tools; pass only the shared hidden scene contract.
+  function hermesSceneContract(session, backend) {
+    if (backend !== 'hermes' || spaceFor(session) !== 'private') return '';
+    const config = configuration();
+    return config.configured && config.conversationProfile && illustratedIn(config, 'private')
+      ? SCENE_CONTRACT.trim() + ' Do not include private details from the conversation.' : '';
+  }
   async function contextFor(session) {
     if (!spaceFor(session)) return '';
     const shown = await shownImages.recentShown({ conversations, session }).then(shownImages.contextText).catch(() => '');
@@ -208,6 +215,6 @@ function createConversationImages({ conversations, service = images, visuals = n
       }
     }
   }
-  return { contract, contextFor, complete, register };
+  return { contract, hermesSceneContract, contextFor, complete, register };
 }
 module.exports = { createConversationImages, spaceFor, scopeFor, FAMILY_UNSUITABLE };
