@@ -147,8 +147,8 @@ kbd { display: inline-grid; min-width: 20px; height: 20px; place-items: center; 
 .mr-run-narrative strong { color: rgba(245,247,253,.88); font-size: .76rem; }
 .mr-run-narrative span { margin-top: 2px; color: rgba(225,231,245,.66); font-size: .71rem; line-height: 1.4; }
 .mr-run-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 11px; color: rgba(225,231,245,.7); font-size: .73rem; }
-.mr-collectors { display: grid; gap: 5px; }
-.mr-collector { border: 1px solid rgba(94,114,158,.18); border-radius: 8px; background: rgba(31,40,62,.38); font-size: .72rem; }
+.mr-collectors { display: grid; grid-template-columns: minmax(0,1fr); gap: 5px; }
+.mr-collector { border: 1px solid rgba(94,114,158,.18); border-radius: 8px; background: rgba(31,40,62,.38); font-size: .72rem; overflow-wrap: anywhere; }
 .mr-collector summary { display: flex; align-items: center; gap: 7px; padding: 7px 9px; cursor: pointer; }
 .mr-collector summary > span:nth-of-type(2) { color: rgba(225,231,245,.68); }
 .mr-runtime-icon { color: #65d49a; }
@@ -251,8 +251,8 @@ body.mr-modal-open { overflow: hidden; }
   .mr-actions .mr-btn, .mr-actions .mr-shortcuts { flex: 1 1 auto; }
   .mr-shortcuts > summary { width: 100%; }
   .mr-shortcuts > div { left: 0; right: auto; }
-  .mr-overview { grid-template-columns: 1fr 1fr; gap: 8px; }
-  .mr-overview article { min-height: 67px; padding: 10px; }
+  .mr-overview { gap: 8px; }
+  .mr-overview article { min-height: 67px; padding: 10px; overflow-wrap: anywhere; }
   .mr-flow { display: none; }
   .mr-pulse { grid-template-columns: 1fr; }
   .mr-pulse-icon { width: 42px; height: 42px; }
@@ -261,6 +261,7 @@ body.mr-modal-open { overflow: hidden; }
   .mr-runtime-card { grid-column: auto; }
   .mr-atlas { grid-template-columns: 1fr; }
   .mr-detail-panel { padding: 13px; }
+  .mr-collector summary { flex-wrap: wrap; }
   .mr-candidates-header { flex-direction: column; }
   .mr-segmented { justify-content: flex-start; }
   .mr-candidate { padding: 13px 12px 13px 43px; }
