@@ -121,6 +121,7 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
       endTurn();
     }
   };
+  Object.defineProperty(execute, 'familyPrimaryConfigured', { value: env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && typeof inference?.conversation === 'function' });
   execute.reconcile = session => env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && session.backend === 'hermes'
     ? hermes.reconcile?.(session) : null;
   return execute;

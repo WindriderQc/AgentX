@@ -72,6 +72,14 @@
     if (fetcher) timer = setTimeout(poll, 0);
     return holder;
   }
+  function addExplicit(base, block, board, present = value => board.add(value)) {
+    const space = /^\/api\/voice-personas\/(family|private)\/sessions\/[a-zA-Z0-9_-]{1,80}$/.exec(base)?.[1];
+    const operation = block?.operation;
+    if (!space || block?.kind !== 'image' || block.source !== 'local' || block.presentation === 'illustration'
+        || !valid(operation, space) || operation.statusUrl !== base + '/images/' + operation.id) return false;
+    if (!board.has('image:' + operation.id)) present(block);
+    return true;
+  }
   async function resume(base, add, { fetcher = root.fetch?.bind(root), current = () => true } = {}) {
     if (!/^\/api\/voice-personas\/(?:family|private)\/sessions\/[a-zA-Z0-9_-]{1,80}$/.test(base)) return;
     try {
@@ -85,5 +93,5 @@
       }
     } catch { /* Existing history remains usable; recovery never creates another image. */ }
   }
-  root.ConversationImages = Object.freeze({ create, resume, valid });
+  root.ConversationImages = Object.freeze({ create, resume, valid, addExplicit });
 }(typeof window !== 'undefined' ? window : globalThis));
