@@ -151,3 +151,37 @@ test.each(['false', 'true'])('the local Family route answers covered weather req
     else process.env.HOUSEHOLD_FAMILY_TOOLS = previous;
   }
 });
+
+test('a covered voice turn speaks the source when all model content is on screen, and the next answer keeps its own voice', async () => {
+  const sessionId = await startSession();
+  const weather = { fetchedAt, observedAt, temperatureC: -1.4, condition: 'Nuageux' };
+  const ambient = createFamilyAmbient.mock.results.at(-1).value;
+  const first = '<show kind="text" title="Conditions locales">Informations de la station.</show>';
+  const second = 'Il fait moins 1,4 degré Celsius et le ciel est nuageux. Mets ton manteau !';
+  for (const [index, content] of [first, second, 'Je ne peux pas consulter la météo en ce moment.', ''].entries()) {
+    jest.spyOn(ambient, 'weather').mockResolvedValueOnce(weather);
+    const stream = (async function* () {
+      for (const part of [content.slice(0, 12), content.slice(12)]) yield JSON.stringify({ message: { content: part }, done: false }) + '\n';
+      yield '{"done":true}\n';
+    })();
+    executeForTest.mockResolvedValueOnce({ ok: true, stream, completion: Promise.resolve({}), metadata: {} });
+    const response = await request(app).post(`${base}/${sessionId}/turns/text`)
+      .send({ text: index ? 'Peux-tu me redire la météo, s’il te plaît ?' : 'Quelle météo fait-il dehors ?', channel: 'voice', stream: true }).expect(200);
+    const events = response.text.trim().split('\n').map(line => JSON.parse(line));
+    const done = events.find(row => row.type === 'done').data;
+    const spoken = events.filter(row => row.type === 'delta').map(row => row.delta);
+    expect(spoken.join('').trim()).toBe(done.reply.text);
+    expect(events.findIndex(row => row.type === 'delta')).toBeLessThan(events.findIndex(row => row.type === 'say_end'));
+    if (index === 1) expect(done.reply.text).toBe(second);
+    else {
+      expect(spoken).toHaveLength(1);
+      expect(done.reply.text).toMatch(/moins 1,4 degré/i);
+      expect(done.reply.text).toMatch(/nuageux/i);
+      expect(done.reply.text).not.toMatch(/écran|impossible|ne peux/i);
+    }
+    if (index === 0) {
+      expect(done.display).toEqual(expect.arrayContaining([expect.objectContaining({ title: 'Conditions locales' })]));
+      expect(done.written.segments).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'display' })]));
+    }
+  }
+});

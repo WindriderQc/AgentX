@@ -66,7 +66,7 @@ async function prepareLivingSourceContext({ pack, session, familyPackId, isLlmX 
   const asksTomorrow = localFamilyVoice && isExplicitTomorrowWeather(userText);
   // The principal can use the catalogue. Only the dated weather evidence (or
   // its absence) belongs in the limited relay that cannot read these sources.
-  let text, relayForecastContext = '', relayWeatherContext = '', weatherAnswersRequest = false;
+  let text, relayForecastContext = '', relayWeatherContext = '', coveredWeather = null;
   const currentQuestion = localFamilyVoice && requestsWeather(words) ? words : '';
   if (asksTomorrow) {
     let forecast;
@@ -82,14 +82,14 @@ async function prepareLivingSourceContext({ pack, session, familyPackId, isLlmX 
     const tooLarge = '\n\nHousehold forecast: coverage could not be delivered in this turn. Do not substitute an observation or invent conditions.';
     text = base + (base.length + projection.length <= MAX_CONTEXT_CHARS ? projection : tooLarge);
   } else if (!localFamilyVoice || currentQuestion || asksObservationTime) {
-    ({ text: relayWeatherContext, weatherAnswersRequest } = await readFamilyWeather(ambient, { timeZone, asksObservationTime, currentQuestion }));
+    ({ text: relayWeatherContext, coveredWeather } = await readFamilyWeather(ambient, { timeZone, asksObservationTime, currentQuestion }));
     text = base + relayWeatherContext;
   } else {
     const followup = /^(?:et (?:la|maintenant|dehors)|(?:et )?en ce moment|(?:and|what about) now|right now)$/.test(words);
     let weather = '';
     if (followup) {
       const previous = weatherQuestionWords(history?.findLast(message => message.role === 'user')?.content);
-      ({ text: weather, weatherAnswersRequest } = familyWeatherReading(ambient?.peekWeather?.(), {
+      ({ text: weather, coveredWeather } = familyWeatherReading(ambient?.peekWeather?.(), {
         freshOnly: true, timeZone, currentQuestion: requestsWeather(previous) ? previous : ''
       }));
     }
@@ -99,14 +99,14 @@ async function prepareLivingSourceContext({ pack, session, familyPackId, isLlmX 
         + ' Respect a clearly specified place or date. For other topics, answer the actual request.';
     }
     if (base.length + weather.length <= MAX_CONTEXT_CHARS) relayWeatherContext = weather;
-    else weatherAnswersRequest = false;
+    else coveredWeather = null;
     text = base + relayWeatherContext;
   }
-  if (weatherAnswersRequest) text += '\nAnswer this request directly from the supplied local observation. No further lookup is needed.';
+  if (coveredWeather) text += '\nAnswer this request directly from the supplied local observation. No further lookup is needed.';
   if (text.length > MAX_CONTEXT_CHARS) throw Object.assign(new Error('Living-source context exceeds its complete delivery bound.'), {
     code: 'LIVING_SOURCE_CONTEXT_TOO_LARGE', statusCode: 503
   });
-  return { text, relayForecastContext, relayWeatherContext, weatherAnswersRequest };
+  return { text, relayForecastContext, relayWeatherContext, coveredWeather };
 }
 
 async function livingSourceContext(options) { return (await prepareLivingSourceContext(options)).text; }

@@ -33,12 +33,14 @@ function familyWeatherReading(weather, { now = new Date(), timeZone, freshOnly =
   const result = projectWeather(weather, now);
   const ageMs = now.getTime() - Date.parse(result.data?.observedAt);
   const dated = result.status === 'available' && ageMs >= 0;
-  if (freshOnly && (!dated || ageMs >= 30 * 60000)) return { text: '', weatherAnswersRequest: false };
+  if (freshOnly && (!dated || ageMs >= 30 * 60000)) return { text: '', coveredWeather: null };
 
-  const weatherAnswersRequest = Boolean(currentQuestion && dated && ageMs <= WEATHER_STALE_MS
-    && Number.isFinite(result.data.temperatureC) && result.data.condition?.trim()
-    && (!/\b(?:vente|windy)\b/.test(currentQuestion) || Number.isFinite(result.data.windKmh)));
-  return { text: weatherContext(result, { now, timeZone, asksObservationTime }), weatherAnswersRequest };
+  const asksWind = /\b(?:vente|windy)\b/.test(currentQuestion);
+  const data = result.data;
+  const coveredWeather = currentQuestion && dated && ageMs <= WEATHER_STALE_MS && Number.isFinite(data.temperatureC)
+    && data.condition?.trim() && (!asksWind || Number.isFinite(data.windKmh))
+    ? { temperatureC: data.temperatureC, condition: data.condition, ...(asksWind && { windKmh: data.windKmh }) } : null;
+  return { text: weatherContext(result, { now, timeZone, asksObservationTime }), coveredWeather };
 }
 
 function weatherContext(result, { now, timeZone, asksObservationTime }) {

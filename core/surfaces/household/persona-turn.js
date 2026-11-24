@@ -376,7 +376,7 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const { text: livingSourceContext, relayWeatherContext, relayForecastContext, weatherAnswersRequest } = inputOnly || picture ? {} : await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
+        const { text: livingSourceContext, relayWeatherContext, relayForecastContext, coveredWeather } = inputOnly || picture ? {} : await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
           channel: req.body?.channel, userText, history, timeZone: conversationEnv.PLANNING_TIME_ZONE, requestAt: new Date(startedAt) });
         const contextBase = inputOnly || picture ? '' : [livingSourceContext, systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
@@ -419,7 +419,7 @@ function createPersonaTurnHandler({
           imageSession: session, imageBackend: backend, imagesEnabled: !member })
           + (entry.workId ? '\n\n' + conversationWorks.guardianInstructions : '');
         const familyTools = !picture && backend === 'agentx' && pack.childSafe && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !isOpening && !member
-          ? familyToolset(conversationEnv, { weatherAnswersRequest, artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { artx, ambient } }) : null;
+          ? familyToolset(conversationEnv, { weatherAnswersRequest: Boolean(coveredWeather), artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { artx, ambient } }) : null;
         const agentxInstructions = picture ? [systemPromptFor(pack, { modeId: session.modeId }),
           conversationImages?.contract(session, backend, { scenes: false }), familyPictureIntent.qualifierInstruction].filter(Boolean).join('\n\n')
           : [pack.childSafe ? familyIdentity(session.persona) : '',
@@ -437,7 +437,7 @@ function createPersonaTurnHandler({
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
         const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        const channels = entry.channels = isLlmX || picture ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: mathFor(pack), allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
+        const channels = entry.channels = isLlmX || picture ? null : replyChannels.createReplyChannels({ projectCompletedSpeech: require('./family-weather-speech').projectionFor(coveredWeather, replyLanguage), readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: mathFor(pack), allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
           canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target || (target?.force ? target.page : null), onWritten: value => { if (!res.writableEnded) event('written', value); },
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
           onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },
@@ -471,7 +471,7 @@ function createPersonaTurnHandler({
           ...(!picture && currentDirective ? { turnDirective: currentDirective } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
-          signal: abort.signal, onExecution: evidence => event('execution', { evidence }), onWaiting: info => event('status', { phase: 'waiting_host', ...(info?.reason === 'primary_active' && { reason: 'primary_active' }) }), onActivity: activity => event('status', { phase: 'activity', activity }),
+          signal: abort.signal, onExecution: evidence => { if (evidence.continuity && evidence.continuity.state !== 'primary') channels?.streamSpeech(); event('execution', { evidence }); }, onWaiting: info => event('status', { phase: 'waiting_host', ...(info?.reason === 'primary_active' && { reason: 'primary_active' }) }), onActivity: activity => event('status', { phase: 'activity', activity }),
           onStarted: require('./persona-native-start').nativeTurnStarted({ entry, session, turnSession, member, guardianSession, backend, conversations, conversationWorks }),
           onRelayProgress: progress => { entry.auditContext = { ...entry.auditContext, toolEvidence: { status: 'partial', authority: 'agentx/ollama', receipts: [], conversationRelay: progress } }; },
           onSettled: () => { entry.executionSettled = true; },
@@ -508,7 +508,7 @@ function createPersonaTurnHandler({
           parentAttention: safety.requiresParentAttention, soundId: sound?.id || '' };
         if (channels && !channels.received) channels.push(result.text);
         if (abort.signal.aborted) return;
-        if (channels) { ({ display } = channels.end({ fallbackPage: !member && target?.page })); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
+        if (channels) { ({ display } = channels.end({ fallbackPage: !member && target?.page, completed: true })); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
         if (channels && !abort.signal.aborted && toolEvidence?.conversationRelay?.reason !== 'occupation_changed') await conversationImages?.complete({ session, pack, backend, display,
           evidence: toolEvidence, turnId: clientTurnId || entry.imageTurnId, signal: abort.signal, member: Boolean(member),
           onShow: block => event('show', { block }) });

@@ -104,7 +104,7 @@ function spokenTable(lines) {
   return lines.map(row => row.replace(/^\s*\||\|\s*$/g, '').split('|').map(cell => cell.trim()).filter(Boolean).join('. ')).join('\n');
 }
 
-function createReplyChannels({ allowSecrets = false, allowMath = false, allowPages = false, canonicalPageTitles = false, pageTarget = null, pageCatalog = screenPages, answerForPage = null, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onWritten = () => {}, onConsult = () => {} } = {}) {
+function createReplyChannels({ allowSecrets = false, allowMath = false, allowPages = false, canonicalPageTitles = false, pageTarget = null, pageCatalog = screenPages, answerForPage = null, projectCompletedSpeech = null, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onWritten = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
   // Ordered, safe presentation evidence. Raw model protocol and hidden reasoning
@@ -131,7 +131,7 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
     if (/[ \t]$/.test(spoken)) text = text.replace(/^[ \t]+/, '');
     if (!text) return;
     spoken += text;
-    onSay(text);
+    if (!projectCompletedSpeech) onSay(text);
   };
   const addBlock = (kind, title, body, extra = {}, retain = true) => {
     const content = String(body || '').replace(/^\n+|\s+$/g, '');
@@ -334,7 +334,12 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
       pending += String(delta);
       process();
     },
-    end({ fallbackPage } = {}) {
+    streamSpeech() {
+      if (!projectCompletedSpeech) return;
+      projectCompletedSpeech = null;
+      if (spoken) onSay(spoken);
+    },
+    end({ fallbackPage, completed = false } = {}) {
       if (!ended) {
         ended = true;
         process();
@@ -349,6 +354,12 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
         const answer = page ? String(answerForPage(page) || '').trim() : '';
         if (answer) emit((spoken.trim() ? ' ' : '') + answer);
         if (!spoken.trim() && display.length) emit(ONLY_SHOWN[lang], false);
+        // Only a settled turn selects and publishes deferred speech. Closing a
+        // partial turn for its written audit must not speak a completed answer.
+        if (projectCompletedSpeech && completed) {
+          spoken = projectCompletedSpeech(spoken.trim());
+          if (spoken) onSay(spoken);
+        }
       }
       return { say: spoken.replace(/\n{3,}/g, '\n\n').trim(), display: display.slice(),
         written: { version: 1, segments: writtenSegments.map(segment => ({ ...segment })) } };
