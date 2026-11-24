@@ -43,19 +43,28 @@ function localOwnerOrigin(value) {
     && !url.search && !url.hash && url.pathname === '/' ? url.origin : null;
 }
 
-function isLocalPrincipal(context, config, gateway) {
+function isLocalPrincipal(context, config, gateway, resolveAgentConfig) {
   const providerId = context.modelProviderId;
   if (!providerId || context.modelId !== 'agentx-primary') return false;
-  const model = config.agents?.entries?.[context.agentId]?.model ?? config.agents?.defaults?.model;
-  const primary = typeof model === 'string' ? model : model?.primary;
-  if (primary !== `${providerId}/agentx-primary` || (model?.fallbacks !== undefined
-      && (!Array.isArray(model.fallbacks) || model.fallbacks.length))) return false;
+  const agent = resolveAgentConfig?.(config, context.agentId);
+  if (!agent) return false;
+  const selected = agent.model;
+  const defaults = config.agents?.defaults?.model;
+  const selectedPrimary = typeof selected === 'string' ? selected : selected?.primary;
+  const defaultPrimary = typeof defaults === 'string' ? defaults : defaults?.primary;
+  if ((selectedPrimary ?? defaultPrimary) !== `${providerId}/agentx-primary`) return false;
+  // Native OpenClaw treats an explicit per-agent primary (including its
+  // string form) as an empty fallback override when no list is specified.
+  // A fallback-only entry instead keeps the default primary.
+  const fallbacks = selected?.fallbacks !== undefined ? selected.fallbacks
+    : selectedPrimary ? [] : defaults?.fallbacks;
+  if (fallbacks !== undefined && (!Array.isArray(fallbacks) || fallbacks.length)) return false;
   const provider = config.models?.providers?.[providerId];
   return provider?.api === 'ollama' && typeof provider.baseUrl === 'string'
     && provider.baseUrl.replace(/\/+$/, '') === gateway;
 }
 
-export function registerOwnerMemoryTurn(api, { fetchImpl = fetch, now = Date.now } = {}) {
+export function registerOwnerMemoryTurn(api, { resolveAgentConfig, fetchImpl = fetch, now = Date.now } = {}) {
   if (!api.on) return;
   const origin = localOwnerOrigin(api.pluginConfig?.agentxUrl);
   const url = origin && new URL('/api/consumers/nestor/v1/memory/notes', origin);
@@ -67,7 +76,7 @@ export function registerOwnerMemoryTurn(api, { fetchImpl = fetch, now = Date.now
     const instant = now();
     for (const [id, state] of active) if (state.until <= instant) active.delete(id);
     active.delete(key);
-    if (!key || !gateway || !isLocalPrincipal(context, api.config, gateway) || typeof prompt !== 'string' || !prompt.trim()) return;
+    if (!key || !gateway || !isLocalPrincipal(context, api.config, gateway, resolveAgentConfig) || typeof prompt !== 'string' || !prompt.trim()) return;
     const state = { session: context.sessionKey, until: instant + 900_000, protected: false };
     active.set(key, state);
     try {

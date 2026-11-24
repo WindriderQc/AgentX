@@ -3,7 +3,7 @@ import { privateOwnerContext, updateState, nowIso } from "./store.js";
 import { agentxRead, briefingFromCore, contextFor, recordTool, recordRun } from "./harness.js";
 import { continuityHttpHandler, continuityOperations, householdWorkspace } from "./continuity.js";
 import { mediaHttpHandler, mediaRoot } from "./media.js";
-import { resolveAgentWorkspaceDir, resolveAgentEffectiveModelPrimary } from "openclaw/plugin-sdk/agent-runtime";
+import { resolveAgentConfig, resolveAgentWorkspaceDir, resolveAgentEffectiveModelPrimary } from "openclaw/plugin-sdk/agent-runtime";
 
 import { createCoreNotesClient, configuredJobContext } from "./core-notes.js";
 import { createCoreVaultClient } from "./core-vault.js";
@@ -41,7 +41,7 @@ export default definePluginEntry({
     registerPresentation(api);
     registerDossier(api);
     registerSources(api);
-    registerOwnerMemoryTurn(api);
+    registerOwnerMemoryTurn(api, { resolveAgentConfig });
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });
