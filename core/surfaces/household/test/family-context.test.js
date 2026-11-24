@@ -6,6 +6,8 @@ const { choreSummary, familyCaptureKind, familyTurn, householdMembers } = requir
 test('a child idea or reminder is told apart from an ordinary "remember" note', () => {
   assert.equal(familyCaptureKind("J'ai une idée : une cabane"), 'idea');
   assert.equal(familyCaptureKind('Note mon idée pour papa'), 'idea');
+  assert.equal(familyCaptureKind('Salut Nestor, je voudrais que tu me rappelles de regarder la lune.'), 'reminder');
+  assert.equal(familyCaptureKind('Could you please remind me to take my scarf?'), 'reminder');
   assert.equal(familyCaptureKind('Rappelle-moi de prendre mon sac demain'), 'reminder');
   assert.equal(familyCaptureKind('Fais-moi penser à arroser la plante'), 'reminder');
   assert.equal(familyCaptureKind('Rappelle-toi que mon chat s’appelle Mimi'), null);
@@ -26,6 +28,59 @@ test('a capture goes to the idea inbox instead of family notes, and a failure is
   assert.equal((await familyTurn({ ...base, userText: "J'ai une idée", ideaInbox: failing })).captured, 'failed');
   assert.equal((await familyTurn({ ...base, userText: 'Retiens que je joue au soccer', ideaInbox })).savedNow, true);
   assert.equal(recorded.length, 1);
+});
+
+test('Quebec family speech writes only explicit requests and keeps the original wording', async () => {
+  const { detectMemoryRequest } = require('../persona-prompt');
+  const inbox = [], memory = [];
+  const options = { detectMemoryRequest, withChores: false,
+    ideaInbox: { captureIdea: async row => inbox.push(row) },
+    notes: { record: async row => memory.push(row) } };
+
+  const idea = 'Euh, Nestor, j’ai une idée : on construit une cabane.';
+  const reminder = 'Tu peux-tu me rappeler de pas oublier mon sac demain?';
+  const note = 'Peux-tu retenir que mon dinosaure préféré est le tricératops?';
+  for (const userText of [idea, reminder, note]) await familyTurn({ ...options, userText });
+  assert.deepEqual(inbox.map(row => [row.kind, row.text]), [['idea', idea], ['reminder', reminder]]);
+  assert.deepEqual(memory.map(row => row.text), [note]);
+
+  for (const userText of [
+    'Rappelle-moi pas demain de sortir mes bottes.', 'Retiens surtout pas mon histoire.',
+    'Ne retiens pas cette anecdote.', 'Il m’a dit “prends note”.', '« Rappelle-moi de lire »',
+    'Retiens que j’aime le patin, euh non, laisse faire.', 'J’ai une idée, mais non, laisse faire.',
+    'J’ai une idée de jeu mais j’veux pas que tu la notes.', 'Retiens que j’aime le hockey, garde-le pas finalement.',
+    'Ça veut dire quoi, rappelle-moi?', 'Rappelle-moi de quoi on parlait?', 'Tu peux-tu me rappeler comment ça marche?',
+    'Me rappeler de lire, ça veut dire quoi?', 'Can you tell me what “remind me to go” means?',
+    'Do not save my idea.', 'Don’t remind me to go.'
+  ]) {
+    const result = await familyTurn({ ...options, userText });
+    assert.equal(result.savedNow, false, userText);
+    assert.equal(result.captured, null, userText);
+  }
+  assert.equal(inbox.length, 2);
+  assert.equal(memory.length, 1);
+});
+
+test('the voice turn gives the family model only the actual parent-inbox outcome', async t => {
+  const { harness } = require('./fixtures/persona-journey.cjs');
+  const capture = t.mock.method(require('../../../src/services/ideaInboxService'), 'captureIdea',
+    async () => ({ review: 'parent' }));
+  const h = harness({ packId: 'kidx_nestor', backend: 'agentx' });
+  const original = 'Nestor, tu peux-tu me rappeler de prendre mes mitaines?';
+  await h.turn(original, 'voice');
+  assert.deepEqual(capture.mock.calls[0].arguments, [{ text: original, origin: 'family', kind: 'reminder' }]);
+  assert.match(h.sent[0].request, /saved in the parent review inbox.*No notification or scheduled alarm/);
+  assert.match(h.sent[0].prefix, /préciser ce mot avant de choisir un outil/);
+
+  await h.turn('Je veux pas que tu gardes cette idée.', 'voice');
+  assert.equal(capture.mock.callCount(), 1);
+  assert.doesNotMatch(h.sent[1].request, /saved in the parent review inbox/);
+
+  capture.mock.mockImplementation(async () => { throw Error('synthetic inbox failure'); });
+  await h.turn('Nestor, peux-tu garder mon idée de jeu?', 'voice');
+  assert.equal(capture.mock.callCount(), 2);
+  assert.match(h.sent[2].request, /could not be saved/);
+  assert.doesNotMatch(h.sent[2].request, /saved in the parent review inbox/);
 });
 
 test('the chore summary is read-only Kids Room rows and fails closed to nothing', async () => {

@@ -675,6 +675,12 @@ its model answer and plays introduction, clip, then answer; streamed model text
 is buffered so it cannot compete with the introduction. Unknown or additional
 words keep the normal inference path. Safety and arithmetic retain precedence.
 
+Family idea, reminder and memory writes require a direct request. Matching accepts
+spoken forms such as “Tu peux-tu me rappeler de prendre mes mitaines?” and keeps the
+original wording in the record. A quoted or negated command stays in the conversation.
+The assistant may confirm a reminder was saved for parent review once that write
+succeeds. Scheduling a notification requires its own evidence.
+
 Explicit spoken corrections can group up to four fragments (800 characters)
 after 700 ms of quiet. Ordinary yes/no replies keep their immediate path. Speech
 suspends the quiet timer; after five seconds the text-only correction is carried
