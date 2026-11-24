@@ -22,7 +22,7 @@ agents' sessions do not gain this access. Recommendations stay in the reply.
 `personal_memory` uses `/api/consumers/nestor/v1/memory/notes`. A failed or
 ambiguous write is never retried automatically or redirected to a local note
 file. List/search coverage and Core receipts are returned to the native tool.
-In a private owner turn, the prompt hook reads Core's `turn-context` projection
+In a locally routed private owner turn, the prompt hook reads Core's `turn-context` projection
 and refreshes the current note evidence. Core's protection flag temporarily
 blocks native session searches and history reads for current recall. Explicit
 transcript requests retain their history tools. See the
