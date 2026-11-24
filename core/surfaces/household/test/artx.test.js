@@ -245,3 +245,86 @@ test('the HTTP idle endpoint executes the same task and preserves its identity',
     assert.equal(f.calls(), 1);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
+
+test('a fox picture takes the existing approved image source without model or ArtX at night', async () => {
+  const f = fixture(), s = await f.service.snapshot(displayId);
+  const observation = f.observation(s);
+  const { createVisuals } = require('../visuals');
+  for (const found of [true, false]) {
+    const calls = [];
+    const visuals = createVisuals({ env: { SEARXNG_URL: 'http://image-provider.example.test', HOUSEHOLD_IMAGE_FAMILY_SOURCES: 'web' },
+      fetchImpl: async (url, options) => {
+        calls.push({ url: new URL(url), options });
+        return Response.json({ results: found ? [{ img_src: 'https://images.example.test/fox.png' }] : [] });
+      } });
+    const h = harness({ packId: 'kidx_nestor', backend: 'agentx', artx: f.service, visuals,
+      response: () => assert.fail('No model prose supplies picture status') });
+    h.turns.push({ inputText: 'Synthetic nonpublic antecedent', replyText: 'Synthetic reply' });
+    const out = await h.turn('Montre-moi une image de Renard.', 'voice', { artx: observation });
+    assert.equal(calls.length,1);
+    assert.equal(calls[0].url.searchParams.get('q'), 'animal un renard');
+    assert.equal(calls[0].url.searchParams.get('safesearch'), '2');
+    assert.doesNotMatch(calls[0].url.href,/Synthetic|Montre-moi|display/i);
+    assert.equal(f.service.read({ displayId }).current?.task || null, null);
+    assert.match(out.reply.text,found ? /J’ai trouvé une image/ : /pas trouvé d’image/);
+    assert.doesNotMatch(out.reply.text,/est affichée/i);
+    assert.equal(out.display?.[0]?.status,found ? 'found' : undefined);
+    assert.equal(h.sent.length,0);
+  }
+});
+
+test('generic no-source and private requests are truthful without search; explicit draw, albums and ArtX stay distinct', async () => {
+  const { genericPicture } = require('../family-picture-lookup');
+  assert.equal(genericPicture('Dessine un renard.'), null);
+  assert.equal(genericPicture('Montre-moi une photo de renard dans mes albums.'), null);
+  assert.equal(genericPicture('Montre-moi une image de renard dans ma galerie.'), null);
+  assert.equal(genericPicture('Montre-moi le tableau.'), null);
+  assert.equal(genericPicture('Montre-moi le ciel.'), null);
+  assert.equal(genericPicture('Show me a picture of a fox please.').animal.id, 'fox');
+  assert.equal(genericPicture('Montre-moi une image de renard près de chez moi.').animal, null);
+  for (const [allowed, text, expected] of [
+    [[], 'Montre-moi une image de renard.', /pas de source publique d’images approuvée/],
+    [['photos'], 'Montre-moi une image de renard.', /pas de source publique d’images approuvée/],
+    [['web'], 'Montre-moi une image de renard près de chez moi.', /Quel animal veux-tu voir/],
+  ]) {
+    const h = harness({ packId: 'kidx_nestor', backend: 'agentx',
+      response: () => assert.fail('No source or verified subject, no speculative inference'),
+      visuals: { sources: ({ family }) => (assert.equal(family,true), allowed), present: () => assert.fail('No speculative lookup') } });
+    const out = await h.turn(text, 'voice');
+    assert.match(out.reply.text, expected);
+    assert.deepEqual(out.display || [],[]);
+    assert.equal(h.sent.length,0);
+  }
+});
+
+test('a failed ArtX selection at night is not retried and a tool-only terminal reply gets a real voiced fallback', async () => {
+  const f = fixture(), s = await f.service.snapshot(displayId);
+  f.service.observe(f.observation(s));
+  let attempted = 0, posted = 0;
+  const { familyToolset } = require('../family-tools');
+  const toolset = familyToolset({}, { artxDisplayId: displayId, artxRequestId: requestId, requestText: 'Montre-moi le tableau.',
+    toolDeps: { artx: { read: (...a) => f.service.read(...a), present: (...a) => { attempted++; return f.service.present(...a); } } } });
+  const { runLocalConversation } = require('../conversation-inference');
+  const { createReplyChannels } = require('../reply-channels');
+  const projected = createReplyChannels();
+  const toolCalls = [{ function: { name: 'artx_present', arguments: { mode: 'paint', paintingId: 'synthetic-picture' } } }];
+  const result = await runLocalConversation({ request: { backend:'agentx', session:{packId:'kidx_nestor',modeId:'family'}, pack:{taskType:'voice_persona_chat',childSafe:true},
+    signal: new AbortController().signal, speechLanguage: 'fr', channel: 'voice', streaming: true, agentxInstructions:'Synthetic', familyTools: toolset,
+    onDelta: value => projected.push(value) }, prepared:[{role:'user',content:'Montre-moi le tableau.'}], env:{},
+    inference: { execute: async () => {
+      posted++;
+      return { ok:true, stream:(async function* () {
+        yield JSON.stringify({message:{content:'',tool_calls:toolCalls},done:false})+'\n';
+        yield JSON.stringify({done:true})+'\n';
+      })(), completion:Promise.resolve({completed:true,terminalComplete:true}),metadata:{model:'synthetic-main'} };
+    } } });
+  assert.equal(attempted,1);
+  assert.equal(posted,3,'two existing tool rounds and no fourth model invocation');
+  assert.equal(result.tools.receipts.length,1);
+  assert.deepEqual(result.tools.receipts.map(x => [x.tool,x.status,x.error]),[['artx_present','failed','ARTX_PAINTING_UNAVAILABLE']]);
+  assert.match(result.text,/pas pu terminer/);
+  const channels = projected.end();
+  assert.match(channels.say,/pas pu terminer/);
+  assert.match(JSON.stringify(channels.written),/pas pu terminer/);
+  assert.deepEqual(channels.display,[]);
+});

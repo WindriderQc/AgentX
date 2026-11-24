@@ -117,11 +117,18 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     for (const call of calls) {
       if (relayContinuation) await relayContinuation.assertOccupied();
       const answered = await toolset.execute(call, { signal });
-      receipts.push(answered.receipt);
+      if (answered.receipt) receipts.push(answered.receipt);
       conversation.push(answered.message);
     }
   }
   if (signal?.aborted) relay = null;
+  else if (!streamed.trim() && receipts.some(receipt => receipt.tool === 'artx_present' && receipt.status === 'failed')) {
+    // A completed tools-only exchange has no model answer to speak. Its
+    // truthful fallback must pass through normal voice/written projection.
+    streamed = request.speechLanguage === 'en' ? 'I couldn’t complete the display request.'
+      : 'Je n’ai pas pu terminer la demande d’affichage.';
+    onDelta?.(streamed);
+  }
   return { backend, text: streamed,
     metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}), usage: sumUsage(callUsage) },
     tools: result.metadata?.conversationContinuity?.state === 'status_only'
