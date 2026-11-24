@@ -85,6 +85,34 @@ def test_a_spoken_stop_answers_as_a_control_and_ordinary_speech_as_text(adapter,
     assert decoded == [(wav(), "fr")]
 
 
+@pytest.mark.parametrize("route", ["/v1/audio/transcriptions", "/v1/audio/transcriptions/controls"])
+@pytest.mark.parametrize("requested,decoder_language", [
+    ("fr-CA", "fr"), ("fr_CA", "fr"), ("fr", "fr"), ("en", "en"), ("fr-en", None), ("auto", None),
+])
+def test_short_upload_language_reaches_decoder_and_selects_prompt(adapter, monkeypatch, route, requested, decoder_language):
+    from app.stt import whisper
+
+    calls = []
+    def decode(audio, **options):
+        calls.append(options)
+        info = types.SimpleNamespace(language=options["language"] or "en")
+        return iter([types.SimpleNamespace(start=0, end=.1, text="OK")]), info
+
+    adapter.control.model.heard = "[unk]"
+    monkeypatch.setattr(whisper, "_get_model", lambda *_args: types.SimpleNamespace(transcribe=decode))
+    response = TestClient(adapter.app).post(route, files={"file": ("mic.wav", wav())}, data={"language": requested})
+    assert response.status_code == 200
+    body = response.json()
+    assert len(calls) == 1
+    assert calls[0]["language"] == decoder_language
+    assert calls[0]["initial_prompt"] == (whisper.settings.whisper_initial_prompt if decoder_language == "fr"
+                                         else whisper.settings.whisper_hotwords)
+    assert body["language"] == requested
+    assert body["detectedLanguage"] == (decoder_language or "en")
+    assert body["recognition"]["requestedLanguage"] == (decoder_language or requested)
+    assert body["recognition"]["languageSource"] == ("requested" if decoder_language else "detected")
+
+
 def test_standalone_stop_still_works_when_general_gpu_recognition_is_unavailable(adapter, monkeypatch):
     def unavailable(*_args, **_kwargs):
         raise service.RecognitionUnavailable("private decoder detail")

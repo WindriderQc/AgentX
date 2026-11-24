@@ -20,7 +20,7 @@ Core reaches the service through `VOIX_BASE_URL` (and `VOIX_FALLBACK_URL`).
 | `GET /health`, `GET /api/health`, `GET /version` | Liveness, version and startup warm-up state |
 | `GET /api/voices` | Installed voices and engines; never loads a model |
 | `GET /assets/voice-audio.js` | Browser player for the streamed audio protocol |
-| `POST /v1/audio/transcriptions` | One uploaded utterance to text (`language`: `auto`, `fr`, `en`, `fr-en`) |
+| `POST /v1/audio/transcriptions` | One uploaded utterance to text (`language` accepts `auto`, `fr`, `fr-CA`, `en`, `fr-en`) |
 | `POST /api/stt/warm`, `POST /api/preload-stt` | Wake or load recognition ahead of an utterance |
 | `POST /api/tts`, `POST /v1/audio/speech` | Text to one audio file (`wav`, `mp3`, `flac`, `ogg`, `opus`) |
 | `POST /api/tts/stream` | Text to `voix-pcm-v1` NDJSON audio frames |
@@ -48,6 +48,11 @@ probability threshold. Weaker phonemes remain accepted after speech starts, and
 400 ms of padding preserves word boundaries. Recognized words are not rejected
 for naming a website. Qualify noise and short/quiet speech together before
 changing the threshold on an instance.
+
+On short uploads, both `fr-CA` and `fr_CA` select Whisper's `fr` decoder with
+the configured French initial prompt. The optional controls endpoint uses the
+same mapping for ordinary speech. The JSON response echoes the requested locale
+in `language` and reports the canonical code `fr` in `recognition.requestedLanguage`.
 
 Recognition responses optionally include `recognition` evidence: requested versus
 decoded language, whether language was requested/detected/constrained, audio and

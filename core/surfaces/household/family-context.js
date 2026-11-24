@@ -7,17 +7,83 @@
 const defaultIdeaInbox = require('../../src/services/ideaInboxService');
 const { ageInYears, birthdayLabel, instanceToday } = require('../../src/domains/household/familyBirthDate');
 
-const IDEA_REQUEST = /(j'?\s?ai une (?:super |bonne |petite )?id[ée]e|(?:note|garde|ajoute|[ée]cris)[sz]?(?:-moi)?\s+(?:une|mon|cette|l')\s*id[ée]e|id[ée]e pour (?:papa|la maison|plus tard)|i have an idea|(?:save|keep|write down) (?:my|this|an) idea)/i;
-const REMINDER_REQUEST = /(rappelle[sz]?[- ]moi|fais[- ]moi penser|n'?oublie pas de me rappeler|(?:note|ajoute|garde)[sz]?(?:-moi)?\s+(?:un|ce)\s+rappel|remind me)/i;
+// Match the requested action at the start of the child's own words. Keep the
+// original text for storage, including what follows "de ne pas oublier…".
+const SPOKEN_OPENING = /^(?:(?:nestor|bonjour|salut|hey|euh|ben|svp|s'il (?:te|vous) pla[iî]t|please)[ ,]+)+/i;
+const POLITE_REQUEST = /^(?:(?:je veux|je voudrais|j'aimerais) que tu|(?:est[- ]ce que )?(?:tu (?:peux|pourrais)(?:[- ]tu)?|vous (?:pouvez|pourriez))|(?:peux|pourrais)[- ]tu|(?:pouvez|pourriez)[- ]vous|(?:can|could|would) you)\s+/i;
+const REQUEST_VERBS = new Map(Object.entries({
+  'me rappeler': 'rappelle-moi', 'me rappelles': 'rappelle-moi', 'me faire penser': 'fais-moi penser',
+  garder: 'garde', noter: 'note', écrire: 'écris', ajouter: 'ajoute', retenir: 'retiens', retiennes: 'retiens', prendre: 'prends'
+}));
+const IDEA_REQUESTS = [
+  /^j[' ]?ai une (?:super |bonne |petite )?id[ée]e\b/i,
+  /^(?:note[sz]?|garde[sz]?|ajoute[sz]?|[ée]cris)(?:[- ]moi)?\s+(?:(?:une|mon|cette)\s+|l')id[ée]e\b/i,
+  /^id[ée]e pour (?:papa|la maison|plus tard)\b/i,
+  /^(?:i have an idea|(?:save|keep|write down) (?:my|this|an) idea)\b/i
+];
+const REMIND_ME = /^(?:rappelle[sz]?[- ]moi|(?:n')?oublie pas de me rappeler)\s+/i;
+const FRENCH_WHEN = /^(?:demain(?: matin| soir| après[- ]midi)?|tantôt|ce soir|dans [\p{L}\d-]+ (?:minutes?|heures?|jours?))\s+/iu;
+const FRENCH_CLOCK = /^[àa] (?:midi|minuit|\d{1,2}(?::\d\d|\s*h(?:\s*\d{1,2})?)|[\p{L}\d-]+ heures?)\s+/iu;
+const REMINDER_ACTION = /^(?:de\s+(?!(?:quoi|qui|quand|quel(?:le)?s?)\b)|d')\p{L}/iu;
+const ENGLISH_WHEN = /^(?:tomorrow(?: morning| night| afternoon)?|tonight|in [\w-]+ (?:minutes?|hours?|days?))\s+/i;
+const ENGLISH_CLOCK = /^at (?:noon|midnight|\d{1,2}(?::\d\d)?(?:\s*[ap]m)?)\s+/i;
+
+const REMINDER_REQUESTS = [
+  /^fais[- ]moi penser\s+(?:(?:[àa]|au|aux|de)\s+|d')\p{L}/iu,
+  /^(?:note[sz]?|ajoute[sz]?|garde[sz]?)(?:[- ]moi)?\s+(?:un|ce)\s+rappel\b/i
+];
+function asksForReminder(request) {
+  if (REMIND_ME.test(request)) {
+    const action = request.replace(REMIND_ME, '').replace(FRENCH_WHEN, '').replace(FRENCH_CLOCK, '');
+    return REMINDER_ACTION.test(action);
+  }
+  if (/^remind me\s+/i.test(request)) {
+    const action = request.replace(/^remind me\s+/i, '').replace(ENGLISH_WHEN, '').replace(ENGLISH_CLOCK, '');
+    return /^(?:to |not to |about )\w/i.test(action);
+  }
+  return REMINDER_REQUESTS.some(pattern => pattern.test(request));
+}
+
+// STT can omit the comma before a correction or a question about the wording.
+const ASKS_MEANING = /(?:^|[\s,;:])[çc]a (?:veut dire quoi|signifie quoi)(?: au juste| exactement)?\s*[.?!…]*$/i;
+const CLAUSE_BREAK = /[,;.!?…]+|\s+(?:mais|pis|puis|euh|but|(?:ah|ben)(?=\s+non\b))\s+|\s+(?=non\s+(?:laisse|oublie)\b)/i;
+const NON_ACTION_CLAUSES = [
+  /^(?:non\b|laisse (?:faire|tomber)\b|oublie ça\b|never ?mind\b|forget it\b)/i,
+  /^(?:ne )?(?:me )?(?:la |le |les )?(?:garde|note|retiens|enregistre|rappelle)(?:[- ](?:la|le|les|ça|moi))? (?:surtout )?(?:pas|plus|pu|jamais)\b/i,
+  /^(?:je (?:ne )?|j')veux (?:pas|plus|pu) que tu (?:la |le |les )?(?:gardes?|notes?|retiennes|enregistres?)\b/i,
+  /^(?:(?:je (?:ne )?|j')veux|tu (?:ne )?vas) (?:pas|plus|pu) (?:la |le |les |l')?(?:garder|noter|retenir|enregistrer|écrire)\b/i,
+  /^(?:do not|don't) (?:save|keep|write down|remember|remind)\b/i,
+  /^(?:garde(?:[- ](?:la|le|les|ça))? (?:juste |seulement )?pour toi|keep (?:this|it) (?:just )?to yourself)\b/i,
+  /^(?:n'en parle|en parle|parle[- ]en|(?:ne )?(?:le |la )?dis|dis[- ](?:le|la)) (?:surtout )?(?:pas|jamais|rien)\b/i,
+  /^(?:dit|disait|a dit|said|says) (?:le|la|un|une|mon|ma|the|my)\b/i
+];
 const MAX_PROFILES = 8;
 const MAX_CHORES = 5;
 const MAX_CHARACTERS = 1500;
 
-function familyCaptureKind(text) {
-  const value = String(text || '');
-  if (REMINDER_REQUEST.test(value)) return 'reminder';
-  if (IDEA_REQUEST.test(value)) return 'idea';
+function directFamilyRequest(text) {
+  const value = String(text || '').normalize('NFC').replace(/[’‘]/g, "'").replace(/[‑‐]/g, '-').trim();
+  if (ASKS_MEANING.test(value)) return '';
+  const laterClauses = value.split(CLAUSE_BREAK).slice(1);
+  for (const part of laterClauses) {
+    const clause = part.trim().replace(/^(?:(?:euh|ah|ben|finalement|mais|surtout) )+/i, '');
+    if (NON_ACTION_CLAUSES.some(pattern => pattern.test(clause))) return '';
+  }
+  const addressed = value.replace(SPOKEN_OPENING, '');
+  if (!POLITE_REQUEST.test(addressed)) return addressed;
+  const command = addressed.replace(POLITE_REQUEST, '').replace(SPOKEN_OPENING, '');
+  return command.replace(/^(?:me (?:rappeler|rappelles|faire penser)|\p{L}+)(?!\p{L})/iu,
+    verb => REQUEST_VERBS.get(verb.toLowerCase()) || verb);
+}
+
+function captureKind(request) {
+  if (asksForReminder(request)) return 'reminder';
+  if (IDEA_REQUESTS.some(pattern => pattern.test(request))) return 'idea';
   return null;
+}
+
+function familyCaptureKind(text) {
+  return captureKind(directFamilyRequest(text));
 }
 
 function choreLabel(chore) {
@@ -85,6 +151,7 @@ const FAMILY_TONE = [
   'Parle en français québécois naturel, chaleureux et clair, avec le tutoiement et une orthographe standard pour la voix. En anglais si la personne le choisit. Pas de caricature, de ton de majordome ni de discours formel.',
   'This replaces the selected personality\'s adult temperament in family conversations.',
   'Réponds directement en une ou deux phrases pour une demande simple. Développe pour une histoire, une explication demandée ou la sécurité. Pas de boîte ou livre magique ni de comparaison enfantine automatique.',
+  'Comprends les tournures québécoises et les hésitations. Si un mot incertain change le geste demandé ou sa cible, demande à l’enfant de préciser ce mot avant de choisir un outil. Réponds directement quand le sens est clair.',
   'Show real interest in the question instead of generic praise such as "Great question".',
   'Une réponse complète peut se terminer naturellement, sans nouvelle question ni offre de rappel systématique. Ne promets ni lecture, ouverture, enregistrement ou rappel sans le résultat correspondant. Un son du catalogue disponible peut être joué; un son absent est simplement annoncé indisponible, sans promesse de mise en file.',
   'Gentle humour is welcome, never sarcasm and never at the child\'s expense.',
@@ -122,9 +189,10 @@ async function householdMembers(familyTasks, { logger, now = new Date() } = {}) 
 
 // One explicit request per turn: an idea or reminder goes to the parent's
 // inbox; otherwise an explicit "remember" keeps a family note as before.
-async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true, plants = null }) {
+async function familyTurn({ userText, notes, noteOrigin, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true, plants = null }) {
   const result = { savedNow: false, captured: null, chores: '', plants: '' };
-  const kind = familyCaptureKind(userText);
+  const request = directFamilyRequest(userText);
+  const kind = captureKind(request);
   if (kind) {
     try {
       await ideaInbox.captureIdea({ text: userText, origin: 'family', kind });
@@ -133,11 +201,14 @@ async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, l
       logger?.error?.('Family idea capture failed', { error: error.message });
       result.captured = 'failed';
     }
-  } else if (detectMemoryRequest(userText)) {
+  } else if (request && detectMemoryRequest(request, { direct: true })) {
     try {
-      await notes.record({ topic: 'general', text: userText, type: 'fact' });
+      await notes.record({ topic: 'general', text: userText, type: 'fact', ...noteOrigin });
       result.savedNow = true;
-    } catch (error) { logger?.error?.('Household memory save failed', { error: error.message }); }
+    } catch (error) {
+      logger?.error?.('Household memory save failed', { error: error.message });
+      result.captured = 'note-unconfirmed';
+    }
   }
   if (withChores) {
     result.chores = await choreSummary(familyTasks, { logger });
@@ -148,9 +219,12 @@ async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, l
 
 // Sentences Nestor may say only because the capture actually happened.
 function capturedPrompt(captured) {
+  if (captured === 'note-unconfirmed') return ' The family note could not be confirmed. Tell the child briefly that you could not confirm saving it.';
   if (captured === 'failed') return ' The child asked to keep an idea or reminder but it could not be saved; say so plainly and suggest telling Dad directly.';
   if (!captured) return '';
-  return ` The child asked to keep ${captured === 'reminder' ? 'a reminder' : 'an idea'} and it has been saved for Dad to review; confirm plainly that Dad will see it, without promising that he will act on it.`;
+  return ` The child asked to keep ${captured === 'reminder' ? 'a reminder' : 'an idea'} and it has been saved in the parent review inbox. Confirm only that it was saved for Dad to review. No notification or scheduled alarm is confirmed.`;
 }
 
-module.exports = { FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers, plantSummary };
+const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
+
+module.exports = { FAMILY_SURFACE_CONTRACT, FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers, plantSummary };

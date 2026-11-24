@@ -509,6 +509,18 @@ recovery; those remain part of device acceptance.
 
 ## Recognition while the person speaks
 
+After speech starts, the browser also listens for quieter syllables above the
+recent room noise. A softer ending after a pause can supersede an early
+transcription before the request reaches the conversation. After the last
+block at the onset level, quieter sound may extend capture by up to one
+extra silence window. This bounds the delay in a room with pulsing noise.
+
+During playback, the echo check compares recognized words with clauses that
+have reached the player. A short fragment such as “le train ou le bateau” can
+match playback verbatim. A correction such as “le bateau, pas le train” remains
+a user turn. Across five or more words, the comparison tolerates a hesitation
+or a plural determiner heard as “les” when the other words match in order.
+
 Surfaces offering local early recognition use whole-prefix snapshots while the
 microphone remains live: at most once every two seconds during the first fifteen
 seconds, then at a 200 ms pause. Longer utterances keep every captured sample and
@@ -674,6 +686,12 @@ short deterministic introduction without inference. A compound request retains
 its model answer and plays introduction, clip, then answer; streamed model text
 is buffered so it cannot compete with the introduction. Unknown or additional
 words keep the normal inference path. Safety and arithmetic retain precedence.
+
+Family idea, reminder and memory writes require a direct request. Matching accepts
+spoken forms such as “Tu peux-tu me rappeler de prendre mes mitaines?” and keeps the
+original wording in the record. A quoted or negated command stays in the conversation.
+The assistant may confirm a reminder was saved for parent review once that write
+succeeds. Scheduling a notification requires its own evidence.
 
 Explicit spoken corrections can group up to four fragments (800 characters)
 after 700 ms of quiet. Ordinary yes/no replies keep their immediate path. Speech

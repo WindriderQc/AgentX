@@ -53,14 +53,19 @@ Ollama bridge at `/api/openclaw-ollama`. Its projection is transient system
 context. Hermes checks the actual provider, model, transport and base URL
 on each request against the custom Core gateway at `/api/llm/v1`. An unknown
 destination, mixed profile or cloud attempt receives no automatic note
-projection. The adapters also refuse their owner memory, native history and
-Living Source read tools without the local turn binding.
+projection. The Hermes adapter also requires the local turn binding for every tool on the
+Core and owner MCP connections, including newly added tools. OpenClaw uses
+its declared personal harness tool catalogue for the same check. This covers
+family photos, mail, identifiers, the personal dossier, accounting and Life
+Atlas. Each tool retains its existing caller permissions. A verified local
+Family or scheduled run can use its existing tools without receiving the
+owner’s automatic notes.
 
 Install the [Hermes owner memory plugin](../integrations/hermes/owner-memory-turn)
 in the trusted personal API profile with its `agentx-owner` MCP connection.
 These hooks govern the projection and those named reads. Previously saved
-conversations, other tools, workspace files and instructions can independently
-contain private information. Cloud qualification uses a separate synthetic
+conversations, tools outside these connections, workspace files and instructions
+can independently contain private information. Cloud qualification uses a separate synthetic
 profile and fresh conversations with synthetic sources only.
 
 [Work lifecycle](WORK_LIFECYCLE.md) defines task/issue routing, fact ownership,

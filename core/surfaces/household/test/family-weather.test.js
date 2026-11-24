@@ -70,17 +70,19 @@ test('weather observation and retrieval get separate local times across a date b
   assert.match(context, /"fetchedAtLocal":"2026-02-03 22:15"/);
   assert.match(context, /"observationAgeMinutes":75/);
   assert.match(context, /Never read a raw UTC Z timestamp as local time/);
-  assert.match(context, /D’après le relevé de 21 h/);
-  assert.doesNotMatch(context, /D’après le relevé de 22 h/);
+  assert.match(context, /"observationStatus":"recent"/);
+  assert.match(context, /lead with the temperature and conditions/);
+  assert.doesNotMatch(context, /start the spoken reply with|D’après le relevé/);
 });
 
-test('a previous-day weather introduction preserves its date and local minutes', async () => {
+test('an expired observation preserves its local date and minutes for an explicit time question', async () => {
   const now = new Date('2026-02-04T03:15:00Z');
   const context = await familyWeatherContext({ weather: async () => ({
     fetchedAt: now.toISOString(), observedAt: '2026-02-03T02:30:00Z', temperatureC: -2
   }) }, { now, timeZone: 'America/New_York' });
-  assert.match(context, /D’après le relevé du 2 février à 21 h 30/);
-  assert.match(context, /reading from 21:30 on February 2/);
+  assert.match(context, /"observedAtLocal":"2026-02-02 21:30"/);
+  assert.match(context, /"observationStatus":"expired"/);
+  assert.match(context, /current conditions cannot be confirmed/);
 });
 
 test('unknown observation time never borrows the fresh retrieval time for the spoken introduction', async () => {
@@ -88,8 +90,8 @@ test('unknown observation time never borrows the fresh retrieval time for the sp
   const context = await familyWeatherContext({ weather: async () => ({
     fetchedAt: now.toISOString(), temperatureC: 2
   }) }, { now, timeZone: 'America/New_York' });
-  assert.match(context, /"observationIntroductions":null/);
-  assert.doesNotMatch(context, /D’après le relevé de 22 h/);
+  assert.match(context, /"observedAtLocal":null/);
+  assert.match(context, /"observationStatus":"undated"/);
 });
 
 test('the spoken observation hour uses the timezone offset at observation, including a DST transition', async () => {
@@ -97,7 +99,7 @@ test('the spoken observation hour uses the timezone offset at observation, inclu
   const context = await familyWeatherContext({ weather: async () => ({
     fetchedAt: now.toISOString(), observedAt: '2026-03-08T06:30:00Z', temperatureC: 2
   }) }, { now, timeZone: 'America/New_York' });
-  assert.match(context, /D’après le relevé de 1 h 30/);
+  assert.match(context, /"observedAtLocal":"2026-03-08 01:30"/);
   assert.match(context, /"observationAgeMinutes":60/);
 });
 

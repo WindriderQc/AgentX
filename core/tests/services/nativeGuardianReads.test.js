@@ -75,6 +75,11 @@ test('native ISS/weather reuse bounded family projections without location, URL 
   for (const name of ['iss_passes', 'weather']) {
     const result = await call(name, {}, name);
     expect(result.receipt.status).toBe('completed');
+    if (name === 'weather') {
+      const reading = JSON.parse(result.result.message.content);
+      expect(reading.observationStatus).toBe('recent');
+      expect(reading.observedAtLocal).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    }
     expect(result.result.message.content).not.toMatch(/45\.1|73\.1|PRIVATE|private-coordinates/);
     expect((await call(name, {}, name))).toEqual(result);
   }

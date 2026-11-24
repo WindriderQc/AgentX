@@ -6,6 +6,7 @@
   if (root) { root.AgentXSpeech = api; root.NestorSpeech = api; }
 }(typeof globalThis !== 'undefined' ? globalThis : this, () => {
   const spokenTime = typeof module === 'object' && module.exports ? require('./spoken-time') : globalThis.AgentXSpokenTime;
+  const frenchClockText = text => spokenTime?.frenchClockText(text) ?? String(text || '');
   const frenchDateTimeText = text => spokenTime?.frenchDateTimeText(text) ?? String(text || '');
   const PROFILES = Object.freeze({
     en: Object.freeze({
@@ -141,7 +142,7 @@
   }
 
   function transcriptionLanguage(value) {
-    return normalizeSpeechLanguage(value) || 'fr-en';
+    return explicitSpeechLanguage(value) || 'fr-en';
   }
 
   function synthesisText(value, provider = 'kokoro') {
@@ -181,7 +182,7 @@
   }
 
   return Object.freeze({
-    frenchDateTimeText,
+    frenchDateTimeText, frenchClockText,
     PROFILES,
     detectSpeechLanguage,
     normalizeSpeechLanguage,

@@ -1554,6 +1554,65 @@ test('a transcript made of the words the reply just spoke is echo; other words a
   assert.equal(isSpokenEcho('le build a passé', ''), false);
 });
 
+test('short choices and a changed negation keep their meaning during playback', () => {
+  const options = 'Veux-tu voir le train ou le bateau ? La petite rouge ou la grande bleue ?';
+  for (const text of ['Le bateau, pas le train.', 'La petite bleue.', 'La rouge, la rouge !']) {
+    assert.equal(isSpokenEcho(text, options), false, text);
+  }
+  assert.equal(isSpokenEcho('le train ou le bateau', options), true);
+  const invitation = 'Tu peux me demander de chercher une photo du bateau.';
+  assert.equal(isSpokenEcho('Tu peux pas me demander de chercher une photo du bateau.', invitation), false);
+  assert.equal(isSpokenEcho('Tu peux me demander de chercher euh une photo du bateau.', invitation), true);
+  assert.equal(isSpokenEcho('Tu peux me demander de chercher une carte du bateau.', invitation), false);
+});
+
+test('a short quoted command heard with a neutral article is echo while changes to the request stay audible', () => {
+  const playback = 'Par exemple, rappelle-moi de ranger mes mitaines.';
+  assert.equal(isSpokenEcho('Rappelle-moi de ranger les mitaines.', playback), true);
+  for (const change of [
+    'Rappelle-moi de ranger trois mitaines.', 'Rappelle-moi de ranger mes bottes.',
+    'Rappelle-moi pas de ranger mes mitaines.', 'Rappelle-moi de ranger tes mitaines.',
+    'Rappelle-lui de ranger mes mitaines.', 'Rappelle-moi demain de ranger mes mitaines.'
+  ]) assert.equal(isSpokenEcho(change, playback), false, change);
+});
+
+for (const prefetched of [false, true]) test(`a spoken choice reaches the same session once (prefetched: ${prefetched})`, async t => {
+  const correction = prefetched ? 'Le grand bateau bleu.' : 'Le bateau, pas le train.';
+  const opening = prefetched ? 'Choisis une image. ' : 'Veux-tu voir le train ou le bateau ? ';
+  const started = deferred(), requests = [], interruptions = [];
+  const h = harness({
+    transcribe: async () => requests.length ? correction : 'On joue ?',
+    turn: async (session, text, _signal, delta, { turnId }) => {
+      requests.push({ session: session.sessionId, text, turnId });
+      if (requests.length > 1) return { text: 'D’accord.' };
+      delta(opening);
+      if (prefetched) delta(correction);
+      return { text: opening + (prefetched ? correction : '') };
+    },
+    interrupt: async (_session, id) => { interruptions.push(id); }
+  });
+  h.audio.canInterrupt = true;
+  h.audio.play = async (_bytes, signal) => {
+    if (requests.length === 1) {
+      started.resolve();
+      await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    }
+  };
+  t.after(() => h.conversation.stop());
+  await h.conversation.start({ language: 'fr' });
+  const first = h.say();
+  await started.promise;
+  h.beginSpeech();
+  await h.probe();
+  assert.ok(h.calls.includes('holdPlayback'), 'recognized words hold the current reply');
+  await h.say();
+  await first;
+  assert.deepEqual(interruptions, [requests[0].turnId]);
+  assert.deepEqual(requests.map(({ session, text }) => [session, text]), [
+    ['private-1', 'On joue ?'], ['private-1', correction]
+  ]);
+});
+
 test('different words during playback still interrupt the reply', async () => {
   const playing = deferred(); let transcriptions = 0, interrupts = 0;
   const h = harness({ transcribe: async () => (++transcriptions === 1 ? 'Bonjour' : 'Attends, change de sujet'),
@@ -2115,7 +2174,7 @@ test('an asynchronously discovered English voice is awaited and voice discovery 
   } finally { globalThis.speechSynthesis = previous.synth; globalThis.SpeechSynthesisUtterance = previous.utterance; }
 });
 
-test('private English device playback refuses remote voices and selects a local English voice', async () => {
+test('private device playback selects local voices and applies French clock pronunciation', async () => {
   const { speakWithBrowser } = require('../public/browser-conversation');
   const previous = { synth: globalThis.speechSynthesis, utterance: globalThis.SpeechSynthesisUtterance };
   let voices = [{ name: 'French local', lang: 'fr-CA', localService: true }, { name: 'English remote', lang: 'en-CA', localService: false }];
@@ -2132,6 +2191,11 @@ test('private English device playback refuses remote voices and selects a local 
     voices = voices.filter(voice => voice.localService !== true);
     await assert.rejects(speakWithBrowser({ text: 'Never sent to remote speech', language: 'en', localOnly: true }, new AbortController().signal), /No local English/);
     assert.equal(spoken.length, 1);
+    voices.push({ name: 'French local', lang: 'fr-CA', localService: true });
+    let frenchUtterance;
+    globalThis.speechSynthesis.speak = utterance => { frenchUtterance = utterance; utterance.onend(); };
+    await speakWithBrowser({ text: 'Il est 23 h.', language: 'fr', localOnly: true }, new AbortController().signal);
+    assert.equal(frenchUtterance.text, 'Il est vingt-trois heures.');
   } finally { globalThis.speechSynthesis = previous.synth; globalThis.SpeechSynthesisUtterance = previous.utterance; }
 });
 

@@ -403,5 +403,8 @@ def _transcribe_bytes(raw: bytes, filename: str | None, language: str | None, *,
     """Decode and transcribe an upload in memory; it never reaches the disk."""
     from app.stt import whisper as stt
 
+    # Whisper takes a language code. The HTTP response keeps the caller's locale.
+    if language and language.strip().lower().replace("_", "-") == "fr-ca":
+        language = "fr"
     with io.BytesIO(raw) as audio:
         return stt.transcribe_path(audio, language=language, **({"cancel": cancel} if cancel is not None else {}))

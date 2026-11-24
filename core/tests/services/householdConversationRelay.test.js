@@ -425,10 +425,14 @@ test.each([
   expect(backup.model).toBe('synthetic-guardian');
   expect(backup.messages[0].content).toContain(packs.packById('kidx_nestor').systemPrompt);
   const context = backup.messages[0].content;
+  expect(context).toContain('The relay has no memory access.');
+  expect(context).toContain('Mode contract (');
+  expect(context).not.toContain('Core living-source catalogue');
   expect(world.state.ambientReads).toEqual({ current: Number(scenario === 'explicit current weather'), tomorrow: Number(Boolean(forecastHour)) });
   if (scenario === 'explicit current weather') {
     expect(context).toContain('"temperatureC":4.5');
     expect(context).toContain('Environnement Canada');
+    expect(context).toContain('never substitute it for observedAt');
   } else {
     expect(context).not.toContain('"temperatureC":4.5');
   }
@@ -436,7 +440,6 @@ test.each([
     expect(context).toContain('hourly forecast for ' + targetDate);
     expect(context).toContain('["07:00","GMT-5",1,null]');
     expect(context).toContain('Only these listed hours are verified, not the full day');
-    expect(context).not.toContain('Core living-source catalogue');
     expect(context).toContain('Environnement Canada');
   } else if (forecastHour === '04:00') {
     expect(context).toContain('no verified daytime forecast coverage');

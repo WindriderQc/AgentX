@@ -54,6 +54,15 @@ test('clock belongs to the instance zone, with explicit DST offset and safe inva
  assert.equal(before.localTime,after.localTime);assert.notEqual(before.offset,after.offset);assert.equal(familyClock({timeZone:'not/a-zone'}).timeZone,'America/Toronto');assert.equal(familyClock({now:new Date('invalid')}),null);assert.match(familyClockContext({now:new Date('invalid')}),/unavailable/);assert.equal(familyClock({now:new Date('2026-11-02T02:00:00Z')}).localDate,'2026-11-01');
 });
 for(const [input,expected] of [['04 h 24','quatre heures vingt-quatre'],['22:33','vingt-deux heures trente-trois'],['2026-11-02','deux novembre deux mille vingt-six'],['1er janvier 2027','premier janvier deux mille vingt-sept'],['00h00','minuit'],['12:00','midi'],['01:01','une heure une minute'],['https://example.invalid/2026-11-02','https://example.invalid/2026-11-02'],['score 12:30','score 12:30'],['code-2026-11-02','code-2026-11-02'],['2026-02-30','2026-02-30'],['988','988']])test('French audio date/time projection: '+input,()=>assert.equal(frenchDateTimeText(input),expected));
+test('French spoken hours handle whole hours and minutes while leaving invalid times and identifiers alone', () => {
+  for (const [text, expected] of [
+    ['Il est 23 h.', 'Il est vingt-trois heures.'], ['1h et 8 H', 'une heure et huit heures'],
+    ['21 h 01', 'vingt et une heures une minute'], ['8h05', 'huit heures cinq'],
+    ['0 h et 12h', 'minuit et midi'], ['24 h', 'vingt-quatre heures'],
+    ['23 h 99, 24:15, 2019h, 1,5 h, 8 Hz', '23 h 99, 24:15, 2019h, 1,5 h, 8 Hz'],
+    ['code 23h, /rapport/8h, 2026-01-01T23:00:00Z', 'code 23h, /rapport/8h, 2026-01-01T23:00:00Z']
+  ]) assert.equal(frenchDateTimeText(text), expected);
+});
 test('tomorrow is a calendar day across DST and task view preserves profile/date/status boundaries',()=>{
  assert.equal(tasks.nextDay('2026-11-01'),'2026-11-02');assert.equal(tasks.nextDay('2026-12-31'),'2027-01-01');assert.equal(tasks.calendarDay('2026-99-99'),false);
  const data={today:'2026-11-01',chores:[{profileId:'a',status:'queued',dueDay:'2026-11-02',title:'Tomorrow'},{profileId:'a',status:'queued',dueDay:'2026-11-01'},{profileId:'b',status:'queued',dueDay:'2026-11-02'},{profileId:'a',status:'done',dueDay:'2026-11-02'}]};assert.deepEqual(tasks.tasksFor(data,'a','tomorrow').map(t=>t.title),['Tomorrow']);
