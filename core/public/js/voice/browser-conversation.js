@@ -86,10 +86,6 @@
     }
   }
 
-  // Phones delay and process their own speaker output beyond what EchoGuard's
-  // short acoustic window can match, so a reply heard back through the mic
-  // was transcribed and treated as the user interrupting. Words that the
-  // current reply has just spoken are an echo, not a new request.
   const HOLDING = Object.freeze({
     fr: ['Un petit instant…'],
     en: ['Just one moment…']
@@ -113,6 +109,7 @@
     try { speech?.body?.cancel?.().catch(() => {}); } catch { /* already consumed */ }
   }
 
+  // Phone speaker delay can exceed the acoustic echo filter’s window.
   function isSpokenEcho(text, spoken) {
     const transcript = controlWords(text || ''), playback = controlWords(spoken || '');
     const heard = transcript.split(' ');
