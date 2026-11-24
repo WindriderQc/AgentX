@@ -75,7 +75,7 @@ async function startBatch({
         batchId: plannedBatchId.toString(),
         ttlMs: workloadTtlMs
     }).catch(error => {
-        if (coverage_request_id && error.admissionRefused === true) error.notStarted = true;
+        if (coverage_request_id && error.admissionRefused === true) error.coverageCreationRefused = true;
         throw error;
     });
     const creationAbort = new AbortController();
@@ -282,6 +282,7 @@ async function startBatch({
                 if (released?.released !== true) {
                     throw new Error(released?.reason || 'Workload admission release was not acknowledged');
                 }
+                if (coverage_request_id && !batchSaveAttempted) error.coverageCreationRefused = true;
             } catch (releaseError) {
                 markReconciliationPending(error, releaseError, 'BATCH_CREATION_ADMISSION_RECONCILIATION_PENDING', {
                     workloadId: plannedBatchKey, batchId: plannedBatchId, resultId: plannedBatchId, phase: 'batch creation release'
@@ -297,11 +298,6 @@ async function startBatch({
             } else {
                 await creationHeartbeat.drain();
             }
-        }
-        // Only failures before the first insert (and hence before execution)
-        // with an acknowledged release are proven coverage refusals.
-        if (coverage_request_id && !batchSaveAttempted && error.retainAdmission !== true) {
-            error.notStarted = true;
         }
         throw error;
     }

@@ -7,6 +7,7 @@ const { post } = require('./coverageLauncher');
 const { checkIdle } = require('./coverageIdle');
 const { validateIntent, refused } = require('./coverageQualification');
 const { coreRequest } = require('../../clients/coreHttp');
+const { getHeavyWork } = require('../../clients/coreHeavyQueue');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 
 const UUID = /^[a-f0-9-]{36}$/;
@@ -55,6 +56,26 @@ async function launch(id, body, deps = {}) {
   return observe(id, deps);
 }
 
+// Older attempts record only the terminal queue state. The original Core
+// receipt supplies the dispatch identity and the separate release authority.
+async function operatorReconciliation(attempt, readJob) {
+  const result = attempt.result;
+  if (attempt.active !== false || result?.terminal !== true || result.state !== 'failed'
+    || result.requestId !== attempt._id || result.queueId !== attempt.queueId || !attempt.dispatchId) return null;
+  let job;
+  try { job = await readJob(attempt.queueId); }
+  catch { return null; }
+  const release = job?.releaseReceipt;
+  if (job?.id !== attempt.queueId || job.dispatchId !== attempt.dispatchId || job.key !== attempt.intent.manifest.key
+    || job.state !== 'failed' || job.kind !== 'benchmark' || job.executor?.mode !== 'coverage'
+    || job.executor.requestId !== attempt._id || release?.authority !== 'operator-reconciliation'
+    || release.confirmation !== 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED'
+    || !release.actor || !release.receiptRef || !Number.isFinite(Date.parse(release.observedAt))) return null;
+  return { state: job.state, terminal: true, authority: release.authority, nativeOutcome: 'unknown',
+    queueRelease: { dispatchId: job.dispatchId, actor: release.actor, observedAt: release.observedAt,
+      receiptRef: release.receiptRef, confirmation: release.confirmation } };
+}
+
 async function observe(id, deps = {}) {
   const attempt = await (deps.attempts || attempts).get(id);
   if (!attempt) throw Object.assign(new Error('Coverage intent not found'), { statusCode: 404 });
@@ -65,6 +86,10 @@ async function observe(id, deps = {}) {
   const find = deps.findBatches || (requestId => BenchmarkBatch.find({ coverage_request_id: requestId }).limit(2).lean());
   const batches = await find(id);
   if (batches.length !== 1) {
+    if (!batches.length) {
+      const closed = await operatorReconciliation(attempt, deps.getHeavyWork || getHeavyWork);
+      if (closed) return { ...base, ...closed };
+    }
     const [stage, at] = [
       ['batch-handoff', attempt.batchHandoffAt], ['native-dispatch', attempt.nativeDispatchedAt],
       ['outbound-dispatch', attempt.nativePostAt], ['intent', attempt.createdAt]
@@ -133,7 +158,8 @@ function batchBoundary(handler, deps = {}) {
       }
     } catch (error) {
       res.json = originalJson;
-      if (ownsNative && (!handlerEntered || error.notStarted === true)) {
+      const beforeCreation = !handlerEntered || (!res.locals.coverageMayHaveStarted && error.notStarted === true);
+      if (ownsNative && (beforeCreation || error.coverageCreationRefused === true)) {
         try {
           const { refusal, publishRefusal } = require('../../../../shared/queueLaunchReceipt.cjs');
           // The native fence was acquired and this owner has exited before

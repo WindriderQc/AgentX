@@ -118,10 +118,20 @@ describe('startBatch prompt-scoped level persistence', () => {
         const save = jest.spyOn(BenchmarkBatch.prototype, 'save');
         await expect(startBatch({ coverage_request_id: 'fixture', coverageBatchId,
             host: 'http://exec:11434', models: ['candidate-model'], levels: [1] }))
-            .rejects.toMatchObject({ notStarted: true, message: 'frozen judge unavailable' });
+            .rejects.toMatchObject({ coverageCreationRefused: true, message: 'frozen judge unavailable' });
         expect(save).not.toHaveBeenCalled();
         expect(coreApiClient.acquireWorkloadAdmission).toHaveBeenCalledWith(coverageBatchId, expect.objectContaining({ batchId: coverageBatchId }));
         expect(coreApiClient.releaseWorkloadAdmission).toHaveBeenCalledWith(coverageBatchId);
+    });
+
+    it('keeps a pre-insert failure uncertain if its native release was not acknowledged', async () => {
+        const error = new Error('frozen judge unavailable');
+        require('../../../src/services/benchmark/judgeExecutionContract').freezeJudgeConfig.mockRejectedValueOnce(error);
+        coreApiClient.releaseWorkloadAdmission.mockResolvedValueOnce({ released: false });
+        await expect(startBatch({ coverage_request_id: 'fixture', host: 'http://exec:11434',
+            models: ['candidate-model'], levels: [1] })).rejects.toBe(error);
+        expect(error.retainAdmission).toBe(true);
+        expect(error.coverageCreationRefused).toBeUndefined();
     });
 
     it.each([true, false])('distinguishes explicit workload refusal (%s) from an invalid admission reply', async admissionRefused => {
@@ -129,7 +139,7 @@ describe('startBatch prompt-scoped level persistence', () => {
         coreApiClient.acquireWorkloadAdmission.mockRejectedValueOnce(error);
         await expect(startBatch({ coverage_request_id: 'fixture', host: 'http://exec:11434', models: ['candidate-model'], levels: [1] }))
             .rejects.toBe(error);
-        expect(error.notStarted === true).toBe(admissionRefused);
+        expect(error.coverageCreationRefused === true).toBe(admissionRefused);
         expect(coreApiClient.releaseWorkloadAdmission).not.toHaveBeenCalled();
     });
 

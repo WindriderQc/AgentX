@@ -80,8 +80,12 @@ Supported executors:
   At the native dispatch fence Benchmark records the planned batch/workload ID
   before requesting admission. The coverage attempt read reports that ID, the
   last observed transition, the missing or conflicting batch evidence and any
-  recorded HTTP error code. Older attempts can lack a planned ID. Cluster
-  Schedule gives the operator the hold duration and original native attempt
+  recorded HTTP error code. Older attempts can lack a planned ID.
+  An inactive coverage attempt closed through operator recovery reports the
+  exact Core release receipt and an unknown native batch outcome separately.
+  This read verifies the original dispatch against Core, including for older
+  attempts with only a terminal queue summary.
+  Cluster Schedule gives the operator the hold duration and original native attempt
   path. Core's critical uncertainty notice keeps its existing incident ID.
   A failed admission read before entering batch creation, an explicit Core
   refusal, or a preparation failure before any batch insert with confirmed

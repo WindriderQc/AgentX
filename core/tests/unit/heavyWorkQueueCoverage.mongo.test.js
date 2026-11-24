@@ -227,3 +227,16 @@ it.each(['completed', 'failed'])('publishes the native %s outcome once in the ex
   expect(result.events.filter(event => event.action === 'reconciled')).toHaveLength(1);
   expect(launches).toBe(1);
 });
+
+it('never reuses a reflected operator closure as a native start or operation on an active dispatch', async () => {
+  const closed = { ...native, uncertain: false, state: 'failed', terminal: true,
+    authority: 'operator-reconciliation', nativeOutcome: 'unknown' };
+  const current = { ...job, dispatchId: randomUUID() };
+  const read = async () => ({ requestId: manifest.executor.requestId, queueId: job.id,
+    dispatchId: current.dispatchId, manifest, ...closed });
+  const coverage = require('../../src/services/heavyWorkQueueCoverage');
+  await expect(coverage.start(current, { send: read })).rejects.toThrow('closed by its operator');
+  const result = await coverage.observe(current, { read });
+  expect(result).toMatchObject({ terminal: false, uncertain: true });
+  expect(result).not.toHaveProperty('operationId');
+});

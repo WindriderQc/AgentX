@@ -393,7 +393,7 @@ router.post('/batch', batchBoundary(async (req, res) => {
             }
         });
     } catch (err) {
-        if (req.body.requestId && err.notStarted === true) throw err;
+        if (req.body.requestId && err.coverageCreationRefused === true) throw err;
         if (String(err.message || '').startsWith('Prompt IDs not found:')) {
             return res.status(422).json({ status: 'error', error: err.message });
         }

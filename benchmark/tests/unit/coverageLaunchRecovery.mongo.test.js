@@ -265,3 +265,40 @@ it('recovers the last durable handoff and transport details without settling mis
   await Attempt.updateOne({ _id: id }, { $unset: { plannedBatchId: '', batchHandoffAt: '', launchHttpStatus: '', launchErrorCode: '' } });
   expect(await native.observe(id)).toMatchObject({ uncertain: true, recovery: { stage: 'native-dispatch', plannedBatchId: null } });
 });
+
+it('reports the exact closed operator receipt for an older inactive attempt, independently of the native batch outcome', async () => {
+  await attempts.beginPost(id, queueId, dispatchId);
+  await attempts.update(id, { nativeDispatchedAt: new Date(), active: false,
+    result: { requestId: id, queueId, terminal: true, state: 'failed' } });
+  const job = { id: queueId, dispatchId, kind: 'benchmark', executor: intent.manifest.executor,
+    key: intent.manifest.key, state: 'failed', releaseReceipt: { authority: 'operator-reconciliation',
+      actor: 'operator', confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED',
+      receiptRef: 'fixture-receipt', observedAt: new Date().toISOString() } };
+  const getHeavyWork = jest.fn(async () => job);
+  const read = () => native.observe(id, { getHeavyWork });
+  const result = await read();
+  expect(result).toMatchObject({ state: 'failed', terminal: true, authority: 'operator-reconciliation',
+    nativeOutcome: 'unknown', queueRelease: { receiptRef: 'fixture-receipt', dispatchId } });
+  expect(result).not.toHaveProperty('nativeId');
+  expect(result).not.toHaveProperty('launchReceipt');
+  expect(getHeavyWork).toHaveBeenCalledWith(queueId);
+  for (const foreign of [{ ...job, dispatchId: randomUUID() }, { ...job, state: 'running' },
+    { ...job, executor: { mode: 'coverage', requestId: randomUUID() } },
+    { ...job, releaseReceipt: { ...job.releaseReceipt, authority: 'benchmark.batch' } }]) {
+    getHeavyWork.mockResolvedValueOnce(foreign);
+    expect(await read()).toMatchObject({ terminal: false, uncertain: true });
+  }
+  await attempts.update(id, { active: true });
+  getHeavyWork.mockClear();
+  expect(await read()).toMatchObject({ terminal: false, uncertain: true });
+  expect(getHeavyWork).not.toHaveBeenCalled();
+});
+
+it('does not promote a generic nested non-start flag after batch creation was entered', async () => {
+  const h = harness({ handler: async (_req, res) => {
+    res.locals.coverageMayHaveStarted = true;
+    throw Object.assign(new Error('nested refusal'), { notStarted: true });
+  } });
+  expect(await native.launch(id, dispatch(), h.deps)).toMatchObject({ terminal: false, uncertain: true });
+  expect((await attempts.get(id)).launchReceipt).toBeUndefined();
+});
