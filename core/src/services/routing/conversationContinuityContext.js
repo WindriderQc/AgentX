@@ -59,7 +59,8 @@ function statusResult(request, status, reason, primaryRefusal = null) {
     backup_context_unavailable: 'Le gardien aimerait aider, mais il ne peut pas reprendre cette demande avec son contexte limité.',
     relay_attachments_unavailable: 'Le gardien ne peut pas lire ces pièces jointes. La demande d’origine est conservée.',
     relay_unavailable: 'Le gardien ne peut pas prendre le relais pour le moment. La demande d’origine est conservée.',
-    occupation_changed: 'La situation de Nestor a changé pendant le relais.'
+    occupation_changed: 'La situation de Nestor a changé pendant le relais.',
+    family_primary_required: 'Nestor n’est pas disponible pour créer ce dessin. Aucun dessin n’a été lancé.'
   };
   const content = 'Message automatique d’AgentX — '
     + (explanations[reason] || 'Petit contretemps : Nestor est indisponible et le gardien n’a pas pu prendre le relais cette fois.')

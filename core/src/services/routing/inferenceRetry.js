@@ -93,7 +93,7 @@ const INTERACTIVE_POLL_MS = 2000;
 async function withInferenceRetry(operation, options = {}) {
   const { host = null, signal, now = Date.now, wait = sleep, interactive = false, interactiveWaitMs } = options;
   const priority = host ? require('../interactivePriorityService') : null;
-  if (!priority || !(interactive === true || priority.householdTurnActive())) return retryPolicy(operation, options);
+  if (options.skipInteractiveWait === true || !priority || !(interactive === true || priority.householdTurnActive())) return retryPolicy(operation, options);
   const endConversation = interactive === true ? priority.beginHouseholdTurn() : () => {};
   try {
     const waitMs = Math.min(priority.INTERACTIVE_WAIT_MS, Number(interactiveWaitMs) || priority.INTERACTIVE_WAIT_MS);

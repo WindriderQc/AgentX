@@ -5,6 +5,7 @@ const { fencesHost } = require('./runtimeDeployGate');
 const { hostUrlKey } = require('../../../shared/ollamaHostConfig');
 const { describeFailure } = require('../../../shared/failureDiagnostics');
 const { pausedControl } = require('./hostControlFence');
+const { rememberConflict } = require('./routing/familyPrimaryPreference');
 
 function clean(value, max = 160) {
   const text = typeof value === 'string' ? value.trim() : '';
@@ -73,7 +74,9 @@ function inferenceConflict(state, request, now) {
   }
   const exclusive = inferences.find(item => item.mode === 'exclusive');
   if (exclusive || (request.mode === 'exclusive' && inferences.length)) {
-    return failure('inference_active', true, holderOf('inference', exclusive || inferences[0]));
+    const item = exclusive || inferences[0];
+    const conflict = failure('inference_active', true, holderOf('inference', item));
+    return request.mode === 'exclusive' ? rememberConflict(conflict, item, now.getTime()) : conflict;
   }
   // Another endpoint on the same device, or the same model under another residency.
   const resident = inferences.find(item => canonicalHost(item.host) !== request.host
