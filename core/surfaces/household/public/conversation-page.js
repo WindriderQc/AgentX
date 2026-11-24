@@ -397,6 +397,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     const writing = ConversationWritten.stream(), presentedPages = new Set();
     const current = () => !signal.aborted && !interruptedTurns.has(turnId)
       && activeBrowserTurn === turnId && conversation.session?.sessionId === session.sessionId;
+    const showExplicitImage = block => current() && family && !session.ephemeral
+      && ConversationImages.addExplicit(`${sessionBase}/${encodeURIComponent(session.sessionId)}`, block, board, show);
     const showWritten = turn => {
       if (!current()) return;
       if (!partial) { partial = document.createElement('div'); partial.className = 'conversation-message assistant'; partial.dataset.turn = turnId; transcript.append(partial); }
@@ -496,7 +498,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         if (event.block?.presentation === 'illustration') { if (framed) window.IllustratedFrame?.show(event.block); }
         else {
           if (event.block?.kind === 'page') presentedPages.add(event.block.body);
-          show(mathCard(event.block, session, turnId));
+          if (!showExplicitImage(event.block)) show(mathCard(event.block, session, turnId));
         }
       }
       if (event.type === 'status' && event.phase === 'activity') voiceHealth.activity();
@@ -519,7 +521,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
       // Core has sent every spoken word; pictures, tools and the record follow before `done`.
       if (event.type === 'say_end' && !interruptedTurns.has(turnId)) onSayEnd?.();
-      if (event.type === 'done') { result = event.data; showPageBlocks(result.display); if (ConversationWritten.valid(result.written)) showWritten({ written: result.written, display: result.display }); activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); if (!workAccepted && !session.ephemeral) void brain.follow(session.sessionId, event.data?.traceId).then(review => workflow?.review(turnId, review, session.sessionId)); if (!session.ephemeral) void work?.poll(); }
+      if (event.type === 'done') { result = event.data; showPageBlocks(result.display); if (result.familyDrawing && current()) (result.display || []).forEach(showExplicitImage); if (ConversationWritten.valid(result.written)) showWritten({ written: result.written, display: result.display }); activity('done', { sessionId: session.sessionId, traceId: event.data?.traceId }); if (!workAccepted && !session.ephemeral && !result.familyDrawing) void brain.follow(session.sessionId, event.data?.traceId).then(review => workflow?.review(turnId, review, session.sessionId)); if (!session.ephemeral) void work?.poll(); }
     };
     try {
       while (true) {

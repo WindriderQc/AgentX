@@ -6,6 +6,7 @@ const { resolvePrincipalAlias, PRINCIPAL_MODEL_ALIAS } = require('./principalAli
 const { reducedRequest, decorate, statusResult } = require('./conversationContinuityContext');
 const { reasonOf, primaryHosts, describe, readQueue, boundedRead } = require('./conversationContinuityStatus');
 const { safeOccupation } = require('./conversationRelayContinuation');
+const familyPreference = require('./familyPrimaryPreference');
 
 const ENV = 'AGENTX_CONVERSATION_CONTINUITY_JSON';
 const SAFE_REFUSALS = new Set(['PRINCIPAL_MODEL_UNAVAILABLE', 'BENCHMARK_CLAIM_ACTIVE',
@@ -41,7 +42,7 @@ function requireResult(result) {
 }
 
 function createConversationContinuity({ execute, readSnapshot, deps, validate, readWork = readQueue,
-  readPolicy = () => process.env[ENV], observeFamilyOccupation, log = require('../../../config/logger') }) {
+  readPolicy = () => process.env[ENV], observeFamilyOccupation, readPrimaryRelease = familyPreference.readRelease, log = require('../../../config/logger') }) {
   return async (request, options = {}) => {
     let policy;
     try { policy = parse(readPolicy()); } catch {
@@ -61,7 +62,7 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
       return statusResult(request, 'Core ne peut pas vérifier l’état du routage pour le moment.', 'routing_unavailable');
     }
     let target = options.primaryTarget || null;
-    let failure;
+    let failure, executePrimary;
     let occupation = null;
     if (typeof options.observeOccupation === 'function') {
       occupation = await options.observeOccupation();
@@ -91,17 +92,30 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
       } else {
         // Family needs one atomic lane admission: another shared inference also
         // counts as occupied. This never preempts an admitted owner or reroutes it.
-        const primary = await execute({ ...request, model: target.model, exclusiveHost: options.taskRoute && options.requireOccupied ? true : false,
+        executePrimary = (extraRetry = {}) => execute({ ...request, model: target.model, exclusiveHost: options.taskRoute && options.requireOccupied ? true : false,
           options: { ...request.options, ...(target.numCtx && { num_ctx: target.numCtx }) } }, {
           signal, consumerContract: options.consumerContract, hostUrl: target.hostUrl,
-          ...(target.topology && { topology: target.topology }), retry: { enabled: false },
+          ...(target.topology && { topology: target.topology }), retry: { enabled: false, ...extraRetry },
           conversationContinuity: { state: 'primary', reason: null, limited: false, contextReduced: false }
       });
-      return requireResult(primary);
+      return requireResult(await executePrimary());
       }
     } catch (error) {
       if (signal?.aborted || !safeRefusal(error)) throw error;
       failure = error;
+    }
+    if (executePrimary && target?.hostUrl && options.taskRoute && options.requireOccupied
+        && options.allowUnavailable === true && !occupation && options.familyPrimaryPreference?.enabled) {
+      const preferred = await familyPreference.preferReleasedPrimary({
+        scope: options.familyPrimaryPreference, firstError: failure, identity: familyPreference.fromRefusal(failure),
+        signal, isSafeRefusal: error => safeRefusal(error) && (error?.failure?.safeToRetry === true
+          || error?.ollamaRequestNotSent === true || error?.cause?.ollamaRequestNotSent === true),
+        readRelease: readPrimaryRelease,
+        executePrimary: () => executePrimary({ skipInteractiveWait: true }),
+        notify: options.onPrimaryWait, windowMs: options.familyPrimaryPreference.windowMs
+      });
+      if (preferred.action === 'primary') return requireResult(preferred.result);
+      failure = preferred.error;
     }
     const occupied = Boolean(occupation || safeOccupation(failure?.failure));
     const primaryRefusal = occupation ? null : { code: failure.code,
@@ -113,6 +127,10 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
       return statusResult(request, 'Le cerveau principal est indisponible; aucune occupation active n’est prouvée.', 'occupation_unknown', primaryRefusal);
     }
     const reason = occupation ? 'hermes_active' : reasonOf(failure);
+    if (options.requiresFamilyPrimary === true && options.taskRoute === true && options.requireOccupied === true
+        && options.allowUnavailable === true && !options.observeOccupation) {
+      return statusResult(request, "Le dessin n’a pas été lancé.", 'family_primary_required', primaryRefusal);
+    }
     const work = options.requireOccupied ? null : await boundedRead(readWork, 1500, signal).catch(() => null);
     signal?.throwIfAborted();
     const principalEndpoints = primaryHosts(snapshot, target);

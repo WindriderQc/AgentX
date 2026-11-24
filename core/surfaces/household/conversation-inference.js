@@ -29,9 +29,11 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   // results. Without a tool call the first reply streams as before.
   let toolset = request.familyTools || null;
   const receipts = [];
+  const taskRequiresPrimary = request.requiresFamilyPrimary === true && backend === 'agentx' && pack.childSafe
+    && session.packId === 'kidx_nestor' && session.scopeId === 'family' && request.channel === 'voice';
   let conversation = [{ role: 'system', content: agentxInstructions }, ...prepared.map(({ attachments, ...message }) => message)];
   let result, streamed = '', toolCalls = [], toolsOffered = Boolean(toolset), rounds = 0;
-  let relay = null, relaySource = null, emittedModelChars = 0, relayContinuation = null;
+  let relay = null, relaySource = null, emittedModelChars = 0, relayContinuation = null, relayEndReason = null;
   const fragment = () => ({ ...relaySource, completed: false,
     fragment: { observation: 'reply_parser_input', modelChars: emittedModelChars, playback: 'unverified' } });
   const emit = delta => {
@@ -40,6 +42,15 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       emittedModelChars += delta.length;
       request.onRelayProgress?.(fragment());
     }
+  };
+  const settleChangedOccupation = error => {
+    if (backend !== 'agentx' || session.packId !== 'kidx_nestor' || session.scopeId !== 'family'
+        || !relayContinuation || !relaySource || signal?.aborted || error?.code !== 'RELAY_OCCUPATION_CHANGED') return false;
+    const notice = '\n\nLe relais s’arrête ici : l’occupation de Nestor n’est plus confirmée. Cette réponse n’est pas terminée et aucune lecture supplémentaire n’a été lancée.';
+    relayEndReason = 'occupation_changed';
+    streamed += notice;
+    emit(notice);
+    return true;
   };
   // Measured counts of every call this reply made, summed into the turn.
   const callUsage = [];
@@ -63,17 +74,29 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       if (eligible && inference.conversation) {
         const continued = await inference.conversation({ ...body, ...(request.relayOccupation ? { model: 'agentx-primary' } : {}) }, {
           ...options, taskRoute: !request.relayOccupation, requireOccupied: true, relayTools: request.guardianTools,
-          allowUnavailable: !request.relayOccupation,
+          allowUnavailable: !request.relayOccupation, requiresFamilyPrimary: taskRequiresPrimary,
+          ...(env.HOUSEHOLD_PRIMARY_RELEASE_GRACE_ENABLED === 'true' && !request.relayOccupation && request.streaming === true && request.channel === 'voice'
+            && session.packId === 'kidx_nestor' && session.scopeId === 'family' && pack.childSafe && {
+            familyPrimaryPreference: { enabled: true, surface: 'family', backend, channel: request.channel,
+              windowMs: Number(env.HOUSEHOLD_PRIMARY_RELEASE_GRACE_MS) || 1500 },
+            onPrimaryWait: () => request.onWaiting?.({ reason: 'primary_active' })
+          }),
           ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack, env), request.relayForecastContext || (request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext)].filter(Boolean).join('\n\n') }),
           relayRequest: { ...body, messages: [...(request.history || []), { role: 'user', content: request.text }] }
         });
         if (continued) return continued;
       }
+      if (taskRequiresPrimary) return require('../../src/services/routing/conversationContinuityContext')
+        .statusResult(body, 'La voie principale Famille ne peut pas être vérifiée.', 'family_primary_required');
       if (request.relayOccupation) return require('../../src/services/routing/conversationContinuityContext')
         .statusResult(body, 'Le relais local n’est pas disponible; la demande native d’origine est conservée.', 'relay_unavailable');
       return inference.execute(body, options);
     };
-    result = await execute(offerTools);
+    try { result = await execute(offerTools); }
+    catch (error) {
+      if (!settleChangedOccupation(error)) throw error;
+      break;
+    }
     if (result?.metadata?.conversationContinuity?.state === 'backup' && !relayContinuation) {
       relayContinuation = result.relayContinuation || null;
       toolset = relayContinuation ? request.guardianTools : null;
@@ -88,7 +111,11 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     // A model whose runtime refuses tools answers the turn without them.
     if (toolsOffered && !result?.ok && /does not support tools/i.test(JSON.stringify(result?.body?.error || ''))) {
       toolsOffered = false;
-      result = await execute(false);
+      try { result = await execute(false); }
+      catch (error) {
+        if (!settleChangedOccupation(error)) throw error;
+        break;
+      }
     }
     if (!result?.ok) {
       const error = result?.body?.error;
@@ -115,11 +142,16 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     const calls = toolCalls.slice(0, toolset.maxCallsPerRound);
     conversation = [...conversation, { role: 'assistant', content: text, tool_calls: calls }];
     for (const call of calls) {
-      if (relayContinuation) await relayContinuation.assertOccupied();
+      try { if (relayContinuation) await relayContinuation.assertOccupied(); }
+      catch (error) {
+        if (!settleChangedOccupation(error)) throw error;
+        break;
+      }
       const answered = await toolset.execute(call, { signal });
       if (answered.receipt) receipts.push(answered.receipt);
       conversation.push(answered.message);
     }
+    if (relayEndReason) break;
   }
   if (signal?.aborted) relay = null;
   else if (!streamed.trim() && receipts.some(receipt => receipt.tool === 'artx_present' && receipt.status === 'failed')) {
@@ -134,6 +166,8 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     tools: result.metadata?.conversationContinuity?.state === 'status_only'
       ? { status: 'not_run', authority: 'agentx/core', receipts: [], reason: 'automatic_service_notice',
         conversationContinuity: result.metadata.conversationContinuity }
+      : relayEndReason ? { status: 'partial', authority: 'agentx/core', receipts,
+        conversationRelay: { ...fragment(), reason: relayEndReason } }
       : relay ? { status: toolset && toolsOffered ? 'observed' : 'not_supported', authority: toolset && toolsOffered ? 'agentx/core' : 'agentx/ollama', receipts, ...(toolset && toolsOffered ? { offered: toolset.names } : {}),
       ...(toolset && !toolsOffered ? { reason: 'The selected relay runtime does not accept tools; the same guardian answered from supplied context only.' } : {}), conversationRelay: { ...relaySource, completed: true } }
       : relaySource && emittedModelChars > 0 ? { status: 'partial', authority: 'agentx/ollama', receipts: [], conversationRelay: fragment() }
