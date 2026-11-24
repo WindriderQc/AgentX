@@ -37,6 +37,13 @@ function presentation(job, { now = Date.now() } = {}) {
   if (TERMINAL.includes(job.state)) return describe('finished',
     { completed: 'Travail terminé', failed: 'Échec enregistré', cancelled: 'Demande annulée' }[job.state], 'inspect_result', 'none',
     'Inspect the recorded outcome and release evidence. This does not close the linked task or issue.');
+  if (job.state === 'uncertain' && job.kind === 'benchmark' && job.executor?.mode === 'coverage') {
+    const path = `/benchmark/api/benchmark/coverage/attempts/${encodeURIComponent(job.executor.requestId)}`;
+    const since = instant(job.dispatchedAt);
+    const age = Number.isFinite(since) ? ` for ${Math.max(0, Math.floor((now - since) / 60000))} min` : '';
+    return describe('uncertain', 'Résultat incertain', 'reconcile_original', 'operator',
+      `Benchmark coverage has held this reservation${age}. Inspect ${path} for the last native transition and the missing receipt. Reconcile this dispatch after Benchmark confirms refusal or termination and Core verifies release.`);
+  }
   if (job.state === 'uncertain') return describe('uncertain', 'Résultat incertain', 'reconcile_original', 'operator',
     'Reconcile this exact request through its native owner. Do not launch a replacement or infer resource release.');
   if (job.state === 'dispatching') return describe('dispatching', 'Acheminement enregistré', 'observe_dispatch', 'native_executor',

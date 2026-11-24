@@ -53,9 +53,9 @@ function harness({ handler, idleDeps = calm, validateIntent = async () => {}, po
   const queuePost = jest.fn(async () => ({ data: { admitted: true } }));
   const started = handler || jest.fn(async (req, res) => {
     res.locals.coverageMayHaveStarted = true;
-    await Batch.collection.insertOne({ _id: new mongoose.Types.ObjectId(batchId), coverage_request_id: id,
+    await Batch.collection.insertOne({ _id: new mongoose.Types.ObjectId(res.locals.coverageBatchId), coverage_request_id: id,
       tags: intent.body.tags, status: 'running' });
-    res.json({ status: 'success', data: { batch_id: batchId } });
+    res.json({ status: 'success', data: { batch_id: res.locals.coverageBatchId } });
   });
   const app = express();
   app.use(express.json());
@@ -65,7 +65,7 @@ function harness({ handler, idleDeps = calm, validateIntent = async () => {}, po
   const post = jest.fn(async (path, payload) => {
     const response = await request(app).post(path).send(payload);
     if (postError) throw postError;
-    if (response.status >= 400) throw Object.assign(new Error(response.body.error), response.body);
+    if (response.status >= 400) throw Object.assign(new Error(response.body.error), response.body, { statusCode: response.status });
     return response.body.data;
   });
   return { app, started, queuePost, deps: { attempts, post, queuePost }, post };
@@ -89,6 +89,8 @@ it('keeps one durable active intent across concurrent ticks and an uncertain ins
 it('recovers a started batch after HTTP response loss, then reads its terminal receipt without another POST', async () => {
   const h = harness({ postError: new Error('HTTP reply lost after start') });
   const first = await native.launch(id, dispatch(), h.deps);
+  const batchId = (await attempts.get(id)).plannedBatchId;
+  expect(batchId).toMatch(/^[0-9a-f]{24}$/);
   expect(first).toMatchObject({ requestId: id, nativeId: batchId, terminal: false, runningConfirmed: true });
   expect((await attempts.get(id)).nativeId).toBe(batchId);
   // A fresh consumer reads Mongo; no in-memory execution state is required.
@@ -226,4 +228,40 @@ it('does not bypass the changed judge qualification gate at the native boundary'
   }); } });
   expect(await native.launch(id, dispatch(), h.deps)).toMatchObject({ launchReceipt: { code: 'COVERAGE_INTENT_CHANGED' } });
   expect(h.started).not.toHaveBeenCalled();
+});
+
+it('persists a pre-start refusal when an untyped admission read fails before the batch handler', async () => {
+  const h = harness({ validateIntent: async () => { throw new Error('catalog read unavailable'); } });
+  const result = await native.launch(id, dispatch(), h.deps);
+  expect(result).toMatchObject({ terminal: true, state: 'failed', launchReceipt: {
+    code: 'COVERAGE_LAUNCH_REFUSED', reason: 'catalog read unavailable' } });
+  expect(h.started).not.toHaveBeenCalled();
+  expect(await native.observe(id)).toMatchObject({ launchReceipt: result.launchReceipt });
+});
+
+it.each([[409, 'COVERAGE_ALREADY_DISPATCHED'], [503, 'COVERAGE_LAUNCH_UNKNOWN']])(
+  'preserves HTTP %i and its native error code when no batch can be verified', async (statusCode, code) => {
+    const error = Object.assign(new Error('Read the original coverage request'), { statusCode, code });
+    const post = jest.fn(async () => { throw error; });
+    const deps = { post, queuePost: async () => ({}) };
+    expect(await native.launch(id, dispatch(), deps)).toMatchObject({ uncertain: true, recovery: { code, httpStatus: statusCode } });
+    await native.launch(id, dispatch(), deps);
+    expect(post).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('recovers the last durable handoff and transport details without settling missing or conflicting batches', async () => {
+  await attempts.beginPost(id, queueId, dispatchId);
+  const begun = await attempts.beginNative(id, queueId, dispatchId);
+  const at = new Date();
+  await attempts.update(id, { batchHandoffAt: at, launchHttpStatus: 503, launchErrorCode: 'COVERAGE_LAUNCH_UNKNOWN' });
+  for (const matches of [[], [{}, {}]]) {
+    const read = await native.observe(id, { findBatches: async () => matches });
+    expect(read).toMatchObject({ terminal: false, uncertain: true, recovery: {
+      stage: 'batch-handoff', at, plannedBatchId: begun.plannedBatchId, matchingBatches: matches.length,
+      httpStatus: 503, code: 'COVERAGE_LAUNCH_UNKNOWN' } });
+    expect(read.nativeId).toBeUndefined();
+  }
+  await Attempt.updateOne({ _id: id }, { $unset: { plannedBatchId: '', batchHandoffAt: '', launchHttpStatus: '', launchErrorCode: '' } });
+  expect(await native.observe(id)).toMatchObject({ uncertain: true, recovery: { stage: 'native-dispatch', plannedBatchId: null } });
 });

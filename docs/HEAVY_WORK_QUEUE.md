@@ -77,6 +77,15 @@ Supported executors:
   frozen artifact, scorer, prompt and judge proofs; drift refuses without
   widening the request. A unique native batch identity and permanent dispatch
   barriers prevent duplicate effects after concurrent ticks or restart.
+  At the native dispatch fence Benchmark records the planned batch/workload ID
+  before requesting admission. The coverage attempt read reports that ID, the
+  last observed transition, the missing or conflicting batch evidence and any
+  recorded HTTP error code. Older attempts can lack a planned ID. Cluster
+  Schedule gives the operator the hold duration and original native attempt
+  path. Core's critical uncertainty notice keeps its existing incident ID.
+  A failed admission read before entering batch creation, an explicit Core
+  refusal, or a preparation failure before any batch insert with confirmed
+  workload release produces a durable pre-start refusal.
   Lost replies and uncertain writes read the same intent and Core request;
   an empty lookup or elapsed estimate never permits replacement. Proven
   refusals use `agentx.queue-launch/v1` and Core's existing refusal receipt.

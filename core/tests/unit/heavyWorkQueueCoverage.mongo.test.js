@@ -139,6 +139,32 @@ it('rechecks runtime authority at terminal CAS when a holder arrives after the n
   expect((await Runtime.findById('runtime').lean()).inferences[0].inferenceId).toBe('late-owner');
 });
 
+it('keeps a later reservation blocked until release is proven and deduplicates the uncertainty alert', async () => {
+  const send = requestJson.getMockImplementation();
+  requestJson.mockImplementation(async options => {
+    if (options.method === 'POST') { launches++; throw new Error('reply lost'); }
+    return send(options);
+  });
+  const later = await queue.submit({ ...manifest, key: 'subsequent-check', kind: 'diagnostic',
+    executor: { mode: 'operator', receiptRef: 'fixture-receipt' } }, 'test');
+  const slot = { expectedRevision: later.revision, start: manifest.notBefore };
+  await expect(launcher.launch(job.id, 'coverage', { expectedRevision: job.revision })).rejects.toThrow();
+  const held = await queue.get(job.id);
+  await expect(queue.reserve(later.id, slot, 'operator')).rejects.toMatchObject({ code: 'HEAVY_QUEUE_CONFLICT' });
+  const view = require('../../src/services/heavyWorkQueueReadModel').presentation(held);
+  expect(view.nextAction.detail).toContain(manifest.executor.requestId);
+  const notices = require('../../src/services/heavyWorkQueueNotifications');
+  await notices.publishJobs([held]);
+  await notices.publishJobs([held]);
+  const Alert = require('../../models/Alert');
+  expect(await Alert.countDocuments({ 'context.additionalData.queueRequestId': job.id, status: 'active' })).toBe(1);
+  native = { terminal: true, launchReceipt: refusal(job.id, 'benchmark', Object.assign(new Error('preflight refused'), {
+    notStarted: true, code: 'COVERAGE_LAUNCH_REFUSED' })) };
+  expect(await evidence.reconcile(job.id, 'observer')).toMatchObject({ state: 'failed' });
+  expect(await queue.reserve(later.id, slot, 'operator')).toMatchObject({ state: 'reserved' });
+  expect(launches).toBe(1);
+});
+
 it('refuses changed or foreign intent/hosts before dispatch instead of broadening coverage', async () => {
   manifest = { ...manifest, hosts: [A] };
   await expect(launcher.launch(job.id, 'coverage', { expectedRevision: job.revision })).rejects.toMatchObject({ code: 'HEAVY_QUEUE_EXECUTOR_CHANGED' });

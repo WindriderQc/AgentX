@@ -35,6 +35,7 @@ const { freezeJudgeConfig } = require('./judgeExecutionContract');
 
 async function startBatch({
     coverage_request_id,
+    coverageBatchId,
     host,
     models,
     targets = null,
@@ -65,7 +66,7 @@ async function startBatch({
     if (judgeTarget.mode === 'native_agent' || !judgeTarget.capabilities.judge) {
         throw new Error('Only direct_model or isolated_model targets may be used as judge');
     }
-    const plannedBatchId = new mongoose.Types.ObjectId();
+    const plannedBatchId = new mongoose.Types.ObjectId(coverageBatchId);
     const plannedBatchKey = plannedBatchId.toString();
     const workloadTtlMs = execution_config?.estimated_duration_ms || null;
     await acquireWorkloadAdmission(plannedBatchId.toString(), {
@@ -73,6 +74,9 @@ async function startBatch({
         ...await resolveBatchAdmissionScope(normalizedTargets, { ...judge_config, target: judgeTarget, host: judgeTarget.host }),
         batchId: plannedBatchId.toString(),
         ttlMs: workloadTtlMs
+    }).catch(error => {
+        if (coverage_request_id && error.admissionRefused === true) error.notStarted = true;
+        throw error;
     });
     const creationAbort = new AbortController();
     const creationHeartbeat = startBenchmarkClaimHeartbeat([], plannedBatchKey, workloadTtlMs, {
@@ -89,6 +93,7 @@ async function startBatch({
         throw error;
     }
     let admissionHandedOff = false;
+    let batchSaveAttempted = false;
     try {
     judge_config = resolveJudgeConfig({ ...judge_config, target: judgeTarget, host: judgeTarget.host || `harness:${judgeTarget.harness.name}`, model: judgeTarget.model });
     judge_config = await freezeJudgeConfig(judge_config, { signal: creationAbort.signal });
@@ -204,6 +209,7 @@ async function startBatch({
     batch.captureSystemSnapshot();
     try {
         creationHeartbeat.assertActive();
+        batchSaveAttempted = true;
         await batch.save({ signal: creationAbort.signal });
         creationHeartbeat.assertActive();
     } catch (error) {
@@ -291,6 +297,11 @@ async function startBatch({
             } else {
                 await creationHeartbeat.drain();
             }
+        }
+        // Only failures before the first insert (and hence before execution)
+        // with an acknowledged release are proven coverage refusals.
+        if (coverage_request_id && !batchSaveAttempted && error.retainAdmission !== true) {
+            error.notStarted = true;
         }
         throw error;
     }
