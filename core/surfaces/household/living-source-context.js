@@ -23,10 +23,10 @@ function requestsWeather(words) {
 async function prepareLivingSourceContext({ pack, session, familyPackId, isLlmX = false,
   member = null, consult = false, guardian = false, backend, ambient = null,
   sources = null, channel, userText, timeZone, requestAt } = {}) {
-  if (isLlmX || member || consult) return { text: '', relayForecastContext: '' };
+  if (isLlmX || member || consult) return { text: '', relayForecastContext: '', relayWeatherContext: '' };
   const audience = pack?.id === familyPackId ? 'household'
     : pack?.id === 'personal_operator' && !pack.childSafe && session?.scopeId === 'personal' ? 'owner' : null;
-  if (!audience) return { text: '', relayForecastContext: '' };
+  if (!audience) return { text: '', relayForecastContext: '', relayWeatherContext: '' };
   const service = sources || require('../../src/services/livingSourceService');
   const fullCatalogue = service.forAudience(audience, { ambient }).catalogue();
   // Keep the Family prompt's existing compact projection. Detailed reading
@@ -49,7 +49,9 @@ async function prepareLivingSourceContext({ pack, session, familyPackId, isLlmX 
   const localFamilyVoice = audience === 'household' && backend === 'agentx' && !guardian && channel === 'voice';
   const words = localFamilyVoice ? weatherQuestionWords(userText) : '';
   const asksTomorrow = localFamilyVoice && isExplicitTomorrowWeather(userText);
-  let text, relayForecastContext = '';
+  // The principal can use the catalogue. Only the dated weather evidence (or
+  // its absence) belongs in the limited relay that cannot read these sources.
+  let text, relayForecastContext = '', relayWeatherContext = '';
   if (asksTomorrow) {
     let forecast;
     try { forecast = await ambient?.forecastTomorrow?.({ timeZone, requestAt }); } catch { /* fail closed */ }
@@ -64,7 +66,8 @@ async function prepareLivingSourceContext({ pack, session, familyPackId, isLlmX 
     const tooLarge = '\n\nHousehold forecast: coverage could not be delivered in this turn. Do not substitute an observation or invent conditions.';
     text = base + (base.length + projection.length <= MAX_CONTEXT_CHARS ? projection : tooLarge);
   } else if (!localFamilyVoice || requestsWeather(words)) {
-    text = base + await familyWeatherContext(ambient);
+    relayWeatherContext = await familyWeatherContext(ambient);
+    text = base + relayWeatherContext;
   } else {
     const followup = /^(?:et (?:la|maintenant|dehors)|(?:et )?en ce moment|(?:and|what about) now|right now)$/.test(words);
     let weather = followup ? familyWeatherReadingContext(ambient?.peekWeather?.(), { freshOnly: true }) : '';
@@ -73,12 +76,13 @@ async function prepareLivingSourceContext({ pack, session, familyPackId, isLlmX 
         + ' If this sounds like a weather request but its meaning is unclear, ask one short clarification, such as whether the person wants current conditions or a forecast for a particular day.'
         + ' Respect a clearly specified place or date. For other topics, answer the actual request.';
     }
-    text = base.length + weather.length <= MAX_CONTEXT_CHARS ? base + weather : base;
+    if (base.length + weather.length <= MAX_CONTEXT_CHARS) relayWeatherContext = weather;
+    text = base + relayWeatherContext;
   }
   if (text.length > MAX_CONTEXT_CHARS) throw Object.assign(new Error('Living-source context exceeds its complete delivery bound.'), {
     code: 'LIVING_SOURCE_CONTEXT_TOO_LARGE', statusCode: 503
   });
-  return { text, relayForecastContext };
+  return { text, relayForecastContext, relayWeatherContext };
 }
 
 async function livingSourceContext(options) { return (await prepareLivingSourceContext(options)).text; }

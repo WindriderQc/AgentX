@@ -86,10 +86,6 @@
     }
   }
 
-  // Phones delay and process their own speaker output beyond what EchoGuard's
-  // short acoustic window can match, so a reply heard back through the mic
-  // was transcribed and treated as the user interrupting. Words that the
-  // current reply has just spoken are an echo, not a new request.
   const HOLDING = Object.freeze({
     fr: ['Un petit instant…'],
     en: ['Just one moment…']
@@ -113,13 +109,31 @@
     try { speech?.body?.cancel?.().catch(() => {}); } catch { /* already consumed */ }
   }
 
+  // Phone speaker delay can exceed the acoustic echo filter’s window.
   function isSpokenEcho(text, spoken) {
-    const words = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-      .match(/[a-z0-9]+/g) || [];
-    const heard = words(text), said = new Set(words(spoken));
-    // A short answer can repeat the offered choice; lexical overlap is not echo evidence.
-    if (heard.length < 3 || !said.size) return false;
-    return heard.filter(word => said.has(word)).length / heard.length >= 0.7;
+    const transcript = controlWords(text || ''), playback = controlWords(spoken || '');
+    const heard = transcript.split(' ');
+    if (heard.length < 3 || !playback) return false;
+    const excerpt = ' ' + playback + ' ';
+    if (excerpt.includes(' ' + transcript + ' ')) return true;
+    // Compare a contiguous phrase. Shared vocabulary alone can discard a
+    // child's change of person, object, number or time. A missing hesitation
+    // or one reduced French determiner still allows a playback match.
+    const withoutHesitation = value => value.split(' ').filter(word => !/^(?:euh|uh|um)$/.test(word));
+    const words = withoutHesitation(transcript);
+    if (words.length < 5) return false;
+    const said = withoutHesitation(playback);
+    return said.some((_, start) => {
+      if (start + words.length > said.length) return false;
+      let reduced = false;
+      for (const [index, word] of words.entries()) {
+        const original = said[start + index];
+        if (word === original) continue;
+        if (reduced || word !== 'les' || !/^(?:mes|tes|ses|ces)$/.test(original)) return false;
+        reduced = true;
+      }
+      return true;
+    });
   }
 
   // One contiguous microphone window and one expiring excerpt, owned by this
@@ -696,7 +710,6 @@
         }
         const language = spokenLanguage;
         if (this.io.naturalFamilySpeech && language === 'fr') text = speechLanguage.frenchDateTimeText(text);
-        turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
         if (!notice) turn.timeline?.mark('firstClause');
         const previousPlayback = playback, availableSlot = prefetchSlot;
         // A voice whose accepted stream failed while it played is left for the
@@ -730,6 +743,7 @@
           }
           this.monitor(turn);
           this.show('speaking'); turn.replyStarted = true;
+          turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
           // Preserve firstAudio as the legacy playback-request offset.
           // Actual scheduling comes from the player and can follow silent padding.
           if (!notice) turn.timeline?.mark('firstAudio');

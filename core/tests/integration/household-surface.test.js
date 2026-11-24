@@ -1040,7 +1040,7 @@ describe('built-in Household surface on Core', () => {
 
     const personalBefore = await PipelineTask.countDocuments({ service: 'personal' });
     await request(app).post(`${base}/${id}/turns/text`).send({ text: "J'ai une idée : une cabane dans l'arbre" }).expect(200);
-    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain('an idea and it has been saved for Dad to review');
+    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain('an idea and it has been saved in the parent review inbox');
     expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toBe(familySystem);
     const idea = await PlanningItem.findOne({ type: 'idea', tags: 'origin:family' }).lean();
     expect(idea).toMatchObject({ status: 'inbox', summary: "J'ai une idée : une cabane dans l'arbre" });
@@ -1168,11 +1168,11 @@ describe('built-in Household surface on Core', () => {
       await turn({ text: "Qu'est-ce que je dois faire aujourd'hui?", channel: 'voice' }).expect(200);
       expect(lastInference().messages.at(-1).content).toContain('Synthetic lane child : à faire : Synthetic water the plant');
       await turn({ text: "J'ai une idée : un potager sur le balcon", channel: 'voice' }).expect(200);
-      expect(lastInference().messages.at(-1).content).toContain('an idea and it has been saved for Dad to review');
+      expect(lastInference().messages.at(-1).content).toContain('an idea and it has been saved in the parent review inbox');
       expect((await PlanningItem.findOne({ type: 'idea', summary: "J'ai une idée : un potager sur le balcon" }).lean()).tags)
         .toEqual(expect.arrayContaining(['origin:family', 'kind:idea']));
       await turn({ text: 'Rappelle-moi de nourrir le poisson demain', channel: 'voice' }).expect(200);
-      expect(lastInference().messages.at(-1).content).toContain('a reminder and it has been saved for Dad to review');
+      expect(lastInference().messages.at(-1).content).toContain('a reminder and it has been saved in the parent review inbox');
       expect((await PlanningItem.findOne({ type: 'idea', summary: 'Rappelle-moi de nourrir le poisson demain' }).lean()).tags)
         .toEqual(expect.arrayContaining(['origin:family', 'kind:reminder']));
       inferences = executeForTest.mock.calls.length;

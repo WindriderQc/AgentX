@@ -48,6 +48,8 @@ test('the advertised automatic French/English mode requests bounded bilingual re
   assert.equal(transcriptionLanguage('auto'), 'fr-en');
   assert.equal(transcriptionLanguage(''), 'fr-en');
   assert.equal(transcriptionLanguage('fr'), 'fr');
+  assert.equal(transcriptionLanguage('fr-CA'), 'fr');
+  assert.equal(transcriptionLanguage('fr-en'), 'fr-en');
   assert.equal(transcriptionLanguage('en'), 'en');
   const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '../public/conversation-page.js'), 'utf8');
   assert.match(source, /body.append\('language', NestorSpeech.transcriptionLanguage\(lang\)\)/);

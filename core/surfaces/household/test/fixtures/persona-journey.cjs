@@ -10,7 +10,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
   const session = { sessionId: 'synthetic-session', status: 'active', packId, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
     persona: { id: 'nestor', version: 1, name: 'Nestor', identity: 'Synthetic personality overlay.', voice: {} }, voice: { language: 'auto' } };
-  const state = { notes: [], advice: '', profiles: [], sound: null, session };
+  const state = { notes: [], recordedNotes: [], advice: '', profiles: [], sound: null, session };
   const turns = [], sent = [];
   const conversations = {
     getSession: async () => ({ ...session }),
@@ -47,7 +47,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     familyTasks: { listProfileDetails: async () => ({ profiles: state.profiles }), listProfiles: async () => ({ profiles: state.profiles }),
       room: async () => ({ room: { available: [{ title: 'Synthetic routine' }] } }) },
     ownerMemory: {}, familyMemory: {},
-    notesFor: () => { failContext?.('family_notes'); return ({ search: async () => ({ notes: state.notes }), record: async () => ({}) }); },
+    notesFor: () => { failContext?.('family_notes'); return ({ search: async () => ({ notes: state.notes }), record: async note => state.recordedNotes.push(note) }); },
     personalAttachments: () => ({ references: async () => [], prepare: async messages => messages.map(({ attachments, ...message }) => message) }),
     knowledgeState: { config: null, status: { status: 'disabled', corpusFingerprint: null } },
     openHold: {}, openingPayload: () => ({}),

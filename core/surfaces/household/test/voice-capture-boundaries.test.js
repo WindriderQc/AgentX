@@ -26,6 +26,56 @@ test('twenty minutes of synthetic signal below the default threshold also stays 
   assert.ok(endpoint.preSamples <= rate * .35 + low.length);
 });
 
+for (const threshold of [.002, .015, .15]) {
+  test(`a softer ending supersedes the early clip at an onset threshold of ${threshold}`, () => {
+    const endpoint = new Endpoint(1000, 100, 1000, threshold);
+    endpoint.earlySilenceMs = 500;
+    const frame = fraction => new Float32Array(100).fill(fraction * threshold);
+    for (let i = 0; i < 6; i++) endpoint.push(frame(.8));
+    assert.equal(endpoint.speaking, false, 'soft sound alone cannot start a turn');
+    endpoint.push(frame(2));
+    for (let i = 0; i < 5; i++) endpoint.push(frame(.1));
+    const [prefix] = endpoint.drain();
+    assert.equal(prefix.type, 'early');
+    const soft = frame(.8);
+    assert.equal(endpoint.push(soft), null);
+    assert.deepEqual(endpoint.drain(), [{ type: 'resumed', id: prefix.id }]);
+    for (let i = 0; i < 5; i++) assert.equal(endpoint.push(frame(.1)), null);
+    const [ending] = endpoint.drain();
+    assert.equal(ending.type, 'early');
+    assert.notEqual(ending.id, prefix.id);
+    assert.equal(ending.samples[prefix.samples.length], soft[0]);
+    for (let i = 0; i < 4; i++) assert.equal(endpoint.push(frame(.1)), null);
+    assert.ok(endpoint.push(frame(.1)) instanceof Float32Array);
+    assert.equal(endpoint.completedEarlyId, ending.id);
+  });
+}
+
+test('steady background below onset allows an active turn to finish', () => {
+  const room = new Float32Array(100).fill(.012);
+  for (const hadRoomTone of [true, false]) {
+    const endpoint = new Endpoint(1000);
+    if (hadRoomTone) endpoint.push(room);
+    endpoint.push(new Float32Array(100).fill(.1));
+    let completed;
+    for (let i = 0; i < (hadRoomTone ? 10 : 15) && !completed; i++) completed = endpoint.push(room);
+    assert.ok(completed instanceof Float32Array);
+    assert.equal(endpoint.speaking, false);
+  }
+});
+
+test('periodic noise below onset cannot keep an active microphone turn open', () => {
+  const endpoint = new Endpoint(1000), block = level => new Float32Array(100).fill(level);
+  endpoint.earlySilenceMs = 500;
+  endpoint.push(block(.035));
+  let clip;
+  for (let i = 0; i < 20 && !clip; i++) clip = endpoint.push(block(i % 6 === 5 ? .012 : .001));
+  assert.ok(clip instanceof Float32Array);
+  assert.equal(endpoint.speaking, false);
+  for (let i = 0; i < 30; i++) assert.equal(endpoint.push(block(i % 6 === 5 ? .012 : .001)), null);
+  assert.equal(endpoint.speaking, false);
+});
+
 test('a continuous non-speech tone reaches the exact production byte ceiling without needing a wake word', () => {
   const endpoint = new Endpoint(48000), signal = tone(1024);
   assert.equal(MAX_CAPTURE_BYTES, 33488896); assert.equal(endpoint.maxSamples, 16744448);
@@ -128,4 +178,53 @@ test('the real capture adapter stops on overflow, preserves session, rearms wake
   assert.equal(turns, 1); assert.equal(conversation.wake.active(), true);
   conversation.stop(true); assert.equal(conversation.session, session); assert.equal(conversation.wake.active(), false);
   assert.equal(browser.tracks[1].stopped, true);
+});
+
+test('a softly withdrawn reminder reaches Family once without saving the speculative request', async t => {
+  const { harness } = require('./fixtures/persona-journey.cjs');
+  const family = harness({ packId: 'kidx_nestor', backend: 'agentx' });
+  const inbox = t.mock.method(require('../../../src/services/ideaInboxService'), 'captureIdea',
+    async () => ({ review: 'parent' }));
+  const browser = syntheticBrowser();
+  const reminder = 'Rappelle-moi de sortir mes mitaines.';
+  const withdrawn = reminder + ' Ah non, laisse faire.';
+  const submitted = [];
+  let prefix, ended;
+  // Stand in for STT: the distinctive quieter PCM block represents the last words.
+  const recognize = async blob => {
+    const samples = new Int16Array(await blob.arrayBuffer(), 44);
+    const text = samples.some(sample => sample > 0 && sample < 500) ? withdrawn : reminder;
+    if (text === reminder) prefix.resolve(text);
+    return { text };
+  };
+  const conversation = new Conversation({
+    openAudio: (signal, onError) => browser.api.openAudio(signal, onError),
+    createSession: async () => family.session,
+    transcribeEarly: recognize, transcribe: recognize,
+    turn: async (_session, text) => {
+      submitted.push(text);
+      await family.turn(text, 'voice');
+      return { text: '' };
+    },
+    message() {}, transcriptionEnded: () => ended.resolve()
+  });
+  t.after(() => conversation.stop());
+  await conversation.start({ language: 'fr' });
+  for (const retract of [false, true]) {
+    prefix = Promise.withResolvers();
+    ended = Promise.withResolvers();
+    browser.send(.04, 160);
+    browser.send(0, 500);
+    assert.equal(await prefix.promise, reminder);
+    assert.equal(inbox.mock.callCount(), retract ? 1 : 0, 'early STT cannot write');
+    if (retract) browser.send(.012, 100);
+    browser.send(0, 1000);
+    await ended.promise;
+  }
+  assert.deepEqual(submitted, [reminder, withdrawn]);
+  assert.equal(family.sent.length, 2);
+  assert.equal(inbox.mock.callCount(), 1);
+  assert.equal(inbox.mock.calls[0].arguments[0].text, reminder);
+  assert.match(family.sent[0].request, /saved in the parent review inbox/);
+  assert.doesNotMatch(family.sent[1].request, /saved in the parent review inbox/);
 });
