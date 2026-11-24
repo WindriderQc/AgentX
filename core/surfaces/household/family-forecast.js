@@ -1,6 +1,7 @@
 'use strict';
 
 const { familyClock } = require('./family-clock');
+const { weatherQuestionWords } = require('./family-weather-question');
 
 const HOUR_MS = 3600000;
 const MAX_RETRIEVAL_AGE_MS = 30 * 60000;
@@ -64,10 +65,7 @@ function projectTomorrowHours(value, { timeZone, requestAt = new Date(), now = r
 // Narrow positive allowlist for explicit, local, single-intent utterances.
 function isExplicitTomorrowWeather(text) {
   if (typeof text !== 'string' || text.length > 150) return false;
-  const words = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-    .replace(/[’']/g, ' ').replace(/[?!.,]+$/g, '').trim().replace(/\s+/g, ' ')
-    .replace(/^nestor[, ]+/, '');
-  return /^(?:(?:quelle (?:est la )?|(?:c est quoi la |donne moi la |la ))?(?:meteo|(?:les )?previsions meteo) (?:pour |de )?demain|(?:quel temps (?:fera t il|va t il faire)|il va faire quel temps) demain|(?:what(?: s| is) the )?weather (?:for )?tomorrow|tomorrow s weather)$/.test(words.replace(/-/g, ' '));
+  return /^(?:(?:quelle (?:est la )?|(?:c est quoi la |la ))?(?:meteo|(?:les )?previsions meteo) (?:pour |de )?demain|(?:quel temps (?:fera t il|va t il faire)|il va faire quel temps) demain|(?:what(?: s| is) the )?weather (?:for )?tomorrow|tomorrow s weather)$/.test(weatherQuestionWords(text));
 }
 
 // No catalogue duplicate, location coordinates or provider prose in the limited relay.

@@ -12,31 +12,85 @@ jest.mock('../../src/extensions/trustedRuntimeServices', () => {
 });
 
 const request = require('supertest');
+const createFamilyAmbient = jest.spyOn(require('../../surfaces/household/family-ambient'), 'createFamilyAmbient');
 const { app } = require('../../src/app');
 const { fetchData } = require('../../src/services/dataServiceClient');
 const { executeForTest } = require('../../src/extensions/trustedRuntimeServices');
 
-test('the Family voice session supplies the dated observation for both French weather question orders', async () => {
-  const fetchedAt = new Date().toISOString();
-  const observedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+const base = '/api/voice-personas/family/sessions';
+let fetchedAt, observedAt;
+
+beforeAll(() => {
+  fetchedAt = new Date().toISOString();
+  observedAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   fetchData.mockImplementation(async path => {
     if (path !== '/api/v1/livedata/ec-weather') throw new Error('No synthetic data for this path');
     return { response: { ok: true }, body: { status: 'success', data: {
       fetchedAt, current: { observedAt, temperatureC: 14 }
     } } };
   });
-  const base = '/api/voice-personas/family/sessions';
+});
+
+function weatherClarification(prompt) {
+  return prompt.split('\n').find(line => /weather|météo/i.test(line) && /clarif|rephras|reformul/i.test(line));
+}
+
+async function startSession() {
   const created = await request(app).post(base)
     .send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201);
-  for (const text of ['Quelle météo il fait DEHORS ?', 'Quelle météo fait-il dehors ?']) {
-    const before = executeForTest.mock.calls.length;
-    await request(app).post(`${base}/${created.body.data.session.sessionId}/turns/text`)
-      .send({ text, channel: 'voice', stream: true }).expect(200);
-    expect(executeForTest.mock.calls.length).toBe(before + 1);
-    const prompt = executeForTest.mock.calls.at(-1)[0].messages.at(-1).content;
+  return created.body.data.session.sessionId;
+}
+
+async function voiceTurn(sessionId, text) {
+  const before = executeForTest.mock.calls.length;
+  await request(app).post(`${base}/${sessionId}/turns/text`)
+    .send({ text, channel: 'voice', stream: true }).expect(200);
+  expect(executeForTest.mock.calls).toHaveLength(before + 1);
+  return executeForTest.mock.calls.at(-1)[0].messages.at(-1).content;
+}
+
+test('the Family voice session supplies a dated observation when the speaker asks or asks again politely', async () => {
+  const sessionId = await startSession();
+  for (const text of ['Quelle météo il fait DEHORS ?', 'Quelle météo fait-il dehors ?',
+    'Quelle est la météo, s’il te plaît ?', 'Peux-tu me redire la météo, s’il te plaît ?']) {
+    const prompt = await voiceTurn(sessionId, text);
     expect(prompt).toContain('"temperatureC":14');
     expect(prompt).toContain(`"observedAt":"${observedAt}"`);
     expect(prompt).toContain(`"fetchedAt":"${fetchedAt}"`);
   }
   expect(fetchData.mock.calls.filter(([path]) => path === '/api/v1/livedata/ec-weather')).toHaveLength(1);
+});
+
+test('an ambiguous spoken weather fragment gets clarification guidance without an observation or a source failure', async () => {
+  const sessionId = await startSession();
+  await voiceTurn(sessionId, 'Quelle est la météo ?');
+  await voiceTurn(sessionId, 'Raconte-moi une petite histoire.');
+  const ambient = createFamilyAmbient.mock.results.at(-1).value;
+  const weather = jest.spyOn(ambient, 'weather').mockClear();
+  const forecast = jest.spyOn(ambient, 'forecastTomorrow').mockClear();
+  const prompt = await voiceTurn(sessionId, 'Euh, c’est un peu jeudi dans la météo, s’il te plaît.');
+  expect(weather).not.toHaveBeenCalled();
+  expect(forecast).not.toHaveBeenCalled();
+  expect(prompt).not.toMatch(/"temperatureC":14|current conditions are unavailable or outdated|no verified daytime forecast coverage/);
+  expect(weatherClarification(prompt) || '').toMatch(/ask|question|demande/i);
+});
+
+test('weather mentions and clear requests outside local current coverage keep their meaning', async () => {
+  const sessionId = await startSession();
+  const ambient = createFamilyAmbient.mock.results.at(-1).value;
+  const weather = jest.spyOn(ambient, 'weather').mockClear();
+  const forecast = jest.spyOn(ambient, 'forecastTomorrow').mockClear();
+  for (const text of ['Raconte-moi une histoire sur la météo.', 'Je ne veux pas la météo, merci.',
+    'Quelle météo fait-il à Toulouse ?', 'Quelle sera la météo jeudi ?']) {
+    const prompt = await voiceTurn(sessionId, text);
+    expect(prompt).not.toMatch(/"temperatureC":14|current conditions are unavailable or outdated|no verified daytime forecast coverage/);
+    const guidance = weatherClarification(prompt);
+    if (guidance) expect(guidance).toMatch(/(?:if|when|si)\b[^.!?]*(?:unclear|ambiguous|ambigu|incertain)/i);
+    expect(weather).not.toHaveBeenCalled();
+    expect(forecast).not.toHaveBeenCalled();
+  }
+  const tomorrow = await voiceTurn(sessionId, 'Peux-tu me dire la météo de demain, s’il te plaît ?');
+  expect(forecast).toHaveBeenCalledTimes(1);
+  expect(weather).not.toHaveBeenCalled();
+  expect(tomorrow).toContain('no verified daytime forecast coverage');
 });
