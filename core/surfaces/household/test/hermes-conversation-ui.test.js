@@ -22,6 +22,14 @@ test('a configured personal Hermes engine respects saved choice and safely handl
   assert.equal(policy.choose({ ...runtime, hermesConfigured: false, openclawConfigured: false }, false, 'hermes'), 'agentx');
 });
 
+test('a protected household offers local inference even when a native preference was saved', () => {
+  const policy = engines(), runtime = { protectedSourcesLocalOnly: true, defaultBackend: 'agentx', hermesConfigured: true, openclawConfigured: true };
+  for (const family of [true, false]) {
+    assert.deepEqual([...policy.available(runtime, family)], ['agentx']);
+    assert.equal(policy.choose(runtime, family, 'hermes'), 'agentx');
+  }
+});
+
 test('family never offers or selects Hermes, including a shared personal default or saved selection', () => {
   const policy = engines(), runtime = { defaultBackend: 'hermes', hermesConfigured: true };
   assert.equal(policy.available(runtime, true).includes('hermes'), false);

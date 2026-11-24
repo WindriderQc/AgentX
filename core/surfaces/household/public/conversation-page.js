@@ -1,6 +1,7 @@
 /* Engine selection is scoped to the surface; credentials never enter the browser. */
 window.ConversationEngines = {
   available(runtime, family) {
+    if (runtime?.protectedSourcesLocalOnly) return ['agentx'];
     return [runtime?.openclawConfigured !== false && 'openclaw', 'agentx', !family && runtime?.hermesConfigured === true && 'hermes'].filter(Boolean);
   },
   choose(runtime, family, preferred) {
@@ -69,7 +70,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <div class="ss-group" id="conversationWho" aria-labelledby="ssWho"${family ? ' hidden' : ''}><h2 id="ssWho" class="ss-title">Who answers <small>set when a conversation starts</small></h2>
         <div id="conversationLocked" class="ss-lock" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span id="conversationLockedText"></span><button id="conversationLockedNew" class="ss-link" type="button">New conversation</button></div>
         <div class="ss-fields">
-          <label class="ss-field">Engine<select id="conversationBackend"><option value="openclaw" ${runtime?.openclawConfigured === false ? 'disabled' : ''}>OpenClaw</option><option value="agentx">AgentX / Ollama</option>${!family && runtime?.hermesConfigured === true ? '<option value="hermes">Hermes</option>' : ''}</select></label>
+          <label class="ss-field">Engine<select id="conversationBackend"><option value="openclaw" ${runtime?.openclawConfigured === false || runtime?.protectedSourcesLocalOnly ? 'disabled' : ''}>OpenClaw</option><option value="agentx">AgentX / Ollama</option>${!family && runtime?.hermesConfigured === true ? `<option value="hermes"${runtime?.protectedSourcesLocalOnly ? ' disabled' : ''}>Hermes</option>` : ''}</select></label>
           <label class="ss-field" id="conversationNativeAgent">Member<select id="conversationAgent">${agents.map(agent => `<option value="${esc(agent.id)}" ${agent.id === 'main' ? 'selected' : ''}>${esc(agent.name)}</option>`).join('')}</select></label>
           <label class="ss-field" id="conversationPersonaField">Style<select id="conversationPersona">${personas.map(p => `<option value="${esc(p.id)}" ${p.id === 'nestor' ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
         </div>
@@ -825,6 +826,14 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (family) return '';
     const backend = conversation.session?.backend || backendPicker.value;
     companion?.configure(backend);
+    if (runtime?.protectedSourcesLocalOnly) {
+      el('conversationTeam').hidden = true;
+      const notice = backend === 'agentx' ? 'Cette conversation utilise le moteur local AgentX / Ollama.'
+        : 'Ce fil utilise un moteur natif. Ouvrez un nouveau fil avec AgentX / Ollama pour continuer localement.';
+      el('conversationLockedText').textContent = notice; el('conversationLocked').hidden = false;
+      el('conversationLockedNew').hidden = !conversation.session || backend === 'agentx';
+      return notice;
+    }
     if (backend === 'hermes') {
       el('conversationTeam').hidden = true;
       const notice = conversation.session ? 'Hermes · start a new conversation to change engines.' : '';
@@ -843,7 +852,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   }
   if (!family) el('conversationTeam').onclick = (event) => {
     const card = event.target.closest('button[data-agent]');
-    if (!card || card.disabled || conversation.session) return;
+    if (!card || card.disabled || conversation.session || runtime?.protectedSourcesLocalOnly) return;
     backendPicker.value = 'openclaw';
     try { storage?.setItem(backendKey, 'openclaw'); } catch {}
     agentPicker.value = card.dataset.agent;

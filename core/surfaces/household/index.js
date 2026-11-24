@@ -22,6 +22,7 @@ const {
 const { registerFamilyRoutes } = require('./family-routes');
 const { plainReply } = require('./reply-channels'), { createVisuals } = require('./visuals'), { createBrain } = require('./brain');
 const { createMemberWork } = require('./member-work');
+const { protectedSourcesLocalOnly } = require('../../src/services/conversations/protectedSources');
 const { createVoiceWarmup } = require('./voice-warmup');
 const { registerSecretaryMcp } = require('./secretary-mcp');
 const { secretaryMailControl } = require('./secretary-mail-routes');
@@ -274,13 +275,20 @@ function register(api) {
 
   personas.use(standardJsonParser);
   personas.get('/private/agents', async (_req, res) => {
-    try { const catalog = configuredOpenClaw(conversationEnv) ? await nestorClient({ operation: 'agents' }) : { agents: [] };
+    try { const catalog = !protectedSourcesLocalOnly(conversationEnv) && configuredOpenClaw(conversationEnv) ? await nestorClient({ operation: 'agents' }) : { agents: [] };
       return envelope(res, { ...catalog, agents: catalog.agents.filter(agent => !agent.internal) }); }
     catch { return fail(res, 503, 'OpenClaw agents are unavailable.', 'CONVERSATION_AGENTS_UNAVAILABLE'); }
   });
   personas.get('/catalog', async (_req, res) => {
-    try { await ensureCatalog(); return envelope(res, { personas: (await runtimeServices.personas.list()).map(personaCatalog.snapshot), runtime: { defaultBackend: conversationBackend(conversationEnv.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND, conversationEnv), openclawConfigured: configuredOpenClaw(conversationEnv), hermesConfigured: configuredHermes(conversationEnv),
-      browserSpeechFallback: browserSpeechFallback(conversationEnv) } }); }
+    try {
+      await ensureCatalog();
+      const localOnly = protectedSourcesLocalOnly(conversationEnv);
+      return envelope(res, { personas: (await runtimeServices.personas.list()).map(personaCatalog.snapshot), runtime: {
+        protectedSourcesLocalOnly: localOnly,
+        defaultBackend: conversationBackend(localOnly ? null : conversationEnv.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND, conversationEnv),
+        openclawConfigured: configuredOpenClaw(conversationEnv), hermesConfigured: configuredHermes(conversationEnv),
+        browserSpeechFallback: browserSpeechFallback(conversationEnv) } });
+    }
     catch (error) { return fail(res, error.statusCode || 503, error.message); }
   });
   personas.get('/catalog/:name', async (req, res) => {
@@ -335,8 +343,10 @@ function register(api) {
       }
       const requestedMode = pack.modes.find((entry) => entry.id === req.body?.modeId) || pack.modes[0];
       // The instance's family lane, when set, decides every new child-safe conversation; LLMx scenes keep the general choice.
-      const backend = conversationBackend((pack.childSafe && consumer !== 'llmx' && familyConversationBackend(conversationEnv)) || req.body?.backend
-        || (!pack.childSafe && !consumer ? conversationEnv.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND : null), conversationEnv);
+      const requestedBackend = protectedSourcesLocalOnly(conversationEnv) ? req.body?.backend
+        : (pack.childSafe && consumer !== 'llmx' && familyConversationBackend(conversationEnv)) || req.body?.backend
+          || (!pack.childSafe && !consumer ? conversationEnv.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND : null);
+      const backend = conversationBackend(requestedBackend, conversationEnv);
       if (backend === 'hermes' && (pack.childSafe || consumer || pack.id !== 'personal_operator')) {
         throw Object.assign(new Error('Hermes is available only in personal conversations.'), { statusCode: 403 });
       }

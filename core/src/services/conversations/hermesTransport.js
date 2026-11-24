@@ -1,5 +1,7 @@
 'use strict';
 
+const { requireProtectedBackend } = require('./protectedSources');
+
 const { createHash, randomUUID } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
 const { hermesUsageReceipt } = require('../../../../shared/runtimeUsageReceipts.cjs');
@@ -64,6 +66,7 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
     return state;
   }
   async function accept(request, state, signal) {
+    requireProtectedBackend('hermes', env);
     // Native terminal idempotency records expire. A stale lost acceptance may
     // only be reconciled by its native owner, never re-admitted after retention.
     if (!Number.isFinite(Date.parse(state.startedAt)) || Date.now() - Date.parse(state.startedAt) > 15 * 60000) {
@@ -122,6 +125,7 @@ function createHermesTransport({ env = process.env, fetchImpl = globalThis.fetch
     return terminal(request, state, observed);
   }
   const run = async request => {
+    requireProtectedBackend('hermes', env);
     if (request.pack?.childSafe || request.session.packId !== 'personal_operator' || request.session.scopeId !== 'personal' || request.session.llmx) {
       throw fault('Hermes is available only in the personal conversation.', 'HERMES_PERSONAL_ONLY', 403);
     }

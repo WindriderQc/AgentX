@@ -54,6 +54,7 @@ function createVoiceWarmup({ conversations, executeConversation, conversationBac
   }
 
   function start(session, greeting) {
+    if (require('../../src/services/conversations/protectedSources').protectedSourcesLocalOnly(conversationEnv)) return { started: false, reason: 'protected_sources_local_only' };
     if (!enabled()) return { started: false, reason: 'disabled' };
     if (conversationEnv.PERSONAL_CONVERSATION_WORK_MODE === 'native' && conversationEnv.PERSONAL_CONVERSATION_GUARDIAN_AGENT_ID
         && session.packId === PRIVATE_SCOPE.packId && session.scopeId === PRIVATE_SCOPE.scopeId && agentIdFor(session) === 'main') {

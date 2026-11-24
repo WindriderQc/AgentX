@@ -5,6 +5,7 @@ const { readingRequested } = require('../../src/services/voice/presentation');
 const crypto = require('crypto');
 const personaCatalog = require('./persona-catalog');
 const { agentInstructions, agentIdFor, personalVoice } = require('./conversation-agent');
+const { protectedSourcesLocalOnly, requireProtectedBackend } = require('../../src/services/conversations/protectedSources');
 const { conversationBackend } = require('./conversation-executor');
 const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
@@ -143,6 +144,11 @@ function createPersonaTurnHandler({
           'Native Family voice can use only its exact child-safe session contract',
           'VOIX_FAMILY_SESSION_REQUIRED'
         );
+      }
+      // Resolve a retained session before accepting work, loading sources or preparing native input.
+      if (protectedSourcesLocalOnly(conversationEnv)) {
+        const previous = session.hermesRuntime ? 'hermes' : session.agentSessionKey ? 'openclaw' : 'agentx';
+        requireProtectedBackend(session.backend || previous, conversationEnv);
       }
       if (req.body?.ephemeral !== undefined && req.body.ephemeral !== entry.ephemeral) {
         return fail(res, 409, 'The submitted privacy policy does not match this context.', 'CONVERSATION_PRIVACY_MISMATCH');
