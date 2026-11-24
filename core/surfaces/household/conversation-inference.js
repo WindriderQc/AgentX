@@ -14,7 +14,7 @@ function voiceTask(env = process.env) {
 // Principal-only tools, navigation and image actions are not relay capabilities.
 function familyRelayInstructions(session, pack, env) {
   return [require('./family-clock').familyIdentity(session.persona),
-    require('./persona-prompt').systemPromptFor(pack, { modeId: session.modeId }),
+    require('./persona-prompt').systemPromptFor(pack, { modeId: session.modeId, readOnlyRelay: true }),
     require('./family-clock').familyClockContext({ timeZone: env?.PLANNING_TIME_ZONE }),
     require('./reply-channels').contract({ family: true, math: false, pages: false })].join('\n\n');
 }
