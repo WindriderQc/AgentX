@@ -247,7 +247,7 @@
   function browserSpeak(text, profile) {
     if (!text || state.outputMuted || !('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(profile.language === 'fr' ? window.NestorSpeech.frenchClockText(text) : text);
     utterance.lang = profile.locale;
     const voice = window.NestorSpeech.pickBrowserVoice(window.speechSynthesis.getVoices(), profile);
     if (voice) utterance.voice = voice;

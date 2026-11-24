@@ -966,7 +966,7 @@
       if ((language === 'en' || localOnly) && !voice) throw new Error(`No ${localOnly ? 'local ' : ''}${language === 'en' ? 'English' : 'French'} speech voice is available on this device. The complete answer remains on screen.`);
       return new Promise((resolve, reject) => {
         let started = false;
-        const utterance = new root.SpeechSynthesisUtterance(text);
+        const utterance = new root.SpeechSynthesisUtterance(language === 'fr' ? speechLanguage.frenchClockText(text) : text);
         utterance.lang = profile?.locale || (language === 'en' ? 'en-CA' : 'fr-CA');
         if (voice) utterance.voice = voice;
         const done = () => { signal.removeEventListener('abort', stop); resolve(); };

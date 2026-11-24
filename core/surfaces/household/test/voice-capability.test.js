@@ -55,6 +55,15 @@ test('Household sends Core-cleaned text and installed Canadian voice', async t =
   }
 });
 
+test('the French audio payload expands hours on every provider without editing the source reply', () => {
+  for (const ttsProvider of ['kokoro', 'windows_sapi', 'voxcpm']) {
+    const reply = Object.freeze({ text: 'À 23 h, le 2026-01-04.', language: 'fr', ttsProvider });
+    assert.equal(normalizeSynthesisRequest(reply).text, 'À vingt-trois heures, le 2026-01-04.');
+    assert.equal(reply.text, 'À 23 h, le 2026-01-04.');
+    assert.equal(normalizeSynthesisRequest({ ...reply, language: 'en' }).text, reply.text);
+  }
+});
+
 test('a missing spoken body is rejected before calling an engine', () => {
   assert.throws(() => normalizeSynthesisRequest({ text: '```js\nprivate();\n```' }), { code: 'VOICE_TEXT_REQUIRED' });
   assert.throws(() => normalizeSynthesisRequest({ text: 'Bonjour', ttsProvider: 'windows_sapi', voice: 'x;bad' }), { code: 'VOICE_INVALID_CONFIG' });

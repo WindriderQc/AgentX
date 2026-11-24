@@ -5,7 +5,7 @@
   const h = React.createElement, scriptBase = new URL('.', document.currentScript.src);
   const name = 'agentx-voice';
   const assets = [
-    '/js/voice/speech-language.js', '/js/voice/spoken-presentation.js', '/js/voice/voice-capture.js',
+    '/js/voice/spoken-time.js', '/js/voice/speech-language.js', '/js/voice/spoken-presentation.js', '/js/voice/voice-capture.js',
     '/js/voice/playback-hold.js', '/js/voice/voice-timeline.js', '/api/voix/player.js',
     '/js/voice/browser-conversation.js', '/js/voice/speech-ladder.js',
     '/assets/household/persona-presentation.js', '/js/voice/voice-settings.js',
