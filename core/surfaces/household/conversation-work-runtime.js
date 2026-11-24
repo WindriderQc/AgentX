@@ -1,5 +1,6 @@
 'use strict';
 
+const { protectedSourcesLocalOnly, requireProtectedBackend } = require('../../src/services/conversations/protectedSources');
 const { requestsTaskCheck } = require('./tool-turn-guard');
 const { requestsSecretary, requestsSecretaryRead, requestsReadEffects } = require('./native-specialist-policy');
 const { requestsWebRead } = require('./native-web-policy');
@@ -25,7 +26,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     guardianReads: () => require('./guardian-read-tools').guardianReadTools(env, { ambient }),
     guardianOccupied: async row => Boolean(await require('../../src/services/conversationWorks/primary-foreground').occupiedMain(
       works.repo, observer, row.primary.relayFor)),
-    questionRuntime: env.PERSONAL_CONVERSATION_QUESTIONS_ENABLED === 'true' ? { observe: (row, options) => continuity({ operation: 'questions', workId: row._id }, options?.signal),
+    questionRuntime: !protectedSourcesLocalOnly(env) && env.PERSONAL_CONVERSATION_QUESTIONS_ENABLED === 'true' ? { observe: (row, options) => continuity({ operation: 'questions', workId: row._id }, options?.signal),
       effect: (input, options) => continuity({ operation: 'question_effect', ...input }, options?.signal) } : null,
     presentResult: async (result, row) => {
       const turn = await conversations.getTurn({ sessionId: row.sessionId, packId: 'personal_operator', scopeId: 'personal', traceId: row.turnId });
@@ -45,6 +46,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     observe: attempt => attempt.agentId === 'main' ? native.observe(attempt)
       : continuity({ operation: 'work_attempt', sessionKey: attempt.sessionKey, ...(attempt.runId && { runId: attempt.runId }) }),
     prepare: async ({ row, session, selectedContext }) => {
+      requireProtectedBackend('openclaw', env);
       if (nativeWork(row)) return native.prepare({ row, session, selectedContext });
       const turn = await conversations.getTurn({ sessionId: row.sessionId, packId: 'personal_operator', scopeId: 'personal', traceId: row.turnId });
       if (!turn || hash(turn.inputText) !== row.requestSha256) throw new Error('Canonical work request unavailable');
@@ -62,7 +64,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
         };
     },
     execute: async ({ row, onStarted, ...request }) => agentClient({ ...request, onStarted }) });
-  if (env.PERSONAL_CONVERSATION_WORK_AGENT_ID && env.PERSONAL_CONVERSATION_WORK_TOKEN
+  if (!protectedSourcesLocalOnly(env) && env.PERSONAL_CONVERSATION_WORK_AGENT_ID && env.PERSONAL_CONVERSATION_WORK_TOKEN
       && env.OPENCLAW_GATEWAY_URL && process.env.NODE_ENV !== 'test') observer.start();
   const primary = require('../../src/services/conversationWorks/primary-foreground').createPrimaryForeground(works, observer);
   return { ...works, observer, primaryReply: primary.reply,

@@ -1,4 +1,6 @@
 'use strict';
+
+const { requireProtectedBackend } = require('../../src/services/conversations/protectedSources');
 const { conversationInput, browserReplyTool, sceneReply } = require('./llmx-conversation');
 const { nativePerformedBy } = require('./native-attribution');
 const { acceptedImageReply } = require('./accepted-images');
@@ -88,6 +90,7 @@ function agentInstructions(session, persona, surface, mode, { soundPlayback = fa
 
 function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000, streamGraceMs = 3000, streamDrainMs = 30000, evidenceReadMs = 10000 } = {}) {
   return async ({ session, text, speechLanguage, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, maxOutputTokens, guardianStreaming = false, readAcceptedTaskWork, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onTerminalFailure = async () => {}, onActivity = () => {} }) => {
+    requireProtectedBackend('openclaw', env);
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
     const sessionKey = sessionKeyFor(session);

@@ -39,6 +39,38 @@ const { ageInYears, instanceToday } = require('../../src/domains/household/famil
 const KNOWN_UNKNOWN = 'dis simplement ce que tu ne sais pas; ne devine jamais un âge exact';
 
 describe('built-in Household surface on Core', () => {
+  test('a household with local-only sources admits ordinary Personal locally before preparing native data', async () => {
+    const policy = process.env.HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY, engine = process.env.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND;
+    const workToken = process.env.PERSONAL_CONVERSATION_WORK_TOKEN;
+    process.env.PERSONAL_CONVERSATION_WORK_TOKEN = 'synthetic-work-token';
+    process.env.HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY = 'true';
+    process.env.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND = 'hermes';
+    try {
+      const catalog = await request(app).get('/api/voice-personas/catalog').expect(200);
+      expect(catalog.body.data.runtime).toMatchObject({ defaultBackend: 'agentx', protectedSourcesLocalOnly: true });
+      const read = await request(app).post('/api/voice-personas/native/work').set('authorization', 'Bearer synthetic-work-token')
+        .send({ operation: 'native_context' }).expect(409);
+      expect(read.body.code).toBe('HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY');
+      const base = '/api/voice-personas/private/sessions';
+      const input = { packId: 'personal_operator', modeId: 'operator' };
+      const rejected = await request(app).post(base).send({ ...input, backend: 'hermes' }).expect(409);
+      expect(rejected.body.code).toBe('HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY');
+      const created = await request(app).post(base).send(input).expect(201);
+      expect(created.body.data.session.backend).toBe('agentx');
+      const runs = agentForTest.mock.calls.length;
+      const url = base + '/' + created.body.data.session.sessionId + '/turns/text';
+      const reply = await request(app).post(url).send({ text: 'Synthetic ordinary question', channel: 'text' }).expect(200);
+      expect(reply.body.data.routing.backend).toBe('agentx');
+      expect(agentForTest.mock.calls).toHaveLength(runs);
+    } finally {
+      if (workToken === undefined) delete process.env.PERSONAL_CONVERSATION_WORK_TOKEN;
+      else process.env.PERSONAL_CONVERSATION_WORK_TOKEN = workToken;
+      if (policy === undefined) delete process.env.HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY;
+      else process.env.HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY = policy;
+      if (engine === undefined) delete process.env.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND;
+      else process.env.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND = engine;
+    }
+  });
   test('voice workshop is served from Workshop and old diagnostic bookmarks keep their destination', async () => {
     const page = await request(app).get('/voice-lab').expect(200);
     expect(page.text).toContain('/js/voice/voice-workshop.js');
