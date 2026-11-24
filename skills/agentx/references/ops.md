@@ -39,6 +39,18 @@ revision. The private instance inventory explains which optional services and
 native runtimes are actually installed. If the service has no granted read,
 report the missing integration or permission with the supported human entry.
 
+## Client catalogue refresh
+
+Check the tools the current client advertises, on the granted bus. A fresh
+Core catalogue does not prove the client has loaded it. The stdio relay
+(repo: `integrations/mcp-relay/README.md`) polls only the connected catalogue
+and emits MCP change notifications for clients that handle them. For existing
+Codex chats that retain disabled change notifications, follow the shared
+native watcher guide (repo: `integrations/codex/README.md`). Use one discovery
+path per server. Preserve scope and tool restrictions; never connect the owner
+bus to a family client. After setup, verify the advertised tools and a
+read-only call in that client. Do not restart a shared session for discovery.
+
 ## Models, routing and usage
 
 - What is loaded and pinned on each host: `GET /api/models/cluster-summary`.
@@ -66,6 +78,11 @@ report the missing integration or permission with the supported human entry.
   `/api/analytics/usage`, `/api/analytics/costs`. Counts include trials and
   Benchmark batches. Quote the exact window, `observedAt`, scope and
   attribution coverage; no recorded cloud traffic does not prove no cloud use.
+- For a model-activity error counter, identify the displayed source and time
+  window before checking matching inference records. Benchmark runs and
+  inference activity have separate records; matching times alone do not tie
+  an error to a run or model. Report the cause as unknown without matching
+  evidence.
 - Chat through Core: `POST /api/chat` with `{ message, taskType }` or
   `autoRoute: true`; leave the model and host to the router. OpenAI-compatible
   clients use `<core>/api/llm/v1` (with their gateway client token) and model

@@ -13,7 +13,8 @@ grants. Read the chapter for the request.
 
 - Discover the tool by its advertised name, including any runtime prefix.
   Use the installed scope and use the [access chapter](references/access.md)
-  for Core URLs, MCP, HTTPS fallback and refusal handling.
+  for Core URLs, MCP, HTTPS fallback and refusal handling. For an MCP client
+  with a stale catalogue, follow [catalogue refresh](references/ops.md#client-catalogue-refresh).
 - In a download, `references/served.md` gives the product revision.
   `references/instance.md`, when included, gives private connection and
   operator details. Use the known Core address for the intended audience.
@@ -40,9 +41,11 @@ grants. Read the chapter for the request.
 
 ## Evidence and authority
 
-- Use compact reads for a status question. Expand the relevant task, source
-  window or receipt when needed. Report the producer, date and coverage, and
-  open or verify the result before claiming delivery.
+- For work status and priorities, start with the compact Pipeline view and
+  heavy-work summary. Read health only when the question or evidence calls for
+  it. Separate queued, dispatching, running, blocked and review states. Report
+  the producer, date and coverage; open the relevant result before claiming
+  delivery or check the exact dossier and native receipt before advising a retry.
 - Keep the original request identity and arguments across retries. After a
   lost reply, reconcile that identity with its native owner. A request,
   reservation, heartbeat or display selection proves only its own step.
