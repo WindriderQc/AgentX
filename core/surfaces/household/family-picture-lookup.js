@@ -22,7 +22,45 @@ function genericPicture(text) {
   return { animal: names.get(exact) || null };
 }
 
-async function reply({ text, language, visuals, signal, turnId }) {
+// An explicit household source is never a public-image or drawing request.
+function householdPicture(text) {
+  if (typeof text !== 'string' || text.length > 160 || /[,;:<>/\\\n\r]/.test(text)) return null;
+  const clean = text.normalize('NFC').toLowerCase().replace(/[’ʼ]/g, "'")
+    .replace(/[‐‑]/g, '-').replace(/[.!?]+$/, '').replace(/\s+/g, ' ').trim();
+  const localFr = /^(?:(?:est-ce que tu peux|peux-tu|pourrais-tu) me (?:montrer|trouver)|montre-moi|trouve-moi|cherche|affiche-moi) (?:une|la|des) (?:photo|photos|image|images) (?:de |du |d')([\p{L}\p{N}][\p{L}\p{N} '\-]{0,79}) dans (?:mes|nos|les) (photos|médias|medias)(?: s'il te plaît)?$/u;
+  const localEn = /^(?:(?:can|could) you (?:please )?(?:show me|find)|(?:please )?(?:show me|find)) (?:a|the|some) (?:photo|photos|image|images|picture|pictures) of ([\p{L}\p{N}][\p{L}\p{N} '\-]{0,79}) in (?:my|our|the) (photos|media)(?: please)?$/u;
+  const exact = localFr.exec(clean) || localEn.exec(clean);
+  if (!exact || /\b(?:(?:puis|ensuite|then)|(?:et|and) (?:montre|affiche|ouvre|cherche|dessine|explique|show|open|search|draw|explain))\b/.test(exact[1])) return null;
+  return { source: exact[2] === 'photos' ? 'photos' : 'media', query: exact[1].trim() };
+}
+
+async function householdReply(intent, { language, signal, turnId, albumAllowed = false, issueAlbumImage,
+  album = () => require('../../src/services/photos/photoFrameService').createPhotoFrameService() }) {
+  const en = language === 'en';
+  const unavailable = en ? 'The approved Family album is unavailable here.' : 'L’album approuvé n’est pas accessible ici.';
+  // There is no explicitly approved general Media source in this route.
+  if (!albumAllowed || typeof issueAlbumImage !== 'function' || intent.source !== 'photos') return { text: unavailable, display: [] };
+  signal.throwIfAborted();
+  let selected;
+  try { selected = await album().lookup(intent.query); }
+  catch {
+    signal.throwIfAborted();
+    return { text: unavailable, display: [] };
+  }
+  signal.throwIfAborted();
+  if (!selected) return { text: en ? 'I couldn’t find a matching photo in the approved album.'
+    : 'Je n’ai pas trouvé de photo correspondante dans l’album approuvé.', display: [] };
+  const src = issueAlbumImage(selected.id);
+  if (!src) return { text: unavailable, display: [] };
+  const block = { id: 'family-picture', key: 'family-picture:' + turnId, kind: 'image', source: 'photos',
+    title: en ? 'Photo from the approved album' : 'Photo de l’album approuvé', body: en ? 'Family photo' : 'Photo de famille',
+    status: 'found', image: { url: src, sourceLabel: en ? 'Approved album' : 'Album approuvé' } };
+  return { text: en ? 'I found a photo in the approved album.' : 'J’ai trouvé une photo dans l’album approuvé.', display: [block] };
+}
+
+async function reply({ text, language, visuals, signal, turnId, albumAllowed, album, issueAlbumImage }) {
+  const local = householdPicture(text);
+  if (local) return householdReply(local, { language, signal, turnId, albumAllowed, album, issueAlbumImage });
   const intent = genericPicture(text);
   if (!intent) return null;
   const en = language === 'en';
@@ -45,4 +83,4 @@ async function reply({ text, language, visuals, signal, turnId }) {
   return { text: en ? 'I found a picture.' : 'J’ai trouvé une image.', display: [found] };
 }
 
-module.exports = { genericPicture, reply };
+module.exports = { genericPicture, householdPicture, reply };

@@ -4,7 +4,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createImmichClient, photoError } = require('./immichClient');
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const { UUID, fold } = require('./photoFilters');
+// Same marker and normalization as PhotoService.
+const REVIEW_PENDING_TAG = fold('AgentX/Relecture/à relire');
+const canonicalId = value => typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : null;
 const fail = () => photoError(503, 'PHOTO_FRAME_NOT_CONFIGURED', 'Photo frame is not configured');
 
 function loadFrameConfig(env = process.env) {
@@ -30,12 +33,16 @@ function loadFrameConfig(env = process.env) {
   if (raw.albumId !== undefined && !UUID.test(raw.albumId)) throw fail();
   if (raw.source !== undefined && !['directory-and-album', 'album'].includes(raw.source)) throw fail();
   if (raw.source === 'album' && !raw.albumId) throw fail();
-  return { prefix, ...(raw.albumId ? { albumId: raw.albumId } : {}),
+  // A malformed or absent conversation grant must not alter the existing frame.
+  const grant = raw.conversationLookup;
+  const conversationLookup = grant?.enabled === true && canonicalId(grant.albumId)
+    ? { enabled: true, albumId: canonicalId(grant.albumId) } : null;
+  return { ...(conversationLookup && { conversationLookup }), prefix, ...(raw.albumId ? { albumId: raw.albumId } : {}),
     ...(raw.source ? { source: raw.source } : {}),
     idleSeconds: seconds(raw.idleSeconds, 120, 30), intervalSeconds: seconds(raw.intervalSeconds, 30, 5) };
 }
 
-function createPhotoFrameService({ client = createImmichClient(), config = () => loadFrameConfig() } = {}) {
+function createPhotoFrameService({ client = createImmichClient(), config = () => loadFrameConfig(), processingConfig = () => require('./photoProcessingConfig').loadProcessingConfig() } = {}) {
   function settings() {
     const value = config();
     if (!value || !client.settings().enabled) throw fail();
@@ -56,6 +63,38 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
         type: { eq: 'IMAGE' }, visibility: { eq: 'timeline' }, isOffline: { eq: false }, trashedAt: { eq: null } } } });
     const items = result?.assets?.items;
     return Array.isArray(items) && items.length === 1 && items[0].id === asset.id && eligible(items[0]);
+  }
+  function lookupSettings() {
+    const value = settings();
+    // The independently designated album is the complete authority. Never
+    // inherit the frame's source, prefix, or album even in mixed mode.
+    const grant = value.conversationLookup;
+    const albumId = canonicalId(grant?.albumId);
+    const privateLibraryId = canonicalId(processingConfig()?.libraryId);
+    if (grant?.enabled !== true || !albumId || !privateLibraryId) throw fail();
+    return { source: 'album', albumId, privateLibraryId };
+  }
+  function lookupFilter(value) {
+    return { albumIds: { any: [value.albumId] }, type: { eq: 'IMAGE' },
+      visibility: { eq: 'timeline' }, isOffline: { eq: false }, trashedAt: { eq: null },
+      ...(value.privateLibraryId ? { libraryId: { ne: value.privateLibraryId } } : {}) };
+  }
+  function lookupEligible(asset, value) {
+    const libraryId = canonicalId(asset?.libraryId);
+    return eligible(asset) && asset.isOffline === false && asset.isTrashed === false
+      && Boolean(libraryId) && libraryId !== value.privateLibraryId;
+  }
+  function reviewed(asset, value) {
+    // Explicit album inclusion is the positive curation decision; current
+    // review-pending metadata can still veto it. Missing tags fail closed.
+    return lookupEligible(asset, value) && Array.isArray(asset.tags)
+      && asset.tags.every(tag => typeof tag?.value === 'string' && fold(tag.value) !== REVIEW_PENDING_TAG);
+  }
+  async function lookupMetadata(filter) {
+    const result = await client.json('/search/metadata', { method: 'POST', body: { size: 1, filter } });
+    const items = result?.assets?.items;
+    if (!Array.isArray(items) || items.length > 1) throw photoError(502, 'PHOTO_FRAME_INVALID_RESULT', 'Photo lookup received an invalid result');
+    return items[0] || null;
   }
   return {
     status() {
@@ -95,6 +134,34 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
         throw photoError(502, 'PHOTO_FRAME_INVALID_RESULT', 'Photo frame received an invalid image');
       }
       return asset ? { id: asset.id, src: '/api/photos/frame/' + asset.id + '/image' } : null;
+    },
+    async lookup(fileName) {
+      const value = lookupSettings();
+      if (typeof fileName !== 'string' || !/^[\p{L}\p{N}][\p{L}\p{N} '\-]{0,79}$/u.test(fileName)) {
+        throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid photo search');
+      }
+      const asset = await lookupMetadata({ ...lookupFilter(value), originalFileName: { like: fileName } });
+      if (!lookupEligible(asset, value) || typeof asset.originalFileName !== 'string'
+        || !asset.originalFileName.toLowerCase().includes(fileName.toLowerCase())) return null;
+      const current = await client.json('/assets/' + asset.id);
+      if (!reviewed(current, value) || current.id.toLowerCase() !== asset.id.toLowerCase()
+        || typeof current.originalFileName !== 'string' || !current.originalFileName.toLowerCase().includes(fileName.toLowerCase())
+        || !await allowed(current, value)) return null;
+      return { id: asset.id };
+    },
+    async lookupImage(id) {
+      const value = lookupSettings();
+      if (!UUID.test(String(id))) throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid image');
+      // Recheck direct metadata too: an index row may predate an asset becoming hidden/offline.
+      const asset = await client.json('/assets/' + id);
+      if (!reviewed(asset, value) || asset.id.toLowerCase() !== id.toLowerCase()) {
+        throw photoError(404, 'PHOTOS_NOT_FOUND', 'No such approved photo');
+      }
+      const member = await lookupMetadata({ ...lookupFilter(value), id: { eq: id } });
+      if (!lookupEligible(member, value) || member.id.toLowerCase() !== id.toLowerCase()) {
+        throw photoError(404, 'PHOTOS_NOT_FOUND', 'No such approved photo');
+      }
+      return client.image('/assets/' + id + '/thumbnail?size=preview');
     },
     async image(id) {
       const value = settings();

@@ -11,6 +11,8 @@ const llmx = require('./llmx-conversation');
 const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
 const { familyToolset } = require('./family-tools');
 const familyPictureLookup = require('./family-picture-lookup');
+const { familyAlbumTurn } = require('./family-album-access');
+const { familyAlbumReceipts } = require('./family-album-receipts');
 const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('./family-repair-context');
 const familyPages = require('./family-pages');
 const { familyClockContext, familyIdentity } = require('./family-clock');
@@ -257,7 +259,9 @@ function createPersonaTurnHandler({
         if (entry.relayDuplicate) return envelope(res, { accepted: true, turnId: clientTurnId, recovery: 'explicit_listen', replayed: false }, 202);
         if (pack.id === VOIX_FAMILY_PACK_ID && session.scopeId === 'family' && backend === 'agentx' && !isLlmX && !consult && !entry.ephemeral
             && !entry.workId && !safety.flagIds?.length && !entry.attachments.length) {
-          const picture = await familyPictureLookup.reply({ text: userText, language: preferredSpeechLanguage, visuals, signal: abort.signal, turnId: clientTurnId || entry.imageTurnId });
+          const picture = await familyPictureLookup.reply({ text: userText, language: preferredSpeechLanguage, visuals, signal: abort.signal,
+            turnId: clientTurnId || entry.imageTurnId, albumAllowed: familyAlbumTurn(req.familyDevice, pack.id, session.scopeId),
+            issueAlbumImage: id => familyAlbumReceipts.issue(req.familyDevice, session.sessionId, id) });
           if (picture) { replyText = picture.text; display = picture.display; knowledge.status = 'not-required-picture-lookup'; display.forEach(block => event('show', { block })); }
         }
       }
