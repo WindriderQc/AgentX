@@ -26,7 +26,7 @@ beforeAll(() => {
   fetchData.mockImplementation(async path => {
     if (path !== '/api/v1/livedata/ec-weather') throw new Error('No synthetic data for this path');
     return { response: { ok: true }, body: { status: 'success', data: {
-      fetchedAt, current: { observedAt, temperatureC: 14 }
+      fetchedAt, current: { observedAt, temperatureC: 14, condition: 'Nuageux' }
     } } };
   });
 });
@@ -109,4 +109,41 @@ test('weather mentions and clear requests outside local current coverage keep th
   expect(forecast).toHaveBeenCalledTimes(1);
   expect(weather).not.toHaveBeenCalled();
   expect(tomorrow).toContain('no verified daytime forecast coverage');
+});
+
+test('the spoken Family route answers two covered local requests without advertising web search', async () => {
+  const grants = ['iss_passes', 'web_search', 'network_devices'];
+  const previous = process.env.HOUSEHOLD_FAMILY_TOOLS;
+  process.env.HOUSEHOLD_FAMILY_TOOLS = grants.join(',');
+  try {
+    const sessionId = await startSession();
+    for (const text of ['Quelle météo fait-il dehors ?', 'Peux-tu me redire la météo, s’il te plaît ?']) {
+      executeForTest.mockResolvedValueOnce({ ok: true, body: { message: { content: 'Il fait 14 degrés et le ciel est nuageux.' } } });
+      const before = executeForTest.mock.calls.length;
+      const response = await request(app).post(`${base}/${sessionId}/turns/text`).send({ text, channel: 'voice', stream: true }).expect(200);
+      const events = response.text.trim().split('\n').map(line => JSON.parse(line));
+      expect(events.find(row => row.type === 'done').data.reply.text).toContain('14 degrés');
+      expect(executeForTest.mock.calls).toHaveLength(before + 1);
+      const body = executeForTest.mock.calls.at(-1)[0];
+      expect(body.tools.map(tool => tool.function.name).sort()).toEqual(['iss_passes', 'network_devices']);
+      expect(body.messages[0].content).not.toMatch(/use web_search/i);
+      expect(body.messages.at(-1).content).toContain('"temperatureC":14');
+      expect(body.messages.at(-1).content).toContain('Answer this request directly');
+    }
+    const ambient = createFamilyAmbient.mock.results.at(-1).value;
+    for (const reading of [null, { observedAt, fetchedAt, temperatureC: 14 },
+      { observedAt: new Date(Date.now() - 4 * 3600000).toISOString(), fetchedAt, temperatureC: 14, condition: 'Nuageux' }]) {
+      jest.spyOn(ambient, 'weather').mockResolvedValueOnce(reading);
+      await voiceTurn(sessionId, 'Quelle météo fait-il dehors ?');
+      expect(executeForTest.mock.calls.at(-1)[0].tools.map(tool => tool.function.name).sort()).toEqual([...grants].sort());
+    }
+    for (const text of ['Cherche la météo sur le web.', 'Quelle météo fait-il à Lyon ?', 'Quelle est la météo demain ?',
+      'Donne-moi la météo et le prochain passage de la station spatiale.']) {
+      await voiceTurn(sessionId, text);
+      expect(executeForTest.mock.calls.at(-1)[0].tools.map(tool => tool.function.name).sort()).toEqual([...grants].sort());
+    }
+  } finally {
+    if (previous === undefined) delete process.env.HOUSEHOLD_FAMILY_TOOLS;
+    else process.env.HOUSEHOLD_FAMILY_TOOLS = previous;
+  }
 });

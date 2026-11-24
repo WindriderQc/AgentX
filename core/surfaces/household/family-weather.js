@@ -23,17 +23,25 @@ function observationDetails(result, timeZone) {
 
 // Same bounded Data projection as source_read. No browser values, coordinates,
 // operations snapshot or owner tools enter this context.
-async function familyWeatherContext(ambient, { now = new Date(), timeZone, asksObservationTime = false } = {}) {
+async function readFamilyWeather(ambient, options) {
   let weather;
   try { weather = await ambient?.weather?.(); } catch { /* report unavailable below */ }
-  return familyWeatherReadingContext(weather, { now, timeZone, asksObservationTime });
+  return familyWeatherReading(weather, options);
 }
 
-function familyWeatherReadingContext(weather, { now = new Date(), timeZone, freshOnly = false, asksObservationTime = false } = {}) {
+function familyWeatherReading(weather, { now = new Date(), timeZone, freshOnly = false, asksObservationTime = false, currentQuestion = '' } = {}) {
   const result = projectWeather(weather, now);
-  if (freshOnly && (result.status !== 'available' || result.freshness.observationAgeMs === null
-    || Date.parse(result.data.observedAt) > now.getTime() || result.freshness.observationAgeMs >= 30 * 60000)) return '';
+  const ageMs = now.getTime() - Date.parse(result.data?.observedAt);
+  const dated = result.status === 'available' && ageMs >= 0;
+  if (freshOnly && (!dated || ageMs >= 30 * 60000)) return { text: '', weatherAnswersRequest: false };
 
+  const weatherAnswersRequest = Boolean(currentQuestion && dated && ageMs <= WEATHER_STALE_MS
+    && Number.isFinite(result.data.temperatureC) && result.data.condition?.trim()
+    && (!/\b(?:vente|windy)\b/.test(currentQuestion) || Number.isFinite(result.data.windKmh)));
+  return { text: weatherContext(result, { now, timeZone, asksObservationTime }), weatherAnswersRequest };
+}
+
+function weatherContext(result, { now, timeZone, asksObservationTime }) {
   if (asksObservationTime && result.data?.observedAt) {
     return '\n\nHousehold weather observation time: ' + JSON.stringify({
       observedAt: result.data.observedAt, fetchedAt: result.sourceUpdatedAt,
@@ -60,4 +68,4 @@ function familyWeatherReadingContext(weather, { now = new Date(), timeZone, fres
     + 'Never invent missing values or ask a child for their address.';
 }
 
-module.exports = { familyWeatherContext, familyWeatherReadingContext, observationDetails };
+module.exports = { readFamilyWeather, familyWeatherReading, observationDetails };
