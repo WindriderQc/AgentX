@@ -20,7 +20,7 @@ function coreRefusal(error) {
   try { answer = JSON.parse(error.body); } catch { return null; }
   if (answer?.data?.acquired !== false) return null;
   return Object.assign(new Error(answer.data.reason || 'Core refused the workload admission'),
-    { code: 'WORKLOAD_ADMISSION_REJECTED', statusCode: 409 });
+    { code: 'WORKLOAD_ADMISSION_REJECTED', statusCode: 409, admissionRefused: true });
 }
 
 async function acquireWorkloadAdmission(workloadId, options = {}) {

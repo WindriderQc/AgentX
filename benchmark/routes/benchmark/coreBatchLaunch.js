@@ -366,6 +366,7 @@ router.post('/batch', batchBoundary(async (req, res) => {
         res.locals.coverageMayHaveStarted = true;
         const data = await benchmarkService.startBatch({
             coverage_request_id: req.body.requestId,
+            coverageBatchId: res.locals.coverageBatchId,
             host,
             models,
             targets: normalizedTargets,
@@ -392,6 +393,7 @@ router.post('/batch', batchBoundary(async (req, res) => {
             }
         });
     } catch (err) {
+        if (req.body.requestId && err.coverageCreationRefused === true) throw err;
         if (String(err.message || '').startsWith('Prompt IDs not found:')) {
             return res.status(422).json({ status: 'error', error: err.message });
         }

@@ -12,9 +12,13 @@ const schema = new mongoose.Schema({
   dispatchId: String,
   nativePostAt: Date,
   nativeDispatchedAt: Date,
+  plannedBatchId: String,
+  batchHandoffAt: Date,
   nativeId: String,
   launchReceipt: mongoose.Schema.Types.Mixed,
   launchError: String,
+  launchErrorCode: String,
+  launchHttpStatus: Number,
   result: mongoose.Schema.Types.Mixed
 }, { collection: 'coverage_attempts', timestamps: true });
 schema.index({ active: 1 }, { unique: true, partialFilterExpression: { active: true } });

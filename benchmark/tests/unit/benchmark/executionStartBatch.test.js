@@ -111,6 +111,38 @@ describe('startBatch prompt-scoped level persistence', () => {
         expect(coreApiClient.releaseWorkloadAdmission).toHaveBeenCalledWith(expect.any(String));
     });
 
+    it('attests non-start after coverage preparation fails before insert and releases its exact planned workload', async () => {
+        require('../../../src/services/benchmark/judgeExecutionContract').freezeJudgeConfig
+            .mockRejectedValueOnce(new Error('frozen judge unavailable'));
+        const coverageBatchId = new mongoose.Types.ObjectId().toString();
+        const save = jest.spyOn(BenchmarkBatch.prototype, 'save');
+        await expect(startBatch({ coverage_request_id: 'fixture', coverageBatchId,
+            host: 'http://exec:11434', models: ['candidate-model'], levels: [1] }))
+            .rejects.toMatchObject({ coverageCreationRefused: true, message: 'frozen judge unavailable' });
+        expect(save).not.toHaveBeenCalled();
+        expect(coreApiClient.acquireWorkloadAdmission).toHaveBeenCalledWith(coverageBatchId, expect.objectContaining({ batchId: coverageBatchId }));
+        expect(coreApiClient.releaseWorkloadAdmission).toHaveBeenCalledWith(coverageBatchId);
+    });
+
+    it('keeps a pre-insert failure uncertain if its native release was not acknowledged', async () => {
+        const error = new Error('frozen judge unavailable');
+        require('../../../src/services/benchmark/judgeExecutionContract').freezeJudgeConfig.mockRejectedValueOnce(error);
+        coreApiClient.releaseWorkloadAdmission.mockResolvedValueOnce({ released: false });
+        await expect(startBatch({ coverage_request_id: 'fixture', host: 'http://exec:11434',
+            models: ['candidate-model'], levels: [1] })).rejects.toBe(error);
+        expect(error.retainAdmission).toBe(true);
+        expect(error.coverageCreationRefused).toBeUndefined();
+    });
+
+    it.each([true, false])('distinguishes explicit workload refusal (%s) from an invalid admission reply', async admissionRefused => {
+        const error = Object.assign(new Error('workload admission'), { code: 'WORKLOAD_ADMISSION_REJECTED', admissionRefused });
+        coreApiClient.acquireWorkloadAdmission.mockRejectedValueOnce(error);
+        await expect(startBatch({ coverage_request_id: 'fixture', host: 'http://exec:11434', models: ['candidate-model'], levels: [1] }))
+            .rejects.toBe(error);
+        expect(error.coverageCreationRefused === true).toBe(admissionRefused);
+        expect(coreApiClient.releaseWorkloadAdmission).not.toHaveBeenCalled();
+    });
+
     it('retains the admission when an ambiguous batch insert cannot be compensated', async () => {
         jest.spyOn(BenchmarkPrompt, 'getByLevels').mockResolvedValue([{
             _id: new mongoose.Types.ObjectId(),
