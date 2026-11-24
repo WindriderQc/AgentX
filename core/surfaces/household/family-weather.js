@@ -60,4 +60,4 @@ function familyWeatherReadingContext(weather, { now = new Date(), timeZone, fres
     + 'Never invent missing values or ask a child for their address.';
 }
 
-module.exports = { familyWeatherContext, familyWeatherReadingContext, observationDetails, SPOKEN_WEATHER };
+module.exports = { familyWeatherContext, familyWeatherReadingContext, observationDetails };

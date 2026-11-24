@@ -5,7 +5,7 @@
 const { createHash, randomUUID } = require('node:crypto');
 const Ajv = require('ajv');
 const { ISS_TOOLS, issPasses } = require('../../src/services/mcpIssTools');
-const { observationDetails, SPOKEN_WEATHER } = require('./family-weather');
+const { observationDetails } = require('./family-weather');
 const { projectWeather } = require('../../src/services/livingSourceWeather');
 const { mathSceneFor } = require('./math-scene');
 const { boundedRead } = require('../../src/services/routing/conversationContinuityStatus');
@@ -14,7 +14,7 @@ const iss = ISS_TOOLS[0];
 const CATALOGUE = [
   { name: 'iss_passes', description: 'Read ISS passes for the server-configured household location. Never request coordinates. Quote returned dates and window exactly. visiblePasses is complete only when visiblePassesComplete is true; counts cover the full window, passes can be partial. Visibility requires a clear sky. Disclose a default location when defaulted; it does not establish the person’s location.',
     parameters: object(Object.fromEntries(Object.entries(iss.inputSchema.properties).filter(([name]) => !['lat', 'lon'].includes(name)))) },
-  { name: 'weather', description: 'Read dated household conditions from the same family weather source. Use observedAtLocal for the observation. Never invent forecasts, missing values or a location. ' + SPOKEN_WEATHER, parameters: object({}) },
+  { name: 'weather', description: 'Read local weather. Give temperature and conditions first. Use observedAtLocal on request. Qualify expired or undated readings briefly. No forecasts.', parameters: object({}) },
   { name: 'math', description: 'Compute a bounded addition (non-negative integer sum 1 through 20) or count from 1 to 100. This never evaluates expressions or runs code.',
     parameters: { oneOf: [
       { ...object({ operation: { const: 'add' }, a: { type: 'integer', minimum: 0, maximum: 20 }, b: { type: 'integer', minimum: 0, maximum: 20 } }), required: ['operation', 'a', 'b'] },
