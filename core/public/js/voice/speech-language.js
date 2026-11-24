@@ -141,7 +141,7 @@
   }
 
   function transcriptionLanguage(value) {
-    return normalizeSpeechLanguage(value) || 'fr-en';
+    return explicitSpeechLanguage(value) || 'fr-en';
   }
 
   function synthesisText(value, provider = 'kokoro') {
