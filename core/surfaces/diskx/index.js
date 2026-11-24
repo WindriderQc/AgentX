@@ -179,7 +179,8 @@ function renderPage({ roots, attributes, liveEnabled = false, composition = null
 <script src="/js/screen-pages.js?v=1"></script>
 <script type="module" src="${MODULE_ROUTE}"></script>
 ${liveEnabled ? '<script defer src="/js/utils/polling-controller-global.js"></script>\n<script defer src="/assets/diskx/ecosystem-live-page.js"></script>' : ''}
-${ecosystem ? `<script defer src="/js/voice/speech-language.js"></script>
+${ecosystem ? `<script defer src="/js/voice/spoken-time.js"></script>
+<script defer src="/js/voice/speech-language.js"></script>
 <script defer src="/js/voice/voice-capture.js"></script>
 <script defer src="/js/voice/browser-conversation.js"></script>
 <script defer src="/js/voice/speech-ladder.js"></script>

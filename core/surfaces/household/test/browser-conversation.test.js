@@ -2001,7 +2001,7 @@ test('an asynchronously discovered English voice is awaited and voice discovery 
   } finally { globalThis.speechSynthesis = previous.synth; globalThis.SpeechSynthesisUtterance = previous.utterance; }
 });
 
-test('private English device playback refuses remote voices and selects a local English voice', async () => {
+test('private device playback selects local voices and applies French clock pronunciation', async () => {
   const { speakWithBrowser } = require('../public/browser-conversation');
   const previous = { synth: globalThis.speechSynthesis, utterance: globalThis.SpeechSynthesisUtterance };
   let voices = [{ name: 'French local', lang: 'fr-CA', localService: true }, { name: 'English remote', lang: 'en-CA', localService: false }];
@@ -2018,6 +2018,11 @@ test('private English device playback refuses remote voices and selects a local 
     voices = voices.filter(voice => voice.localService !== true);
     await assert.rejects(speakWithBrowser({ text: 'Never sent to remote speech', language: 'en', localOnly: true }, new AbortController().signal), /No local English/);
     assert.equal(spoken.length, 1);
+    voices.push({ name: 'French local', lang: 'fr-CA', localService: true });
+    let frenchUtterance;
+    globalThis.speechSynthesis.speak = utterance => { frenchUtterance = utterance; utterance.onend(); };
+    await speakWithBrowser({ text: 'Il est 23 h.', language: 'fr', localOnly: true }, new AbortController().signal);
+    assert.equal(frenchUtterance.text, 'Il est vingt-trois heures.');
   } finally { globalThis.speechSynthesis = previous.synth; globalThis.SpeechSynthesisUtterance = previous.utterance; }
 });
 

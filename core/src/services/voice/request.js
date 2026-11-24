@@ -1,6 +1,6 @@
 'use strict';
 
-const { synthesisText, speechText } = require('../../../public/js/voice/speech-language');
+const { synthesisText, speechText, frenchClockText } = require('../../../public/js/voice/speech-language');
 
 const ALLOWED_LANGUAGES = new Set(['en', 'fr']);
 const ALLOWED_TTS_PROVIDERS = new Set(['kokoro', 'windows_sapi', 'voxcpm']);
@@ -33,6 +33,7 @@ function normalizeSynthesisRequest(request = {}, { errorPrefix = 'VOICE' } = {})
   }
   const language = choice(source.language);
   if (language && !ALLOWED_LANGUAGES.has(language)) throw voiceError('language must be en or fr', `${errorPrefix}_INVALID_CONFIG`, 400);
+  if (language === 'fr') payload.text = frenchClockText(spoken);
   const voice = String(source.voice || '').trim();
   const validVoice = ttsProvider === 'windows_sapi' ? /^[\p{L}\p{N} _().-]+$/u.test(voice)
     : ttsProvider === 'voxcpm' ? /^[a-z0-9_-]+$/i.test(voice) : TTS_VOICE_PATTERN.test(voice);
