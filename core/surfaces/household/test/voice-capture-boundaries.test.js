@@ -167,3 +167,52 @@ test('the real capture adapter stops on overflow, preserves session, rearms wake
   conversation.stop(true); assert.equal(conversation.session, session); assert.equal(conversation.wake.active(), false);
   assert.equal(browser.tracks[1].stopped, true);
 });
+
+test('a softly withdrawn reminder reaches Family once without saving the speculative request', async t => {
+  const { harness } = require('./fixtures/persona-journey.cjs');
+  const family = harness({ packId: 'kidx_nestor', backend: 'agentx' });
+  const inbox = t.mock.method(require('../../../src/services/ideaInboxService'), 'captureIdea',
+    async () => ({ review: 'parent' }));
+  const browser = syntheticBrowser();
+  const reminder = 'Rappelle-moi de sortir mes mitaines.';
+  const withdrawn = reminder + ' Ah non, laisse faire.';
+  const submitted = [];
+  let prefix, ended;
+  // Stand in for STT: the distinctive quieter PCM block represents the last words.
+  const recognize = async blob => {
+    const samples = new Int16Array(await blob.arrayBuffer(), 44);
+    const text = samples.some(sample => sample > 0 && sample < 500) ? withdrawn : reminder;
+    if (text === reminder) prefix.resolve(text);
+    return { text };
+  };
+  const conversation = new Conversation({
+    openAudio: (signal, onError) => browser.api.openAudio(signal, onError),
+    createSession: async () => family.session,
+    transcribeEarly: recognize, transcribe: recognize,
+    turn: async (_session, text) => {
+      submitted.push(text);
+      await family.turn(text, 'voice');
+      return { text: '' };
+    },
+    message() {}, transcriptionEnded: () => ended.resolve()
+  });
+  t.after(() => conversation.stop());
+  await conversation.start({ language: 'fr' });
+  for (const retract of [false, true]) {
+    prefix = Promise.withResolvers();
+    ended = Promise.withResolvers();
+    browser.send(.04, 160);
+    browser.send(0, 500);
+    assert.equal(await prefix.promise, reminder);
+    assert.equal(inbox.mock.callCount(), retract ? 1 : 0, 'early STT cannot write');
+    if (retract) browser.send(.012, 100);
+    browser.send(0, 1000);
+    await ended.promise;
+  }
+  assert.deepEqual(submitted, [reminder, withdrawn]);
+  assert.equal(family.sent.length, 2);
+  assert.equal(inbox.mock.callCount(), 1);
+  assert.equal(inbox.mock.calls[0].arguments[0].text, reminder);
+  assert.match(family.sent[0].request, /saved in the parent review inbox/);
+  assert.doesNotMatch(family.sent[1].request, /saved in the parent review inbox/);
+});
