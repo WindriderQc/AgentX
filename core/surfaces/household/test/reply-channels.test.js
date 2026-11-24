@@ -423,3 +423,23 @@ test('speech projections never reintroduce a retained secret or a consultation',
     }
   }
 });
+
+test('only completed deferred speech is published, once, and service notices can resume streaming immediately', () => {
+  const spoken = [];
+  const options = { onSay: text => spoken.push(text), projectCompletedSpeech: () => 'Lecture vérifiée.' };
+  const interrupted = createReplyChannels(options);
+  interrupted.push('Début de réponse ');
+  interrupted.end();
+  assert.deepEqual(spoken, []);
+  const complete = createReplyChannels(options);
+  complete.push('<show kind="text">Carte</show>');
+  assert.equal(complete.end({ completed: true }).say, 'Lecture vérifiée.');
+  complete.end({ completed: true });
+  assert.deepEqual(spoken, ['Lecture vérifiée.']);
+  const service = createReplyChannels(options);
+  service.streamSpeech();
+  service.push('Le relais est occupé. ');
+  assert.ok(spoken.join('').includes('Le relais est occupé.'));
+  const result = service.end({ completed: true });
+  assert.equal(result.say, 'Le relais est occupé.');
+});

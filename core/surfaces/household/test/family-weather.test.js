@@ -171,11 +171,32 @@ for (const packId of ['personal_operator', 'kidx_nestor']) {
 test('a sufficient observation covers the exact wind measurement only within its freshness window', () => {
   const now = new Date('2026-06-01T13:00:00Z');
   const weather = { fetchedAt: now.toISOString(), observedAt: '2026-06-01T12:00:00Z', condition: 'Nuageux', temperatureC: 0 };
-  const covers = (value, currentQuestion) => familyWeatherReading(value, { now, currentQuestion }).weatherAnswersRequest;
+  const covers = (value, currentQuestion) => Boolean(familyWeatherReading(value, { now, currentQuestion }).coveredWeather);
   assert.equal(covers(weather, 'quelle meteo'), true);
   assert.equal(covers(weather, 'est ce qu il vente'), false);
   assert.equal(covers({ ...weather, windKmh: 0 }, 'est ce qu il vente'), true);
   assert.equal(covers({ ...weather, observedAt: '2026-06-01T13:00:30Z' }, 'quelle meteo'), false);
   assert.equal(covers({ ...weather, observedAt: null }, 'quelle meteo'), false);
   assert.equal(covers({ ...weather, fetchedAt: '2026-06-01T12:00:00Z' }, 'quelle meteo'), false);
+});
+
+test('the fallback keeps decimals, sign and the requested wind measurement in the spoken language', () => {
+  const { projectionFor } = require('../family-weather-speech');
+  const reading = { temperatureC: -0.3, condition: 'Nuageux' };
+  const project = projectionFor(reading, 'fr');
+  const expected = 'Il fait moins 0,3 degré Celsius. Nuageux.';
+  for (const text of ['', 'Je te propose ce contenu à l’écran.', 'Je n’ai pas un seul chiffre en degrés à te donner.',
+    'Il fait trente degrés.', 'À moins 0,3 pendant le trajet, il fait 8 degrés.', 'Il fait 0,3 degré.',
+    'Il fait moins 0,3 degré Fahrenheit.']) assert.equal(project(text), expected);
+  for (const text of ['Il fait −0,3 °C, tu peux sortir !', 'Il fait moins 0,3 degré et le ciel est nuageux.']) {
+    assert.equal(project(text), text);
+  }
+  assert.equal(projectionFor({ ...reading, temperatureC: 14 }, 'fr')('Il fait quatorze degrés, bon matin !'),
+    'Il fait quatorze degrés, bon matin !');
+  assert.equal(projectionFor(null, 'fr'), null);
+  const wind = projectionFor({ ...reading, windKmh: 12 }, 'en');
+  assert.equal(wind('It is minus 0.3 degrees Celsius.'), 'It is minus 0.3 degrees Celsius. Cloudy skies. The wind speed is 12 kilometres per hour.');
+  const normal = 'The wind is twelve kilometres per hour.';
+  assert.equal(wind(normal), normal);
+  assert.match(projectionFor({ temperatureC: 0, condition: 'Pluie', windKmh: 0 }, 'fr')(''), /0 degré Celsius\. Pluie\. Le vent souffle à 0 kilomètre à l’heure/);
 });
