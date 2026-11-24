@@ -23,14 +23,18 @@ const IDEA_REQUESTS = [
 ];
 const REMINDER_REQUESTS = [
   /^(?:rappelle[sz]?[- ]moi|(?:n')?oublie pas de me rappeler)\s+(?:(?:demain|tantôt|ce soir)\s+)?(?:de\s+(?!(?:quoi|qui|quand|quel(?:le)?s?)\b)|d')\p{L}/iu,
-  /^fais[- ]moi penser\s+[àa]\s+\p{L}/iu,
+  /^fais[- ]moi penser\s+(?:(?:[àa]|au|aux|de)\s+|d')\p{L}/iu,
   /^(?:note[sz]?|ajoute[sz]?|garde[sz]?)(?:[- ]moi)?\s+(?:un|ce)\s+rappel\b/i,
   /^remind me (?:to |not to |about |tomorrow\s+)\w/i
 ];
+// STT can omit the comma before a correction or a question about the wording.
+const ASKS_MEANING = /(?:^|[\s,;:])[çc]a (?:veut dire quoi|signifie quoi)(?: au juste| exactement)?\s*[.?!…]*$/i;
+const CLAUSE_BREAK = /[,;.!?…]+|\s+(?:mais|pis|euh|but|(?:ah|ben)(?=\s+non\b))\s+/i;
 const WITHDRAWN_CLAUSES = [
   /^(?:non\b|laisse (?:faire|tomber)\b|oublie ça\b|never ?mind\b|forget it\b)/i,
   /^(?:ne )?(?:la |le |les )?(?:garde|note|retiens|enregistre)(?:[- ](?:la|le|les|ça))? (?:surtout )?(?:pas|plus|pu|jamais)\b/i,
   /^(?:je (?:ne )?|j')veux (?:pas|plus|pu) que tu (?:la |le |les )?(?:gardes?|notes?|retiennes|enregistres?)\b/i,
+  /^(?:je (?:ne )?|j')veux (?:pas|plus|pu) (?:la |le |les |l')?(?:garder|noter|retenir|enregistrer|écrire)\b/i,
   /^(?:do not|don't) (?:save|keep|write down|remember|remind)\b/i
 ];
 const MAX_PROFILES = 8;
@@ -39,7 +43,8 @@ const MAX_CHARACTERS = 1500;
 
 function directFamilyRequest(text) {
   const value = String(text || '').normalize('NFC').replace(/[’‘]/g, "'").replace(/[‑‐]/g, '-').trim();
-  const laterClauses = value.split(/[,;.!?…]+|\s+(?:mais|pis|euh|but)\s+/i).slice(1);
+  if (ASKS_MEANING.test(value)) return '';
+  const laterClauses = value.split(CLAUSE_BREAK).slice(1);
   for (const part of laterClauses) {
     const clause = part.trim().replace(/^(?:(?:euh|ah|ben|finalement|mais) )+/i, '');
     if (WITHDRAWN_CLAUSES.some(pattern => pattern.test(clause))) return '';

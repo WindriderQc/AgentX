@@ -39,9 +39,12 @@ test('Quebec family speech writes only explicit requests and keeps the original 
 
   const idea = 'Euh, Nestor, j’ai une idée : on construit une cabane.';
   const reminder = 'Tu peux-tu me rappeler de pas oublier mon sac demain?';
+  const withArticle = 'Fais-moi penser aux mitaines';
+  const withNegativeObject = 'Fais-moi penser à ne pas oublier mes mitaines.';
   const note = 'Peux-tu retenir que mon dinosaure préféré est le tricératops?';
-  for (const userText of [idea, reminder, note]) await familyTurn({ ...options, userText });
-  assert.deepEqual(inbox.map(row => [row.kind, row.text]), [['idea', idea], ['reminder', reminder]]);
+  for (const userText of [idea, reminder, withArticle, withNegativeObject, note]) await familyTurn({ ...options, userText });
+  assert.deepEqual(inbox.map(row => [row.kind, row.text]),
+    [['idea', idea], ['reminder', reminder], ['reminder', withArticle], ['reminder', withNegativeObject]]);
   assert.deepEqual(memory.map(row => row.text), [note]);
 
   for (const userText of [
@@ -51,13 +54,15 @@ test('Quebec family speech writes only explicit requests and keeps the original 
     'J’ai une idée de jeu mais j’veux pas que tu la notes.', 'Retiens que j’aime le hockey, garde-le pas finalement.',
     'Ça veut dire quoi, rappelle-moi?', 'Rappelle-moi de quoi on parlait?', 'Tu peux-tu me rappeler comment ça marche?',
     'Me rappeler de lire, ça veut dire quoi?', 'Can you tell me what “remind me to go” means?',
+    'Rappelle-moi de prendre mes mitaines ah non laisse faire', 'J’ai une idée, mais je veux pas la garder',
+    'Rappelle-moi de sortir mes mitaines, ça veut dire quoi ?', 'Rappelle-moi de sortir mes mitaines ça veut dire quoi',
     'Do not save my idea.', 'Don’t remind me to go.'
   ]) {
     const result = await familyTurn({ ...options, userText });
     assert.equal(result.savedNow, false, userText);
     assert.equal(result.captured, null, userText);
   }
-  assert.equal(inbox.length, 2);
+  assert.equal(inbox.length, 4);
   assert.equal(memory.length, 1);
 });
 
