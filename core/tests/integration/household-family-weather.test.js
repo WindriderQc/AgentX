@@ -111,9 +111,11 @@ test('weather mentions and clear requests outside local current coverage keep th
   expect(tomorrow).toContain('no verified daytime forecast coverage');
 });
 
-test('the spoken Family route answers two covered local requests without advertising web search', async () => {
+test.each(['false', 'true'])('the local Family route answers covered weather requests with native source filtering %s', async nativeFilter => {
   const grants = ['iss_passes', 'web_search', 'network_devices'];
   const previous = process.env.HOUSEHOLD_FAMILY_TOOLS;
+  const previousFilter = process.env.HOUSEHOLD_NATIVE_EXPLICIT_INPUT_ONLY;
+  process.env.HOUSEHOLD_NATIVE_EXPLICIT_INPUT_ONLY = nativeFilter;
   process.env.HOUSEHOLD_FAMILY_TOOLS = grants.join(',');
   try {
     const sessionId = await startSession();
@@ -143,6 +145,8 @@ test('the spoken Family route answers two covered local requests without adverti
       expect(executeForTest.mock.calls.at(-1)[0].tools.map(tool => tool.function.name).sort()).toEqual([...grants].sort());
     }
   } finally {
+    if (previousFilter === undefined) delete process.env.HOUSEHOLD_NATIVE_EXPLICIT_INPUT_ONLY;
+    else process.env.HOUSEHOLD_NATIVE_EXPLICIT_INPUT_ONLY = previousFilter;
     if (previous === undefined) delete process.env.HOUSEHOLD_FAMILY_TOOLS;
     else process.env.HOUSEHOLD_FAMILY_TOOLS = previous;
   }

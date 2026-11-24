@@ -8,6 +8,10 @@ window.ConversationEngines = {
     const available = this.available(runtime, family);
     return [preferred, runtime?.defaultBackend, 'openclaw', 'agentx'].find(value => available.includes(value));
   },
+  sourceNotice(runtime, backend) {
+    return runtime?.nativeExplicitInputOnly && !runtime?.protectedSourcesLocalOnly && ['hermes', 'openclaw'].includes(backend)
+      ? `Le texte saisi ou la transcription de votre voix est envoyé à ${this.label(backend)}, qui peut utiliser son propre historique. Les sources de Core restent locales.` : '';
+  },
   label(backend) { return ({ hermes: 'Hermes', openclaw: 'OpenClaw', agentx: 'AgentX / Ollama' })[backend] || 'Conversation engine'; },
   toolStatus(evidence) {
     const receipts = evidence?.receipts || [];
@@ -70,7 +74,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       <div class="ss-group" id="conversationWho" aria-labelledby="ssWho"${family ? ' hidden' : ''}><h2 id="ssWho" class="ss-title">Who answers <small>set when a conversation starts</small></h2>
         <div id="conversationLocked" class="ss-lock" role="status" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg><span id="conversationLockedText"></span><button id="conversationLockedNew" class="ss-link" type="button">New conversation</button></div>
         <div class="ss-fields">
-          <label class="ss-field">Engine<select id="conversationBackend"><option value="openclaw" ${runtime?.openclawConfigured === false || runtime?.protectedSourcesLocalOnly ? 'disabled' : ''}>OpenClaw</option><option value="agentx">AgentX / Ollama</option>${!family && runtime?.hermesConfigured === true ? `<option value="hermes"${runtime?.protectedSourcesLocalOnly ? ' disabled' : ''}>Hermes</option>` : ''}</select></label>
+          <label class="ss-field">Engine<select id="conversationBackend" aria-describedby="conversationNativeSourceNotice"><option value="openclaw" ${runtime?.openclawConfigured === false || runtime?.protectedSourcesLocalOnly ? 'disabled' : ''}>OpenClaw</option><option value="agentx">AgentX / Ollama</option>${!family && runtime?.hermesConfigured === true ? `<option value="hermes"${runtime?.protectedSourcesLocalOnly ? ' disabled' : ''}>Hermes</option>` : ''}</select></label>
           <label class="ss-field" id="conversationNativeAgent">Member<select id="conversationAgent">${agents.map(agent => `<option value="${esc(agent.id)}" ${agent.id === 'main' ? 'selected' : ''}>${esc(agent.name)}</option>`).join('')}</select></label>
           <label class="ss-field" id="conversationPersonaField">Style<select id="conversationPersona">${personas.map(p => `<option value="${esc(p.id)}" ${p.id === 'nestor' ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>
         </div>
@@ -95,7 +99,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     <div class="conversation-layout"><section class="conversation-stage" aria-label="Conversation"><div class="conversation-cockpit${family ? ' conversation-cockpit-family' : ''}">
       <div class="conversation-live"><div id="conversationPresence" class="conversation-presence" data-state="idle" aria-hidden="true"><span id="conversationInitial">N</span></div>
       ${family ? '' : '<div id="nestorProgress" class="nestor-progress-host" hidden></div>'}
-      <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Getting Nestor ready…</p><p id="conversationVoiceNotice" class="muted" role="status" hidden></p>
+      <p id="conversationStatus" class="conversation-status" role="status" aria-live="polite">Getting Nestor ready…</p><p id="conversationNativeSourceNotice" class="muted" role="status" hidden></p><p id="conversationVoiceNotice" class="muted" role="status" hidden></p>
       <p id="conversationBrowserSttIndicator" class="conversation-browser-stt" hidden></p><section id="conversationBrowserSttNotice" class="conversation-audio" aria-label="Browser speech recognition" role="alert" hidden></section>
       <div class="conversation-actions"><button id="conversationStart" type="button" class="button primary" hidden disabled>Turn on Nestor</button></div>
       ${family ? '' : '<p id="conversationWorkflowSignal" class="conversation-workflow-signal" aria-label="Current workflow summary"></p>'}</div><div class="conversation-dialogue">
@@ -826,6 +830,9 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (family) return '';
     const backend = conversation.session?.backend || backendPicker.value;
     companion?.configure(backend);
+    const sourceNotice = el('conversationNativeSourceNotice');
+    sourceNotice.textContent = engines.sourceNotice(runtime, backend);
+    sourceNotice.hidden = !sourceNotice.textContent;
     if (runtime?.protectedSourcesLocalOnly) {
       el('conversationTeam').hidden = true;
       const notice = backend === 'agentx' ? 'Cette conversation utilise le moteur local AgentX / Ollama.'
