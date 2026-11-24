@@ -1,7 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { familyWeatherContext } = require('../family-weather');
+const { readFamilyWeather, familyWeatherReading } = require('../family-weather');
+const familyWeatherContext = async (...args) => (await readFamilyWeather(...args)).text;
 const { createFamilyAmbient } = require('../family-ambient');
 const { harness } = require('./fixtures/persona-journey.cjs');
 const { runLocalConversation } = require('../conversation-inference');
@@ -166,3 +167,15 @@ for (const packId of ['personal_operator', 'kidx_nestor']) {
     });
   }
 }
+
+test('a sufficient observation covers the exact wind measurement only within its freshness window', () => {
+  const now = new Date('2026-06-01T13:00:00Z');
+  const weather = { fetchedAt: now.toISOString(), observedAt: '2026-06-01T12:00:00Z', condition: 'Nuageux', temperatureC: 0 };
+  const covers = (value, currentQuestion) => familyWeatherReading(value, { now, currentQuestion }).weatherAnswersRequest;
+  assert.equal(covers(weather, 'quelle meteo'), true);
+  assert.equal(covers(weather, 'est ce qu il vente'), false);
+  assert.equal(covers({ ...weather, windKmh: 0 }, 'est ce qu il vente'), true);
+  assert.equal(covers({ ...weather, observedAt: '2026-06-01T13:00:30Z' }, 'quelle meteo'), false);
+  assert.equal(covers({ ...weather, observedAt: null }, 'quelle meteo'), false);
+  assert.equal(covers({ ...weather, fetchedAt: '2026-06-01T12:00:00Z' }, 'quelle meteo'), false);
+});
