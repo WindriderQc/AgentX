@@ -21,21 +21,41 @@ const IDEA_REQUESTS = [
   /^id[ée]e pour (?:papa|la maison|plus tard)\b/i,
   /^(?:i have an idea|(?:save|keep|write down) (?:my|this|an) idea)\b/i
 ];
+const REMIND_ME = /^(?:rappelle[sz]?[- ]moi|(?:n')?oublie pas de me rappeler)\s+/i;
+const FRENCH_WHEN = /^(?:demain(?: matin| soir| après[- ]midi)?|tantôt|ce soir|dans [\p{L}\d-]+ (?:minutes?|heures?|jours?))\s+/iu;
+const FRENCH_CLOCK = /^[àa] (?:midi|minuit|\d{1,2}(?::\d\d|\s*h(?:\s*\d{1,2})?)|[\p{L}\d-]+ heures?)\s+/iu;
+const REMINDER_ACTION = /^(?:de\s+(?!(?:quoi|qui|quand|quel(?:le)?s?)\b)|d')\p{L}/iu;
+const ENGLISH_WHEN = /^(?:tomorrow(?: morning| night| afternoon)?|tonight|in [\w-]+ (?:minutes?|hours?|days?))\s+/i;
+const ENGLISH_CLOCK = /^at (?:noon|midnight|\d{1,2}(?::\d\d)?(?:\s*[ap]m)?)\s+/i;
+
 const REMINDER_REQUESTS = [
-  /^(?:rappelle[sz]?[- ]moi|(?:n')?oublie pas de me rappeler)\s+(?:(?:demain|tantôt|ce soir)\s+)?(?:de\s+(?!(?:quoi|qui|quand|quel(?:le)?s?)\b)|d')\p{L}/iu,
   /^fais[- ]moi penser\s+(?:(?:[àa]|au|aux|de)\s+|d')\p{L}/iu,
-  /^(?:note[sz]?|ajoute[sz]?|garde[sz]?)(?:[- ]moi)?\s+(?:un|ce)\s+rappel\b/i,
-  /^remind me (?:to |not to |about |tomorrow\s+)\w/i
+  /^(?:note[sz]?|ajoute[sz]?|garde[sz]?)(?:[- ]moi)?\s+(?:un|ce)\s+rappel\b/i
 ];
+function asksForReminder(request) {
+  if (REMIND_ME.test(request)) {
+    const action = request.replace(REMIND_ME, '').replace(FRENCH_WHEN, '').replace(FRENCH_CLOCK, '');
+    return REMINDER_ACTION.test(action);
+  }
+  if (/^remind me\s+/i.test(request)) {
+    const action = request.replace(/^remind me\s+/i, '').replace(ENGLISH_WHEN, '').replace(ENGLISH_CLOCK, '');
+    return /^(?:to |not to |about )\w/i.test(action);
+  }
+  return REMINDER_REQUESTS.some(pattern => pattern.test(request));
+}
+
 // STT can omit the comma before a correction or a question about the wording.
 const ASKS_MEANING = /(?:^|[\s,;:])[çc]a (?:veut dire quoi|signifie quoi)(?: au juste| exactement)?\s*[.?!…]*$/i;
-const CLAUSE_BREAK = /[,;.!?…]+|\s+(?:mais|pis|euh|but|(?:ah|ben)(?=\s+non\b))\s+/i;
-const WITHDRAWN_CLAUSES = [
+const CLAUSE_BREAK = /[,;.!?…]+|\s+(?:mais|pis|puis|euh|but|(?:ah|ben)(?=\s+non\b))\s+|\s+(?=non\s+(?:laisse|oublie)\b)/i;
+const NON_ACTION_CLAUSES = [
   /^(?:non\b|laisse (?:faire|tomber)\b|oublie ça\b|never ?mind\b|forget it\b)/i,
-  /^(?:ne )?(?:la |le |les )?(?:garde|note|retiens|enregistre)(?:[- ](?:la|le|les|ça))? (?:surtout )?(?:pas|plus|pu|jamais)\b/i,
+  /^(?:ne )?(?:me )?(?:la |le |les )?(?:garde|note|retiens|enregistre|rappelle)(?:[- ](?:la|le|les|ça|moi))? (?:surtout )?(?:pas|plus|pu|jamais)\b/i,
   /^(?:je (?:ne )?|j')veux (?:pas|plus|pu) que tu (?:la |le |les )?(?:gardes?|notes?|retiennes|enregistres?)\b/i,
-  /^(?:je (?:ne )?|j')veux (?:pas|plus|pu) (?:la |le |les |l')?(?:garder|noter|retenir|enregistrer|écrire)\b/i,
-  /^(?:do not|don't) (?:save|keep|write down|remember|remind)\b/i
+  /^(?:(?:je (?:ne )?|j')veux|tu (?:ne )?vas) (?:pas|plus|pu) (?:la |le |les |l')?(?:garder|noter|retenir|enregistrer|écrire)\b/i,
+  /^(?:do not|don't) (?:save|keep|write down|remember|remind)\b/i,
+  /^(?:garde(?:[- ](?:la|le|les|ça))? (?:juste |seulement )?pour toi|keep (?:this|it) (?:just )?to yourself)\b/i,
+  /^(?:n'en parle|en parle|parle[- ]en|(?:ne )?(?:le |la )?dis|dis[- ](?:le|la)) (?:surtout )?(?:pas|jamais|rien)\b/i,
+  /^(?:dit|disait|a dit|said|says) (?:le|la|un|une|mon|ma|the|my)\b/i
 ];
 const MAX_PROFILES = 8;
 const MAX_CHORES = 5;
@@ -46,8 +66,8 @@ function directFamilyRequest(text) {
   if (ASKS_MEANING.test(value)) return '';
   const laterClauses = value.split(CLAUSE_BREAK).slice(1);
   for (const part of laterClauses) {
-    const clause = part.trim().replace(/^(?:(?:euh|ah|ben|finalement|mais) )+/i, '');
-    if (WITHDRAWN_CLAUSES.some(pattern => pattern.test(clause))) return '';
+    const clause = part.trim().replace(/^(?:(?:euh|ah|ben|finalement|mais|surtout) )+/i, '');
+    if (NON_ACTION_CLAUSES.some(pattern => pattern.test(clause))) return '';
   }
   const addressed = value.replace(SPOKEN_OPENING, '');
   if (!POLITE_REQUEST.test(addressed)) return addressed;
@@ -57,7 +77,7 @@ function directFamilyRequest(text) {
 }
 
 function captureKind(request) {
-  if (REMINDER_REQUESTS.some(pattern => pattern.test(request))) return 'reminder';
+  if (asksForReminder(request)) return 'reminder';
   if (IDEA_REQUESTS.some(pattern => pattern.test(request))) return 'idea';
   return null;
 }

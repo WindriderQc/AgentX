@@ -31,8 +31,9 @@ function detectMemoryRequest(text, { direct = false } = {}) {
   if (!direct || !match) return Boolean(match);
   // The replay classifier can still find mentions. A family write requires
   // a direct instruction with content, including when speech drops "ne".
+  if (/^remember (?:this|my)\b[^.!?]*\?/i.test(value)) return false;
   const tail = value.slice(match[0].length);
-  return match.index === 0 && !/^\p{L}/u.test(tail) && /[\p{L}\d]/u.test(tail)
+  return match.index === 0 && !/^(?:\p{L}|[- ]tu\b|\s*\?)/iu.test(tail) && /[\p{L}\d]/u.test(tail)
     && !/^(?:[- ]+(?:le|la|les|ça|surtout|vraiment|donc))*[- ]+(?:pas|jamais|plus|pu)\b/i.test(tail);
 }
 

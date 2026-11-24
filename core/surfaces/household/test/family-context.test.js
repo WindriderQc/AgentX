@@ -66,6 +66,36 @@ test('Quebec family speech writes only explicit requests and keeps the original 
   assert.equal(memory.length, 1);
 });
 
+test('a family write respects the speaker, the recipient and a withdrawal even after a positive opening', async () => {
+  const { detectMemoryRequest } = require('../persona-prompt');
+  const inbox = [], memory = [];
+  const options = { detectMemoryRequest, withChores: false,
+    ideaInbox: { captureIdea: async item => inbox.push(item) }, notes: { record: async item => memory.push(item) } };
+
+  for (const userText of [
+    'Retiens-tu bien les histoires?', 'Retiens tu mon histoire?', 'Remember this? It was fun.', 'Remember my first bike?',
+    'J’ai une idée, mais garde-la juste pour toi.', 'J’ai une idée, mais tu vas pas l’enregistrer, OK?',
+    'J’ai une idée mais c’est un secret, dis-le pas à papa.', 'Note mon idée de vélo mais surtout n’en parle pas à papa.',
+    'Rappelle-moi de lire non laisse faire', 'Rappelle-moi de lire puis laisse faire.',
+    'Rappelle-moi de lire, ne me le rappelle pas.', 'Garde mon idée, disait le petit loup.'
+  ]) {
+    const effect = await familyTurn({ ...options, userText });
+    assert.equal(effect.captured, null, userText);
+    assert.equal(effect.savedNow, false, userText);
+  }
+  assert.deepEqual(memory, []);
+  assert.deepEqual(inbox, []);
+
+  const explicit = [
+    'Rappelle-moi à 8 heures de me brosser les dents.', 'Rappelle-moi demain matin d’apporter mes bottes.',
+    'Rappelle-moi demain à midi de ne pas oublier mon sac.', 'Rappelle-moi dans cinq minutes de sortir le chien.',
+    'Can you remind me at noon to bring my boots?'
+  ];
+  for (const userText of explicit) await familyTurn({ ...options, userText });
+  assert.deepEqual(inbox, explicit.map(text => ({ kind: 'reminder', origin: 'family', text })));
+  assert.deepEqual(memory, []);
+});
+
 test('the voice turn gives the family model only the actual parent-inbox outcome', async t => {
   const { harness } = require('./fixtures/persona-journey.cjs');
   const capture = t.mock.method(require('../../../src/services/ideaInboxService'), 'captureIdea',
