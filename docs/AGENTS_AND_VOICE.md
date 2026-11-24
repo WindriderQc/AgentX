@@ -509,6 +509,16 @@ recovery; those remain part of device acceptance.
 
 ## Recognition while the person speaks
 
+After speech starts, the browser also listens for quieter syllables above the
+recent room noise. A softer ending after a pause can supersede an early
+transcription before the request reaches the conversation.
+
+During playback, the echo check compares recognized words with clauses that
+have reached the player. A short fragment such as “le train ou le bateau” can
+match playback verbatim. A correction such as “le bateau, pas le train” remains
+a user turn. Longer matches tolerate recognition errors while checking the
+words around a negation.
+
 Surfaces offering local early recognition use whole-prefix snapshots while the
 microphone remains live: at most once every two seconds during the first fifteen
 seconds, then at a 200 ms pause. Longer utterances keep every captured sample and

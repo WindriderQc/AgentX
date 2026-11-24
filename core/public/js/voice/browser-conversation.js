@@ -114,11 +114,23 @@
   }
 
   function isSpokenEcho(text, spoken) {
-    const words = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-      .match(/[a-z0-9]+/g) || [];
-    const heard = words(text), said = new Set(words(spoken));
-    // A short answer can repeat the offered choice; lexical overlap is not echo evidence.
-    if (heard.length < 3 || !said.size) return false;
+    const transcript = controlWords(text || ''), playback = controlWords(spoken || '');
+    const heard = transcript.split(' ');
+    if (heard.length < 3 || !playback) return false;
+    const excerpt = ' ' + playback + ' ';
+    if (excerpt.includes(' ' + transcript + ' ')) return true;
+    // A child can use the same words in a different order to choose or correct.
+    // Short fragments need a verbatim match. Longer echoes tolerate STT errors,
+    // but a negation must have been spoken with the same surrounding words.
+    if (heard.length <= 6) return false;
+    const negation = /^(?:non|pas|jamais|aucun|aucune|pantoute|no|not|never|cannot|t)$/;
+    for (const [index, word] of heard.entries()) {
+      if (negation.test(word)) {
+        const phrase = heard.slice(Math.max(0, index - 1), index + 2).join(' ');
+        if (!excerpt.includes(' ' + phrase + ' ')) return false;
+      }
+    }
+    const said = new Set(playback.split(' '));
     return heard.filter(word => said.has(word)).length / heard.length >= 0.7;
   }
 
@@ -686,7 +698,6 @@
         }
         const language = spokenLanguage;
         if (this.io.naturalFamilySpeech && language === 'fr') text = speechLanguage.frenchDateTimeText(text);
-        turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
         if (!notice) turn.timeline?.mark('firstClause');
         const previousPlayback = playback, availableSlot = prefetchSlot;
         // A voice whose accepted stream failed while it played is left for the
@@ -720,6 +731,7 @@
           }
           this.monitor(turn);
           this.show('speaking'); turn.replyStarted = true;
+          turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
           // Preserve firstAudio as the legacy playback-request offset.
           // Actual scheduling comes from the player and can follow silent padding.
           if (!notice) turn.timeline?.mark('firstAudio');
