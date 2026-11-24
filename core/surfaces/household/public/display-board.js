@@ -310,7 +310,7 @@
           // One guided view at a time: hidden 3D frames must not keep animating.
           Array.from(list.children).filter(child => child.dataset.kind === 'page')
             .forEach(child => { child._dispose?.(); child.remove(); });
-          const close = node('button', 'display-block-action', 'Retour à Nestor'); close.type = 'button';
+          const close = node('button', 'display-block-action', 'Fermer la page'); close.type = 'button';
           close.onclick = () => { card._dispose?.(); card.remove(); update(); };
           card.querySelector('.display-block-actions').append(close);
         }

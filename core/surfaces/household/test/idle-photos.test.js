@@ -205,6 +205,25 @@ test('arrows do not intercept editors or modified shortcuts; focused frame contr
   h.frame.dispose();
 });
 
+test('modifier-only keydowns and the avatar shortcut never close an active photo; ordinary and Escape still exit', async () => {
+  const h = harness({ space: 'family' }); await flush(); await h.enter();
+  const original = h.shown();
+  // Chromium sends two separate keydowns before it sends the keydown for N.
+  for (const [key, options] of [['Control', { ctrlKey: true }], ['Alt', { ctrlKey: true, altKey: true }],
+    ['n', { ctrlKey: true, altKey: true }], ['Shift', { shiftKey: true }], ['Meta', { metaKey: true }], ['AltGraph', { altKey: true }]]) {
+    assert.equal(h.key(key, options).prevented, false);
+    assert.equal(h.frame.active(), true, key + ' must not close photos');
+    assert.equal(h.shown(), original);
+  }
+  assert.deepEqual(h.visibilityChanges, [true]);
+  h.key('m'); assert.equal(h.frame.active(), false, 'ordinary key still exits from the frame');
+  await h.enter(); h.key('Escape'); assert.equal(h.frame.active(), false);
+  await h.enter();
+  h.key('n', { ctrlKey: true, altKey: true, getModifierState: (key) => key === 'AltGraph' });
+  assert.equal(h.frame.active(), false, 'AltGraph character entry is not the avatar shortcut');
+  h.frame.dispose();
+});
+
 test('recognition freezes rotation, admits scoped commands and preserves wake admission', async () => {
   const h = harness(); await flush(); await h.enter(); await h.next();
   h.presence('hearing'); h.presence('transcribing'); h.clock += 6000; h.frame.tick();

@@ -48,9 +48,9 @@ test('Nestor fills the screen, steps aside to show, and a tap brings the page', 
   assert.equal(nextView('montre', 'tap'), 'menu');
   assert.equal(nextView('menu', 'tap'), 'plein');
   assert.equal(nextView('menu', 'tap', true), 'montre', 'closing the page returns to what is on display');
-  for (const event of ['show', 'close', 'clear', 'sleep']) assert.equal(nextView('menu', event), 'menu', 'the open page is only closed by a tap');
+  for (const event of ['show', 'close', 'clear', 'sleep']) assert.equal(nextView('menu', event), 'menu', 'ordinary display events do not close the open menu');
   assert.equal(nextView('plein', 'close'), 'plein');
-  assert.equal(nextView('montre', 'sleep'), 'plein', 'back to waiting for the wake word, he takes the screen again');
+  assert.equal(nextView('montre', 'sleep'), 'montre', 'waiting for the wake word does not take over the currently shown content');
 });
 
 test('the conversation page feeds the dock and the face module is same-origin', () => {
@@ -83,4 +83,17 @@ test('without the 3D face the picture is said in words', () => {
   assert.equal(sceneCaption({ kind: 'add', a: 8, b: 5 }), '8 + 5 = 13');
   assert.equal(sceneCaption({ kind: 'count', to: 47 }), 'Counting to 47');
   assert.equal(sceneCaption(null), '');
+});
+
+test('manual and idle return always reach the app portrait without changing presentation navigation', () => {
+  for (const view of ['plein','menu','montre']) {
+    assert.equal(nextView(view, 'return-full', true), 'plein');
+    assert.equal(nextView(view, 'idle-return', true), 'plein');
+  }
+  assert.equal(nextView('menu', 'tap', true), 'montre', 'retained content remains available through the existing tap');
+  const dock = fs.readFileSync(path.join(__dirname, '../public/avatar-dock.js'), 'utf8');
+  assert.match(dock, /IDLE_RETURN_MS = 120000/);
+  assert.match(dock, /Avatar plein écran/);
+  assert.match(dock, /aria-keyshortcuts.*Control\+Alt\+N/);
+  assert.doesNotMatch(dock, /requestFullscreen|exitFullscreen/);
 });

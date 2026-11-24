@@ -23,7 +23,7 @@ class FakeElement {
 function setup({ assembledPortrait = false } = {}) {
   const body = new FakeElement('body');
   const created = [];
-  const doc = { body, createElement(tag) {
+  const doc = Object.assign(new EventTarget(), { body, createElement(tag) {
     const element = new FakeElement(tag);
     if (tag === 'llmx-face' && assembledPortrait) element.connectedCallback = () => {
       // Native GraphysX emits ready after its first completed frame when the
@@ -31,7 +31,7 @@ function setup({ assembledPortrait = false } = {}) {
       if (element.attributes.intro === 'off') element.dispatch('llmx-face-ready');
     };
     created.push(element); return element;
-  } };
+  } });
   globalThis.customElements = { get: name => name === 'llmx-face' };
   globalThis.addEventListener ||= () => {};
   globalThis.removeEventListener ||= () => {};
