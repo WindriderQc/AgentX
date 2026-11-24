@@ -85,6 +85,21 @@ class OwnerMemoryTurnTest(unittest.TestCase):
                 self.assertIsNone(self.tool("weather"))
         self.assertEqual(self.queries, [])
 
+    def test_owner_mcp_namespace_is_closed_without_local_binding_including_new_tools(self):
+        self.prepare()
+        self.apply(provider="external")
+        for name in ("mcp_agentx_owner_personal_identifier", "mcp__agentx_owner__team_brief",
+                     "mcp_agentx_core_future_source", "mcp:owner:personal_task_dossier"):
+            with self.subTest(name=name):
+                self.assertEqual(self.tool(name)["message"], plugin.LOCAL_ONLY)
+                self.assertEqual(self.tool("tool_call", {"id": name})["message"], plugin.LOCAL_ONLY)
+        self.assertIsNone(self.tool("calculator"))
+        self.assertEqual(self.queries, [])
+        self.apply()
+        self.assertIsNone(self.tool("mcp_agentx_owner_personal_identifier"))
+        self.prepare(parent_session_id="other")
+        self.assertEqual(self.tool("mcp_agentx_owner_personal_identifier")["message"], plugin.LOCAL_ONLY)
+
     def test_matching_cloud_urls_cannot_impersonate_a_local_core(self):
         for origin in ["https://public.invalid", "https://203.0.113.8", "http://user@127.0.0.1"]:
             self.configure(model={**MODEL, "base_url": origin + "/api/llm/v1"},

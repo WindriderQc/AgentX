@@ -76,6 +76,35 @@ test('cloud, unknown, overridden and mixed routes never fetch private evidence o
   }
 });
 
+test('all declared personal harness sources and owner MCP namespaces require a local run', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../openclaw.plugin.json', import.meta.url)));
+  const { hooks, requests } = setup();
+  const remote = { ...context, modelProviderId: 'external' };
+  await hooks.before_prompt_build({ prompt: 'Synthetic fixture.' }, remote);
+  for (const name of [...manifest.contracts.tools, 'mcp__agentx_owner__future_source', 'mcp:core:future_source']) {
+    for (const event of [{ toolName: name }, { toolName: 'tool_call', params: { id: name } }]) {
+      assert.match(hooks.before_tool_call(event, remote).blockReason, /local-only/, name);
+    }
+  }
+  assert.equal(hooks.before_tool_call({ toolName: 'calculator' }, remote), undefined);
+  assert.equal(requests.length, 0);
+  await hooks.before_prompt_build({ prompt: 'Synthetic fixture.' }, context);
+  assert.equal(hooks.before_tool_call({ toolName: 'personal_identifier' }, context), undefined);
+});
+
+test('A Family agent keeps its existing local tool grants without receiving owner notes', async () => {
+  const family = { ...context, agentId: 'family', sessionKey: context.sessionKey.replace('main:', 'family:') };
+  const { hooks, requests } = setup({ ...config, agents: { entries: { family: config.agents.entries.main } } });
+  const event = { toolName: 'nestor_photos' };
+  assert.match(hooks.before_tool_call(event, family).blockReason, /local-only/);
+  assert.equal(await hooks.before_prompt_build({ prompt: 'Synthetic fixture.' }, family), undefined);
+  assert.equal(hooks.before_tool_call(event, family), undefined);
+  assert.match(hooks.before_tool_call(event, { ...family, sessionKey: 'another-session' }).blockReason, /local-only/);
+  await hooks.before_prompt_build({ prompt: 'Synthetic fixture.' }, { ...family, modelProviderId: 'external' });
+  assert.match(hooks.before_tool_call(event, family).blockReason, /local-only/);
+  assert.equal(requests.length, 0);
+});
+
 test('legacy and keyed rosters use the resolved agent model and its effective fallback chain', async () => {
   const primary = 'fixture/agentx-primary';
   const cloud = 'external/remote';

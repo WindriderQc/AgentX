@@ -47,19 +47,23 @@ def _client(server):
     return read
 
 
-PRIVATE_TOOLS = HISTORY_TOOLS | {"personal_memory", "source_read", "memory_search", "memory_get", "memory_remember", "tool_call"}
+PRIVATE_TOOLS = HISTORY_TOOLS | {"personal_memory", "source_read", "memory", "memory_search", "memory_get", "memory_remember", "tool_call"}
+CORE_MCP_PREFIXES = ("mcp__agentx_owner__", "mcp__agentx_core__", "mcp_agentx_owner_", "mcp_agentx_core_")
 LOCAL_ONLY = "Core owner memory, private sources and history require a local-only personal model route."
 
 
 def _tool(name, args):
-    for _ in range(4):
-        name = str(name).rsplit(":", 1)[-1]
-        for prefix in ("mcp__agentx_owner__", "mcp__agentx_core__", "mcp_agentx_owner_", "mcp_agentx_core_"):
+    core_tool = False
+    for depth in range(5):
+        qualified = str(name)
+        name = qualified.rsplit(":", 1)[-1]
+        core_tool |= name.startswith(CORE_MCP_PREFIXES) or qualified.startswith(("mcp:owner:", "mcp:core:", "openclaw:core:", "openclaw:owner:"))
+        for prefix in CORE_MCP_PREFIXES:
             name = name.removeprefix(prefix)
-        if name != "tool_call" or not isinstance(args, dict):
+        if name != "tool_call" or depth == 4 or not isinstance(args, dict):
             break
         name, args = args.get("id") or "tool_call", args.get("args")
-    return name, args
+    return name, args, core_tool
 
 
 def _private_gateway(config, server):
@@ -103,6 +107,8 @@ def register(ctx, read=None, config=None):
     turns = {}
 
     def prepare(session_id="", turn_id="", user_message=None, platform="", parent_session_id="", **_):
+        with lock:
+            turns.pop((session_id, turn_id), None)
         if not gateway or not session_id or not turn_id or parent_session_id or getattr(platform, "value", platform) != "api_server":
             return
         if load_config:
@@ -164,8 +170,8 @@ def register(ctx, read=None, config=None):
         return {"request": {**request, "messages": messages}, "source": "agentx-owner-memory-turn"}
 
     def before_tool(tool_name="", args=None, session_id="", turn_id="", **_):
-        name, params = _tool(tool_name, args)
-        if name not in PRIVATE_TOOLS:
+        name, params, core_tool = _tool(tool_name, args)
+        if not core_tool and name not in PRIVATE_TOOLS:
             return
         entry = state(session_id, turn_id)
         if not entry or not entry["local"]:
