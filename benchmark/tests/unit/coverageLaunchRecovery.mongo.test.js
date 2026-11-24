@@ -53,9 +53,9 @@ function harness({ handler, idleDeps = calm, validateIntent = async () => {}, po
   const queuePost = jest.fn(async () => ({ data: { admitted: true } }));
   const started = handler || jest.fn(async (req, res) => {
     res.locals.coverageMayHaveStarted = true;
-    await Batch.collection.insertOne({ _id: new mongoose.Types.ObjectId(batchId), coverage_request_id: id,
+    await Batch.collection.insertOne({ _id: new mongoose.Types.ObjectId(res.locals.coverageBatchId), coverage_request_id: id,
       tags: intent.body.tags, status: 'running' });
-    res.json({ status: 'success', data: { batch_id: batchId } });
+    res.json({ status: 'success', data: { batch_id: res.locals.coverageBatchId } });
   });
   const app = express();
   app.use(express.json());
@@ -65,7 +65,7 @@ function harness({ handler, idleDeps = calm, validateIntent = async () => {}, po
   const post = jest.fn(async (path, payload) => {
     const response = await request(app).post(path).send(payload);
     if (postError) throw postError;
-    if (response.status >= 400) throw Object.assign(new Error(response.body.error), response.body);
+    if (response.status >= 400) throw Object.assign(new Error(response.body.error), response.body, { statusCode: response.status });
     return response.body.data;
   });
   return { app, started, queuePost, deps: { attempts, post, queuePost }, post };
@@ -89,6 +89,8 @@ it('keeps one durable active intent across concurrent ticks and an uncertain ins
 it('recovers a started batch after HTTP response loss, then reads its terminal receipt without another POST', async () => {
   const h = harness({ postError: new Error('HTTP reply lost after start') });
   const first = await native.launch(id, dispatch(), h.deps);
+  const batchId = (await attempts.get(id)).plannedBatchId;
+  expect(batchId).toMatch(/^[0-9a-f]{24}$/);
   expect(first).toMatchObject({ requestId: id, nativeId: batchId, terminal: false, runningConfirmed: true });
   expect((await attempts.get(id)).nativeId).toBe(batchId);
   // A fresh consumer reads Mongo; no in-memory execution state is required.
@@ -226,4 +228,77 @@ it('does not bypass the changed judge qualification gate at the native boundary'
   }); } });
   expect(await native.launch(id, dispatch(), h.deps)).toMatchObject({ launchReceipt: { code: 'COVERAGE_INTENT_CHANGED' } });
   expect(h.started).not.toHaveBeenCalled();
+});
+
+it('persists a pre-start refusal when an untyped admission read fails before the batch handler', async () => {
+  const h = harness({ validateIntent: async () => { throw new Error('catalog read unavailable'); } });
+  const result = await native.launch(id, dispatch(), h.deps);
+  expect(result).toMatchObject({ terminal: true, state: 'failed', launchReceipt: {
+    code: 'COVERAGE_LAUNCH_REFUSED', reason: 'catalog read unavailable' } });
+  expect(h.started).not.toHaveBeenCalled();
+  expect(await native.observe(id)).toMatchObject({ launchReceipt: result.launchReceipt });
+});
+
+it.each([[409, 'COVERAGE_ALREADY_DISPATCHED'], [503, 'COVERAGE_LAUNCH_UNKNOWN']])(
+  'preserves HTTP %i and its native error code when no batch can be verified', async (statusCode, code) => {
+    const error = Object.assign(new Error('Read the original coverage request'), { statusCode, code });
+    const post = jest.fn(async () => { throw error; });
+    const deps = { post, queuePost: async () => ({}) };
+    expect(await native.launch(id, dispatch(), deps)).toMatchObject({ uncertain: true, recovery: { code, httpStatus: statusCode } });
+    await native.launch(id, dispatch(), deps);
+    expect(post).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('recovers the last durable handoff and transport details without settling missing or conflicting batches', async () => {
+  await attempts.beginPost(id, queueId, dispatchId);
+  const begun = await attempts.beginNative(id, queueId, dispatchId);
+  const at = new Date();
+  await attempts.update(id, { batchHandoffAt: at, launchHttpStatus: 503, launchErrorCode: 'COVERAGE_LAUNCH_UNKNOWN' });
+  for (const matches of [[], [{}, {}]]) {
+    const read = await native.observe(id, { findBatches: async () => matches });
+    expect(read).toMatchObject({ terminal: false, uncertain: true, recovery: {
+      stage: 'batch-handoff', at, plannedBatchId: begun.plannedBatchId, matchingBatches: matches.length,
+      httpStatus: 503, code: 'COVERAGE_LAUNCH_UNKNOWN' } });
+    expect(read.nativeId).toBeUndefined();
+  }
+  await Attempt.updateOne({ _id: id }, { $unset: { plannedBatchId: '', batchHandoffAt: '', launchHttpStatus: '', launchErrorCode: '' } });
+  expect(await native.observe(id)).toMatchObject({ uncertain: true, recovery: { stage: 'native-dispatch', plannedBatchId: null } });
+});
+
+it('reports the exact closed operator receipt for an older inactive attempt, independently of the native batch outcome', async () => {
+  await attempts.beginPost(id, queueId, dispatchId);
+  await attempts.update(id, { nativeDispatchedAt: new Date(), active: false,
+    result: { requestId: id, queueId, terminal: true, state: 'failed' } });
+  const job = { id: queueId, dispatchId, kind: 'benchmark', executor: intent.manifest.executor,
+    key: intent.manifest.key, state: 'failed', releaseReceipt: { authority: 'operator-reconciliation',
+      actor: 'operator', confirmation: 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED',
+      receiptRef: 'fixture-receipt', observedAt: new Date().toISOString() } };
+  const getHeavyWork = jest.fn(async () => job);
+  const read = () => native.observe(id, { getHeavyWork });
+  const result = await read();
+  expect(result).toMatchObject({ state: 'failed', terminal: true, authority: 'operator-reconciliation',
+    nativeOutcome: 'unknown', queueRelease: { receiptRef: 'fixture-receipt', dispatchId } });
+  expect(result).not.toHaveProperty('nativeId');
+  expect(result).not.toHaveProperty('launchReceipt');
+  expect(getHeavyWork).toHaveBeenCalledWith(queueId);
+  for (const foreign of [{ ...job, dispatchId: randomUUID() }, { ...job, state: 'running' },
+    { ...job, executor: { mode: 'coverage', requestId: randomUUID() } },
+    { ...job, releaseReceipt: { ...job.releaseReceipt, authority: 'benchmark.batch' } }]) {
+    getHeavyWork.mockResolvedValueOnce(foreign);
+    expect(await read()).toMatchObject({ terminal: false, uncertain: true });
+  }
+  await attempts.update(id, { active: true });
+  getHeavyWork.mockClear();
+  expect(await read()).toMatchObject({ terminal: false, uncertain: true });
+  expect(getHeavyWork).not.toHaveBeenCalled();
+});
+
+it('does not promote a generic nested non-start flag after batch creation was entered', async () => {
+  const h = harness({ handler: async (_req, res) => {
+    res.locals.coverageMayHaveStarted = true;
+    throw Object.assign(new Error('nested refusal'), { notStarted: true });
+  } });
+  expect(await native.launch(id, dispatch(), h.deps)).toMatchObject({ terminal: false, uncertain: true });
+  expect((await attempts.get(id)).launchReceipt).toBeUndefined();
 });
