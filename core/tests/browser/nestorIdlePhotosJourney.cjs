@@ -110,7 +110,18 @@ let browser, server;
     assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches),true);
     assert.equal(await page.locator('.nestor-idle-photos').evaluate(node=>getComputedStyle(node).animationName),'none');
 
-    await reveal(); await page.getByRole('button',{name:'Retour à Nestor',exact:true}).click(); await hide();
+    // Browser keyboard API emits each real modifier before sending N.
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.keyboard.down('Control'); assert.equal(await page.evaluate(() => frame.active()),true);
+    await page.keyboard.down('Alt'); assert.equal(await page.evaluate(() => frame.active()),true);
+    await page.keyboard.press('n'); assert.equal(await page.evaluate(() => frame.active()),true);
+    await page.keyboard.up('Alt'); await page.keyboard.up('Control');
+    for (const modifier of ['Shift','Meta']) {
+      await page.keyboard.press(modifier);
+      assert.equal(await page.evaluate(() => frame.active()),true,modifier + ' alone keeps the frame');
+    }
+    await page.keyboard.press('m'); await hide();
+    await enter(); await reveal(); await page.getByRole('button',{name:'Retour à Nestor',exact:true}).click(); await hide();
     assert.equal(await page.locator('#conversationTranscript').textContent(), 'Existing conversation stays here.');
     assert.equal(await page.evaluate(() => session.sessionId), 'fixture-conversation');
     await enter(); await page.locator('.nestor-idle-photos img').tap({position:{x:30,y:30}}); await hide();
