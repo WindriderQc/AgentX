@@ -210,3 +210,27 @@ test('family Nestor receives the published plant cards as its only source about 
   assert.equal((await familyTurn({ userText: 'Bonjour', notes: {}, familyTasks, detectMemoryRequest: () => false, plants, withChores: false })).plants, '');
 });
 
+
+test('family notes use the accepted browser turn or the legacy server trace as their source', async () => {
+  const { harness } = require('./fixtures/persona-journey.cjs');
+  const id = 'e35b869d-221b-47a2-9d1b-6b535a68dc9b';
+  const h = harness({ packId: 'kidx_nestor', backend: 'agentx', validClientTurnId: value => value === id });
+  const req = { params: { sessionId: h.session.sessionId }, body: { text: 'Retiens que je joue au soccer', channel: 'text', turnId: id } };
+  const res = { on() {}, removeListener() {}, writableEnded: false, headersSent: false };
+  const { packId, modeId, scopeId } = h.session;
+  await h.handle(req, res, 'child', { packId, modeId, scopeId, browser: true });
+  assert.equal(res.failure, undefined);
+  assert.deepEqual(h.state.recordedNotes.map(({ source, sourceTraceId }) => [source, sourceTraceId]),
+    [['explicit-ui', 'household:' + h.session.sessionId + ':' + id]]);
+  const reply = await h.turn('Retiens que je préfère les jeux.', 'voice');
+  assert.equal(h.state.recordedNotes[1].source, 'voix-explicit');
+  assert.equal(h.state.recordedNotes[1].sourceTraceId, 'household:' + h.session.sessionId + ':' + reply.audit.traceId);
+});
+
+test('a family note without a successful receipt is reported as unconfirmed', async () => {
+  const { capturedPrompt } = require('../family-context');
+  const result = await familyTurn({ userText: 'Retiens que je préfère les jeux.', detectMemoryRequest: () => true,
+    notes: { record: async () => { throw new Error('unconfirmed'); } }, withChores: false });
+  assert.equal(result.savedNow, false);
+  assert.match(capturedPrompt(result.captured), /could not confirm saving it/);
+});

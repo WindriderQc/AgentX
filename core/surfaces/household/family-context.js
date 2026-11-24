@@ -189,7 +189,7 @@ async function householdMembers(familyTasks, { logger, now = new Date() } = {}) 
 
 // One explicit request per turn: an idea or reminder goes to the parent's
 // inbox; otherwise an explicit "remember" keeps a family note as before.
-async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true, plants = null }) {
+async function familyTurn({ userText, notes, noteOrigin, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true, plants = null }) {
   const result = { savedNow: false, captured: null, chores: '', plants: '' };
   const request = directFamilyRequest(userText);
   const kind = captureKind(request);
@@ -203,9 +203,12 @@ async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, l
     }
   } else if (request && detectMemoryRequest(request, { direct: true })) {
     try {
-      await notes.record({ topic: 'general', text: userText, type: 'fact' });
+      await notes.record({ topic: 'general', text: userText, type: 'fact', ...noteOrigin });
       result.savedNow = true;
-    } catch (error) { logger?.error?.('Household memory save failed', { error: error.message }); }
+    } catch (error) {
+      logger?.error?.('Household memory save failed', { error: error.message });
+      result.captured = 'note-unconfirmed';
+    }
   }
   if (withChores) {
     result.chores = await choreSummary(familyTasks, { logger });
@@ -216,9 +219,12 @@ async function familyTurn({ userText, notes, familyTasks, detectMemoryRequest, l
 
 // Sentences Nestor may say only because the capture actually happened.
 function capturedPrompt(captured) {
+  if (captured === 'note-unconfirmed') return ' The family note could not be confirmed. Tell the child briefly that you could not confirm saving it.';
   if (captured === 'failed') return ' The child asked to keep an idea or reminder but it could not be saved; say so plainly and suggest telling Dad directly.';
   if (!captured) return '';
   return ` The child asked to keep ${captured === 'reminder' ? 'a reminder' : 'an idea'} and it has been saved in the parent review inbox. Confirm only that it was saved for Dad to review. No notification or scheduled alarm is confirmed.`;
 }
 
-module.exports = { FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers, plantSummary };
+const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
+
+module.exports = { FAMILY_SURFACE_CONTRACT, FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers, plantSummary };

@@ -205,6 +205,11 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     const sourceTraceId = cleanText(input.sourceTraceId, 300);
     const row = await MemoryNote.findOneAndUpdate({ ...boundary, sourceTraceId },
       { $setOnInsert: { ...values, sourceTraceId } }, { new: true, upsert: true, runValidators: true });
+    // A family reply may confirm only the original, still-current note for this turn.
+    if (audience === 'household' && (row.status !== 'active' || row.text !== text || row.source !== values.source
+      || (row.invalidatedAt && row.invalidatedAt <= new Date()) || (row.expiresAt && row.expiresAt <= new Date()))) {
+      throw error('This turn no longer identifies the requested active note.', 409);
+    }
     if (!row.embeddedHash) indexLater(row);
     return project(row);
   }
