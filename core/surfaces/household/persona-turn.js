@@ -8,7 +8,7 @@ const { agentInstructions, agentIdFor, personalVoice } = require('./conversation
 const { conversationBackend } = require('./conversation-executor');
 const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
-const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
+const { FAMILY_SURFACE_CONTRACT, familyTurn, householdMembers } = require('./family-context');
 const { familyToolset } = require('./family-tools');
 const familyPictureLookup = require('./family-picture-lookup');
 const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('./family-repair-context');
@@ -40,8 +40,6 @@ async function teamPersona(agentId, personas) {
   const row = personaCatalog.generatedPersonas().find((entry) => entry.uiConfig.layoutConfig.agentId === agentId);
   return row ? personaCatalog.snapshot({ ...row, version: 0, _id: 'catalog' }) : null;
 }
-
-const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
 
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null, conversationWorks = null, artx = null, ambient = null,
@@ -314,9 +312,11 @@ function createPersonaTurnHandler({
           if (!pack.childSafe && features.householdContext !== false) members = await householdMembers(familyTasks, { logger });
           // Kids Room routines, and a child's idea or reminder kept for Dad (#41, #13).
           if (pack.childSafe) {
-            const familySpace = features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID;
+            entry.traceId ||= crypto.randomUUID();
             ({ savedNow, ...family } = await familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, plants: runtimeServices.household?.plants,
-              withChores: familySpace }));
+              noteOrigin: { source: req.body?.channel === 'voice' ? 'voix-explicit' : 'explicit-ui',
+                sourceTraceId: `household:${session.sessionId}:${clientTurnId || entry.traceId}` },
+              withChores: features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID }));
           }
           try {
             if (features.memoryContext !== false) memories = (await notes.search(userText, voiceRecallOptions(userText, personalVoice(session, req.body?.channel), MEMORY_RECALL_LIMIT))).notes;
@@ -367,9 +367,9 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const { text: familyWeatherContext, relayForecastContext } = picture ? {} : await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
+        const { text: livingSourceContext, relayWeatherContext, relayForecastContext } = picture ? {} : await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
           channel: req.body?.channel, userText, history, timeZone: conversationEnv.PLANNING_TIME_ZONE, requestAt: new Date(startedAt) });
-        const contextBase = picture ? '' : [familyWeatherContext, systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
+        const contextBase = picture ? '' : [livingSourceContext, systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
         const screen = !picture && !isLlmX && !consult ? require('./screen-context') : null;
         entry.presentationContext = screen?.presentationEvidence(req.body?.screen, pagesFor(pack));
@@ -458,7 +458,7 @@ function createPersonaTurnHandler({
             requirePrimaryRelay: () => requireNativeAgent(agentIdFor(turnSession)) } : {}),
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
-          instructions: nativeInstructions, agentxInstructions, familyWeatherContext, relayForecastContext, guardianTools: picture ? null : require('./guardian-read-tools').forTurn(conversationEnv, { backend, packId: pack.id, blocked: isLlmX || isOpening || Boolean(member), excludeWeather: Boolean(relayForecastContext), ambient }), ...(familyTools ? { familyTools } : {}), ...(!picture && turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
+          instructions: nativeInstructions, agentxInstructions, familyWeatherContext: relayWeatherContext, relayForecastContext, guardianTools: picture ? null : require('./guardian-read-tools').forTurn(conversationEnv, { backend, packId: pack.id, blocked: isLlmX || isOpening || Boolean(member), excludeWeather: Boolean(relayForecastContext), ambient }), ...(familyTools ? { familyTools } : {}), ...(!picture && turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
           ...(!picture && currentDirective ? { turnDirective: currentDirective } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
@@ -524,7 +524,7 @@ function createPersonaTurnHandler({
       if (!picture && entry.familyPage?.target && !childBoundary && !safety.deterministicEscalation) display = await familyPages.ensure(entry.familyPage, display, visuals, event, preferredSpeechLanguage);
       if (!replyText) replyText = 'Je n’ai pas réussi à préparer une réponse utile.';
       if (separateSoundReply) { afterSoundText = replyText; replyText = familyIntroduction(sound, preferredSpeechLanguage) + ' ' + replyText; }
-      const traceId = entry.workId || entry.relayIntake ? clientTurnId : crypto.randomUUID(), relayStopped = toolEvidence?.conversationRelay?.reason === 'occupation_changed';
+      const traceId = entry.workId || entry.relayIntake ? clientTurnId : entry.traceId || crypto.randomUUID(), relayStopped = toolEvidence?.conversationRelay?.reason === 'occupation_changed';
       const audit = await conversations[entry.workId || entry.relayIntake ? 'settleTurn' : 'recordTurn']({
         traceId, ...(relayStopped && { writtenStatus: 'partial', outcome: 'failed' }),
         ...(isLlmX ? { source: 'graphysx-llmx', origin: isOpening ? 'application_opening' : 'human', outcome: 'completed', applicationEvent: entry.applicationEvent || null } : {}),
@@ -662,7 +662,7 @@ function createPersonaTurnHandler({
         if (entry.completion) { const error = await entry.completion; if (!entry.primaryDetached) entry.error ||= error; }
         if ((entry.workId || entry.relayIntake || (isOpening ? entry.openingReserved : entry.interrupted || (sceneEnabled && entry.dispatched))) && entry.snapshot && !entry.auditWritten) {
           const reply = sceneEnabled ? entry.naturalReply || '' : plainReply(entry.channels ? entry.channels.end().say : entry.generated, 5000);
-          entry.traceId = entry.workId || entry.relayIntake ? clientTurnId : crypto.randomUUID();
+          entry.traceId = entry.workId || entry.relayIntake ? clientTurnId : entry.traceId || crypto.randomUUID();
           await conversations[entry.workId || entry.relayIntake ? 'settleTurn' : 'recordTurn']({
             ...entry.snapshot, traceId: entry.traceId, clientTurnId, interrupted: entry.interrupted,
             ...(isLlmX ? { source: 'graphysx-llmx', origin: isOpening ? 'application_opening' : 'human', outcome: abort.signal.aborted ? 'cancelled' : 'failed', applicationEvent: entry.applicationEvent || null } : {}),

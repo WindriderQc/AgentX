@@ -34,7 +34,7 @@ Core's shared personal facts, tasks or documents. An action is confirmed only
 after its successful result, with the available domain and execution receipts.
 
 For current personal recall, the native owner adapters read `turn-context`
-through `POST /api/consumers/nestor/v1/memory/notes` on each turn. Core projects
+through `POST /api/consumers/nestor/v1/memory/notes` on qualifying local turns. Core projects
 a bounded lexical match of active notes and returns the source-precedence
 policy. A match to a retired note signals a protected recall turn without
 returning its text. The runtime refreshes this evidence even in continued chats
@@ -46,12 +46,27 @@ tools and report past conversation as historical evidence. The live note read
 and the native transcript retain their own access scopes. Family and delegated
 turns do not receive this owner projection.
 
-OpenClaw's personal harness registers the turn hooks. For Hermes, install the
-opt-in [owner memory plugin](../integrations/hermes/owner-memory-turn) only in
-the trusted personal API profile with its `agentx-owner` MCP connection. The
-plugin applies the current turn evidence to the provider request and leaves the
-native session and stored transcript in place. It can qualify both the native
-Responses request and the existing chat-completion fallback.
+Both adapters require the operator-configured Core on loopback or a literal
+private LAN address, the pinned `agentx-primary` and a personal profile without
+a native provider fallback. OpenClaw binds the actual run to the configured
+Ollama bridge at `/api/openclaw-ollama`. Its projection is transient system
+context. Hermes checks the actual provider, model, transport and base URL
+on each request against the custom Core gateway at `/api/llm/v1`. An unknown
+destination, mixed profile or cloud attempt receives no automatic note
+projection. The Hermes adapter also requires the local turn binding for every tool on the
+Core and owner MCP connections, including newly added tools. OpenClaw uses
+its declared personal harness tool catalogue for the same check. This covers
+family photos, mail, identifiers, the personal dossier, accounting and Life
+Atlas. Each tool retains its existing caller permissions. A verified local
+Family or scheduled run can use its existing tools without receiving the
+owner’s automatic notes.
+
+Install the [Hermes owner memory plugin](../integrations/hermes/owner-memory-turn)
+in the trusted personal API profile with its `agentx-owner` MCP connection.
+These hooks govern the projection and those named reads. Previously saved
+conversations, tools outside these connections, workspace files and instructions
+can independently contain private information. Cloud qualification uses a separate synthetic
+profile and fresh conversations with synthetic sources only.
 
 [Work lifecycle](WORK_LIFECYCLE.md) defines task/issue routing, fact ownership,
 actor roles and queue interpretation. Runtime adapters preserve Core's read

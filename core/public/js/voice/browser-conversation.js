@@ -86,10 +86,6 @@
     }
   }
 
-  // Phones delay and process their own speaker output beyond what EchoGuard's
-  // short acoustic window can match, so a reply heard back through the mic
-  // was transcribed and treated as the user interrupting. Words that the
-  // current reply has just spoken are an echo, not a new request.
   const HOLDING = Object.freeze({
     fr: ['Un petit instant…'],
     en: ['Just one moment…']
@@ -113,13 +109,31 @@
     try { speech?.body?.cancel?.().catch(() => {}); } catch { /* already consumed */ }
   }
 
+  // Phone speaker delay can exceed the acoustic echo filter’s window.
   function isSpokenEcho(text, spoken) {
-    const words = value => String(value || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-      .match(/[a-z0-9]+/g) || [];
-    const heard = words(text), said = new Set(words(spoken));
-    // A short answer can repeat the offered choice; lexical overlap is not echo evidence.
-    if (heard.length < 3 || !said.size) return false;
-    return heard.filter(word => said.has(word)).length / heard.length >= 0.7;
+    const transcript = controlWords(text || ''), playback = controlWords(spoken || '');
+    const heard = transcript.split(' ');
+    if (heard.length < 3 || !playback) return false;
+    const excerpt = ' ' + playback + ' ';
+    if (excerpt.includes(' ' + transcript + ' ')) return true;
+    // Compare a contiguous phrase. Shared vocabulary alone can discard a
+    // child's change of person, object, number or time. A missing hesitation
+    // or one reduced French determiner still allows a playback match.
+    const withoutHesitation = value => value.split(' ').filter(word => !/^(?:euh|uh|um)$/.test(word));
+    const words = withoutHesitation(transcript);
+    if (words.length < 5) return false;
+    const said = withoutHesitation(playback);
+    return said.some((_, start) => {
+      if (start + words.length > said.length) return false;
+      let reduced = false;
+      for (const [index, word] of words.entries()) {
+        const original = said[start + index];
+        if (word === original) continue;
+        if (reduced || word !== 'les' || !/^(?:mes|tes|ses|ces)$/.test(original)) return false;
+        reduced = true;
+      }
+      return true;
+    });
   }
 
   // One contiguous microphone window and one expiring excerpt, owned by this
@@ -364,29 +378,39 @@
       this.wakeAck = null;
       clearTimeout(ack.timer);
       ack.speech.abort();
+      discardSpeech(ack.response);
     }
     acknowledgeWake(epoch) {
+      const session = this.session;
       const ack = { speech: new AbortController(), timer: null };
       this.wakeAck = ack;
+      const current = () => this.current(epoch) && this.session === session;
+      const owns = () => this.wakeAck === ack && current();
+      const finish = () => {
+        if (this.wakeAck !== ack) return;
+        this.cancelWakeAck();
+        if (ack.response && current() && !this.wakeAck && !this.activeTurn && !this.turnPending && this.state === 'speaking') {
+          this.show('listening'); // Capture and its speech callback stayed active.
+        }
+      };
       // Keep the microphone live. A command begun during this short gap, TTS,
       // or playback cancels the acknowledgement and takes the normal turn path.
       ack.timer = setTimeout(async () => {
+        ack.timer = setTimeout(finish, 4000);
         try {
-          if (!this.current(epoch) || this.wakeAck !== ack || this.state !== 'listening') return;
+          if (!owns() || this.state !== 'listening') return;
           const response = await this.io.synthesize(this.io.wakeReply?.() || { text: "Je t'écoute.", language: 'fr' }, ack.speech.signal);
-          if (!this.current(epoch) || this.wakeAck !== ack || this.state !== 'listening') return;
+          if (!owns() || this.state !== 'listening') { discardSpeech(response); return; }
+          if (!response) return;
+          ack.response = response;
           this.show('speaking');
+          if (!owns() || this.state !== 'speaking') return;
           await this.audio.play(response, ack.speech.signal);
+          if (!owns() || this.state !== 'speaking') return;
           await this.audio.settle?.(ack.speech.signal);
-          if (this.current(epoch) && this.wakeAck === ack && this.state === 'speaking') {
-            this.wake.extend();
-            this.listen(epoch);
-          }
-        } catch {
-          if (this.current(epoch) && this.wakeAck === ack && this.state === 'speaking') this.listen(epoch);
-        } finally {
-          if (this.wakeAck === ack) this.wakeAck = null;
-        }
+          if (owns() && this.state === 'speaking') this.wake.extend();
+        } catch { /* Wake speech is optional. */ }
+        finally { finish(); }
       }, this.io.wakeAckDelayMs ?? 200);
     }
     // The background brain may add one short remark at a natural pause (#169):
@@ -686,7 +710,6 @@
         }
         const language = spokenLanguage;
         if (this.io.naturalFamilySpeech && language === 'fr') text = speechLanguage.frenchDateTimeText(text);
-        turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
         if (!notice) turn.timeline?.mark('firstClause');
         const previousPlayback = playback, availableSlot = prefetchSlot;
         // A voice whose accepted stream failed while it played is left for the
@@ -720,6 +743,7 @@
           }
           this.monitor(turn);
           this.show('speaking'); turn.replyStarted = true;
+          turn.spoken = ((turn.spoken || '') + ' ' + text).slice(-800);
           // Preserve firstAudio as the legacy playback-request offset.
           // Actual scheduling comes from the player and can follow silent padding.
           if (!notice) turn.timeline?.mark('firstAudio');

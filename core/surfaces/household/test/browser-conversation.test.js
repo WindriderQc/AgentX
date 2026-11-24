@@ -1,6 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { Player } = require('../../../../integrations/voix/app/web/voice-audio');
 const { Endpoint, EchoGuard, wav, Conversation, WakeWindow, isStopControl, isSubtitleArtifact, isSpokenEcho, holdingPhrase } = require('../public/browser-conversation');
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const nextTimer = () => new Promise((resolve) => setTimeout(resolve, 10));
@@ -435,6 +436,119 @@ test('speech after a bare wake interrupts the acknowledgement before it masks th
   assert.equal(turns, 1);
   assert.equal(h.calls.filter(call => call === 'play').length, 1, 'only the answer is spoken');
   h.conversation.stop();
+});
+
+function wakeStream({ complete = false } = {}) {
+  let cancellations = 0;
+  const body = new ReadableStream({
+    start(controller) {
+      const meta = { type: 'meta', protocol: 'voix-pcm-v1', encoding: 'f32le', channels: 1, sample_rate: 24000 };
+      const send = event => controller.enqueue(new TextEncoder().encode(JSON.stringify(event) + '\n'));
+      send(meta);
+      if (complete) {
+        send({ type: 'audio', sequence: 1, samples: 1, pcm: 'AAAAAA==' });
+        send({ type: 'done', frames: 1, samples: 1 });
+        controller.close();
+      }
+    },
+    cancel() { cancellations++; }
+  });
+  return { response: new Response(body, { headers: { 'Content-Type': 'application/x-ndjson' } }), cancellations: () => cancellations };
+}
+
+for (const frame of [false, true]) {
+  test('metadata-only wake speech expires on the existing capture in ' + (frame ? 'frame mode' : 'standby'), async t => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const stream = wakeStream(), synthesis = deferred(), receipts = [], intents = [];
+    const h = harness({ transcribe: async () => 'Hey Nestor', synthesize: () => synthesis.promise, wakeAckDelayMs: 200,
+      microphoneIntent: on => intents.push(on), localControl: () => frame ? { action: 'wake', addressed: true } : null });
+    h.audio.play = (response, signal) => new Player({}, { onReceipt: receipt => receipts.push(receipt.type) }).play(response, signal);
+    t.after(() => h.conversation.stop());
+    await h.conversation.start({ wakeWord: true }); await h.say();
+    const captureCalls = h.calls.slice();
+    t.mock.timers.tick(199); await tick(); assert.equal(stream.response.body.locked, false);
+    t.mock.timers.tick(1); await tick();
+    t.mock.timers.tick(1500); await tick(); assert.equal(h.conversation.state, 'listening');
+    synthesis.resolve(stream.response); await tick(); assert.deepEqual(receipts, ['meta']);
+    t.mock.timers.tick(2499); await tick(); assert.equal(h.conversation.state, 'speaking');
+    t.mock.timers.tick(1); await tick();
+    assert.equal(h.conversation.state, 'listening');
+    assert.equal(stream.cancellations(), 1); assert.equal(stream.response.body.locked, false);
+    assert.deepEqual(h.calls, captureCalls); assert.deepEqual(intents, [true]); assert.deepEqual(h.messages, []);
+  });
+}
+
+test('a healthy wake confirmation plays once and leaves follow-up capture active', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let scheduled = 0, completed = false;
+  const stream = wakeStream({ complete: true });
+  const context = { state: 'running', currentTime: 0, destination: {},
+    createBuffer: () => ({ duration: 1 / 24000, copyToChannel() {} }),
+    createBufferSource: () => ({ playbackRate: {}, connect() {}, disconnect() {}, start() { queueMicrotask(() => this.onended()); } }) };
+  const h = harness({ transcribe: async () => 'Hey Nestor', synthesize: () => stream.response });
+  h.audio.play = async (response, signal) => {
+    await new Player(context, { onScheduled: () => scheduled++ }).play(response, signal);
+    completed = true;
+  };
+  t.after(() => h.conversation.stop());
+  await h.conversation.start({ wakeWord: true }); await h.say();
+  const calls = h.calls.slice();
+  t.mock.timers.tick(0); await tick();
+  assert.equal(scheduled, 1); assert.equal(completed, true); assert.ok(h.conversation.wake.active());
+  assert.equal(h.conversation.state, 'listening'); assert.equal(stream.response.body.locked, false);
+  t.mock.timers.tick(4000); await tick(); assert.deepEqual(h.calls, calls);
+});
+
+test('speech interrupts the actual wake reader and its old deadline cannot interrupt the new turn', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const stream = wakeStream(), answer = deferred();
+  let phrase = 'Hey Nestor', answerSignal;
+  const h = harness({ transcribe: async () => phrase, wakeReply: () => ({ text: 'Wake' }),
+    synthesize: reply => reply.text === 'Wake' ? stream.response : new ArrayBuffer(2) });
+  h.audio.play = (response, signal) => {
+    if (response === stream.response) return new Player({}).play(response, signal);
+    answerSignal = signal; return answer.promise;
+  };
+  t.after(() => h.conversation.stop());
+  await h.conversation.start({ wakeWord: true }); await h.say(); t.mock.timers.tick(0); await tick();
+  assert.equal(stream.response.body.locked, true);
+  t.mock.timers.tick(3999); phrase = 'Dis bonjour'; h.beginSpeech(); const next = h.say(); await tick();
+  assert.equal(stream.cancellations(), 1); assert.equal(stream.response.body.locked, false);
+  t.mock.timers.tick(1); await tick();
+  assert.equal(h.conversation.state, 'speaking'); assert.equal(answerSignal.aborted, false);
+  answer.resolve(); await next; assert.equal(h.conversation.state, 'listening');
+});
+
+test('after wake synthesis expires a late response is closed while the next answer keeps playing', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const stream = wakeStream(), synthesis = deferred(), answer = deferred();
+  let phrase = 'Hey Nestor', ackSignal, answerSignal;
+  const h = harness({ transcribe: async () => phrase, wakeReply: () => ({ text: 'Wake' }),
+    synthesize(reply, signal) { if (reply.text === 'Wake') { ackSignal = signal; return synthesis.promise; } return new ArrayBuffer(2); } });
+  h.audio.play = (_bytes, signal) => { answerSignal = signal; return answer.promise; };
+  t.after(() => h.conversation.stop());
+  await h.conversation.start({ wakeWord: true }); await h.say();
+  t.mock.timers.tick(0); await tick();
+  t.mock.timers.tick(4000); await tick();
+  assert.equal(ackSignal.aborted, true);
+  phrase = 'Dis bonjour'; h.beginSpeech(); const next = h.say(); await tick();
+  assert.equal(h.conversation.state, 'speaking');
+  synthesis.resolve(stream.response); await tick();
+  assert.equal(stream.cancellations(), 1); assert.equal(answerSignal.aborted, false);
+  assert.equal(h.conversation.state, 'speaking');
+  answer.resolve(); await next; assert.equal(h.conversation.state, 'listening');
+});
+
+test('a cancelled wake reply cannot play a late response in a replacement session', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const speech = deferred(), stream = wakeStream();
+  const h = harness({ transcribe: async () => 'Hey Nestor', synthesize: () => speech.promise });
+  t.after(() => h.conversation.stop());
+  await h.conversation.start({ wakeWord: true }); await h.say(); t.mock.timers.tick(0); await tick();
+  h.conversation.stop(); await h.conversation.start({ wakeWord: false });
+  const calls = h.calls.slice(); speech.resolve(stream.response); t.mock.timers.tick(4000); await tick();
+  assert.equal(stream.cancellations(), 1); assert.deepEqual(h.calls, calls);
+  assert.equal(h.conversation.state, 'listening');
 });
 
 test('a command spoken over the wake acknowledgement stops that playback', async () => {
@@ -1438,6 +1552,65 @@ test('a transcript made of the words the reply just spoke is echo; other words a
   assert.equal(isSpokenEcho('Attends, peux-tu répéter la météo?', spoken), false);
   assert.equal(isSpokenEcho('', spoken), false);
   assert.equal(isSpokenEcho('le build a passé', ''), false);
+});
+
+test('short choices and a changed negation keep their meaning during playback', () => {
+  const options = 'Veux-tu voir le train ou le bateau ? La petite rouge ou la grande bleue ?';
+  for (const text of ['Le bateau, pas le train.', 'La petite bleue.', 'La rouge, la rouge !']) {
+    assert.equal(isSpokenEcho(text, options), false, text);
+  }
+  assert.equal(isSpokenEcho('le train ou le bateau', options), true);
+  const invitation = 'Tu peux me demander de chercher une photo du bateau.';
+  assert.equal(isSpokenEcho('Tu peux pas me demander de chercher une photo du bateau.', invitation), false);
+  assert.equal(isSpokenEcho('Tu peux me demander de chercher euh une photo du bateau.', invitation), true);
+  assert.equal(isSpokenEcho('Tu peux me demander de chercher une carte du bateau.', invitation), false);
+});
+
+test('a short quoted command heard with a neutral article is echo while changes to the request stay audible', () => {
+  const playback = 'Par exemple, rappelle-moi de ranger mes mitaines.';
+  assert.equal(isSpokenEcho('Rappelle-moi de ranger les mitaines.', playback), true);
+  for (const change of [
+    'Rappelle-moi de ranger trois mitaines.', 'Rappelle-moi de ranger mes bottes.',
+    'Rappelle-moi pas de ranger mes mitaines.', 'Rappelle-moi de ranger tes mitaines.',
+    'Rappelle-lui de ranger mes mitaines.', 'Rappelle-moi demain de ranger mes mitaines.'
+  ]) assert.equal(isSpokenEcho(change, playback), false, change);
+});
+
+for (const prefetched of [false, true]) test(`a spoken choice reaches the same session once (prefetched: ${prefetched})`, async t => {
+  const correction = prefetched ? 'Le grand bateau bleu.' : 'Le bateau, pas le train.';
+  const opening = prefetched ? 'Choisis une image. ' : 'Veux-tu voir le train ou le bateau ? ';
+  const started = deferred(), requests = [], interruptions = [];
+  const h = harness({
+    transcribe: async () => requests.length ? correction : 'On joue ?',
+    turn: async (session, text, _signal, delta, { turnId }) => {
+      requests.push({ session: session.sessionId, text, turnId });
+      if (requests.length > 1) return { text: 'D’accord.' };
+      delta(opening);
+      if (prefetched) delta(correction);
+      return { text: opening + (prefetched ? correction : '') };
+    },
+    interrupt: async (_session, id) => { interruptions.push(id); }
+  });
+  h.audio.canInterrupt = true;
+  h.audio.play = async (_bytes, signal) => {
+    if (requests.length === 1) {
+      started.resolve();
+      await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    }
+  };
+  t.after(() => h.conversation.stop());
+  await h.conversation.start({ language: 'fr' });
+  const first = h.say();
+  await started.promise;
+  h.beginSpeech();
+  await h.probe();
+  assert.ok(h.calls.includes('holdPlayback'), 'recognized words hold the current reply');
+  await h.say();
+  await first;
+  assert.deepEqual(interruptions, [requests[0].turnId]);
+  assert.deepEqual(requests.map(({ session, text }) => [session, text]), [
+    ['private-1', 'On joue ?'], ['private-1', correction]
+  ]);
 });
 
 test('different words during playback still interrupt the reply', async () => {
