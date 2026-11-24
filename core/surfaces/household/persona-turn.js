@@ -5,7 +5,7 @@ const { readingRequested } = require('../../src/services/voice/presentation');
 const crypto = require('crypto');
 const personaCatalog = require('./persona-catalog');
 const { agentInstructions, agentIdFor, personalVoice } = require('./conversation-agent');
-const { protectedSourcesLocalOnly, requireProtectedBackend } = require('../../src/services/conversations/protectedSources');
+const { protectedSourcesLocalOnly, requireProtectedBackend, nativeInputOnly, sourceTransferError, householdUserText } = require('../../src/services/conversations/protectedSources');
 const { conversationBackend } = require('./conversation-executor');
 const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
@@ -121,8 +121,10 @@ function createPersonaTurnHandler({
       }
       const pack = packById(session.packId);
       if (!pack) return fail(res, 409, 'Session persona pack is unavailable', 'VOICE_PERSONA_PACK_NOT_FOUND');
+      const inputOnly = nativeInputOnly(session.backend || conversationBackend(null, conversationEnv), conversationEnv);
       const preferences = preferencesFor ? await preferencesFor(pack.childSafe).read() : null;
-      const features = preferences?.values || {};
+      const features = inputOnly ? { ...preferences?.values, historyContext: false, recapContext: false, reviewContext: false,
+        knowledgeContext: false, householdContext: false, memoryContext: false } : preferences?.values || {};
       const selectedMode = pack.modes.find((entry) => entry.id === session.modeId);
       if (!selectedMode) return fail(res, 409, 'Session mode is unavailable', 'VOICE_PERSONA_SESSION_MODE_UNAVAILABLE');
       if (access === 'child' && !pack.childSafe) {
@@ -148,6 +150,7 @@ function createPersonaTurnHandler({
         const previous = session.hermesRuntime ? 'hermes' : session.agentSessionKey ? 'openclaw' : 'agentx';
         requireProtectedBackend(session.backend || previous, conversationEnv);
       }
+      if (inputOnly && (consult || isLlmX || req.body?.attachmentIds?.length)) throw sourceTransferError();
       if (req.body?.ephemeral !== undefined && req.body.ephemeral !== entry.ephemeral) {
         return fail(res, 409, 'The submitted privacy policy does not match this context.', 'CONVERSATION_PRIVACY_MISMATCH');
       }
@@ -166,9 +169,9 @@ function createPersonaTurnHandler({
         ? personalAttachments(session.sessionId) : null;
       if (requestedAttachments.length && !attachmentStore) return fail(res, 400, 'Attachments are available in personal Nestor.', 'ATTACHMENTS_PERSONAL_ONLY');
       entry.attachments = requestedAttachments.length ? await attachmentStore.references(requestedAttachments) : [];
-      const workEligible = !entry.ephemeral && Boolean(conversationWorks?.eligible(session, req.body?.channel));
+      const workEligible = !inputOnly && !entry.ephemeral && Boolean(conversationWorks?.eligible(session, req.body?.channel));
       const nativeDelegation = conversationEnv.PERSONAL_CONVERSATION_WORK_MODE === 'native' && workEligible;
-      const workCandidate = !entry.ephemeral && !consult && !isLlmX
+      const workCandidate = !inputOnly && !entry.ephemeral && !consult && !isLlmX
         && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session), { nativeDelegation });
       const retainedWork = workCandidate && !workEligible ? await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel) : null;
       if (workCandidate && !workEligible && !retainedWork && features.inferenceProfile && features.inferenceProfile !== 'local'
@@ -268,7 +271,7 @@ function createPersonaTurnHandler({
         }
       }
       if (backend && !replyText) {
-        const team = backend === 'openclaw' && !pack.childSafe && !isLlmX ? teamAddress.teamMembers(conversationEnv) : [];
+        const team = !inputOnly && backend === 'openclaw' && !pack.childSafe && !isLlmX ? teamAddress.teamMembers(conversationEnv) : [];
         member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session), { nativeDelegation });
         // That member is still on an earlier question: the conversation's agent answers and says so.
         if (member && !consult && memberWork?.active(session.sessionId).some(job => job.agentId === member.agentId)) member = null;
@@ -313,7 +316,7 @@ function createPersonaTurnHandler({
           session.backend = backend;
         }
         let memories = [], savedNow = false, family = {}, members = '';
-        if (!picture && !isOpening && !entry.ephemeral) {
+        if (!inputOnly && !picture && !isOpening && !entry.ephemeral) {
           const notes = notesFor(pack, session.scopeId);
           if (!pack.childSafe && features.householdContext !== false) members = await householdMembers(familyTasks, { logger });
           // Kids Room routines, and a child's idea or reminder kept for Dad (#41, #13).
@@ -368,24 +371,24 @@ function createPersonaTurnHandler({
         // member's last exchange and the reviewer's advice) goes last, beside the request.
         const brainAdvice = picture || entry.ephemeral || isLlmX || features.reviewContext === false ? { text: '', refs: [] }
           : brain.contextWithRefs ? await brain.contextWithRefs(session.sessionId, session) : { text: await brain.contextFor(session.sessionId, session), refs: [] };
-        const workAdvice = !entry.ephemeral && !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
+        const workAdvice = !inputOnly && !entry.ephemeral && !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
           ? conversationWorks?.guardianContextWithRefs
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const { text: livingSourceContext, relayWeatherContext, relayForecastContext } = picture ? {} : await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
+        const { text: livingSourceContext, relayWeatherContext, relayForecastContext } = inputOnly || picture ? {} : await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
           channel: req.body?.channel, userText, history, timeZone: conversationEnv.PLANNING_TIME_ZONE, requestAt: new Date(startedAt) });
-        const contextBase = picture ? '' : [livingSourceContext, systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
+        const contextBase = inputOnly || picture ? '' : [livingSourceContext, systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
-        const screen = !picture && !isLlmX && !consult ? require('./screen-context') : null;
+        const screen = !inputOnly && !picture && !isLlmX && !consult ? require('./screen-context') : null;
         entry.presentationContext = screen?.presentationEvidence(req.body?.screen, pagesFor(pack));
         entry.pipelineFacts = screen && !pack.childSafe && !member ? await require('./pipeline-turn-facts').factsFor(userText, entry.presentationContext) : null;
         // The collaborator sees public conversation data and sourced reads,
         // never the principal's system/guardian instruction context.
-        entry.companion = !picture && !consult && !isLlmX ? presentationCompanion?.begin({ session,
+        entry.companion = !inputOnly && !picture && !consult && !isLlmX ? presentationCompanion?.begin({ session,
           turnId: clientTurnId || entry.imageTurnId, enabled: req.body?.presentationCompanion === true && !member, paused: req.body?.presentationPinned === true,
           frame: { text: userText, history, screen: entry.presentationContext }, signal: abort.signal }) : null;
-        const contextTail = picture ? [] : [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
+        const contextTail = inputOnly || picture ? '' : [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
           !isLlmX && !member && !consult ? require('./artx-context').artxContext(artx, req.body?.artx,
             evidence => { entry.artxEvidence = evidence; }) : '',
           screen?.screenContext(req.body?.screen, pagesFor(pack), entry.presentationContext) || '',
@@ -451,7 +454,7 @@ function createPersonaTurnHandler({
         }
 
         serverPhases.prepared = Date.now() - startedAt;
-        const run = executeConversation({ backend, session: turnSession, ...(guardianSession ? { canonicalSession: session,
+        const run = executeConversation({ backend, session: turnSession, ...(inputOnly && { [householdUserText]: userText }), ...(guardianSession ? { canonicalSession: session,
           ...(entry.performance?.guardian?.model && { model: entry.performance.guardian.model }),
           guardianStreaming: true, maxOutputTokens: 1024 } : {}), pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText,

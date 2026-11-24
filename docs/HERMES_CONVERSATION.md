@@ -1,5 +1,22 @@
 # Hermes in the personal conversation
 
+### Send only the current household input to native engines
+
+Set `HOUSEHOLD_NATIVE_EXPLICIT_INPUT_ONLY=true` on Core to keep Hermes and
+OpenClaw available for ordinary typed or dictated turns while preventing
+automatic Core source transfer. The current text is sent under the selected
+native session identity. Core omits selected notes, household members, older
+messages, recaps, screen contents, work and review context. A file or a
+private-source transfer is refused before native submission, with a local
+conversation offered for that task. The same policy covers retries and worker
+callbacks. A lost admission with an older enriched payload needs native
+reconciliation. Stored user preferences are preserved.
+
+This mode allows the native engine to use its own previous history and actual
+provider, including a cloud provider. A person can disclose information in
+the current message. For households that require all current input and native
+history to stay local, the stricter option below takes precedence.
+
 ### Household sources restricted to local inference
 
 Set `HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY=true` on Core when household inputs

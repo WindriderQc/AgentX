@@ -1,7 +1,7 @@
 'use strict';
 
 const { tokenMatches, fail } = require('./contract');
-const { requireProtectedBackend } = require('../conversations/protectedSources');
+const { requireProtectedBackend, nativeInputOnly, sourceTransferError } = require('../conversations/protectedSources');
 const { createWorkDelivery } = require('./delivery');
 
 function registerConversationWorkRoutes(router, { works, env = process.env }) {
@@ -27,6 +27,7 @@ function registerConversationWorkRoutes(router, { works, env = process.env }) {
     const token = /^Bearer\s+(.+)$/i.exec(req.get('authorization') || '')?.[1];
     if (!tokenMatches(token, env.PERSONAL_CONVERSATION_WORK_TOKEN)) throw fail('CONVERSATION_WORK_NOT_FOUND', 'Conversation work not found.', 404);
     requireProtectedBackend('openclaw', env);
+    if (nativeInputOnly('openclaw', env)) throw sourceTransferError();
     const { operation, context, input, callId } = req.body || {};
     if (Object.keys(req.body || {}).some(key => !['operation', 'context', 'input', 'callId'].includes(key))) throw fail('CONVERSATION_WORK_REQUEST_INVALID', 'Invalid work request.');
     if (operation === 'question_context') return works.questions.context(input);

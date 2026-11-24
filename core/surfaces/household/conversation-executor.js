@@ -5,7 +5,7 @@ const { selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL } = requ
 const interactivePriority = require('../../src/services/interactivePriorityService');
 const { configuredHermes, createHermesTransport } = require('../../src/services/conversations/hermesTransport');
 
-const { protectedSourcesLocalOnly, requireProtectedBackend } = require('../../src/services/conversations/protectedSources');
+const { protectedSourcesLocalOnly, requireProtectedBackend, nativeInputOnly, householdUserText, nativeUserText } = require('../../src/services/conversations/protectedSources');
 const { voiceTask } = require('./conversation-inference');
 
 const HOST_BUSY_CODES = new Set(['BENCHMARK_CLAIM_ACTIVE', 'RUNTIME_INFERENCE_ADMISSION_DENIED']);
@@ -94,6 +94,17 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
     const stopWaiting = interactivePriority.onWaiting(info => request.onWaiting?.(info));
     try {
       if (request.session?.ephemeral && request.backend !== 'agentx') throw Object.assign(new Error('This native engine cannot guarantee ephemeral memory and history.'), { code: 'CONVERSATION_EPHEMERAL_UNSUPPORTED', statusCode: 409 });
+      if (nativeInputOnly(request.backend, env)) {
+        const text = nativeUserText(request);
+        const { session, backend, pack, channel, turnId, model, signal, streaming,
+          onStarted, onSettled, onTerminalFailure, onActivity, onDelta, onRelayProgress, onWaiting } = request;
+        // Rebuild from trusted routing/streaming fields. Do not inherit any source
+        // block, tool, history, stored attachment, recap or rendering instruction.
+        const staticInstructions = require('./persona-prompt').systemPromptFor(pack, { modeId: session.modeId });
+        return await run({ [householdUserText]: text, text, session, backend, pack, channel, turnId, model, signal, streaming,
+          instructions: staticInstructions, agentxInstructions: staticInstructions, history: [], attachments: [],
+          onStarted, onSettled, onTerminalFailure, onActivity, onDelta, onRelayProgress, onWaiting });
+      }
       const primary = await require('./native-primary-turn').nativePrimaryReply(request);
       if (primary) return primary;
       const accepted = await require('./native-work-acceptance').nativeWorkAcknowledgment(request);

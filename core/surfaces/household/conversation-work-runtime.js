@@ -1,6 +1,6 @@
 'use strict';
 
-const { protectedSourcesLocalOnly, requireProtectedBackend } = require('../../src/services/conversations/protectedSources');
+const { protectedSourcesLocalOnly, requireProtectedBackend, nativeInputOnly, sourceTransferError } = require('../../src/services/conversations/protectedSources');
 const { requestsTaskCheck } = require('./tool-turn-guard');
 const { requestsSecretary, requestsSecretaryRead, requestsReadEffects } = require('./native-specialist-policy');
 const { requestsWebRead } = require('./native-web-policy');
@@ -17,6 +17,7 @@ const WORKER = 'You are Nestor working privately behind his ongoing conversation
 const NATIVE_GUARDIAN = 'You are Nestor’s conversational guardian in the same adult owner conversation as his native Main brain. Core durably accepts every owner turn and runs complete Main with its installed personal tools, memory and specialist delegation in a separate session. Respond naturally and briefly using the shared context while Main works, including ordinary conversation, support, clarification and received statuses. Requested tool work belongs exclusively to Main: do not call tools, redispatch work or claim a lookup or action has finished without its actual result. A missing direct tool here never means Main or a specialist lacks that capability. Household presents the saved Main answer at a pause. Do not repeatedly say you are thinking or narrate tool selection. Report only the work state Core actually supplied: queued work is waiting, not running. Never invent progress or a completion time. Without a supplied estimate, say the duration is unknown, including when asked whether it will take seconds or minutes. Short replies, including numbers and thanks, are valid conversation: interpret them from the actual shared context; if their meaning is unclear, ask one brief clarification instead of inventing a topic or completed action. A microphone check can be acknowledged, but its transcript does not establish recognition accuracy or system readiness.';
 
 function registerWorkRuntime({ router, conversations, tasks, agentClient, continuity, env, logger, attachmentStore, capability, screenPages, ambient }) {
+  const inputOnly = nativeInputOnly('openclaw', env);
   if (!capability) {
     if (MODES.includes(env.PERSONAL_CONVERSATION_WORK_MODE)) throw new Error('Core conversation work capability unavailable');
     return null;
@@ -26,7 +27,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     guardianReads: () => require('./guardian-read-tools').guardianReadTools(env, { ambient }),
     guardianOccupied: async row => Boolean(await require('../../src/services/conversationWorks/primary-foreground').occupiedMain(
       works.repo, observer, row.primary.relayFor)),
-    questionRuntime: !protectedSourcesLocalOnly(env) && env.PERSONAL_CONVERSATION_QUESTIONS_ENABLED === 'true' ? { observe: (row, options) => continuity({ operation: 'questions', workId: row._id }, options?.signal),
+    questionRuntime: !inputOnly && !protectedSourcesLocalOnly(env) && env.PERSONAL_CONVERSATION_QUESTIONS_ENABLED === 'true' ? { observe: (row, options) => continuity({ operation: 'questions', workId: row._id }, options?.signal),
       effect: (input, options) => continuity({ operation: 'question_effect', ...input }, options?.signal) } : null,
     presentResult: async (result, row) => {
       const turn = await conversations.getTurn({ sessionId: row.sessionId, packId: 'personal_operator', scopeId: 'personal', traceId: row.turnId });
@@ -47,6 +48,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
       : continuity({ operation: 'work_attempt', sessionKey: attempt.sessionKey, ...(attempt.runId && { runId: attempt.runId }) }),
     prepare: async ({ row, session, selectedContext }) => {
       requireProtectedBackend('openclaw', env);
+      if (inputOnly) throw sourceTransferError();
       if (nativeWork(row)) return native.prepare({ row, session, selectedContext });
       const turn = await conversations.getTurn({ sessionId: row.sessionId, packId: 'personal_operator', scopeId: 'personal', traceId: row.turnId });
       if (!turn || hash(turn.inputText) !== row.requestSha256) throw new Error('Canonical work request unavailable');
@@ -64,7 +66,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
         };
     },
     execute: async ({ row, onStarted, ...request }) => agentClient({ ...request, onStarted }) });
-  if (!protectedSourcesLocalOnly(env) && env.PERSONAL_CONVERSATION_WORK_AGENT_ID && env.PERSONAL_CONVERSATION_WORK_TOKEN
+  if (!inputOnly && !protectedSourcesLocalOnly(env) && env.PERSONAL_CONVERSATION_WORK_AGENT_ID && env.PERSONAL_CONVERSATION_WORK_TOKEN
       && env.OPENCLAW_GATEWAY_URL && process.env.NODE_ENV !== 'test') observer.start();
   const primary = require('../../src/services/conversationWorks/primary-foreground').createPrimaryForeground(works, observer);
   return { ...works, observer, primaryReply: primary.reply,

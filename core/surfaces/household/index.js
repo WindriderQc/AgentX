@@ -22,7 +22,7 @@ const {
 const { registerFamilyRoutes } = require('./family-routes');
 const { plainReply } = require('./reply-channels'), { createVisuals } = require('./visuals'), { createBrain } = require('./brain');
 const { createMemberWork } = require('./member-work');
-const { protectedSourcesLocalOnly } = require('../../src/services/conversations/protectedSources');
+const { protectedSourcesLocalOnly, nativeInputOnly } = require('../../src/services/conversations/protectedSources');
 const { createVoiceWarmup } = require('./voice-warmup');
 const { registerSecretaryMcp } = require('./secretary-mcp');
 const { secretaryMailControl } = require('./secretary-mail-routes');
@@ -284,7 +284,7 @@ function register(api) {
       await ensureCatalog();
       const localOnly = protectedSourcesLocalOnly(conversationEnv);
       return envelope(res, { personas: (await runtimeServices.personas.list()).map(personaCatalog.snapshot), runtime: {
-        protectedSourcesLocalOnly: localOnly,
+        protectedSourcesLocalOnly: localOnly, nativeExplicitInputOnly: nativeInputOnly('hermes', conversationEnv),
         defaultBackend: conversationBackend(localOnly ? null : conversationEnv.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND, conversationEnv),
         openclawConfigured: configuredOpenClaw(conversationEnv), hermesConfigured: configuredHermes(conversationEnv),
         browserSpeechFallback: browserSpeechFallback(conversationEnv) } });
