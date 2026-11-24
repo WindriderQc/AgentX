@@ -24,7 +24,7 @@
       this.voiceSamples = 0; this.silenceSamples = 0; this.total = 0;
       this.onsetGap = 0;
       this.speaking = false;
-      this.level = 0;
+      this.level = 0; this.backgroundLevel = null;
       this.earlyId = null; this.earlyTaken = false; this.events = [];
       this.heard = 0; this.probed = false;
       this.lastSpeechSample = 0; this.offeredSpeechSample = -1; this.lastSnapshotSample = 0;
@@ -35,7 +35,16 @@
     push(samples) {
       const energy = Math.sqrt(samples.reduce((sum, n) => sum + n * n, 0) / samples.length);
       this.level = energy;
-      const voiced = energy >= this.threshold;
+      let voiced = energy >= this.threshold;
+      if (!voiced && Number.isFinite(energy)) {
+        // Once a turn has started, a softer syllable can invalidate an early
+        // transcript. Require a rise above recent room tone as well as half
+        // the onset level. A steady hum then settles back into silence.
+        const background = this.backgroundLevel ?? (this.speaking ? 0 : energy);
+        voiced = this.speaking && energy >= this.threshold / 2 && energy > background * Math.SQRT2;
+        const weight = 1 - Math.exp(-samples.length / (this.rate * .25));
+        this.backgroundLevel = background + weight * (energy - background);
+      }
       if (!this.speaking) {
         this.preRoll.push(samples); this.preSamples += samples.length;
         while (this.preSamples > this.rate * 0.35 && this.preRoll.length > 1) {

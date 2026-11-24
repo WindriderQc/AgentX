@@ -26,6 +26,44 @@ test('twenty minutes of synthetic signal below the default threshold also stays 
   assert.ok(endpoint.preSamples <= rate * .35 + low.length);
 });
 
+for (const threshold of [.002, .015, .15]) {
+  test(`a softer ending supersedes the early clip at an onset threshold of ${threshold}`, () => {
+    const endpoint = new Endpoint(1000, 100, 1000, threshold);
+    endpoint.earlySilenceMs = 500;
+    const frame = fraction => new Float32Array(100).fill(fraction * threshold);
+    for (let i = 0; i < 6; i++) endpoint.push(frame(.8));
+    assert.equal(endpoint.speaking, false, 'soft sound alone cannot start a turn');
+    endpoint.push(frame(2));
+    for (let i = 0; i < 5; i++) endpoint.push(frame(.1));
+    const [prefix] = endpoint.drain();
+    assert.equal(prefix.type, 'early');
+    const soft = frame(.8);
+    assert.equal(endpoint.push(soft), null);
+    assert.deepEqual(endpoint.drain(), [{ type: 'resumed', id: prefix.id }]);
+    for (let i = 0; i < 5; i++) assert.equal(endpoint.push(frame(.1)), null);
+    const [ending] = endpoint.drain();
+    assert.equal(ending.type, 'early');
+    assert.notEqual(ending.id, prefix.id);
+    assert.equal(ending.samples[prefix.samples.length], soft[0]);
+    for (let i = 0; i < 4; i++) assert.equal(endpoint.push(frame(.1)), null);
+    assert.ok(endpoint.push(frame(.1)) instanceof Float32Array);
+    assert.equal(endpoint.completedEarlyId, ending.id);
+  });
+}
+
+test('steady background below onset allows an active turn to finish', () => {
+  const room = new Float32Array(100).fill(.012);
+  for (const hadRoomTone of [true, false]) {
+    const endpoint = new Endpoint(1000);
+    if (hadRoomTone) endpoint.push(room);
+    endpoint.push(new Float32Array(100).fill(.1));
+    let completed;
+    for (let i = 0; i < (hadRoomTone ? 10 : 15) && !completed; i++) completed = endpoint.push(room);
+    assert.ok(completed instanceof Float32Array);
+    assert.equal(endpoint.speaking, false);
+  }
+});
+
 test('a continuous non-speech tone reaches the exact production byte ceiling without needing a wake word', () => {
   const endpoint = new Endpoint(48000), signal = tone(1024);
   assert.equal(MAX_CAPTURE_BYTES, 33488896); assert.equal(endpoint.maxSamples, 16744448);
