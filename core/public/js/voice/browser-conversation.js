@@ -119,19 +119,24 @@
     if (heard.length < 3 || !playback) return false;
     const excerpt = ' ' + playback + ' ';
     if (excerpt.includes(' ' + transcript + ' ')) return true;
-    // A child can use the same words in a different order to choose or correct.
-    // Short fragments need a verbatim match. Longer echoes tolerate STT errors,
-    // but a negation must have been spoken with the same surrounding words.
-    if (heard.length <= 6) return false;
-    const negation = /^(?:non|pas|jamais|aucun|aucune|pantoute|no|not|never|cannot|t)$/;
-    for (const [index, word] of heard.entries()) {
-      if (negation.test(word)) {
-        const phrase = heard.slice(Math.max(0, index - 1), index + 2).join(' ');
-        if (!excerpt.includes(' ' + phrase + ' ')) return false;
+    // Compare a contiguous phrase. Shared vocabulary alone can discard a
+    // child's change of person, object, number or time. A missing hesitation
+    // or one reduced French determiner still allows a playback match.
+    const withoutHesitation = value => value.split(' ').filter(word => !/^(?:euh|uh|um)$/.test(word));
+    const words = withoutHesitation(transcript);
+    if (words.length < 5) return false;
+    const said = withoutHesitation(playback);
+    return said.some((_, start) => {
+      if (start + words.length > said.length) return false;
+      let reduced = false;
+      for (const [index, word] of words.entries()) {
+        const original = said[start + index];
+        if (word === original) continue;
+        if (reduced || word !== 'les' || !/^(?:mes|tes|ses|ces)$/.test(original)) return false;
+        reduced = true;
       }
-    }
-    const said = new Set(playback.split(' '));
-    return heard.filter(word => said.has(word)).length / heard.length >= 0.7;
+      return true;
+    });
   }
 
   // One contiguous microphone window and one expiring excerpt, owned by this

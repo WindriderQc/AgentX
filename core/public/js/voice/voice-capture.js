@@ -21,7 +21,7 @@
     constructor(rate, minimumVoiceMs = MINIMUM_VOICE_MS, endSilenceMs = TURN_END_SILENCE_MS, threshold = .015) { this.threshold = threshold; this.rate = rate; this.minimumVoiceMs = minimumVoiceMs; this.endSilenceMs = endSilenceMs; this.maxSamples = MAX_CAPTURE_BYTES / 2; this.reset(); }
     reset() {
       this.frames = []; this.preRoll = []; this.preSamples = 0;
-      this.voiceSamples = 0; this.silenceSamples = 0; this.total = 0;
+      this.voiceSamples = 0; this.silenceSamples = 0; this.belowOnsetSamples = 0; this.total = 0;
       this.onsetGap = 0;
       this.speaking = false;
       this.level = 0; this.backgroundLevel = null;
@@ -67,6 +67,7 @@
       }
       this.frames.push(samples); this.total += samples.length; this.heard += samples.length;
       this.silenceSamples = voiced ? 0 : this.silenceSamples + samples.length;
+      this.belowOnsetSamples = energy >= this.threshold ? 0 : this.belowOnsetSamples + samples.length;
       if (voiced) this.lastSpeechSample = this.total;
       if (voiced && this.earlyId !== null) { this.events.push({ type: 'resumed', id: this.earlyId }); this.earlyId = null; }
       const join = () => {
@@ -79,7 +80,10 @@
       if (this.probeMs && !this.probed && this.heard >= this.rate * this.probeMs / 1000) {
         this.probed = true; this.events.push({ type: 'probe', samples: join() });
       }
-      if (this.silenceSamples < this.rate * this.endSilenceMs / 1000) {
+      // Pulsing room noise can look like soft syllables indefinitely. Allow
+      // one extra silence window after the last full-level speech.
+      const silenceLimit = this.rate * this.endSilenceMs / 1000;
+      if (this.silenceSamples < silenceLimit && this.belowOnsetSamples < 2 * silenceLimit) {
         const pause = this.earlySilenceMs && !voiced && this.earlySilenceMs < this.endSilenceMs
           && this.silenceSamples >= this.rate * this.earlySilenceMs / 1000;
         // Whole-clip speculation is bounded to short turns. Long turns keep the

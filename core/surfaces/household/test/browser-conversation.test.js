@@ -1448,8 +1448,18 @@ test('short choices and a changed negation keep their meaning during playback', 
   assert.equal(isSpokenEcho('le train ou le bateau', options), true);
   const invitation = 'Tu peux me demander de chercher une photo du bateau.';
   assert.equal(isSpokenEcho('Tu peux pas me demander de chercher une photo du bateau.', invitation), false);
-  assert.equal(isSpokenEcho('Tu peux me demander de chercher une image du bateau.', invitation), true,
-    'a long playback transcript may contain a recognition error');
+  assert.equal(isSpokenEcho('Tu peux me demander de chercher euh une photo du bateau.', invitation), true);
+  assert.equal(isSpokenEcho('Tu peux me demander de chercher une carte du bateau.', invitation), false);
+});
+
+test('a short quoted command heard with a neutral article is echo while changes to the request stay audible', () => {
+  const playback = 'Par exemple, rappelle-moi de ranger mes mitaines.';
+  assert.equal(isSpokenEcho('Rappelle-moi de ranger les mitaines.', playback), true);
+  for (const change of [
+    'Rappelle-moi de ranger trois mitaines.', 'Rappelle-moi de ranger mes bottes.',
+    'Rappelle-moi pas de ranger mes mitaines.', 'Rappelle-moi de ranger tes mitaines.',
+    'Rappelle-lui de ranger mes mitaines.', 'Rappelle-moi demain de ranger mes mitaines.'
+  ]) assert.equal(isSpokenEcho(change, playback), false, change);
 });
 
 for (const prefetched of [false, true]) test(`a spoken choice reaches the same session once (prefetched: ${prefetched})`, async t => {

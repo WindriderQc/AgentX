@@ -511,13 +511,15 @@ recovery; those remain part of device acceptance.
 
 After speech starts, the browser also listens for quieter syllables above the
 recent room noise. A softer ending after a pause can supersede an early
-transcription before the request reaches the conversation.
+transcription before the request reaches the conversation. After the last
+block at the onset level, quieter sound may extend capture by up to one
+extra silence window. This bounds the delay in a room with pulsing noise.
 
 During playback, the echo check compares recognized words with clauses that
 have reached the player. A short fragment such as “le train ou le bateau” can
 match playback verbatim. A correction such as “le bateau, pas le train” remains
-a user turn. Longer matches tolerate recognition errors while checking the
-words around a negation.
+a user turn. Across five or more words, the comparison tolerates a hesitation
+or a plural determiner heard as “les” when the other words match in order.
 
 Surfaces offering local early recognition use whole-prefix snapshots while the
 microphone remains live: at most once every two seconds during the first fifteen

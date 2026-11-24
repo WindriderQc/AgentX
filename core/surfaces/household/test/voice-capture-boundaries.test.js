@@ -64,6 +64,18 @@ test('steady background below onset allows an active turn to finish', () => {
   }
 });
 
+test('periodic noise below onset cannot keep an active microphone turn open', () => {
+  const endpoint = new Endpoint(1000), block = level => new Float32Array(100).fill(level);
+  endpoint.earlySilenceMs = 500;
+  endpoint.push(block(.035));
+  let clip;
+  for (let i = 0; i < 20 && !clip; i++) clip = endpoint.push(block(i % 6 === 5 ? .012 : .001));
+  assert.ok(clip instanceof Float32Array);
+  assert.equal(endpoint.speaking, false);
+  for (let i = 0; i < 30; i++) assert.equal(endpoint.push(block(i % 6 === 5 ? .012 : .001)), null);
+  assert.equal(endpoint.speaking, false);
+});
+
 test('a continuous non-speech tone reaches the exact production byte ceiling without needing a wake word', () => {
   const endpoint = new Endpoint(48000), signal = tone(1024);
   assert.equal(MAX_CAPTURE_BYTES, 33488896); assert.equal(endpoint.maxSamples, 16744448);
