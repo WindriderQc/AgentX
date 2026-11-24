@@ -1,0 +1,48 @@
+'use strict';
+
+const { CATALOG, normalize } = require('./sound-library');
+const fr = /^(?:(?:est-ce que tu peux|peux-tu|pourrais-tu) me montrer|montre-moi|(?:peux-tu|pourrais-tu) afficher|affiche-moi) (?:une image|une illustration) (?:de |du |d')([\p{L}][\p{L} '-]*)[ ?!.]*$/u;
+const en = /^(?:(?:can|could) you (?:please )?show me|(?:please )?show me) (?:an image|a picture) of ([a-z][a-z '-]*)[ ?!.]*$/;
+const word = text => normalize(text).replace(/[‐‑]/g, '-').trim();
+const names = new Map();
+for (const animal of CATALOG) for (const name of animal.names || []) {
+  const key = word(name);
+  if (!names.has(key)) names.set(key, animal);
+  else if (names.get(key) !== animal) names.set(key, null);
+}
+
+// Intent alone does not authorize sending arbitrary speech to a search provider.
+function genericPicture(text) {
+  if (typeof text !== 'string' || text.length > 160 || /[,;:<>\n\r]/.test(text)) return null;
+  const clean = word(text).replace(/[.!?]+$/, '').trim();
+  if (/\b(?:artx|puis|ensuite|then|album|albums|galerie|gallery|photos)\b|\b(?:et|and) (?:montre|affiche|ouvre|cherche|dessine|explique|show|open|search|draw|explain)\b/i.test(clean)) return null;
+  const match = fr.exec(clean) || en.exec(clean);
+  if (!match) return null;
+  const exact = match[1].trim().replace(/ (?:s'il te plait|svp|stp|please)$/, '').replace(/^(?:(?:un|une|le|la|les|des|the|a|an) |l')/, '');
+  return { animal: names.get(exact) || null };
+}
+
+async function reply({ text, language, visuals, signal, turnId }) {
+  const intent = genericPicture(text);
+  if (!intent) return null;
+  const en = language === 'en';
+  const none = en ? 'No approved public image source is available right now.' : 'Je n’ai pas de source publique d’images approuvée pour le moment.';
+  if (!visuals.sources({ family: true }).includes('web')) return { text: none, display: [] };
+  if (!intent.animal) return { text: en ? 'Which animal would you like to see, or did you mean a specific picture you already have?'
+    : 'Quel animal veux-tu voir? Si tu pensais à une image précise, dis-moi laquelle.', display: [] };
+
+  signal.throwIfAborted();
+  // Query is a reviewed animal label, never the raw recording, name, location,
+  // history, arbitrary model text, or the current ArtX display.
+  const label = intent.animal.label[en ? 'en' : 'fr'].split(' (')[0];
+  const block = { id: 'family-picture', key: 'family-picture:' + turnId, kind: 'image', source: 'web',
+    title: en ? 'Animal picture' : 'Image d’animal', body: 'animal ' + label };
+  const found = await visuals.present(block, { family: true, language, exactSource: true }).catch(() => null);
+  signal.throwIfAborted();
+  if (found?.source !== 'web' || found.status !== 'found' || !found.image?.url) {
+    return { text: en ? 'I couldn’t find a picture of that animal right now.' : 'Je n’ai pas trouvé d’image de cet animal pour le moment.', display: [] };
+  }
+  return { text: en ? 'I found a picture.' : 'J’ai trouvé une image.', display: [found] };
+}
+
+module.exports = { genericPicture, reply };

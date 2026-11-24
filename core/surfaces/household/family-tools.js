@@ -83,6 +83,7 @@ function familyToolset(env = process.env, deps = {}) {
   const tools = TOOLS.filter(tool => names.includes(tool.name));
   const run = deps.callTool || callTool;
   const now = deps.now || (() => new Date());
+  let artxSelectionAttempted = false;
   return {
     names,
     maxRounds: MAX_TOOL_ROUNDS,
@@ -115,6 +116,11 @@ function familyToolset(env = process.env, deps = {}) {
       if (name.startsWith('artx_')) {
         allowed.displayId = displayId;
         if (name === 'artx_present') allowed.requestId = deps.artxRequestId;
+      }
+      if (name === 'artx_present') {
+        if (artxSelectionAttempted) return { message: message(JSON.stringify({ error: 'ARTX_SELECTION_ALREADY_ATTEMPTED',
+          message: 'Only one scene selection can be attempted in this turn. Explain the earlier result without trying again.' })) };
+        artxSelectionAttempted = true;
       }
       const result = await run({ name, arguments: allowed }, deps.toolDeps || {}, tools);
       const content = resultContent(result.structuredContent);

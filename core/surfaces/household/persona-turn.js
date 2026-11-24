@@ -1,8 +1,5 @@
 'use strict';
-// The Household persona turn engine: safety, memory, the family and math
-// scenes, inference through the conversation executor, reply channels and
-// visuals. Household's register() creates it once with its runtime services
-// and shares it between the browser persona routes and the native consumers.
+// Shared Household turn engine for browser routes and native consumers.
 
 const { readingRequested } = require('../../src/services/voice/presentation');
 const crypto = require('crypto');
@@ -13,6 +10,7 @@ const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
 const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
 const { familyToolset } = require('./family-tools');
+const familyPictureLookup = require('./family-picture-lookup');
 const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('./family-repair-context');
 const familyPages = require('./family-pages');
 const { familyClockContext, familyIdentity } = require('./family-clock');
@@ -216,17 +214,13 @@ function createPersonaTurnHandler({
       // cubes beside the model's answer. Both spaces draw the model's own math cards.
       const mathPicture = !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathPictureFor(userText, { childSafe: pack.childSafe, language: preferredSpeechLanguage }) : null;
       const mathTurn = mathPicture?.answeredBy === 'core' ? mathPicture : null;
-      let replyText, afterSoundText = '', sceneProposal = null, display = [];
-      // Only browser child-safe turns offer clips, and never over a safety
-      // escalation or boundary reply. Native VoiX owns its own playback and does
-      // not consume this browser sound payload, so it must not invite a child to
-      // listen and then produce silence.
+      let backend, replyText, afterSoundText = '', sceneProposal = null, display = [];
+      // Native VoiX cannot play browser sound payloads.
       const selectedFamilySound = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !safety.deterministicEscalation && !childBoundary && !mathTurn
         && (!requiredSession || requiredSession.browser === true) ? sounds.select(userText) : null;
       const localSound = selectedFamilySound && soundOnlyRequest(userText, selectedFamilySound) ? selectedFamilySound : null;
       const separateSoundReply = Boolean(selectedFamilySound && !localSound);
       let sound = selectedFamilySound;
-      // Set when the turn addresses another team member (#41): who answers, and with which voice.
       let member = null, memberPersona = null, speaker = null, consultRequest = null;
       const serverPhases = {}; // where this turn's server time goes (turn-phases.js)
       let continuity = { status: 'not-required', source: 'session-audit', messageCount: 0 };
@@ -258,12 +252,16 @@ function createPersonaTurnHandler({
         knowledge.status = 'not-required-local-sound';
       } else {
         if (mathPicture) event('scene', { scene: mathPicture.scene });
-        // Scope chooses context and permissions. The same executor handles every
-        // pack; its selected backend stays fixed for this conversation.
-        const backend = conversationBackend(session.backend, conversationEnv);
+        backend = conversationBackend(session.backend, conversationEnv);
         await require('./persona-relay-turn').prepare({ entry, session, backend, conversationEnv, clientTurnId, streaming, memberWork, activePersonaTurns, res, conversations, userText, channel: req.body?.channel, speechLanguage: preferredSpeechLanguage });
         if (entry.relayDuplicate) return envelope(res, { accepted: true, turnId: clientTurnId, recovery: 'explicit_listen', replayed: false }, 202);
-        // #41: a turn that names another team member runs in that member's own session.
+        if (pack.id === VOIX_FAMILY_PACK_ID && session.scopeId === 'family' && backend === 'agentx' && !isLlmX && !consult && !entry.ephemeral
+            && !entry.workId && !safety.flagIds?.length && !entry.attachments.length) {
+          const picture = await familyPictureLookup.reply({ text: userText, language: preferredSpeechLanguage, visuals, signal: abort.signal, turnId: clientTurnId || entry.imageTurnId });
+          if (picture) { replyText = picture.text; display = picture.display; knowledge.status = 'not-required-picture-lookup'; display.forEach(block => event('show', { block })); }
+        }
+      }
+      if (backend && !replyText) {
         const team = backend === 'openclaw' && !pack.childSafe && !isLlmX ? teamAddress.teamMembers(conversationEnv) : [];
         member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session), { nativeDelegation });
         // That member is still on an earlier question: the conversation's agent answers and says so.
