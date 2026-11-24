@@ -31,7 +31,8 @@ test('unrelated local Famille turns finish context while one expired weather ref
   now = new Date(now.getTime() + 600001);
   const ordinary = ['Quelle heure est-il?', 'Raconte-moi une histoire.', 'Présente ma prévision de budget.', 'Et là?',
     'Raconte-moi une histoire sur la météo.', 'Explique la science de la météo.',
-    'Météo à Montréal?', 'What causes the weather to change?', 'Can you tell me the weather in Montreal?',
+    'Météo à Montréal?', 'Quelle météo il fait à Paris ?', 'Quelle météo fait-il dehors en décembre ?',
+    'Explique-moi quelle météo il fait dehors.', 'What causes the weather to change?', 'Can you tell me the weather in Montreal?',
     'Ne lance pas la météo.', 'Météo de la journée du mariage?'];
   for (const userText of ordinary) {
     // Exact assertion before any refresh: unrelated speech cannot initiate one.
@@ -73,7 +74,8 @@ test('explicit weather still uses current source freshness, including French and
   } };
   const questions = ['La météo?', 'Quel temps fait-il?', 'Est-ce qu’il pleut?', 'Il fait combien dehors?',
     'Il fait quel temps?', 'Quelle température dehors?', 'Is it snowing?', 'What’s the temperature?', 'How cold is it?', 'What is the weather?', 'Nestor, peux-tu me dire il fait combien dehors?',
-    'Y fait combien dehors?', 'Il pleut-tu dehors?', 'Il neige-tu présentement?', 'Quelle est la météo aujourd’hui?'];
+    'Y fait combien dehors?', 'Il fait quelle température ici ?', 'Quelle température fait-il présentement ?',
+    'Il pleut-tu dehors?', 'Il neige-tu présentement?', 'Quelle est la météo aujourd’hui?'];
   for (const userText of questions) {
     const result = await livingSourceContext({ ...initial, ambient, userText });
     assert.match(result, /current conditions are unavailable or outdated/);

@@ -17,8 +17,9 @@ function requestsWeather(text) {
   words = words.replace(/^(?:peux tu me dire |(?:est ce que )?tu peux me dire |dis moi |donne moi |could you tell me |can you tell me )/, '');
   const localFr = '(?: (?:ici|dehors|en ce moment|maintenant|presentement|actuellement|aujourd hui))?';
   const localEn = '(?: (?:here|outside|out|right now|now|today))?';
+  const questionFr = '(?:quel temps|quelle (?:meteo|temperature))';
   const french = '(?:(?:(?:quelle (?:est )?|c est quoi )?(?:la )?(?:meteo|temperature)(?: exterieure)?)'
-    + '|quel temps (?:fait il|il fait)|(?:il|y) fait (?:quel temps|combien|combien de degres)'
+    + '|' + questionFr + ' (?:fait il|il fait)|(?:il|y) fait (?:' + questionFr + '|combien(?: de degres)?)'
     + '|combien (?:fait il|de degres)|(?:est ce qu il (?:pleut|neige|vente))'
     + '|(?:il |y )?(?:pleut|neige|vente)(?: t il| tu)?)';
   const english = '(?:(?:(?:what(?: s| is) )?(?:the )?(?:weather|temperature))'
