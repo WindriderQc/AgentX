@@ -52,13 +52,13 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
     return Response.json({ run_id: state.foreignRun ? 'run_foreign' : id, status: run.cancelled ? 'cancelled' : run.done ? 'completed' : 'running',
       completed: run.done, partial: state.partial === true, output: state.nativeOutput || 'Résultat natif original vérifié.', runtime: { provider: 'synthetic', model: 'synthetic-main' } });
   });
-  const local = jest.fn(async input => {
+  const local = jest.fn(async (input, options = {}) => {
     state.inference.push(input);
     if (input.model === 'synthetic-main' && state.busy) {
       const now = new Date();
       const failure = state.failure || inferenceConflict({ inferences: [{ state: 'ACTIVE', host: PRIMARY,
         mode: 'shared', model: 'synthetic-main', acquiredAt: now, expiresAt: new Date(+now + 60000) }] },
-      { host: PRIMARY, mode: input.exclusiveHost ? 'exclusive' : 'shared', resourceIds: [] }, now);
+      { host: PRIMARY, mode: input.exclusiveHost || options.requireIdleHost ? 'exclusive' : 'shared', resourceIds: [] }, now);
       throw Object.assign(Error('Refused before dispatch'), { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', failure });
     }
     if (guardianTools && input.model === 'synthetic-guardian' && !input.messages.some(message => message.role === 'tool')) {
@@ -116,7 +116,7 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
     activePersonaTurns, envelope, fail, cleanText: value => String(value || ''), validClientTurnId: () => true, memberWork,
     reconcileConversation: execute.reconcile })('', pack.id, pack.defaultScopeId);
   const send = (text, id = randomUUID(), channel = 'voice', stream = true) => request(app).post(`/sessions/${session.sessionId}/turns/text`).send({ text, turnId: id, channel, stream });
-  return { ...state, state, session, app, send, execute, env, activePersonaTurns, memberWork, release: () => { state.held = false; state.releases.forEach(resolve => resolve()); } };
+  return { ...state, state, session, app, send, execute, local, env, activePersonaTurns, memberWork, release: () => { state.held = false; state.releases.forEach(resolve => resolve()); } };
 }
 const events = response => response.text.trim().split('\n').map(line => JSON.parse(line));
 const done = response => events(response).find(event => event.type === 'done')?.data;
@@ -129,7 +129,8 @@ test.each(['voice', 'text'])('Family %s relays on a real admission conflict, ret
   const id = randomUUID(), reply = await world.send('Explique les nuages.', id, channel).expect(200);
   expect(done(reply).reply.text).toBe('Le gardien prend le relais. Nestor est occupé.\n\nJe peux continuer la discussion.');
   expect(world.state.inference.map(input => input.model)).toEqual(['synthetic-main', 'synthetic-guardian']);
-  expect(world.state.inference[0].exclusiveHost).toBe(true);
+  expect(world.local.mock.calls[0][1].requireIdleHost).toBe(true);
+  expect(world.state.inference[0].exclusiveHost).toBe(false);
   const backup = world.state.inference[1];
   expect(backup.tools).toBeUndefined(); expect(JSON.stringify(backup)).not.toContain('/api/consumers/nestor');
   expect(backup.messages[0].content).toContain('adaptée aux enfants');
