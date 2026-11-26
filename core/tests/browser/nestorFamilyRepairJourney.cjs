@@ -99,6 +99,9 @@ window.NestorConversation.openAudio=async()=>{
  const app=express();
  app.post('/api/voix/transcribe',(_req,res)=>{const text=queue.shift();if(text===undefined)return res.status(500).json({message:'Synthetic recognition queue empty'});res.json({data:{text,recognitionId:randomUUID(),sttMs:1}});});
  app.use(express.json());
+ app.use('/assets/household',express.static(publicDir));
+ app.use('/js',express.static(path.join(core,'public/js')));
+ app.use('/css',express.static(path.join(core,'public/css')));
  app.post('/fixture/recognition',(req,res)=>{queue.push(req.body.text);res.sendStatus(204);});
  app.post('/fixture/audio-opened',(_req,res)=>{audioOpens++;res.sendStatus(204);});
  app.post('/fixture/checkpoint',(req,res)=>{checkpoint=req.body;res.sendStatus(204);});
