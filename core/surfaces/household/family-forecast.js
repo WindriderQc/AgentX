@@ -34,7 +34,7 @@ function projectTomorrowHours(value, { timeZone, requestAt = new Date(), now = r
   const fetched = epoch(value?.fetchedAt);
   const cutoff = now.getTime();
   if (!Number.isFinite(issued) || !Number.isFinite(fetched) || !Number.isFinite(cutoff)
-    || issued > fetched || issued > cutoff || fetched > cutoff + 60000 || cutoff - fetched > MAX_RETRIEVAL_AGE_MS
+    || issued > cutoff || fetched > cutoff + 60000 || cutoff - fetched > MAX_RETRIEVAL_AGE_MS
     || cutoff - issued > MAX_BULLETIN_AGE_MS || !Array.isArray(value?.hourly)) return null;
 
   const byInstant = new Map();

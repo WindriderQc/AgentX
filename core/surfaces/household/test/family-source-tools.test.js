@@ -133,6 +133,21 @@ test('missing or old Data responses are negative-cached without a second on-dema
   assert.equal((await ambient.preparedWeather()).current.status, 'available');
 });
 
+test('a cached forecast becomes available on its local issue date without a new retrieval', () => {
+  const { preparedBulletin, projectBulletin } = require('../../../src/services/livingSourceWeather');
+  const issue = new Date('2026-11-21T05:00:00Z'); // Midnight in Toronto.
+  const cached = preparedBulletin({ preparedStatus: 'fresh', fetchedAt: '2026-11-21T04:59:00Z',
+    forecastIssuedAt: issue.toISOString(), forecasts: [{ period: 'Aujourd’hui', short: 'Neige' }] });
+  const forecastAt = now => projectBulletin(cached, now, 'America/Toronto').forecast;
+  assert.equal(forecastAt(new Date(issue.getTime() - 1)).status, 'unavailable');
+  const forecast = forecastAt(issue);
+  assert.equal(forecast.status, 'available');
+  assert.equal(forecast.data.issueDate, '2026-11-21');
+  assert.equal(forecast.data.fetchedAt, '2026-11-21T04:59:00.000Z');
+  assert.equal(forecast.data.periods[0].period, 'Aujourd’hui');
+  assert.equal(forecastAt(new Date('2026-11-21T05:09:00Z')).status, 'stale');
+});
+
 test('stale retrieval, invalid hours and warnings of uncertain scope stay explicit', () => {
   const { preparedBulletin, projectBulletin } = require('../../../src/services/livingSourceWeather');
   const now = new Date('2026-11-21T12:00:00Z'), timeZone = 'America/Toronto';
@@ -146,7 +161,7 @@ test('stale retrieval, invalid hours and warnings of uncertain scope stay explic
   assert.equal(projection({warnings: []}).alerts.status, 'available');
   assert.equal(projection({warnings: undefined}).alerts.status, 'unavailable');
   assert.equal(projection({preparedStatus: 'stale', warnings: []}).alerts.status, 'stale');
-  assert.equal(projection({forecastIssuedAt: '2026-11-21T11:59:00Z'}).forecast.status, 'unavailable');
+  assert.equal(projection({forecastIssuedAt: '2026-11-21T12:00:01Z'}).forecast.status, 'unavailable');
   assert.equal(projection({forecastIssuedAt: '2026-11-20T12:00:00Z'}).forecast.status, 'stale');
   assert.equal(projection({fetchedAt: '2027-11-20T12:00:00Z'}), null);
 });

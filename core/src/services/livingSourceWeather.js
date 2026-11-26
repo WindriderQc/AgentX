@@ -83,7 +83,8 @@ function projectBulletin(bulletin, now, timeZone) {
   if (current.status === 'available' && stale) current.status = 'stale';
   if (current.freshness) current.freshness = { ...current.freshness, preparedStatus: freshness.preparedStatus, maxAgeMs: PREPARED_TTL_MS };
   let forecast = section(null, 'unavailable');
-  if (Number.isFinite(issued) && issued <= fetched && issued <= at) {
+  // A provider can deliver the next edition before its stated issue time.
+  if (Number.isFinite(fetched) && Number.isFinite(issued) && issued <= at) {
     const issueDate = calendarDayKey(issued, timeZone);
     // Ambiguous duplicates cannot establish conditions for that hour.
     const hours = new Map();
