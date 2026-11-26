@@ -1,6 +1,6 @@
 'use strict';
 
-// Standalone acceptance with disposable TLS, synthetic identities and local data.
+// Standalone browser acceptance behind the existing Household middleware.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const https = require('node:https');
@@ -16,14 +16,16 @@ async function run() {
   const pin = createHash('sha256').update(spki).digest('base64');
   const app = express();
   app.use(require('cookie-parser')());
-  let owner = false, unlocked = false, reads = 0;
+  let unlocked = false, reads = 0;
+  // Simulate an integration mounted before the Household classification.
+  app.use('/unclassified', registerWorkCockpit({express}));
   require('../household/family-device').register({app, standardJsonParser:express.json(),
     mongoose:{models:{AgentXHouseholdFamilyDevice:{findOneAndUpdate:()=>({lean:async()=>({label:'Synthetic device'})})}}},
     ownerUnlock:{activeUntil:async()=>unlocked ? new Date(Date.now()+10000) : null},
     envelope:(res,data)=>res.json({data}), fail:(res,code)=>res.sendStatus(code)});
   const scope = {pipelineId:'0007',service:'engineering',label:'Dossier fictif',intent:'Contrôle synthétique.'};
   const now = new Date().toISOString();
-  const options = {express, scope, verifyOwner:async()=>owner,
+  const options = {express, scope,
     readDossier:async input=>{
       reads++;
       assert.equal(input.pipelineId,scope.pipelineId);
@@ -37,7 +39,6 @@ async function run() {
         persona:{label:'Persona de test',description:'synthetic-excluded-field'}}]};
     }};
   app.use(mountPath,registerWorkCockpit(options));
-  app.use('/missing-verifier',registerWorkCockpit({...options,verifyOwner:undefined}));
   const server = https.createServer({cert,key},app);
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const origin = 'https://127.0.0.1:'+server.address().port;
@@ -51,11 +52,8 @@ async function run() {
   }
   let browser;
   try {
-    const paths=['/','/data','/cockpit.css','/cards.js','/cockpit.js'];
-    for (const path of paths) assert.equal((await get(mountPath+path)).status,403);
-    owner=true;
-    for(const path of ['/','/data']) {
-      assert.equal((await get('/missing-verifier'+path)).status,403);
+    for(const path of ['/','/data','/cockpit.css','/cards.js','/cockpit.js']) {
+      assert.equal((await get('/unclassified'+path)).status,403);
       const family=await get(mountPath+path,true);
       assert.equal(family.status,302); assert.equal(family.headers.location,'/panel');
     }
@@ -102,7 +100,7 @@ async function run() {
       assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
       await page.close(); console.log(width+'px HTTPS loopback: list, detail, filtered search, scroll and return OK');
     }
-    console.log('Owner fixture 200; anonymous and missing verifier 403; Family redirect to /panel; unlocked pinned device 403; denied requests made zero source reads.');
+    console.log('Classified unpinned browser 200; missing classification 403; pinned Family redirects to /panel; unlocked pinned device 403. Denials made zero source reads.');
   } finally {
     if(browser) await browser.close();
     server.closeAllConnections(); await new Promise(resolve=>server.close(resolve));

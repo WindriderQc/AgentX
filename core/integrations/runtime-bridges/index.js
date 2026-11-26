@@ -194,11 +194,11 @@ function register(api) {
       .map(row => ({ ...require('../../surfaces/household/persona-catalog').snapshot(row), edited: row.uiConfig.layoutConfig.source?.edited === true }))
     : null;
   app.use('/api/agent-ops', registerAgentOps({ express, logger, projectionProvider: evidence.getAgentOpsProjection, personaProvider }));
-  // Optional trusted host integration. The default LAN profile has no owner principal.
-  if (typeof api.ownerWorkCockpit?.verifyOwner === 'function' && api.ownerWorkCockpit.scope) {
+  const workScope = require('../../surfaces/work-cockpit/scope').readScope(process.env, logger);
+  if (workScope) {
     const cockpit = require('../../surfaces/work-cockpit/routes');
     app.use(cockpit.mountPath, cockpit.registerWorkCockpit({
-      express, verifyOwner: api.ownerWorkCockpit.verifyOwner, scope: api.ownerWorkCockpit.scope,
+      express, scope: workScope,
       readDossier: require('../../src/services/pipelineWorkReadService').dossier,
       readTeam: async () => withTeam(await evidence.getAgentOpsProjection(), personaProvider, logger)
     }));
