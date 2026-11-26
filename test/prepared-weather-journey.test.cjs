@@ -59,7 +59,7 @@ test('one background EC retrieval serves a cold Family follow-up and its dated a
   let stage = 0;
   const ambient = createFamilyAmbient();
   const agent = harness({ packId: 'kidx_nestor', backend: 'agentx', ambient,
-    conversationEnv: { HOUSEHOLD_FAMILY_TOOLS: 'source_read', HOUSEHOLD_CONVERSATION_RELAY_ENABLED: 'true' },
+    conversationEnv: { HOUSEHOLD_FAMILY_TOOLS: 'source_read', HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT: 'true', HOUSEHOLD_CONVERSATION_RELAY_ENABLED: 'true' },
     continuityExecute: async body => {
       const question = body.messages.at(-1).content;
       const evidenceLine = question.split('\n').find(line => line.includes('{"observation":'));

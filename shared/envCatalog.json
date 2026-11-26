@@ -1775,6 +1775,16 @@
       "secret": false,
       "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
     },
+    "HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "true attaches a dated, prepared weather excerpt to eligible local AgentX Family turns with the source_read grant. With the grant alone the model can request a source without a weather preload."
+    },
     "HOUSEHOLD_FAMILY_TOOLS": {
       "services": [
         "core"
@@ -1783,7 +1793,7 @@
       "default": null,
       "category": "household",
       "secret": false,
-      "description": "Comma-separated Core tools a Famille conversation on the AgentX engine may call, among those Core lists as family-eligible (today: iss_passes). Unset: Famille is offered no tool."
+      "description": "Comma-separated names from the Core Family tool registry offered to a Famille conversation on the AgentX engine. Unset: Famille is offered no tool."
     },
     "HOUSEHOLD_GUARDIAN_TOOLS": {
       "services": [
@@ -2228,6 +2238,16 @@
       "category": "bridges",
       "secret": false,
       "description": "Leantime URL for household email actions and agent-ops links. Unset: email actions answer 503."
+    },
+    "LIVEDATA_EC_WEATHER_PREPARE_ENABLED": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "operations",
+      "secret": false,
+      "description": "true keeps the configured location's French Environment Canada bulletin warm while Data background jobs, Live Data and the weather feed are enabled. Unset or false: the bulletin is collected on demand."
     },
     "LIVEDATA_LOCATIONS_JSON": {
       "services": [

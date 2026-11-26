@@ -39,6 +39,7 @@ function instance() {
 }
 
 beforeEach(() => {
+  jest.replaceProperty(process, 'env', { ...process.env, LIVEDATA_EC_WEATHER_PREPARE_ENABLED: 'true' });
   jest.useFakeTimers({ now: start, doNotFake: ['nextTick', 'setImmediate'] });
   cityWeather._cache.clear();
   fetchPage.mockReset().mockResolvedValue(page);
@@ -46,6 +47,19 @@ beforeEach(() => {
 afterEach(async () => {
   await liveData.close();
   jest.useRealTimers();
+  jest.restoreAllMocks();
+});
+
+test('the ordinary weather feed alone leaves the EC bulletin on demand', async () => {
+  delete process.env.LIVEDATA_EC_WEATHER_PREPARE_ENABLED;
+  const { db, read } = instance();
+  await liveData.init(db);
+  await jest.advanceTimersByTimeAsync(12 * 60_000);
+  expect((await read()).body.data.preparedStatus).toBe('missing');
+  expect(fetchPage).not.toHaveBeenCalled();
+  expect((await read('lang=fr')).body.data.current.temperatureC).toBe(0);
+  expect((await read()).body.data.preparedStatus).toBe('fresh');
+  expect(fetchPage).toHaveBeenCalledTimes(1);
 });
 
 test('prepares the configured French bulletin without a request and shares it across reads and config reloads', async () => {

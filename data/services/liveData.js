@@ -117,7 +117,8 @@ function clearIntervals() {
 }
 
 function startIntervals() {
-  const prepareCityWeather = masterEnabled && feeds.some(feed => feed.id === 'weather' && feed.enabled);
+  const prepareCityWeather = process.env.LIVEDATA_EC_WEATHER_PREPARE_ENABLED === 'true'
+    && masterEnabled && feeds.some(feed => feed.id === 'weather' && feed.enabled);
   if (prepareCityWeather && !stopCityWeather) stopCityWeather = cityWeather.startPreparation(db);
   if (!prepareCityWeather && stopCityWeather) {
     stopCityWeather();

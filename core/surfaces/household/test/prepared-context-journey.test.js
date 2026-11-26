@@ -22,7 +22,7 @@ test('Family turns can use a single prepared bulletin without synchronous collec
     }
   });
   const h = harness({ packId: 'kidx_nestor', backend: 'agentx', ambient,
-    conversationEnv: { HOUSEHOLD_FAMILY_TOOLS: 'source_read', PLANNING_TIME_ZONE: 'America/Toronto' } });
+    conversationEnv: { HOUSEHOLD_FAMILY_TOOLS: 'source_read', HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT: 'true', PLANNING_TIME_ZONE: 'America/Toronto' } });
   for (const [id, text] of [
     ['moon', 'Pourquoi la Lune change-t-elle de forme ?'],
     ['greeting', 'Bonjour !'],
@@ -44,6 +44,42 @@ test('Family turns can use a single prepared bulletin without synchronous collec
       localReadsSoFar: localReads.length, modelToolReceipts: turn.toolEvidence?.receipts?.length ?? null }));
   }
   assert.deepEqual(localReads, [{ path: '/api/v1/livedata/ec-weather', query: 'lang=fr&prepared=1' }]);
+});
+
+test('a source grant alone waits for an explicit model tool call on local Family turns', async () => {
+  const reads = [];
+  const now = new Date().toISOString();
+  const ambient = {
+    weather: async () => { reads.push('current'); return { observedAt: now, fetchedAt: now, temperatureC: 12 }; },
+    forecastTomorrow: async () => { reads.push('forecast'); },
+    peekWeather: () => { reads.push('peek'); },
+    preparedWeather: async () => { reads.push('prepared'); return null; }
+  };
+  let requestWeather = false;
+  const h = harness({ packId: 'kidx_nestor', backend: 'agentx', ambient,
+    conversationEnv: { HOUSEHOLD_FAMILY_TOOLS: 'source_read,web_search' },
+    response: body => {
+      const message = body.messages.at(-1);
+      if (message.role === 'tool') {
+        const receipt = JSON.parse(message.content);
+        assert.equal(receipt.audience, 'household');
+        assert.equal(receipt.data.temperatureC, 12);
+        return 'Douze degrés.';
+      }
+      assert.deepEqual(reads, []);
+      assert.doesNotMatch(message.content, /Prepared local weather|Core living-source catalogue|Answer this request directly|Core did not look up weather|Household forecast:/);
+      assert.ok(body.tools.some(tool => tool.function.name === 'source_read'));
+      if (!requestWeather) return 'Réponse synthétique.';
+      return { message: { tool_calls: [{ function: { name: 'source_read', arguments: { source: 'weather' } } }] } };
+    } });
+  for (const [question, channel] of [['Bonjour !', 'text'], ['Quel temps fait-il dehors ?', 'voice'], ['Et demain ?', 'voice']]) {
+    await h.turn(question, channel);
+  }
+  requestWeather = true;
+  await h.turn('Peux-tu vérifier les conditions ?', 'text');
+  assert.deepEqual(reads, ['prepared', 'current']);
+  assert.equal(h.turns[0].replyText, 'Douze degrés.');
+  assert.ok(h.turns[0].toolEvidence.receipts.some(row => row.tool === 'source_read' && row.status === 'completed'));
 });
 
 test('an optional weather excerpt stays silent for missing, future and expired observations', async () => {

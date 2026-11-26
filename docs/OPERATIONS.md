@@ -949,6 +949,12 @@ per call. When the model runtime refuses tools, the turn is answered without
 them and recorded as `not_supported`. Unset, Famille is offered no tool and the
 prompt keeps saying so.
 
+With `source_read` granted, local Famille turns read weather on a model call.
+Set `HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT=true` in Core to attach
+available dated weather before the model answers. Set
+`LIVEDATA_EC_WEATHER_PREPARE_ENABLED=true` in Data to keep the bulletin warm
+while Data background jobs, Live Data and the weather feed are enabled.
+
 The personal finance capability is described for a new maintainer in
 [FINANCE.md](FINANCE.md). The personal finance ledger ingests bank and credit-card statements dropped in
 `FINANCE_INBOX_PATH`. Core reads the PDF text layer (`pdftotext -layout`), a

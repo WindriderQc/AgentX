@@ -139,8 +139,10 @@ keys and are sent to the selected upstream provider.
   Canada) answer 404 (`not_found`). Missing or nonnumeric measurements remain
   `null`; a measured zero remains `0`.
 
-With Data background jobs, the Live Data master switch and the weather feed
-enabled, Data prepares the configured location's French bulletin at startup
+Set `LIVEDATA_EC_WEATHER_PREPARE_ENABLED=true` to prepare the configured
+location's French bulletin in the background. It defaults to on-demand
+collection. With this setting, Data background jobs, the Live Data master
+switch and the weather feed enabled, Data prepares the bulletin at startup
 and refreshes it after nine minutes. This uses the same ten-minute memory
 cache as interactive requests. A collection failure leaves the last good
 bulletin and its original dates intact and retries after one minute. Switching

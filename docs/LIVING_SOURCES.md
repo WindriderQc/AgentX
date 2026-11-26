@@ -49,7 +49,7 @@ transport supports the same sections. The reader accepts the configured
 household area only. The bulletin omits station and household identifiers,
 coordinates, private data and provider links.
 
-Eligible principal turns receive source information and dated weather context.
+Eligible principal turns use the instance's source and weather context settings.
 Reader, specialist and LLMx turns do not receive that context automatically. Reader can explicitly call the family agent's shared
 source tools when installed; it receives no owner tools or private sources.
 The directory contains metadata, not private records or proof of a
@@ -116,7 +116,7 @@ observation freshness. No observation-age threshold or producer cadence is
 inferred; observationFreshness remains unknown. Automatic personal and family
 context and explicit current reads distinguish the retrieval date from the
 observation date. Core reads Data’s prepared entry with a bounded LAN request
-and caches successes and failures briefly. Automatic turn context and the forecast and alert sections
+and caches successes and failures briefly. The optional local Family weather excerpt and the forecast and alert sections
 use only the prepared entry. For an explicit section `current` read (including
 the default), Core uses the existing on-demand reader when prepared current
 conditions are missing or stale. If refreshing fails or returns an older
@@ -155,8 +155,12 @@ and conversation/guardian continuity. Queue model-based acceptance through the
 existing heavy-work entrance. Keep private receipts outside public Git.
 
 Local Family turns with the source reader discover its sections through the
-offered tool schema. Their prompt includes a small dated weather excerpt when
-available. Other eligible turns use the existing catalogue projection.
+offered tool schema. By default these turns wait for a model tool call before
+reading weather. Setting `HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT=true`
+also includes a small dated excerpt when available. Other eligible turns use
+their existing catalogue projection. Data's independent
+`LIVEDATA_EC_WEATHER_PREPARE_ENABLED=true` keeps the French bulletin for the
+configured place warm while the live weather feed and background jobs run.
 
 With Core and Data dependencies installed, run
 `node --test test/prepared-weather-journey.test.cjs` to exercise the background

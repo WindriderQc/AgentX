@@ -187,8 +187,10 @@ test('a covered voice turn speaks the source when all model content is on screen
 });
 
 
-test('granting the Family source reader lets the model use prepared facts for a paraphrase and its follow-up', async () => {
+test('selecting a prepared Family weather excerpt supplies facts for a paraphrase and its follow-up', async () => {
   const previous = process.env.HOUSEHOLD_FAMILY_TOOLS;
+  const previousContext = process.env.HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT;
+  process.env.HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT = 'true';
   process.env.HOUSEHOLD_FAMILY_TOOLS = 'source_read,web_search';
   try {
     const sessionId = await startSession();
@@ -219,6 +221,8 @@ test('granting the Family source reader lets the model use prepared facts for a 
     expect(liveRead).not.toHaveBeenCalled();
     expect(tomorrowRead).not.toHaveBeenCalled();
   } finally {
+    if (previousContext === undefined) delete process.env.HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT;
+    else process.env.HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT = previousContext;
     if (previous === undefined) delete process.env.HOUSEHOLD_FAMILY_TOOLS;
     else process.env.HOUSEHOLD_FAMILY_TOOLS = previous;
   }

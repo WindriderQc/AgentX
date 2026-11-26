@@ -135,10 +135,11 @@ child-safe sessions without moving existing history between engines.
 Direct Core inference offers the tools selected by `HOUSEHOLD_FAMILY_TOOLS`
 from the [Family registry](../core/surfaces/household/family-tools.js).
 Core executes calls and returns their results and receipts. With `source_read`
-granted, local Family turns can use a dated, prepared weather excerpt from
-Data. The model can request a forecast or alert section when it needs more
-coverage. Data prepares the configured bulletin while the screen is closed
-when its background jobs, live feeds and weather collection are enabled.
+granted, the local Family model can request the current conditions, forecast
+or alerts. An instance can also set `HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT=true`
+to attach a dated weather excerpt to each eligible local Family turn. Data
+can keep the bulletin warm while the screen is closed with
+`LIVEDATA_EC_WEATHER_PREPARE_ENABLED=true`, background jobs and the live weather feed.
 With `family_cards_read`, the local model can request published plant cards
 or Kids Room chores in eligible sessions. Web results are untrusted references
 with URLs. Network reads use the existing collector inventory and its timestamps.
