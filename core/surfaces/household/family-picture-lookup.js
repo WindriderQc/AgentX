@@ -35,7 +35,7 @@ async function reply({ text, language, visuals, signal, turnId }) {
   signal.throwIfAborted();
   const block = { id: 'family-picture', key: 'family-picture:' + turnId, kind: 'image', source: 'web',
     title: en ? 'Animal picture' : 'Image d’animal', body: animalSearchQuery(intent.subject, language) };
-  const found = await visuals.present(block, { family: true, language, exactSource: true }).catch(() => null);
+  const found = await visuals.present(block, { family: true, language }).catch(() => null);
   signal.throwIfAborted();
   if (found?.source !== 'web' || found.status !== 'found' || !found.image?.url) {
     return { text: en ? 'I couldn’t find a picture of that animal right now.' : 'Je n’ai pas trouvé d’image de cet animal pour le moment.', display: [] };

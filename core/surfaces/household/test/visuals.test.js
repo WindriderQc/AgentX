@@ -87,14 +87,21 @@ test('a web image is an https result from SearXNG, with strict SafeSearch in Fam
   assert.equal(calls[1].searchParams.get('safesearch'), '1');
 });
 
-test('an unavailable source falls back to one that is, and a failed lookup shows nothing', async () => {
+test('only the selected image source receives a lookup on Family and Personal', async () => {
+  const calls = [];
   const visuals = createVisuals({ env: { SEARXNG_URL: 'http://searxng.example.test' },
-    fetchImpl: async () => { throw new Error('offline'); } });
-  const block = { kind: 'image', source: 'photos', body: 'cabane' };
-  await visuals.present(block);
-  assert.equal(block.source, 'web');
-  assert.equal(block.status, 'missing');
-  assert.equal(block.image, null);
+    fetchImpl: async url => { calls.push(url); throw new Error('offline'); } });
+  for (const family of [true, false]) {
+    for (const source of ['photos', 'media', '', 'unavailable']) {
+      const block = await visuals.present({ kind: 'image', source, body: 'cabane' }, { family });
+      assert.equal(block.status, 'missing');
+      assert.equal(block.image, null);
+    }
+  }
+  assert.equal(calls.length, 0);
+  const offline = await visuals.present({ kind: 'image', source: 'web', body: 'igloo' });
+  assert.equal(calls.length, 1);
+  assert.equal(offline.status, 'missing');
   const text = { kind: 'list', body: 'a' };
   assert.equal(await visuals.present(text), text, 'other blocks pass through untouched');
 });
@@ -239,6 +246,8 @@ test('the contract offers pictures only when a source is available', () => {
   assert.doesNotMatch(contract(), /kind="image"/);
   assert.match(contract({ family: true, imageSources: ['web', 'photos'] }), /kind="image" source="web\|photos"/);
   assert.match(contract({ imageSources: ['web'] }), /Never write a URL or a path/);
+  assert.doesNotMatch(contract({ imageSources: ['web'] }), /by file or folder|for a file or folder/);
+  assert.doesNotMatch(contract({ family: true, imageSources: ['photos'] }), /public web picture/);
 });
 
 test('a generated picture cited by the harness is relayed from the gateway media route only', async () => {

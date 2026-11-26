@@ -272,7 +272,7 @@ test('#1553 known public animal lookup stays separate from explicit creation',as
   const found=await h.turn('Peux-tu me montrer une image de renard ?',id(8));
   assert.match(found.result?.reply.text,/trouvé une image/);
   assert.equal(searches.length,1);
-  assert.equal(searches[0].options.exactSource,true);
+  assert.equal(searches[0].block.source,'web');
   assert.match(searches[0].block.body,/renard/i);
   assert.deepEqual(h.dispatches,[]); assert.deepEqual(h.admitted,[]);
   const draw=await h.turn(create,id(9));

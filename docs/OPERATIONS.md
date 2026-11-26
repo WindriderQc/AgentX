@@ -1324,6 +1324,8 @@ and `HOUSEHOLD_IMAGE_ROOTS_JSON` maps each source to the canonical root Data
 indexes for it. A picture is found by file or folder name; Data filters the
 servable image extensions before its 25-result limit, so videos cannot hide a
 photo in the same album. Named folders work better than camera names.
+Each picture lookup uses the selected source. A missing or unavailable selection
+returns an empty card and triggers no search on another source.
 `HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON` optionally supplies a JSON array of
 objects with `names` (exact French and English subject labels), `url` (the
 fixed HTTPS image), `origin` (the HTTPS source page), and `credit` (the visible

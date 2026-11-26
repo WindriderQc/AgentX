@@ -209,7 +209,7 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
   }
 
   // Resolves an image block in place, so the turn's display keeps the result.
-  async function present(block, { family = false, language = 'fr', ephemeral = false, exactSource = false } = {}) {
+  async function present(block, { family = false, language = 'fr', ephemeral = false } = {}) {
     if (block?.kind !== 'image') return block;
     if (block.source === 'generated') {
       const ref = generatedAllowed(family) ? generatedRef(block.ref) : '';
@@ -220,8 +220,7 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
       return block;
     }
     const allowed = sources({ family });
-    if (family && block.source === 'web' && reviewedFamilyPicturesEnabled()) exactSource = true;
-    const source = allowed.includes(block.source) ? block.source : exactSource ? '' : allowed[0] || '';
+    const source = allowed.includes(block.source) ? block.source : '';
     block.source = source;
     let found = null;
     try {
