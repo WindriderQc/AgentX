@@ -148,6 +148,49 @@ test('idle HTTP starts complete Main first with the exact native payload and one
   expect((await createWorkDelivery(works).snapshot(session.sessionId)).items[0].result.automaticSpeech).toBe(false);
 });
 
+test('a quoted mailbox instruction reaches the leading Main without a request-specific delegation order', async () => {
+  const original = input('Traduis en anglais « lis mes derniers courriels ».');
+  const response = await send(original);
+  expect(response.status).toBe(200);
+  expect(sent.map(item => item.body.model)).toEqual(['openclaw/main']);
+  const { instructions, input: messages } = sent[0].body;
+  expect(instructions).toContain('Translate or discuss supplied text directly');
+  expect(JSON.stringify(messages)).not.toContain('This request belongs to Main and the Secretary');
+  expect(messages.at(-1).content.at(-1)).toEqual({ type: 'input_text', text: original.text });
+  const row = await works.repo.get(hash(session.sessionId + '\n' + original.turnId));
+  expect(row.entryPolicy).toBe('main-first/v1');
+  expect(row.tools.some(receipt => receipt.tool === 'source_read' || receipt.tool === 'sessions_spawn')).toBe(false);
+});
+
+test('a current mailbox consultation is published only after the Secretary returns to its own native attempt', async () => {
+  const original = input('Lis mes derniers courriels.');
+  const accepted = await works.intake(original);
+  await works.prepare(accepted.row._id, '');
+  const attemptSession = randomUUID(), runId = 'resp_' + randomUUID();
+  const run = { id: runId, key: 'agent:main:household:direct:' + attemptSession, agent: 'main', done: true,
+    text: 'Synthetic mailbox result.' };
+  const attempt = { id: randomUUID(), sessionId: attemptSession, agentId: 'main', sessionKey: run.key, runId };
+  const row = await works.repo.mutate(accepted.row._id, () => ({ fields: { state: 'running', attempt }, event: 'fixture_native_started' }));
+  const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+  const proof = evidence(run);
+  const receive = changes => runtime.receive({ row, evidence: { ...proof, ...changes } });
+  expect(await receive({})).toBeNull();
+  expect(await receive({ toolChecks: { ...proof.toolChecks, completedTools: ['conversation_work', 'source_read'] } })).toBeNull();
+  proof.progress = [{ tool: 'sessions_spawn', agentId: 'secretary' }];
+  proof.toolChecks.completedTools.push('sessions_spawn', 'sessions_yield');
+  expect(await receive({})).toBeNull();
+  expect(await receive({ answer: { runId, status: 'yielded' } })).toEqual({ pending: true });
+  proof.answer.deliveredBy = 'announce:requester-settle:synthetic';
+  expect(await receive({ progress: [{ tool: 'sessions_spawn', agentId: 'another-agent' }] })).toBeNull();
+  expect(await receive({ answer: { ...proof.answer, runId: 'resp_' + randomUUID() } })).toBeNull();
+  await expect(receive({ run: { ...proof.run, sessionKey: 'agent:main:household:direct:' + randomUUID() } }))
+    .rejects.toMatchObject({ code: 'CONVERSATION_WORK_NATIVE_RESULT_INVALID' });
+  expect((await works.repo.get(row._id)).result).toBeUndefined();
+  expect(await receive({})).toEqual({ published: true });
+  const published = await works.repo.get(row._id);
+  expect((await works.repo.read(published, published.result.payloadRef)).text).toBe(run.text);
+});
+
 test('the new leading path retains native task/context callbacks and their exact read receipts', async () => {
   const original = input('Regarde mes tâches.');
   const response = await send(original);
