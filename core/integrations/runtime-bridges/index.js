@@ -199,7 +199,7 @@ function register(api) {
     const cockpit = require('../../surfaces/work-cockpit/routes');
     app.use(cockpit.mountPath, cockpit.registerWorkCockpit({
       express, scope: workScope,
-      readDossier: require('../../src/services/pipelineWorkReadService').dossier,
+      readPipeline: require('../../surfaces/work-cockpit/pipeline').readPipeline,
       readTeam: async () => withTeam(await evidence.getAgentOpsProjection(), personaProvider, logger)
     }));
   }

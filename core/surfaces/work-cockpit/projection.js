@@ -1,26 +1,7 @@
 'use strict';
 
-const events = new Set(['intake_decision', 'transition', 'created']);
 const identifier = value => typeof value === 'string' && /^[a-z0-9_.-]{1,80}$/i.test(value) ? value : null;
 const timestamp = value => value && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
-function count(value) {
-  if (!Number.isSafeInteger(value) || value < 0) throw new Error('Invalid count');
-  return value;
-}
-
-function projectDossier({task}, scope) {
-  if (!task || task.pipelineId !== scope.pipelineId || task.service !== scope.service ||
-      task.nextAction.reference !== '/pipeline?task=' + scope.pipelineId) throw new Error('Unexpected scope');
-  return {observedAt: timestamp(task.nextAction.observedAt), record: {
-    pipelineId: scope.pipelineId, label: scope.label, intent: scope.intent, assigned: Boolean(task.assignee),
-    status: identifier(task.status), intake: identifier(task.intakeView.state),
-    nextAction: identifier(task.nextAction.code), updatedAt: timestamp(task.updatedAt),
-    attempts: count(task.automationAttemptCount), relationships: count(task.workView.entryCount),
-    timeline: task.timeline.filter(event => events.has(event.kind))
-      .map(event => ({kind: event.kind, at: timestamp(event.at)}))
-  }};
-}
-
 function projectTeam(team) {
   if (team.readOnly !== true || !Array.isArray(team.agents)) throw new Error('Unexpected registry');
   return {observedAt: timestamp(team.generatedAt), agents: team.agents.map(entry => {
@@ -32,17 +13,24 @@ function projectTeam(team) {
   })};
 }
 
-async function read(source) {
-  try { return {state:'read', ...await source()}; }
-  catch { return {state:'unavailable', reason:'source_indisponible'}; }
+// All readers of one source share one deadline and one underlying operation.
+// Keep the slot until the provider settles, even if the HTTP deadline expires.
+function sourceReader(provider, deadlineMs) {
+  let inFlight;
+  return function read() {
+    if (inFlight) return inFlight;
+    let timer;
+    const checkedAt = new Date().toISOString();
+    const work = Promise.resolve().then(provider)
+      .then(data => ({state:'read', checkedAt, ...data}),
+        () => ({state:'unavailable', reason:'source_indisponible', checkedAt}))
+      .finally(() => { clearTimeout(timer); inFlight = undefined; });
+    const deadline = new Promise(resolve => {
+      timer = setTimeout(() => resolve({state:'unavailable', reason:'timeout', checkedAt}), deadlineMs);
+    });
+    inFlight = Promise.race([work, deadline]);
+    return inFlight;
+  };
 }
 
-async function snapshot({scope, readDossier, readTeam}) {
-  const [pipeline, registry] = await Promise.all([
-    read(async () => projectDossier(await readDossier({pipelineId:scope.pipelineId, pageChars:256}), scope)),
-    read(async () => projectTeam(await readTeam()))
-  ]);
-  return {pipeline, registry, checkedAt:new Date().toISOString()};
-}
-
-module.exports = {snapshot};
+module.exports = {sourceReader, projectTeam};
