@@ -42,6 +42,10 @@ test('a stored review survives a restart and informs the next turn', async () =>
   const served = await restarted.wait(session.sessionId, traceId, { session: reloaded, timeoutMs: 10 });
   expect(served.adviceId).toBe(delivered.adviceId);
   expect(served).not.toHaveProperty('preferencesRevision');
+  const disabled = brainWith({ prefs: { revision: 1, values: { backgroundReview: false } } }).brain;
+  expect(await disabled.contextWithRefs(session.sessionId, reloaded)).toEqual({ text: '', refs: [] });
+  const familySession = { ...reloaded, ...FAMILY, sessionId: randomUUID() };
+  expect(await restarted.contextWithRefs(familySession.sessionId, familySession)).toEqual({ text: '', refs: [] });
 });
 
 test('a review overtaken by a newer recorded turn is neither stored nor delivered', async () => {
