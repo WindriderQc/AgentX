@@ -111,6 +111,17 @@ test('the real Lecture adapter stays on its family pack through wake, short repl
   await h.pauseVoice(); assert.equal(h.element('readerMic').textContent, 'Enable voice');
 });
 
+test('hands-free Reader replays a saved French answer after switching the next turn to English', async () => {
+  const h = await browser({ handsFree: true, savedLanguage: 'fr', turnResponse: () =>
+    Response.json({ data: { reply: { text: 'Bonjour tout le monde.', language: 'fr' } } }) });
+  await h.enableVoice();
+  await h.ask();
+  h.choose('en');
+  await h.element('readerReplay').listeners.click();
+  assert.deepEqual(h.requests.filter(row => row.url.endsWith('/synthesize/stream')).map(row => row.body.language), ['fr', 'fr']);
+  await h.pauseVoice();
+});
+
 test('typing while Lecture listens produces one request and one playback through the same loop', async () => {
   const h = await browser({ handsFree: true }); await h.enableVoice(); await h.ask();
   assert.equal(h.requests.filter(row => row.url.endsWith('/turns/text')).length, 1);
