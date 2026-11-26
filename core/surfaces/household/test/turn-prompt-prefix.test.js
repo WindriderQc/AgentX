@@ -97,7 +97,7 @@ for (const backend of ['agentx', 'openclaw']) {
     const prefix = sent[0].prefix;
     assert.ok(!prefix.includes(state.session.persona.identity), 'adult temperament is not injected in Family');
     assert.match(prefix, /Nestor/);
-    assert.match(prefix, /français québécois naturel/);
+    assert.ok(prefix.includes(require('../family-context').FAMILY_TONE));
     assert.match(prefix, /Fun never overrides accuracy or the safety rules/);
     assert.match(prefix, /sans nouvelle question ni offre de rappel systématique/);
     if (backend === 'agentx') assert.match(prefix, /No native agent tools, skills or Dreaming run here/);

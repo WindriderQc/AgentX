@@ -46,7 +46,7 @@ test('private information safety is not removed by screen intent',()=>{
  const text='Ouvre la page avec mon mot de passe';const guard=prompt.assessSafety(text);assert.match(prompt.childBoundaryReply({childSafe:true},guard,text),/information privée/);
 });
 test('family tone drops adult temperament while personal identity stays unchanged',async()=>{
- const h=family();h.session.persona.identity='Adult formal butler overlay';await h.turn('Pourquoi le ciel est bleu?','voice');assert.doesNotMatch(h.sent[0].prefix,/Adult formal butler overlay/);assert.match(h.sent[0].prefix,/français québécois naturel/);assert.match(h.sent[0].request,/Household clock observed/);
+ const h=family();h.session.persona.identity='Adult formal butler overlay';await h.turn('Pourquoi le ciel est bleu?','voice');assert.doesNotMatch(h.sent[0].prefix,/Adult formal butler overlay/);assert.ok(h.sent[0].prefix.includes(require('../family-context').FAMILY_TONE));assert.match(h.sent[0].request,/Household clock observed/);
  const personal=harness({packId:'personal_operator',backend:'agentx'});personal.session.persona.identity='Personal chosen style';await personal.turn('Bonjour','voice');assert.match(personal.sent[0].prefix,/Personal chosen style/);assert.doesNotMatch(personal.sent[0].request,/Household clock observed/);
 });
 test('clock belongs to the instance zone, with explicit DST offset and safe invalid configuration',()=>{

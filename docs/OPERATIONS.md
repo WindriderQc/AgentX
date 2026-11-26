@@ -1367,14 +1367,14 @@ the microphone off and Reprendre asks for it.
 For a saved complete voice answer whose playback was interrupted, the original
 message offers **Réécouter cette réponse**. The control reads the retained reply
 through speech synthesis with the microphone paused.
-Famille keeps the Nestor personality but replaces its adult temperament with a
-playful, curious tone for children (`FAMILY_TONE` in
-`core/surfaces/household/family-context.js`), sent with the family surface
-contract on the OpenClaw backend and appended to the family pack prompt on the
-AgentX backend. In both final prompts the child temperament follows the selected
-adult personality. A follow-up invitation is optional when useful. Accuracy
-and the safety rules still come first. Composition tests establish this ordering;
-the installed runtime and conversational preference need separate qualification.
+Famille and Reader use the presentation in
+`core/surfaces/household/family-style.txt`. The image ships with a conversational
+default. To supply instance wording, bind-mount a UTF-8 text file read-only at
+`/app/surfaces/household/family-style.txt` and recreate Core. Core reads it once
+at startup. The local family packs, conversation relay and OpenClaw family
+surface contract share the resulting tone. Child safeguards, clarification,
+tool grants and receipt requirements remain in the product. The existing
+voice language selection continues to apply.
 Every Super Dad turn also receives the active child profiles of the Family page
 (`/dad/family`) as approved knowledge, so the children's names and age bands
 do not depend on which notes a search selects. Famille turns do not.

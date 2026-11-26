@@ -1,5 +1,8 @@
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
+
 // What a family conversation may know and keep beyond talking. Nestor sees a
 // read-only summary of the Kids Room routines (#41) and may keep a child's idea
 // or reminder for the parent to review (#13). Nothing here checks in, approves
@@ -162,12 +165,10 @@ async function plantSummary(plants, { logger } = {}) {
   }
 }
 
-// How Nestor sounds with children (#121). Famille keeps the Nestor
-// personality, whose adult temperament (a dry-witted majordomo) read flat to a
-// child; this replaces that temperament in family conversations only. It is
-// presentation: accuracy and every safety rule still come first.
+// An instance may mount its presentation text over the shipped default.
+// Both conversation backends share this value for the lifetime of the process.
 const FAMILY_TONE = [
-  'Parle en français québécois naturel, chaleureux et clair, avec le tutoiement et une orthographe standard pour la voix. En anglais si la personne le choisit. Pas de caricature, de ton de majordome ni de discours formel.',
+  fs.readFileSync(path.join(__dirname, 'family-style.txt'), 'utf8').trim(),
   'This replaces the selected personality\'s adult temperament in family conversations.',
   'Réponds directement en une ou deux phrases pour une demande simple. Développe pour une histoire, une explication demandée ou la sécurité. Pas de boîte ou livre magique ni de comparaison enfantine automatique.',
   'Comprends les tournures québécoises et les hésitations. Si un mot incertain change le geste demandé ou sa cible, demande à l’enfant de préciser ce mot avant de choisir un outil. Réponds directement quand le sens est clair.',
