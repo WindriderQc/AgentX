@@ -22,6 +22,10 @@ agents' sessions do not gain this access. Recommendations stay in the reply.
 `personal_memory` uses `/api/consumers/nestor/v1/memory/notes`. A failed or
 ambiguous write is never retried automatically or redirected to a local note
 file. List/search coverage and Core receipts are returned to the native tool.
+In a private owner turn, `search_family` takes a query and reads current shared
+family notes when the instance has configured the family space in Core. The
+secretary's catalogue keeps the personal note operations. Family search returns
+a Core receipt with `memorySpace: "family"` and `household/normal` notes.
 In a locally routed private owner turn, the prompt hook reads Core's `turn-context` projection
 and refreshes the current note evidence. Core's protection flag temporarily
 blocks native session searches and history reads for current recall. Explicit

@@ -5,7 +5,7 @@ import { continuityHttpHandler, continuityOperations, householdWorkspace } from 
 import { mediaHttpHandler, mediaRoot } from "./media.js";
 import { resolveAgentConfig, resolveAgentWorkspaceDir, resolveAgentEffectiveModelPrimary } from "openclaw/plugin-sdk/agent-runtime";
 
-import { createCoreNotesClient, configuredJobContext } from "./core-notes.js";
+import { createCoreNotesClient, configuredJobContext, registerPersonalMemory } from "./core-notes.js";
 import { createCoreVaultClient } from "./core-vault.js";
 import { createCoreJournalClient } from "./core-journal.js";
 import { createCoreBriefClient } from "./core-brief.js";
@@ -67,33 +67,7 @@ export default definePluginEntry({
       }) });
     api.registerHttpRoute({ path: "/api/nestor/media", auth: "gateway", match: "exact",
       handler: mediaHttpHandler(mediaRoot(process.env, api.pluginConfig?.mediaRoot)) });
-    api.registerTool((context) => {
-      if (!privateOwnerContext(context, api.config) && !secretaryContext(context)) return null;
-      return {
-        name: "personal_memory",
-        label: "Personal Memory",
-        description: "Remember only an explicit, lasting personal fact, preference or decision in one sentence. Never a summary of a mail, thread or document (use mail_journal), never identifiers or account numbers. Search/list private notes; correct a note using its existing id; forget an exact id. Notes use AgentX Core, shared with the owner Nestor UI and voice. Confirm only the receipt; forgetting does not erase chat history.",
-        parameters: {
-          type: "object",
-          properties: {
-            action: { type: "string", enum: ["remember", "list", "search", "forget"] },
-            text: { type: "string", minLength: 1, maxLength: 2000 },
-            query: { type: "string", maxLength: 2000 },
-            id: { type: "string", pattern: "^[a-f0-9]{24}$" },
-            kind: { type: "string", enum: ["fact", "preference", "decision"] },
-            expiresAt: { type: "string", maxLength: 40 },
-            includeHistory: { type: "boolean", description: "Explicit list only: include replaced facts and successor links within this owner space." },
-          },
-          required: ["action"],
-          additionalProperties: false,
-        },
-        async execute(_callId, params) {
-          // The session, not the model, says where a remembered fact came from.
-          const provenance = secretaryContext(context) ? "mail-review" : morningContext(context) ? "scheduled" : "conversation";
-          return receipt(await readNotes(params.action === "remember" ? { ...params, provenance } : params));
-        },
-      };
-    }, { name: "personal_memory", optional: true });
+    registerPersonalMemory(api, readNotes);
 
     api.registerTool(context => {
       if (!privateOwnerContext(context, api.config) && !secretaryContext(context)) return null;

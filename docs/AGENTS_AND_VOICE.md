@@ -152,6 +152,14 @@ it. Reader, ephemeral sessions and native engines do not receive this tool.
 Qualify the model’s handling of a request, a paraphrase and a withdrawal before
 enabling this grant on an instance.
 
+Personal Nestor can consult current Family notes on an authorized owner
+runtime when the instance enables `HOUSEHOLD_PERSONAL_FAMILY_MEMORY_READ`.
+It requests `personal_memory` with action `search_family` and a query.
+A result carries the family space and the original note's provenance.
+Personal searches and edits continue to address the personal notebook. Family
+and Reader recall notes in the family space. Each conversation keeps its own
+transcript.
+
 Full-screen Nestor shows the observed reply model as a badge in the top right
 corner and distinguishes Big Brain, the limited guardian relay and other model
 fallbacks by name and colour; nothing shows before a turn. A tap opens the detail.

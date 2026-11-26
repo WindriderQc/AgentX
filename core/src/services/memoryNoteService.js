@@ -425,6 +425,13 @@ async function operatePersonal(input = {}) {
   let result;
   if (operation === 'list') result = await notes.list(input);
   else if (operation === 'search') result = await notes.search(input.query, input);
+  else if (operation === 'search_family') {
+    if (process.env.HOUSEHOLD_PERSONAL_FAMILY_MEMORY_READ !== 'true') throw error('Family note access is disabled for the personal assistant', 403);
+    const { packById, packIdsSharingMemory } = require('../../surfaces/household/packs');
+    const pack = packById('kidx_nestor');
+    const family = forSpace({ audience: 'household', scopeId: pack.defaultScopeId, packIds: packIdsSharingMemory(pack) });
+    result = { ...await family.search(input.query, { limit: input.limit }), memorySpace: 'family' };
+  }
   else if (operation === 'turn-context') result = await notes.turnContext(input.query);
   else if (operation === 'context') {
     const matched = await notes.search(input.query, input);
@@ -436,7 +443,7 @@ async function operatePersonal(input = {}) {
   else if (operation === 'remember') result = await notes.remember({ ...input,
     source: input.provenance === undefined ? undefined : AGENT_PROVENANCE[input.provenance] || 'nestor-conversation' });
   else if (operation === 'forget') result = await notes.forget(input.id);
-  else throw error('Choose list, search, remember, forget or turn-context');
+  else throw error('Choose list, search, search_family, remember, forget, context or turn-context');
   return { ...result, operation };
 }
 

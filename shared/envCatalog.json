@@ -1815,6 +1815,16 @@
       "secret": false,
       "description": "Server-side HTTP origin of the optional Hermes conversation API. Unset disables this engine."
     },
+    "HOUSEHOLD_PERSONAL_FAMILY_MEMORY_READ": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Allow an authorized owner runtime to search current Family notes with the search_family action of personal_memory. Family access to personal notes is unavailable."
+    },
     "HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND": {
       "services": [
         "core"
