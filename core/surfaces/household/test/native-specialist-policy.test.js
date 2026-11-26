@@ -1,19 +1,19 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { requestsSecretary, requestsSecretaryRead, requestsReadEffects } = require('../native-specialist-policy');
+const { requestsSecretary, requestsSecretaryRead, requestsDirectSecretaryRead, requestsReadEffects } = require('../native-specialist-policy');
 
 test('personal mail work and explicit Secretary requests retain native specialist execution', () => {
-  for (const text of ['Résume mes courriels récents.', 'Quels sont mes nouveaux mails ?', 'Cherche dans mon Gmail.',
+  for (const text of ['Résume mes courriels récents.', 'Quels sont mes nouveaux mails ?', 'Cherche dans mon Gmail.', 'Lis les nouveaux messages de ma boîte.', 'Read my inbox.',
     'What is in my latest emails?', 'Please draft a reply to my email.', 'Demande à la Secrétaire quels outils sont disponibles.',
     'Consulte la secrétaire et regarde mes tâches.']) assert.equal(requestsSecretary(text), true, text);
   for (const text of ['Bonjour.', 'Regarde mes tâches.', 'Comment fonctionne le protocole email ?',
-    'La secrétaire est un personnage de ce roman.', 'Ne consulte pas la Secrétaire.', "Don't search my mail."])
+    'Lis le numéro de ma boîte à outils.', 'Lis les messages de ma boîte vocale.', 'La secrétaire est un personnage de ce roman.', 'Ne consulte pas la Secrétaire.', "Don't search my mail."])
     assert.equal(requestsSecretary(text), false, text);
 });
 
 test('only conservative personal mail reads enter background consultation', () => {
-  for (const text of ['Résume mes courriels récents.', 'Quels sont mes nouveaux mails ?', 'Cherche dans mon Gmail.',
+  for (const text of ['Résume mes courriels récents.', 'Quels sont mes nouveaux mails ?', 'Cherche dans mon Gmail.', 'Lis les nouveaux messages de ma boîte.', 'Read my inbox.',
     'What is in my latest emails?', 'Consulte la Secrétaire pour vérifier quels outils de lecture de mes courriels sont disponibles.',
     'Consulte la secrétaire et regarde mes tâches.']) assert.equal(requestsSecretaryRead(text), true, text);
   for (const text of ['Envoie un mail à mon collègue.', 'Please draft a reply to my email.', 'Réponds à mes mails.',
@@ -52,5 +52,14 @@ test('only a complete translation of one quoted operand can enter the isolated s
     'Traduis en anglais mon dernier courriel.', 'Traduis en anglais « A », puis envoie « B ».',
     'Traduis en anglais « A » puis lis mes courriels.', 'Traduis en anglais « A”.', 'Traduis en anglais «  ».']) {
     assert.equal(quotedTranslation(text), null, text);
+  }
+});
+
+test('the direct mailbox evidence requirement applies to the requested read clause', () => {
+  for (const text of ['Lis les nouveaux messages de ma boîte.', 'Please read my inbox.',
+    'Traduis « lis ce livre », puis lis mes courriels.']) assert.equal(requestsDirectSecretaryRead(text), true, text);
+  for (const text of ['Traduis en anglais « lis mes courriels ».', 'Explique la phrase “read my inbox”.',
+    'Comment lire mes nouveaux courriels ?', 'Read the line "check my inbox".', 'Ne lis pas mes courriels.']) {
+    assert.equal(requestsDirectSecretaryRead(text), false, text);
   }
 });

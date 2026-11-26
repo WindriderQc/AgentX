@@ -90,14 +90,28 @@ Try « Lis mon courriel intitulé “lis mes derniers courriels” » and « Tra
 en anglais “lis mes derniers courriels”, puis lis mes courriels ». Verify that
 a mailbox claim waits for a Secretary spawn, yield and a return to the exact
 Main attempt. A tool-free translation, a generic `source_read`, an unrelated
-child or a later turn’s announcement cannot satisfy that check. Ambiguous
-multi-specialist deliveries still need child-specific attribution. For an
+child or a later turn’s announcement cannot satisfy that check. The adapter
+matches the successful native spawn result and its child run ID to the single
+child named in the settlement. A batch naming several children has ambiguous
+attribution. For older adapters Core can use the original session-level evidence
+on a fresh isolated attempt where every spawn named the Secretary. For an
 authorized mailbox acceptance, compare actual dated fixture messages with the
 answer. A completed delegation alone cannot attest each detail of its contents.
 Prepared digests also need their own dates and source attribution.
 
+Repeat the pair through a retained personal OpenClaw session with
+`HOUSEHOLD_NATIVE_EXPLICIT_INPUT_ONLY`. Main uses its native profile for both
+text and voice. The wire carries the current human text, including any quoted
+operand. A recognized request to read the inbox, or a consultation Main
+starts with the Secretary, needs the child-specific return for this parent
+run. A missing return yields a visible verification failure. A successful
+return establishes who answered. To qualify the actual read, match the
+mail reader’s delegated run reference to that child and compare the answer
+with a dated synthetic message. Count sends, drafts and label changes
+separately. The tool-free translation session above is a separate entry path.
+
 
 ```sh
 npm test --prefix core -- --runInBand --runTestsByPath tests/services/nativePrimaryConversation.test.js
-node --test core/surfaces/household/test/native-work-runtime.test.js integrations/openclaw/super-dad-memory/test/tool-evidence.test.js
+node --test core/surfaces/household/test/conversation-agent.test.js core/surfaces/household/test/native-work-runtime.test.js integrations/openclaw/super-dad-memory/test/tool-evidence.test.js
 ```

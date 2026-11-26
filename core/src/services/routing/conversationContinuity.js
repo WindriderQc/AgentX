@@ -90,15 +90,16 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
       if (typeof options.observeOccupation === 'function') {
         failure = { code: 'HERMES_WORK_ACTIVE' };
       } else {
-        // Family needs one atomic lane admission: another shared inference also
-        // counts as occupied. This never preempts an admitted owner or reroutes it.
-        executePrimary = (extraRetry = {}) => execute({ ...request, model: target.model, exclusiveHost: options.taskRoute && options.requireOccupied ? true : false,
+        // Reserve an idle primary atomically. Its other resident models can
+        // stay loaded between turns, including the document search model.
+        executePrimary = (extraRetry = {}) => execute({ ...request, model: target.model, exclusiveHost: false,
           options: { ...request.options, ...(target.numCtx && { num_ctx: target.numCtx }) } }, {
           signal, consumerContract: options.consumerContract, hostUrl: target.hostUrl,
+          requireIdleHost: Boolean(options.taskRoute && options.requireOccupied),
           ...(target.topology && { topology: target.topology }), retry: { enabled: false, ...extraRetry },
           conversationContinuity: { state: 'primary', reason: null, limited: false, contextReduced: false }
-      });
-      return requireResult(await executePrimary());
+        });
+        return requireResult(await executePrimary());
       }
     } catch (error) {
       if (signal?.aborted || !safeRefusal(error)) throw error;

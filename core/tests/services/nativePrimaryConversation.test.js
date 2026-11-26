@@ -217,7 +217,7 @@ test('ordinary translation keeps the original Main route even with an older adap
   expect(sent[0].headers['x-openclaw-session-key']).toContain(':household:direct:');
 });
 
-test.each(['Lis mes derniers courriels.', 'Lis mon courriel intitulé « lis mes derniers courriels ».',
+test.each(['Lis mes derniers courriels.', 'Lis les nouveaux messages de ma boîte.', 'Lis mon courriel intitulé « lis mes derniers courriels ».',
   'Traduis en anglais « lis mes derniers courriels », puis lis mes courriels.'])(
   'a Secretary request is published only after return to the originating native attempt: %s', async text => {
   const original = input(text);
@@ -244,8 +244,7 @@ test.each(['Lis mes derniers courriels.', 'Lis mon courriel intitulé « lis mes
   expect(await receive({ progress: [...proof.progress, { tool: 'sessions_spawn', agentId: 'another-agent' }] })).toBeNull();
   expect(await receive({ progress: [{ tool: 'sessions_spawn', agentId: 'another-agent' }] })).toBeNull();
   expect(await receive({ answer: { ...proof.answer, runId: 'resp_' + randomUUID() } })).toBeNull();
-  await expect(receive({ run: { ...proof.run, sessionKey: 'agent:main:household:direct:' + randomUUID() } }))
-    .rejects.toMatchObject({ code: 'CONVERSATION_WORK_NATIVE_RESULT_INVALID' });
+  expect(await receive({ run: { ...proof.run, sessionKey: 'agent:main:household:direct:' + randomUUID() } })).toBeNull();
   expect((await works.repo.get(row._id)).result).toBeUndefined();
   expect(await receive({})).toEqual({ published: true });
   const published = await works.repo.get(row._id);

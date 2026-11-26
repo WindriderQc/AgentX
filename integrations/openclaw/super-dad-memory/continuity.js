@@ -169,7 +169,7 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
         result.run = { ...result.run, usage: openclawTurnUsage(history, request.sessionKey, request.runId) };
       }
       result.progress = nativeTurnProgress(history, request.sessionKey, request.runId);
-      result.toolChecks = nativeToolChecks(history, request.sessionKey, request.runId);
+      result.toolChecks = nativeToolChecks(history, request.sessionKey, request.runId, result.answer.deliveredBy);
     } else throw invalid("Choose agents or turn; notes belong to AgentX Core");
     return { ok: true, authority: "openclaw.nestor", operation, ...result };
   };

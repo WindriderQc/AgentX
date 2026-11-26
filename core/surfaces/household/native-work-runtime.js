@@ -2,7 +2,7 @@
 
 const { isTranslationSession, quotedTranslation, translationSessionKey } = require('../../../shared/quotedTranslation.cjs');
 const { agentInstructions } = require('./conversation-agent');
-const { requestsSecretary, requestsSecretaryRead, requestsReadEffects, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
+const { requestsSecretary, requestsSecretaryRead, requestsReadEffects, secretaryReturnObserved, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
 const { requestsWebRead, WEB_DIRECTIVE, webCheckObserved } = require('./native-web-policy');
 const { PERSONAL_OPERATOR_SURFACE_CONTRACT } = require('./packs');
 const { familyTimeZone, calendarDayKey } = require('../../src/domains/household/family');
@@ -37,7 +37,7 @@ const MAIL_TRANSLATION = 'quoted-mail-translation/v1';
 
 function mailboxTranslation(text, attachments) {
   const translation = !attachments?.length && quotedTranslation(text);
-  return translation && requestsSecretary(text) && requestsSecretary(translation.source) ? translation : null;
+  return translation && requestsSecretary(translation.source) ? translation : null;
 }
 
 function nativeWorkRuntime({ works, conversations, agentClient, continuity, attachmentStore, screenPages }) {
@@ -122,11 +122,7 @@ function nativeWorkRuntime({ works, conversations, agentClient, continuity, atta
       if (row.mode === 'native' && evidence.answer?.text?.trim() === NO_WORK
           && (turn.outcome !== 'completed' || !turn.replyText?.trim() || row.guardian?.disposition === 'awaiting_main' || row.classification === 'native_work'
             && (secretary || web || requestsTaskCheck(turn.inputText) || requestsPipelineRead(turn.inputText) || requestsReadEffects(turn.inputText) || requestsScreenVisit(turn.inputText, screenPages)))) return null;
-      if (secretary && (!evidence.progress?.some(call => call.tool === 'sessions_spawn' && call.agentId === 'secretary')
-          || !checks?.completedTools?.includes('sessions_spawn') || !checks.completedTools.includes('sessions_yield')
-          || typeof evidence.answer?.deliveredBy !== 'string'
-          || !evidence.answer.deliveredBy.startsWith(`announce:requester-settle:main:${row.attempt.sessionKey}:`)
-          || evidence.progress.some(call => call.tool === 'sessions_spawn' && call.agentId !== 'secretary'))) return null;
+      if (secretary && !secretaryReturnObserved(evidence, row.attempt.sessionKey, row.attempt.runId, { isolated: true })) return null;
       if (web && !webCheckObserved(evidence, row.attempt.runId)) return null;
       if (evidence.ok !== true || evidence.authority !== 'openclaw.nestor' || evidence.operation !== 'turn'
           || checks?.status !== 'observed' || checks.loop || checks.runId !== row.attempt.runId
