@@ -73,10 +73,12 @@ advertises `quotedTranslationV1`. The native user payload contains the
 original request. This scope applies only when the quotation would otherwise
 require mailbox consultation evidence. A simple translation of “bonjour”
 keeps its ordinary route even with an older adapter. Core omits conversation history, selected notes and the
-ordinary task-context callback. The native hook blocks every tool in that
-session, including delegation and tool dispatch. The bundled owner-memory hook
-does not fetch notes for that session key. The host still owns Main’s static
-workspace bootstrap and installed extensions.
+ordinary task-context callback. The native adapter supplies a one-line translation
+instruction in place of Main’s workspace and messaging prompt and offers no tools.
+It advertises this operation when the host grants the plugin conversation access
+and permits prompt injection. Its tool-call hook also blocks delegation and tool
+dispatch in that session. The owner-memory hook skips that session key. Other
+installed extensions retain their native hook precedence.
 
 Check that Core displays the translated words as a quotation and retains the
 exact native answer with zero tool calls. Its result records the target

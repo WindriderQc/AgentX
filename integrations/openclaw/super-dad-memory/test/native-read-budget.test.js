@@ -5,17 +5,35 @@ import { readFile } from 'node:fs/promises';
 const native = { agentId: 'main', sessionKey: 'agent:main:household:direct:11111111-1111-4111-8111-111111111111' };
 const event = { toolName: 'web_fetch', params: { url: 'https://synthetic.test/source' }, toolCallId: 'real-call',
   runId: 'resp_22222222-2222-4222-8222-222222222222' };
-function setup(answers) {
-  let hook; const bodies = [];
-  registerNativeReadBudget({ pluginConfig: { agentxUrl: 'http://core.test', conversationWorkAgentId: 'worker',
-    conversationWorkToken: 'private-synthetic-token' }, on(name, fn) { assert.equal(name, 'before_tool_call'); hook = fn; } },
+function setup(answers, policy = { allowConversationAccess: true }) {
+  const hooks = new Map();
+  const bodies = [];
+  const advertised = registerNativeReadBudget({ config: { plugins: { entries: { 'super-dad-memory': { hooks: policy } } } }, pluginConfig: { agentxUrl: 'http://core.test', conversationWorkAgentId: 'worker',
+    conversationWorkToken: 'private-synthetic-token' }, on(name, fn) { hooks.set(name, fn); } },
   { fetchImpl: async (_, options) => {
     bodies.push(JSON.parse(options.body)); const answer = answers.shift();
     return { ok: answer.status === 200, status: answer.status, json: async () => answer.status === 200
       ? { ok: true, data: { authority: 'core.conversation-works', admitted: answer.admitted } } : { ok: false } };
   } });
-  return { hook, bodies };
+  return { hook: hooks.get('before_tool_call'), prepare: hooks.get('before_prompt_build'), advertised, bodies };
 }
+test('only an isolated Main translation replaces the native messaging prompt and removes tools', () => {
+  const h = setup([]);
+  const translation = { ...native, sessionKey: native.sessionKey.replace(':direct:', ':translation:') };
+  assert.equal(h.advertised, true);
+  const result = h.prepare({}, translation);
+  assert.match(result.systemPrompt, /Translate the words inside the quotation/);
+  assert.deepEqual(result.toolsAllow, []);
+  assert.equal(h.prepare({}, native), undefined);
+  assert.equal(h.prepare({}, { ...translation, agentId: 'secretary' }), undefined);
+  assert.deepEqual(h.bodies, []);
+  for (const policy of [{}, { allowConversationAccess: false }, { allowConversationAccess: true, allowPromptInjection: false }]) {
+    const restricted = setup([], policy);
+    assert.equal(restricted.advertised, false);
+    assert.equal(restricted.prepare, undefined);
+    assert.equal(typeof restricted.hook, 'function');
+  }
+});
 test('resolved native tool identity admits and blocks through Core without exposing a new model tool', async () => {
   const h = setup([{ status: 200, admitted: true }, { status: 200, admitted: false }]);
   assert.equal(await h.hook(event, native), undefined);

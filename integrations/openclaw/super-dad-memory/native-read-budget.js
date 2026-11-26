@@ -6,6 +6,17 @@ export function registerNativeReadBudget(api, { fetchImpl = fetch } = {}) {
   if (!config.conversationWorkToken || !config.conversationWorkAgentId) return;
   const call = createConversationWorkClient({ baseUrl: config.agentxUrl, token: config.conversationWorkToken, fetchImpl });
   const runs = new Map();
+  const hooks = api.config?.plugins?.entries?.['super-dad-memory']?.hooks;
+  const canPrepareTranslation = hooks?.allowConversationAccess === true && hooks.allowPromptInjection !== false;
+  if (canPrepareTranslation) {
+    api.on('before_prompt_build', (_event, context) => {
+      if (context?.agentId !== 'main' || !isTranslationSession(context.sessionKey)) return;
+      return {
+        systemPrompt: 'Translate the words inside the quotation into the language requested by the user. Return only the translated words as one line of plain text.',
+        toolsAllow: []
+      };
+    });
+  }
   api.on('before_tool_call', async (event, context) => {
     if (isTranslationSession(context?.sessionKey)) return { block: true,
       blockReason: 'This isolated session translates the supplied quotation. Return the translation directly.' };
@@ -35,5 +46,5 @@ export function registerNativeReadBudget(api, { fetchImpl = fetch } = {}) {
       return { block: true, blockReason: 'Core could not confirm this native research admission. No tool was executed. Conclude with the verified information already available and explain the lookup failure; do not retry or dispatch replacement research.' };
     }
   });
-  return true;
+  return canPrepareTranslation;
 }
