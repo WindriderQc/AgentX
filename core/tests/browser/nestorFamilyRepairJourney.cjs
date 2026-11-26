@@ -34,11 +34,14 @@ async function journey(){
  await listening();window.playEvents=[];
  await say('Hey Nestor, fais le bruit du T-Rex.');await listening();
  let value=await settled(v=>last(v)?.voiceTimings?.clipOutcome==='completed');
- check(last(value).soundId==='trex','clip selected');check(last(value).replyText==='Écoute ce bruitage !','deterministic short intro');check(latest(value).modelCalls===0,'no model for sound-only');
+ check(last(value).soundId==='trex','clip selected');check(last(value).replyText==='Écoute ce T-Rex !','model introduction');check(latest(value).modelCalls===2,'catalogue request and spoken response');
  check(window.playEvents.map(v=>v.kind).join(',')==='speech,clip','intro before clip');
- window.playEvents=[];await say('Fais le bruit du T-Rex puis explique les saisons.');await listening();
+ window.playEvents=[];await say('Explique le cri du T-Rex puis fais-le entendre.');await listening();
  value=await settled(v=>latest(v).turns.length===2&&last(v)?.voiceTimings?.clipOutcome==='completed');
- check(window.playEvents.map(v=>v.kind).join(',')==='speech,clip,speech','compound request keeps intro, clip, then answer');check(latest(value).modelCalls===1,'remaining question runs once');
+ check(window.playEvents.map(v=>v.kind).join(',')==='speech,clip','explanation before one clip');check(last(value).replyText.includes('dinosaure'),'model explanation retained');check(latest(value).modelCalls===4,'one lookup per requested clip');
+ window.playEvents=[];await say('Ne joue pas le son du T-Rex.');await listening();
+ value=await settled(v=>last(v)?.inputText==='Ne joue pas le son du T-Rex.'&&last(v)?.voiceTimings?.playbackOutcome==='completed');
+ check(!last(value).soundId&&window.playEvents.map(v=>v.kind).join(',')==='speech','negation speaks without playback');
  await say('Explique les saisons.');await listening();value=await read();const beforeRepair=latest(value).turns.length;
  const pending=say('Non, non, je voulais');await wait(()=>document.getElementById('conversationStatus').textContent.includes('correction'));
  beginSpeech();await say('un exemple');beginSpeech();await say('avec un arbre');const repairAt=performance.now();
@@ -66,8 +69,8 @@ async function journey(){
  check(latest(value).id!==old,'new session identity');check(latest(value).turns.length===1,'old fragments do not cross sessions');
  check(!latest(value).lastModelRequest.includes('T-Rex')&&!latest(value).lastModelRequest.includes('avec un arbre'),'old subject does not cross sessions');
  const beforeUxModels=latest(value).modelCalls;
- await say('Est-ce que tu me ferais le bruit du T-Rex?');await listening();value=await settled(v=>last(v)?.voiceTimings?.clipOutcome==='completed');check(latest(value).modelCalls===beforeUxModels,'polite sound bypasses model');check(last(value).replyText==='Écoute ce bruitage !','no machine excuse');
- await say('Ouvre la page ISS.');await listening();value=await settled(v=>last(v)?.display?.[0]?.body==='iss');check(latest(value).modelCalls===beforeUxModels,'explicit ISS opens without model');check(last(value).display[0].title==='ISS 3D et passages','canonical ISS title');
+ await say('Est-ce que tu me ferais le bruit du T-Rex?');await listening();value=await settled(v=>last(v)?.voiceTimings?.clipOutcome==='completed');check(latest(value).modelCalls===beforeUxModels+2,'model selects the polite request');check(last(value).replyText==='Écoute ce T-Rex !','model introduction');
+ await say('Ouvre la page ISS.');await listening();value=await settled(v=>last(v)?.display?.[0]?.body==='iss');check(latest(value).modelCalls===beforeUxModels+2,'explicit ISS opens without another model call');check(last(value).display[0].title==='ISS 3D et passages','canonical ISS title');
  await say('Ouvre la page ISS et explique aussi son altitude.');await listening();value=await settled(v=>last(v)?.voiceTimings?.playbackOutcome==='completed');check(last(value).display[0].body==='iss'&&last(value).display[0].title==='ISS 3D et passages','compound wrong model page is bound to requested ISS');check(last(value).replyText.includes('altitude'),'additional question retained');
  await say('Montre les tâches des enfants pour demain.');await listening();value=await settled(v=>last(v)?.display?.[0]?.body==='kids-tasks day=tomorrow');check(!last(value).display[0].body.includes('profile'),'no assumed child');
  await say('AnnonceHoraireSynthétique');await listening();value=await settled(v=>last(v)?.replyText.includes('22h33')&&last(v)?.voiceTimings?.playbackOutcome==='completed');check(value.synthesis.at(-1).includes('vingt-deux heures trente-trois')&&value.synthesis.at(-1).includes('deux novembre deux mille vingt-six'),'French audio projection uses words while canonical reply keeps numeric text');
@@ -77,7 +80,7 @@ async function journey(){
  check(last(value).voiceTimings.stopReason==='playback_error','real output failure remains explicit');document.getElementById('conversationStart').click();await listening();
  window.holdNext='clip';const paused=say('Hey Nestor, fais le bruit du T-Rex.');await wait(()=>window.held?.kind==='clip');document.getElementById('conversationStart').click();await paused;
  check(state()==='paused','Pause closes the fake audio');value=await settled(v=>last(v)?.voiceTimings?.playbackOutcome==='user_paused');check(last(value).voiceTimings.stopReason==='user_pause','Pause is not a playback fault');
- const summary={repairLatencyMs,audioOpens:value.audioOpens,sessionCount:value.sessions.length,canonicalTurns:value.sessions.reduce((n,s)=>n+s.turns.length,0),modelBoundaryCalls:value.sessions.reduce((n,s)=>n+s.modelCalls,0),cases:['sound-only','compound','fragments','yes-no','Stop-next','echo','interrupt-before-clip','interrupt-during-clip','new-session','playback-error','Pause-clip','polite-sound','iss-direct','compound-page-canonical','tasks-readonly','French-time-projection','negated-page','home-control']};
+ const summary={repairLatencyMs,audioOpens:value.audioOpens,sessionCount:value.sessions.length,canonicalTurns:value.sessions.reduce((n,s)=>n+s.turns.length,0),modelBoundaryCalls:value.sessions.reduce((n,s)=>n+s.modelCalls,0),cases:['sound-only','compound','negated-sound','fragments','yes-no','Stop-next','echo','interrupt-before-clip','interrupt-during-clip','new-session','playback-error','Pause-clip','polite-sound','iss-direct','compound-page-canonical','tasks-readonly','French-time-projection','negated-page','home-control']};
  await fetch('/fixture/checkpoint',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(summary)});sessionStorage.setItem('familyFixtureStage','muted-reload');location.reload();return null;
 }
 
@@ -113,7 +116,21 @@ window.NestorConversation.openAudio=async()=>{
  app.get('/api/voice-personas/catalog',(_req,res)=>res.json({data:{personas,runtime:{defaultBackend:'agentx'}}}));
  app.use('/api/voice-personas/private',(_req,res)=>{errors.push('Family requested private route');res.sendStatus(403);});
  app.post('/api/voice-personas/family/sessions',(req,res)=>{
-   const h=harness({packId:'kidx_nestor',backend:'agentx',screenPages:{...pageCatalog,family:pageCatalog},sounds:createSoundLibrary(),validClientTurnId:id=>/^[a-f0-9-]{36}$/i.test(id),response:body=>String(body.messages.at(-1).content).includes('AnnonceHoraireSynthétique')?'Il est 22h33, le 2 novembre 2026.':String(body.messages.at(-1).content).includes('altitude')?'Son altitude varie. <show kind="page" title="Garage">ecosystem</show>':'La réponse synthétique répond à la question sans autre action.'});
+   const h=harness({packId:'kidx_nestor',backend:'agentx',screenPages:{...pageCatalog,family:pageCatalog},sounds:createSoundLibrary(),
+     conversationEnv:{HOUSEHOLD_FAMILY_TOOLS:'get_sound'},validClientTurnId:id=>/^[a-f0-9-]{36}$/i.test(id),response:body=>{
+       const text=String(body.messages.findLast(message=>message.role==='user')?.content||'');
+       if(body.messages.at(-1).role==='tool')return text.includes('puis fais-le')?'Ce dinosaure apparaît dans des films avec un cri inventé.':'Écoute ce T-Rex !';
+       if(text.includes('Ne joue pas'))return 'D’accord, je reste silencieux.';
+       if(text.includes('T-Rex'))return {message:{tool_calls:[{function:{name:'get_sound',arguments:{query:'trex',play:true}}}]}};
+       if(text.includes('AnnonceHoraireSynthétique'))return 'Il est 22h33, le 2 novembre 2026.';
+       if(text.includes('altitude'))return 'Son altitude varie. <show kind="page" title="Garage">ecosystem</show>';
+       return 'La réponse synthétique répond à la question sans autre action.';
+     }});
+   const accepted=new Set();
+   h.conversations.acceptTurn=async ({clientTurnId})=>{
+     const duplicate=accepted.has(clientTurnId);accepted.add(clientTurnId);return {duplicate};
+   };
+   h.conversations.settleTurn=h.conversations.recordTurn;
    h.session.sessionId=randomUUID();h.session.voice={language:'fr'};h.session.persona=personas.find(p=>p.id===req.body.personaId)||personas[0];sessions.set(h.session.sessionId,h);res.status(201).json({data:{session:publicSession(h.session)}});
  });
  app.post('/api/voice-personas/family/sessions/:sessionId/turns/text',async(req,res)=>{
