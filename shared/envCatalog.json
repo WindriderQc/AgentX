@@ -44,6 +44,16 @@
       "secret": false,
       "description": "false lets the request classifier use its configured model instead of the primary host pin. Unset: the pin is respected."
     },
+    "AGENTX_CODE_STEP_ARTIFACT_DIR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "/app/code-step-artifacts",
+      "category": "bridges",
+      "secret": false,
+      "description": "Persistent private directory in Core for immutable verified code-step Git bundles. Unset: /app/code-step-artifacts."
+    },
     "AGENTX_CODING_CONFIG": {
       "services": [
         "core"
@@ -53,6 +63,16 @@
       "category": "bridges",
       "secret": false,
       "description": "Path of the coding dispatcher JSON config read for the OpenClaw model-policy projection. Unset: reads config/coding-dispatcher.json under AGENTX_INSTANCE_ROOT, AGENTX_REPO_ROOT or /etc/agentx."
+    },
+    "AGENTX_CONVERSATION_CONTINUITY_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "routing",
+      "secret": false,
+      "description": "Opt-in local conversation continuity policy: JSON {hosts:[registered host keys],models:[eligible local models or agentx-primary],maxOutputTokens:384,maxInputChars:12000}. Requires x-agentx-continuity: conversation and the conversation busy-reply header. Uses resident pins only; no tools, cloud or automatic primary-mode changes. Unset or invalid: existing strict routing."
     },
     "AGENTX_DEFAULT_CHAT_MODEL": {
       "services": [
@@ -266,7 +286,7 @@
       "default": null,
       "category": "routing",
       "secret": false,
-      "description":"Default true: a task route without a stored route whose default model is pinned on no host uses its host's first pinned model. false keeps the plain deployment defaults."
+      "description": "Default true: a task route without a stored route whose default model is pinned on no host uses its host's first pinned model. false keeps the plain deployment defaults."
     },
     "AGENTX_ROUTING_SNAPSHOT_CACHE_MS": {
       "services": [
@@ -318,16 +338,6 @@
       "secret": true,
       "description": "Private declaration of runtime topology modes per GPU host group (#360): each mode lists its endpoints and the role each serves (conversation, background, pooled). Role routes resolve through it, a switch moves a group between its modes, and the endpoints of an inactive mode are parked (no alerts). Unset: no modes declared. Invalid: reported as invalid, never echoed."
     },
-    "AGENTX_TOPOLOGY_ACTUATORS_JSON": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "inference",
-      "secret": true,
-      "description": "Private SSH targets of the runtime topology host actuators, per topology group (#360 phase 4): {\"<group>\": {\"sshTarget\", \"keyPath\", \"knownHostsPath\", \"port\"?}}. Host keys are always checked. Unset: no switch can run. Invalid: reported as invalid, never echoed."
-    },
     "AGENTX_TASK_FALLBACK_WAIT_MS": {
       "services": [
         "core"
@@ -338,14 +348,6 @@
       "secret": false,
       "description": "How long a busy, claimed or blocked primary is re-checked before a light task degrades to its fallback ladder, at most 10000. Unset: 2000 ms."
     },
-    "AGENTX_CONVERSATION_CONTINUITY_JSON": {
-      "services": ["core"],
-      "forwarded": true,
-      "default": null,
-      "category": "routing",
-      "secret": false,
-      "description": "Opt-in local conversation continuity policy: JSON {hosts:[registered host keys],models:[eligible local models or agentx-primary],maxOutputTokens:384,maxInputChars:12000}. Requires x-agentx-continuity: conversation and the conversation busy-reply header. Uses resident pins only; no tools, cloud or automatic primary-mode changes. Unset or invalid: existing strict routing."
-    },
     "AGENTX_TASK_FALLBACKS_JSON": {
       "services": [
         "core"
@@ -355,6 +357,16 @@
       "category": "routing",
       "secret": false,
       "description": "One-line JSON ladder of {model, host} fallbacks per light task type; a daily_operator ladder serves only OpenClaw conversations on agentx-primary. Unset: no task degrades; an invalid value is rejected as a whole at startup."
+    },
+    "AGENTX_TOPOLOGY_ACTUATORS_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "inference",
+      "secret": true,
+      "description": "Private SSH targets of the runtime topology host actuators, per topology group (#360 phase 4): {\"<group>\": {\"sshTarget\", \"keyPath\", \"knownHostsPath\", \"port\"?}}. Host keys are always checked. Unset: no switch can run. Invalid: reported as invalid, never echoed."
     },
     "ALERT_RENOTIFY_MAX_MS": {
       "services": [
@@ -687,16 +699,6 @@
       "secret": false,
       "description": "Codex plan name shown in usage analytics. Unset: the plan type reported by the account."
     },
-    "AGENTX_CODE_STEP_ARTIFACT_DIR": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "/app/code-step-artifacts",
-      "category": "bridges",
-      "secret": false,
-      "description": "Persistent private directory in Core for immutable verified code-step Git bundles. Unset: /app/code-step-artifacts."
-    },
     "CODING_DELIVERY_COMPOSE_OVERRIDE": {
       "services": [
         "core"
@@ -999,16 +1001,6 @@
       "secret": false,
       "description": "JSON display map (network/storage rows with host, supervisor, runtime, cadence) for Data Toolbox collectors, at most 32 KiB. Unset: the Toolbox shows registrations only."
     },
-    "ENERGY_IOT_DEVICE_ID": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "operations",
-      "secret": false,
-      "description": "Data IoT device id for the shared electrical meter shown by Core's read-only Energy surface. Unset: the Energy API reports that it is not configured."
-    },
     "DATA_EXPORT_DIR": {
       "services": [
         "data"
@@ -1109,26 +1101,6 @@
       "category": "operations",
       "secret": false,
       "description": "URL of the GraphysX diskx.js module Core relays for the /diskx page. Unset: the relay answers 404 and the page says the module is unavailable."
-    },
-    "GRAPHYSX_CENTER_URL": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "operations",
-      "secret": false,
-      "description": "URL of the GraphysX Center the /graphysx page frames (a GraphysX build's root, e.g. https://graphysx.example/); Core relays that build's /embed/center-host.js and the page's CSP allows that one origin as a frame. The build must list Core's origin in VITE_GRAPHYSX_HOST_ORIGINS. Unset: the page answers 503 and says so."
-    },
-    "GRAPHYSX_VOCABULARY_URL": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "operations",
-      "secret": false,
-      "description": "URL of the world vocabulary a GraphysX build publishes (/embed/world-vocabulary.json); POST /api/graphysx/propose renders its prompt from it. Unset: the route answers 404 and the Center composes locally."
     },
     "DISKX_ROOTS": {
       "services": [
@@ -1279,6 +1251,16 @@
       "category": "memory",
       "secret": false,
       "description": "Embedding model RAG requests through the Core proxy. Unset: nomic-embed-text:v1.5. Similarity floors were measured with that model."
+    },
+    "ENERGY_IOT_DEVICE_ID": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "Data IoT device id for the shared electrical meter shown by Core's read-only Energy surface. Unset: the Energy API reports that it is not configured."
     },
     "FAMILY_WINTER_SEASON": {
       "services": [
@@ -1520,6 +1502,26 @@
       "category": "integration",
       "secret": false,
       "description": "Optional SSH target hosting native gog Google authorization. Falls back to OPENCLAW_INVENTORY_SSH_TARGET; no Google credential is copied into Core."
+    },
+    "GRAPHYSX_CENTER_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "URL of the GraphysX Center the /graphysx page frames (a GraphysX build's root, e.g. https://graphysx.example/); Core relays that build's /embed/center-host.js and the page's CSP allows that one origin as a frame. The build must list Core's origin in VITE_GRAPHYSX_HOST_ORIGINS. Unset: the page answers 503 and says so."
+    },
+    "GRAPHYSX_VOCABULARY_URL": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "operations",
+      "secret": false,
+      "description": "URL of the world vocabulary a GraphysX build publishes (/embed/world-vocabulary.json); POST /api/graphysx/propose renders its prompt from it. Unset: the route answers 404 and the Center composes locally."
     },
     "HEALTH_CHECK_INTERVAL_MS": {
       "services": [
@@ -1775,6 +1777,37 @@
       "secret": false,
       "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
     },
+    "HOUSEHOLD_DEFAULT_LANGUAGE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "en",
+      "category": "household",
+      "secret": false,
+      "description": "Language used for the first ambiguous Household turn in automatic mode. Accepts fr or en."
+    },
+    "HOUSEHOLD_ECOSYSTEM_NODE_HINTS_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Private instance JSON mapping ecosystem graph node IDs to host-name/address hints for family standby alert visits. First matching node wins; only node IDs reach the browser. Unset or invalid: no machine links; critical alert counts remain available."
+    },
+    "HOUSEHOLD_FAMILY_CONVERSATION_BACKEND": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Conversation engine of new Family conversations (Famille, Kids Room, Lecture, native Family voice): agentx or openclaw. It wins over the page's request; existing conversations keep their engine and LLMx scenes are unaffected. Unset or any other value: HOUSEHOLD_CONVERSATION_BACKEND applies.",
+      "fallback": "HOUSEHOLD_CONVERSATION_BACKEND"
+    },
     "HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT": {
       "services": [
         "core"
@@ -1835,37 +1868,6 @@
       "secret": false,
       "description": "Server-side HTTP origin of the optional Hermes conversation API. Unset disables this engine."
     },
-    "HOUSEHOLD_PERSONAL_FAMILY_MEMORY_READ": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "false",
-      "category": "household",
-      "secret": false,
-      "description": "Allow an authorized owner runtime to search current Family notes with the search_family action of personal_memory. Family access to personal notes is unavailable."
-    },
-    "HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Default engine for new personal Nestor conversations: hermes, openclaw or agentx. Family and existing conversations keep their engine."
-    },
-    "HOUSEHOLD_FAMILY_CONVERSATION_BACKEND": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Conversation engine of new Family conversations (Famille, Kids Room, Lecture, native Family voice): agentx or openclaw. It wins over the page's request; existing conversations keep their engine and LLMx scenes are unaffected. Unset or any other value: HOUSEHOLD_CONVERSATION_BACKEND applies.",
-      "fallback": "HOUSEHOLD_CONVERSATION_BACKEND"
-    },
     "HOUSEHOLD_IMAGE_FAMILY_SOURCES": {
       "services": [
         "core"
@@ -1885,16 +1887,6 @@
       "category": "household",
       "secret": false,
       "description": "JSON mapping of Household image sources to canonical Data indexed roots. Unset: no local source roots."
-    },
-    "HOUSEHOLD_PLANT_IMPORT_DIR": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Optional plant import folder relative to the read-only photos mount. Core lists bounded direct files without the Data index; parent import creates drafts and queues serial identification. Unset: import disabled."
     },
     "HOUSEHOLD_OWNER_UNLOCK_MINUTES": {
       "services": [
@@ -1926,6 +1918,56 @@
       "secret": false,
       "description": "Optional JSON mapping a Household persona id, or \"*\", to an instance voice \"provider|voice\" (kokoro, windows_sapi or voxcpm). A browser voice selection still wins. Unset: catalog voices.",
       "fallback": "catalog persona voices"
+    },
+    "HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Default engine for new personal Nestor conversations: hermes, openclaw or agentx. Family and existing conversations keep their engine."
+    },
+    "HOUSEHOLD_PERSONAL_FAMILY_MEMORY_READ": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Allow an authorized owner runtime to search current Family notes with the search_family action of personal_memory. Family access to personal notes is unavailable."
+    },
+    "HOUSEHOLD_PLANT_IMPORT_DIR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional plant import folder relative to the read-only photos mount. Core lists bounded direct files without the Data index; parent import creates drafts and queues serial identification. Unset: import disabled."
+    },
+    "HOUSEHOLD_RELAY_GREETING_EN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional English greeting before the Household guardian relay status."
+    },
+    "HOUSEHOLD_RELAY_GREETING_FR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional French greeting before the Household guardian relay status."
     },
     "HOUSEHOLD_TEAM_MEMBERS": {
       "services": [
@@ -2968,9 +3010,21 @@
       ],
       "forwarded": true,
       "default": null,
+      "hostVar": "OWNER_DOCUMENTS_DIR",
       "category": "storage",
       "secret": false,
       "description": "Host folder mounted read-only at /mnt/owner/documents (set from OWNER_DOCUMENTS_DIR). Core maps a document path recorded by a personal-history context onto that mount to open the original for the owner. Unset: such documents are not opened."
+    },
+    "OWNER_MAIL_RAG_TOKEN": {
+      "services": [
+        "core",
+        "rag"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "security",
+      "secret": true,
+      "description": "Shared secret, at least 32 characters, that only Core sends to RAG to reach the owner private recall corpus (/api/rag/owner-mail). Keep it in the instance env on the host. Unset: the owner recall corpus refuses every call and Nestor recall of mail is unavailable."
     },
     "OWNER_PHOTOS_HOST_DIR": {
       "services": [
@@ -2978,6 +3032,7 @@
       ],
       "forwarded": true,
       "default": null,
+      "hostVar": "HOUSEHOLD_PHOTOS_DIR",
       "category": "storage",
       "secret": false,
       "description": "Host folder behind the household photos mount (set from HOUSEHOLD_PHOTOS_DIR). Core maps a photo path recorded by a personal-history context onto that mount to show the original in Life Atlas. Unset: such photos are not shown."
@@ -3232,6 +3287,16 @@
       "secret": false,
       "description": "Qdrant collection RAG reads, writes and snapshots. Compose default agentx_product_embeddings; unset natively: agentx_embeddings."
     },
+    "QDRANT_OWNER_MAIL_COLLECTION": {
+      "services": [
+        "rag"
+      ],
+      "forwarded": true,
+      "default": "agentx_owner_mail",
+      "category": "memory",
+      "secret": false,
+      "description": "Qdrant collection of the owner private recall corpus (mail, read attachments, souvenirs, people). It must differ from QDRANT_COLLECTION; shared search, listing, cleanup and snapshots never read it. Unset: agentx_owner_mail."
+    },
     "QDRANT_SNAPSHOT_TIMEOUT_MS": {
       "services": [
         "core"
@@ -3482,36 +3547,6 @@
       "secret": false,
       "description": "JSON registry of Data storage agent sources. Unset: built-in sources."
     },
-    "VAULT_INBOX_PATH": {
-      "services": [
-        "core"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "memory",
-      "secret": false,
-      "description": "Absolute Obsidian vault inbox directory for agent notes. Unset: the capability answers not configured."
-    },
-    "VECTOR_STORE_TYPE": {
-      "services": [
-        "core"
-      ],
-      "forwarded": false,
-      "default": null,
-      "category": "memory",
-      "secret": false,
-      "description": "RAG vector store, qdrant or memory. Unset: RAG refuses to create a store."
-    },
-    "TRANSCRIPTIONS_ENABLED": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": "false",
-      "category": "household",
-      "secret": false,
-      "description": "Opt-in full-profile local YouTube transcription UI and durable jobs. Requires a configured primary speech service, private native receipt storage and its physical GPU mapping. Unset: disabled."
-    },
     "TRANSCRIPTION_RESERVATION_MINUTES": {
       "services": [
         "core"
@@ -3531,6 +3566,36 @@
       "category": "household",
       "secret": false,
       "description": "Optional JSON array of additional runtime resource origins held by a long transcription. The primary speech origin is always included and must be mapped to its native physical GPU. Unset: only that mapped origin."
+    },
+    "TRANSCRIPTIONS_ENABLED": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Opt-in full-profile local YouTube transcription UI and durable jobs. Requires a configured primary speech service, private native receipt storage and its physical GPU mapping. Unset: disabled."
+    },
+    "VAULT_INBOX_PATH": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "Absolute Obsidian vault inbox directory for agent notes. Unset: the capability answers not configured."
+    },
+    "VECTOR_STORE_TYPE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": false,
+      "default": null,
+      "category": "memory",
+      "secret": false,
+      "description": "RAG vector store, qdrant or memory. Unset: RAG refuses to create a store."
     },
     "VOIX_BASE_URL": {
       "services": [
@@ -3691,37 +3756,6 @@
       "category": "other",
       "secret": false,
       "description": "How long Data keeps a WorldTides answer for one rounded position, day count and UTC day, at least 60000. Unset: 21600000 (6 h)."
-    },
-    "OWNER_MAIL_RAG_TOKEN": {
-      "services": [
-        "core",
-        "rag"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "security",
-      "secret": true,
-      "description": "Shared secret, at least 32 characters, that only Core sends to RAG to reach the owner private recall corpus (/api/rag/owner-mail). Keep it in the instance env on the host. Unset: the owner recall corpus refuses every call and Nestor recall of mail is unavailable."
-    },
-    "QDRANT_OWNER_MAIL_COLLECTION": {
-      "services": [
-        "rag"
-      ],
-      "forwarded": true,
-      "default": "agentx_owner_mail",
-      "category": "memory",
-      "secret": false,
-      "description": "Qdrant collection of the owner private recall corpus (mail, read attachments, souvenirs, people). It must differ from QDRANT_COLLECTION; shared search, listing, cleanup and snapshots never read it. Unset: agentx_owner_mail."
-    },
-    "HOUSEHOLD_ECOSYSTEM_NODE_HINTS_JSON": {
-      "services": [
-        "core"
-      ],
-      "forwarded": true,
-      "default": null,
-      "category": "household",
-      "secret": false,
-      "description": "Private instance JSON mapping ecosystem graph node IDs to host-name/address hints for family standby alert visits. First matching node wins; only node IDs reach the browser. Unset or invalid: no machine links; critical alert counts remain available."
     }
   }
 }
