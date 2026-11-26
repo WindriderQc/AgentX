@@ -1,5 +1,6 @@
 'use strict';
 const { randomUUID } = require('node:crypto');
+const { packById } = require('./packs');
 const { assertContextSize } = require('../../src/services/conversations/turnContext');
 const { LIMITS: WORK_LIMITS } = require('../../src/services/conversationWorks/contract');
 
@@ -189,15 +190,18 @@ function createBrain({ inference, conversations, loadTurns, consumerContract, en
   async function stored(session) {
     const record = session?.backgroundReview;
     if (!record || typeof record !== 'object' || reviews.has(session.sessionId) || refusals.has(session.sessionId)) return null;
-    const revisions = {};
-    const valid = async item => {
-      if (!item || typeof item !== 'object' || !['family', 'private'].includes(item.space)) return null;
-      if (preferencesFor) revisions[item.space] ??= (await preferencesFor(item.space === 'family')).revision;
-      if (preferencesFor ? item.preferencesRevision !== revisions[item.space] : item.preferencesRevision != null) return null;
+    const pack = packById(session.packId);
+    if (!pack || !enabled(pack.childSafe)) return null;
+    const space = pack.childSafe ? 'family' : 'private';
+    const preferences = preferencesFor ? await preferencesFor(pack.childSafe) : null;
+    if (preferences && !preferences.values.backgroundReview) return null;
+    const valid = item => {
+      if (item?.space !== space) return null;
+      if (preferences ? item.preferencesRevision !== preferences.revision : item.preferencesRevision != null) return null;
       const { space: _space, preferencesRevision: _revision, ...kept } = item;
       return kept;
     };
-    const review = await valid(record.review), refusal = await valid(record.refusal);
+    const review = valid(record.review), refusal = valid(record.refusal);
     return review || refusal ? { review, refusal } : null;
   }
 

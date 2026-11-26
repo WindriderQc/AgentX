@@ -5,7 +5,7 @@ const {createPersonaTurnHandler}=require('../../persona-turn');
 const {createConversationExecutor}=require('../../conversation-executor');
 const packs=require('../../packs'),prompt=require('../../persona-prompt'),records=require('../../persona-records');
 const RUN_ID='resp_33333333-3333-4333-8333-333333333333';
-function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages, validClientTurnId = () => false, conversationEnv = {}, artx = null, ambient = null, hermesClient, continuityExecute, failContext, visuals = null }) {
+function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages, validClientTurnId = () => false, conversationEnv = {}, artx = null, ambient = null, hermesClient, continuityExecute, failContext, visuals = null, familyTasks, plants, preferencesFor }) {
   const pack = packs.packById(packId);
   const session = { sessionId: 'synthetic-session', status: 'active', packId, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
@@ -31,7 +31,8 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     hermesClient, env: conversationEnv,
     inference: { conversation: continuityExecute, execute: async body => {
       sent.push({ prefix: body.messages[0].content, messages: body.messages, request: body.messages.at(-1).content, taskType: body.taskType, tools: body.tools });
-      return { ok: true, body: { response: typeof response === 'function' ? response(body) : response }, metadata: { model: 'synthetic' } };
+      const reply = typeof response === 'function' ? response(body) : response;
+      return { ok: true, body: typeof reply === 'string' ? { response: reply } : reply, metadata: { model: 'synthetic' } };
     } },
     agentClient: async request => {
       sent.push({ prefix: request.instructions, request: [request.turnContext, request.turnDirective].filter(Boolean).join('\n\n'), text: request.text });
@@ -41,13 +42,13 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     }
   });
   const handle = createPersonaTurnHandler({
-    screenPages, logger: null, runtimeServices: { attachments: { ids: () => [] } }, conversations, conversationEnv, artx, ambient,
+    screenPages, logger: null, runtimeServices: { attachments: { ids: () => [] }, household: { plants } }, conversations, conversationEnv, artx, ambient, preferencesFor,
     executeConversation: Object.assign(async request => { const result = await executeConversation(request); settle?.(request); return result; }, {familyPrimaryConfigured:executeConversation.familyPrimaryConfigured}), conversationImages,
     requireNativeAgent: async () => {},
-    familyTasks: { listProfileDetails: async () => ({ profiles: state.profiles }), listProfiles: async () => ({ profiles: state.profiles }),
+    familyTasks: familyTasks || { listProfileDetails: async () => ({ profiles: state.profiles }), listProfiles: async () => ({ profiles: state.profiles }),
       room: async () => ({ room: { available: [{ title: 'Synthetic routine' }] } }) },
     ownerMemory: {}, familyMemory: {},
-    notesFor: () => { failContext?.('family_notes'); return ({ search: async () => ({ notes: state.notes }), record: async note => state.recordedNotes.push(note) }); },
+    notesFor: () => { failContext?.('family_notes'); return ({ search: async () => { failContext?.('note_search'); return { notes: state.notes }; }, record: async note => state.recordedNotes.push(note) }); },
     personalAttachments: () => ({ references: async () => [], prepare: async messages => messages.map(({ attachments, ...message }) => message) }),
     knowledgeState: { config: null, status: { status: 'disabled', corpusFingerprint: null } },
     openHold: {}, openingPayload: () => ({}),

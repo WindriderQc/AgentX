@@ -9,7 +9,7 @@
 const { chromium } = require(process.env.AGENTX_PLAYWRIGHT_MODULE || 'playwright');
 const express = require('express');
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
-const { randomUUID } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const core = path.resolve(__dirname, '../..'), publicDir = path.join(core, 'surfaces/household/public');
 const { generatedPersonas, snapshot } = require('../../surfaces/household/persona-catalog');
 const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture', version: 1 }));
@@ -19,6 +19,9 @@ const output = process.env.VOICE_RELIABILITY_BROWSER_OUTPUT;
 if (!output || path.resolve(output).startsWith(path.resolve(core, '..') + path.sep)) throw Error('Set VOICE_RELIABILITY_BROWSER_OUTPUT outside checkout');
 let audioOpens = 0, failRecognition = false, recognitionRequests = 0, permissionState = 'granted';
 let holdPermission = false, pendingPermissions = [];
+const drawingRequest = 'Dessine un bateau.', followup = 'Pourquoi flotte-t-il ?';
+const drawingPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jCecAAAAASUVORK5CYII=', 'base64');
+let drawing, followingReply, imageReads = 0;
 fs.mkdirSync(output, { recursive: true });
 
 // A fake microphone: `say()` delivers one finished utterance to the conversation loop.
@@ -28,7 +31,7 @@ window.NestorConversation.openAudio = async (_signal,_onError,options={}) => {
   window.emitCaptureRecovery=state=>options.onCaptureRecovery?.({state});
   const audio = { canInterrupt: false,
     listen(callback) { audio.utterance = callback; }, quiet() {}, close() { window.fakeClosed=(window.fakeClosed||0)+1; }, holdPlayback() {}, resumePlayback() {},
-    async play() {}, async settle() {} };
+    async play(speech) { window.fixturePlaybacks = (window.fixturePlaybacks || 0) + 1; await speech?.body?.cancel(); }, async settle() {} };
   window.say = () => audio.utterance(new Blob(['speech']), {});
   return audio;
 };`;
@@ -68,8 +71,26 @@ window.NestorConversation.openAudio = async (_signal,_onError,options={}) => {
     submissions.push(req.body.text);
     const session = sessions.get(req.params.id); session.turnCount++;
     res.type('application/x-ndjson');
-    res.end(JSON.stringify({ type: 'done', data: { session, traceId: randomUUID(), reply: { text: 'Voici.' }, routing: { backend: 'agentx' },
-      tools: { status: 'not_supported', authority: 'agentx/ollama', receipts: [] } } }) + '\n');
+    const done = (text, extra) => res.end(JSON.stringify({ type: 'done', data: { session, traceId: randomUUID(), reply: { text }, routing: { backend: 'agentx' },
+      tools: { status: 'not_supported', authority: 'agentx/ollama', receipts: [] }, ...extra } }) + '\n');
+    if (req.body.text.toLowerCase() === drawingRequest.toLowerCase()) {
+      const id = randomUUID(), statusUrl = '/api/voice-personas/family/sessions/' + session.sessionId + '/images/' + id;
+      drawing = { id, statusUrl, state: 'queued', runtimeRestored: false };
+      const block = { kind: 'image', source: 'local', key: 'image:' + id, title: 'Bateau', body: 'Un bateau.', operation: drawing };
+      res.write(JSON.stringify({ type: 'show', block }) + '\n');
+      return done('Le dessin est en préparation.', { familyDrawing: true, display: [block] });
+    }
+    if (req.body.text === followup && drawing) { followingReply = () => done('Il déplace de l’eau.'); return; }
+    done('Voici.');
+  });
+  app.get('/api/voice-personas/family/sessions/:id/images/:imageId', (req, res) => {
+    if (!drawing || req.path !== drawing.statusUrl) return res.sendStatus(404);
+    res.json({ ok: true, operation: drawing });
+  });
+  app.get('/api/voice-personas/family/sessions/:id/images/:imageId/image', (req, res) => {
+    if (!drawing?.artifact || req.path !== drawing.artifact.url) return res.sendStatus(404);
+    imageReads++;
+    res.type('image/png').send(drawingPng);
   });
   const photoId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const secondPhotoId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -148,6 +169,63 @@ window.NestorConversation.openAudio = async (_signal,_onError,options={}) => {
   holdPermission=false;for(const response of pendingPermissions.splice(0))response.json({state:'granted'});
   await ready();assert.equal(await state(),'paused','a late permission result respects a mute from another tab');
   assert.equal(audioOpens,5);
+
+  // A kiosk can mount the page behind another window. It may use an already
+  // granted microphone only when it first becomes visible, without a click.
+  await page.addInitScript(() => {
+    if (!location.search.includes('covered')) return;
+    localStorage.setItem('household.space.family.microphoneWanted', 'on');
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+  });
+  await page.goto(origin + '/fixture?covered');
+  await ready();
+  assert.equal(audioOpens, 5);
+  assert.equal(await page.evaluate(() => window.permissionQueries || 0), 0);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    document.dispatchEvent(new Event('visibilitychange'));
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await listening();
+  assert.equal(audioOpens, 6);
+  assert.equal(await page.evaluate(() => window.permissionQueries), 1);
+  const kitchenSession = [...sessions.values()].at(-1);
+  const playbacks = await page.evaluate(() => window.fixturePlaybacks);
+  heard = 'Hey Nestor, ' + drawingRequest;
+  await page.evaluate(() => say()); await listening();
+  assert.ok(drawing, 'the first voice turn requested a drawing');
+  const card = page.locator('.display-block[data-kind="image"]');
+  assert.equal(await card.count(), 1);
+  assert.equal(await card.locator('img').count(), 0);
+  heard = followup;
+  const followupSent = page.waitForRequest(request => request.url().endsWith('/turns/text') && request.postDataJSON().text === followup);
+  await page.evaluate(() => { window.pendingAnswer = say(); });
+  await followupSent;
+  drawing = { ...drawing, state: 'completed', runtimeRestored: true,
+    artifact: { sha256: createHash('sha256').update(drawingPng).digest('hex'), url: drawing.statusUrl + '/image' } };
+  await page.waitForFunction(() => document.querySelector('.display-block[data-kind="image"] img')?.naturalWidth === 1);
+  assert.equal(imageReads, 1);
+  assert.equal(await state(), 'thinking', 'the drawing appeared before the follow-up answer arrived');
+  followingReply(); await page.evaluate(() => window.pendingAnswer); await listening();
+  assert.deepEqual(submissions.map(text => text.toLowerCase()), [drawingRequest.toLowerCase(), followup.toLowerCase()]);
+  assert.equal(kitchenSession.turnCount, 2);
+  assert.equal(await page.evaluate(() => window.fixturePlaybacks), playbacks + 2);
+  assert.equal(audioOpens, 6, 'both turns used the same synthetic microphone');
+  // Becoming hidden during the initial permission check has the same result.
+  holdPermission = true;
+  await page.goto(origin + '/fixture', { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => window.permissionQueries === 1);
+  const visible = isVisible => page.evaluate(value => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: !value });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, isVisible);
+  await visible(false);
+  holdPermission = false;
+  for (const response of pendingPermissions.splice(0)) response.json({ state: 'granted' });
+  await ready(); assert.equal(audioOpens, 6);
+  await visible(true); await listening(); assert.equal(audioOpens, 7);
+  await visible(false); await visible(true);
+  assert.equal(await state(), 'paused', 'leaving an active conversation still stops capture');
   assert.deepEqual(errors,[]);
   const result={ok:true,scope:'family',audioOpens,recognitionRequests,liveModelCalls:0,realDevicePermissions:0,submissions:submissions.length,errors};
   fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));

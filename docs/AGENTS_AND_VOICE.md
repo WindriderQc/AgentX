@@ -70,6 +70,8 @@ boundary does not establish a single catalog or selection interface everywhere.
 
 With `HOUSEHOLD_TEAM_MEMBERS` configured, an owner-addressed personal turn can
 run in the named specialist's native session and use its presentation voice.
+A request to Nestor to consult someone stays with Nestor, who can ask the
+installed specialist when the request calls for it.
 The next turn returns to the conversation's agent with that exchange as
 reference data. Family turns do not take this route. Speaking again while the
 specialist works leaves it running: the conversation's agent answers the new
@@ -130,17 +132,36 @@ uses admitted inference; `openclaw` uses the native agent conversation bridge.
 An optional `HOUSEHOLD_FAMILY_CONVERSATION_BACKEND` chooses the backend for new
 child-safe sessions without moving existing history between engines.
 
-Direct Core inference has no OpenClaw or Hermes tool loop. Family can use the
-bounded Core loop selected by `HOUSEHOLD_FAMILY_TOOLS`: `iss_passes`, `web_search`
-and `network_devices`. These dispatch the existing Core handlers, retain dated
-source results and tool receipts, and expose no owner memory, mail or mutation.
-Web results are untrusted references with URLs to cite; network reads use the
-existing collector inventory and disclose its freshness, without scanning.
-The family conversation receives the same cached Environment Canada conditions as
-the weather strip, with their source and fetch time. Readings older than thirty
-minutes, missing dates and failed reads are disclosed as unavailable. Conditions
-are not a forecast. This bounded reference also accompanies the local guardian;
-it contains no coordinates or operations snapshot and grants no owner tools.
+Direct Core inference offers the tools selected by `HOUSEHOLD_FAMILY_TOOLS`
+from the [Family registry](../core/surfaces/household/family-tools.js).
+Core executes calls and returns their results and receipts. With `source_read`
+granted, the local Family model can request the current conditions, forecast
+or alerts. An instance can also set `HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT=true`
+to attach a dated weather excerpt to each eligible local Family turn. Data
+can keep the bulletin warm while the screen is closed with
+`LIVEDATA_EC_WEATHER_PREPARE_ENABLED=true`, background jobs and the live weather feed.
+With `family_cards_read`, the local model can request published plant cards
+or Kids Room chores in eligible sessions. Web results are untrusted references
+with URLs. Network reads use the existing collector inventory and its timestamps.
+
+The optional `family_inbox_capture` grant lets the local Family model choose
+whether to save an explicitly requested idea or reminder for parent review.
+The tool takes only a kind. Core binds the current utterance and its stable
+browser turn ID, and a retry returns the existing item’s state. The item stays
+in the parent inbox until reviewed. Only the parent can promote it. A reminder
+in this inbox has no scheduled alarm. In an equipped turn, skipping the tool
+leaves the inbox untouched. Family and memory context preferences must allow
+it. Reader, ephemeral sessions and native engines do not receive this tool.
+Qualify the model’s handling of a request, a paraphrase and a withdrawal before
+enabling this grant on an instance.
+
+Personal Nestor can consult current Family notes on an authorized owner
+runtime when the instance enables `HOUSEHOLD_PERSONAL_FAMILY_MEMORY_READ`.
+It requests `personal_memory` with action `search_family` and a query.
+A result carries the family space and the original note's provenance.
+Personal searches and edits continue to address the personal notebook. Family
+and Reader recall notes in the family space. Each conversation keeps its own
+transcript.
 
 Full-screen Nestor shows the observed reply model as a badge in the top right
 corner and distinguishes Big Brain, the limited guardian relay and other model

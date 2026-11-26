@@ -937,10 +937,10 @@ the window (up to 24, with `visiblePassesComplete`), independent of
 read as the only visible passes.
 
 Famille conversations on the AgentX engine can call Core tools. Core lists the
-family-eligible tools in `core/surfaces/household/family-tools.js` (today
-`iss_passes`); the instance turns them on with `HOUSEHOLD_FAMILY_TOOLS`
+family-eligible tools in `core/surfaces/household/family-tools.js`.
+The instance selects them with `HOUSEHOLD_FAMILY_TOOLS`
 (comma-separated). The tools are offered to the model with the turn; a tool
-call runs the same handler as `/mcp`, its result goes back to the model, and
+call runs the corresponding Core handler, its result goes back to the model, and
 the model answers from it (at most two tool rounds, three calls per round; the
 last request offers no tool). A reply without a tool call streams exactly as
 before. Famille's `iss_passes` has no `lat`/`lon`: it always answers for the
@@ -948,6 +948,12 @@ household location. The turn records `tools.status: observed` with one receipt
 per call. When the model runtime refuses tools, the turn is answered without
 them and recorded as `not_supported`. Unset, Famille is offered no tool and the
 prompt keeps saying so.
+
+With `source_read` granted, local Famille turns read weather on a model call.
+Set `HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT=true` in Core to attach
+available dated weather before the model answers. Set
+`LIVEDATA_EC_WEATHER_PREPARE_ENABLED=true` in Data to keep the bulletin warm
+while Data background jobs, Live Data and the weather feed are enabled.
 
 The personal finance capability is described for a new maintainer in
 [FINANCE.md](FINANCE.md). The personal finance ledger ingests bank and credit-card statements dropped in
@@ -1318,6 +1324,18 @@ and `HOUSEHOLD_IMAGE_ROOTS_JSON` maps each source to the canonical root Data
 indexes for it. A picture is found by file or folder name; Data filters the
 servable image extensions before its 25-result limit, so videos cannot hide a
 photo in the same album. Named folders work better than camera names.
+Each picture lookup uses the selected source. A missing or unavailable selection
+returns an empty card and triggers no search on another source.
+`HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON` optionally supplies a JSON array of
+objects with `names` (exact French and English subject labels), `url` (the
+fixed HTTPS image), `origin` (the HTTPS source page), and `credit` (the visible
+link text). Allow `web` in `HOUSEHOLD_IMAGE_FAMILY_SOURCES` for the Family
+model to choose an image by subject, including alongside a spoken explanation.
+A reviewed label resolves directly. SearXNG only receives a known animal's
+catalogue search term. Other labels return a missing image. An explicitly
+empty or invalid catalogue still restricts public searches to known animals.
+Leaving the setting unset preserves the earlier Family image behaviour. The
+browser needs access to the selected image host to display it.
 `HOUSEHOLD_IMAGE_FAMILY_SOURCES` lists what Famille may
 show (default all four). A picture the OpenClaw agent generates with its own image
 tool (cited in its reply as `MEDIA:<path>`) is relayed from the Nestor plugin's

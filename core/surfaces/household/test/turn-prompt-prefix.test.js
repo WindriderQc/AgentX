@@ -78,7 +78,7 @@ test('Famille on the AgentX engine is offered the Core tools the instance turned
   await family.turn("Nestor, l'ISS passe quand?", 'text');
   assert.deepEqual(family.sent[0].tools.map(tool => tool.function.name), ['iss_passes']);
   assert.equal(family.sent[0].tools[0].function.parameters.properties.lat, undefined);
-  assert.match(family.sent[0].prefix, /these Core tools: iss_passes/);
+  assert.doesNotMatch(family.sent[0].prefix, /Core tools: iss_passes|Network observations are dated|ArtX is your animated background/);
   assert.doesNotMatch(family.sent[0].prefix, /No native agent tools/);
   const personal = harness({ packId: 'personal_operator', backend: 'agentx', conversationEnv: env });
   await personal.turn("Nestor, l'ISS passe quand?", 'text');

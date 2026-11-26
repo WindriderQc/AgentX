@@ -13,7 +13,7 @@ const { isNativeToolCallId } = require('../../../../shared/nativeToolCallId.cjs'
 const { replyAttribution, resultAttribution } = require('./relay-context');
 
 function createConversationWorks({ conversations, tasks, env = process.env, repository = createRepository(), classify = () => false, nativeOnly = () => false, nativeRead = () => false,
-  nativeBudget = () => null, nativeForeground = () => true, nativeTaskRead = () => false, guardianNeedsMain = () => false, nativePrimary = false,
+  nativeBudget = () => null, nativeForeground = () => true, nativeTaskRead = () => false, guardianNeedsMain = () => false, nativePrimary = false, nativeInputContract,
   presentResult = null, questionRuntime = null, guardianReads = () => null, guardianOccupied = async () => false,
   exchangeStore = exchanges, now = () => new Date() } = {}) {
   const repo = repository;
@@ -35,7 +35,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     if (row) return row;
     const receipt = await exchangeStore.read(EXCHANGE_SCOPE, hash(EXCHANGE_SCOPE + '\n' + turnId));
     return receipt?.request?.body?.sessionId === current.sessionId && MODES.includes(receipt.request.body.mode)
-      ? { mode: receipt.request.body.mode, entryPolicy: receipt.request.body.entryPolicy,
+      ? { mode: receipt.request.body.mode, entryPolicy: receipt.request.body.entryPolicy, primary: { inputContract: receipt.request.body.inputContract },
         ...(receipt.request.body.performance && { performance: receipt.request.body.performance }) } : null;
   }
   async function intake({ session: current, turnId, text, attachments = [], channel = 'voice', speechLanguage, performanceProfile }) {
@@ -50,8 +50,9 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
     // legacy records without a profile. New preferences never rewrite a dispatch.
     const performance = previousWork ? previousWork.performance : mode === 'native' ? resolveProfile(performanceProfile, env) : undefined;
     const entryPolicy = previousWork ? previousWork.entryPolicy : mode === 'native' && nativePrimary ? 'main-first/v1' : undefined;
+    const inputContract = previousWork ? previousWork.primary?.inputContract : entryPolicy && nativeInputContract?.(text, attachments);
     const snapshot = { text, attachments, sessionId: current.sessionId, channel, clientTurnId: turnId,
-      mode, ...(entryPolicy && { entryPolicy }), ...(performance && { performance }) };
+      mode, ...(entryPolicy && { entryPolicy }), ...(inputContract && { inputContract }), ...(performance && { performance }) };
     const accepted = await exchangeStore.accept(EXCHANGE_SCOPE, { body: snapshot }, turnId, current.conversationId);
     const taken = await conversations.acceptTurn({ ...query(current.sessionId), modeId: current.modeId,
       traceId: turnId, clientTurnId: turnId, channel, inputText: text, attachments,
@@ -71,7 +72,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
       exchangeId: accepted.receipt._id, requestSha256: hash(text), mode: snapshot.mode,
       ...(performance && { performance }),
       state: 'received', classification: entryPolicy ? 'native_work' : classification(text, snapshot.mode),
-      ...(entryPolicy && { entryPolicy, primary: { delivery: 'foreground' } }),
+      ...(entryPolicy && { entryPolicy, primary: { delivery: 'foreground', ...(inputContract && { inputContract }) } }),
       revision: 0, receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
       ...(snapshot.mode === 'native' && { foreground: entryPolicy ? 'primary' : nativeForeground(text) && !simple(text) ? 'acknowledge' : 'guardian' }),
       guardian: { agentId: guardianAgentId, ...(guardianAgentId !== 'main' && { sessionId: randomUUID() }),
@@ -416,7 +417,7 @@ function createConversationWorks({ conversations, tasks, env = process.env, repo
         const at = now();
         row = await repo.insert({ _id: id, owner: OWNER, surface: 'household', conversationId: current.conversationId,
           sessionId: input.sessionId, turnId: input.clientTurnId, exchangeId: item.id, requestSha256: hash(input.text),
-          mode: input.mode, ...(input.entryPolicy && { entryPolicy: input.entryPolicy, foreground: 'primary', primary: { delivery: 'background' } }),
+          mode: input.mode, ...(input.entryPolicy && { entryPolicy: input.entryPolicy, foreground: 'primary', primary: { delivery: 'background', ...(input.inputContract && { inputContract: input.inputContract }) } }),
           ...(input.performance && { performance: input.performance }), state: 'received', revision: 0,
           receivedAt: at, updatedAt: at, contextReady: false, tools: [], events: [], sequence: 0,
           guardian: { state: input.entryPolicy ? 'not_used' : taken.turn.outcome === 'pending' ? 'uncertain' : taken.turn.outcome }, erased: false,

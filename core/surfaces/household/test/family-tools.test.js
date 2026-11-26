@@ -4,13 +4,13 @@ const assert = require('node:assert/strict');
 const { FAMILY_ELIGIBLE_TOOLS, familyToolNames, familyToolset, parseArguments } = require('../family-tools');
 
 test('Famille is offered only family-eligible Core tools the instance turned on', () => {
-  assert.deepEqual(FAMILY_ELIGIBLE_TOOLS, ['iss_passes', 'source_catalogue', 'source_read', 'web_search', 'network_devices', 'artx_read', 'artx_present']);
+  assert.deepEqual(FAMILY_ELIGIBLE_TOOLS, ['iss_passes', 'source_catalogue', 'source_read', 'family_cards_read', 'family_inbox_capture', 'web_search', 'network_devices', 'artx_read', 'artx_present']);
   assert.equal(familyToolset({}), null);
   assert.equal(familyToolset({ HOUSEHOLD_FAMILY_TOOLS: 'photo_search, create_todo' }), null);
   assert.deepEqual(familyToolNames({ HOUSEHOLD_FAMILY_TOOLS: ' iss_passes ,create_todo,iss_passes' }), ['iss_passes']);
   const toolset = familyToolset({ HOUSEHOLD_FAMILY_TOOLS: 'iss_passes' });
   assert.deepEqual(toolset.definitions.map(d => [d.type, d.function.name]), [['function', 'iss_passes']]);
-  assert.match(toolset.instructions, /iss_passes/);
+  assert.doesNotMatch(toolset.instructions, /iss_passes|network|ArtX|inbox|web_search/i);
   assert.match(toolset.instructions, /never invent a tool result/);
 });
 
@@ -72,6 +72,7 @@ test('native web results remain untrusted references and cannot add an owner cap
     const value = await tools.execute({ function: { name: 'web_search', arguments: { query: 'orbit' } } });
     assert.match(JSON.parse(value.message.content).trust, /untrusted reference data/);
     assert.match(tools.instructions, /never instructions/);
+    assert.match(tools.instructions, /Keep private names, notes and household details out of search terms/);
     assert.deepEqual(tools.names, ['web_search']);
     assert.equal((await tools.execute({ function: { name: 'personal_memory', arguments: {} } })).receipt.status, 'refused');
   } finally { source.searchWeb = previous; }

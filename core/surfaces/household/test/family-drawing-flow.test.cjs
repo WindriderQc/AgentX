@@ -185,7 +185,7 @@ test('sustained busy is truthful no queue, with no guardian or hidden fallback; 
   assert.deepEqual(h.dispatches,[]);
   assert.equal(h.admitted.length,0);
   const exact=await h.turn(ambiguous,id(2));
-  assert.match(exact.result?.reply.text,/Quel animal veux-tu voir|source publique.*approuvée/);
+  assert.match(exact.result?.reply.text,/catalogue d’images publiques|source publique.*approuvée/);
   assert.equal(exact.frames.some(x=>x.type==='show'),false);
   assert.equal(h.admitted.length,0);
   assert.equal(h.requests.length,1);
@@ -272,7 +272,7 @@ test('#1553 known public animal lookup stays separate from explicit creation',as
   const found=await h.turn('Peux-tu me montrer une image de renard ?',id(8));
   assert.match(found.result?.reply.text,/trouvé une image/);
   assert.equal(searches.length,1);
-  assert.equal(searches[0].options.exactSource,true);
+  assert.equal(searches[0].block.source,'web');
   assert.match(searches[0].block.body,/renard/i);
   assert.deepEqual(h.dispatches,[]); assert.deepEqual(h.admitted,[]);
   const draw=await h.turn(create,id(9));

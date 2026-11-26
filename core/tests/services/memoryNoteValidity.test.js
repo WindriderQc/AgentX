@@ -105,3 +105,61 @@ test('a fact invalidated after the editor read is not overwritten by its stale w
     expect(await MemoryNote.findById(note.id).lean()).toMatchObject({ text: note.text, invalidatedAt: past });
   } finally { spy.mockRestore(); }
 });
+
+describe('explicit family note search by the personal assistant', () => {
+  const flag = 'HOUSEHOLD_PERSONAL_FAMILY_MEMORY_READ';
+  let previous;
+  beforeEach(() => { previous = process.env[flag]; });
+  afterEach(() => {
+    if (previous === undefined) delete process.env[flag];
+    else process.env[flag] = previous;
+  });
+
+  test('it requires the exact server grant and a nonempty query', async () => {
+    for (const value of [undefined, 'false', '1']) {
+      if (value === undefined) delete process.env[flag];
+      else process.env[flag] = value;
+      await expect(operatePersonal({ operation: 'search_family', query: 'astronomy', [flag]: true }))
+        .rejects.toMatchObject({ statusCode: 403 });
+    }
+    process.env[flag] = 'true';
+    for (const query of [undefined, '  ']) {
+      await expect(operatePersonal({ operation: 'search_family', query })).rejects.toMatchObject({ statusCode: 400 });
+    }
+    await expect(operatePersonal({ operation: 'search_family', query: 'astronomy', includeHistory: true }))
+      .rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('it reads only current family and reader notes, ignores caller scope and leaves storage unchanged', async () => {
+    process.env[flag] = 'true';
+    const shared = { scope: 'household', sensitivity: 'normal', scopeId: 'family', packId: 'kidx_nestor' };
+    const entries = [
+      { ...shared, text: 'Astronomy kitchen board' },
+      { ...shared, packId: 'kidx_reader', text: 'Astronomy reader lesson' },
+      { packId: 'personal_operator', scopeId: 'personal', scope: 'owner', sensitivity: 'private', text: 'Astronomy owner only' },
+      { ...shared, scopeId: 'other-space', text: 'Astronomy other family space' },
+      { ...shared, packId: 'unrelated', text: 'Astronomy unrelated pack' },
+      { ...shared, sensitivity: 'private', text: 'Astronomy private sensitivity' },
+      { ...shared, scope: 'owner', text: 'Astronomy private scope' },
+      { packId: 'kidx_reader', scopeId: 'family', text: 'Astronomy unclassified' },
+      { ...shared, status: 'forgotten', text: 'Astronomy forgotten' },
+      { ...shared, status: 'pending', text: 'Astronomy pending' },
+      { ...shared, invalidatedAt: past, text: 'Astronomy retired' },
+      { ...shared, expiresAt: past, text: 'Astronomy expired' },
+    ];
+    const rows = await MemoryNote.insertMany(entries);
+    for (const row of rows) await createIndex().indexNote(row._id, row.text);
+    const snapshot = () => MemoryNote.collection.find({}).sort({ _id: 1 }).toArray();
+    const before = await snapshot();
+    const read = { action: 'search_family', scopeId: 'personal', packIds: ['personal_operator'], audience: 'owner' };
+    // All fixture vectors are identical, including the private ones.
+    for (const query of ['astronomy', 'orbits']) {
+      const found = await operatePersonal({ ...read, query });
+      expect(found).toMatchObject({ operation: 'search_family', authority: 'agentx.core', memorySpace: 'family', total: 2 });
+      expect(found.notes.map(note => note.text).sort()).toEqual(['Astronomy kitchen board', 'Astronomy reader lesson']);
+    }
+    const ordinary = await operatePersonal({ operation: 'search', query: 'astronomy', memorySpace: 'family' });
+    expect(ordinary.notes.map(note => note.text)).toEqual(['Astronomy owner only']);
+    expect(await snapshot()).toEqual(before);
+  });
+});

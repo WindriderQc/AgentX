@@ -5,6 +5,7 @@
 
 const fs = require('node:fs');
 const path = require('path');
+const { packIdsSharingMemory } = require('../../src/domains/household/noteSpaces');
 
 function cleanText(value, max = 4000) {
   return String(value || '').trim().slice(0, max);
@@ -154,17 +155,6 @@ const SAFETY_SUPPORT = Object.freeze({
   availability: '24/7',
   source: 'https://www.canada.ca/en/public-health/services/mental-health-services/mental-health-get-help.html'
 });
-
-// Packs sharing a memoryGroup read each other's notes for the same scopeId, so
-// what a child tells the reader is known to the family assistant and back.
-// Notes are still WRITTEN under the pack that took them, which keeps provenance
-// in the row and means no migration of existing memories.
-function packIdsSharingMemory(pack) {
-  if (!pack) return [];
-  const group = pack.memoryGroup;
-  if (!group) return [pack.id];
-  return PACKS.filter((entry) => entry.memoryGroup === group).map((entry) => entry.id);
-}
 
 function packById(id) {
   return PACKS.find((pack) => pack.id === String(id || '')) || null;

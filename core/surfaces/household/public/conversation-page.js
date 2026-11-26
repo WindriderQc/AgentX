@@ -782,12 +782,13 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   });
   const onRecognitionOnline = () => { if (voiceHost.isConnected) conversation.retryRecognition(); };
   const onVoiceIntent = event => { if (voiceHost.isConnected && event.key === voiceIntentKey && event.newValue === 'off') { microphoneWanted = false; conversation.stop(true); } };
-  window.addEventListener('online', onRecognitionOnline); window.addEventListener('storage', onVoiceIntent);
+  const voiceEvents = new AbortController();
+  window.addEventListener('online', onRecognitionOnline, { signal: voiceEvents.signal }); window.addEventListener('storage', onVoiceIntent, { signal: voiceEvents.signal });
   const voiceLifetime = new MutationObserver(() => {
     if (voiceHost.isConnected) return;
     conversation.changed = () => {}; conversation.stop(true); disposeVoiceListeners();
   });
-  const disposeVoiceListeners = () => { voiceLifetime.disconnect(); window.removeEventListener('online', onRecognitionOnline); window.removeEventListener('storage', onVoiceIntent); };
+  const disposeVoiceListeners = () => { voiceLifetime.disconnect(); voiceEvents.abort(); };
   voiceLifetime.observe(document.body, { childList: true, subtree: true });
   renderSpeechFallback = NestorSpeechFallback.mountSpeechFallbackPanel(speechFallback, { notice: el('conversationBrowserSttNotice'),
     settings: fallbackSettings, indicator: el('conversationBrowserSttIndicator') },
@@ -1020,14 +1021,19 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     if (!await conversation.typed(text, { attachments, requestPolicy: submittedPrivacy }) && !input.value.trim()) input.value = text;
     composer.sync();
   }
-  // A hidden page stops listening; a typed turn already sent is left to finish.
   const captureRequests = family ? null : window.NestorScreenCapture.mount({ host: el('conversationText'), api, base: sessionBase,
     getSession: () => conversation.session, busy: () => textBusy || !(conversation.canType() || ['idle', 'paused', 'error'].includes(conversation.state)),
     addCapture: (snapshot, request, sessionId) => drafts.addCapture(snapshot, request, sessionId),
     hasCapture: drafts.hasCapture, removeCapture: drafts.removeCapture });
   const visit = family ? null : window.NestorGuidedVisit.mount({ host: app.querySelector('.conversation-toolbar'),
     onExpire: () => { if (document.hidden && !textBusy) { conversation.stop(true); void releaseOpen(); } } });
-  document.addEventListener('visibilitychange', () => { if (document.hidden) stopPreview(); if (document.hidden && !visit?.active()) { if (!textBusy) { conversation.stop(true); void releaseOpen(); } } });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    stopPreview();
+    if (visit?.active() || textBusy) return;
+    if (!family || conversation.session || conversation.state !== 'idle') conversation.stop(true);
+    void releaseOpen();
+  }, { signal: voiceEvents.signal });
   window.addEventListener('pagehide', () => { disposeVoiceListeners(); captureRequests?.dispose(); drafts.clear(); progress?.dispose(); visit?.dispose(); pagePicker?.dispose(); work?.dispose(); stopPreview(); conversation.stop(); void openHold.release({ watch: false }); });
   el('runtimePill').textContent = 'ready';
   conversation.show('idle');
@@ -1107,8 +1113,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       showExecution(data.turns?.at(-1));
       void recap?.refresh();
       describe(); conversation.show('paused'); setHistoryOpen(false); el('conversationStart').focus();
-      // Opening a conversation resumes it: no second press on Reprendre. As on arrival, voice starts
-      // by itself only where the microphone is already granted; elsewhere that press asks for it.
+      // A saved conversation resumes voice automatically when microphone access is already granted.
       const permission = await navigator.permissions?.query({ name: 'microphone' }).catch(() => null);
       if (microphoneWanted && permission?.state === 'granted' && epoch === conversation.epoch) void startVoice({ automatic: true });
     } catch (error) { if (epoch === conversation.epoch) el('conversationStatus').textContent = error.message; }
@@ -1183,16 +1188,11 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     } catch { card.hidden = true; }
   }
   if (!family) void offerResume();
-  if (autoStart && !document.hidden && microphoneWanted) {
+  if (autoStart && microphoneWanted) {
     const epoch = conversation.epoch;
-    const mayAutoStart = () => microphoneWanted && voiceHost.isConnected && !document.hidden && epoch === conversation.epoch;
-    try {
-      const permission = await navigator.permissions?.query({ name: 'microphone' });
-      if (mayAutoStart()) {
-        if (permission?.state === 'granted') await conversation.start(selection(), { automatic: true });
-        else el('conversationStatus').textContent = language.value === 'fr' ? 'Appuyez sur Activer Nestor pour autoriser le micro et le son.' : 'Turn on Nestor once to allow the mic and sound.';
-      }
-    } catch { if (mayAutoStart()) el('conversationStatus').textContent = language.value === 'fr' ? 'Appuyez sur Activer Nestor pour reprendre le micro et le son.' : 'Press Turn on Nestor to set up this device.'; }
+    await ConversationSettings.startVoiceOnArrival({ waitForVisible: family, signal: voiceEvents.signal,
+      current: () => microphoneWanted && voiceHost.isConnected && epoch === conversation.epoch,
+      start: () => conversation.start(selection(), { automatic: true }), status: el('conversationStatus'), french: () => language.value === 'fr' });
   } else if (autoStart && !microphoneWanted) conversation.show('paused');
   idlePhotos = window.NestorIdlePhotos?.mount({ host: app.querySelector('.conversation-toolbar'), api, space,
     standby: () => !!conversation.selection?.wakeWord && !conversation.wake.active(),

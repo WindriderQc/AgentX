@@ -13,22 +13,20 @@ test('team members come only from the instance map, never the family agent', () 
   assert.deepEqual(team.teamMembers({ HOUSEHOLD_TEAM_MEMBERS: 'not json' }), []);
 });
 
-test('only a turn that addresses a member by name, or asks it something, goes to that member', () => {
+test('only a direct address to a configured member changes the speaker', () => {
   const to = (text, current = 'main') => team.addressedMember(text, members, current)?.agentId || null;
   assert.equal(to('Secrétaire, ai-je des factures à payer?'), 'secretary');
   assert.equal(to('Hey secrétaire: mes courriels urgents?'), 'secretary');
-  assert.equal(to('Bonjour Nestor, est-ce que tu peux demander à secrétaire si j\'ai des factures à payer?'), 'secretary');
-  assert.equal(to('Demande à la Secrétaire mes courriels'), 'secretary');
-  assert.equal(to('Ask the secretary for my unread mail'), 'secretary');
   assert.equal(to('Comptable! Combien ai-je dépensé ce mois-ci?'), 'comptable');
   assert.equal(to('Est-ce que la secrétaire a trié mes courriels hier?'), null);
   assert.equal(to('Le comptable de mon père est malade.'), null);
   assert.equal(to('Secrétaire, encore une question', 'secretary'), null);
 });
 
-test('native Main owns specialist requests while explicit member addresses keep their own speaker', () => {
-  const to = text => team.addressedMember(text, members, 'main', { nativeDelegation: true })?.agentId || null;
-  for (const text of ['Demande à la Secrétaire si ses outils de lecture sont disponibles, sans envoyer de message.',
+test('requests, quotations and negated specialist instructions stay with the current speaker', () => {
+  const to = text => team.addressedMember(text, members, 'main')?.agentId || null;
+  for (const text of ['Ne demande au comptable absolument rien.', 'Traduis « ask the secretary for my mail ».',
+    'Demande à la Secrétaire si ses outils de lecture sont disponibles, sans envoyer de message.',
     'Bonjour Nestor, peux-tu demander à secrétaire si elle peut lire mes courriels?',
     'Ask the secretary for my unread mail', 'Vérifie avec le comptable mes factures']) assert.equal(to(text), null, text);
   assert.equal(to('Secrétaire, quels courriels attendent?'), 'secretary');

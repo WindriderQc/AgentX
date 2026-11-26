@@ -15,7 +15,7 @@ const validFailure = (receipt, attempt) => receipt?.source === 'openclaw/respons
 // loop. The durable gate has no timeout takeover: a lost dispatch is observed
 // through its exact native session before another work is admitted.
 function createWorkObserver({ works, execute, prepare = async value => value, observe, receive = async () => null,
-  agentFor = () => env.PERSONAL_CONVERSATION_WORK_AGENT_ID, env = process.env, logger, intervalMs = 1000, now = Date.now }) {
+  attemptSessionKey, agentFor = () => env.PERSONAL_CONVERSATION_WORK_AGENT_ID, env = process.env, logger, intervalMs = 1000, now = Date.now }) {
   let running = false, timer, closed = false;
   let recoverAfter = 0, recoverDelay = 30000;
   let passWorkId, passSettled = Promise.resolve();
@@ -77,7 +77,8 @@ function createWorkObserver({ works, execute, prepare = async value => value, ob
   async function run(row) {
     const processId = randomUUID();
     const id = randomUUID(), sessionId = randomUUID(), agentId = agentFor(row);
-    const attempt = { id, sessionId, agentId, sessionKey: `agent:${agentId}:household:direct:${sessionId}`, dispatchedAt: new Date() };
+    const sessionKey = attemptSessionKey?.(row, sessionId) || `agent:${agentId}:household:direct:${sessionId}`;
+    const attempt = { id, sessionId, agentId, sessionKey, dispatchedAt: new Date() };
     try { await gate().updateOne({ _id: OWNER }, { $setOnInsert: { workId: null } }, { ...acknowledged, upsert: true }); }
     catch (cause) { if (cause.code !== 11000) throw cause; }
     const claim = await gate().updateOne({ _id: OWNER, workId: null }, { $set: { workId: row._id,

@@ -54,6 +54,9 @@ and `docs/HOUSEHOLD_DOCUMENT_REVIEW.md`.
   `personal_memory` reads current and replaced notes with their provenance
   and edits the same store under its existing policy. Keep infrastructure
   notes and development decisions in project docs.
+  On an authorized personal model route, an instance may grant
+  `personal_memory` with `action: "search_family"` and a query. This reads
+  current notes from the Family space. Keep their household attribution.
 - **Documents** (`rag_search`): cite the source and keep an excerpt distinct
   from verified current state.
 - Private archive candidates are reviewed at `/dad/documents`: preparation,

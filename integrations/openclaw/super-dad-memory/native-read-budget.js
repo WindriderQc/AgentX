@@ -1,3 +1,4 @@
+import { isTranslationSession } from '../../../shared/quotedTranslation.cjs';
 import { createConversationWorkClient } from './conversation-work.js';
 
 export function registerNativeReadBudget(api, { fetchImpl = fetch } = {}) {
@@ -6,6 +7,8 @@ export function registerNativeReadBudget(api, { fetchImpl = fetch } = {}) {
   const call = createConversationWorkClient({ baseUrl: config.agentxUrl, token: config.conversationWorkToken, fetchImpl });
   const runs = new Map();
   api.on('before_tool_call', async (event, context) => {
+    if (isTranslationSession(context?.sessionKey)) return { block: true,
+      blockReason: 'This isolated session translates the supplied quotation. Return the translation directly.' };
     // OpenClaw runs this hook again for the resolved tool, with its own native
     // call identity. The dispatch wrapper performs no research: count and fence
     // the actual tool execution once, including a tool that later fails.
@@ -32,4 +35,5 @@ export function registerNativeReadBudget(api, { fetchImpl = fetch } = {}) {
       return { block: true, blockReason: 'Core could not confirm this native research admission. No tool was executed. Conclude with the verified information already available and explain the lookup failure; do not retry or dispatch replacement research.' };
     }
   });
+  return true;
 }

@@ -25,7 +25,7 @@ to its turn. It cannot claim a source read.
 |---|---|---|
 | `secretary` | `source_read {source: "secretary", section: "mail"}` for dated digests, or section `flaggedForOwner` for the Secretary's recorded actions. | Producer, query dates, relevant digest or action and exact message/thread reference if returned. Follow `mail_recall` or the authorized original for exact provenance. |
 | `comptable` | `source_read {source: "comptable", section: "freshness"}`, then `balances`, `recentMonths`, `pendingAlerts` or `statementsToReview` as needed. | Ledger dates, import evidence and each balance's date. Relay Core's monetary Display values verbatim. |
-| `weather` | `source_read {source: "weather"}` for Data's current conditions. | `observedAt` and any age warning, separately from `fetchedAt`. Current conditions have their own coverage and expose no forecast. |
+| `weather` | `source_read {source: "weather"}` for current conditions, section `forecast` for periods and dated hours, or `alerts` for warnings in the configured household area. | Use `observedAt` for observations, `forecastIssuedAt` and the issue date for bulletin periods, and issue/expiry times for alerts. Check section status and coverage. `fetchedAt` dates retrieval. An explicit current read can refresh missing or stale conditions. |
 | `agentx` | `source_read {source: "agentx"}` for Core, Benchmark and RAG reachability. | Per-service reachability and `readAt`. For an owner diagnostic of jobs, hosts or dependencies, follow [Ops](ops.md#service-directory). |
 
 Reads neither launch collaborators nor run ingestion. For the authorized

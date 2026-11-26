@@ -24,6 +24,14 @@ test('resolved native tool identity admits and blocks through Core without expos
   assert.equal(blocked.block, true); assert.match(blocked.blockReason, /Finish now/);
   assert.equal(h.bodies[1].input.tool, 'web_search');
 });
+test('an isolated translation blocks every tool including deferred dispatch before Core or another agent is called', async () => {
+  const h = setup([]);
+  const context = { ...native, sessionKey: native.sessionKey.replace(':direct:', ':translation:') };
+  for (const toolName of ['sessions_spawn', 'conversation_work', 'tool_call', 'personal_memory', 'web_fetch']) {
+    assert.equal((await h.hook({ toolName }, context)).block, true);
+  }
+  assert.deepEqual(h.bodies, []);
+});
 test('a deferred dispatch and its resolved execution consume one admission, and denial fences the execution', async () => {
   const h = setup([{ status: 200, admitted: true }, { status: 200, admitted: false }]);
   const dispatch = { ...event, toolName: 'tool_call', params: { id: 'openclaw:core:web_fetch', args: event.params }, toolCallId: 'dispatch-call' };

@@ -6,6 +6,7 @@
 // proposed chore, #864) a family chore, or sets it aside. An idea never exists
 // as a queued pipeline row before that review.
 const mongoose = require('mongoose');
+const { createHash } = require('node:crypto');
 const PlanningItem = require('../../models/PlanningItem');
 const { cleanProfileId, familyChoreProposal } = require('../domains/household/family');
 
@@ -70,6 +71,36 @@ async function captureIdea(input = {}) {
     by: origin === 'family' ? 'household-family' : origin === 'secretary' ? 'secretary-catchup' : 'nestor-secretary'
   });
   return { idea: publicIdea(item), review: 'parent' };
+}
+
+// The turn owns at most one parent-inbox item. Mongo's unique _id also
+// arbitrates concurrent inserts before optional secondary indexes are built.
+// The key binds the full turn identity and its original words across retries,
+// including a parent editing, promoting or archiving the item afterwards.
+async function captureFamilyTurn({ sessionId, turnId, userText, kind, signal }) {
+  if (typeof sessionId !== 'string' || !sessionId || sessionId.length > 120 ||
+      typeof turnId !== 'string' || !/^[a-zA-Z0-9-]{16,80}$/.test(turnId) ||
+      typeof userText !== 'string' || !userText.trim() || userText.length > 4000 || !KINDS.includes(kind)) {
+    throw failure(400, 'IDEA_INVALID_FAMILY_TURN', 'Invalid family capture.');
+  }
+  const digest = value => createHash('sha256').update(value).digest('hex');
+  const source = digest(JSON.stringify(['family-parent-inbox', sessionId, turnId]));
+  const identity = { _id: new mongoose.Types.ObjectId(source.slice(0, 24)), key: 'family-inbox:' + source + ':' + digest(userText) };
+  signal?.throwIfAborted();
+  let item;
+  try {
+    item = await planning().createItem({ type: 'idea', title: text(userText, 120), summary: userText,
+      tags: ['origin:family', 'kind:' + kind], owner: 'household-family', by: 'household-family' }, { identity, signal });
+  } catch (error) {
+    // Reconcile even if the reply to a successful insert was lost. Never
+    // submit a second operation when the first result is unknown.
+    item = await PlanningItem.findById(identity._id).lean();
+    if (!item) throw error;
+    if (item.key !== identity.key || item.type !== 'idea' || item.owner !== 'household-family') {
+      throw failure(409, 'IDEA_FAMILY_TURN_CONFLICT', 'This turn identity already belongs to different input.');
+    }
+  }
+  return { ideaId: String(item._id), kind: tagValue(item.tags, 'kind'), status: item.status, review: 'parent' };
 }
 
 // An agent proposes one family chore (#864). It waits in the inbox, with the
@@ -164,4 +195,4 @@ async function setAside(id, input = {}) {
   return { idea: publicIdea(item) };
 }
 
-module.exports = { EXECUTION_TARGETS, KINDS, ORIGINS, captureIdea, listIdeas, promoteToExecution, proposeFamilyChore, publicIdea, setAside };
+module.exports = { EXECUTION_TARGETS, KINDS, ORIGINS, captureIdea, captureFamilyTurn, listIdeas, promoteToExecution, proposeFamilyChore, publicIdea, setAside };

@@ -3,10 +3,71 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createCoreNotesClient, configuredJobContext } from '../core-notes.js';
+import { createCoreNotesClient, configuredJobContext, registerPersonalMemory } from '../core-notes.js';
 import { privateOwnerContext, readState } from '../store.js';
 import { contextFor, recordRun, recordTool } from '../harness.js';
 import { continuityOperations, nativeTurnAnswer } from '../continuity.js';
+
+test('only the private owner gets the family action on the existing native personal_memory tool', async () => {
+  const owner = { agentId: 'main', sessionKey: 'agent:main:telegram:direct:12345' };
+  const secretary = { agentId: 'secretary', sessionKey: 'agent:secretary:cron:mail' };
+  const pluginConfig = { secretarySessionKeys: [secretary.sessionKey] };
+  const calls = [];
+  let toolFor;
+  registerPersonalMemory({ config: { channels: { telegram: { allowFrom: ['12345'] } } }, pluginConfig,
+    registerTool(factory, options) {
+      assert.deepEqual(options, { name: 'personal_memory', optional: true });
+      toolFor = factory;
+    }
+  }, async input => { calls.push(input); return { ok: true }; });
+  assert.equal(toolFor({ agentId: 'family', sessionKey: 'agent:family:household:direct:example' }), null);
+  assert.equal(toolFor({ ...owner, sandboxed: true }), null);
+  const params = { action: 'search_family', query: 'projet science' };
+  const ownerTool = toolFor(owner);
+  assert.ok(ownerTool.parameters.properties.action.enum.includes('search_family'));
+  await ownerTool.execute('owner-call', params);
+  assert.deepEqual(calls, [params]);
+  const secretaryTool = toolFor(secretary);
+  assert.deepEqual(secretaryTool.parameters.properties.action.enum, ['remember', 'list', 'search', 'forget']);
+  assert.doesNotMatch(secretaryTool.description, /search_family/);
+  await assert.rejects(secretaryTool.execute('forged', params), /private owner turn/);
+  pluginConfig.secretarySessionKeys.push(owner.sessionKey);
+  await assert.rejects(toolFor(owner).execute('misconfigured-job', params), /private owner turn/);
+  assert.equal(calls.length, 1);
+  await secretaryTool.execute('ordinary-mail-note', { action: 'remember', text: 'Synthetic fact' });
+  assert.equal(calls[1].provenance, 'mail-review');
+});
+
+test('family search forwards only the bounded read and verifies its space and every result', async () => {
+  const request = { action: 'search_family', query: 'projet science' };
+  const note = { text: 'projet science', scope: 'household', sensitivity: 'normal' };
+  let data = { ok: true, authority: 'agentx.core', operation: 'search_family', memorySpace: 'family', notes: [note] };
+  const calls = [];
+  let ok = true;
+  const client = createCoreNotesClient({ baseUrl: 'http://core.test', fetchImpl: async (url, options) => {
+    assert.equal(url.pathname, '/api/consumers/nestor/v1/memory/notes');
+    calls.push(JSON.parse(options.body));
+    return { ok, status: ok ? 200 : 403, json: async () => ({ status: 'success', data }) };
+  } });
+  for (const query of [undefined, ' ', 1, 'x'.repeat(2001)]) {
+    await assert.rejects(client({ ...request, query }), /requires a query/);
+  }
+  assert.equal(calls.length, 0);
+  assert.deepEqual((await client({ ...request, scopeId: 'personal', audience: 'owner', includeHistory: true,
+    text: 'ignored', id: 'a'.repeat(24) })).notes, [note]);
+  assert.deepEqual(calls, [request]);
+  const valid = data;
+  for (const invalid of [{ operation: 'search' }, { authority: 'other' }, { memorySpace: 'personal' },
+    { memorySpace: undefined }, { notes: null }, { notes: [note, null] },
+    { notes: [note, { ...note, scope: 'owner' }] }, { notes: [{ ...note, sensitivity: 'private' }] }]) {
+    data = { ...valid, ...invalid };
+    await assert.rejects(client(request), /receipt is invalid/);
+  }
+  data = { ...valid, notes: [] };
+  assert.deepEqual((await client(request)).notes, []);
+  ok = false;
+  await assert.rejects(client(request), /family-note search unavailable \(403\)/);
+});
 
 test('native personal_memory transports an explicit owner history list without adding write operations', async () => {
   let body;
@@ -144,6 +205,9 @@ test('a run that yielded to a sub-agent answers with the announce run that settl
     assistant(settle, 'stop', [{ type: 'text', text: 'Le comptable a répondu.' }], 'announce-message')];
   assert.deepEqual(nativeTurnAnswer({ sessionKey, messages: settled }, sessionKey, runId), { status: 'ready',
     source: 'openclaw/sessions.get', runId, deliveredBy: settle, messageId: 'announce-message', text: 'Le comptable a répondu.' });
+  const laterOwnerTurn = assistant('resp_44444444-4444-4444-8444-444444444444', 'stop', [{ type: 'text', text: 'Another request.' }]);
+  assert.equal(nativeTurnAnswer({ sessionKey, messages: [...yielding, laterOwnerTurn, ...settled.slice(yielding.length)] },
+    sessionKey, runId).status, 'yielded');
   // An announce for another session, or one still using tools, is not this answer.
   const other = settle.replace('11111111-1111', '44444444-4444');
   assert.equal(nativeTurnAnswer({ sessionKey, messages: [...yielding,

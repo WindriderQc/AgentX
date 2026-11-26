@@ -7,6 +7,7 @@ const { acceptedImageReply } = require('./accepted-images');
 const { scoreSpeechLanguage } = require('../../public/js/voice/speech-language');
 const { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure, recordedTaskReply } = require('./tool-turn-guard');
 const { requestsSecretary, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
+const { translationSessionKey } = require('../../../shared/quotedTranslation.cjs');
 const { nativeResponseFailure } = require('./native-response-failure');
 
 const agentIdFor = session => ['kidx_nestor', 'kidx_reader'].includes(session.packId) ? 'family' : session.agentId || 'main';
@@ -101,7 +102,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     }
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
-    const sessionKey = sessionKeyFor(session);
+    const sessionKey = channel === 'translation' && agentIdFor(session) === 'main' ? translationSessionKey(session.sessionId) : sessionKeyFor(session);
     // Only the explicitly installed tool-free guardian may speak append-only
     // deltas. Complete Main still waits for its exact final native projection.
     const liveGuardian = guardianStreaming && channel === 'voice' && !browserReply
@@ -447,7 +448,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       }
       if (!browserCall) {
         answer = evidence.answer.text;
-        if (agentIdFor(session) === 'main' && session.packId === 'personal_operator' && session.scopeId === 'personal'
+        if (channel !== 'translation' && agentIdFor(session) === 'main' && session.packId === 'personal_operator' && session.scopeId === 'personal'
             && !session.llmx && session.source !== 'graphysx-llmx'
             && requestsTaskCheck(text) && taskObservedRun !== runId) {
           const acknowledgment = personalVoice(session, channel) ? await require('./task-work-acceptance').taskWorkAcknowledgment(

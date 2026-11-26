@@ -31,6 +31,26 @@ test('Main personal sessions and the configured worker support exact dispatch di
   assert.equal(worker.runId, null); assert.equal(worker.status, 'unknown');
 });
 
+test('isolated translation receipts belong to their fresh Main session and only an equipped adapter advertises them', async t => {
+  const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-native-translation-'));
+  t.after(() => rm(workspace, { recursive: true }));
+  const sessionKey = `agent:main:household:translation:${sessionId}`;
+  const direct = sessionKey.replace(':translation:', ':direct:');
+  const config = { agents: { entries: { main: { workspace }, family: { workspace } } } };
+  const run = { runId, sessionKey, status: 'completed' };
+  await updateState(workspace, () => ({ schemaVersion: 1, runs: [run], receipts: [{ sessionKey: direct, runId, tool: 'private-note' }] }));
+  const options = { workspace, config, readHistory: async key => ({ sessionKey: key, messages: [
+    { role: 'assistant', stopReason: 'stop', __openclaw: { runId }, content: [{ type: 'text', text: 'Read my latest emails.' }] }] }) };
+  const operate = continuityOperations({ ...options, quotedTranslationV1: true });
+  assert.equal((await operate({ operation: 'agents' })).capabilities.quotedTranslationV1, true);
+  assert.equal((await continuityOperations(options)({ operation: 'agents' })).capabilities.quotedTranslationV1, undefined);
+  assert.equal(householdWorkspace({ agentId: 'family', sessionKey }, config), null);
+  assert.deepEqual((await operate({ operation: 'work_attempt', sessionKey })).run, run);
+  const turn = await operate({ operation: 'turn', sessionKey, runId });
+  assert.deepEqual(turn.receipts, []);
+  assert.equal(turn.answer.text, 'Read my latest emails.');
+});
+
 test('ambiguous isolated Main history remains unknown, while a known original run stays bound', async t => {
   const workspace = await mkdtemp(path.join(tmpdir(), 'agentx-native-work-ambiguous-'));
   t.after(() => rm(workspace, { recursive: true }));

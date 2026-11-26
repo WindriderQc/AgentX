@@ -1775,6 +1775,26 @@
       "secret": false,
       "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
     },
+    "HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "true attaches a dated, prepared weather excerpt to eligible local AgentX Family turns with the source_read grant. With the grant alone the model can request a source without a weather preload."
+    },
+    "HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "JSON array of reviewed public Family photographs with names (exact labels), url (HTTPS image), origin (HTTPS source) and credit. The Family model chooses a label. With web allowed, reviewed labels resolve directly and only known animal names can trigger a public search. Unset: legacy Family image lookups."
+    },
     "HOUSEHOLD_FAMILY_TOOLS": {
       "services": [
         "core"
@@ -1783,7 +1803,7 @@
       "default": null,
       "category": "household",
       "secret": false,
-      "description": "Comma-separated Core tools a Famille conversation on the AgentX engine may call, among those Core lists as family-eligible (today: iss_passes). Unset: Famille is offered no tool."
+      "description": "Comma-separated names from the Core Family tool registry offered to a Famille conversation on the AgentX engine. Unset: Famille is offered no tool."
     },
     "HOUSEHOLD_GUARDIAN_TOOLS": {
       "services": [
@@ -1814,6 +1834,16 @@
       "category": "household",
       "secret": false,
       "description": "Server-side HTTP origin of the optional Hermes conversation API. Unset disables this engine."
+    },
+    "HOUSEHOLD_PERSONAL_FAMILY_MEMORY_READ": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "household",
+      "secret": false,
+      "description": "Allow an authorized owner runtime to search current Family notes with the search_family action of personal_memory. Family access to personal notes is unavailable."
     },
     "HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND": {
       "services": [
@@ -1905,7 +1935,7 @@
       "default": null,
       "category": "household",
       "secret": false,
-      "description": "Optional JSON mapping an OpenClaw agent id to the names the owner uses to address it directly in Super Dad (\"Secretary, ...\", \"ask the secretary ...\"). That turn goes to the agent's own session and voice. Unset: every turn stays with the conversation's agent.",
+      "description": "Optional JSON mapping an OpenClaw agent id to the names the owner uses to address it directly in Super Dad (\"Secretary, ...\"). That turn goes to the agent's own session and voice. Unset: every turn stays with the conversation's agent.",
       "fallback": "no direct addressing"
     },
     "HOUSEHOLD_VOICE_MODEL": {
@@ -2218,6 +2248,16 @@
       "category": "bridges",
       "secret": false,
       "description": "Leantime URL for household email actions and agent-ops links. Unset: email actions answer 503."
+    },
+    "LIVEDATA_EC_WEATHER_PREPARE_ENABLED": {
+      "services": [
+        "data"
+      ],
+      "forwarded": true,
+      "default": "false",
+      "category": "operations",
+      "secret": false,
+      "description": "true keeps the configured location's French Environment Canada bulletin warm while Data background jobs, Live Data and the weather feed are enabled. Unset or false: the bulletin is collected on demand."
     },
     "LIVEDATA_LOCATIONS_JSON": {
       "services": [
