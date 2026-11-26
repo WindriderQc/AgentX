@@ -14,11 +14,14 @@ const { log } = require('../utils/logger');
 const registry = require('./livedata/registry');
 const parsers = require('./livedata/parsers');
 const store = require('./livedata/store');
+const cityWeather = require('./livedata/ecCityPage');
 const activityEvents = require('./activityEvents');
 
 let db;
 let intervalIds = [];
 let initialized = false;
+let stopCityWeather = null;
+let configRevision = 0;
 
 // Resolved registry (seeded disabled until init() runs reloadConfig()).
 let feeds = registry.getSeedFeeds().map(f => ({ ...f, enabled: false }));
@@ -114,6 +117,12 @@ function clearIntervals() {
 }
 
 function startIntervals() {
+  const prepareCityWeather = masterEnabled && feeds.some(feed => feed.id === 'weather' && feed.enabled);
+  if (prepareCityWeather && !stopCityWeather) stopCityWeather = cityWeather.startPreparation(db);
+  if (!prepareCityWeather && stopCityWeather) {
+    stopCityWeather();
+    stopCityWeather = null;
+  }
   if (!masterEnabled) {
     log('[liveData] Master switch OFF — no intervals');
     prevEnabled = new Set();
@@ -164,18 +173,17 @@ function restartMqttFeeds() {
   }
 }
 
-async function resolveFeeds() {
-  const [overrideDocs, toggleDocs] = await Promise.all([
-    db.collection('livedatafeeds').find({}).toArray().catch(() => []),
-    db.collection('livedataconfigs').find({}).toArray()
-  ]);
-  masterEnabled = registry.isMasterEnabled(toggleDocs);
-  feeds = registry.resolveRegistry(overrideDocs, toggleDocs);
-}
-
 async function reloadConfig() {
+  const revision = ++configRevision;
   try {
-    await resolveFeeds();
+    const [overrideDocs, toggleDocs] = await Promise.all([
+      db.collection('livedatafeeds').find({}).toArray().catch(() => []),
+      db.collection('livedataconfigs').find({}).toArray()
+    ]);
+    // A newer reload or shutdown owns the timers, even when this read finishes last.
+    if (revision !== configRevision) return;
+    masterEnabled = registry.isMasterEnabled(toggleDocs);
+    feeds = registry.resolveRegistry(overrideDocs, toggleDocs);
     log(`[liveData] Config reloaded — master=${masterEnabled} feeds=${feeds.filter(f => f.enabled).map(f => f.id).join(',') || 'none'}`);
     clearIntervals();
     startIntervals();
@@ -187,6 +195,7 @@ async function reloadConfig() {
 
 async function init(dbConnection) {
   if (initialized) return;
+  const revision = ++configRevision;
   db = dbConnection;
 
   // Ensure default toggle docs exist (master + each seeded feed's toggle).
@@ -204,21 +213,24 @@ async function init(dbConnection) {
 
   try { await seedLocations(); }
   catch (e) { log(`[liveData] Location seed failed: ${e.message}`, 'warn'); }
+  if (revision !== configRevision) return;
 
   // Connect MQTT first (if configured) so push-in feeds can subscribe on reload.
   if (process.env.MQTT_BROKER_URL) mqttClient.init();
 
-  await reloadConfig(); // resolves feeds + starts http intervals + mqtt subscriptions
-
   initialized = true;
-  log('[liveData] Initialized');
+  await reloadConfig(); // resolves feeds + starts http intervals + mqtt subscriptions
+  if (initialized) log('[liveData] Initialized');
 }
 
 async function close() {
+  configRevision++;
+  initialized = false;
   clearIntervals();
   prevEnabled = new Set();
+  if (stopCityWeather) stopCityWeather();
+  stopCityWeather = null;
   await mqttClient.close();
-  initialized = false;
 }
 
 // Back-compat: getState() returns { liveDataEnabled, <toggle>: bool, ... }.

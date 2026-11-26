@@ -12,7 +12,8 @@
 const tle = require('../services/livedata/tle');
 const tides = require('../services/livedata/tides');
 const ecCityPage = require('../services/livedata/ecCityPage');
-const { parsePosition, resolvePosition, locationMetadata } = require('../../shared/observerLocation');
+const { locationMetadata } = require('../../shared/observerLocation');
+const { readPosition } = require('../services/livedata/observerPosition');
 
 function badRequest(res, message) {
   return res.status(400).json({ status: 'error', message });
@@ -26,18 +27,6 @@ function sourceFailure(res, err, next) {
     return res.status(err.status).json({ status: 'error', code: err.code, message: err.message });
   }
   return next(err);
-}
-
-async function readPosition(req) {
-  const explicit = parsePosition(req.query);
-  let known = null;
-  if (!explicit && req.app.locals.db) {
-    try { known = await req.app.locals.db.collection('weatherLocations').findOne({}, { sort: { _id: 1 } }); }
-    catch (_) { /* A configured default remains available without MongoDB. */ }
-  }
-  const position = resolvePosition({ explicit, known, defaultLocationJson: process.env.OBSERVER_DEFAULT_LOCATION_JSON });
-  if (!position) throw Object.assign(new Error('No known location: supply lat and lon or configure a default'), { code: 'INVALID_POSITION', status: 400 });
-  return position;
 }
 
 exports.getTle = async (req, res, next) => {
@@ -66,7 +55,7 @@ exports.getTides = async (req, res, next) => {
     return badRequest(res, `days must be a whole number from 1 to ${tides.MAX_DAYS}`);
   }
   try {
-    const pos = await readPosition(req);
+    const pos = await readPosition(req.app.locals.db, req.query);
     const data = await tides.getTides({ ...pos, days });
     res.set('Cache-Control', 'no-store');
     return res.json({ status: 'success', data: { ...data, location: locationMetadata(pos) } });
@@ -79,8 +68,12 @@ exports.getEcWeather = async (req, res, next) => {
   const lang = req.query.lang || 'fr';
   if (!['fr', 'en'].includes(lang)) return badRequest(res, 'lang must be fr or en');
   try {
-    const pos = await readPosition(req);
-    const data = await ecCityPage.getCityWeather({ ...pos, lang });
+    if (req.query.prepared !== undefined && !['0', '1'].includes(req.query.prepared)) {
+      return badRequest(res, 'prepared must be 0 or 1');
+    }
+    const pos = await readPosition(req.app.locals.db, req.query);
+    const data = req.query.prepared === '1' ? ecCityPage.peekCityWeather({ ...pos, lang })
+      : await ecCityPage.getCityWeather({ ...pos, lang });
     res.set('Cache-Control', 'no-store');
     return res.json({ status: 'success', data: { ...data, location: locationMetadata(pos) } });
   } catch (err) {

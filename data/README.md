@@ -139,6 +139,20 @@ keys and are sent to the selected upstream provider.
   Canada) answer 404 (`not_found`). Missing or nonnumeric measurements remain
   `null`; a measured zero remains `0`.
 
+With Data background jobs, the Live Data master switch and the weather feed
+enabled, Data prepares the configured location's French bulletin at startup
+and refreshes it after nine minutes. This uses the same ten-minute memory
+cache as interactive requests. A collection failure leaves the last good
+bulletin and its original dates intact and retries after one minute. Switching
+off either toggle or stopping Data stops scheduled refreshes. Other locations
+and languages populate their cache entries on request.
+
+Add `prepared=1` to read a cache entry without contacting Environment Canada.
+The success response includes `data.preparedStatus`: `fresh` means retrieved
+less than ten minutes ago, `stale` returns the dated bulletin, and `missing`
+returns `fetchedAt: null` without measurements. `current.observedAt` and
+`forecastIssuedAt` give the producer's observation and issue times.
+
 The Toolbox Live Data tab draws these feeds on a world map with the existing
 `GET` routes only (`/latest` for ISS, pressure, air quality and sensors,
 `/history` for the earthquake list); Data has no map route. The ISS, the

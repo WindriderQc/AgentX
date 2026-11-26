@@ -8,10 +8,15 @@
  */
 const { fetchWithTimeoutAndRetry } = require('../../utils/fetch-utils');
 const { createCache, SourceError } = require('./onDemandCache');
+const { readPosition } = require('./observerPosition');
+const { log } = require('../../utils/logger');
 
 const CITYPAGE_URL = 'https://api.weather.gc.ca/collections/citypageweather-realtime/items';
 const SEARCH_RADII_DEG = [0.75, 2.5];
-const cache = createCache({ ttlMs: 10 * 60_000, failureBackoffMs: 60_000, maxEntries: 100 });
+const TTL_MS = 10 * 60_000;
+const REFRESH_MS = 9 * 60_000;
+const RETRY_MS = 60_000;
+const cache = createCache({ ttlMs: TTL_MS, failureBackoffMs: RETRY_MS, maxEntries: 100 });
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
@@ -141,13 +146,47 @@ async function searchNearest(lat, lon) {
   throw new SourceError('No Environment Canada city page near this position (Canada only)', { status: 404, code: 'not_found' });
 }
 
-async function getCityWeather({ lat, lon, lang = 'fr' }) {
-  const language = lang === 'en' ? 'en' : 'fr';
-  const rLat = round2(lat);
-  const rLon = round2(lon);
-  const hit = await cache.get(`${rLat},${rLon},${language}`, async () =>
-    normalize(await searchNearest(rLat, rLon), { lat: rLat, lon: rLon, lang: language }));
+function cacheKey({ lat, lon, lang }) {
+  return `${round2(lat)},${round2(lon)},${lang === 'en' ? 'en' : 'fr'}`;
+}
+
+async function getCityWeather(position, maxAgeMs = TTL_MS) {
+  const lat = round2(position.lat);
+  const lon = round2(position.lon);
+  const lang = position.lang === 'en' ? 'en' : 'fr';
+  const hit = await cache.get(cacheKey(position), async () =>
+    normalize(await searchNearest(lat, lon), { lat, lon, lang }), maxAgeMs);
   return { ...hit.value, fetchedAt: hit.fetchedAt.toISOString(), cached: hit.cached };
 }
 
-module.exports = { getCityWeather, _normalize: normalize, _cache: cache };
+function peekCityWeather(position) {
+  const hit = cache.peek(cacheKey(position));
+  if (!hit) return { preparedStatus: 'missing', cached: false, fetchedAt: null };
+  const age = Date.now() - hit.fetchedAt.getTime();
+  return { ...hit.value, preparedStatus: age >= 0 && age < TTL_MS ? 'fresh' : 'stale',
+    cached: true, fetchedAt: hit.fetchedAt.toISOString() };
+}
+
+function startPreparation(db) {
+  let stopped = false;
+  let timer;
+  async function refresh() {
+    let delay = RETRY_MS;
+    try {
+      const position = await readPosition(db);
+      if (stopped) return;
+      const result = await getCityWeather(position, REFRESH_MS);
+      delay = Math.min(REFRESH_MS, Math.max(1, Date.parse(result.fetchedAt) + REFRESH_MS - Date.now()));
+    } catch (err) {
+      log(`[liveData] City weather refresh failed (${err.code || 'unavailable'})`, 'warn');
+    }
+    if (!stopped) timer = setTimeout(refresh, delay);
+  }
+  refresh();
+  return () => {
+    stopped = true;
+    clearTimeout(timer);
+  };
+}
+
+module.exports = { getCityWeather, peekCityWeather, startPreparation, _normalize: normalize, _cache: cache };
