@@ -64,32 +64,36 @@ an explicit drawing, ArtX navigation and the legacy route with the setting unset
 
 ## OpenClaw Main and mailbox evidence
 
-Run the quotation/action pair separately on an authorized owner OpenClaw
-conversation using `main-first/v1`. Inspect the dispatched request, native tool
-history and published answer separately. Main now receives the same mailbox
-guidance for either sentence. Quoting an instruction no longer adds an order to
-delegate it. The retained read-only path keeps its specialist contract.
+Run the quotation/action pair separately in an authorized owner OpenClaw
+conversation using `main-first/v1`. A complete request such as « Traduis en
+anglais “lis mes derniers courriels” » or `Translate "lis mes derniers
+courriels" into English` supplies both the text and its target language. Core
+starts a fresh translation session for that attempt only when the adapter
+advertises `quotedTranslationV1`. The native user payload contains the
+original request. This scope applies only when the quotation would otherwise
+require mailbox consultation evidence. A simple translation of “bonjour”
+keeps its ordinary route even with an older adapter. Core omits conversation history, selected notes and the
+ordinary task-context callback. The native hook blocks every tool in that
+session, including delegation and tool dispatch. The bundled owner-memory hook
+does not fetch notes for that session key. The host still owns Main’s static
+workspace bootstrap and installed extensions.
 
-There is still a delivery gap. For « Traduis en anglais “lis mes derniers
-courriels” », the receiver's legacy mailbox selector matches the quoted words.
-If Main translates them directly, the current receiver withholds that answer.
-The observer ends the work with `native_result_not_published`. A bare
-`source_read` in completed tool names also cannot prove an inbox inspection:
-the same name can mean a weather read, and even a Secretary digest is a dated
-Core projection. A yielded consultation stays pending until native child
-delivery or verified failure. Check that a completed consultation belongs to
-the same Main attempt before accepting it.
+Check that Core displays the translated words as a quotation and retains the
+exact native answer with zero tool calls. Its result records the target
+language and digest of the supplied words. An older adapter must refuse this
+operation before inference. Natural paraphrases, dictation without quote
+boundaries, attachments and combined requests use the ordinary native route.
 
-To qualify delivery without this lexical rule, separate the result contracts.
-For a text-only transformation, bind an explicit transformation request or an
-isolated transformation capability to the original supplied text and present
-its result as a transformation. For source-backed answers, have the trusted
-adapter retain a receipt for the source, section, audience, status and source
-date, bound to the native session, run and tool call. A prepared digest and a
-live mailbox return need distinct attribution. A model-selected label on free
-prose cannot establish either source or access. Test an unrelated source, a
-foreign-run receipt, an unfinished delegation and a real Secretary return
-before accepting the new contract.
+Try « Lis mon courriel intitulé “lis mes derniers courriels” » and « Traduis
+en anglais “lis mes derniers courriels”, puis lis mes courriels ». Verify that
+a mailbox claim waits for a Secretary spawn, yield and a return to the exact
+Main attempt. A tool-free translation, a generic `source_read`, an unrelated
+child or a later turn’s announcement cannot satisfy that check. Ambiguous
+multi-specialist deliveries still need child-specific attribution. For an
+authorized mailbox acceptance, compare actual dated fixture messages with the
+answer. A completed delegation alone cannot attest each detail of its contents.
+Prepared digests also need their own dates and source attribution.
+
 
 ```sh
 npm test --prefix core -- --runInBand --runTestsByPath tests/services/nativePrimaryConversation.test.js

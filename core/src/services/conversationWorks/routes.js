@@ -1,5 +1,6 @@
 'use strict';
 
+const { isTranslationSession } = require('../../../../shared/quotedTranslation.cjs');
 const { tokenMatches, fail } = require('./contract');
 const { requireProtectedBackend, nativeInputOnly, sourceTransferError } = require('../conversations/protectedSources');
 const { createWorkDelivery } = require('./delivery');
@@ -25,7 +26,7 @@ function registerConversationWorkRoutes(router, { works, env = process.env }) {
     handle(req => works.questions.lookup(req.params.sessionId, req.params.workId, req.params.intentId)));
   router.post('/native/work', handle(async req => {
     const token = /^Bearer\s+(.+)$/i.exec(req.get('authorization') || '')?.[1];
-    if (!tokenMatches(token, env.PERSONAL_CONVERSATION_WORK_TOKEN)) throw fail('CONVERSATION_WORK_NOT_FOUND', 'Conversation work not found.', 404);
+    if (!tokenMatches(token, env.PERSONAL_CONVERSATION_WORK_TOKEN) || isTranslationSession(req.body?.context?.sessionKey)) throw fail('CONVERSATION_WORK_NOT_FOUND', 'Conversation work not found.', 404);
     requireProtectedBackend('openclaw', env);
     if (nativeInputOnly('openclaw', env)) throw sourceTransferError();
     const { operation, context, input, callId } = req.body || {};

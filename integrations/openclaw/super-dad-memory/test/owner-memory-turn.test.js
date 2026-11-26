@@ -47,7 +47,7 @@ test('only verified owner sessions read this policy and unrelated history tools 
   const { hooks, requests, use } = setup();
   const input = { prompt: 'Show the earlier conversation.' };
   use({ protectRecall: false, context: '' });
-  for (const rejected of [{ ...context, agentId: 'family' }, { ...context, sandboxed: true }, { ...context, requester: { senderIsOwner: false } }]) {
+  for (const rejected of [{ ...context, sessionKey: context.sessionKey.replace(':direct:', ':translation:') }, { ...context, agentId: 'family' }, { ...context, sandboxed: true }, { ...context, requester: { senderIsOwner: false } }]) {
     assert.equal(await hooks.before_prompt_build(input, rejected), undefined);
   }
   assert.equal(requests.length, 0);

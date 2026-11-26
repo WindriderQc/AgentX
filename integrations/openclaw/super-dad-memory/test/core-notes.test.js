@@ -205,6 +205,9 @@ test('a run that yielded to a sub-agent answers with the announce run that settl
     assistant(settle, 'stop', [{ type: 'text', text: 'Le comptable a répondu.' }], 'announce-message')];
   assert.deepEqual(nativeTurnAnswer({ sessionKey, messages: settled }, sessionKey, runId), { status: 'ready',
     source: 'openclaw/sessions.get', runId, deliveredBy: settle, messageId: 'announce-message', text: 'Le comptable a répondu.' });
+  const laterOwnerTurn = assistant('resp_44444444-4444-4444-8444-444444444444', 'stop', [{ type: 'text', text: 'Another request.' }]);
+  assert.equal(nativeTurnAnswer({ sessionKey, messages: [...yielding, laterOwnerTurn, ...settled.slice(yielding.length)] },
+    sessionKey, runId).status, 'yielded');
   // An announce for another session, or one still using tools, is not this answer.
   const other = settle.replace('11111111-1111', '44444444-4444');
   assert.equal(nativeTurnAnswer({ sessionKey, messages: [...yielding,

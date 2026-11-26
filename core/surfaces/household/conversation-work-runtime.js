@@ -6,6 +6,7 @@ const { requestsSecretary, requestsSecretaryRead, requestsReadEffects } = requir
 const { requestsWebRead } = require('./native-web-policy');
 const { requestsScreenVisit } = require('./screen-services');
 const { requestsPipelineRead } = require('./native-pipeline-policy');
+const { nativeWorkRuntime, nativeInputContract } = require('./native-work-runtime');
 const { requestsTaskContextRead } = require('./native-task-policy');
 const { awaitingMain } = require('./guardian-reply');
 const { PERSONAL_OPERATOR_SURFACE_CONTRACT } = require('./packs');
@@ -23,7 +24,7 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     return null;
   }
   let observer;
-  const works = capability.create({ conversations, tasks, env, classify: requestsTaskCheck, nativePrimary: true,
+  const works = capability.create({ conversations, tasks, env, classify: requestsTaskCheck, nativePrimary: true, nativeInputContract,
     guardianReads: () => require('./guardian-read-tools').guardianReadTools(env, { ambient }),
     guardianOccupied: async row => Boolean(await require('../../src/services/conversationWorks/primary-foreground').occupiedMain(
       works.repo, observer, row.primary.relayFor)),
@@ -39,9 +40,10 @@ function registerWorkRuntime({ router, conversations, tasks, agentClient, contin
     nativeForeground: text => requestsTaskCheck(text) || requestsPipelineRead(text) || requestsSecretary(text) || requestsWebRead(text) || requestsReadEffects(text) || requestsScreenVisit(text, screenPages),
     nativeBudget: (text, mode) => requestsWebRead(text) && !requestsSecretaryRead(text) && !requestsTaskCheck(text)
       ? { tools: 8, web: 4 } : mode === 'native' ? { tools: 16, web: 4, stopAfterWeb: false } : null });
-  const native = require('./native-work-runtime').nativeWorkRuntime({ works, conversations, agentClient, continuity, attachmentStore, screenPages });
+  const native = nativeWorkRuntime({ works, conversations, agentClient, continuity, attachmentStore, screenPages });
   capability.registerRoutes(router, { works, env });
   observer = capability.observe({ works, env, logger,
+    attemptSessionKey: native.attemptSessionKey,
     agentFor: row => nativeWork(row) ? 'main' : env.PERSONAL_CONVERSATION_WORK_AGENT_ID,
     receive: request => nativeWork(request.row) ? native.receive(request) : null,
     observe: attempt => attempt.agentId === 'main' ? native.observe(attempt)

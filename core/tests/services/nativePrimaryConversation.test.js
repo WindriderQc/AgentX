@@ -19,6 +19,8 @@ const signal = () => new AbortController();
 const wire = value => Buffer.from('data: ' + JSON.stringify(value) + '\n\n');
 const contextOf = row => ({ agentId: 'main', runId: row.attempt.runId, sessionKey: row.attempt.sessionKey });
 let works, session, app, nativeApi, fetchImpl, runs, sent, hold, started, release, lost, tasks;
+const { isTranslationSession, quotedTranslation } = require('../../../shared/quotedTranslation.cjs');
+let translationAvailable;
 const input = (text = 'Bonjour.', turnId = randomUUID()) => ({ session, text, turnId });
 const evidence = run => ({ ok: true, authority: 'openclaw.nestor', operation: 'turn', sessionKey: run.key, runId: run.id,
   run: { sessionKey: run.key, runId: run.id, agentId: run.agent, status: run.done ? 'completed' : 'running',
@@ -26,7 +28,7 @@ const evidence = run => ({ ok: true, authority: 'openclaw.nestor', operation: 't
   answer: run.done ? { status: 'ready', runId: run.id, text: run.text } : { status: 'pending', runId: run.id },
   receipts: run.initialContext?.receipt ? [{ tool: 'conversation_work', status: 'verified', runId: run.id,
     workRead: { id: run.initialContext.receipt.id, tool: 'tasks.personal.list' } }] : [],
-  progress: [], toolChecks: { status: 'observed', runId: run.id, completedTools: ['conversation_work'], loop: null } });
+  progress: [], toolChecks: { status: 'observed', runId: run.id, completedTools: isTranslationSession(run.key) ? [] : ['conversation_work'], loop: null } });
 async function nativeContext(run, callId) {
   const response = await request(nativeApi).post('/native/work').set('Authorization', 'Bearer ' + env.PERSONAL_CONVERSATION_WORK_TOKEN)
     .send({ operation: 'native_context', callId, context: { agentId: run.agent, sessionKey: run.key, runId: run.id } });
@@ -65,7 +67,7 @@ async function http() {
   return value;
 }
 async function continuity(req) {
-  if (req.operation === 'agents') return { capabilities: { isolatedWork: true, nativeConversation: true, nativeReadBudget: true } };
+  if (req.operation === 'agents') return { capabilities: { isolatedWork: true, nativeConversation: true, nativeReadBudget: true, quotedTranslationV1: translationAvailable } };
   const run = [...runs.values()].find(item => item.key === req.sessionKey && (!req.runId || item.id === req.runId));
   if (!run) return {};
   if (req.operation === 'work_attempt') return { runId: run.id, sessionKey: run.key };
@@ -78,13 +80,14 @@ beforeEach(async () => {
   await mongoose.connection.collection('conversation_work_dispatch').deleteMany({});
   session = await conversations.createSession({ sessionId: randomUUID(), packId: 'personal_operator', scopeId: 'personal',
     modeId: 'standard', status: 'active', backend: 'openclaw', agentId: 'main', turnCount: 0 });
-  runs = new Map(); sent = []; hold = false; lost = false; release = undefined; started = undefined;
+  translationAvailable = true; runs = new Map(); sent = []; hold = false; lost = false; release = undefined; started = undefined;
   tasks = { list: jest.fn(async () => ({ tasks: [], totalCount: 0 })) };
   fetchImpl = jest.fn(async (_url, options) => {
     const body = JSON.parse(options.body), agent = body.model.split('/')[1], key = options.headers['x-openclaw-session-key'];
     sent.push({ body, headers: options.headers, signal: options.signal });
     if (lost) throw Error('Synthetic lost dispatch acknowledgment');
     const run = { id: 'resp_' + randomUUID(), agent, key, done: false, text: agent === 'main' ? 'Réponse exacte de Main.' : 'Je garde le relais pendant ce travail.' };
+    if (isTranslationSession(key)) run.text = body.instructions.includes('into French.') ? 'Lis mon courriel.' : 'Read my latest emails.';
     if (agent === 'main') {
       const [owner] = await works.repo.find({ 'attempt.sessionKey': key }, 1);
       run.workId = owner._id; run.attemptId = owner.attempt.id;
@@ -95,10 +98,10 @@ beforeEach(async () => {
       yield wire({ type: 'response.created', response: { id: run.id } });
       if (agent === 'main') {
         run.afterStarted = works.observer.isExecuting(run.workId, run.attemptId, run.id, key);
-        run.initialContext = await nativeContext(run, 'call_initial');
+        if (!isTranslationSession(key)) run.initialContext = await nativeContext(run, 'call_initial');
         started?.();
         if (hold) await new Promise(resolve => { release = resolve; });
-        run.returnContext = await nativeContext(run, 'call_return');
+        if (!isTranslationSession(key)) run.returnContext = await nativeContext(run, 'call_return');
       }
       run.done = true;
       yield wire({ type: 'response.output_text.delta', delta: run.text });
@@ -148,22 +151,77 @@ test('idle HTTP starts complete Main first with the exact native payload and one
   expect((await createWorkDelivery(works).snapshot(session.sessionId)).items[0].result.automaticSpeech).toBe(false);
 });
 
-test('a quoted mailbox instruction reaches the leading Main without a request-specific delegation order', async () => {
+test('a quoted mailbox instruction returns the exact no-tool translation from an isolated native attempt', async () => {
+  await send(input('La couleur synthétique choisie est bleu.'));
   const original = input('Traduis en anglais « lis mes derniers courriels ».');
   const response = await send(original);
   expect(response.status).toBe(200);
-  expect(sent.map(item => item.body.model)).toEqual(['openclaw/main']);
-  const { instructions, input: messages } = sent[0].body;
-  expect(instructions).toContain('Translate or discuss supplied text directly');
-  expect(JSON.stringify(messages)).not.toContain('This request belongs to Main and the Secretary');
-  expect(messages.at(-1).content.at(-1)).toEqual({ type: 'input_text', text: original.text });
+  expect(done(response).reply.text).toBe('Traduction — « Read my latest emails. »');
+  expect(sent.map(item => item.body.model)).toEqual(['openclaw/main', 'openclaw/main']);
+  expect(sent[1].body.input).toEqual([{ type: 'message', role: 'user', content: original.text }]);
+  expect(sent[1].body.instructions).toContain('single supplied quotation');
+  expect(JSON.stringify(sent[1].body)).not.toContain('bleu');
   const row = await works.repo.get(hash(session.sessionId + '\n' + original.turnId));
-  expect(row.entryPolicy).toBe('main-first/v1');
-  expect(row.tools.some(receipt => receipt.tool === 'source_read' || receipt.tool === 'sessions_spawn')).toBe(false);
+  expect(isTranslationSession(row.attempt.sessionKey)).toBe(true);
+  expect(row.attempt.sessionKey).toBe(sent[1].headers['x-openclaw-session-key']);
+  const payload = await works.repo.read(row, row.result.payloadRef);
+  expect(payload.transformation).toEqual({ operation: 'translate', target: 'anglais', sourceSha256: hash('lis mes derniers courriels') });
+  const proof = await works.repo.read(row, row.tools.find(t => t.tool === 'native.consultation').payloadRef);
+  expect(proof.answer.text).toBe('Read my latest emails.');
+  expect(proof.toolChecks.completedTools).toEqual([]);
+  expect(tasks.list).not.toHaveBeenCalled();
 });
 
-test('a current mailbox consultation is published only after the Secretary returns to its own native attempt', async () => {
-  const original = input('Lis mes derniers courriels.');
+test('the translation session refuses a canonical context callback and a foreign or tool-backed answer', async () => {
+  hold = true;
+  const ready = new Promise(resolve => { started = resolve; });
+  const original = input('Translate "read my email" into French.');
+  const pending = send(original).then(value => value);
+  try {
+    await ready;
+    const run = [...runs.values()][0];
+    expect(isTranslationSession(run.key)).toBe(true);
+    expect(await nativeContext(run, 'synthetic_context_probe')).toEqual({ unavailable: 'CONVERSATION_WORK_NOT_FOUND' });
+    const row = await works.repo.get(run.workId);
+    const admission = await request(nativeApi).post('/native/work').set('Authorization', 'Bearer ' + env.PERSONAL_CONVERSATION_WORK_TOKEN)
+      .send({ operation: 'native_budget', callId: 'budget_probe', context: contextOf(row), input: { tool: 'sessions_spawn' } });
+    expect(admission.status).toBe(404);
+    const runtime = require('../../surfaces/household/native-work-runtime').nativeWorkRuntime({ works, conversations });
+    const proof = evidence({ ...run, done: true, text: 'Lis mon courriel.' });
+    const receive = changes => runtime.receive({ row, evidence: { ...proof, ...changes } });
+    for (const changes of [{ progress: [{ tool: 'sessions_spawn', agentId: 'secretary' }] },
+      { toolChecks: { ...proof.toolChecks, completedTools: ['source_read'] } }, { answer: { ...proof.answer, deliveredBy: 'other' } }]) {
+      expect(await receive(changes)).toBeNull();
+    }
+    await expect(receive({ run: { ...proof.run, sessionKey: 'agent:main:household:direct:' + randomUUID() } }))
+      .rejects.toMatchObject({ code: 'CONVERSATION_WORK_NATIVE_RESULT_INVALID' });
+    expect((await works.repo.get(row._id)).result).toBeUndefined();
+  } finally { release?.(); await pending; }
+});
+
+test('translation with an older native adapter refuses before dispatch', async () => {
+  translationAvailable = false;
+  const original = input('Traduis en anglais “lis mes derniers courriels”.');
+  await send(original);
+  expect(sent).toHaveLength(0);
+  const row = await works.repo.get(hash(session.sessionId + '\n' + original.turnId));
+  expect(row).toMatchObject({ state: 'failed', reason: 'native_preparation_refused' });
+});
+
+test('ordinary translation keeps the original Main route even with an older adapter', async () => {
+  translationAvailable = false;
+  const original = input('Traduis en anglais « bonjour ».');
+  const response = await send(original);
+  expect(done(response).reply.text).toBe('Réponse exacte de Main.');
+  expect(sent).toHaveLength(1);
+  expect(sent[0].headers['x-openclaw-session-key']).toContain(':household:direct:');
+});
+
+test.each(['Lis mes derniers courriels.', 'Lis mon courriel intitulé « lis mes derniers courriels ».',
+  'Traduis en anglais « lis mes derniers courriels », puis lis mes courriels.'])(
+  'a Secretary request is published only after return to the originating native attempt: %s', async text => {
+  const original = input(text);
+  expect(quotedTranslation(text)).toBeNull();
   const accepted = await works.intake(original);
   await works.prepare(accepted.row._id, '');
   const attemptSession = randomUUID(), runId = 'resp_' + randomUUID();
@@ -180,7 +238,10 @@ test('a current mailbox consultation is published only after the Secretary retur
   proof.toolChecks.completedTools.push('sessions_spawn', 'sessions_yield');
   expect(await receive({})).toBeNull();
   expect(await receive({ answer: { runId, status: 'yielded' } })).toEqual({ pending: true });
-  proof.answer.deliveredBy = 'announce:requester-settle:synthetic';
+  proof.answer.deliveredBy = 'announce:requester-settle:main:another-session:synthetic';
+  expect(await receive({})).toBeNull();
+  proof.answer.deliveredBy = `announce:requester-settle:main:${run.key}:synthetic`;
+  expect(await receive({ progress: [...proof.progress, { tool: 'sessions_spawn', agentId: 'another-agent' }] })).toBeNull();
   expect(await receive({ progress: [{ tool: 'sessions_spawn', agentId: 'another-agent' }] })).toBeNull();
   expect(await receive({ answer: { ...proof.answer, runId: 'resp_' + randomUUID() } })).toBeNull();
   await expect(receive({ run: { ...proof.run, sessionKey: 'agent:main:household:direct:' + randomUUID() } }))

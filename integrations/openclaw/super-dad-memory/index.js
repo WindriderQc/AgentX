@@ -36,7 +36,7 @@ export default definePluginEntry({
     registerMailRecall(api);
     registerLifeAtlas(api);
     registerConversationWork(api);
-    registerNativeReadBudget(api);
+    const quotedTranslationV1 = registerNativeReadBudget(api) === true;
     registerPhotos(api);
     registerPresentation(api);
     registerDossier(api);
@@ -55,7 +55,7 @@ export default definePluginEntry({
     const readTasks = () => agentxRead(api.pluginConfig?.agentxUrl,
       "list_personal_tasks", { includeDone: false, includeNotes: false, limit: 12 });
     const questions = createNativeQuestions({ config: api.pluginConfig || {} });
-    const continuity = continuityOperations({ workspace: workspaceFor(), config: api.config,
+    const continuity = continuityOperations({ workspace: workspaceFor(), config: api.config, quotedTranslationV1,
       workAgentId: api.pluginConfig?.conversationWorkAgentId, guardianAgentId: api.pluginConfig?.conversationGuardianAgentId,
       resolveWorkspace, modelFor: id => resolveAgentEffectiveModelPrimary(api.config, id),
       readHistory: async sessionKey => ({ sessionKey, ...await api.runtime.subagent.getSessionMessages({ sessionKey, limit: 100 }) }) });

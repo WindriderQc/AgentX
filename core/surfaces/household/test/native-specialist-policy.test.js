@@ -41,3 +41,16 @@ test('addressed replies and other effects retain Main even beside a tool-free st
   }
   assert.equal(requestsSecretaryRead('Réponds à mon courriel. Réponds brièvement sans outil.'), false);
 });
+
+test('only a complete translation of one quoted operand can enter the isolated session', () => {
+  const { quotedTranslation } = require('../../../../shared/quotedTranslation.cjs');
+  for (const text of ['Traduis en anglais « lis mes derniers courriels ».', 'Traduis en anglais “lis mes derniers courriels”.',
+    'Translate "lis mes derniers courriels" into English.']) {
+    assert.equal(quotedTranslation(text).source, 'lis mes derniers courriels');
+  }
+  for (const text of ['Lis mon courriel intitulé « en anglais ».', 'Exécute « lis mes courriels ».',
+    'Traduis en anglais mon dernier courriel.', 'Traduis en anglais « A », puis envoie « B ».',
+    'Traduis en anglais « A » puis lis mes courriels.', 'Traduis en anglais « A”.', 'Traduis en anglais «  ».']) {
+    assert.equal(quotedTranslation(text), null, text);
+  }
+});
