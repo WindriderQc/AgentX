@@ -41,11 +41,17 @@ afterAll(() => {
 
 test('the owner can read Family through HTTP and MCP only with the server grant, without copying or changing either note', async () => {
   const action = { action: 'search_family', query };
+  const advertised = async () => {
+    const response = await owner.post(base + '/mcp').send({ jsonrpc: '2.0', id: 2, method: 'tools/list' }).expect(200);
+    return response.body.result.tools.find(tool => tool.name === 'personal_memory').inputSchema.properties.action.enum;
+  };
   delete process.env[grant];
+  expect(await advertised()).not.toContain('search_family');
   await owner.post(base + '/memory/notes').send({ ...action, [grant]: true }).expect(403);
   const denied = await owner.post(base + '/mcp').send(mcpCall(action)).expect(200);
   expect(denied.body.result.isError).toBe(true);
   process.env[grant] = 'true';
+  expect(await advertised()).toContain('search_family');
   const initialCount = await MemoryNote.countDocuments({});
   expect(initialCount).toBe(2);
   const expected = { operation: 'search_family', memorySpace: 'family', total: 1,

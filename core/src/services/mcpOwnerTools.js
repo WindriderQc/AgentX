@@ -7,6 +7,16 @@ const string = maxLength => ({ type: 'string', maxLength });
 const integer = (maximum, minimum = 1) => ({ type: 'integer', minimum, maximum });
 const tool = (name, description, properties, required = [], readOnlyHint = true) => ({ name, description,
   inputSchema: object(properties, required), annotations: { readOnlyHint, openWorldHint: false } });
+const { personalCanReadFamily } = require('../domains/household/noteSpaces');
+function personalMemoryTool(familyRead) {
+  const actions = ['list', 'search', 'remember', 'forget'];
+  if (familyRead) actions.push('search_family');
+  return tool('personal_memory', 'List, search, remember, correct or forget the same owner notes used by Nestor. '
+    + (familyRead ? 'Use search_family to read current Family notes by query. ' : '')
+    + 'An explicit list with includeHistory reads replaced facts and their links. Lasting personal facts only, no mail digests or secrets. Forget requires the exact note id.',
+  { action: { type: 'string', enum: actions }, id: string(24), text: string(4000), query: string(4000),
+    kind: { type: 'string', enum: ['fact', 'preference', 'decision'] }, expiresAt: string(40), limit: integer(50), offset: integer(10000, 0), includeHistory: { type: 'boolean' } }, ['action'], false);
+}
 const TOOLS = [
   tool('home_assistant_plug', 'Read a configured Home Assistant plug: reported on/off state, watts, and the cumulative kWh counter if configured, with Home Assistant report times and the check time. Use the device key supplied by Core for a named plug, or omit device for the original workshop plug. If a reading is missing, say it is unavailable. Use the report time and do not present an old report as a fresh measurement. This tool only reads.', { device: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,29}$' } }),
   tool('judge_calibration', 'Read active standalone judge calibrations or request cancellation of one exact admission. cancel requires id, workloadId, a stable UUID requestId and reason, after the owner asks to stop it. An accepted cancellation is only a stop intent; observe show until native release. Never restarts a host, releases quarantine, cancels other work or starts a model. Reuse the original requestId and arguments after a lost reply.',
@@ -29,9 +39,7 @@ const TOOLS = [
       pageChars: integer(24000, 256), offset: integer(Number.MAX_SAFE_INTEGER, 0), expectedHash: { type: 'string', pattern: '^[a-f0-9]{64}$' } }, ['source']),
   tool('team_brief', 'Read Core records from the Secretary or Accountant, including freshness, formatted monetary amounts, provenance and unavailable sections. Relay Display amounts exactly. For exact/current messages or actions consult the specialist.',
     { member: { enum: ['secretary', 'comptable'], type: 'string' }, days: integer(366), section: string(80), limit: integer(500), offset: integer(Number.MAX_SAFE_INTEGER, 0), asOf: string(40) }, ['member']),
-  tool('personal_memory', 'List, search, remember, correct or forget the same owner notes used by Nestor. When enabled for this instance, search_family reads current Family notes by query. It never writes to that space. An explicit list with includeHistory reads replaced facts and their links. Lasting personal facts only, no mail digests or secrets. Forget requires the exact note id.',
-    { action: { type: 'string', enum: ['list', 'search', 'search_family', 'remember', 'forget'] }, id: string(24), text: string(4000), query: string(4000),
-      kind: { type: 'string', enum: ['fact', 'preference', 'decision'] }, expiresAt: string(40), limit: integer(50), offset: integer(10000, 0), includeHistory: { type: 'boolean' } }, ['action'], false),
+  personalMemoryTool(false),
   tool('mail_journal', 'Read or record dated owner mail digests in Core. This is not live Gmail access. Consult secretary for exact mail, drafting, sending or triage. Recording replaces the same thread/message digest unless preserveExisting is true.',
     { action: { type: 'string', enum: ['search', 'record'] }, query: string(500), threadId: string(200), messageId: string(200),
       since: string(40), until: string(40), occurredAt: string(40), subject: string(300), counterpart: string(200),
@@ -150,10 +158,12 @@ async function handleOwnerMcp(message, deps = {}) {
   if (id === null) return null;
   if (message.method === 'initialize') return reply({ protocolVersion: '2025-06-18', serverInfo: { name: 'agentx-owner', version: '1.0.0' }, capabilities: { tools: {} } });
   if (message.method === 'ping') return reply({});
-  if (message.method === 'tools/list') return reply({ tools: TOOLS });
+  const tools = personalCanReadFamily()
+    ? TOOLS.map(item => item.name === 'personal_memory' ? personalMemoryTool(true) : item) : TOOLS;
+  if (message.method === 'tools/list') return reply({ tools });
   if (message.method !== 'tools/call') return error(-32601, 'Method not found');
   const { name, arguments: input = {} } = message.params || {};
-  const definition = TOOLS.find(tool => tool.name === name);
+  const definition = tools.find(tool => tool.name === name);
   if (!definition) return error(-32602, 'Unknown owner tool');
   try {
     // Runtime-provided schemas guide models, but validation belongs to Core.

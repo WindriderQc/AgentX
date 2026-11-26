@@ -52,7 +52,7 @@ export function registerPersonalMemory(api, readNotes) {
     const description = 'Remember only an explicit, lasting personal fact, preference or decision in one sentence. Never a summary of a mail, thread or document (use mail_journal), never identifiers or account numbers. Search/list private notes; correct a note using its existing id; forget an exact id. Notes use AgentX Core, shared with the owner Nestor UI and voice. Confirm only the receipt; forgetting does not erase chat history.';
     return {
       name: 'personal_memory', label: 'Personal Memory',
-      description: description + (canSearchFamily ? ' To search shared family notes, use search_family with a query. This reads the family space configured in Core.' : ''),
+      description: description + (canSearchFamily ? ' When the Core instance grants read-only Family access, use search_family with a query.' : ''),
       parameters: { type: 'object', properties: {
         action: { type: 'string', enum: actions },
         text: { type: 'string', minLength: 1, maxLength: 2000 },

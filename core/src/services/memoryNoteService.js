@@ -5,6 +5,7 @@ const MemoryNote = require('../../models/MemoryNote');
 const { sealText } = require('./identifierVault');
 const { createIndex } = require('./memoryNoteIndex');
 const { currentFactFilter } = require('./memoryNoteValidity');
+const { noteSpaces, personalCanReadFamily } = require('../domains/household/noteSpaces');
 const { scoreFloor } = require('../helpers/scoreFloor');
 const { memoryFactInput, memoryFactProjection, mergeMemoryFactMetadata } = require('../../../shared/memoryFactMetadata');
 const temporal = require('./personalHistoryTemporal');
@@ -416,7 +417,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     ...replacements, count: () => MemoryNote.countDocuments(active()) });
 }
 
-const personal = () => forSpace({ audience: 'owner', scopeId: 'personal', packIds: ['personal_operator'] });
+const personal = () => forSpace(noteSpaces.personal);
 async function operatePersonal(input = {}) {
   const notes = personal();
   const operation = input.operation || input.action;
@@ -426,10 +427,8 @@ async function operatePersonal(input = {}) {
   if (operation === 'list') result = await notes.list(input);
   else if (operation === 'search') result = await notes.search(input.query, input);
   else if (operation === 'search_family') {
-    if (process.env.HOUSEHOLD_PERSONAL_FAMILY_MEMORY_READ !== 'true') throw error('Family note access is disabled for the personal assistant', 403);
-    const { packById, packIdsSharingMemory } = require('../../surfaces/household/packs');
-    const pack = packById('kidx_nestor');
-    const family = forSpace({ audience: 'household', scopeId: pack.defaultScopeId, packIds: packIdsSharingMemory(pack) });
+    if (!personalCanReadFamily()) throw error('Family note access is disabled for the personal assistant', 403);
+    const family = forSpace(noteSpaces.family);
     result = { ...await family.search(input.query, { limit: input.limit }), memorySpace: 'family' };
   }
   else if (operation === 'turn-context') result = await notes.turnContext(input.query);
