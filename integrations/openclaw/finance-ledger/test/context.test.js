@@ -43,3 +43,33 @@ test('every registered finance tool is declared optional in the native manifest 
     assert.equal(factory({ agentId: 'comptable', sessionKey: 'agent:comptable:main', sandboxed: true }), null);
   }
 });
+
+test('Core attributes finance decisions to each admitted session agent', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { createCoreRulesClient, createCoreDocumentLinkClient } = await import('../core-finance.js');
+  const source = await readFile(new URL('../index.js', import.meta.url), 'utf8');
+  const body = source.replace(/^import .*$/gm, '').replace('export default', 'return');
+  const sent = [];
+  const fetchImpl = async (url, opts) => {
+    sent.push({ path: url.pathname, body: JSON.parse(opts.body) });
+    return { ok: true, json: async () => ({ status: 'success', data: { saved: [] } }) };
+  };
+  const other = () => () => assert.fail('Unexpected finance operation');
+  const plugin = new Function('definePluginEntry', 'createCoreAlertsClient', 'createCoreDocumentLinkClient',
+    'createCoreFinanceClient', 'createCorePlanClient', 'createCoreRulesClient', 'createCoreStatementDepositClient',
+    'financeContext', body)(value => value, other, o => createCoreDocumentLinkClient({ ...o, fetchImpl }),
+    other, other, o => createCoreRulesClient({ ...o, fetchImpl }), other, financeContext);
+  const factories = {};
+  plugin.register({ pluginConfig: { agentxUrl: 'http://core.invalid', agentIds: ['books', 'accounts'] },
+    registerTool(factory, { name }) { factories[name] = factory; } });
+  for (const id of ['books', 'accounts']) {
+    const context = { agentId: id, sessionKey: 'agent:' + id + ':main' };
+    await factories.finance_categorize(context).execute('rule', {
+      rules: [{ pattern: 'FOOD', category: 'food' }], transactions: [{ id: 'fixture' }], createdBy: 'untrusted'
+    });
+    await factories.finance_document_link(context).execute('link', { decision: 'confirm', ids: ['fixture'], createdBy: 'untrusted' });
+    assert.deepEqual(sent.splice(0).map(({ path, body }) => [path, body.createdBy]), [
+      ['/api/finance/transactions/decisions', id], ['/api/finance/rules', id], ['/api/finance/documents/links/decide', id]
+    ]);
+  }
+});

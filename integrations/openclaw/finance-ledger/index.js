@@ -6,7 +6,7 @@ const receipt = value => ({ content: [{ type: "text", text: JSON.stringify(value
 export default definePluginEntry({
   id: "finance-ledger",
   name: "AgentX Finance Ledger",
-  description: "Read-only balances, transactions and monthly totals from the AgentX Core finance ledger.",
+  description: "Ledger queries and optional tools for categorization, plans, alerts, document links and statement deposits.",
   register(api) {
     const ask = createCoreFinanceClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const teach = createCoreRulesClient({ baseUrl: api.pluginConfig?.agentxUrl });
@@ -123,7 +123,7 @@ export default definePluginEntry({
           additionalProperties: false,
         },
         async execute(_callId, params) {
-          return receipt(await teach(params));
+          return receipt(await teach(params, context.agentId));
         },
       };
     }, { name: "finance_categorize", optional: true });
@@ -146,7 +146,7 @@ export default definePluginEntry({
           additionalProperties: false,
         },
         async execute(_callId, params) {
-          return receipt(await documentLinkClient(params));
+          return receipt(await documentLinkClient(params, context.agentId));
         },
       };
     }, { name: "finance_document_link", optional: true });
