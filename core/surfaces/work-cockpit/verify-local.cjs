@@ -25,11 +25,11 @@ async function run() {
     mongoose:{models:{AgentXHouseholdFamilyDevice:{findOneAndUpdate:()=>({lean:async()=>({label:'Synthetic device'})})}}},
     ownerUnlock:{activeUntil:async()=>unlocked ? new Date(Date.now()+10000) : null},
     envelope:(res,data)=>res.json({data}), fail:(res,code)=>res.sendStatus(code)});
-  const scope = {pipelineId:'0007',service:'engineering',label:'Dossier fictif',intent:'Contrôle synthétique.'};
+  const scope = {services:['engineering']};
   const now = new Date().toISOString();
-  let pipelineProvider = async () => ({service:scope.service, hasMore:false, observedAt:now,
+  let pipelineProvider = async () => ({services:scope.services, hasMore:false, observedAt:now,
     records:Array.from({length:30},(_,i)=>({pipelineId:String(i+1).padStart(4,'0'), title:'QA '+(i+1),
-      service:scope.service,status:'queued',intake:'proposed',createdAt:now,updatedAt:now}))});
+      service:scope.services[0],status:'queued',intake:'proposed',createdAt:now,updatedAt:now}))});
   const team = {readOnly:true, generatedAt:now, agents:[{registryId:'qa-registry',runtime:'test',
     confidence:'configured',persona:{label:'Persona de test',description:'synthetic-excluded-field'}}]};
   let teamProvider = async () => team;
@@ -91,7 +91,7 @@ async function run() {
       assert.ok(Math.abs(before-await row.evaluate(el=>el.getBoundingClientRect().top))<=1);
       await page.locator('#search').fill('Pipeline #0007');
       if(width===390) await page.locator('#facets summary').click();
-      await page.locator('#domain').selectOption(scope.service);
+      await page.locator('#domain').selectOption(scope.services[0]);
       assert.equal(await rows.count(),1);
       await page.locator('#search').fill('unmatched-query');
       assert.equal(await rows.count(),0);

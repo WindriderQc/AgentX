@@ -59,7 +59,7 @@
     const status = sourceStatus('Pipeline',pipeline);
     $('pipeline-health').textContent = status;
     $('provenance').textContent = status + (pipeline.state === 'read'
-      ? ' Service '+pipeline.service+' · '+(pipeline.hasMore ? 'les '+collection.length+' dossiers les plus récents.' : collection.length+' dossiers dans ce périmètre.') : '');
+      ? ' Services : '+pipeline.services.join(', ')+' · '+(pipeline.hasMore ? 'les '+collection.length+' dossiers les plus récents.' : collection.length+' dossiers dans ce périmètre.') : '');
     for (const [key,label] of Object.entries(dimensions)) {
       const values = [...new Set(collection.map(card=>card[key]))].sort(collator.compare);
       $(key).replaceChildren(new Option(label,''),...values.map(value=>new Option(value,value)));
