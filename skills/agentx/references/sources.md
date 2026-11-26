@@ -13,6 +13,7 @@ what the producer can expose. The read returns the available evidence.
 | Famille and its Reader | Use `source_catalogue`/`source_read` if the family runtime exposes them, or `GET /api/family/sources` and `POST /api/family/sources/read` in the same scope. | `weather`, `agentx` |
 
 Send the same read arguments in the POST body. The server binds the audience.
+In the owner catalogue, `pipelineArtifacts` points to `pipeline_artifacts`. Pass an exact `pipelineId` to that tool to list registered deliverables.
 The family transport rejects private sources before reading them, typically
 with `INVALID_ARGUMENTS`. Preserve the returned error and the same audience
 across fallbacks. Native OpenClaw and family tools require

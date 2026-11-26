@@ -145,6 +145,15 @@ test('read envelopes repeat the exact catalogue guidance for every visible sourc
   expect(brief).toHaveBeenCalledTimes(2);
 });
 
+test('owner catalogue carries a compact pipeline_artifacts pointer, household has none', () => {
+  const owner = forAudience('owner').catalogue();
+  const family = forAudience('household').catalogue();
+  expect(owner.pipelineArtifacts).toEqual({ tool: 'pipeline_artifacts', requiredArgument: 'pipelineId' });
+  expect(family).not.toHaveProperty('pipelineArtifacts');
+  expect(family.sources.map(row => row.source)).toEqual(['weather', 'agentx']);
+  expect(owner.sources.map(row => row.source)).toEqual(['weather', 'agentx', 'secretary', 'comptable']);
+});
+
 test('failed sole or all brief sections do not claim a successful read', async () => {
   for (const sections of [{ mail: { unavailable: 'Source unavailable' } },
     { mail: { unavailable: 'Source unavailable' }, actions: { unavailable: 'Source unavailable' } }]) {
