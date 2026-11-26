@@ -281,6 +281,9 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
       }
       if (boundary <= 0) return;
       speakProse(line.slice(0, boundary));
+      // Speech can use the delimiter now, while the next token is still being
+      // checked. emit() coalesces it when the written stream receives it later.
+      if (!ended && line[boundary] === ' ' && spoken.endsWith('.')) emit(' ', false);
       line = line.slice(boundary);
       if (ended) line = '';
     }
