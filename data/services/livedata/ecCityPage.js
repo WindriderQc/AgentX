@@ -117,7 +117,7 @@ function normalize(feature, { lat, lon, lang }) {
     regionalNormals: pick(fg.regionalNormals?.textSummary, lang),
     forecasts: (Array.isArray(fg.forecasts) ? fg.forecasts : []).map(f => forecast(f, lang)),
     hourly: (Array.isArray(p.hourlyForecastGroup?.hourlyForecasts) ? p.hourlyForecastGroup.hourlyForecasts : []).map(h => hourly(h, lang)),
-    warnings: (Array.isArray(p.warnings) ? p.warnings : []).map(w => warning(w, lang)),
+    warnings: Array.isArray(p.warnings) ? p.warnings.map(w => warning(w, lang)) : null,
     sunrise: pick(p.riseSet?.sunrise, lang),
     sunset: pick(p.riseSet?.sunset, lang)
   };
@@ -156,7 +156,8 @@ async function getCityWeather(position, maxAgeMs = TTL_MS) {
   const lang = position.lang === 'en' ? 'en' : 'fr';
   const hit = await cache.get(cacheKey(position), async () =>
     normalize(await searchNearest(lat, lon), { lat, lon, lang }), maxAgeMs);
-  return { ...hit.value, fetchedAt: hit.fetchedAt.toISOString(), cached: hit.cached };
+  // The existing screen expects an array. Prepared reads retain missing coverage as null.
+  return { ...hit.value, warnings: hit.value.warnings ?? [], fetchedAt: hit.fetchedAt.toISOString(), cached: hit.cached };
 }
 
 function peekCityWeather(position) {

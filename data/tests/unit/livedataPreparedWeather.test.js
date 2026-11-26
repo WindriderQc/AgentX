@@ -58,7 +58,10 @@ test('prepares the configured French bulletin without a request and shares it ac
   const prepared = (await read()).body.data;
   expect(prepared).toMatchObject({ preparedStatus: 'fresh', cached: true, fetchedAt: new Date(start).toISOString(),
     current: { temperatureC: 0, observedAt }, forecastIssuedAt });
-  expect((await read('lang=fr')).body.data.current).toEqual(prepared.current);
+  expect(prepared.warnings).toBeNull();
+  const screen = (await read('lang=fr')).body.data;
+  expect(screen.current).toEqual(prepared.current);
+  expect(screen.warnings).toEqual([]);
   expect((await read('lang=en&prepared=1')).body.data.preparedStatus).toBe('missing');
   expect((await read('lat=48&lon=-70&prepared=1')).body.data.preparedStatus).toBe('missing');
   await liveData.reloadConfig();
@@ -128,4 +131,16 @@ test('a delayed config read cannot start the producer after shutdown', async () 
   await reload;
   await jest.advanceTimersByTimeAsync(20 * 60_000);
   expect(fetchPage).not.toHaveBeenCalled();
+});
+
+test('a late settings update cannot restart preparation after Data has stopped', async () => {
+  const { db } = instance();
+  await liveData.init(db);
+  await jest.advanceTimersByTimeAsync(0);
+  const calls = fetchPage.mock.calls.length;
+  await liveData.close();
+  await liveData.reloadConfig();
+  await jest.advanceTimersByTimeAsync(10 * 60_000);
+  expect(fetchPage).toHaveBeenCalledTimes(calls);
+  expect(liveData.isRunning()).toBe(false);
 });

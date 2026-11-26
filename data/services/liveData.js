@@ -174,6 +174,7 @@ function restartMqttFeeds() {
 }
 
 async function reloadConfig() {
+  if (!initialized) return; // init reads the latest toggles after seeding; close owns all stopped timers.
   const revision = ++configRevision;
   try {
     const [overrideDocs, toggleDocs] = await Promise.all([
