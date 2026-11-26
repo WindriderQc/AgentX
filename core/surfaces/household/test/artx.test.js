@@ -166,27 +166,47 @@ test('the browser waits, remembers rendered moments, and reconciles a lost idle 
   client.dispose();
 });
 
-for (const backend of ['agentx', 'openclaw']) test(`the actual ${backend} family turn receives and records Saturn’s display evidence`, async () => {
-  const f = fixture(), snapshot = await f.service.snapshot(displayId);
-  const h = harness({ packId: 'kidx_nestor', backend, artx: f.service });
-  await h.turn('Où est Saturne dans ton ciel ?', 'voice', { artx: f.observation(snapshot) });
-  assert.match(h.sent[0].request, /Saturne/);
-  assert.match(h.sent[0].request, /"side":"gauche"/);
-  assert.equal(h.turns[0].presentationContext.artx.current.planets[0].rendered, true);
-  if (backend === 'agentx') assert.ok(h.sent[0].tools.some(tool => tool.function.name === 'artx_read'));
-});
+for (const [backend, channel] of [['agentx', 'voice'], ['agentx', 'text'], ['openclaw', 'voice']]) {
+  test(`${backend} family ${channel} uses its observed sky with a hidden display`, async () => {
+    const f = fixture(), snapshot = await f.service.snapshot(displayId);
+    const deferred = backend === 'agentx' && channel === 'voice';
+    const h = harness({ packId: 'kidx_nestor', backend, artx: f.service,
+      response: deferred ? body => body.messages.at(-1).role === 'tool' ? 'Sa hauteur est de 30 degrés.'
+        : { message: { content: '', tool_calls: [{ function: { name: 'artx_read', arguments: { view: 'current' } } }] } } : 'Réponse synthétique.' });
+    await h.turn('Où est Saturne dans le ciel ?', channel, { artx: f.observation(snapshot, { visible: false }) });
+    const planet = h.turns[0].presentationContext.artx.current.planets[0];
+    assert.deepEqual([planet.rendered, planet.direction, planet.aboveHorizon, planet.altitudeDeg], [false, 'sud-est', true, 30]);
+    if (deferred) {
+      assert.match(h.sent[0].request, /Use artx_read/);
+      assert.doesNotMatch(h.sent[0].request, /"altitudeDeg"/);
+      assert.ok(h.sent[0].tools.some(tool => tool.function.name === 'artx_read'));
+      assert.equal(h.sent.length, 2);
+      const result = JSON.parse(h.sent[1].messages.at(-1).content);
+      assert.equal(result.current.planets[0].altitudeDeg, 30);
+      assert.equal(result.current.planets[0].rendered, false);
+      assert.equal(result.previous, undefined);
+    } else {
+      assert.match(h.sent[0].request, /"altitudeDeg":30/);
+      assert.match(h.sent[0].request, /a hidden display.*does NOT prevent using a supplied direction and altitude/);
+    }
+  });
+}
 
-for (const backend of ['agentx', 'openclaw']) test(`${backend} receives outdoor Saturn data while its display is hidden`, async () => {
-  const f = fixture(), snapshot = await f.service.snapshot(displayId);
-  const h = harness({ packId: 'kidx_nestor', backend, artx: f.service });
-  await h.turn('Où regarder dehors si ton écran est masqué ?', 'voice', { artx: f.observation(snapshot, { visible: false }) });
-  const planet = h.turns[0].presentationContext.artx.current.planets[0];
-  assert.equal(planet.rendered, false);
-  assert.equal(planet.direction, 'sud-est');
-  assert.equal(planet.aboveHorizon, true);
-  assert.equal(planet.altitudeDeg, 30);
-  assert.match(h.sent[0].request, /a hidden display.*does NOT prevent using a supplied direction and altitude/);
-  assert.match(h.sent[0].request, /Never say a planet must appear on screen before its outdoor position can be known/);
+test('the reader can request one observation and reports that view’s own availability', async () => {
+  const f = fixture(), before = await f.service.snapshot(displayId);
+  const first = f.observation(before).current;
+  assert.equal(f.service.read({ displayId, view: 'previous' }).status, 'unavailable');
+  f.advance(2000);
+  const after = await f.service.snapshot(displayId);
+  const full = f.service.observe({ ...f.observation(after, { visible: false }), previous: first });
+  assert.equal(full.previous.planets[0].rendered, true);
+  assert.equal(full.current.planets[0].rendered, false);
+  for (const view of ['current', 'previous']) {
+    assert.deepEqual(f.service.read({ displayId, view }), { displayId, [view]: full[view], status: 'available' });
+  }
+  assert.throws(() => f.service.read({ displayId, view: 'other' }), { code: 'ARTX_VIEW_INVALID' });
+  f.advance(181000);
+  assert.equal(f.service.read({ displayId, view: 'previous' }).status, 'expired');
 });
 
 test('family ArtX tools bind the active display while MCP reuses the same reader', async () => {

@@ -63,7 +63,8 @@ function familyParameters(tool) {
 
 function functionDefinition(tool) {
   const omitted = FAMILY_TOOL_VIEWS[tool.name]?.omit || [];
-  const note = omitted.length ? ` In this conversation it always uses the household location.` : '';
+  const note = tool.name === 'iss_passes' ? ' In this conversation it always uses the household location.'
+    : omitted.includes('displayId') ? ' Core binds this tool to the current display.' : '';
   return { type: 'function', function: { name: tool.name, description: tool.description + note, parameters: familyParameters(tool) } };
 }
 

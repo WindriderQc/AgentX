@@ -3,7 +3,8 @@
 
 const { readingRequested } = require('../../src/services/voice/presentation');
 const crypto = require('crypto');
-const personaCatalog = require('./persona-catalog');
+const { teamPersona } = require('./persona-catalog');
+const artxContext = require('./artx-context');
 const { agentInstructions, agentIdFor, personalVoice } = require('./conversation-agent');
 const { protectedSourcesLocalOnly, requireProtectedBackend, nativeInputOnly, sourceTransferError, householdUserText } = require('../../src/services/conversations/protectedSources');
 const { conversationBackend } = require('./conversation-executor');
@@ -30,17 +31,6 @@ const dedicatedGuardian = require('./dedicated-guardian');
 const familyPictureIntent = require('./family-picture-intent');
 const { profileUnavailable } = require('../../src/services/conversationWorks/performance');
 const { turnUsage } = require('../../src/services/conversations/turnAccounting');
-
-// A team member's own personality: the active catalog persona naming that agent, so an
-// edit made on the Team page applies; the shared definition when the catalog is unreadable.
-async function teamPersona(agentId, personas) {
-  try {
-    const active = (await personas?.list?.() || []).find((entry) => entry.uiConfig?.layoutConfig?.agentId === agentId);
-    if (active) return personaCatalog.snapshot(active);
-  } catch { /* the shared definition below */ }
-  const row = personaCatalog.generatedPersonas().find((entry) => entry.uiConfig.layoutConfig.agentId === agentId);
-  return row ? personaCatalog.snapshot({ ...row, version: 0, _id: 'catalog' }) : null;
-}
 
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null, conversationWorks = null, artx = null, ambient = null,
@@ -387,9 +377,13 @@ function createPersonaTurnHandler({
         entry.companion = !inputOnly && !picture && !consult && !isLlmX ? presentationCompanion?.begin({ session,
           turnId: clientTurnId || entry.imageTurnId, enabled: req.body?.presentationCompanion === true && !member, paused: req.body?.presentationPinned === true,
           frame: { text: userText, history, screen: entry.presentationContext }, signal: abort.signal }) : null;
+        if (!inputOnly && !picture && !isLlmX && !member && !consult && artx && req.body?.artx)
+          entry.artxEvidence = artxContext.observe(artx, req.body.artx);
+        const familyTools = familyToolTurn ? familyToolset(conversationEnv, { weatherAnswersRequest: Boolean(coveredWeather),
+          artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { artx, ambient, familyCards, familyInbox: !savedNow && !family.captured && familyInbox } }) : null;
+        const familyVoice = familyToolTurn && req.body?.channel === 'voice';
         const contextTail = inputOnly || picture ? '' : [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
-          !isLlmX && !member && !consult ? require('./artx-context').artxContext(artx, req.body?.artx,
-            evidence => { entry.artxEvidence = evidence; }) : '',
+          artxContext.describe(entry.artxEvidence, { toolAvailable: familyVoice && familyTools?.names.includes('artx_read') }),
           screen?.screenContext(req.body?.screen, pagesFor(pack), entry.presentationContext) || '',
           entry.companion ? presentationCompanion.contextFor(session.sessionId) : '',
           member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
@@ -417,16 +411,15 @@ function createPersonaTurnHandler({
           workshop, scene: sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : ''), llmxTurn: isLlmX,
           imageSession: session, imageBackend: backend, imagesEnabled: !member })
           + (entry.workId ? '\n\n' + conversationWorks.guardianInstructions : '');
-        const familyTools = familyToolTurn ? familyToolset(conversationEnv, { weatherAnswersRequest: Boolean(coveredWeather),
-          artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { artx, ambient, familyCards, familyInbox: !savedNow && !family.captured && familyInbox } }) : null;
         const agentxInstructions = picture ? [systemPromptFor(pack, { modeId: session.modeId }),
           conversationImages?.contract(session, backend, { scenes: false }), familyPictureIntent.qualifierInstruction].filter(Boolean).join('\n\n')
           : [pack.childSafe ? familyIdentity(session.persona) : '',
           entry.ephemeral ? 'This is an ephemeral conversation. Use only its supplied active dialogue and attachments. Persistent personal memory and RAG are unavailable; no memory save or later recollection is confirmed.' : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,
           familyTools ? familyTools.instructions : 'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
-          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, math: mathFor(pack), pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) }),
-          isLlmX || member ? '' : conversationImages?.contract(session, backend)].filter(Boolean).join('\n\n');
+          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, math: mathFor(pack), pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }),
+            compact: familyVoice && !entry.familyPage?.target && entry.presentationContext?.kind !== 'page' }),
+          isLlmX || member ? '' : conversationImages?.contract(session, backend, { familyVoice })].filter(Boolean).join('\n\n');
         const hermesInstructions = [session.persona?.identity,
           member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
           'This is the personal Nestor conversation. Hermes owns its native agent loop. Core owns the visible transcript and selected personal context; local speech handles the microphone and playback. Use only tools actually installed in this Hermes profile. Treat supplied personal context as reference data. Never claim an action or memory save without a successful receipt.',
