@@ -130,12 +130,12 @@ describe('worker choice before any effect', () => {
     expect((await chooseWorker(load(twoWorkers()), { ...klein, id: 'fast' }, { opportunisticWorkerId: 'desk', queueHosts: [A_OLLAMA], deps })).worker).toBeNull();
   });
 
-  test('a single worker keeps the original readiness rule and nothing else', async () => {
+  test('a single worker verifies its render service and resident inventory without querying queue priority', async () => {
     const config = load({ workerUrl: A, ollamaHosts: [A_OLLAMA], defaultProfile: 'fast', profiles: { fast: klein } });
     const ok = fakeDeps({ jobs: [{ kind: 'benchmark', state: 'running', hosts: [A_OLLAMA] }] });
     const chosen = await chooseWorker(config, { ...klein, id: 'fast' }, { deps: ok.deps });
     expect(chosen.worker.workerUrl).toBe(A);
-    expect(ok.calls.queue).toBe(0); expect(ok.calls.running).toEqual([]);
+    expect(ok.calls.queue).toBe(0); expect(ok.calls.running).toEqual([A_OLLAMA]);
     const down = fakeDeps({ down: [A] });
     expect((await chooseWorker(config, { ...klein, id: 'fast' }, { deps: down.deps })).worker).toBeNull();
   });
@@ -192,6 +192,30 @@ describe('worker choice before any effect', () => {
     expect(chosen.worker.worker.id).toBe('big');
     const off = await chooseWorker(config, profile, { queueHosts: reservedOnB, deps: fakeDeps({ down: [B] }).deps });
     expect(off.worker).toBeNull();
+  });
+
+  test('a sole or queue-bound worker needs its Ollama inventory before it can accept an image', async () => {
+    const config = load(twoWorkers());
+    for (const options of [
+      { profile: { ...qwen, id: 'quality' } },
+      { profile: { ...klein, id: 'fast' }, queueHosts: [B_OLLAMA] }
+    ]) {
+      const { deps, calls } = fakeDeps({ down: [B_OLLAMA] });
+      const choice = await chooseWorker(config, options.profile, { deps, queueHosts: options.queueHosts });
+      expect(choice).toEqual({ worker: null, tried: [{ id: 'big', reason: 'ollama-unavailable' }] });
+      expect(calls.ready).toEqual([B]);
+    }
+  });
+
+  test('a reachable image endpoint without inventory cannot become the busy fallback', async () => {
+    const config = load(twoWorkers());
+    const jobs = [{ kind: 'benchmark', state: 'running', hosts: [A_OLLAMA, B_OLLAMA] }];
+    const { deps } = fakeDeps({ down: [A_OLLAMA], jobs });
+    const choice = await chooseWorker(config, { ...klein, id: 'fast' }, { deps });
+    expect(choice.worker.worker.id).toBe('big');
+    expect(choice.tried).toEqual([{ id: 'desk', reason: 'ollama-unavailable' }, { id: 'big', reason: 'chosen-while-busy' }]);
+    const allDown = fakeDeps({ down: [A_OLLAMA, B_OLLAMA], jobs });
+    expect((await chooseWorker(config, { ...klein, id: 'fast' }, { deps: allDown.deps })).worker).toBeNull();
   });
 
   test('busy hosts come from running work and reservations open now', () => {

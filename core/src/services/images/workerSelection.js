@@ -53,11 +53,11 @@ async function probe(worker, profile, deps, busy) {
   let stats;
   try { stats = await deps.client(worker.workerUrl).ready(profile, { allowBusy: true }); }
   catch { return { ready: false, reason: 'unavailable' }; }
-  if (workerKeys(worker).some(key => busy.has(key))) return { ready: true, free: false, reason: 'reserved' };
   let residents = [];
   try {
     for (const host of worker.ollamaHosts) residents = residents.concat(await deps.running(host));
-  } catch { return { ready: true, free: false, reason: 'ollama-unavailable' }; }
+  } catch { return { ready: false, reason: 'ollama-unavailable' }; }
+  if (workerKeys(worker).some(key => busy.has(key))) return { ready: true, free: false, reason: 'reserved' };
   if (!hasRoom(stats, residents, worker.minFreeVramRatio)) return { ready: true, free: false, reason: 'vram' };
   return { ready: true, free: true };
 }
@@ -101,14 +101,10 @@ async function chooseWorker(config, profile, { queueHosts: reserved = null, oppo
     });
   }
   const tried = [];
-  if (list.length === 1) {
-    // A single candidate keeps the original rule: reachable with its models.
-    try { await deps.client(list[0].workerUrl).ready(profile, { allowBusy: true }); }
-    catch { return { worker: null, tried: [{ id: list[0].worker.id, reason: 'unavailable' }] }; }
-    return { worker: list[0], tried: [{ id: list[0].worker.id, reason: 'chosen' }] };
-  }
   let busy = new Set();
-  try { busy = busyKeys(await deps.queueJobs(), deps.now()); } catch { /* No queue view: rely on the other checks. */ }
+  if (list.length > 1) {
+    try { busy = busyKeys(await deps.queueJobs(), deps.now()); } catch { /* The native reservation still checks ownership. */ }
+  }
   let firstReady = null;
   for (const worker of list) {
     const result = await probe(worker, profile, deps, busy);

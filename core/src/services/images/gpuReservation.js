@@ -48,6 +48,15 @@ async function restoreSnapshots(snapshots, assertOwned) {
   }
 }
 
+// Only the exact PREPARED lease may be released here. A lost response
+// is reconciled against its durable receipt before declaring GPU preparation over.
+async function releasePrepared(proof) {
+  const release = await coordination.release('workload', proof).catch(() => null);
+  if (release?.released) return true;
+  const receipt = await coordination.recoverRelease('workload', proof).catch(() => null);
+  return receipt?.released === true;
+}
+
 async function reserve(config, operation, save, isCancelled) {
   if (operation.workerUrl && operation.workerUrl !== config.workerUrl) {
     throw new Error('Image operation is bound to its original worker');
@@ -56,9 +65,12 @@ async function reserve(config, operation, save, isCancelled) {
   let lease;
   do {
     if (await isCancelled()) throw Object.assign(new Error('Image request cancelled'), { cancelled: true });
-    lease = await coordination.acquireWorkload({ principal: PRINCIPAL, requestId: operation._id,
-      workloadId: operation._id, kind: 'images',
-      hosts: [config.workerUrl, ...config.ollamaHosts].filter(Boolean), ttl: 120000 });
+    try {
+      lease = await coordination.acquireWorkload({ principal: PRINCIPAL, requestId: operation._id,
+        workloadId: operation._id, kind: 'images', hosts: [config.workerUrl, ...config.ollamaHosts].filter(Boolean), ttl: 120000 });
+    } catch (cause) {
+      throw Object.assign(new Error('Image GPU admission is unconfirmed. Reconcile the original operation.', { cause }), { runtimeUnknown: true });
+    }
     if (lease.acquired) break;
     if (operation.admissionPolicy === 'opportunistic' || Date.now() >= end) throw new Error('GPU busy. Make a new request when it is available.');
     await sleep(1000);
@@ -88,7 +100,9 @@ async function reserve(config, operation, save, isCancelled) {
   try {
     await save({ admission: lease });
     for (const host of config.ollamaHosts) {
-      await assertOwned(); snapshots[host] = await captureBenchmarkRuntime(host);
+      await assertOwned();
+      try { snapshots[host] = await captureBenchmarkRuntime(host); }
+      catch (cause) { throw new Error('Image reservation could not capture the Ollama resident inventory: ' + cause.message, { cause }); }
     }
     await save({ snapshot: snapshots });
     const opportunistic = operation.admissionPolicy === 'opportunistic';
@@ -123,9 +137,8 @@ async function reserve(config, operation, save, isCancelled) {
     }
   } catch (error) {
     clearInterval(timer);
-    if (!mutated) {
-      const released = await coordination.release('workload', proof);
-      if (!released.released) mutated = true;
+    if (!mutated && !await releasePrepared(proof)) {
+      throw Object.assign(new Error('Image reservation release is unconfirmed: ' + error.message, { cause: error }), { runtimeUnknown: true });
     }
     // A failed unload can still be in flight. Keep the durable reservation.
     throw Object.assign(error, { runtimeUnknown: mutated });
@@ -143,4 +156,4 @@ async function reserve(config, operation, save, isCancelled) {
       await transition('UNKNOWN', { reason }).catch(() => {});
     } };
 }
-module.exports = { reserve, restoreSnapshots, PRINCIPAL };
+module.exports = { reserve, restoreSnapshots, releasePrepared, PRINCIPAL };

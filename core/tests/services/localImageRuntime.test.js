@@ -156,6 +156,53 @@ describe('image GPU handoff and original-job recovery', () => {
     expect(unloadModel).not.toHaveBeenCalled();
     expect(await RuntimeCoordination.countDocuments()).toBe(0);
   });
+  test('snapshot timeout before mutation is terminal only with the original PREPARED release receipt', async () => {
+    const realRelease = coordination.release;
+    const release = jest.spyOn(coordination, 'release').mockImplementationOnce(async (...args) => {
+      await realRelease(...args);
+      throw new Error('Lost Mongo acknowledgment');
+    });
+    try {
+      captureBenchmarkRuntime.mockRejectedValueOnce(new Error('timed out'));
+      await expect(heldOperation('image-read-timeout')).rejects.toMatchObject({
+        message: expect.stringContaining('Ollama resident inventory'), runtimeUnknown: false });
+      expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(0);
+      expect(unloadModel).not.toHaveBeenCalled();
+    } finally { release.mockRestore(); }
+  });
+
+  test('explicit recovery releases the same prepared lease after lost acquisition, without submitting or unloading', async () => {
+    const realAcquire = coordination.acquireWorkload;
+    const acquire = jest.spyOn(coordination, 'acquireWorkload').mockImplementationOnce(async (...args) => {
+      await realAcquire(...args);
+      throw new Error('Lost admission acknowledgment');
+    });
+    const op = { _id: 'image-lost-acquisition', state: 'unknown', dispatchStarted: false };
+    const persist = jest.fn(async changes => Object.assign(op, changes));
+    try {
+      await expect(reserve({ ollamaHosts: [host], drainMs: 1 }, op, persist, async () => false)).rejects.toMatchObject({ runtimeUnknown: true });
+      expect(persist).not.toHaveBeenCalled();
+      expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(1);
+      const client = { submit: jest.fn(), json: jest.fn() };
+      expect(await recoverOperation(op, client, persist, jest.fn())).toMatchObject({ state: 'failed', runtimeRestored: true });
+      expect((await RuntimeCoordination.findById('runtime').lean()).workloads).toHaveLength(0);
+      expect(unloadModel).not.toHaveBeenCalled();
+      expect(client.submit).not.toHaveBeenCalled(); expect(client.json).not.toHaveBeenCalled();
+    } finally { acquire.mockRestore(); }
+  });
+
+  test('an unconfirmed pre-mutation release stays unknown and retains its original admission', async () => {
+    const release = jest.spyOn(coordination, 'release').mockRejectedValueOnce(new Error('Release unavailable'));
+    const op = { _id: 'image-lost-release', state: 'unknown', dispatchStarted: false };
+    const persist = jest.fn(async changes => Object.assign(op, changes));
+    try {
+      captureBenchmarkRuntime.mockRejectedValueOnce(new Error('timed out'));
+      await expect(reserve({ ollamaHosts: [host], drainMs: 1 }, op, persist, async () => false)).rejects.toMatchObject({ runtimeUnknown: true });
+      expect(op.admission.admissionId).toBeTruthy();
+      expect(await recoverOperation(op, {}, persist, jest.fn())).toMatchObject({ state: 'failed', runtimeRestored: true });
+    } finally { release.mockRestore(); }
+  });
+
   test('loss of an unload acknowledgement keeps the runtime fenced', async () => {
     unloadModel.mockRejectedValue(new Error('lost unload response'));
     await expect(heldOperation('image-unload')).rejects.toMatchObject({ runtimeUnknown: true });

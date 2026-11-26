@@ -150,7 +150,9 @@ async function accept(body, { conversation, signal, opportunisticWorkerId = null
   }
   const choice = await chooseWorker(config, input.profile, { queueHosts: reservedHosts, opportunisticWorkerId, requireOutputRemoval: Boolean(illustration) });
   if (!choice.worker) {
-    const error = fail('The image PC is unavailable or the required model is missing.', 503);
+    const noInventory = choice.tried.some(worker => worker.reason === 'ollama-unavailable');
+    const error = fail(noInventory ? 'No eligible image worker could be selected. Ollama resident inventory is unavailable.'
+      : 'The image PC is unavailable or the required model is missing.', 503);
     await workQueue.refuseBeforeAccept(body, config, input.requestHash, error.message);
     throw error;
   }
