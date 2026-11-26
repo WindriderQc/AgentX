@@ -101,7 +101,7 @@ async function open(page, id) { const selector = ['seed-settings', 'brief-plan-i
     await page.waitForFunction(() => !document.getElementById('image-new').disabled);
     assert.equal(await page.locator('#image-profile option').count(), 3);
     await page.locator('#image-profile').selectOption('turbo');
-    assert.match(await page.locator('#image-recipe-summary').textContent(), /8 étapes/);
+    assert.match(await page.locator('#image-recipe-summary').textContent(), /8 steps/);
     assert.equal(await page.locator('#image-size option[value="2400,1792"]').count(), 1);
     assert.equal(await page.locator('#image-size option').count(), 7);
     await page.locator('#image-size').selectOption('2400,1792');

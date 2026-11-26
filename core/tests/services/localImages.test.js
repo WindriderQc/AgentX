@@ -52,6 +52,15 @@ describe('durable local image operations', () => {
     expect(client.submit).toHaveBeenCalledTimes(1);
     await expect(service.accept({ ...body, prompt: 'A mountain' })).rejects.toMatchObject({ statusCode: 409 });
   });
+  test('a render service without Ollama inventory refuses before creating an operation or acquiring GPU resources', async () => {
+    fetchRunningModelInfosStrict.mockRejectedValueOnce(new Error('synthetic inventory timeout'));
+    await expect(service.accept({ actionKey: 'unreachable-inventory', prompt: 'A lake' }))
+      .rejects.toMatchObject({ statusCode: 503, message: expect.stringContaining('Ollama resident inventory') });
+    expect(await ImageOperation.countDocuments({ actionKey: 'unreachable-inventory' })).toBe(0);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(client.submit).not.toHaveBeenCalled();
+  });
+
   test('opportunistic acceptance keeps its worker and policy in the original identity and receipt', async () => {
     client.ready.mockResolvedValue({ devices: [{ vram_total: 12e9, vram_free: 11e9 }] });
     const body = { actionKey: 'opportunistic-first', prompt: 'A synthetic lake' };
