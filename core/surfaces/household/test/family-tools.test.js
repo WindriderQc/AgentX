@@ -10,7 +10,7 @@ test('Famille is offered only family-eligible Core tools the instance turned on'
   assert.deepEqual(familyToolNames({ HOUSEHOLD_FAMILY_TOOLS: ' iss_passes ,create_todo,iss_passes' }), ['iss_passes']);
   const toolset = familyToolset({ HOUSEHOLD_FAMILY_TOOLS: 'iss_passes' });
   assert.deepEqual(toolset.definitions.map(d => [d.type, d.function.name]), [['function', 'iss_passes']]);
-  assert.match(toolset.instructions, /iss_passes/);
+  assert.doesNotMatch(toolset.instructions, /iss_passes|network|ArtX|inbox|web_search/i);
   assert.match(toolset.instructions, /never invent a tool result/);
 });
 
