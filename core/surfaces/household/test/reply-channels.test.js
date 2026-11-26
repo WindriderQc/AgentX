@@ -172,6 +172,23 @@ test('ordinary prose streams before completion and keeps the complete answer', (
   assert.equal(said.join(''), 'Bonjour mon ami, comment vas-tu?');
 });
 
+test('a stable sentence reaches browser speech before the following word is complete', () => {
+  const { nextSpeechChunkLength } = require('../../../public/js/voice/browser-conversation');
+  for (const chunks of [[' ', 'La'], [' La']]) {
+    let spoken = '';
+    const channels = createReplyChannels({ onSay: delta => { spoken += delta; } });
+    channels.push('Il neige.');
+    assert.equal(nextSpeechChunkLength(spoken, true), 0);
+    for (const chunk of chunks) {
+      channels.push(chunk);
+      assert.equal(spoken.slice(0, nextSpeechChunkLength(spoken, true)), 'Il neige. ');
+      assert.doesNotMatch(spoken, /La/);
+    }
+    channels.push(' route est blanche.');
+    assert.equal(channels.end().say, 'Il neige. La route est blanche.');
+  }
+});
+
 test('brief speech preserves the complete written explanation through stream, storage and history', () => {
   const summary = 'La réponse repose sur trois causes, avec les détails ci-dessous.';
   const complete = 'Explication complète. '.repeat(700) + '\nDernière réserve importante.';
