@@ -140,6 +140,50 @@ test('one native session owns tools and history; presentation and model remain i
   assert.match(prompt, /sessions_spawn .*sessions_yield/); assert.match(prompt, /Do not use sessions_send/); assert.match(prompt, /tool_call using the id openclaw:core:sessions_spawn/);
 });
 
+test('direct private Main selects its own tools and reports an unverified mailbox return before displaying it', async () => {
+  const { householdUserText } = require('../../../src/services/conversations/protectedSources');
+  const owner = { ...session, packId: 'personal_operator', scopeId: 'personal', agentId: 'main' };
+  const sessionKey = sessionKeyFor(owner);
+  const childId = '33333333-3333-4333-8333-333333333333';
+  const reads = [];
+  const proof = { ok: true, authority: 'openclaw.nestor', operation: 'turn',
+    run: { runId, sessionKey, status: 'completed' }, answer: answer('Read my emails.'),
+    progress: [], toolChecks: { runId, status: 'observed', completedTools: [] } };
+  const client = createAgentClient({ env: { ...env, HOUSEHOLD_NATIVE_EXPLICIT_INPUT_ONLY: 'true', HOUSEHOLD_VOICE_MODEL: 'fixture/voice' },
+    settleMs: 0, continuity: async () => proof, fetchImpl: async (_url, options) => {
+      reads.push({ headers: options.headers, body: JSON.parse(options.body) });
+      return { ok: true, body: [created, completed] };
+    } });
+  const send = async (text, channel) => {
+    const visible = [];
+    const result = await client({ session: owner, text, [householdUserText]: text, channel, speechLanguage: 'fr',
+      turnContext: 'Private earlier topic', onDelta: delta => visible.push(delta) });
+    assert.deepEqual(visible, [result.text]);
+    assert.equal(reads.at(-1).headers['x-openclaw-model'], undefined);
+    assert.deepEqual(reads.at(-1).body.input, [{ type: 'message', role: 'user', content: text }]);
+    return result;
+  };
+  const quote = 'Traduis en anglais « lis mes courriels ».';
+  assert.equal((await send(quote, 'voice')).text, 'Read my emails.');
+  const inbox = 'Lis les nouveaux messages de ma boîte.';
+  proof.answer = answer('Invented inbox result');
+  proof.toolChecks.completedTools = ['source_read'];
+  const missing = await send(inbox, 'text');
+  assert.equal(missing.tools.verification.reason, 'secretary_return_missing');
+  assert.match(missing.text, /résultat vérifiable du Secrétaire/);
+  proof.progress = [{ id: 'call-1', tool: 'sessions_spawn', agentId: 'secretary' }];
+  proof.toolChecks.completedTools = ['sessions_spawn', 'sessions_yield'];
+  proof.answer.deliveredBy = `announce:requester-settle:main:${sessionKey}:${childId}`;
+  assert.equal((await send(inbox, 'text')).text, missing.text, 'a retained session prefix is insufficient');
+  proof.toolChecks.settledChild = { agentId: 'secretary', runId: childId };
+  proof.answer.text = 'Le message synthétique annonce une répétition à 14 h 35.';
+  assert.equal((await send(inbox, 'voice')).text, proof.answer.text);
+  proof.toolChecks.settledChild = { agentId: 'secretary', runId: 'older-run' };
+  assert.equal((await send(inbox, 'text')).text, missing.text);
+  proof.toolChecks.settledChild = { agentId: 'another-agent', runId: childId };
+  assert.equal((await send(inbox, 'text')).text, missing.text);
+});
+
 test('selected turn context stays reference data beside the current request and attachments, without changing native history', async () => {
   const requests = [];
   const client = createAgentClient({ env, settleMs: 0, continuity: async () => ({ answer: answer('Orion.'), run: {} }),

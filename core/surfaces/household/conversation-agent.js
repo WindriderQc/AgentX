@@ -6,7 +6,7 @@ const { nativePerformedBy } = require('./native-attribution');
 const { acceptedImageReply } = require('./accepted-images');
 const { scoreSpeechLanguage } = require('../../public/js/voice/speech-language');
 const { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure, recordedTaskReply } = require('./tool-turn-guard');
-const { requestsSecretary, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
+const { requestsSecretary, requestsDirectSecretaryRead, secretaryReturnObserved, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
 const { translationSessionKey } = require('../../../shared/quotedTranslation.cjs');
 const { nativeResponseFailure } = require('./native-response-failure');
 
@@ -111,10 +111,11 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     let spoken = '', pendingSpeech = '', spokenItem;
     // A per-run model changes neither the native agent nor its history/tools.
     // Explicit Open selection always wins; other surfaces keep native policy.
-    const secretaryRequest = personalVoice(session, channel) && requestsSecretary(text);
-    const selectedModel = model || (personalVoice(session, channel) && !secretaryRequest && !session.inference?.open
+    const useVoiceProfile = !inputOnly && personalVoice(session, channel);
+    const secretaryRequest = useVoiceProfile && requestsSecretary(text);
+    const selectedModel = model || (useVoiceProfile && !secretaryRequest && !session.inference?.open
       && session.modeId !== 'open' ? env.HOUSEHOLD_VOICE_MODEL?.trim() : undefined);
-    if (secretaryRequest && !inputOnly) turnDirective = [turnDirective, SECRETARY_DIRECTIVE].filter(Boolean).join('\n\n');
+    if (secretaryRequest) turnDirective = [turnDirective, SECRETARY_DIRECTIVE].filter(Boolean).join('\n\n');
     const content = currentContent ?? conversationInput({ text, applicationEvent });
     const contextualContent = turnContext || turnDirective ? [
       ...(turnContext ? [{ type: 'input_text', text: selectedContextBlock(turnContext) }] : []),
@@ -171,6 +172,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     };
     // Report each native tool call once, so Household can say what Nestor does.
     const reported = new Set();
+    let secretarySpawnSeen = false;
     let consulted, lastTool, watching = false, wake;
     // The gateway closes its stream only after its own work behind the run. When
     // that work stalls, the run's final answer is already in the native transcript:
@@ -240,6 +242,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         if (!item?.id || reported.has(item.id)) continue;
         reported.add(item.id);
         generating = true;
+        if (item.tool === 'sessions_spawn' && item.agentId === 'secretary') secretarySpawnSeen = true;
         if (item.agentId) consulted = item.agentId;
         lastTool = item.tool;
         await onActivity({ kind: 'tool', tool: item.tool, ...(item.agentId ? { agentId: item.agentId } : {}) });
@@ -448,9 +451,9 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       }
       if (!browserCall) {
         answer = evidence.answer.text;
-        if (channel !== 'translation' && agentIdFor(session) === 'main' && session.packId === 'personal_operator' && session.scopeId === 'personal'
-            && !session.llmx && session.source !== 'graphysx-llmx'
-            && requestsTaskCheck(text) && taskObservedRun !== runId) {
+        const personalMain = agentIdFor(session) === 'main' && session.packId === 'personal_operator' && session.scopeId === 'personal'
+          && !session.llmx && session.source !== 'graphysx-llmx';
+        if (personalMain && channel !== 'translation' && requestsTaskCheck(text) && taskObservedRun !== runId) {
           const acknowledgment = personalVoice(session, channel) ? await require('./task-work-acceptance').taskWorkAcknowledgment(
             readAcceptedTaskWork, { session, text, language: language.decided ? language.language : 'fr' }) : null;
           if (acknowledgment) { answer = acknowledgment.text; acceptedTaskWork = acknowledgment.acceptedWork; }
@@ -459,6 +462,12 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
             const replyLanguage = language.decided ? language.language : 'fr';
             answer = recordedTaskReply(evidence, runId, replyLanguage) || checkFailure(replyLanguage);
           }
+        }
+        if (inputOnly && personalMain && (secretarySpawnSeen || requestsDirectSecretaryRead(text))
+            && !secretaryReturnObserved(evidence, sessionKey, runId)) {
+          verificationFailure = 'secretary_return_missing';
+          answer = language.language === 'en' ? 'I could not verify the Secretary’s result for this request.'
+            : 'Je n’ai pas reçu de résultat vérifiable du Secrétaire pour cette demande.';
         }
         if (personalVoice(session, channel) && unfinishedToolPreamble(answer)) {
           answer = /^(?:i|let me)\b/i.test(answer) || scoreSpeechLanguage(answer).language === 'en'
