@@ -40,7 +40,7 @@ async function browser({ savedLanguage, turnResponse, handsFree = false } = {}) 
       VoixAudio: { Speech: class { cancel() {} async speak(request, { segments = [null] } = {}) { for (const segment of segments) await request(new AbortController().signal, segment); } } } },
     navigator: { language: 'en-CA' }, location: { pathname: '/lecture' },
     localStorage: { getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value) },
-    fetch, FormData, AbortController, console, setTimeout, clearTimeout
+    fetch, FormData, AbortController, crypto: require('node:crypto').webcrypto, console, setTimeout, clearTimeout
   };
   context.window.document = context.document;
   context.window.addEventListener = (type, listener) => { listeners[type] = listener; };
@@ -109,6 +109,17 @@ test('the real Lecture adapter stays on its family pack through wake, short repl
   assert.ok(h.requests.every(row => !row.url.includes('/private/')));
   assert.equal(h.played.length, 4);
   await h.pauseVoice(); assert.equal(h.element('readerMic').textContent, 'Enable voice');
+});
+
+test('hands-free Reader replays a saved French answer after switching the next turn to English', async () => {
+  const h = await browser({ handsFree: true, savedLanguage: 'fr', turnResponse: () =>
+    Response.json({ data: { reply: { text: 'Bonjour tout le monde.', language: 'fr' } } }) });
+  await h.enableVoice();
+  await h.ask();
+  h.choose('en');
+  await h.element('readerReplay').listeners.click();
+  assert.deepEqual(h.requests.filter(row => row.url.endsWith('/synthesize/stream')).map(row => row.body.language), ['fr', 'fr']);
+  await h.pauseVoice();
 });
 
 test('typing while Lecture listens produces one request and one playback through the same loop', async () => {

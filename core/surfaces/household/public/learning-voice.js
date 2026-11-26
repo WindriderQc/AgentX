@@ -48,7 +48,7 @@
       async read(reply) {
         if (!conversation.audio) return null;
         conversation.wake.extend(); // an explicit reading button addresses Nestor
-        return conversation.interject(reply, { readAloud: true });
+        return conversation.interject(reply, { readAloud: true, preserveLanguage: true });
       },
     };
   }

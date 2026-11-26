@@ -9,8 +9,8 @@ const {frenchDateTimeText}=require('../../../public/js/voice/speech-language');
 const tasks=require('../public/kids-tasks-screen');
 const catalog=pages.createCatalog([{id:'iss',label:'ISS canonique',href:'https://example.invalid/iss',mode:'frame'},{id:'ecosystem',label:'Ecosysteme canonique',href:'/diskx?app=ecosystem',mode:'frame'},{id:'kids-tasks',label:'Taches en lecture seule',href:'/kids',mode:'frame'}]);
 function family(extra={}){return harness({packId:'kidx_nestor',backend:'agentx',screenPages:{...catalog,family:catalog},sounds:createSoundLibrary(),...extra});}
-for(const request of ['Est-ce que tu me ferais le bruit du T-Rex?','Est-ce que vous me feriez le bruit du loup?','Pourrais-tu me jouer le cri du chat?'])test('natural sound request stays deterministic: '+request,async()=>{
- const h=family();const result=await h.turn(request,'voice');assert.ok(result.sound);assert.equal(result.routing.tier,'deterministic');assert.equal(h.sent.length,0);
+for(const request of ['Est-ce que tu me ferais le bruit du T-Rex?','Est-ce que vous me feriez le bruit du loup?','Pourrais-tu me jouer le cri du chat?'])test('natural sound request reaches inference: '+request,async()=>{
+ const h=family();const result=await h.turn(request,'voice');assert.equal(result.sound,null);assert.equal(result.routing.tier,'router');assert.equal(h.sent.length,1);
 });
 for(const request of ['ouvre la page ISS','montre-moi la station internationale autour de la Terre','affiche la page ISS'])test('requested ISS opens directly: '+request,async()=>{
  const h=family();const result=await h.turn(request,'voice');assert.equal(h.sent.length,0);assert.equal(result.display[0].body,'iss');assert.equal(result.display[0].title,'ISS canonique');

@@ -36,7 +36,9 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   let relay = null, relaySource = null, emittedModelChars = 0, relayContinuation = null, relayEndReason = null;
   const fragment = () => ({ ...relaySource, completed: false,
     fragment: { observation: 'reply_parser_input', modelChars: emittedModelChars, playback: 'unverified' } });
+  let emittedText = false;
   const emit = delta => {
+    if (delta) emittedText = true;
     onDelta?.(delta);
     if (relaySource && delta && typeof onDelta === 'function') {
       emittedModelChars += delta.length;
@@ -126,10 +128,11 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       throw Object.assign(new Error((typeof error === 'string' ? error : error?.message) || 'AgentX inference failed'), { statusCode: result?.status || 502 });
     }
     request.onExecution?.({ model: result.metadata?.model || '', backend: 'agentx', continuity: result.metadata?.conversationContinuity || null });
+    const finishSoundAnswer = Boolean(streamed.trim() && receipts.some(row => row.tool === 'get_sound'));
     let frames = { text: '', toolCalls: [] };
     if (result.stream && result.conversationNotice) { streamed += result.conversationNotice + '\n\n'; onDelta?.(result.conversationNotice + '\n\n'); }
     try {
-      if (result.stream) frames = await readReplyFrames(result.stream, emit, signal);
+      if (result.stream) frames = await readReplyFrames(result.stream, finishSoundAnswer ? () => {} : emit, signal);
     } finally {
       if (result.stream) {
         if (!result.completion?.then) throw new Error('Core does not expose verified stream completion. Update the paired Product release.');
@@ -139,7 +142,14 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     if (!result.stream) callUsage.push(result.body);
     const message = result.body?.message;
     const text = frames.text || message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '';
-    streamed += text;
+    if (finishSoundAnswer) {
+      // A model can explain before its tool call and repeat that explanation
+      // after it. Preserve what the listener already received exactly once.
+      const extra = text.trim() === streamed.trim() || !text.trim() ? ''
+        : text.startsWith(streamed) ? text.slice(streamed.length) : '\n\n' + text;
+      streamed += extra;
+      if (emittedText && extra) emit(extra);
+    } else streamed += text;
     toolCalls = result.stream ? frames.toolCalls : (Array.isArray(message?.tool_calls) ? message.tool_calls : []);
     if (!toolsOffered || !toolCalls.length || signal?.aborted || rounds >= toolset.maxRounds) break;
     rounds += 1;

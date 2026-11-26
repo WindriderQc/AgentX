@@ -9,7 +9,7 @@ const cards = require('./family-card-tool');
 const inbox = require('./family-inbox-tool');
 const TOOLS = [...sources.TOOLS, cards.TOOL, inbox.TOOL, ...bus.TOOLS.filter(t => ['iss_passes', 'artx_read', 'artx_present'].includes(t.name)),
   ...web.TOOLS.filter(t => t.name === 'web_search'),
-  ...network.SECRETARY_TOOLS.filter(t => t.name === 'network_devices')];
+  ...network.SECRETARY_TOOLS.filter(t => ['network_devices', 'get_sound'].includes(t.name))];
 const ajv = new Ajv({ strict: false, validateFormats: false });
 const validators = new Map(TOOLS.map(t => [t.name, ajv.compile(t.inputSchema)]));
 async function callTool(params, deps, tools) {
@@ -22,7 +22,7 @@ async function callTool(params, deps, tools) {
     const reply = await web.handleOwnerMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params }, deps);
     return reply.result;
   }
-  if (params.name === 'network_devices') return network.callSecretaryTool(params.name, params.arguments, deps);
+  if (['network_devices', 'get_sound'].includes(params.name)) return network.callSecretaryTool(params.name, params.arguments, deps);
   return bus.callTool(params, deps, tools);
 }
 module.exports = { TOOLS, callTool };
