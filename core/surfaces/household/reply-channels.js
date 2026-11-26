@@ -435,7 +435,19 @@ const FAMILY_MATH_CONTRACT = 'Counting and additions up to 20 get Core\'s cube p
   + 'Core checks the formula and draws every point: explain aloud what the picture shows and what each slider changes, never list points, and do not claim the picture loaded. '
   + 'When a math card is on screen, its formula and current slider values come from the current presentation.';
 
-function contract({ family = false, math = !family, imageSources = [], pages = false, pageCatalog = screenPages } = {}) {
+// The Family voice page only accepts a new page when its destination was
+// resolved. Ordinary spoken turns still have the full drawing and math grammar.
+function familyVoiceContract({ math, imageSources }) {
+  return [
+    'Give the spoken answer in plain prose. Use <show kind="text|list|table|code|link" title="short title">…</show> for written detail, lists, code or links. Summarize those aloud. Read the full text or story when asked. Keep safety instructions and emergency contacts in the spoken answer. Never display private information.',
+    'A proposed card can fail. Use the current screen receipt to say what appeared. Describe image pixels only if you received the actual image.',
+    math ? FAMILY_MATH_CONTRACT : '',
+    imageSources.length ? 'For an existing picture use <show kind="image" source="' + imageSources.join('|') + '" title="short caption">subject label</show>. Select one offered source. Use a public subject for web and a name for a household picture. The resolver can return no match.' : '',
+  ].filter(Boolean).join(' ');
+}
+
+function contract({ family = false, math = !family, imageSources = [], pages = false, pageCatalog = screenPages, compact = false } = {}) {
+  if (family && compact) return familyVoiceContract({ math, imageSources });
   if (family) {
     pageCatalog = screenPages.createCatalog(pageCatalog.entries.filter(row => ['ecosystem', 'earth', 'iss', 'kids-tasks'].includes(row.id)));
     pages = pages && pageCatalog.entries.length > 0;

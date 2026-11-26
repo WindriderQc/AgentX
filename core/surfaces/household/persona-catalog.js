@@ -94,4 +94,15 @@ async function readReplyFrames(stream, onDelta, signal) {
   return { text: answer, toolCalls };
 }
 
-module.exports = { generatedPersonas, snapshot, speechFor, readReplyStream, readReplyFrames, instanceVoice };
+// A team member's own personality: the active catalog persona naming that agent, so an
+// edit made on the Team page applies; the shared definition when the catalog is unreadable.
+async function teamPersona(agentId, personas) {
+  try {
+    const active = (await personas?.list?.() || []).find((entry) => entry.uiConfig?.layoutConfig?.agentId === agentId);
+    if (active) return snapshot(active);
+  } catch { /* the shared definition below */ }
+  const row = generatedPersonas().find((entry) => entry.uiConfig.layoutConfig.agentId === agentId);
+  return row ? snapshot({ ...row, version: 0, _id: 'catalog' }) : null;
+}
+
+module.exports = { teamPersona, generatedPersonas, snapshot, speechFor, readReplyStream, readReplyFrames, instanceVoice };

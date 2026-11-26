@@ -460,3 +460,16 @@ test('only completed deferred speech is published, once, and service notices can
   const result = service.end({ completed: true });
   assert.equal(result.say, 'Le relais est occupé.');
 });
+
+test('compact family speech keeps the drawing, math, reading and privacy contracts', () => {
+  const pageCatalog = require('../../../public/js/screen-pages').createCatalog([{ id: 'iss', label: 'ISS', href: '/iss', mode: 'frame' }]);
+  const options = { family: true, pages: true, pageCatalog, math: true, imageSources: ['web'] };
+  const full = require('../reply-channels').contract(options);
+  const compact = require('../reply-channels').contract({ ...options, compact: true });
+  assert.ok(compact.length < full.length);
+  for (const marker of ['<show kind="image"', 'formula', 'full text or story', 'private information']) {
+    assert.ok(compact.includes(marker), marker);
+  }
+  assert.match(full, /kind="page"/);
+  assert.doesNotMatch(compact, /kind="page"/);
+});
