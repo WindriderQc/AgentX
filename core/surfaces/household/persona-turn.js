@@ -170,9 +170,8 @@ function createPersonaTurnHandler({
       if (requestedAttachments.length && !attachmentStore) return fail(res, 400, 'Attachments are available in personal Nestor.', 'ATTACHMENTS_PERSONAL_ONLY');
       entry.attachments = requestedAttachments.length ? await attachmentStore.references(requestedAttachments) : [];
       const workEligible = !inputOnly && !entry.ephemeral && Boolean(conversationWorks?.eligible(session, req.body?.channel));
-      const nativeDelegation = conversationEnv.PERSONAL_CONVERSATION_WORK_MODE === 'native' && workEligible;
       const workCandidate = !inputOnly && !entry.ephemeral && !consult && !isLlmX
-        && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session), { nativeDelegation });
+        && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session));
       const retainedWork = workCandidate && !workEligible ? await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel) : null;
       if (workCandidate && !workEligible && !retainedWork && features.inferenceProfile && features.inferenceProfile !== 'local'
           && personalVoice(session, req.body?.channel) && session.backend === 'openclaw'
@@ -272,7 +271,7 @@ function createPersonaTurnHandler({
       }
       if (backend && !replyText) {
         const team = !inputOnly && backend === 'openclaw' && !pack.childSafe && !isLlmX ? teamAddress.teamMembers(conversationEnv) : [];
-        member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session), { nativeDelegation });
+        member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session));
         // That member is still on an earlier question: the conversation's agent answers and says so.
         if (member && !consult && memberWork?.active(session.sessionId).some(job => job.agentId === member.agentId)) member = null;
         memberPersona = member ? await teamPersona(member.agentId, runtimeServices.personas) : null;

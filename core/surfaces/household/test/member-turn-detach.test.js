@@ -102,6 +102,16 @@ test('a native specialist request enters canonical Main work before its guardian
   assert.equal(h.turns[0].traceId, turnId);
 });
 
+test('a negated consultation stays with Nestor and starts no team work', async () => {
+  const h = harness();
+  const reply = h.speak('Ne demande à la secrétaire absolument rien.', 'turn-no-consult');
+  while (!h.requests.length) await tick();
+  assert.equal(h.requests[0].agentId, 'main');
+  h.requests[0].answer('D’accord.'); await reply.finished;
+  assert.equal(h.requests.length, 1);
+  assert.equal(reply.events.some(event => event.activity?.kind === 'member_addressed'), false);
+});
+
 test('a direct specialist address keeps its native speaker without creating Main work', async () => {
   const h = harness({ nativeWork: true });
   const reply = h.speak('Secrétaire, quels courriels attendent?', 'turn-direct');

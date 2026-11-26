@@ -1915,7 +1915,7 @@
       "default": null,
       "category": "household",
       "secret": false,
-      "description": "Optional JSON mapping an OpenClaw agent id to the names the owner uses to address it directly in Super Dad (\"Secretary, ...\", \"ask the secretary ...\"). That turn goes to the agent's own session and voice. Unset: every turn stays with the conversation's agent.",
+      "description": "Optional JSON mapping an OpenClaw agent id to the names the owner uses to address it directly in Super Dad (\"Secretary, ...\"). That turn goes to the agent's own session and voice. Unset: every turn stays with the conversation's agent.",
       "fallback": "no direct addressing"
     },
     "HOUSEHOLD_VOICE_MODEL": {

@@ -70,6 +70,8 @@ boundary does not establish a single catalog or selection interface everywhere.
 
 With `HOUSEHOLD_TEAM_MEMBERS` configured, an owner-addressed personal turn can
 run in the named specialist's native session and use its presentation voice.
+A request to Nestor to consult someone stays with Nestor, who can ask the
+installed specialist when the request calls for it.
 The next turn returns to the conversation's agent with that exchange as
 reference data. Family turns do not take this route. Speaking again while the
 specialist works leaves it running: the conversation's agent answers the new

@@ -272,7 +272,11 @@ describe('built-in Household surface on Core', () => {
       const id = created.body.data.session.sessionId;
       const turn = text => request(app).post(`/api/voice-personas/private/sessions/${id}/turns/text`).send({ text, channel: 'voice' }).expect(200);
       await turn('Bonjour Nestor');
-      const direct = await turn("Bonjour Nestor, est-ce que tu peux demander à secrétaire si j'ai des factures à payer?");
+      await turn('Ne demande absolument rien à la secrétaire.');
+      expect(agentForTest.mock.calls.at(-1)[0].session.agentId).toBe('main');
+      await turn("Bonjour Nestor, est-ce que tu peux demander à secrétaire si j'ai des factures à payer?");
+      expect(agentForTest.mock.calls.at(-1)[0].session.agentId).toBe('main');
+      const direct = await turn("Secrétaire, ai-je des factures à payer?");
       const member = agentForTest.mock.calls.at(-1)[0];
       expect(member.session).toMatchObject({ agentId: 'secretary', agentSessionKey: `agent:secretary:household:direct:${id}` });
       expect(member.instructions).toContain('addressed you (Secretary) directly');

@@ -23,17 +23,16 @@ function teamMembers(env = process.env) {
     .filter((member) => member.names.length);
 }
 
-// Native Main owns requests to consult a specialist. Direct addresses still
-// select that member; older modes keep their deterministic consultation path.
-function addressedMember(text, members, currentAgentId, { nativeDelegation = false } = {}) {
+// Only a direct address changes the speaker. The current agent interprets
+// mentions, quotations and requests to consult its installed team.
+function addressedMember(text, members, currentAgentId) {
   const said = fold(text).trim();
   for (const member of members) {
     if (member.agentId === currentAgentId) continue;
     for (const name of member.names) {
       const n = escape(name);
       const lead = new RegExp(`^(?:(?:hey|eille|allo|bonjour|salut|ok|dis)\\s+)?(?:(?:la|le|ma|mon|my|the)\\s+)?${n}\\s*[,:!?.]`);
-      const ask = new RegExp(`\\b(?:demande|demandes|demander|demandez|pose la question|verifie avec|ask|check with)\\s+(?:(?:a|au|aux|avec|to)\\s+)?(?:(?:la|le|ma|mon|my|the)\\s+)?${n}\\b`);
-      if (lead.test(said) || !nativeDelegation && ask.test(said)) return member;
+      if (lead.test(said)) return member;
     }
   }
   return null;
