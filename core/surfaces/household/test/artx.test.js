@@ -200,8 +200,9 @@ test('one ordinary voice turn includes compact truth about the sky now and the d
   await h.turn('Bonjour !', 'voice', { artx: { ...f.observation(snapshot), previous } });
   const facts = h.sent[0].request;
   assert.match(facts, /"altitudeDeg":30,"direction":"sud-est","aboveHorizon":true,"rendered":true,"side":"gauche"/);
-  assert.match(facts, /"previous":\{[^\n]+?"moment":\{"kind":"paint","description":"dessin de la famille"\}/);
-  assert.doesNotMatch(facts, /"paintings"|"occlusionZones"|synthetic-picture/);
+  assert.match(facts, /"previous":\{[^\n]+?"moment":\{"kind":"paint","source":"family"\}/);
+  assert.match(facts, /receipt contains no image subject or theme/);
+  assert.doesNotMatch(facts, /"paintings"|"occlusionZones"|synthetic-picture|dessin de la famille/);
   assert.equal(h.sent.length, 1);
 });
 

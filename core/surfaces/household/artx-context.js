@@ -18,7 +18,7 @@ function skyPosition(body) {
 function sceneFacts(scene) {
   if (!scene) return null;
   const { observedAt, visibility, background, moment } = scene;
-  return { observedAt, visibility, background, moment: moment && { kind: moment.kind, description: moment.description },
+  return { observedAt, visibility, background, moment: moment && { kind: moment.kind, source: moment.source },
     sun: skyPosition(scene.sun), moon: skyPosition(scene.moon), planets: scene.planets?.map(skyPosition) };
 }
 
@@ -27,7 +27,7 @@ function describe(read, { toolAvailable = false } = {}) {
   if (read.status === 'unavailable') return '\n\nArtX display state is unavailable; do not guess what the screen currently shows.';
   if (read.status === 'available' && toolAvailable) {
     return '\n\nArtX observed scenes (reference data). Current and previous are distinct browser observations. '
-      + 'A moment records what was shown over the background. Screen side describes a rendered body. Direction and altitude describe the outdoor position even when hidden. '
+      + 'A moment records what was shown over the background. For a painting, source identifies its collection. The receipt contains no image subject or theme. Screen side describes a rendered body. Direction and altitude describe the outdoor position even when hidden. '
       + 'Below-horizon objects cannot be seen outside. Use artx_read for additional display details.\n'
       + JSON.stringify({ current: sceneFacts(read.current), previous: sceneFacts(read.previous) });
   }
