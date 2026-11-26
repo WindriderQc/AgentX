@@ -185,7 +185,7 @@ test('sustained busy is truthful no queue, with no guardian or hidden fallback; 
   assert.deepEqual(h.dispatches,[]);
   assert.equal(h.admitted.length,0);
   const exact=await h.turn(ambiguous,id(2));
-  assert.match(exact.result?.reply.text,/Quel animal veux-tu voir|source publique.*approuvée/);
+  assert.match(exact.result?.reply.text,/catalogue d’images publiques|source publique.*approuvée/);
   assert.equal(exact.frames.some(x=>x.type==='show'),false);
   assert.equal(h.admitted.length,0);
   assert.equal(h.requests.length,1);

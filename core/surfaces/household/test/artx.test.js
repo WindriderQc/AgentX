@@ -282,15 +282,18 @@ test('generic no-source and private requests are truthful without search; explic
   assert.equal(genericPicture('Montre-moi le ciel.'), null);
   assert.equal(genericPicture('Show me a picture of a fox please.').animal.id, 'fox');
   assert.equal(genericPicture('Montre-moi une image de renard près de chez moi.').animal, null);
-  for (const [allowed, text, expected] of [
+  for (const [allowed, text, expected, language = 'fr'] of [
     [[], 'Montre-moi une image de renard.', /pas de source publique d’images approuvée/],
     [['photos'], 'Montre-moi une image de renard.', /pas de source publique d’images approuvée/],
-    [['web'], 'Montre-moi une image de renard près de chez moi.', /Quel animal veux-tu voir/],
+    [['web'], 'Montre-moi une image de la Lune.', /catalogue d’images publiques/],
+    [['web'], 'Montre-moi une image de mon amie Camille.', /catalogue d’images publiques/],
+    [['web'], 'Show me a picture of the moon.', /public picture catalogue/, 'en'],
+    [['web'], 'Montre-moi une image de renard près de chez moi.', /catalogue d’images publiques/],
   ]) {
     const h = harness({ packId: 'kidx_nestor', backend: 'agentx',
       response: () => assert.fail('No source or verified subject, no speculative inference'),
       visuals: { sources: ({ family }) => (assert.equal(family,true), allowed), present: () => assert.fail('No speculative lookup') } });
-    const out = await h.turn(text, 'voice');
+    const out = await h.turn(text, 'voice', { language });
     assert.match(out.reply.text, expected);
     assert.deepEqual(out.display || [],[]);
     assert.equal(h.sent.length,0);

@@ -28,8 +28,8 @@ async function reply({ text, language, visuals, signal, turnId }) {
   const en = language === 'en';
   const none = en ? 'No approved public image source is available right now.' : 'Je n’ai pas de source publique d’images approuvée pour le moment.';
   if (!visuals.sources({ family: true }).includes('web')) return { text: none, display: [] };
-  if (!intent.animal) return { text: en ? 'Which animal would you like to see, or did you mean a specific picture you already have?'
-    : 'Quel animal veux-tu voir? Si tu pensais à une image précise, dis-moi laquelle.', display: [] };
+  if (!intent.animal) return { text: en ? 'My public picture catalogue does not cover that subject.'
+    : 'Mon catalogue d’images publiques ne couvre pas ce sujet.', display: [] };
 
   signal.throwIfAborted();
   // Query is a reviewed animal label, never the raw recording, name, location,
