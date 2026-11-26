@@ -2,7 +2,7 @@ import { digest, nowIso, readState, updateState } from "./store.js";
 import { verifiedIssResult } from './iss-evidence.js';
 import { nativeActionProvenance } from '../action-provenance.mjs';
 import { isNativeToolCallId } from '../../../shared/nativeToolCallId.cjs';
-import { createWorkQueueClient } from './work-queue.js';
+import { createWorkQueueClient, morningQueueExample } from './work-queue.js';
 import { createCoreFinanceBriefClient } from './core-finance-brief.js';
 import { lifeAtlasBrief } from './core-atlas.js';
 
@@ -182,6 +182,7 @@ export function briefingFromCore(data, queue) {
   const slots = summary?.reservations;
   let line = 'Travaux lourds — file de Core indisponible.';
   brief.workQueueSummary = null;
+  brief.workQueueExample = null;
   if (queue?.authority === 'core.heavy-work-queue' && summary?.schema === 'agentx.heavy-work-summary/v1'
     && [counts?.automatic_queue, counts?.action_required, slots?.total, slots?.upcoming, slots?.open, slots?.expired, slots?.invalid]
       .every(value => Number.isSafeInteger(value) && value >= 0)) {
@@ -189,9 +190,12 @@ export function briefingFromCore(data, queue) {
     const invalid = slots.invalid ? `, à vérifier ${slots.invalid}` : '';
     line = `Travaux lourds — ${counts.automatic_queue} en file automatique, ${counts.action_required} en attente d’action. `
       + `Réservations ${slots.total} (à venir ${slots.upcoming}, ouvertes ${slots.open}, expirées ${slots.expired}${invalid}).`;
+    if (counts.automatic_queue) line += ' Départ automatique soumis à la fenêtre et à l’admission native.';
+    brief.workQueueExample = morningQueueExample(queue.jobs);
   }
-  // Core orders the personal lines by priority. Reserve one of the six for the requested queue read.
-  brief.lines = [...data.text.split('\n').slice(0, 5), line];
+  // Core orders the personal lines by priority. Keep its urgent lines at the top of the six-line reminder.
+  const queueLines = brief.workQueueExample ? [line, brief.workQueueExample.text] : [line];
+  brief.lines = [...data.text.split('\n').slice(0, 6 - queueLines.length), ...queueLines];
   brief.text = brief.lines.join('\n');
   return brief;
 }
@@ -199,7 +203,7 @@ export function briefingFromCore(data, queue) {
 export async function readMorningBriefing(baseUrl, { includeWorkQueue } = {}, fetchImpl = fetch) {
   const personal = await agentxRead(baseUrl, 'personal_briefing', {}, fetchImpl);
   const readQueue = createWorkQueueClient({ baseUrl, fetchImpl });
-  const queue = includeWorkQueue === true ? await readQueue({ action: 'list', limit: 1 }).catch(() => null) : undefined;
+  const queue = includeWorkQueue === true ? await readQueue({ action: 'list', limit: 5 }).catch(() => null) : undefined;
   const brief = briefingFromCore(personal, queue);
   try { brief.workQueue = await readQueue({ action: 'notifications', limit: 5 }); }
   catch (error) { brief.workQueue = { available: false, warning: error.message }; }

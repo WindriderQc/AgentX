@@ -160,7 +160,7 @@ export default definePluginEntry({
       if (!privateOwnerContext(context, api.config) && !morningContext(context)) return null;
       return {
         name: "nestor_briefing", label: "Nestor Personal Briefing",
-        description: "Get the French morning brief composed from Core's open personal tasks (at most six lines), plus pending heavy-work outcomes from Core alerts. Set includeWorkQueue when the owner requests global queue and reservation counts in the verbatim text. Relay the text as is, then mention up to two verified queue outcomes if present. If finance.text is present, relay it as the Finances line (labels and counts only, never amounts). If lifeAtlas.text is present, relay it with its link. Read-only; does not acknowledge results, deliver a message or imply calendar access.",
+        description: "Get the French morning brief composed from Core's open personal tasks (at most six lines), plus pending heavy-work outcomes from Core alerts. Set includeWorkQueue when the owner requests queue and reservation counts in the verbatim text, with one available example giving the start mode and the actor’s next step. Relay the text as is, then mention up to two verified queue outcomes if present. If finance.text is present, relay it as the Finances line (labels and counts only, never amounts). If lifeAtlas.text is present, relay it with its link. Read-only; does not acknowledge results, deliver a message or imply calendar access.",
         parameters: { type: "object", properties: { includeWorkQueue: { type: "boolean" } }, additionalProperties: false },
         async execute(_id, params = {}) {
           return receipt(await readMorningBriefing(api.pluginConfig?.agentxUrl, params));

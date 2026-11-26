@@ -22,11 +22,27 @@ const personal = { text: 'Urgence\nDécision\nRappel\nPréparation\nSuivi\nAutre
 test('the verbatim morning text includes global counts and independent slots despite a one-row page', () => {
   const receipt = queue(rows);
   const result = briefingFromCore(personal, receipt);
-  assert.equal(result.lines?.at(-1), 'Travaux lourds — 1 en file automatique, 2 en attente d’action. Réservations 3 (à venir 1, ouvertes 1, expirées 1).');
-  assert.deepEqual(result.lines.slice(0, 5), personal.text.split('\n').slice(0, 5));
+  assert.match(result.text, /1 en file automatique, 2 en attente d’action\. Réservations 3 \(à venir 1, ouvertes 1, expirées 1\)/);
+  assert.match(result.text, /fenêtre et à l’admission native/);
+  assert.deepEqual(result.lines.slice(0, 4), personal.text.split('\n').slice(0, 4));
+  assert.equal(result.lines.length, 6);
   assert.equal(result.text, result.lines.join('\n'));
   assert.deepEqual(result.workQueueSummary, receipt.summary);
   assert.equal(result.deliveryState, 'not_requested');
+});
+
+test('a cited request keeps Core’s mode, slot state, actor and decision', () => {
+  for (const [row, example] of [
+    [rows[0], /créneau ouvert, départ manuel.*opérateur.*déclencher pendant le créneau/],
+    [rows[1], /créneau à venir, départ automatique.*Core.*attendre le créneau et l’admission native/],
+    [rows[2], /créneau expiré, départ automatique.*opérateur.*réexaminer la fenêtre autorisée/],
+  ]) {
+    const receipt = queue([row]);
+    const brief = briefingFromCore(personal, receipt);
+    assert.match(brief.lines.at(-1), example);
+    assert.equal(brief.workQueueExample.id, row.id);
+    assert.deepEqual(brief.workQueueExample.presentation.nextAction, receipt.jobs[0].presentation.nextAction);
+  }
 });
 
 test('empty, invalid and unavailable queues stay distinguishable from an unrequested section', () => {
@@ -49,7 +65,7 @@ test('an opted-in morning brief reads the list once and keeps pending outcome no
     calls.push([url.pathname, body.action ?? body.params?.name ?? body.operation]);
     if (url.pathname === '/mcp') return Response.json({ result: { structuredContent: personal } });
     if (body.action === 'list') {
-      assert.deepEqual(body, { action: 'list', limit: 1 });
+      assert.deepEqual(body, { action: 'list', limit: 5 });
       return Response.json({ status: 'success', data: queue(rows) });
     }
     if (body.action === 'notifications') return Response.json({ status: 'success', data: { notifications: [] } });
