@@ -3,6 +3,7 @@
 const memoryAdapters = require('./memoryAdapters');
 const { getRagServiceClient } = require('./ragServiceClient');
 const { forAudience } = require('./memoryReadService');
+const { memoryFactInput } = require('../../../shared/memoryFactMetadata');
 const {
   MEMORY_SOURCES,
   LIMITS,
@@ -56,6 +57,16 @@ function normalizeK(value) {
   return Math.max(1, Math.min(Math.trunc(parsed), LIMITS.memoryResultsPerSource));
 }
 
+// Read the same zoned instants that RAG accepts at ingestion. A legacy or
+// malformed date stays unknown without losing the other date or the hit.
+function ragFactInstant(value) {
+  try {
+    return memoryFactInput({ validFrom: value ?? null }).validFrom;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeResult(result, source) {
   const metadata = result?.metadata || {};
   const text = String(result?.compressedText || result?.text || result?.snippet || '').slice(0, 4000);
@@ -64,6 +75,10 @@ function normalizeResult(result, source) {
   return {
     source: /^[a-z][a-z0-9+.-]*:\/\//i.test(resolvedSource) ? source : resolvedSource,
     ...(metadata.scope ? { scope: metadata.scope, sensitivity: metadata.sensitivity } : {}),
+    ...(source === 'rag' && {
+      validFrom: ragFactInstant(metadata.validFrom),
+      recordedAt: ragFactInstant(metadata.recordedAt),
+    }),
     text,
     snippet: text,
     score: Number.isFinite(Number(result?.score)) ? Number(result.score) : null,

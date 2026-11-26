@@ -42,6 +42,30 @@ describe('Nestor consumer memory adapters', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it('keeps RAG fact time, recording time and search time distinct on current owner results', async () => {
+    const validFrom = '2024-08-10T14:00:00.000Z';
+    const recordedAt = '2024-09-01T09:00:00.000Z';
+    const readAt = '2025-02-02T10:00:00.000Z';
+    mockSearchRag.mockResolvedValue([
+      { text: 'Corrected fact', metadata: { documentId: 'current', validFrom, recordedAt,
+        scope: 'owner', sensitivity: 'private', sourceRefs: [{ system: 'fixture', id: 'private-sentinel' }] } },
+      { text: 'Replaced fact', metadata: { documentId: 'retired', invalidatedAt: validFrom, supersededBy: 'current' } },
+      { text: 'Undated fact', metadata: { recordedAt, updatedAt: readAt } },
+      { text: 'Legacy fact', metadata: {} },
+      { text: 'Malformed metadata', metadata: { validFrom: 'http://private-sentinel', recordedAt } },
+    ]);
+    const result = await searchMemory({ source: 'rag', query: 'fact' }, { now: () => readAt });
+    expect(result.generatedAt).toBe(readAt);
+    expect(result.results.map(({ text, validFrom, recordedAt }) => [text, validFrom, recordedAt])).toEqual([
+      ['Corrected fact', validFrom, recordedAt], ['Undated fact', null, recordedAt],
+      ['Legacy fact', null, null], ['Malformed metadata', null, recordedAt],
+    ]);
+    expect(result.bySource.rag).toEqual(result.results);
+    expect(result.results[0]).toMatchObject({ ref: 'current', scope: 'owner', sensitivity: 'private' });
+    expect(JSON.stringify(result)).not.toContain('private-sentinel');
+    expect(mockSearchRag.mock.calls[0][1]).not.toHaveProperty('includeHistory');
+  });
+
   it('rejects unknown sources and oversized queries', async () => {
     await expect(searchMemory({ source: 'unknown', query: 'x' }))
       .rejects.toEqual(expect.objectContaining({ code: 'UNKNOWN_MEMORY_SOURCE' }));
