@@ -300,6 +300,53 @@ test('generic no-source and private requests are truthful without search; explic
   }
 });
 
+test('Family leaves ordinary and combined photo requests to the model and resolves only its approved subject', async () => {
+  const { createVisuals } = require('../visuals');
+  const photo = { names: ['Lune', 'Moon', 'catalogue-only fixture alias'], url: 'https://public.example.test/lunar-photo.jpg',
+    origin: 'https://science.example.test/catalogue/lunar', credit: 'Observatoire de test' };
+  const f = fixture(), snapshot = await f.service.snapshot(displayId);
+  const cases = [
+    ['Montre-moi une image de la Lune.', 'Lune', 'Je te propose une photo.'],
+    ['What does our natural satellite look like up close?', 'Moon', 'Here is my selection.'],
+    ['Explique-moi les phases et accompagne ta réponse d’une photo de la Lune.', 'Lune', 'On voit différentes parties de sa moitié éclairée.'],
+    ['Montre-moi une image de mon amie Camille.', 'mon amie Camille', 'Je peux vérifier ce sujet.'],
+    ['Aurais-tu une photo du renard de Camille ?', 'renard de Camille', 'Je vérifie ce sujet.']
+  ];
+  for (const searxng of ['', 'http://search.example.test']) {
+    let calls = 0;
+    const visuals = createVisuals({ env: { HOUSEHOLD_IMAGE_FAMILY_SOURCES: 'web',
+      HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON: JSON.stringify([photo]), SEARXNG_URL: searxng },
+      fetchImpl: async () => { calls++; throw Error('provider offline'); } });
+    let next = 0;
+    const h = harness({ packId: 'kidx_nestor', backend: 'agentx', visuals, artx: f.service,
+      response: body => {
+        const [question, label, answer] = cases[next++];
+        assert.ok(body.messages.at(-1).content.includes(question));
+        assert.doesNotMatch(body.messages[0].content, /public\.example|Observatoire de test|catalogue-only fixture alias/);
+        return answer + ' <show kind="image" source="web" title="Photo">' + label + '</show>';
+      } });
+    h.turns.push({ inputText: 'Private fixture from a previous turn', replyText: 'Réponse de test.' });
+    for (const [text, label, answer] of cases) {
+      const out = await h.turn(text, 'voice', { language: label === 'Moon' ? 'en' : 'fr', artx: f.observation(snapshot) });
+      assert.equal(out.reply.text, answer);
+      const [block] = out.display;
+      assert.equal(block.source, 'web');
+      assert.equal(block.body, label);
+      if (photo.names.includes(label)) {
+        assert.equal(block.status, 'found');
+        assert.deepEqual(block.image, { url: photo.url, origin: photo.origin, originTitle: photo.credit, sourceLabel: 'Internet' });
+      } else {
+        assert.equal(block.status, 'missing');
+        assert.equal(block.image, null);
+      }
+    }
+    assert.equal(calls, 0);
+    assert.equal(h.sent.length, cases.length);
+    assert.equal(next, cases.length);
+    assert.equal(f.service.read({ displayId }).current?.task || null, null);
+  }
+});
+
 test('a failed ArtX selection at night is not retried and a tool-only terminal reply gets a real voiced fallback', async () => {
   const f = fixture(), s = await f.service.snapshot(displayId);
   f.service.observe(f.observation(s));

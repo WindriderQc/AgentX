@@ -450,7 +450,8 @@ function contract({ family = false, math = !family, imageSources = [], pages = f
     math ? family ? FAMILY_MATH_CONTRACT : MATH_CONTRACT : '',
     imageSources.length
       ? `To show a picture, write <show kind="image" source="${imageSources.join('|')}" title="short caption">a few search words</show>. `
-        + 'web searches the internet; photos and media search the household\'s own pictures by file or folder name. Never write a URL or a path; Household finds the picture and it may find none. '
+        + (family ? 'For a public web picture, give the short subject label in the image block. ' : 'web searches the internet. ')
+        + 'photos and media search the household\'s own pictures by file or folder name. Never write a URL or a path; Household finds the picture and it may find none. '
         + 'Say "je te montre" only as an intention; do not describe details of a picture you have not seen.'
       : '',
     pages

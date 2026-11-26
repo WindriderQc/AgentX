@@ -1785,6 +1785,16 @@
       "secret": false,
       "description": "true attaches a dated, prepared weather excerpt to eligible local AgentX Family turns with the source_read grant. With the grant alone the model can request a source without a weather preload."
     },
+    "HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "JSON array of reviewed public Family photographs with names (exact labels), url (HTTPS image), origin (HTTPS source) and credit. The Family model chooses a label. With web allowed, reviewed labels resolve directly and only known animal names can trigger a public search. Unset: legacy Family image lookups."
+    },
     "HOUSEHOLD_FAMILY_TOOLS": {
       "services": [
         "core"

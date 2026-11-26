@@ -99,6 +99,69 @@ test('an unavailable source falls back to one that is, and a failed lookup shows
   assert.equal(await visuals.present(text), text, 'other blocks pass through untouched');
 });
 
+test('a Family web block selects an exact reviewed label and keeps the visible credit without image search', async () => {
+  const entry = { names: ['Vénus', 'Venus'], url: 'https://images.example.test/venus.jpg',
+    origin: 'https://science.example.test/venus', credit: 'Observatoire de test' };
+  const env = { HOUSEHOLD_IMAGE_FAMILY_SOURCES: 'web', HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON: JSON.stringify([entry]) };
+  const calls = [];
+  const visuals = createVisuals({ env, fetchImpl: webFetch([], calls) });
+  assert.deepEqual(visuals.sources({ family: true }), ['web']);
+  assert.deepEqual(visuals.sources({ family: false }), []);
+  const channels = createReplyChannels();
+  channels.push('<show kind="image" source="web" title="Vénus">VÉNUS</show>');
+  const [block] = channels.end().display;
+  await visuals.present(block, { family: true });
+  const expected = { url: entry.url, origin: entry.origin, originTitle: entry.credit, sourceLabel: 'Internet' };
+  assert.equal(block.status, 'found');
+  assert.deepEqual(storedDisplay([block])[0].image, expected);
+  assert.equal((await visuals.present({ kind: 'image', source: 'web', body: 'Vénus vue de la maison' }, { family: true })).status, 'missing');
+  env.SEARXNG_URL = 'http://search.example.test';
+  assert.deepEqual((await visuals.present({ kind: 'image', source: 'web', body: 'Venus' }, { family: true })).image, expected);
+  // A Family web block cannot fall back to private photos when its web grant is disabled.
+  const base = mountBase(), privateReads = [];
+  try {
+    const restricted = createVisuals({ env: { ...ENV(base), ...env, HOUSEHOLD_IMAGE_FAMILY_SOURCES: 'photos' },
+      fetchImpl: webFetch([], calls), dataFetch: dataFetch([], privateReads) });
+    assert.deepEqual(restricted.sources({ family: true }), ['photos']);
+    assert.equal((await restricted.present({ kind: 'image', source: 'web', body: 'Venus' }, { family: true })).status, 'missing');
+    assert.deepEqual(privateReads, []);
+  } finally { fs.rmSync(base, { recursive: true, force: true }); }
+  assert.deepEqual(calls, []);
+});
+
+test('unusable or ambiguous catalogue entries cannot supply a reviewed picture', () => {
+  const entry = { names: ['Lune'], url: 'https://images.example.test/moon.png',
+    origin: 'https://science.example.test/moon', credit: 'Observatoire' };
+  for (const value of ['{', '{}', JSON.stringify([entry, { ...entry, url: 'https://images.example.test/other.png' }]),
+    ...[{ url: 'javascript:alert(1)' }, { origin: 'http://source.test/moon' }, { url: 'https://127.0.0.1/moon' },
+      { url: 'https://name:secret@images.example.test/moon.png' }, { origin: 'https://host.local/moon' },
+      { names: [] }, { credit: ' ' }].map(changes => JSON.stringify([{ ...entry, ...changes }]))]) {
+    const visuals = createVisuals({ env: { HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON: value } });
+    assert.deepEqual(visuals.sources({ family: true }), []);
+  }
+});
+
+test('the configured Family catalogue restricts external web queries to a canonical animal name', async () => {
+  const env = { SEARXNG_URL: 'http://search.example.test', HOUSEHOLD_IMAGE_FAMILY_SOURCES: 'web',
+    HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON: JSON.stringify([{ names: ['Moon'], url: 'https://images.example.test/moon.png',
+      origin: 'https://science.example.test/moon', credit: 'Observatoire' }]) };
+  const calls = [], visuals = createVisuals({ env, fetchImpl: webFetch([{ img_src: 'https://images.example.test/animal.jpg' }], calls) });
+  const show = (body, family) => visuals.present({ kind: 'image', source: 'web', body }, { family, language: 'fr' });
+  for (const query of ['mon amie Camille', 'Le renard de Camille', 'Moon; private', 'https://private.example.test']) {
+    assert.equal((await show(query, true)).status, 'missing');
+  }
+  assert.equal((await show('FOX', true)).status, 'found');
+  assert.deepEqual(calls.map(url => [url.searchParams.get('q'), url.searchParams.get('safesearch')]), [['animal un renard', '2']]);
+  assert.equal((await show('observatoire en montagne', false)).status, 'found');
+  assert.equal(calls[1].searchParams.get('q'), 'observatoire en montagne');
+  env.HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON = '{';
+  assert.equal((await show('private malformed-catalogue test', true)).status, 'missing');
+  assert.equal(calls.length, 2);
+  delete env.HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON;
+  assert.equal((await show('montagne et rivière', true)).status, 'found');
+  assert.equal(calls[2].searchParams.get('q'), 'montagne et rivière');
+});
+
 test('a household photo is found by name under its root and served only from the mount', async () => {
   const base = mountBase(), calls = [];
   const visuals = createVisuals({ env: ENV(base), dataFetch: dataFetch([

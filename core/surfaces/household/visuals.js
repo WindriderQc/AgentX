@@ -4,7 +4,7 @@
 // path: an image block carries a source and search words, and Core resolves
 // them to something it can vouch for.
 //
-// - web: SearXNG image search (SEARXNG_URL). The browser loads the https
+// - web: an approved Family picture or SearXNG image search. The browser loads the https
 //   image directly without a referrer; Famille searches with strict SafeSearch.
 // - photos / media: the Data process's file index finds a household image by
 //   name under a configured canonical root; Core serves the file from its own
@@ -19,6 +19,7 @@ const path = require('node:path');
 const dns = require('node:dns').promises;
 const net = require('node:net');
 const { fetchData } = require('../../src/services/dataServiceClient');
+const { animalSearchQuery } = require('./family-picture-lookup');
 
 const FILE_SOURCES = Object.freeze(['photos', 'media']);
 const IMAGE_TYPES = Object.freeze({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' });
@@ -76,8 +77,55 @@ function publicAddress(address) {
   return !(lower === '::' || lower === '::1' || /^f[cd]/.test(lower) || /^fe[89ab]/.test(lower) || /^ff/.test(lower));
 }
 
+function publicPictureUrl(value) {
+  if (typeof value !== 'string') return '';
+  const href = httpsImage(value);
+  if (!href) return '';
+  const host = new URL(href).hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (net.isIP(host)) return publicAddress(host) ? href : '';
+  return host.includes('.') && !/(^|\.)(localhost|local|internal|home\.arpa)$/.test(host) ? href : '';
+}
+
+function pictureName(value) {
+  if (typeof value !== 'string' || value.length > LIMITS.query) return '';
+  return value.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/[‘’ʼ]/g, "'")
+    .replace(/[‐‑]/g, '-').trim().replace(/\s+/g, ' ');
+}
+
+function familyPublicPictures(value) {
+  const pictures = new Map();
+  if (!value) return pictures;
+  let entries;
+  try { entries = JSON.parse(value); } catch { return pictures; }
+  if (!Array.isArray(entries)) return pictures;
+  for (const entry of entries) {
+    if (!Array.isArray(entry?.names) || typeof entry.credit !== 'string') continue;
+    const url = publicPictureUrl(entry.url), origin = publicPictureUrl(entry.origin), originTitle = entry.credit.trim();
+    if (!url || !origin || !originTitle || originTitle.length > 200) continue;
+    const image = { url, origin, originTitle };
+    for (const name of new Set(entry.names.map(pictureName))) {
+      if (!name) continue;
+      // A label must identify exactly one picture, in either language.
+      pictures.set(name, pictures.has(name) ? null : image);
+    }
+  }
+  for (const [name, image] of pictures) if (!image) pictures.delete(name);
+  return pictures;
+}
+
 // Settings are read on each use, like the rest of Household's optional services.
 function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.fetch(...args), dataFetch = fetchData, logger = null, lookup = (host) => dns.lookup(host, { all: true, verbatim: true }) } = {}) {
+  let lastPictureSetting, pictures = new Map();
+  // An explicitly configured but unreadable catalogue cannot enable free-text searches.
+  const reviewedFamilyPicturesEnabled = () => Boolean(env.HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON?.trim());
+  function reviewedPictures() {
+    const setting = env.HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON;
+    if (setting !== lastPictureSetting) {
+      pictures = familyPublicPictures(setting);
+      lastPictureSetting = setting;
+    }
+    return pictures;
+  }
   const settings = () => ({
     searxng: String(env.SEARXNG_URL || '').trim().replace(/\/+$/, ''),
     roots: parseRoots(env.HOUSEHOLD_IMAGE_ROOTS_JSON),
@@ -103,15 +151,24 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
   function sources({ family = false } = {}) {
     const { searxng, familySources } = settings();
     const available = [];
-    if (searxng) available.push('web');
+    if (searxng || (family && reviewedPictures().size)) available.push('web');
     for (const source of FILE_SOURCES) if (mounted(source)) available.push(source);
     return family ? available.filter(source => familySources.has(source)) : available;
   }
 
   async function fromWeb(query, { family, language }) {
+    if (family && reviewedFamilyPicturesEnabled()) {
+      const label = pictureName(query);
+      const reviewed = reviewedPictures().get(label);
+      if (reviewed) return reviewed;
+      query = animalSearchQuery(label, language);
+      if (!query) return null;
+    }
+    const { searxng } = settings();
+    if (!searxng) return null;
     const params = new URLSearchParams({ q: query, format: 'json', categories: 'images',
       safesearch: family ? '2' : '1', language: language === 'en' ? 'en' : 'fr' });
-    const response = await fetchImpl(`${settings().searxng}/search?${params}`, { signal: AbortSignal.timeout(LIMITS.timeoutMs) });
+    const response = await fetchImpl(`${searxng}/search?${params}`, { signal: AbortSignal.timeout(LIMITS.timeoutMs) });
     if (!response.ok) throw new Error(`SearXNG ${response.status}`);
     const body = await response.json();
     for (const result of (body.results || []).slice(0, LIMITS.candidates)) {
@@ -163,6 +220,7 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
       return block;
     }
     const allowed = sources({ family });
+    if (family && block.source === 'web' && reviewedFamilyPicturesEnabled()) exactSource = true;
     const source = allowed.includes(block.source) ? block.source : exactSource ? '' : allowed[0] || '';
     block.source = source;
     let found = null;
@@ -270,7 +328,7 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
     router.get('/family/visuals/generated', (req, res) => sendGenerated(req, res, { family: true }));
   }
 
-  return { sources, present, register, sendFile, sendGenerated, bytesFor };
+  return { sources, present, reviewedFamilyPicturesEnabled, register, sendFile, sendGenerated, bytesFor };
 }
 
 module.exports = { createVisuals, searchTerms, parseRoots, publicAddress, IMAGE_TYPES, SOURCE_LABELS };

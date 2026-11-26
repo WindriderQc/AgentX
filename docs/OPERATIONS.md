@@ -1324,6 +1324,16 @@ and `HOUSEHOLD_IMAGE_ROOTS_JSON` maps each source to the canonical root Data
 indexes for it. A picture is found by file or folder name; Data filters the
 servable image extensions before its 25-result limit, so videos cannot hide a
 photo in the same album. Named folders work better than camera names.
+`HOUSEHOLD_FAMILY_PUBLIC_PICTURES_JSON` optionally supplies a JSON array of
+objects with `names` (exact French and English subject labels), `url` (the
+fixed HTTPS image), `origin` (the HTTPS source page), and `credit` (the visible
+link text). Allow `web` in `HOUSEHOLD_IMAGE_FAMILY_SOURCES` for the Family
+model to choose an image by subject, including alongside a spoken explanation.
+A reviewed label resolves directly. SearXNG only receives a known animal's
+catalogue search term. Other labels return a missing image. An explicitly
+empty or invalid catalogue still restricts public searches to known animals.
+Leaving the setting unset preserves the earlier Family image behaviour. The
+browser needs access to the selected image host to display it.
 `HOUSEHOLD_IMAGE_FAMILY_SOURCES` lists what Famille may
 show (default all four). A picture the OpenClaw agent generates with its own image
 tool (cited in its reply as `MEDIA:<path>`) is relayed from the Nestor plugin's

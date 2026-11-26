@@ -19,10 +19,11 @@ function genericPicture(text) {
   const match = fr.exec(clean) || en.exec(clean);
   if (!match) return null;
   const exact = match[1].trim().replace(/ (?:s'il te plait|svp|stp|please)$/, '').replace(/^(?:(?:un|une|le|la|les|des|the|a|an) |l')/, '');
-  return { animal: names.get(exact) || null };
+  return { subject: exact, animal: names.get(exact) || null };
 }
 
 async function reply({ text, language, visuals, signal, turnId }) {
+  if (visuals?.reviewedFamilyPicturesEnabled?.()) return null;
   const intent = genericPicture(text);
   if (!intent) return null;
   const en = language === 'en';
@@ -32,11 +33,8 @@ async function reply({ text, language, visuals, signal, turnId }) {
     : 'Mon catalogue d’images publiques ne couvre pas ce sujet.', display: [] };
 
   signal.throwIfAborted();
-  // Query is a reviewed animal label, never the raw recording, name, location,
-  // history, arbitrary model text, or the current ArtX display.
-  const label = intent.animal.label[en ? 'en' : 'fr'].split(' (')[0];
   const block = { id: 'family-picture', key: 'family-picture:' + turnId, kind: 'image', source: 'web',
-    title: en ? 'Animal picture' : 'Image d’animal', body: 'animal ' + label };
+    title: en ? 'Animal picture' : 'Image d’animal', body: animalSearchQuery(intent.subject, language) };
   const found = await visuals.present(block, { family: true, language, exactSource: true }).catch(() => null);
   signal.throwIfAborted();
   if (found?.source !== 'web' || found.status !== 'found' || !found.image?.url) {
@@ -45,4 +43,11 @@ async function reply({ text, language, visuals, signal, turnId }) {
   return { text: en ? 'I found a picture.' : 'J’ai trouvé une image.', display: [found] };
 }
 
-module.exports = { genericPicture, reply };
+// The normalized label selects a catalogue row. Only its reviewed description
+// can leave Core as an animal search query.
+function animalSearchQuery(label, language) {
+  const animal = names.get(label);
+  return animal ? 'animal ' + animal.label[language === 'en' ? 'en' : 'fr'].split(' (')[0] : '';
+}
+
+module.exports = { genericPicture, reply, animalSearchQuery };
