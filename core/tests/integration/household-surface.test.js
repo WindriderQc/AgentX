@@ -1152,7 +1152,7 @@ describe('built-in Household surface on Core', () => {
   });
 
   test('the family lane runs new Family conversations on Core inference with their Core features; spoken turns use the voice task (#261)', async () => {
-    const names = ['HOUSEHOLD_FAMILY_CONVERSATION_BACKEND', 'HOUSEHOLD_VOICE_TASK', 'OPENCLAW_GATEWAY_URL', 'OPENCLAW_GATEWAY_TOKEN'];
+    const names = ['HOUSEHOLD_FAMILY_TOOLS', 'HOUSEHOLD_FAMILY_CONVERSATION_BACKEND', 'HOUSEHOLD_VOICE_TASK', 'OPENCLAW_GATEWAY_URL', 'OPENCLAW_GATEWAY_TOKEN'];
     const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
     for (const name of names) delete process.env[name];
     Object.assign(process.env, { OPENCLAW_GATEWAY_URL: 'http://openclaw.example.test', OPENCLAW_GATEWAY_TOKEN: 'synthetic-token' });
@@ -1215,12 +1215,19 @@ describe('built-in Household surface on Core', () => {
       const math = await turn({ text: 'Nestor, combien font 8 + 5 ?', channel: 'voice', stream: true }).buffer(true).parse(ndjson).expect(200);
       expect(JSON.parse(math.body.split('\n')[0])).toEqual({ type: 'scene', scene: { schema: 'agentx.math-scene.v1', kind: 'add', a: 8, b: 5 } });
       expect(executeForTest.mock.calls.length).toBe(inferences);
+      process.env.HOUSEHOLD_FAMILY_TOOLS = 'get_sound';
       const beforeSound = executeForTest.mock.calls.length;
-      const cow = (await turn({ text: 'Quel bruit fait la vache?', channel: 'voice' }).expect(200)).body.data;
+      const soundTurn = { text: 'Quel bruit fait la vache?', channel: 'voice', soundPlayback: true, turnId: require('node:crypto').randomUUID() };
+      executeForTest.mockResolvedValueOnce({ ok: true, body: { message: { tool_calls: [{ function: { name: 'get_sound', arguments: { query: 'cow' } } }] } }, metadata: {} })
+        .mockResolvedValueOnce({ ok: true, body: { response: 'Écoute la vache.' }, metadata: {} });
+      const cow = (await turn(soundTurn).expect(200)).body.data;
       expect(cow.sound).toMatchObject({ id: 'cow', play: 'after-reply' });
-      expect(cow.reply.text).toBe('Écoute !');
-      expect(cow.routing.tier).toBe('deterministic');
-      expect(executeForTest.mock.calls.length).toBe(beforeSound);
+      expect(cow.reply.text).toBe('Écoute la vache.');
+      expect(cow.tools.receipts).toEqual([expect.objectContaining({ tool: 'get_sound', soundId: 'cow', turnId: soundTurn.turnId })]);
+      const duplicate = (await turn(soundTurn).expect(202)).body.data;
+      expect(duplicate.replayed).toBe(false);
+      expect(duplicate.sound).toBeUndefined();
+      expect(executeForTest.mock.calls.length).toBe(beforeSound + 2);
       expect(agentForTest.mock.calls.length).toBe(nativeRuns + 1);
     } finally {
       fetchMock.mockRestore();

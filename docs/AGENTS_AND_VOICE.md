@@ -167,8 +167,7 @@ transcript.
 Full-screen Nestor shows the observed reply model as a badge in the top right
 corner and distinguishes Big Brain, the limited guardian relay and other model
 fallbacks by name and colour; nothing shows before a turn. A tap opens the detail.
-The guardian introduces a busy relay with “Yo c’est l’Gardien… Nestor est occupé.”
-An unavailable principal is described as “indisponible” instead.
+The guardian announces the relay in the selected language and reports whether the principal is busy or unavailable. The instance can supply a greeting.
 Until a model receipt arrives, it says that confirmation is pending; completed
 replies are labelled as the last reply. Personal pending requests use the existing
 work projection, with stale and uncertain states retained, and their count shows on
@@ -176,8 +175,7 @@ the badge; Famille has no such projection and never lists an empty one. Camera c
 its controls nor execution status cover the photo slideshow. An already open
 page needs a reload to use newly deployed scripts.
 
-Core's deterministic family routines, captures, math picture and sounds still
-compose with it. Spoken Core
+Core supplies the family routines, captures and math picture. Spoken Core
 turns use the configurable `HOUSEHOLD_VOICE_TASK` (default
   `voice_persona_chat`), except LLMx scenes. Typed turns keep their pack's task.
 The two routes can resolve different host pins and models; inspect the effective
@@ -703,11 +701,13 @@ before relying on these capabilities in a new Core build.
 
 ### Family sound playback and spoken repairs
 
-In the Family surface, a request solely for an available catalog sound uses a
-short deterministic introduction without inference. A compound request retains
-its model answer and plays introduction, clip, then answer; streamed model text
-is buffered so it cannot compete with the introduction. Unknown or additional
-words keep the normal inference path. Safety and arithmetic retain precedence.
+A local Family or Reader turn can use `get_sound` when the instance enables
+it and the client advertises clip playback. The model chooses whether to ask
+for a recording. Core verifies that the catalog file exists and binds at most
+one selection to that turn. The browser finishes the spoken reply, plays the
+verified clip, then resumes listening. Its playback events record what played.
+A retry with the same browser turn ID can recover the saved conversation.
+Direct sound buttons continue to play the selected recording.
 
 Family idea, reminder and memory writes require a direct request. Matching accepts
 spoken forms such as “Tu peux-tu me rappeler de prendre mes mitaines?” and keeps the

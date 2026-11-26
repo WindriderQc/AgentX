@@ -117,7 +117,7 @@
     const data = await api(`/api/voice-personas/${privateLane ? 'private/' : ''}sessions/${encodeURIComponent(session.sessionId)}/turns/text`, {
       method: 'POST',
       signal: options.signal,
-      body: JSON.stringify({ text, channel, language })
+      body: JSON.stringify({ text, channel, language, turnId: crypto.randomUUID(), soundPlayback: true })
     });
     options.signal?.throwIfAborted();
     const reply = data.reply?.text || '';

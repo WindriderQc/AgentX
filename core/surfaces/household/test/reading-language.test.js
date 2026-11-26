@@ -40,7 +40,7 @@ async function browser({ savedLanguage, turnResponse, handsFree = false } = {}) 
       VoixAudio: { Speech: class { cancel() {} async speak(request, { segments = [null] } = {}) { for (const segment of segments) await request(new AbortController().signal, segment); } } } },
     navigator: { language: 'en-CA' }, location: { pathname: '/lecture' },
     localStorage: { getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value) },
-    fetch, FormData, AbortController, console, setTimeout, clearTimeout
+    fetch, FormData, AbortController, crypto: require('node:crypto').webcrypto, console, setTimeout, clearTimeout
   };
   context.window.document = context.document;
   context.window.addEventListener = (type, listener) => { listeners[type] = listener; };

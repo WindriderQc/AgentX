@@ -846,17 +846,12 @@
       this.io.message('assistant', reply.text, false, reply.sound, [], undefined, turn.id);
       if (!streamed && reply.language) spokenLanguage = reply.language;
       dropHolding();
-      const soundFirst = reply.sound && reply.soundIntroduction && typeof reply.afterSoundText === 'string';
-      speak(soundFirst ? reply.soundIntroduction : streamed ? pending : spokenPresentation.ordinarySpeech(reply.text, { language: spokenLanguage,
+      speak(streamed ? pending : spokenPresentation.ordinarySpeech(reply.text, { language: spokenLanguage,
         readAloud, preserveSafety: reply.preserveSafety === true }));
       await playback;
       if (speechError) { turn.timeline?.finish('playback_error', speechFailure); throw speechError; }
       if (!this.owns(turn)) return;
       if (reply.sound) await this.playClip(turn, reply.sound);
-      if (soundFirst && this.owns(turn)) {
-        speak(reply.afterSoundText); await playback;
-        if (speechError) { turn.timeline?.finish('playback_error', speechFailure); throw speechError; }
-      }
       await this.audio.settle?.(turn.speech.signal);
       if (!this.owns(turn)) return;
       if (turn.timeline?.marks.firstAudio !== undefined) turn.timeline.finish('completed');

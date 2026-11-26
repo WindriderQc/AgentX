@@ -153,6 +153,9 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       }
       const answered = await toolset.execute(call, { signal });
       if (answered.receipt) receipts.push(answered.receipt);
+      if (answered.receipt?.tool === 'get_sound' && streamed && !/\s$/.test(streamed)) {
+        streamed += '\n\n'; onDelta?.('\n\n');
+      }
       conversation.push(answered.message);
     }
     if (relayEndReason) break;

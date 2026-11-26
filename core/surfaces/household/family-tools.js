@@ -14,7 +14,7 @@ const { TOOLS, callTool } = require('./family-tool-registry');
 // answers for the household location, never for coordinates a model supplies.
 const FAMILY_TOOL_VIEWS = Object.freeze({ iss_passes: Object.freeze({ omit: Object.freeze(['lat', 'lon']) }),
   source_catalogue: Object.freeze({ omit: [] }), source_read: Object.freeze({ omit: [] }), family_cards_read: Object.freeze({ omit: [] }),
-  family_inbox_capture: Object.freeze({ omit: [] }),
+  family_inbox_capture: Object.freeze({ omit: [] }), get_sound: Object.freeze({ omit: [] }),
   web_search: Object.freeze({ omit: [] }), network_devices: Object.freeze({ omit: [] }),
   artx_read: Object.freeze({ omit: ['displayId'] }), artx_present: Object.freeze({ omit: ['displayId', 'requestId'] }) });
 const FAMILY_ELIGIBLE_TOOLS = Object.freeze(Object.keys(FAMILY_TOOL_VIEWS));
@@ -63,6 +63,9 @@ function familyParameters(tool) {
 
 function functionDefinition(tool) {
   const omitted = FAMILY_TOOL_VIEWS[tool.name]?.omit || [];
+  if (tool.name === 'get_sound') return { type: 'function', function: { name: tool.name,
+    description: 'Choose one catalog clip to play after your answer when the listener wants to hear it. Explain when asked. A quotation or a request for silence does not ask for playback.',
+    parameters: familyParameters(tool) } };
   const note = tool.name === 'iss_passes' ? ' In this conversation it always uses the household location.'
     : omitted.includes('displayId') ? ' Core binds this tool to the current display.' : '';
   return { type: 'function', function: { name: tool.name, description: tool.description + note, parameters: familyParameters(tool) } };
@@ -86,11 +89,13 @@ function parseArguments(value) {
  * execute(call) answers a model tool call with the Ollama tool message and a receipt.
  */
 function familyToolset(env = process.env, deps = {}) {
-  const names = familyToolNames(env).filter(name => (name !== 'web_search' || !deps.weatherAnswersRequest)
+  const names = familyToolNames(env).filter(name => (!deps.soundOnly || name === 'get_sound')
+    && (name !== 'get_sound' || deps.soundTurnId && deps.toolDeps?.sounds)
+    && (name !== 'web_search' || !deps.weatherAnswersRequest)
     && (name !== 'family_cards_read' || deps.toolDeps?.familyCards)
     && (name !== 'family_inbox_capture' || deps.toolDeps?.familyInbox));
   const displayId = deps.artxDisplayId;
-  if (/^[a-zA-Z0-9-]{8,80}$/.test(displayId || '') && deps.toolDeps?.artx?.read({ displayId }).status === 'available') {
+  if (!deps.soundOnly && /^[a-zA-Z0-9-]{8,80}$/.test(displayId || '') && deps.toolDeps?.artx?.read({ displayId }).status === 'available') {
     for (const name of ['artx_read', 'artx_present']) if (!names.includes(name)) names.push(name);
   } else {
     for (const name of ['artx_read', 'artx_present']) if (names.includes(name)) names.splice(names.indexOf(name), 1);
@@ -99,7 +104,7 @@ function familyToolset(env = process.env, deps = {}) {
   const tools = TOOLS.filter(tool => names.includes(tool.name));
   const run = deps.callTool || callTool;
   const now = deps.now || (() => new Date());
-  let artxSelectionAttempted = false;
+  let artxSelectionAttempted = false, soundResult;
   return {
     names,
     maxRounds: MAX_TOOL_ROUNDS,
@@ -135,7 +140,17 @@ function familyToolset(env = process.env, deps = {}) {
           message: 'Only one scene selection can be attempted in this turn. Explain the earlier result without trying again.' })) };
         artxSelectionAttempted = true;
       }
+      if (name === 'get_sound' && soundResult) return { message: message(soundResult) };
       const result = await run({ name, arguments: allowed }, deps.toolDeps || {}, tools);
+      if (name === 'get_sound' && !result.isError) {
+        const asset = result.structuredContent?.status === 'available' && deps.toolDeps.sounds.get(result.structuredContent.sound?.id);
+        const status = asset ? 'available' : 'unavailable';
+        soundResult = JSON.stringify(asset ? { status, id: asset.id, kind: asset.kind, label: asset.label,
+          playback: 'ready', message: 'Answer the listener directly. Distinguish a recording from an imitation or effect. Avoid repeating an introduction or narrating player timing.' }
+          : { status, message: 'No matching clip is available. Do not substitute another sound.' });
+        return { message: message(soundResult), receipt: { tool: name, status: 'completed', at,
+          turnId: deps.soundTurnId, availability: status, ...(asset && { soundId: asset.id }) } };
+      }
       const content = resultContent(result.structuredContent);
       return { message: message(content), receipt: { tool: name, status: result.isError ? 'failed' : 'completed', at,
         ...(result.isError ? { error: String(result.structuredContent?.error || 'TOOL_ERROR') } : {}) } };
