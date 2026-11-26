@@ -69,7 +69,9 @@ function ragFactInstant(value) {
 
 function normalizeResult(result, source) {
   const metadata = result?.metadata || {};
-  const text = String(result?.compressedText || result?.text || result?.snippet || '').slice(0, 4000);
+  const fullText = String(result?.compressedText || result?.text || result?.snippet || '');
+  const truncated = fullText.length > 4000;
+  const text = truncated ? fullText.slice(0, 4000).replace(/[\uD800-\uDBFF]$/, '') : fullText;
   const resolvedSource = String(result?.source || metadata.source || source || '').trim();
   const rawReference = result?.ref || metadata.ref || metadata.documentId || result?.documentId || null;
   return {
@@ -81,6 +83,7 @@ function normalizeResult(result, source) {
     }),
     text,
     snippet: text,
+    ...(truncated && { truncated: true }),
     score: Number.isFinite(Number(result?.score)) ? Number(result.score) : null,
     ref: rawReference && !/^[a-z][a-z0-9+.-]*:\/\//i.test(String(rawReference))
       ? String(rawReference).slice(0, 500)

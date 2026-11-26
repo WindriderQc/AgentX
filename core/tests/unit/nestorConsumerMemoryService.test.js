@@ -66,6 +66,14 @@ describe('Nestor consumer memory adapters', () => {
     expect(mockSearchRag.mock.calls[0][1]).not.toHaveProperty('includeHistory');
   });
 
+  it('identifies a bounded excerpt and keeps the last Unicode character intact', async () => {
+    mockSearchRag.mockResolvedValue([{ text: 'a'.repeat(3999) + '🌓' }, { text: 'b'.repeat(4000) }]);
+    const { results } = await searchMemory({ source: 'rag', query: 'fixture' });
+    expect(results[0]).toMatchObject({ text: 'a'.repeat(3999), truncated: true });
+    expect(results[1].text).toHaveLength(4000);
+    expect(results[1]).not.toHaveProperty('truncated');
+  });
+
   it('rejects unknown sources and oversized queries', async () => {
     await expect(searchMemory({ source: 'unknown', query: 'x' }))
       .rejects.toEqual(expect.objectContaining({ code: 'UNKNOWN_MEMORY_SOURCE' }));
