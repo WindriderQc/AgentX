@@ -160,7 +160,6 @@ function register(api) {
   const familyTasks = runtimeServices.tasks.family;
   const ownerMemory = runtimeServices.memory.forAudience('owner');
   const familyMemory = runtimeServices.memory.forAudience('household');
-  const personalNotes = runtimeServices.memory.notes.personal();
   const notesFor = (pack, scopeId) => runtimeServices.memory.notes.forSpace({
     audience: pack.childSafe ? 'household' : 'owner', scopeId,
     packIds: packIdsSharingMemory(pack)
