@@ -6,12 +6,14 @@ const fs = require('node:fs');
 const https = require('node:https');
 const {createHash, X509Certificate} = require('node:crypto');
 const express = require('express');
-const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+// Usage: node verify-local.cjs <test-cert> <test-key> [playwright-module] [chromium]
+const [certFile, keyFile, playwrightModule, chromiumPath] = process.argv.slice(2);
+const {chromium} = require(playwrightModule || 'playwright');
 const {registerWorkCockpit, mountPath} = require('./routes');
 
 async function run() {
-  const cert = fs.readFileSync(process.env.TEST_TLS_CERT);
-  const key = fs.readFileSync(process.env.TEST_TLS_KEY);
+  const cert = fs.readFileSync(certFile);
+  const key = fs.readFileSync(keyFile);
   const spki = new X509Certificate(cert).publicKey.export({type:'spki',format:'der'});
   const pin = createHash('sha256').update(spki).digest('base64');
   const app = express();
@@ -66,7 +68,7 @@ async function run() {
     assert.doesNotMatch(result.body,/synthetic-excluded-field/);
     assert.equal(JSON.parse(result.body).pipeline.record.pipelineId,'0007');
     assert.deepEqual(Object.keys(JSON.parse(result.body).registry.agents[0]).sort(),['id','observation','persona','runtime']);
-    browser=await chromium.launch({headless:true, executablePath:process.env.CHROMIUM_PATH || undefined,
+    browser=await chromium.launch({headless:true, executablePath:chromiumPath,
       args:['--ignore-certificate-errors-spki-list='+pin]});
     for (const width of [1280,390]) {
       const page=await browser.newPage({viewport:{width,height:width===390 ? 844 : 980}});
