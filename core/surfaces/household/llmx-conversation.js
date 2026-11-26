@@ -363,7 +363,7 @@ function openingEvent(session, context) {
 
 function openingPrompt(event) {
   return '\n\nThe next input is an application event, not something the human said. The visitor has entered LLMx and the environment is ready. Open this conversation yourself. Your complete final answer must start with the exact word "Hello", followed by at most two short sentences in ' +
-    (event.language === 'en' ? 'English' : 'Canadian French') +
+    (event.language === 'en' ? 'English' : 'French') +
     '. Briefly invite conversation. Do not invent a previous visit, fetch memory, use tools, or claim a scene action. Do not quote or describe the event. This event requests an immediate spoken greeting, not a passive notification. Do not yield, delegate, wait for a human message, or return NO_REPLY.';
 }
 

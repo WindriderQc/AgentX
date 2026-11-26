@@ -72,6 +72,7 @@ function publicSession(doc) {
     persona: value?.persona ? { id: value.persona.id, version: value.persona.version, name: value.persona.name, voice: value.persona.voice, visual: value.persona.visual } : null,
     inference: value?.inference || { open: value?.modeId === 'open' },
     voice: value?.voice || {},
+    defaultLanguage: require('./conversation-language').defaultLanguage(),
     visual: value?.visual || null,
     agentId: agentIdFor(value || {}),
     backend: value?.backend || null,

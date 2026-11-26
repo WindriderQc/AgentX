@@ -5,7 +5,8 @@
 // assessment with its escalation and child-boundary replies.
 
 const { capturedPrompt } = require('./family-context');
-const { scoreSpeechLanguage } = require('./public/speech-language');
+const { defaultLanguage } = require('./conversation-language');
+const { scoreSpeechLanguage, replySpeechLanguage } = require('./public/speech-language');
 const { familyTimeZone } = require('../../src/domains/household/family');
 
 function cleanText(value, max = 4000) {
@@ -74,26 +75,17 @@ function memoryBlock(memories) {
   return lines.length ? `\n\nSaved notes:\n${lines.join('\n')}` : '';
 }
 
-// One detector, shared with the browser, rather than a second word list that
-// can drift from it. Québécois French is the default; English must be clear.
-function replyLanguageDirective(text, preferred) {
-  if (preferred === 'en') return ' Selected language: English. Reply in English for this turn.';
-  if (preferred === 'fr') return ' Langue choisie : français québécois. Réponds en français québécois pour ce tour.';
-  if (!String(text || '').trim()) return '';
-  return scoreSpeechLanguage(text).language === 'en'
-    ? ' Latest-message language: English. Reply only in English for this turn.'
-    : ' Réponds en français québécois pour ce tour, sauf si on te demande explicitement une autre langue.';
+function replyLanguageDirective(text, preferred, automatic = !preferred) {
+  if (!preferred && !String(text || '').trim()) return '';
+  const language = preferred || scoreSpeechLanguage(text).language || defaultLanguage();
+  if (language === 'en') return ' Selected language: English. Reply in English for this turn.' +
+    (automatic ? ' Honor an explicit request to answer in another language.' : '');
+  return ' Langue choisie : français. Réponds en français pour ce tour.' +
+    (automatic ? ' Suis toute demande explicite de répondre dans une autre langue.' : '');
 }
 
-// The surface speaks the reply, so the language that matters is the reply's own,
-// not the question's. "quel bruit fait la vache?" scored nothing either way and
-// fell through to English, so a French answer was read aloud in an English
-// voice; the question now only breaks a tie for a reply too short to score.
-function spokenReplyLanguage(replyText, userText) {
-  const reply = scoreSpeechLanguage(replyText);
-  if (reply.decided) return reply.language;
-  const asked = scoreSpeechLanguage(userText);
-  return asked.decided ? asked.language : reply.language;
+function spokenReplyLanguage(replyText, userText, turnLanguage) {
+  return replySpeechLanguage(replyText, turnLanguage || scoreSpeechLanguage(userText).language || defaultLanguage());
 }
 
 // The clip is already chosen and will be played by the surface whatever the
@@ -111,7 +103,7 @@ function soundBlock(sound, language = 'fr') {
     const fr = sound.kind === 'effect' ? 'un bruitage imaginaire' : 'une imitation enregistrée';
     return english
       ? `\n\nSound: ${en} (${sound.label.en}) plays as soon as you finish. Introduce it explicitly as ${en}, in one short cheerful statement in English. Never describe it as the authentic voice of the animal or claim that you are making the sound yourself. It is already prepared: answer directly, without calling any tool or agent.`
-      : `\n\nSon : ${fr} (${sound.label.fr}) joue dès que tu as fini. Présente-le explicitement comme ${fr}, en une courte affirmation joyeuse en français québécois. Ne le présente jamais comme le vrai cri de l'animal et ne prétends pas le produire toi-même. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
+      : `\n\nSon : ${fr} (${sound.label.fr}) joue dès que tu as fini. Présente-le explicitement comme ${fr}, en une courte affirmation en français. Ne le présente jamais comme le vrai cri de l'animal et ne prétends pas le produire toi-même. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
   }
   // Naming the machinery here leaks it into the answer: a directive that
   // mentions the browser gets parroted back to the child as an invitation to
@@ -122,7 +114,7 @@ function soundBlock(sound, language = 'fr') {
   // child heard an internal note instead of Nestor reacting to the animal.
   return english
     ? `\n\nSound: a real recording of ${sound.label.en} plays as soon as you finish. In English, react to the animal in one short, cheerful sentence that invites listening -- a statement, not a question. Never mention a recording, a reply, a button or when it plays, and never claim that you are making the sound yourself. It is already prepared: answer directly, without calling any tool or agent.`
-    : `\n\nSon : un vrai enregistrement (${sound.label.fr}) joue dès que tu as fini. En français québécois, réagis à l'animal en une courte phrase joyeuse qui invite à écouter -- une affirmation, pas une question. Ne parle jamais d'enregistrement, de réponse, de bouton ni du moment où il joue, et ne prétends jamais que c'est toi qui fais le son. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
+    : `\n\nSon : un vrai enregistrement (${sound.label.fr}) joue dès que tu as fini. En français, réagis à l'animal en une courte phrase qui invite à écouter -- une affirmation, pas une question. Ne parle jamais d'enregistrement, de réponse, de bouton ni du moment où il joue, et ne prétends jamais que c'est toi qui fais le son. Il est déjà prêt : réponds directement, sans appeler d'outil ni d'agent.`;
 }
 
 // What the model must do on this turn, as opposed to what it may read. The
@@ -131,7 +123,7 @@ function soundBlock(sound, language = 'fr') {
 // sounds while the recording played. Directives are sent in their own block.
 function turnDirective(context = {}) {
   const language = context.speechLanguage || scoreSpeechLanguage(context.latestUserText).language;
-  return [context.speechLanguage ? replyLanguageDirective(context.latestUserText, language).trim() : '',
+  return [context.speechLanguage ? replyLanguageDirective(context.latestUserText, language, context.automaticLanguage).trim() : '',
     soundBlock(context.sound, language).trim()].filter(Boolean).join('\n\n');
 }
 

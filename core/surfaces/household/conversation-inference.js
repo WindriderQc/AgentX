@@ -73,7 +73,11 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
         .statusResult(body, 'Le relais sans outils ne peut pas analyser ces pièces jointes. La demande native d’origine est conservée.', 'relay_attachments_unavailable');
       if (eligible && inference.conversation) {
         const continued = await inference.conversation({ ...body, ...(request.relayOccupation ? { model: 'agentx-primary' } : {}) }, {
-          ...options, taskRoute: !request.relayOccupation, requireOccupied: true, relayTools: request.guardianTools,
+          ...options, speechLanguage: request.speechLanguage,
+          relayPresentation: [request.relayOccupation && require('./packs').PERSONAL_STYLE,
+            require('./persona-prompt').replyLanguageDirective(request.text, request.speechLanguage, request.automaticLanguage)].filter(Boolean).join(' '),
+          relayGreeting: env[request.speechLanguage === 'en' ? 'HOUSEHOLD_RELAY_GREETING_EN' : 'HOUSEHOLD_RELAY_GREETING_FR'],
+          taskRoute: !request.relayOccupation, requireOccupied: true, relayTools: request.guardianTools,
           allowUnavailable: !request.relayOccupation, requiresFamilyPrimary: taskRequiresPrimary,
           ...(env.HOUSEHOLD_PRIMARY_RELEASE_GRACE_ENABLED === 'true' && !request.relayOccupation && request.streaming === true && request.channel === 'voice'
             && session.packId === 'kidx_nestor' && session.scopeId === 'family' && pack.childSafe && {

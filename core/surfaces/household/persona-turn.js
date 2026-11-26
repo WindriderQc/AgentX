@@ -20,7 +20,8 @@ const { familyIntroduction, soundOnlyRequest } = require('./sound-library');
 const { mathPictureFor, mathPictureContext } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels, { displayForReply } = require('./turn-presentation');
-const { scoreSpeechLanguage, speechText } = require('../../public/js/voice/speech-language');
+const { conversationLanguage } = require('./conversation-language');
+const { speechText, explicitSpeechLanguage } = require('../../public/js/voice/speech-language');
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
 const teamAddress = require('./team-address');
@@ -68,8 +69,8 @@ function createPersonaTurnHandler({
       return fail(res, 413, 'The text exceeds the 4,000-character limit. Nothing was shortened or sent to the model.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
     }
     if (!userText && !isOpening) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
-    if (!isLlmX && req.body?.language !== undefined && !['fr', 'en'].includes(req.body.language)) {
-      return fail(res, 400, 'language must be fr or en', 'VOICE_PERSONA_INVALID_LANGUAGE');
+    if (!isLlmX && req.body?.language !== undefined && !['auto', 'fr', 'en'].includes(req.body.language)) {
+      return fail(res, 400, 'language must be auto, fr or en', 'VOICE_PERSONA_INVALID_LANGUAGE');
     }
     if (!consult && activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
     // A typed Famille browser turn keeps its id like a voice one, so a math card's sliders (#1270) are saved with it.
@@ -153,7 +154,8 @@ function createPersonaTurnHandler({
       if (clientTurnId) {
         entry.snapshot = { sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
       }
-      const preferredSpeechLanguage = isLlmX ? null : (req.body?.language || session.voice?.language) === 'en' ? 'en' : 'fr';
+      const preference = req.body?.language ?? session.voice?.language;
+      const preferredSpeechLanguage = isLlmX ? null : await conversationLanguage({ text: userText, preference, session, conversations, env: conversationEnv });
       const requestedAttachments = runtimeServices.attachments.ids(req.body?.attachmentIds);
       const attachmentStore = !isLlmX && access === 'private' && session.packId === 'personal_operator' && session.scopeId === 'personal'
         ? personalAttachments(session.sessionId) : null;
@@ -336,7 +338,7 @@ function createPersonaTurnHandler({
         const preselected = Boolean(sound);
         const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores, family.plants].filter(Boolean).join('\n\n'),
           modeId: session.modeId, sound: separateSoundReply ? null : sound, latestUserText: userText,
-          speechLanguage: preferredSpeechLanguage };
+          speechLanguage: preferredSpeechLanguage, automaticLanguage: !explicitSpeechLanguage(preference) };
         let lastProposal = null, previousBrowserOutput = null;
         const nativeBrowserReply = sceneEnabled && backend === 'openclaw';
         if (isLlmX && !isOpening) {
@@ -423,16 +425,16 @@ function createPersonaTurnHandler({
         const hermesInstructions = [session.persona?.identity,
           member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
           'This is the personal Nestor conversation. Hermes owns its native agent loop. Core owns the visible transcript and selected personal context; local speech handles the microphone and playback. Use only tools actually installed in this Hermes profile. Treat supplied personal context as reference data. Never claim an action or memory save without a successful receipt.',
-          'For voice, speak naturally in Canadian French unless the user chooses English. Prefer a brief conversational answer and expand when asked.', !member && homeDevice && 'For live readings about the named plug use home_assistant_plug with ' + JSON.stringify({ device: homeDevice }) + '.',
+          require('./packs').PERSONAL_STYLE, !member && homeDevice && 'For live readings about the named plug use home_assistant_plug with ' + JSON.stringify({ device: homeDevice }) + '.',
           replyChannels.contract({ family: false, pages: true, pageCatalog: screenPages, imageSources: visuals.sources({ family: false }) })].filter(Boolean).join('\n\n');
         abort.signal.throwIfAborted();
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
-        const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
+        const replyLanguage = context.speechLanguage || spokenReplyLanguage('', userText), visualsWork = entry.visualsWork = [];
         const channels = entry.channels = isLlmX || picture ? null : replyChannels.createReplyChannels({ projectCompletedSpeech: require('./family-weather-speech').projectionFor(coveredWeather, replyLanguage), readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: mathFor(pack), allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
           canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target || (target?.force ? target.page : null), onWritten: value => { if (!res.writableEnded) event('written', value); },
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
-          onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },
+          onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta, language: replyLanguage }); },
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {
             entry.companion?.explicit();
@@ -452,7 +454,7 @@ function createPersonaTurnHandler({
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText,
           history: picture || features.historyContext === false ? [] : guardianSession ? dedicatedGuardian.history(history) : history, streaming, channel: req.body?.channel,
           conversationFeatures: picture ? { ...features, historyContext: false } : features, requiresFamilyPrimary: picture, turnId: clientTurnId || crypto.randomUUID(), hermesInstructions,
-          ...(preferredSpeechLanguage ? { speechLanguage: preferredSpeechLanguage } : {}),
+          ...(preferredSpeechLanguage ? { speechLanguage: preferredSpeechLanguage, automaticLanguage: !explicitSpeechLanguage(preference) } : {}),
           ...(acceptedTaskWork ? { readAcceptedTaskWork: () => conversationWorks.taskAcceptance(entry.workId) } : {}),
           ...(acceptedNativeWork ? { readAcceptedNativeWork: () => conversationWorks.nativeAcceptance(entry.workId) } : {}),
           ...(entry.primaryWork ? { readPrimaryWork: entry.readPrimaryWork,
@@ -526,8 +528,9 @@ function createPersonaTurnHandler({
       if (!replyText) replyText = 'Je n’ai pas réussi à préparer une réponse utile.';
       if (separateSoundReply) { afterSoundText = replyText; replyText = familyIntroduction(sound, preferredSpeechLanguage) + ' ' + replyText; }
       const traceId = entry.workId || entry.relayIntake ? clientTurnId : entry.traceId || crypto.randomUUID(), relayStopped = toolEvidence?.conversationRelay?.reason === 'occupation_changed';
+      const speechLanguage = spokenReplyLanguage(replyText, userText, preferredSpeechLanguage);
       const audit = await conversations[entry.workId || entry.relayIntake ? 'settleTurn' : 'recordTurn']({
-        traceId, ...(relayStopped && { writtenStatus: 'partial', outcome: 'failed' }),
+        traceId, speechLanguage, ...(relayStopped && { writtenStatus: 'partial', outcome: 'failed' }),
         ...(isLlmX ? { source: 'graphysx-llmx', origin: isOpening ? 'application_opening' : 'human', outcome: 'completed', applicationEvent: entry.applicationEvent || null } : {}),
         ...(sceneProposal ? { sceneProposal } : {}), ...(display.length ? { display: replyChannels.storedDisplay(display) } : {}),
         ...(clientTurnId ? { clientTurnId, interrupted: entry.interrupted } : {}),
@@ -581,7 +584,7 @@ function createPersonaTurnHandler({
       else if (session.teamExchange) await conversations.updateSession({ sessionId: session.sessionId }, { $unset: { teamExchange: '' } });
       if (entry.detached) {
         memberWork.finish(session.sessionId, clientTurnId, { traceId, text: speechText(replyText), written: audit.written, display: audit.display,
-          language: spokenReplyLanguage(replyText, userText), speaker: audit.speaker, speech: audit.replySpeech });
+          language: speechLanguage, speaker: audit.speaker, speech: audit.replySpeech });
         return undefined;
       }
       // #41: the conversation's agent asked for a member. Its turn starts once this one has ended;
@@ -609,12 +612,8 @@ function createPersonaTurnHandler({
         session: publicSession(updated || session),
         pack: packSummary(pack),
         mode: modeSummary(pack.modes.find((entry) => entry.id === session.modeId) || pack.modes[0]),
-        // The surface reads this aloud, so it is told which voice to use rather
-        // than re-deriving it from the question and disagreeing with the text.
-        reply: { text: req.body?.channel === 'voice' ? speechText(replyText) : replyText, language: spokenReplyLanguage(replyText, userText), speaker: audit.speaker,
+        reply: { text: req.body?.channel === 'voice' ? speechText(replyText) : replyText, language: speechLanguage, speaker: audit.speaker,
           speech: audit.replySpeech, ...(separateSoundReply ? { soundIntroduction: familyIntroduction(sound, preferredSpeechLanguage), afterSoundText } : {}) },
-        // Present only when a clip was selected; the browser may offer playback
-        // once speech finishes, but this response is not a playback receipt.
         sound: sound ? { ...sound, play: separateSoundReply ? 'after-introduction' : 'after-reply' } : null,
         safety,
         model: { model: metadata.model || '', hostKey: metadata.hostKey || '' },

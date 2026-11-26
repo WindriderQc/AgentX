@@ -162,10 +162,10 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         if (!resident || Number(resident.context_length) !== Number(pin.contextSize)) continue;
       } catch { if (signal?.aborted) signal.throwIfAborted(); continue; }
       const notice = options.requireOccupied
-        ? `Yo c’est l’Gardien… Nestor est ${occupied ? 'occupé' : 'indisponible'}.`
+        ? [options.relayGreeting, options.speechLanguage === 'en' ? `The guardian is answering while Nestor is ${occupied ? 'busy' : 'unavailable'}.` : `Le gardien prend le relais. Nestor est ${occupied ? 'occupé' : 'indisponible'}.`].filter(Boolean).join(' ')
         : `Message automatique d’AgentX — Petit contretemps : Nestor passe en mode de secours local avec son gardien, avec un contexte récent réduit et sans outils d’action. ${status}`;
       const reduced = reducedRequest(options.relayRequest || request, { ...policy, model: pin.model,
-        contextSize: Number(pin.contextSize), notice, status, familyInstructions: options.familyInstructions, relayTools: options.relayTools });
+        contextSize: Number(pin.contextSize), notice, status, presentation: options.relayPresentation, familyInstructions: options.familyInstructions, relayTools: options.relayTools });
       if (!reduced) return statusResult(request, status, 'backup_context_unavailable', primaryRefusal);
       const continuity = { state: 'backup', reason, limited: true, contextReduced: true,
         model: pin.model, hostKey, ...(primaryRefusal && { primaryRefusal }),

@@ -57,17 +57,17 @@ async function browser({ savedLanguage, turnResponse, handsFree = false } = {}) 
     choose: language => { element('readingVoiceSettings').onclick({ preventDefault() {} }); stored.set('household.reading.language.v1',language); workshop.onSaved(); } };
 }
 
-for (const [savedLanguage, expected] of [[undefined, 'fr'], ['auto', 'fr'], ['en', 'en']]) {
+for (const [savedLanguage, expected] of [[undefined, 'auto'], ['auto', 'auto'], ['fr', 'fr'], ['en', 'en']]) {
   test(`Lecture language is explicit across session, reply and speech (${savedLanguage || 'default'} -> ${expected})`, async () => {
     const h = await browser({ savedLanguage }); await h.ask();
-    assert.deepEqual(h.requests.map(request => request.body.language), [expected, expected, expected]);
+    assert.deepEqual(h.requests.map(request => request.body.language), [expected, expected, 'en']);
   });
 }
 
 test('changing a reading preference during inference affects the next turn, while the current reply and replay retain their language', async () => {
   let resolveTurn, entered, requests = 0;
   const waiting = new Promise(resolve => { entered = resolve; });
-  const h = await browser({ turnResponse: () => {
+  const h = await browser({ savedLanguage: 'fr', turnResponse: () => {
     if (requests++) return Response.json({ data: { reply: { text: 'Synthetic English reply' } } });
     entered(); return new Promise(resolve => { resolveTurn = resolve; });
   } });
@@ -104,7 +104,7 @@ test('the real Lecture adapter stays on its family pack through wake, short repl
   for (const word of ['oui', '7', 'merci']) await h.say(word);
   const sessions = h.requests.filter(row => row.url.endsWith('/sessions'));
   assert.equal(sessions.length, 1);
-  assert.deepEqual(sessions[0].body, { packId: 'kidx_reader', scopeId: 'family', modeId: '', personaId: 'nestor', language: 'fr' });
+  assert.deepEqual(sessions[0].body, { packId: 'kidx_reader', scopeId: 'family', modeId: '', personaId: 'nestor', language: 'auto' });
   assert.deepEqual(h.requests.filter(row => row.url.endsWith('/turns/text')).map(row => row.body.text), ['bonjour', 'oui', '7', 'merci']);
   assert.ok(h.requests.every(row => !row.url.includes('/private/')));
   assert.equal(h.played.length, 4);

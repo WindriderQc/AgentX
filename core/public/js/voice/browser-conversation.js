@@ -694,9 +694,9 @@
       this.show('thinking'); this.turnPending = true;
       let pending = '', streamed = false, firstChunk = true, speechError = null, speechFailure = 'synthesis_error', playback = Promise.resolve();
       let synthesis = Promise.resolve(), prefetchSlot = Promise.resolve();
-      let spokenLanguage = speechLanguage.turnSpeechLanguage(text, detectedLanguage, preferredLanguage);
+      let spokenLanguage = speechLanguage.turnSpeechLanguage(text, detectedLanguage, preferredLanguage, this.session?.defaultLanguage);
       const readAloud = spokenPresentation.readingRequested(text);
-      let replyLanguageChosen = !!speechLanguage.explicitSpeechLanguage(preferredLanguage);
+      let replyLanguageChosen = false;
       // `notice` marks words that are not the reply (a waiting notice): the
       // timeline's first audio is the reply's own first clause.
       const speakSegment = (text, notice = false) => {
@@ -795,8 +795,9 @@
         this.session = prepared;
       }
       turn.session = this.session; turn.timeline?.mark('requestSent');
-      const response = this.io.turn(this.session, text, turn.request.signal, delta => {
+      const response = this.io.turn(this.session, text, turn.request.signal, (delta, language) => {
         if (!this.owns(turn)) return;
+        if (!streamed && speechLanguage.explicitSpeechLanguage(language)) spokenLanguage = language;
         streamed = true; pending += delta; dropHolding(); turn.timeline?.mark('firstDelta');
         let length;
         while ((length = nextSpeechChunkLength(pending, firstChunk))) {
@@ -843,8 +844,7 @@
       this.turnPending = false;
       if (reply.sound) turn.timeline?.planClip(reply.sound.id);
       this.io.message('assistant', reply.text, false, reply.sound, [], undefined, turn.id);
-      // An unstreamed reply names its own language; a chosen preference still wins.
-      if (!streamed && reply.language && !speechLanguage.explicitSpeechLanguage(this.selection.language)) spokenLanguage = reply.language;
+      if (!streamed && reply.language) spokenLanguage = reply.language;
       dropHolding();
       const soundFirst = reply.sound && reply.soundIntroduction && typeof reply.afterSoundText === 'string';
       speak(soundFirst ? reply.soundIntroduction : streamed ? pending : spokenPresentation.ordinarySpeech(reply.text, { language: spokenLanguage,

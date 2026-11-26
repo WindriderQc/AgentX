@@ -1373,8 +1373,14 @@ default. To supply instance wording, bind-mount a UTF-8 text file read-only at
 `/app/surfaces/household/family-style.txt` and recreate Core. Core reads it once
 at startup. The local family packs, conversation relay and OpenClaw family
 surface contract share the resulting tone. Child safeguards, clarification,
-tool grants and receipt requirements remain in the product. The existing
-voice language selection continues to apply.
+tool grants and receipt requirements remain in the product. Core reads the
+adult profile separately from `/app/surfaces/household/personal-style.txt`.
+An explicit French or English selection applies to the current turn. Auto
+follows a clear request, then the last reply in the same conversation. For a
+first ambiguous turn, set `HOUSEHOLD_DEFAULT_LANGUAGE` to `fr` or `en` on
+Core (default `en`). Speech uses the language of the answer. The optional
+`HOUSEHOLD_RELAY_GREETING_FR` and `HOUSEHOLD_RELAY_GREETING_EN` introduce
+the relay before its factual status.
 Every Super Dad turn also receives the active child profiles of the Family page
 (`/dad/family`) as approved knowledge, so the children's names and age bands
 do not depend on which notes a search selects. Famille turns do not.
