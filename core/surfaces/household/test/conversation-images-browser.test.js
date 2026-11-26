@@ -89,3 +89,20 @@ test('repeated stream and history receipts replace one card and dispose its old 
     board.clear(); assert.equal(board.has('image:' + id), false);
   } finally { globalThis.fetch = original; }
 });
+
+test('the kitchen drawing follows the selected conversation language through receipt and download', async () => {
+  const prevFetch = globalThis.fetch;
+  globalThis.fetch = async () => response(ready);
+  const visual = new Element('section');
+  const screen = globalThis.DisplayBoard.createScreen({ text: new Element('section'), visual }, { space: 'family', getLanguage: () => 'fr' });
+  try {
+    screen.add(block(pending));
+    assert.match(visual.text(), /Ta demande de dessin est reçue/);
+    await until(() => visual.find('img'));
+    assert.match(visual.text(), /Ton image est prête/);
+    assert.match(visual.text(), /Télécharger l’image/);
+  } finally {
+    screen.clear();
+    globalThis.fetch = prevFetch;
+  }
+});

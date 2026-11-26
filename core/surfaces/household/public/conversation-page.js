@@ -120,8 +120,18 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     </div>${family ? '' : '<details id="conversationPipeline" class="conversation-pipeline" open><summary>Request pipeline <small>each step of Nestor’s turn</small></summary><section id="conversationWorkflow" aria-label="Nestor component workflow"></section></details>'}</div></section></div></section>`;
   const el = id => document.getElementById(id);
   const composer = window.ConversationComposer.mount({ input: el('conversationMessage'), form: el('conversationText'), family });
+  // Language is a two-button choice; the rest of the page reads it like a field.
+  const languageField = el('conversationLanguage');
+  const language = {
+    get value() { return languageField.querySelector('input:checked')?.value || 'fr'; },
+    set value(next) { const input = languageField.querySelector(`input[value="${next === 'en' ? 'en' : 'fr'}"]`); if (input) input.checked = true; },
+    get disabled() { return languageField.disabled; }, set disabled(value) { languageField.disabled = value; },
+    set title(value) { languageField.title = value; },
+    set onchange(handler) { languageField.onchange = handler; },
+    addEventListener: (...args) => languageField.addEventListener(...args)
+  };
   // Shown, never spoken (#167): secrets exist only in the private space.
-  const board = window.DisplayBoard.createScreen({ text: el('conversationBoard'), visual: el('conversationVisual') }, { secrets: !family, space: family ? 'family' : 'personal' });
+  const board = window.DisplayBoard.createScreen({ text: el('conversationBoard'), visual: el('conversationVisual') }, { secrets: !family, space: family ? 'family' : 'personal', getLanguage: () => language.value });
   const companion = family ? null : window.NestorPresentationCompanion?.create({ host: app.querySelector('.conversation-live'),
     board, api, base: sessionBase, getSession: () => conversation.session });
   // "Agrandis", "ferme", "suivant"… act on Nestor's content workspace without a turn. Famille has no such workspace.
@@ -177,16 +187,6 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   const picker = el('conversationPersona'), open = el('conversationOpen');
   const privacyChoice = window.ConversationPrivacy.create();
   let privacyBackend = null;
-  // Language is a two-button choice; the rest of the page reads it like a field.
-  const languageField = el('conversationLanguage');
-  const language = {
-    get value() { return languageField.querySelector('input:checked')?.value || 'fr'; },
-    set value(next) { const input = languageField.querySelector(`input[value="${next === 'en' ? 'en' : 'fr'}"]`); if (input) input.checked = true; },
-    get disabled() { return languageField.disabled; }, set disabled(value) { languageField.disabled = value; },
-    set title(value) { languageField.title = value; },
-    set onchange(handler) { languageField.onchange = handler; },
-    addEventListener: (...args) => languageField.addEventListener(...args)
-  };
   const transcript = el('conversationTranscript');
   const diagnosticFlow = family ? null : el('conversationWorkflow');
   const fallbackSettings = document.createElement('div');
