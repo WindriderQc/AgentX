@@ -178,7 +178,8 @@ for (const [backend, channel] of [['agentx', 'voice'], ['agentx', 'text'], ['ope
     assert.deepEqual([planet.rendered, planet.direction, planet.aboveHorizon, planet.altitudeDeg], [false, 'sud-est', true, 30]);
     if (deferred) {
       assert.match(h.sent[0].request, /Use artx_read/);
-      assert.doesNotMatch(h.sent[0].request, /"altitudeDeg"/);
+      assert.match(h.sent[0].request, /"altitudeDeg":30/);
+      assert.doesNotMatch(h.sent[0].request, /"occlusionZones"|"snapshotId"|"paintings"/);
       assert.ok(h.sent[0].tools.some(tool => tool.function.name === 'artx_read'));
       assert.equal(h.sent.length, 2);
       const result = JSON.parse(h.sent[1].messages.at(-1).content);
@@ -191,6 +192,18 @@ for (const [backend, channel] of [['agentx', 'voice'], ['agentx', 'text'], ['ope
     }
   });
 }
+
+test('one ordinary voice turn includes compact truth about the sky now and the drawing before', async () => {
+  const f = fixture(), snapshot = await f.service.snapshot(displayId);
+  const previous = f.observation(snapshot, { moment: { kind: 'paint', id: 'synthetic-picture' } }).current;
+  const h = harness({ packId: 'kidx_nestor', backend: 'agentx', artx: f.service });
+  await h.turn('Bonjour !', 'voice', { artx: { ...f.observation(snapshot), previous } });
+  const facts = h.sent[0].request;
+  assert.match(facts, /"altitudeDeg":30,"direction":"sud-est","aboveHorizon":true,"rendered":true,"side":"gauche"/);
+  assert.match(facts, /"previous":\{[^\n]+?"moment":\{"kind":"paint","description":"dessin de la famille"\}/);
+  assert.doesNotMatch(facts, /"paintings"|"occlusionZones"|synthetic-picture/);
+  assert.equal(h.sent.length, 1);
+});
 
 test('the reader can request one observation and reports that view’s own availability', async () => {
   const f = fixture(), before = await f.service.snapshot(displayId);
