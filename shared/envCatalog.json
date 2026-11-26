@@ -1775,6 +1775,16 @@
       "secret": false,
       "description": "Household conversation engine: auto, agentx or openclaw. auto selects OpenClaw only when its gateway URL and token are set. Unset: auto."
     },
+    "HOUSEHOLD_DEFAULT_LANGUAGE": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": "en",
+      "category": "household",
+      "secret": false,
+      "description": "Language used for the first ambiguous Household turn in automatic mode. Accepts fr or en."
+    },
     "HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT": {
       "services": [
         "core"
@@ -1926,6 +1936,26 @@
       "secret": false,
       "description": "Optional JSON mapping a Household persona id, or \"*\", to an instance voice \"provider|voice\" (kokoro, windows_sapi or voxcpm). A browser voice selection still wins. Unset: catalog voices.",
       "fallback": "catalog persona voices"
+    },
+    "HOUSEHOLD_RELAY_GREETING_EN": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional English greeting before the Household guardian relay status."
+    },
+    "HOUSEHOLD_RELAY_GREETING_FR": {
+      "services": [
+        "core"
+      ],
+      "forwarded": true,
+      "default": null,
+      "category": "household",
+      "secret": false,
+      "description": "Optional French greeting before the Household guardian relay status."
     },
     "HOUSEHOLD_TEAM_MEMBERS": {
       "services": [
