@@ -17,7 +17,7 @@ const {
   resolveOpenClawProviderBaseUrl,
   validateRuntimeConfigs
 } = require('./runtime-config');
-const { registerAgentOps } = require('./agent-ops/routes');
+const { registerAgentOps, withTeam } = require('./agent-ops/routes');
 const { createPinDriftWatch } = require('./pin-drift');
 const {
   PipelineAttributionLeaseManager,
@@ -189,12 +189,20 @@ function register(api) {
   }));
   app.use('/api/dsh', registerDshStudioOperations({ express }));
   app.use('/api/hermes', registerHermesOperations({ express, logger, statusProvider: evidence.getHermesStatusEvidence }));
-  app.use('/api/agent-ops', registerAgentOps({ express, logger, projectionProvider: evidence.getAgentOpsProjection,
-    // The Team view joins each agent with the persona that presents it.
-    personaProvider: runtimeServices.personas
-      ? async () => (await runtimeServices.personas.list()).filter(row => row.uiConfig?.layoutConfig?.kind === 'personality')
-        .map(row => ({ ...require('../../surfaces/household/persona-catalog').snapshot(row), edited: row.uiConfig.layoutConfig.source?.edited === true }))
-      : null }));
+  const personaProvider = runtimeServices.personas
+    ? async () => (await runtimeServices.personas.list()).filter(row => row.uiConfig?.layoutConfig?.kind === 'personality')
+      .map(row => ({ ...require('../../surfaces/household/persona-catalog').snapshot(row), edited: row.uiConfig.layoutConfig.source?.edited === true }))
+    : null;
+  app.use('/api/agent-ops', registerAgentOps({ express, logger, projectionProvider: evidence.getAgentOpsProjection, personaProvider }));
+  const workScope = require('../../surfaces/work-cockpit/scope').readScope(process.env, logger);
+  if (workScope) {
+    const cockpit = require('../../surfaces/work-cockpit/routes');
+    app.use(cockpit.mountPath, cockpit.registerWorkCockpit({
+      express, scope: workScope,
+      readDossier: require('../../src/services/pipelineWorkReadService').dossier,
+      readTeam: async () => withTeam(await evidence.getAgentOpsProjection(), personaProvider, logger)
+    }));
+  }
   app.use(
     '/api/runtime-bridges/pipeline-attribution',
     standardJsonParser,
