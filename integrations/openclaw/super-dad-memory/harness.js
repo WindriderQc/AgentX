@@ -2,6 +2,9 @@ import { digest, nowIso, readState, updateState } from "./store.js";
 import { verifiedIssResult } from './iss-evidence.js';
 import { nativeActionProvenance } from '../action-provenance.mjs';
 import { isNativeToolCallId } from '../../../shared/nativeToolCallId.cjs';
+import { createWorkQueueClient } from './work-queue.js';
+import { createCoreFinanceBriefClient } from './core-finance-brief.js';
+import { lifeAtlasBrief } from './core-atlas.js';
 
 export function decodeResult(result) {
   if (result?.isError) return { error: "tool_error" };
@@ -169,7 +172,40 @@ export async function recordRun(workspace, event, context, { config, pluginConfi
 }
 
 // Core owns connection state; this harness reports only its read coverage.
-export function briefingFromCore(data) {
+export function briefingFromCore(data, queue) {
   if (typeof data?.text !== "string" || !data.text) throw new Error("Personal briefing unavailable");
-  return { calendar: "not_consulted", ...data, deliveryState: "not_requested" };
+  const brief = { calendar: "not_consulted", ...data, deliveryState: "not_requested" };
+  if (queue === undefined) return brief;
+
+  const summary = queue?.summary;
+  const counts = summary?.counts;
+  const slots = summary?.reservations;
+  let line = 'Travaux lourds — file de Core indisponible.';
+  brief.workQueueSummary = null;
+  if (queue?.authority === 'core.heavy-work-queue' && summary?.schema === 'agentx.heavy-work-summary/v1'
+    && [counts?.automatic_queue, counts?.action_required, slots?.total, slots?.upcoming, slots?.open, slots?.expired, slots?.invalid]
+      .every(value => Number.isSafeInteger(value) && value >= 0)) {
+    brief.workQueueSummary = summary;
+    const invalid = slots.invalid ? `, à vérifier ${slots.invalid}` : '';
+    line = `Travaux lourds — ${counts.automatic_queue} en file automatique, ${counts.action_required} en attente d’action. `
+      + `Réservations ${slots.total} (à venir ${slots.upcoming}, ouvertes ${slots.open}, expirées ${slots.expired}${invalid}).`;
+  }
+  // Core orders the personal lines by priority. Reserve one of the six for the requested queue read.
+  brief.lines = [...data.text.split('\n').slice(0, 5), line];
+  brief.text = brief.lines.join('\n');
+  return brief;
+}
+
+export async function readMorningBriefing(baseUrl, { includeWorkQueue } = {}, fetchImpl = fetch) {
+  const personal = await agentxRead(baseUrl, 'personal_briefing', {}, fetchImpl);
+  const readQueue = createWorkQueueClient({ baseUrl, fetchImpl });
+  const queue = includeWorkQueue === true ? await readQueue({ action: 'list', limit: 1 }).catch(() => null) : undefined;
+  const brief = briefingFromCore(personal, queue);
+  try { brief.workQueue = await readQueue({ action: 'notifications', limit: 5 }); }
+  catch (error) { brief.workQueue = { available: false, warning: error.message }; }
+  const finance = await createCoreFinanceBriefClient({ baseUrl, fetchImpl })().catch(() => null);
+  if (finance) brief.finance = finance;
+  const lifeAtlas = await lifeAtlasBrief({ baseUrl, fetchImpl }).catch(() => null);
+  if (lifeAtlas) brief.lifeAtlas = lifeAtlas;
+  return brief;
 }
