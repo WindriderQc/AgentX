@@ -1,6 +1,6 @@
 'use strict';
 
-const { frozenCopy } = require('../helpers/frozenCopy');
+const { frozenCopy } = require('../../helpers/frozenCopy');
 
 class TrustedRuntimeServiceError extends Error {
   constructor(message, { code = 'RUNTIME_INFERENCE_ERROR', statusCode = 500, cause = null } = {}) {

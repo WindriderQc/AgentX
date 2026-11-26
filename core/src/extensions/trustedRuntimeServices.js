@@ -1,7 +1,7 @@
 'use strict';
 
 const fetch = require('node-fetch');
-const { TrustedRuntimeServiceError, topologyRefusal } = require('./trustedRuntimeError');
+const { TrustedRuntimeServiceError, topologyRefusal } = require('../services/routing/trustedRuntimeError');
 const { prepareInferenceRuntime } = require('../services/inferenceRuntimePolicy');
 const {
   executeAdmittedOllamaAttempt,
