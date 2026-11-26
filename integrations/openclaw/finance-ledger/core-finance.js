@@ -92,19 +92,19 @@ export function createCoreFinanceClient({ baseUrl, fetchImpl = fetch } = {}) {
   };
 }
 
-// The one bounded write: rules the owner confirmed ("description contains X
+// Rules the owner confirmed ("description contains X
 // -> category, tags"). Core validates categories and re-applies every rule.
 export function createCoreRulesClient({ baseUrl, fetchImpl = fetch } = {}) {
   if (!baseUrl) throw new Error('Configure the canonical AgentX URL for this OpenClaw instance');
   const url = new URL('/api/finance/rules', baseUrl);
-  return async (input = {}) => {
+  return async (input = {}, createdBy = 'comptable') => {
     const transactions = (Array.isArray(input.transactions) ? input.transactions : []).map((item) => ({
       id: item?.id, category: item?.category ?? null, tags: Array.isArray(item?.tags) ? item.tags : []
     }));
     if (transactions.length) {
       const response = await fetchImpl(new URL('/api/finance/transactions/decisions', baseUrl), { method: 'POST', redirect: 'error',
         signal: AbortSignal.timeout(20000), headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ transactions, createdBy: 'comptable' }) });
+        body: JSON.stringify({ transactions, createdBy }) });
       const body = await response.json().catch(() => null);
       if (!response.ok || body?.status !== 'success') throw new Error(body?.message || `Core finance decisions unavailable (${response.status})`);
       if (!Array.isArray(input.rules) || !input.rules.length) return { authority: 'agentx.core', ...body.data };
@@ -114,7 +114,7 @@ export function createCoreRulesClient({ baseUrl, fetchImpl = fetch } = {}) {
     }));
     if (!rules.length) throw new Error('Give at least one confirmed rule or transaction');
     const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20000),
-      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rules, createdBy: 'comptable' }) });
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rules, createdBy }) });
     const body = await response.json().catch(() => null);
     if (!response.ok || body?.status !== 'success' || !Array.isArray(body.data?.saved)) {
       throw new Error(body?.message || `Core finance rules unavailable (${response.status})`);
@@ -128,13 +128,13 @@ export function createCoreRulesClient({ baseUrl, fetchImpl = fetch } = {}) {
 export function createCoreDocumentLinkClient({ baseUrl, fetchImpl = fetch } = {}) {
   if (!baseUrl) throw new Error('Configure the canonical AgentX URL for this OpenClaw instance');
   const url = new URL('/api/finance/documents/links/decide', baseUrl);
-  return async (input = {}) => {
+  return async (input = {}, createdBy = 'comptable') => {
     const ids = (Array.isArray(input.ids) ? input.ids : []).map((id) => String(id)).slice(0, 20);
     if (!ids.length) throw new Error('Give at least one link id from finance_ledger action documents');
     const status = input.decision === 'confirm' ? 'confirmed' : input.decision === 'reject' ? 'rejected' : null;
     if (!status) throw new Error('decision must be confirm or reject');
     const response = await fetchImpl(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(20000),
-      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids, status, createdBy: 'comptable' }) });
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids, status, createdBy }) });
     const body = await response.json().catch(() => null);
     if (!response.ok || body?.status !== 'success') throw new Error(body?.message || `Core document links unavailable (${response.status})`);
     return { authority: 'agentx.core', ...withDisplay(body.data) };

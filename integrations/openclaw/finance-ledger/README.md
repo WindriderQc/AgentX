@@ -1,8 +1,8 @@
 # AgentX Finance Ledger (OpenClaw plugin)
 
-Gives the OpenClaw finance persona one read-only tool, `finance_ledger`, backed
-by Core's `/api/finance` routes. Core owns the ledger and computes every total;
-the tool forwards bounded filters and adds a `*Display` string (`1 234,56 $`)
+The optional `finance_ledger` tool reads Core’s `/api/finance` routes for the configured finance personas.
+Core owns the ledger and computes every total.
+The tool forwards bounded filters and adds a `*Display` string (`1 234,56 $`)
 beside each `*Cents` integer, so the model quotes amounts instead of converting
 or summing them.
 
@@ -18,6 +18,7 @@ category), `uncategorized` (descriptions still to classify, biggest first) and
 validates the category and re-applies every rule to past and future rows.
 `finance_alerts` lists Core's deterministic alerts, or reports them once
 (`report: true` marks them reported) for a scheduled delivery.
+`finance_plan` reads the plan or applies changes, `finance_document_link` records decisions on proposed matches, and `finance_statement_deposit` copies selected statements into the finance inbox. Core attributes categorization and link decisions to the configured agent that submitted them.
 
 Ledger questions accept `ledger: "perso"` (default) or `ledger: "corp"`.
 `coverage` reads expected accounts and date gaps, with `account`, `from`, `to`.
