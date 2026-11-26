@@ -1218,7 +1218,7 @@ describe('built-in Household surface on Core', () => {
       process.env.HOUSEHOLD_FAMILY_TOOLS = 'get_sound';
       const beforeSound = executeForTest.mock.calls.length;
       const soundTurn = { text: 'Quel bruit fait la vache?', channel: 'voice', soundPlayback: true, turnId: require('node:crypto').randomUUID() };
-      executeForTest.mockResolvedValueOnce({ ok: true, body: { message: { tool_calls: [{ function: { name: 'get_sound', arguments: { query: 'cow' } } }] } }, metadata: {} })
+      executeForTest.mockResolvedValueOnce({ ok: true, body: { message: { tool_calls: [{ function: { name: 'get_sound', arguments: { query: 'cow', play: true } } }] } }, metadata: {} })
         .mockResolvedValueOnce({ ok: true, body: { response: 'Écoute la vache.' }, metadata: {} });
       const cow = (await turn(soundTurn).expect(200)).body.data;
       expect(cow.sound).toMatchObject({ id: 'cow', play: 'after-reply' });

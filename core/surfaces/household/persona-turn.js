@@ -486,7 +486,7 @@ function createPersonaTurnHandler({
           sound = receipt?.status === 'verified' ? sounds.get(receipt.soundId) : null;
         }
         if (pack.childSafe && clipPlayer && toolEvidence?.authority === 'agentx/core' && toolEvidence.status === 'observed') {
-          const receipt = toolEvidence.receipts?.find(row => row.tool === 'get_sound' && row.turnId === soundTurnId && row.status === 'completed' && row.availability === 'available');
+          const receipt = toolEvidence.receipts?.find(row => row.tool === 'get_sound' && row.turnId === soundTurnId && row.status === 'completed' && row.playbackRequested === true && row.availability === 'available');
           if (receipt) sound = sounds.get(receipt.soundId);
         }
         // A native agent owns its knowledge tools: its receipts say whether one ran.

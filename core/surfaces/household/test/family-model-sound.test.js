@@ -8,7 +8,7 @@ const { familyToolset } = require('../family-tools');
 
 const env = { HOUSEHOLD_FAMILY_TOOLS: 'get_sound' };
 const sounds = createSoundLibrary();
-const toolCall = query => ({ function: { name: 'get_sound', arguments: { query } } });
+const toolCall = (query, play = true) => ({ function: { name: 'get_sound', arguments: { query, play } } });
 
 for (const [text, query, expected] of [
   ['Fais-moi entendre le loup', 'wolf', 'wolf'],
@@ -54,7 +54,7 @@ test('family playback requires a turn-bound catalog and only its first lookup ca
   assert.equal(wolf.receipt.soundId, 'wolf');
   assert.equal(wolf.receipt.turnId, 'fixture-turn');
   assert.equal((await set.execute(toolCall('owl'))).receipt, undefined);
-  assert.deepEqual(Object.keys(set.definitions[0].function.parameters.properties), ['query']);
+  assert.deepEqual(Object.keys(set.definitions[0].function.parameters.properties), ['query', 'play']);
 });
 
 test('Reader grants only the configured sound tool and cannot add another Family capability', async () => {
@@ -76,4 +76,24 @@ test('a recording removed from the mounted catalog cannot be attached to a later
   fs.unlinkSync(fixture);
   assert.equal(library.get('wolf'), null);
   assert.equal(library.select('wolf', { explicitSoundIntent: true }), null);
+});
+
+test('a successful catalog lookup can support an explanation with no playback', async () => {
+  const h = harness({ packId: 'kidx_nestor', backend: 'agentx', sounds, conversationEnv: env,
+    response: body => body.messages.at(-1).role === 'tool' ? 'Le cri est un hurlement.' : {
+      message: { tool_calls: [toolCall('wolf', false)] } } });
+  const turn = await h.turn('Décris son cri sans le jouer.', 'voice', { soundPlayback: true });
+  assert.equal(turn.sound, null);
+  assert.equal(turn.tools.receipts[0].availability, 'available');
+  assert.equal(turn.tools.receipts[0].playbackRequested, false);
+});
+
+test('an explanation returned with the tool and again after verification is spoken once', async () => {
+  const explanation = 'Le loup hurle pour communiquer avec sa meute.';
+  const h = harness({ packId: 'kidx_nestor', backend: 'agentx', sounds, conversationEnv: env,
+    response: body => body.messages.at(-1).role === 'tool' ? explanation : {
+      message: { content: explanation, tool_calls: [toolCall('wolf')] } } });
+  const turn = await h.turn('Explique-moi son cri, puis fais-le entendre.', 'voice', { soundPlayback: true });
+  assert.equal(turn.sound.id, 'wolf');
+  assert.equal(turn.reply.text, explanation);
 });
