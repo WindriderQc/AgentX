@@ -54,20 +54,20 @@ for (const { packId, backend } of CASES) {
 for (const backend of ['agentx', 'openclaw']) {
   test(`immediate ${backend} math replies honor the browser language without inference`, async () => {
     const { sent, turn } = harness({ packId: 'kidx_nestor', backend });
-    assert.match((await turn('what is 4 plus 3', 'voice')).reply.text, /ça fait 7/);
+    assert.match((await turn('what is 4 plus 3', 'voice')).reply.text, /makes 7/);
     assert.match((await turn('combien font 4 plus 3', 'voice', { language: 'en' })).reply.text, /makes 7/);
     assert.equal(sent.length, 0);
   });
-  test(`the ${backend} browser turn defaults to Quebec French despite English words or a saved automatic choice`, async () => {
+  test(`the ${backend} browser turn follows English in auto and preserves an explicit choice`, async () => {
     const { state, sent, turn } = harness({ packId: 'personal_operator', backend });
     await turn('Please tell me what you know about the moon.', 'voice');
-    assert.match(sent[0].request, /Langue choisie : français québécois/);
+    assert.match(sent[0].request, /Selected language: English/);
     assert.doesNotMatch(sent[0].request, /Latest-message language: English/);
     state.session.voice.language = 'en';
     await turn('Raconte-moi une histoire.', 'voice');
     assert.match(sent[1].request, /Selected language: English/);
     await turn('Raconte-moi une histoire.', 'voice', { language: 'fr' });
-    assert.match(sent[2].request, /Langue choisie : français québécois/);
+    assert.match(sent[2].request, /Langue choisie : français/);
     assert.equal(sent[0].prefix, sent[2].prefix);
   });
 }
@@ -99,7 +99,7 @@ for (const backend of ['agentx', 'openclaw']) {
     assert.match(prefix, /Nestor/);
     assert.ok(prefix.includes(require('../family-context').FAMILY_TONE));
     assert.match(prefix, /Fun never overrides accuracy or the safety rules/);
-    assert.match(prefix, /sans nouvelle question ni offre de rappel systématique/);
+    assert.match(prefix, /sans le résultat correspondant/);
     if (backend === 'agentx') assert.match(prefix, /No native agent tools, skills or Dreaming run here/);
   });
 }
@@ -123,12 +123,12 @@ for (const { packId, backend } of CASES) {
       const [first, second] = sent;
       assert.equal(second.prefix, first.prefix, 'the system message or the instructions are identical on both turns');
       for (const volatile of ['Synthetic first note', 'Synthetic second note', 'Synthetic Alex', 'Synthetic Sam', 'Synthetic routine',
-        'Synthetic reviewer correction', 'Latest-message language', 'Réponds en français québécois pour ce tour', 'Saved notes:',
+        'Synthetic reviewer correction', 'Latest-message language', 'Réponds en français pour ce tour', 'Saved notes:',
         'Approved knowledge:', 'un hibou', 'an owl', 'Synthetic answer']) {
         assert.ok(!first.prefix.includes(volatile), `the stable prefix does not carry "${volatile}"`);
       }
       assert.ok(first.request.includes('Synthetic first note about the observatory.'));
-      assert.ok(first.request.includes('Réponds en français québécois pour ce tour'));
+      assert.ok(first.request.includes('Réponds en français pour ce tour'));
       assert.ok(!first.request.includes('Synthetic second note'));
       assert.ok(second.request.includes('Synthetic second note about the greenhouse.'));
       assert.ok(second.request.includes('Selected language: English.'));

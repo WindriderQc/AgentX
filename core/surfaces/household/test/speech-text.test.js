@@ -70,8 +70,8 @@ test('composed emoji are silent while natural words, numbers, math and identifie
   assert.equal(speechText(speechText('🦉 **C’est prêt.**')), 'C’est prêt.');
 });
 
-test('Québécois French is the default: English needs more English than French words', () => {
-  assert.equal(scoreSpeechLanguage('OK').language, 'fr');
+test('language scoring leaves an ambiguous fragment undecided', () => {
+  assert.equal(scoreSpeechLanguage('OK').language, '');
   assert.equal(scoreSpeechLanguage('Le build a passé, le deploy est OK.').language, 'fr');
   assert.equal(scoreSpeechLanguage('Can you check the hosts?').language, 'en');
 });
@@ -85,7 +85,7 @@ test('one language per turn: a chosen language wins, automatic modes follow the 
   assert.equal(turnSpeechLanguage('Bonjour, comment ça va ?', 'fr', 'en'), 'en');
   assert.equal(turnSpeechLanguage('OK', 'en', 'auto'), 'en');
   assert.equal(turnSpeechLanguage('Can you check the hosts?', '', 'fr-en'), 'en');
-  assert.equal(turnSpeechLanguage('OK', '', 'auto'), 'fr');
+  assert.equal(turnSpeechLanguage('OK', '', 'auto', 'fr'), 'fr');
 });
 
 test('the Household page speaks each clause in the language the voice loop chose', () => {

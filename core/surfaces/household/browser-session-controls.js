@@ -97,7 +97,7 @@ function createBrowserSessionControls({
           const [completed] = await conversations.listTurns({ sessionId: session.sessionId, packId, scopeId: session.scopeId,
             source: 'graphysx-llmx', outcome: 'completed' }, { sort: { createdAt: -1 }, limit: 1 });
           if (completed?.replyText?.trim()) {
-            const language = spokenReplyLanguage(completed.replyText, completed.inputText || '');
+            const language = spokenReplyLanguage(completed.replyText, completed.inputText || '', completed.speechLanguage);
             lastReply = { turnId: completed.clientTurnId, reply: { text: completed.replyText, language,
               speech: personaCatalog.speechFor(session.persona, language, session.voice) } };
           }

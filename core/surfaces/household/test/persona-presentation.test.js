@@ -24,14 +24,14 @@ const storage = initial => {
   return { getItem: key => data[key] || null, setItem: (key, value) => { data[key] = value; } };
 };
 
-test('browser language defaults to French and migrates automatic choices without losing explicit English', () => {
+test('browser language defaults to auto and preserves saved explicit choices', () => {
   const store = storage({ 'household.conversation.preferences.v2': JSON.stringify({ profiles: {
     nestor: { language: 'auto' }, secretary: { language: 'en' }
   } }) });
   const value = P.read(store, personas);
-  assert.equal(value.profiles.nestor.language, 'fr');
+  assert.equal(value.profiles.nestor.language, 'auto');
   assert.equal(value.profiles.secretary.language, 'en');
-  assert.equal(P.profile().language, 'fr');
+  assert.equal(P.profile().language, 'auto');
 });
 
 test('legacy choices migrate into independent per-persona preferences without changing voices', () => {
@@ -52,7 +52,7 @@ test('malformed or unavailable storage leaves usable defaults and never claims a
   const prefs = P.read(broken, personas);
   assert.equal(prefs.personaId, 'nestor');
   assert.equal(P.save(broken, prefs), false);
-  assert.deepEqual(P.profile({ language: 'xx', voice: 'script', visual: { style: 'url', color: 'url(evil)' } }), { language: 'fr', voice: '', visual: null });
+  assert.deepEqual(P.profile({ language: 'xx', voice: 'script', visual: { style: 'url', color: 'url(evil)' } }), { language: 'auto', voice: '', visual: null });
   assert.equal(P.visual({ style: 'orb', color: 'red; background:url(evil)' }).color, '#52cfc5');
 });
 

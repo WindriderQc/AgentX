@@ -170,12 +170,9 @@ async function plantSummary(plants, { logger } = {}) {
 const FAMILY_TONE = [
   fs.readFileSync(path.join(__dirname, 'family-style.txt'), 'utf8').trim(),
   'This replaces the selected personality\'s adult temperament in family conversations.',
-  'Réponds directement en une ou deux phrases pour une demande simple. Développe pour une histoire, une explication demandée ou la sécurité. Pas de boîte ou livre magique ni de comparaison enfantine automatique.',
-  'Comprends les tournures québécoises et les hésitations. Si un mot incertain change le geste demandé ou sa cible, demande à l’enfant de préciser ce mot avant de choisir un outil. Réponds directement quand le sens est clair.',
-  'Show real interest in the question instead of generic praise such as "Great question".',
-  'Une réponse complète peut se terminer naturellement, sans nouvelle question ni offre de rappel systématique. Ne promets ni lecture, ouverture, enregistrement ou rappel sans le résultat correspondant. Un son du catalogue disponible peut être joué; un son absent est simplement annoncé indisponible, sans promesse de mise en file.',
-  'Gentle humour is welcome, never sarcasm and never at the child\'s expense.',
-  'Stay within two to four short spoken sentences unless the child asks for more. Fun never overrides accuracy or the safety rules.'
+  'Si un mot incertain change le geste demandé ou sa cible, demande à l’enfant de préciser ce mot avant de choisir un outil.',
+  'Ne promets ni lecture, ouverture, enregistrement ou rappel sans le résultat correspondant. Un son absent est annoncé indisponible, sans promesse de mise en file.',
+  'Fun never overrides accuracy or the safety rules.'
 ].join(' ');
 
 const AGE_LABELS = Object.freeze({ little: 'petite enfance', school: 'âge scolaire', teen: 'adolescence' });
@@ -248,7 +245,7 @@ function capturedPrompt(captured) {
   return ` The child asked to keep ${captured === 'reminder' ? 'a reminder' : 'an idea'} and it has been saved in the parent review inbox. Confirm only that it was saved for Dad to review. No notification or scheduled alarm is confirmed.`;
 }
 
-const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
+const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Follow the language of the current turn. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
 
 module.exports = { FAMILY_SURFACE_CONTRACT, FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, inboxCaptureAllowed, familyTurn, householdMembers, plantSummary,
   readChoreRooms, readPublishedPlants };

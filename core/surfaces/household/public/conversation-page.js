@@ -61,7 +61,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         <div class="ss-row" id="conversationModelRow"${family ? ' hidden' : ''}><div class="ss-text"><span class="ss-label">Model</span><span id="conversationModelHint" class="ss-hint" role="status">Used by the next conversation.</span><span id="conversationOpenStatus" class="ss-hint ss-live" role="status" hidden></span></div>
           <label class="ss-switch ss-two"><span>Standard</span><input id="conversationOpen" type="checkbox" role="switch" aria-label="Abliterated model"><i aria-hidden="true"></i><span>Abliterated</span></label></div>
         <div class="ss-row"><div class="ss-text"><span class="ss-label">Language</span><span class="ss-hint">Speech, recognition and greetings.</span></div>
-          <fieldset id="conversationLanguage" class="ss-segmented"><legend class="sr-only">Language</legend><label><input type="radio" name="conversationLanguage" value="fr" checked><span>Français</span></label><label><input type="radio" name="conversationLanguage" value="en"><span>English</span></label></fieldset></div>
+          <fieldset id="conversationLanguage" class="ss-segmented"><legend class="sr-only">Language</legend><label><input type="radio" name="conversationLanguage" value="auto" checked><span>Auto</span></label><label><input type="radio" name="conversationLanguage" value="fr"><span>Français</span></label><label><input type="radio" name="conversationLanguage" value="en"><span>English</span></label></fieldset></div>
         <div class="ss-row"><div class="ss-text"><span class="ss-label">Listening</span><span id="conversationWakeHint" class="ss-hint"></span></div>
           <label class="ss-switch ss-two"><span>Open mic</span><input id="conversationWake" type="checkbox" role="switch" aria-label="Wait for Hey Nestor"><i aria-hidden="true"></i><span>“Hey Nestor”</span></label></div>
         <div class="ss-row"><div class="ss-text"><span class="ss-label">Interrupt by speaking</span><span class="ss-hint">Talking over Nestor stops its answer.</span></div>
@@ -123,8 +123,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   // Language is a two-button choice; the rest of the page reads it like a field.
   const languageField = el('conversationLanguage');
   const language = {
-    get value() { return languageField.querySelector('input:checked')?.value || 'fr'; },
-    set value(next) { const input = languageField.querySelector(`input[value="${next === 'en' ? 'en' : 'fr'}"]`); if (input) input.checked = true; },
+    get value() { return languageField.querySelector('input:checked')?.value || 'auto'; },
+    set value(next) { const input = languageField.querySelector(`input[value="${P.profile({ language: next }).language}"]`); if (input) input.checked = true; },
     get disabled() { return languageField.disabled; }, set disabled(value) { languageField.disabled = value; },
     set title(value) { languageField.title = value; },
     set onchange(handler) { languageField.onchange = handler; },
@@ -391,7 +391,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   async function streamedTurn(session, text, signal, onDelta = () => {}, { turnId, attachmentIds, onNotice, onSayEnd, requestPolicy = requestPrivacy() } = {}) {
     session = await preparePrivacy(session, requestPolicy, signal);
     signal.throwIfAborted(); conversation.session = session; describe();
-    const turnLanguage = language.value === 'en' ? 'en' : 'fr';
+    const preference = language.value;
+    const turnLanguage = NestorSpeech.turnSpeechLanguage(text, '', preference, session.defaultLanguage);
     turnId ||= crypto.randomUUID();
     const presentationCompanion = companion?.begin(session, turnId) === true;
     personalNotes.show(null);
@@ -444,7 +445,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     let response;
     try {
       response = await fetch(`${sessionBase}/${encodeURIComponent(session.sessionId)}/turns/text`, {
-        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, screen: board.context(), ...(ambient?.context() && { artx: ambient.context() }), ...(!family && { ephemeral: session.ephemeral, presentationCompanion, presentationPinned: companion?.pinned() === true }), language: turnLanguage, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, turnId, attachmentIds, screen: board.context(), ...(ambient?.context() && { artx: ambient.context() }), ...(!family && { ephemeral: session.ephemeral, presentationCompanion, presentationPinned: companion?.pinned() === true }), language: preference, channel: textBusy ? 'text' : 'voice', stream: true, soundPlayback: true }) });
       if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.message || 'Conversation unavailable'); }
     } catch (error) {
       const saved = !response && await recoverReply();
@@ -522,7 +523,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         answer += event.delta;
         if (!partial) { partial = document.createElement('div'); partial.className = 'conversation-message assistant'; if (turnSpeaker) partial.dataset.speaker = turnSpeaker.name; transcript.append(partial); }
         partial.dataset.turn = turnId;
-        if (!partial._writtenTurn) partial.textContent = answer; onDelta(event.delta); activity('delta', { size: event.delta.length });
+        if (!partial._writtenTurn) partial.textContent = answer; onDelta(event.delta, event.language); activity('delta', { size: event.delta.length });
       }
       // Core has sent every spoken word; pictures, tools and the record follow before `done`.
       if (event.type === 'say_end' && !interruptedTurns.has(turnId)) onSayEnd?.();
@@ -709,7 +710,6 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
         return receipt;
       }); },
     async synthesize(reply, signal) {
-      // The voice loop chose one language for the whole turn; a clause is never re-scored.
       const lang = NestorSpeech.normalizeSpeechLanguage(reply.language) || 'fr';
       // A member who answers directly speaks with its own personality's voice, not the session's choices.
       const speaker = reply.speaker?.personaId ? reply.speaker : turnSpeaker;
@@ -721,7 +721,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     // locale greeted a French family in English. The line
     // shows in the transcript too, and the face opens its eyes as it is spoken.
     async greet(session, signal) {
-      const lang = language.value === 'en' ? 'en' : 'fr';
+      const lang = NestorSpeech.explicitSpeechLanguage(language.value) || conversation.session?.defaultLanguage || NestorSpeech.DEFAULT_LANGUAGE;
       const text = lastGreeting = NestorGreetings.greetingFor({ space, language: lang, wakeWord: !!conversation.selection?.wakeWord, previous: lastGreeting });
       // While the greeting is spoken, Core warms this conversation's own prompt (voice-warmup.js),
       // so the first question is not preceded by a full prompt read. Best effort.
@@ -732,7 +732,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       return speech;
     },
     wakeReply() {
-      const lang = language.value === 'en' ? 'en' : 'fr';
+      const lang = NestorSpeech.explicitSpeechLanguage(language.value) || conversation.session?.defaultLanguage || NestorSpeech.DEFAULT_LANGUAGE;
       return { text: lastWakeReply = NestorGreetings.wakeReply({ language: lang, previous: lastWakeReply }), language: lang };
     }
   }, (state, detail) => {

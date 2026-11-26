@@ -6,7 +6,7 @@
     let latest = null, lastSpeech = null, stopped = false;
     const aborts = new Set();
     async function transcribe(blob, lang, signal) {
-      const body = new FormData(); body.append('file', blob, 'voice-test.wav'); body.append('language', lang);
+      const body = new FormData(); body.append('file', blob, 'voice-test.wav'); body.append('language', root.NestorSpeech.transcriptionLanguage(lang));
       const response = await fetchImpl('/api/voix/transcribe',
         { method: 'POST', credentials: 'same-origin', body, signal });
       const payload = await response.json().catch(() => ({}));

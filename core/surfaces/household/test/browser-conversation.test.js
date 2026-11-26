@@ -920,15 +920,13 @@ test('a franglais reply keeps one voice: the turn language holds for every claus
   assert.equal(spoken.map(reply=>reply.text).join(' '),chunks.join(''));
 });
 
-test('a chosen language is the voice of the whole turn, whatever was recognized or answered', async () => {
+test('the speech voice follows the answer when the model differs from the selected language', async () => {
   const english = ['Sure, the hosts are ready. ', 'The models are loaded and they answer. ', 'OK.'];
   const french = 'Salut ! Tout est prêt pour toi.';
   for (const [selection, heard, turn, expected] of [
-    // French chosen: an English-sounding request and an English streamed reply stay in the French voice.
     ['fr', { text: 'Can you check the hosts?', detectedLanguage: 'en' },
-      async (_session, _text, _signal, delta) => { for (const chunk of english) { delta(chunk); await tick(); } return { text: english.join(''), language: 'en' }; }, 'fr'],
-    // English chosen: an unstreamed French reply that names its own language does not switch the voice.
-    ['en', 'Bonjour Nestor', async () => ({ text: french, language: 'fr' }), 'en'],
+      async (_session, _text, _signal, delta) => { for (const chunk of english) { delta(chunk); await tick(); } return { text: english.join(''), language: 'en' }; }, 'en'],
+    ['en', 'Bonjour Nestor', async () => ({ text: french, language: 'fr' }), 'fr'],
     // Automatic: the unstreamed reply still names the voice.
     ['fr-en', 'Bonjour Nestor', async () => ({ text: 'Sure.', language: 'en' }), 'en']
   ]) {
@@ -1527,10 +1525,10 @@ test('Pause during background speech aborts it without restarting an obsolete mi
   assert.equal(h.conversation.session.sessionId, 'private-1');
 });
 
-test('the language Whisper recognized decides the turn voice, and French is the default', async () => {
+test('ambiguous speech uses the turn hint when the server sends no language', async () => {
   for (const [result, selection, expected] of [
     [{ text: 'OK', detectedLanguage: 'en' }, 'fr-en', 'en'],
-    [{ text: 'OK' }, 'fr-en', 'fr'],
+    [{ text: 'OK' }, 'fr-en', 'en'],
     [{ text: 'OK' }, 'en', 'en'],
     [{ text: 'OK', detectedLanguage: 'en' }, 'fr', 'fr'],
     ['Can you check the hosts?', 'fr-en', 'en'],
