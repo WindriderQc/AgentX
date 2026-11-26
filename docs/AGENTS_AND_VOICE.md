@@ -110,7 +110,8 @@ A useful personality contract says to:
   understanding a consequential result requires it.
 - Use natural humor when it fits the audience; never require jokes or swearing.
 - Match the surface. Family uses playful, simple explanations and gentle humor;
-  its `FAMILY_TONE` replaces adult temperament on both conversation backends.
+  its presentation replaces adult temperament on both conversation backends.
+  An instance can supply its wording in the [family style file](../core/surfaces/household/family-style.txt).
 
 Presentation never widens permissions or turns an intended action into a
 completed one. Keep execution claims tied to actual receipts. A personality
