@@ -133,8 +133,11 @@ async function searchNearest(lat, lon) {
     } catch (err) {
       throw new SourceError(`Environment Canada did not answer: ${String(err.message).split('\n')[0].slice(0, 160)}`);
     }
-    const features = (Array.isArray(body?.features) ? body.features : [])
-      .filter(f => Array.isArray(f?.geometry?.coordinates));
+    const features = (Array.isArray(body?.features) ? body.features : []).filter(feature => {
+      const point = feature?.geometry?.coordinates;
+      return Array.isArray(point) && Number.isFinite(point[0]) && Math.abs(point[0]) <= 180
+        && Number.isFinite(point[1]) && Math.abs(point[1]) <= 90;
+    });
     if (features.length) {
       return features.reduce((best, f) => {
         const [fLon, fLat] = f.geometry.coordinates;

@@ -159,11 +159,29 @@ test('only an explicit current read refreshes missing prepared coverage', async 
   const readCurrent = jest.fn(async () => weather);
   const source = forAudience('owner', { now, ambient: { preparedWeather: async () => null, weather: readCurrent } });
   for (const section of ['forecast', 'alerts']) {
-    expect(await source.read({ source: 'weather', section })).toMatchObject({ status: 'unavailable' });
+    expect(await source.read({ source: 'weather', section })).toMatchObject({ status: 'unavailable',
+      producerEvidence: { mode: 'prepared_read', lastSuccessfulRetrievalAt: null } });
   }
   expect(readCurrent).not.toHaveBeenCalled();
   expect(await source.read({ source: 'weather' })).toMatchObject({ status: 'available', data: { temperatureC: 0 } });
   expect(readCurrent).toHaveBeenCalledTimes(1);
+});
+
+test('an observation first reported after its own retrieval has no attested time on either reading path', async () => {
+  const { preparedBulletin, projectBulletin } = require('../../src/services/livingSourceWeather');
+  const current = { temperatureC: 2, observedAt: '2026-11-10T11:59:00Z' };
+  const fetchedAt = '2026-11-10T11:55:00Z';
+  const prepared = projectBulletin(preparedBulletin({ preparedStatus: 'fresh', fetchedAt, current }), now(), 'UTC');
+  for (const deps of [{ preparedWeather: async () => prepared }, { weather: async () => ({ ...current, fetchedAt }) }]) {
+    const result = await forAudience('household', { ambient: deps, now }).read({ source: 'weather' });
+    expect(result).toMatchObject({ status: 'available', data: { temperatureC: 2, observedAt: null },
+      freshness: { observationAgeMs: null }, producerEvidence: { observedAt: null } });
+  }
+});
+
+test.each(['2026-02-30T11:48:00Z', '2026-05-10T11:48:00'])('explicit current read leaves the invalid or unzoned observation %s undated', async observedAt => {
+  const reading = await forAudience('household', { ambient: { weather: async () => ({ ...weather, observedAt }) }, now }).read({ source: 'weather' });
+  expect(reading).toMatchObject({ status: 'available', data: { observedAt: null }, freshness: { observationAgeMs: null } });
 });
 
 test('refreshes an explicitly requested stale observation and preserves the best dated result on failure', async () => {

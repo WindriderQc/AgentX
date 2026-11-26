@@ -7,8 +7,9 @@ const { validTimestamp } = require('./livingSourceFreshness');
 
 function projectWeather(value, now = new Date()) {
   if (!value) return { status: 'unavailable', data: null, sourceUpdatedAt: null };
-  const sourceUpdatedAt = validTimestamp(value.fetchedAt, now);
-  const observedAt = validTimestamp(value.observedAt, now);
+  const sourceUpdatedAt = validTimestamp(instant(value.fetchedAt), now);
+  const reported = validTimestamp(instant(value.observedAt), now);
+  const observedAt = reported && sourceUpdatedAt && reported > sourceUpdatedAt ? null : reported;
   const observationAgeMs = observedAt ? Math.max(0, now.getTime() - Date.parse(observedAt)) : null;
   const age = sourceUpdatedAt ? now.getTime() - Date.parse(sourceUpdatedAt) : NaN;
   // The named source is the family current-conditions contract, not general Data.
@@ -31,6 +32,7 @@ function projectWeather(value, now = new Date()) {
 // Copy only fields from the public city bulletin before retaining it in Core.
 // Discard ambiguous local timestamps and calendar overflows (e.g. February 30).
 function instant(value) {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString() : null;
   const parts = typeof value === 'string' && /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value);
   if (!parts) return null;
   const day = new Date(parts[1] + 'T00:00:00Z');

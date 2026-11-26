@@ -108,9 +108,10 @@ timestamp, so lastFailedAt stays unknown. This runs only on an explicit source
 or brief freshness read, never directory injection.
 
 Weather retains fetchedAt as retrieval time, not observation time. Native
-current.observedAt is preserved by the ambient projection; source reads normalize
-parseable observation dates and leave missing, invalid or more than one minute
-future dates null. The same future-date validation applies to import receipts.
+current.observedAt is preserved by the ambient projection. Source reads require
+a valid, timezone-qualified observation date at or before its retrieval and
+leave a missing or inconsistent date null. Retrieval dates allow one minute of
+clock skew. The same future-date tolerance applies to import receipts.
 observationAgeMs and an explicit warning separate retrieval availability from
 observation freshness. No observation-age threshold or producer cadence is
 inferred; observationFreshness remains unknown. Automatic personal and family

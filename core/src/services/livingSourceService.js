@@ -150,7 +150,7 @@ function forAudience(audience, deps = {}) {
       update: definition.update, deepen: definition.deepen,
       reading: READING,
       readAt: now.toISOString(), lastSuccessfulReadAt: result.status === 'unavailable' ? null : now.toISOString(),
-      sourceUpdatedAt: result.sourceUpdatedAt, producerEvidence: producerEvidence(input.source, result, now), freshness: result.freshness || null, status: result.status,
+      sourceUpdatedAt: result.sourceUpdatedAt, producerEvidence: producerEvidence(input.source, result, now, input.section), freshness: result.freshness || null, status: result.status,
       ...(result.error ? { error: result.error } : {}),
       nextReadArgs, contentHash, totalChars: serialized.length, offset, nextOffset: end < serialized.length ? end : null,
       complete, encoding: 'json', ...(complete ? { data: content } : { text: serialized.slice(offset, end) }),

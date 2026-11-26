@@ -107,6 +107,18 @@ test('shares an in-flight miss and reports a stale bulletin after a refresh fail
   expect((await read()).body.data.preparedStatus).toBe('fresh');
 });
 
+test('a backward clock correction does not extend the retry hold from an earlier failed fetch', async () => {
+  const { db, read } = instance();
+  fetchPage.mockRejectedValueOnce(new Error('upstream unavailable'));
+  await liveData.init(db);
+  await jest.advanceTimersByTimeAsync(0);
+  expect((await read()).body.data.preparedStatus).toBe('missing');
+  jest.setSystemTime(start - 60 * 60_000);
+  await jest.advanceTimersByTimeAsync(60_000);
+  expect(fetchPage).toHaveBeenCalledTimes(2);
+  expect((await read()).body.data.preparedStatus).toBe('fresh');
+});
+
 test('schedules only with both switches and stops refreshes on disable and close', async () => {
   const { switches, db } = instance();
   switches.weather = false;
