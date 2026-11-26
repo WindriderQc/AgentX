@@ -164,7 +164,9 @@ function systemPromptFor(pack, context = {}) {
     : '') + capturedPrompt(context.captured);
   const knowledge = cleanText(context.knowledgeContext, 12000);
   const knowledgeBlock = knowledge ? `\n\nApproved knowledge:\n${knowledge}` : '';
-  const notes = memoryBlock(context.memories).replace('Saved notes:', context.personalContext ? 'Earlier Household notes (separate source):' : 'Saved notes:');
+  const notes = context.memories === null
+    ? '\nFamily notes could not be read on this turn. If an answer depends on a saved note, say it could not be verified. Otherwise proceed with the conversation.'
+    : memoryBlock(context.memories).replace('Saved notes:', context.personalContext ? 'Earlier Household notes (separate source):' : 'Saved notes:');
   return `${context.contextOnly ? '' : base + modeBlock}${saved}${notes}${context.personalContext || ''}${knowledgeBlock}${context.contextOnly ? '' : soundBlock(context.sound, context.speechLanguage || scoreSpeechLanguage(context.latestUserText).language)}${context.speechLanguage && context.contextOnly ? '' : replyLanguageDirective(context.latestUserText, context.speechLanguage)}`;
 }
 

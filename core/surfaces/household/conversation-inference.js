@@ -81,7 +81,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
               windowMs: Number(env.HOUSEHOLD_PRIMARY_RELEASE_GRACE_MS) || 1500 },
             onPrimaryWait: () => request.onWaiting?.({ reason: 'primary_active' })
           }),
-          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack, env), request.relayForecastContext || (request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext)].filter(Boolean).join('\n\n') }),
+          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack, env), request.preparedRelayContext || request.relayForecastContext || (request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext)].filter(Boolean).join('\n\n') }),
           relayRequest: { ...body, messages: [...(request.history || []), { role: 'user', content: request.text }] }
         });
         if (continued) return continued;

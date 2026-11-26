@@ -130,17 +130,27 @@ uses admitted inference; `openclaw` uses the native agent conversation bridge.
 An optional `HOUSEHOLD_FAMILY_CONVERSATION_BACKEND` chooses the backend for new
 child-safe sessions without moving existing history between engines.
 
-Direct Core inference has no OpenClaw or Hermes tool loop. Family can use the
-bounded Core loop selected by `HOUSEHOLD_FAMILY_TOOLS`: `iss_passes`, `web_search`
-and `network_devices`. These dispatch the existing Core handlers, retain dated
-source results and tool receipts, and expose no owner memory, mail or mutation.
-Web results are untrusted references with URLs to cite; network reads use the
-existing collector inventory and disclose its freshness, without scanning.
-The family conversation receives the same cached Environment Canada conditions as
-the weather strip, with their source and fetch time. Readings older than thirty
-minutes, missing dates and failed reads are disclosed as unavailable. Conditions
-are not a forecast. This bounded reference also accompanies the local guardian;
-it contains no coordinates or operations snapshot and grants no owner tools.
+Direct Core inference offers the tools selected by `HOUSEHOLD_FAMILY_TOOLS`
+from the [Family registry](../core/surfaces/household/family-tools.js).
+Core executes calls and returns their results and receipts. With `source_read`
+granted, local Family turns can use a dated, prepared weather excerpt from
+Data. The model can request a forecast or alert section when it needs more
+coverage. Data prepares the configured bulletin while the screen is closed
+when its background jobs, live feeds and weather collection are enabled.
+With `family_cards_read`, the local model can request published plant cards
+or Kids Room chores in eligible sessions. Web results are untrusted references
+with URLs. Network reads use the existing collector inventory and its timestamps.
+
+The optional `family_inbox_capture` grant lets the local Family model choose
+whether to save an explicitly requested idea or reminder for parent review.
+The tool takes only a kind. Core binds the current utterance and its stable
+browser turn ID, and a retry returns the existing item’s state. The item stays
+in the parent inbox until reviewed. Only the parent can promote it. A reminder
+in this inbox has no scheduled alarm. In an equipped turn, skipping the tool
+leaves the inbox untouched. Family and memory context preferences must allow
+it. Reader, ephemeral sessions and native engines do not receive this tool.
+Qualify the model’s handling of a request, a paraphrase and a withdrawal before
+enabling this grant on an instance.
 
 Full-screen Nestor shows the observed reply model as a badge in the top right
 corner and distinguishes Big Brain, the limited guardian relay and other model

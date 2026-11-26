@@ -10,7 +10,7 @@ const { conversationBackend } = require('./conversation-executor');
 const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
 const { FAMILY_SURFACE_CONTRACT, familyTurn, householdMembers } = require('./family-context');
-const { familyToolset } = require('./family-tools');
+const { bindFamilyServices, familyToolNames, familyToolset } = require('./family-tools');
 const familyPictureLookup = require('./family-picture-lookup');
 const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('./family-repair-context');
 const familyPages = require('./family-pages');
@@ -315,23 +315,26 @@ function createPersonaTurnHandler({
           await conversations.updateSession({ sessionId: session.sessionId }, { $set: { backend, agentId: agentIdFor(session) } });
           session.backend = backend;
         }
+        const familyToolTurn = !picture && backend === 'agentx' && pack.childSafe && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !isOpening && !member;
+        const { familyCards, captureByTool, familyInbox } = bindFamilyServices({ eligible: familyToolTurn && !entry.ephemeral && !consult && !guardianSession, env: conversationEnv, session, features,
+          familyTasks, plants: runtimeServices.household?.plants, userText, turnId: clientTurnId, signal: abort.signal, safety });
         let memories = [], savedNow = false, family = {}, members = '';
         if (!inputOnly && !picture && !isOpening && !entry.ephemeral) {
           const notes = notesFor(pack, session.scopeId);
           if (!pack.childSafe && features.householdContext !== false) members = await householdMembers(familyTasks, { logger });
-          // Kids Room routines, and a child's idea or reminder kept for Dad (#41, #13).
           if (pack.childSafe) {
             entry.traceId ||= crypto.randomUUID();
             ({ savedNow, ...family } = await familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, plants: runtimeServices.household?.plants,
               noteOrigin: { source: req.body?.channel === 'voice' ? 'voix-explicit' : 'explicit-ui',
                 sourceTraceId: `household:${session.sessionId}:${clientTurnId || entry.traceId}` },
-              withChores: features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID }));
+              captureByTool, withChores: !familyCards && features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID }));
           }
           try {
             if (features.memoryContext !== false) memories = (await notes.search(userText, voiceRecallOptions(userText, personalVoice(session, req.body?.channel), MEMORY_RECALL_LIMIT))).notes;
           } catch (error) {
             logger?.error?.('Core note recall failed', { error: error.message });
-            return fail(res, 503, 'Memories are unavailable. Try again before continuing.', 'MEMORY_NOTES_UNAVAILABLE');
+            if (pack.id !== VOIX_FAMILY_PACK_ID || backend !== 'agentx') return fail(res, 503, 'Memories are unavailable. Try again before continuing.', 'MEMORY_NOTES_UNAVAILABLE');
+            memories = null;
           }
           if (features.knowledgeContext !== false && (pack.childSafe || backend === 'agentx')) {
             knowledge = await nestorKnowledge.retrieve(knowledgeState, pack.id, userText, {
@@ -365,10 +368,7 @@ function createPersonaTurnHandler({
           holdState = await openHold.waitForResident(holdState, { signal: abort.signal,
             onStatus: state => event('status', { phase: state.phase }) });
         }
-        // Instructions hold only what stays the same for the whole conversation, so the
-        // model's prompt cache keeps them. Everything selected for this turn (notes,
-        // members, knowledge, chores, saves, the sound note, the reply language, a team
-        // member's last exchange and the reviewer's advice) goes last, beside the request.
+        // Keep instructions stable for prompt caching. Put this turn's facts, language, sound choices and advice beside its request.
         const brainAdvice = picture || entry.ephemeral || isLlmX || features.reviewContext === false ? { text: '', refs: [] }
           : brain.contextWithRefs ? await brain.contextWithRefs(session.sessionId, session) : { text: await brain.contextFor(session.sessionId, session), refs: [] };
         const workAdvice = !inputOnly && !entry.ephemeral && !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
@@ -376,8 +376,8 @@ function createPersonaTurnHandler({
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const { text: livingSourceContext, relayWeatherContext, relayForecastContext, coveredWeather } = inputOnly || picture ? {} : await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
-          channel: req.body?.channel, userText, history, timeZone: conversationEnv.PLANNING_TIME_ZONE, requestAt: new Date(startedAt) });
+        const { text: livingSourceContext, relayWeatherContext, relayForecastContext, preparedRelayContext, coveredWeather } = inputOnly || picture ? {} : await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
+          channel: req.body?.channel, sourceReadEnabled: !isOpening && familyToolNames(conversationEnv).includes('source_read'), userText, history, timeZone: conversationEnv.PLANNING_TIME_ZONE, requestAt: new Date(startedAt) });
         const contextBase = inputOnly || picture ? '' : [livingSourceContext, systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
         const screen = !inputOnly && !picture && !isLlmX && !consult ? require('./screen-context') : null;
@@ -418,8 +418,8 @@ function createPersonaTurnHandler({
           workshop, scene: sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : ''), llmxTurn: isLlmX,
           imageSession: session, imageBackend: backend, imagesEnabled: !member })
           + (entry.workId ? '\n\n' + conversationWorks.guardianInstructions : '');
-        const familyTools = !picture && backend === 'agentx' && pack.childSafe && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !isOpening && !member
-          ? familyToolset(conversationEnv, { weatherAnswersRequest: Boolean(coveredWeather), artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { artx, ambient } }) : null;
+        const familyTools = familyToolTurn ? familyToolset(conversationEnv, { weatherAnswersRequest: Boolean(coveredWeather),
+          artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { artx, ambient, familyCards, familyInbox: !savedNow && !family.captured && familyInbox } }) : null;
         const agentxInstructions = picture ? [systemPromptFor(pack, { modeId: session.modeId }),
           conversationImages?.contract(session, backend, { scenes: false }), familyPictureIntent.qualifierInstruction].filter(Boolean).join('\n\n')
           : [pack.childSafe ? familyIdentity(session.persona) : '',
@@ -467,7 +467,7 @@ function createPersonaTurnHandler({
             requirePrimaryRelay: () => requireNativeAgent(agentIdFor(turnSession)) } : {}),
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
-          instructions: nativeInstructions, agentxInstructions, familyWeatherContext: relayWeatherContext, relayForecastContext, guardianTools: picture ? null : require('./guardian-read-tools').forTurn(conversationEnv, { backend, packId: pack.id, blocked: isLlmX || isOpening || Boolean(member), excludeWeather: Boolean(relayForecastContext), ambient }), ...(familyTools ? { familyTools } : {}), ...(!picture && turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
+          instructions: nativeInstructions, agentxInstructions, familyWeatherContext: relayWeatherContext, relayForecastContext, preparedRelayContext, guardianTools: picture ? null : require('./guardian-read-tools').forTurn(conversationEnv, { backend, packId: pack.id, blocked: isLlmX || isOpening || Boolean(member), excludeWeather: Boolean(relayForecastContext), ambient }), ...(familyTools ? { familyTools } : {}), ...(!picture && turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
           ...(!picture && currentDirective ? { turnDirective: currentDirective } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),

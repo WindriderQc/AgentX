@@ -36,11 +36,16 @@ function requestsObservationTime(words, history) {
 
 async function prepareLivingSourceContext({ pack, session, familyPackId, isLlmX = false,
   member = null, consult = false, guardian = false, backend, ambient = null,
-  sources = null, channel, userText, history, timeZone, requestAt } = {}) {
+  sources = null, channel, sourceReadEnabled = false, userText, history, timeZone, requestAt } = {}) {
   if (isLlmX || member || consult) return { text: '', relayForecastContext: '', relayWeatherContext: '' };
   const audience = pack?.id === familyPackId ? 'household'
     : pack?.id === 'personal_operator' && !pack.childSafe && session?.scopeId === 'personal' ? 'owner' : null;
   if (!audience) return { text: '', relayForecastContext: '', relayWeatherContext: '' };
+  if (sourceReadEnabled && audience === 'household' && backend === 'agentx' && !guardian) {
+    // The offered source_read schema already names the sources and sections.
+    const prepared = await require('./prepared-weather-context').forTurn(ambient, { timeZone, requestAt });
+    return { text: prepared.text, preparedRelayContext: prepared.relay, coveredWeather: null };
+  }
   const service = sources || require('../../src/services/livingSourceService');
   const fullCatalogue = service.forAudience(audience, { ambient }).catalogue();
   // Keep the Family prompt's existing compact projection. Detailed reading

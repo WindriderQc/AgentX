@@ -185,3 +185,41 @@ test('a covered voice turn speaks the source when all model content is on screen
     }
   }
 });
+
+
+test('granting the Family source reader lets the model use prepared facts for a paraphrase and its follow-up', async () => {
+  const previous = process.env.HOUSEHOLD_FAMILY_TOOLS;
+  process.env.HOUSEHOLD_FAMILY_TOOLS = 'source_read,web_search';
+  try {
+    const sessionId = await startSession();
+    const ambient = createFamilyAmbient.mock.results.at(-1).value;
+    const liveRead = jest.spyOn(ambient, 'weather').mockClear();
+    const tomorrowRead = jest.spyOn(ambient, 'forecastTomorrow').mockClear();
+    const dataReads = fetchData.mock.calls.length;
+    const at = new Date().toISOString();
+    fetchData.mockImplementationOnce(async (path, options) => {
+      expect(path).toBe('/api/v1/livedata/ec-weather');
+      expect(new URLSearchParams(options.query).get('prepared')).toBe('1');
+      return { response: { ok: true }, body: { status: 'success', data: {
+        preparedStatus: 'fresh', fetchedAt: at, current: { observedAt: at, temperatureC: 0, condition: 'Nuageux' },
+        forecastIssuedAt: at, forecasts: [{ period: 'Demain', short: 'Pluie intermittente', precipitationChancePct: 80 }],
+        privateFixture: 'excluded-from-bulletin'
+      } } };
+    });
+    const grantNames = () => executeForTest.mock.calls.at(-1)[0].tools.map(tool => tool.function.name);
+    for (const question of ['Je prends mon imperméable pour la sortie ?', 'Et demain ?', 'Explique-moi les marées.']) {
+      const prompt = await voiceTurn(sessionId, question);
+      expect(prompt).toContain(question);
+      expect(prompt).toContain('"temperatureC":0');
+      expect(prompt).toContain('"short":"Pluie intermittente"');
+      expect(prompt).not.toMatch(/excluded-from-bulletin|Answer this request directly|did not look up weather/);
+      expect(grantNames()).toEqual(expect.arrayContaining(['source_read', 'web_search']));
+    }
+    expect(fetchData.mock.calls.slice(dataReads).filter(([path]) => path === '/api/v1/livedata/ec-weather')).toHaveLength(1);
+    expect(liveRead).not.toHaveBeenCalled();
+    expect(tomorrowRead).not.toHaveBeenCalled();
+  } finally {
+    if (previous === undefined) delete process.env.HOUSEHOLD_FAMILY_TOOLS;
+    else process.env.HOUSEHOLD_FAMILY_TOOLS = previous;
+  }
+});

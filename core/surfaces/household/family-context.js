@@ -76,6 +76,13 @@ function directFamilyRequest(text) {
     verb => REQUEST_VERBS.get(verb.toLowerCase()) || verb);
 }
 
+// The model chooses the action. Apply the existing withdrawal/correction
+// check to the later clauses and its existing veto to the opening request.
+function inboxCaptureAllowed(text) {
+  const request = directFamilyRequest(text);
+  return Boolean(request) && !NON_ACTION_CLAUSES.some(pattern => pattern.test(request));
+}
+
 function captureKind(request) {
   if (asksForReminder(request)) return 'reminder';
   if (IDEA_REQUESTS.some(pattern => pattern.test(request))) return 'idea';
@@ -100,17 +107,29 @@ function profileLine(profile, room) {
   return `- ${String(profile.displayName || profile.id).slice(0, 80)} : ${parts.join(' ; ')}.`;
 }
 
+async function readChoreRooms(familyTasks, limit) {
+  const { profiles } = await familyTasks.listProfiles();
+  const rooms = [];
+  for (const profile of profiles.slice(0, limit)) {
+    const { room } = await familyTasks.room({ profileId: profile.id });
+    rooms.push({ profile, room });
+  }
+  return rooms;
+}
+
+async function readPublishedPlants(plants) {
+  const result = await plants.list({ view: 'child' });
+  if (!Array.isArray(result?.plants)) throw new Error('Published plant cards unavailable');
+  return result.plants;
+}
+
 // The same rows the Kids Room shows. A failure leaves the turn without the
 // summary instead of failing it; Nestor then says it does not have the list.
 async function choreSummary(familyTasks, { logger } = {}) {
   try {
-    const { profiles = [] } = await familyTasks.listProfiles();
-    if (!profiles.length) return '';
-    const lines = [];
-    for (const profile of profiles.slice(0, MAX_PROFILES)) {
-      const { room } = await familyTasks.room({ profileId: profile.id });
-      lines.push(profileLine(profile, room));
-    }
+    const rooms = await readChoreRooms(familyTasks, MAX_PROFILES);
+    if (!rooms.length) return '';
+    const lines = rooms.map(({ profile, room }) => profileLine(profile, room));
     return ['Kids Room routines (read-only; the child checks in on the Kids Room page and Dad approves; you cannot check in, approve or change them):',
       ...lines].join('\n').slice(0, MAX_CHARACTERS);
   } catch (error) {
@@ -127,7 +146,7 @@ const MAX_PLANTS = 12;
 async function plantSummary(plants, { logger } = {}) {
   if (!plants) return '';
   try {
-    const { plants: rows = [] } = await plants.list({ view: 'child' });
+    const rows = await readPublishedPlants(plants);
     if (!rows.length) return '';
     const lines = rows.slice(0, MAX_PLANTS).map(plant => {
       const facts = [plant.needs?.light && `lumière : ${plant.needs.light}`, plant.needs?.water && `eau : ${plant.needs.water}`,
@@ -189,10 +208,10 @@ async function householdMembers(familyTasks, { logger, now = new Date() } = {}) 
 
 // One explicit request per turn: an idea or reminder goes to the parent's
 // inbox; otherwise an explicit "remember" keeps a family note as before.
-async function familyTurn({ userText, notes, noteOrigin, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, withChores = true, plants = null }) {
+async function familyTurn({ userText, notes, noteOrigin, familyTasks, detectMemoryRequest, logger, ideaInbox = defaultIdeaInbox, captureByTool = false, withChores = true, plants = null }) {
   const result = { savedNow: false, captured: null, chores: '', plants: '' };
   const request = directFamilyRequest(userText);
-  const kind = captureKind(request);
+  const kind = captureByTool ? null : captureKind(request);
   if (kind) {
     try {
       await ideaInbox.captureIdea({ text: userText, origin: 'family', kind });
@@ -201,7 +220,10 @@ async function familyTurn({ userText, notes, noteOrigin, familyTasks, detectMemo
       logger?.error?.('Family idea capture failed', { error: error.message });
       result.captured = 'failed';
     }
-  } else if (request && detectMemoryRequest(request, { direct: true })) {
+  } else if (request && detectMemoryRequest(request, { direct: true })
+      && (!captureByTool || inboxCaptureAllowed(userText) && !captureKind(request))) {
+    // Keep the separate explicit-note route. Its overlapping "note mon idée"
+    // phrasing still belongs to the parent inbox even if the model skips it.
     try {
       await notes.record({ topic: 'general', text: userText, type: 'fact', ...noteOrigin });
       result.savedNow = true;
@@ -227,4 +249,5 @@ function capturedPrompt(captured) {
 
 const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
 
-module.exports = { FAMILY_SURFACE_CONTRACT, FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, familyTurn, householdMembers, plantSummary };
+module.exports = { FAMILY_SURFACE_CONTRACT, FAMILY_TONE, capturedPrompt, choreSummary, familyCaptureKind, inboxCaptureAllowed, familyTurn, householdMembers, plantSummary,
+  readChoreRooms, readPublishedPlants };

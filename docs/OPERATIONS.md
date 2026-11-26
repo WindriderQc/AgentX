@@ -937,10 +937,10 @@ the window (up to 24, with `visiblePassesComplete`), independent of
 read as the only visible passes.
 
 Famille conversations on the AgentX engine can call Core tools. Core lists the
-family-eligible tools in `core/surfaces/household/family-tools.js` (today
-`iss_passes`); the instance turns them on with `HOUSEHOLD_FAMILY_TOOLS`
+family-eligible tools in `core/surfaces/household/family-tools.js`.
+The instance selects them with `HOUSEHOLD_FAMILY_TOOLS`
 (comma-separated). The tools are offered to the model with the turn; a tool
-call runs the same handler as `/mcp`, its result goes back to the model, and
+call runs the corresponding Core handler, its result goes back to the model, and
 the model answers from it (at most two tool rounds, three calls per round; the
 last request offers no tool). A reply without a tool call streams exactly as
 before. Famille's `iss_passes` has no `lat`/`lon`: it always answers for the

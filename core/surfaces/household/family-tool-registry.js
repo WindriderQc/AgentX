@@ -5,7 +5,9 @@ const web = require('../../src/services/mcpOwnerTools');
 const network = require('./secretary-mcp');
 const Ajv = require('ajv');
 const sources = require('./family-source-tools');
-const TOOLS = [...sources.TOOLS, ...bus.TOOLS.filter(t => ['iss_passes', 'artx_read', 'artx_present'].includes(t.name)),
+const cards = require('./family-card-tool');
+const inbox = require('./family-inbox-tool');
+const TOOLS = [...sources.TOOLS, cards.TOOL, inbox.TOOL, ...bus.TOOLS.filter(t => ['iss_passes', 'artx_read', 'artx_present'].includes(t.name)),
   ...web.TOOLS.filter(t => t.name === 'web_search'),
   ...network.SECRETARY_TOOLS.filter(t => t.name === 'network_devices')];
 const ajv = new Ajv({ strict: false, validateFormats: false });
@@ -14,6 +16,8 @@ async function callTool(params, deps, tools) {
   if (!validators.get(params.name)?.(params.arguments || {})) return { isError: true,
     structuredContent: { error: 'INVALID_ARGUMENTS', message: 'Unknown family read or invalid arguments.' } };
   if (sources.TOOLS.some(tool => tool.name === params.name)) return sources.callTool(params, deps);
+  if (params.name === inbox.TOOL.name) return inbox.callTool(params.arguments, deps?.familyInbox);
+  if (params.name === cards.TOOL.name) return cards.callTool(params.arguments, deps?.familyCards);
   if (params.name === 'web_search') {
     const reply = await web.handleOwnerMcp({ jsonrpc: '2.0', id: 1, method: 'tools/call', params }, deps);
     return reply.result;
