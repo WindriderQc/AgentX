@@ -8,12 +8,20 @@ const { restoreSnapshots, releasePrepared, PRINCIPAL } = require('./gpuReservati
 async function recoverOperation(op, client, persist, archive) {
   if (op.state !== 'unknown') throw Object.assign(new Error('Only uncertain operations need runtime recovery'), { statusCode: 409 });
   await coordination.reapExpired();
+  const failedBeforeSubmission = () => persist({ state: 'failed', runtimeRestored: true,
+    error: 'GPU preparation ended before submission. The original reservation release is verified.' }, { workerSlot: 1, references: 1 });
+  if (op.admission?.phase === 'acquiring') {
+    const proof = await coordination.recoverWorkloadAcquisition({ principal: PRINCIPAL, requestId: op._id,
+      workloadId: op._id, kind: 'images', hosts: op.admission.hosts });
+    const unchanged = proof.recovered && !op.dispatchStarted && !op.snapshot && (proof.released || await releasePrepared({
+      id: proof.admissionId, generation: proof.generation, principal: PRINCIPAL }));
+    if (!unchanged) throw Object.assign(new Error('The original image admission or its release is unconfirmed.'), { statusCode: 409 });
+    return failedBeforeSubmission();
+  }
   const runtime = await RuntimeCoordination.findById('runtime').lean();
   const old = runtime?.workloads?.find(x => x.workloadId === op._id && x.principal === PRINCIPAL);
   if (!old && !op.dispatchStarted && !op.admission && !op.snapshot) return persist({ state: 'failed', runtimeRestored: true,
     error: 'Request interrupted before GPU preparation. A new explicit request is possible.' }, { workerSlot: 1, references: 1 });
-  const failedBeforeSubmission = () => persist({ state: 'failed', runtimeRestored: true,
-    error: 'GPU preparation ended before submission. The original reservation release is verified.' }, { workerSlot: 1, references: 1 });
   if (!old) {
     const proof = op.admission;
     const release = proof && await coordination.recoverRelease('workload', {

@@ -62,12 +62,16 @@ async function reserve(config, operation, save, isCancelled) {
     throw new Error('Image operation is bound to its original worker');
   }
   const end = Date.now() + config.drainMs;
+  const hosts = [config.workerUrl, ...config.ollamaHosts].filter(Boolean);
+  // Persist the intended hosts before the first native acquisition. Absence of
+  // a visible lease after a lost acknowledgement cannot prove it was refused.
+  await save({ admission: { phase: 'acquiring', hosts } });
   let lease;
   do {
     if (await isCancelled()) throw Object.assign(new Error('Image request cancelled'), { cancelled: true });
     try {
       lease = await coordination.acquireWorkload({ principal: PRINCIPAL, requestId: operation._id,
-        workloadId: operation._id, kind: 'images', hosts: [config.workerUrl, ...config.ollamaHosts].filter(Boolean), ttl: 120000 });
+        workloadId: operation._id, kind: 'images', hosts, ttl: 120000 });
     } catch (cause) {
       throw Object.assign(new Error('Image GPU admission is unconfirmed. Reconcile the original operation.', { cause }), { runtimeUnknown: true });
     }
