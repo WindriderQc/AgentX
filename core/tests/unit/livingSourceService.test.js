@@ -154,3 +154,28 @@ test('failed sole or all brief sections do not claim a successful read', async (
   const partial = await forAudience('owner', { brief: async () => ({ sections: { mail: { unavailable: 'Source unavailable' }, actions: [] } }), now }).read({ source: 'secretary' });
   expect(partial.status).toBe('partial');
 });
+
+test('only an explicit current read refreshes missing prepared coverage', async () => {
+  const readCurrent = jest.fn(async () => weather);
+  const source = forAudience('owner', { now, ambient: { preparedWeather: async () => null, weather: readCurrent } });
+  for (const section of ['forecast', 'alerts']) {
+    expect(await source.read({ source: 'weather', section })).toMatchObject({ status: 'unavailable' });
+  }
+  expect(readCurrent).not.toHaveBeenCalled();
+  expect(await source.read({ source: 'weather' })).toMatchObject({ status: 'available', data: { temperatureC: 0 } });
+  expect(readCurrent).toHaveBeenCalledTimes(1);
+});
+
+test('refreshes an explicitly requested stale observation and preserves the best dated result on failure', async () => {
+  const { projectWeather } = require('../../src/services/livingSourceWeather');
+  const old = projectWeather({ fetchedAt: '2026-11-10T10:00:00Z', observedAt: '2026-11-10T09:59:00Z', temperatureC: 3 }, now());
+  const readCurrent = jest.fn().mockResolvedValueOnce({ ...weather, observedAt: '2026-11-10T11:50:00Z' })
+    .mockRejectedValueOnce(new Error('private outage')).mockResolvedValueOnce(null)
+    .mockResolvedValueOnce({ ...weather, observedAt: '2026-11-09T07:00:00Z' }).mockResolvedValueOnce(weather);
+  const service = forAudience('household', { now, ambient: { preparedWeather: async () => ({ current: old }), weather: readCurrent } });
+  const current = () => service.read({ source: 'weather', section: 'current' });
+  expect(await current()).toMatchObject({ status: 'available', data: { temperatureC: 0 } });
+  for (let i = 0; i < 4; i++) {
+    expect(await current()).toMatchObject({ status: 'stale', sourceUpdatedAt: old.sourceUpdatedAt, data: old.data });
+  }
+});

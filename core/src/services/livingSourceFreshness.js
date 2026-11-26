@@ -12,8 +12,9 @@ function latest(records, field, now) {
 function producerEvidence(source, result, now) {
   const common = { lastSuccessfulRunAt: null, lastFailedRunAt: null,
     effectiveCadenceMs: null, history: 'unknown' };
-  if (source === 'weather') return { ...common, authority: 'data.ec-weather', mode: 'on_demand',
-    lastSuccessfulRetrievalAt: iso(result.data?.fetchedAt, now),
+  if (source === 'weather') return { ...common, authority: 'data.ec-weather', mode: result.freshness?.preparedStatus ? 'prepared_read' : 'on_demand',
+    lastSuccessfulRetrievalAt: iso(result.sourceUpdatedAt || result.data?.fetchedAt, now),
+    ...(result.data?.forecastIssuedAt && { forecastIssuedAt: iso(result.data.forecastIssuedAt, now) }),
     observedAt: iso(result.data?.observedAt, now),
     observationAgeMs: result.freshness?.observationAgeMs ?? null,
     cadenceMeaning: 'Cache lifetime is not a periodic producer schedule.',

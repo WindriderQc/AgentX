@@ -7,11 +7,11 @@ const { producerEvidence } = require('./livingSourceFreshness');
 const { projectWeather } = require('./livingSourceWeather');
 const fail = (code, message, statusCode = 400) => Object.assign(new Error(message), { code, statusCode });
 const DEFINITIONS = Object.freeze({
-  weather: { title: 'Current household weather', audiences: ['owner', 'household'], producer: 'Data / Environment Canada',
-    coverage: 'Configured station current conditions. Not forecasts or other locations.',
-    answers: 'Current conditions at the configured station: temperature, wind and condition.',
-    notFor: 'Forecasts, other locations, or currentness of the observation: fetchedAt is the retrieval time and observedAt the observation time, so a fresh read can carry an old or undated observation whose freshness stays unknown.',
-    update: 'Data owns retrieval; the existing ambient cache is reused (10 minutes).', deepen: null },
+  weather: { title: 'Household weather', audiences: ['owner', 'household'], producer: 'Data / Environment Canada',
+    coverage: 'Household area. Weather sections: current (default), forecast (periods and hours), alerts (warnings).',
+    answers: 'Temperature, wind and condition; published forecasts and warnings using their own sections.',
+    notFor: 'Other locations, unreported forecast hours, or observation freshness inferred from retrieval. Relative forecast periods refer to the issued bulletin.',
+    update: 'Prepared by Data. An explicit current read can refresh missing or stale conditions.', deepen: null },
   agentx: { title: 'AgentX service reachability', audiences: ['owner', 'household'], producer: 'Core reports service client',
     coverage: 'Core, Benchmark and RAG API reachability only. Not private tasks, host inventories, logs or functional acceptance.',
     answers: 'Whether the Core, Benchmark and RAG APIs answered this request.',
@@ -56,8 +56,29 @@ function stable(value) {
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
 }
-async function weatherRead(ambient, now) {
-  return projectWeather(await ambient.weather(), now);
+async function weatherRead(ambient, section, now) {
+  let prepared;
+  if (ambient.preparedWeather) {
+    try { prepared = (await ambient.preparedWeather())?.[section]; }
+    catch (error) { if (section !== 'current') throw error; }
+  }
+  if (section !== 'current') return prepared || { status: 'unavailable', data: null, sourceUpdatedAt: null };
+  if (prepared?.status === 'available') return prepared;
+  // Only an explicit current-conditions tool read may ask Data to refresh.
+  // A failed refresh or an older observation cannot displace a dated bulletin.
+  const previous = prepared?.status === 'stale' ? prepared : null;
+  try {
+    const refreshed = projectWeather(await ambient.weather(), now);
+    if (!previous) return refreshed;
+    if (refreshed.status === 'unavailable') return previous;
+    const previousDate = previous.data?.observedAt, refreshedDate = refreshed.data?.observedAt;
+    if (previousDate && (!refreshedDate || refreshedDate < previousDate)) return previous;
+    if (previousDate === refreshedDate && refreshed.sourceUpdatedAt <= previous.sourceUpdatedAt) return previous;
+    return refreshed;
+  } catch (error) {
+    if (previous) return previous;
+    throw error;
+  }
 }
 async function agentxRead(client) {
   const checks = await Promise.allSettled([client.fetchBenchmarkAnalyticsSummary(), client.fetchRagStatus()]);
@@ -89,9 +110,12 @@ function forAudience(audience, deps = {}) {
     let result;
     try {
       if (input.source === 'weather' || input.source === 'agentx') {
-        if (['section', 'days', 'recordOffset', 'limit', 'asOf'].some(key => input[key] !== undefined)) throw fail('SOURCE_ARGUMENT_INVALID', 'This source has no sections or record cursor');
+        if (['days', 'recordOffset', 'limit', 'asOf'].some(key => input[key] !== undefined)) throw fail('SOURCE_ARGUMENT_INVALID', 'This source has no record cursor');
+        if (input.section !== undefined && (input.source !== 'weather' || !['current', 'forecast', 'alerts'].includes(input.section))) {
+          throw fail('SOURCE_ARGUMENT_INVALID', 'This source does not support the requested section');
+        }
         result = input.source === 'weather'
-          ? await weatherRead(deps.ambient || defaultAmbient(), now)
+          ? await weatherRead(deps.ambient || defaultAmbient(), input.section || 'current', now)
           : await agentxRead(deps.reportsClient || require('./reportsServiceClient').getReportsServiceClient());
       } else {
         const args = { member: input.source };
@@ -113,7 +137,8 @@ function forAudience(audience, deps = {}) {
     // Read timestamps are envelope metadata, not source revisions.
     if (content && input.source !== 'weather' && input.source !== 'agentx') delete content.asOf;
     const serialized = JSON.stringify(stable(content));
-    const contentHash = createHash('sha256').update(JSON.stringify({ audience, source: input.source, content: serialized })).digest('hex');
+    const contentHash = createHash('sha256').update(JSON.stringify({ audience, source: input.source,
+      ...(input.source === 'weather' && input.section && input.section !== 'current' && { section: input.section }), content: serialized })).digest('hex');
     if (input.expectedHash && input.expectedHash !== contentHash) throw fail('SOURCE_CHANGED', 'Source changed; restart at offset zero', 409);
     if (offset > serialized.length) throw fail('SOURCE_ARGUMENT_INVALID', 'Offset exceeds source content');
     let end = Math.min(serialized.length, offset + pageChars);

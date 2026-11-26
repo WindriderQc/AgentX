@@ -98,8 +98,12 @@ test('native family and Reader use only the fixed household transport and reduce
     assert.equal(familySourceContext(context), true);
     for (const factory of factories) {
       const tool = factory(context), reading = tool.name === 'source_read';
-      if (reading) assert.deepEqual(tool.parameters.properties.source.enum, ['weather', 'agentx']);
-      const result = await tool.execute('fixture', reading ? { source: 'weather' } : {});
+      if (reading) {
+        assert.deepEqual(tool.parameters.properties.source.enum, ['weather', 'agentx']);
+        assert.deepEqual(tool.parameters.properties.section.enum, ['current', 'forecast', 'alerts']);
+      }
+      const result = await tool.execute('fixture', reading ? { source: 'weather', section: 'forecast' } : {});
+      if (reading) assert.deepEqual(JSON.parse(seen.at(-1)[1].body), { source: 'weather', section: 'forecast' });
       assert.equal(result.details.audience, 'household');
     }
   }

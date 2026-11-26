@@ -72,3 +72,81 @@ test('oversized pages preserve the undelivered offset and revision in a bounded 
     assert.doesNotMatch(failed.message.content, /private-provider-sentinel/);
   } finally { service.forAudience = original; }
 });
+
+test('household and owner read the same prepared bulletin with scoped sections and a shared cold read', async () => {
+  const { createFamilyAmbient } = require('../family-ambient');
+  const { forAudience } = require('../../../src/services/livingSourceService');
+  const now = () => new Date('2026-11-21T00:03:00Z');
+  const raw = { preparedStatus: 'fresh', fetchedAt: '2026-11-21T00:02:00Z', forecastIssuedAt: '2026-11-21T00:01:00Z',
+    current: { temperatureC: 0, observedAt: '2026-11-20T23:45:00Z', station: 'PRIVATE' },
+    forecasts: [{ period: 'Ce soir et cette nuit', short: 'Neige', temperatures: [{ class: 'low', valueC: -2, secret: 'PRIVATE' }] }],
+    hourly: [{ time: '2026-11-21T01:00:00Z', temperatureC: 0, precipitationChancePct: 0, station: 'PRIVATE' },
+      { time: '2026-11-20T23:00:00Z', temperatureC: 11 }, { time: '2026-11-21T02:00:00', temperatureC: 9 }],
+    warnings: [{ description: 'Fog advisory', issuedAt: '2026-11-20T23:00:00Z', expiresAt: '2026-11-21T03:00:00Z', url: 'PRIVATE' },
+      { description: 'Expired', issuedAt: '2026-11-20T00:00:00Z', expiresAt: '2026-11-20T01:00:00Z' }],
+    lat: 'PRIVATE', location: { name: 'PRIVATE' } };
+  let calls = 0;
+  const ambient = createFamilyAmbient({ now, fetchData: async (path, args) => {
+    calls++;
+    assert.equal(path, '/api/v1/livedata/ec-weather');
+    assert.equal(args.query, 'lang=fr&prepared=1');
+    assert.ok(args.timeoutMs > 0 && args.timeoutMs <= 500);
+    return { response: { ok: true }, body: { status: 'success', data: raw } };
+  } });
+  const [family, owner, prepared] = await Promise.all([
+    registry.callTool({ name: 'source_read', arguments: { source: 'weather', section: 'forecast' } }, { livingSources: { ambient, now } }),
+    forAudience('owner', { ambient, now }).read({ source: 'weather', section: 'alerts' }), ambient.preparedWeather()
+  ]);
+  assert.equal(calls, 1);
+  const forecast = family.structuredContent;
+  assert.equal(forecast.audience, 'household');
+  assert.equal(forecast.status, 'available');
+  assert.equal(forecast.data.periods[0].temperatures[0].valueC, -2);
+  assert.deepEqual(forecast.data.hourly.map(row => [row.time, row.precipitationChancePct]), [['2026-11-21T01:00:00.000Z', 0]]);
+  assert.equal(forecast.data.issueDate, require('../../../src/domains/household/family').calendarDayKey(raw.forecastIssuedAt));
+  assert.equal(owner.status, 'available'); assert.equal(owner.data.incomplete, false);
+  assert.deepEqual(owner.data.warnings.map(row => row.description), ['Fog advisory']);
+  const current = await forAudience('household', { ambient, now }).read({ source: 'weather' });
+  assert.equal(current.data.temperatureC, 0);
+  assert.equal(current.data.periods, undefined);
+  assert.equal(current.data.observedAt, '2026-11-20T23:45:00.000Z');
+  assert.equal(current.producerEvidence.mode, 'prepared_read');
+  assert.doesNotMatch(JSON.stringify([prepared, family, owner, current]), /PRIVATE/);
+});
+
+test('missing or old Data responses are negative-cached without a second on-demand request', async () => {
+  const { createFamilyAmbient } = require('../family-ambient');
+  let at = Date.parse('2026-11-20T12:00:00Z');
+  const states = [{}, { preparedStatus: 'missing' }, { preparedStatus: 'fresh', fetchedAt: '2026-11-20T12:01:00Z' }];
+  let calls = 0;
+  const ambient = createFamilyAmbient({ now: () => new Date(at), fetchData: async (path, args) => {
+    assert.equal(args.query, 'lang=fr&prepared=1');
+    const extra = states[calls++];
+    return { response: { ok: true }, body: { status: 'success', data: { current: { temperatureC: 12 }, ...extra } } };
+  } });
+  for (let i = 0; i < 2; i++) {
+    assert.equal(await ambient.preparedWeather(), null);
+    assert.equal(await ambient.preparedWeather(), null);
+    assert.equal(calls, i + 1);
+    at += 31000;
+  }
+  assert.equal((await ambient.preparedWeather()).current.status, 'available');
+});
+
+test('stale retrieval, invalid hours and warnings of uncertain scope stay explicit', () => {
+  const { preparedBulletin, projectBulletin } = require('../../../src/services/livingSourceWeather');
+  const now = new Date('2026-11-21T12:00:00Z'), timeZone = 'America/Toronto';
+  const weather = { fetchedAt: '2026-11-21T11:58:00Z', preparedStatus: 'fresh', forecastIssuedAt: '2026-11-21T11:00:00Z',
+    hourly: [{ time: '2026-11-21T13:00:00Z', temperatureC: 2 }, { time: '2026-11-21T13:00:00Z', temperatureC: 5 }],
+    forecasts: [{ period: 'Demain', short: 'Pluie' }], warnings: [{ issuedAt: '2026-02-30T01:00:00Z', description: 'Invalid' }] };
+  const projection = (patch = {}) => projectBulletin(preparedBulletin({ ...weather, ...patch }), now, timeZone);
+  assert.deepEqual(projection().forecast.data.hourly, []);
+  assert.equal(projection().alerts.status, 'partial');
+  assert.equal(projection().alerts.data.incomplete, true);
+  assert.equal(projection({warnings: []}).alerts.status, 'available');
+  assert.equal(projection({warnings: undefined}).alerts.status, 'unavailable');
+  assert.equal(projection({preparedStatus: 'stale', warnings: []}).alerts.status, 'stale');
+  assert.equal(projection({forecastIssuedAt: '2026-11-21T11:59:00Z'}).forecast.status, 'unavailable');
+  assert.equal(projection({forecastIssuedAt: '2026-11-20T12:00:00Z'}).forecast.status, 'stale');
+  assert.equal(projection({fetchedAt: '2027-11-20T12:00:00Z'}), null);
+});

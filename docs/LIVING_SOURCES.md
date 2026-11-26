@@ -10,7 +10,7 @@ launch its producer, change its schedule, send mail or import a statement.
 
 | Source | Personal | Family | Native authority and coverage |
 |---|---|---|---|
-| weather | yes | yes | The existing Data/ambient current-conditions contract, without coordinates. Not forecasts. |
+| weather | yes | yes | Data’s prepared Environment Canada bulletin for the configured household area. The sections are current conditions (default), forecast periods and hours, and weather alerts. |
 | agentx | yes | yes | Core, Benchmark and RAG API reachability through the reports client. Not private operational reports, tasks, logs, inventories or functional acceptance. |
 | secretary | yes | no | Core mail journal and email actions through team_brief. Not the complete live mailbox. |
 | comptable | yes | no | Core finance balances, months, alerts and statement review through team_brief. |
@@ -42,9 +42,15 @@ remain owner-only. Family AgentX inference can use the same tool
 names when the instance includes them in HOUSEHOLD_FAMILY_TOOLS. Enabling a
 family tool does not expose the owner bus.
 
-Principal personal and family turns receive the same source directory mechanism
-and dated weather context. Reader, specialist and LLMx turns do not receive that
-context automatically. Reader can explicitly call the family agent's shared
+The household model can read `source_read {source: "weather", section: "forecast"}`
+for published periods and hourly samples, or section `alerts` for warnings.
+Omitting the section returns the existing current observation. The owner
+transport supports the same sections. The reader accepts the configured
+household area only. The bulletin omits station and household identifiers,
+coordinates, private data and provider links.
+
+Eligible principal turns receive source information and dated weather context.
+Reader, specialist and LLMx turns do not receive that context automatically. Reader can explicitly call the family agent's shared
 source tools when installed; it receives no owner tools or private sources.
 The directory contains metadata, not private records or proof of a
 completed read. Tool-free guardians use supplied evidence and leave new work
@@ -56,7 +62,7 @@ contentHash, totalChars and nextOffset; a complete JSON parses only once all its
 pages are concatenated, but a bounded answer may stop paging early when the
 incomplete coverage is disclosed. Continue using nextReadArgs plus
 offset=nextOffset and expectedHash=contentHash. SOURCE_CHANGED means restart
-from offset zero. The hash binds content, source and audience. There is no saved snapshot: a native
+from offset zero. The hash binds content, source, audience and the selected weather section. There is no saved snapshot: a native
 change can invalidate a continuation. Unicode pairs are not split.
 
 Record pagination is independent of JSON transport pagination: recordOffset
@@ -108,19 +114,28 @@ future dates null. The same future-date validation applies to import receipts.
 observationAgeMs and an explicit warning separate retrieval availability from
 observation freshness. No observation-age threshold or producer cadence is
 inferred; observationFreshness remains unknown. Automatic personal and family
-principal context uses this same weather projection, includes the observation
-age and warning, and never promotes a recently retrieved old or undated
-observation to a current observation.
-lastSuccessfulRetrievalAt comes from Data, never this read. Retrieval is on
-demand; cache lifetime is not periodic cadence. Data does not expose historical
-failures through this contract, so none are inferred. Conditions
-older than 30 minutes are stale, missing/invalid or materially future timestamps
-are unavailable. AgentX checks are request-time probes, not whole-machine health.
+context and explicit current reads distinguish the retrieval date from the
+observation date. Core reads Data’s prepared entry with a bounded LAN request
+and caches successes and failures briefly. Automatic turn context and the forecast and alert sections
+use only the prepared entry. For an explicit section `current` read (including
+the default), Core uses the existing on-demand reader when prepared current
+conditions are missing or stale. If refreshing fails or returns an older
+observation, a usable dated prepared observation keeps its original status
+and retrieval time. Data’s preparation marks retrievals ten minutes old as stale.
+The exposed dates describe this bulletin only.
+
+Forecasts carry `forecastIssuedAt`, the issue date in the household time zone,
+the labelled periods supplied by the producer, and individual future hourly
+samples. Relative period names are anchored to the bulletin. Missing hours
+stay outside forecast coverage. Forecasts issued more than twelve hours ago
+are marked stale. Alerts cover dated warnings reported as active at the time
+of reading. Malformed or truncated warning coverage is marked incomplete;
+only a fresh and complete empty warning list establishes that the prepared
+bulletin has no active warnings. AgentX checks are request-time probes, not whole-machine health.
 A partial or failed section remains explicit; raw exception messages are not
 returned. An empty page is not proof the whole producer is empty.
 
-Refresh means reread the native source under its existing cache contract. It does
-not bypass that cache or run an ingestion job. Source-specific deeper work stays
+Refresh rereads the native source under its existing cache contract. Source-specific deeper work stays
 with existing tools: consult_team for the Secretary/Accountant, with unchanged
 authorization, admission and uncertain-result handling. The directory does not
 grant a family caller access to those collaborators.
@@ -139,4 +154,11 @@ failed sources, complete multi-page reads, private-source refusal in family,
 and conversation/guardian continuity. Queue model-based acceptance through the
 existing heavy-work entrance. Keep private receipts outside public Git.
 
-The Family inference prompt keeps its existing compact catalogue projection so detailed reading guidance cannot displace the relay budget. Owner catalogue and explicit source reads retain the full guidance; audience boundaries and tool permissions are unchanged.
+Local Family turns with the source reader discover its sections through the
+offered tool schema. Their prompt includes a small dated weather excerpt when
+available. Other eligible turns use the existing catalogue projection.
+
+With Core and Data dependencies installed, run
+`node --test test/prepared-weather-journey.test.cjs` to exercise the background
+producer, loopback HTTP read and three local Family turns with synthetic
+weather and model responses.
