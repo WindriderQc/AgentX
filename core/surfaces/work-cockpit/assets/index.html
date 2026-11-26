@@ -13,10 +13,10 @@
 <body>
   <header><div class="bar"><span class="wordmark">Agent<span>X</span></span><span class="location">Espace opérateur</span><span class="local">Lecture seule</span></div></header>
   <main>
-    <div class="heading"><h1>Pilotage du travail</h1><div><label for="sample">Collection</label><select id="sample"><option value="sample">Échantillon privé</option><option value="demo">Simulation · 30 dossiers fictifs</option></select></div></div>
-    <p id="provenance"></p>
+    <div class="heading"><h1>Pilotage du travail</h1></div>
+    <p id="provenance" role="status">Chargement des dossiers Pipeline…</p>
     <noscript>Activez JavaScript pour utiliser le cockpit.</noscript>
-    <section id="app" hidden>
+    <section id="app">
       <section id="overview" aria-label="Survol des dossiers"></section>
       <form id="filters" aria-label="Filtres des dossiers">
         <div class="search"><label for="search">Rechercher</label><input id="search" type="search" placeholder="Titre, référence ou exécutant"></div>
@@ -32,11 +32,11 @@
         <section class="list" aria-label="Liste des dossiers">
           <div class="sectionbar"><h2>Dossiers</h2><output id="total" aria-live="polite"></output></div>
           <div class="sort"><label for="sort">Trier par</label><select id="sort"><option value="priority">Décisions en premier</option><option value="recent">Mise à jour récente</option><option value="title">Titre de A à Z</option></select></div>
-          <div id="rows"></div>
+          <div id="rows">Chargement de Pipeline…</div>
         </section>
         <article id="detail" aria-label="Fiche du travail" tabindex="-1"></article>
       </div>
-      <details id="sources"><summary>Sources et registre des exécutants</summary><p id="pipeline-health"></p><p id="registry-health"></p><p>Une observation du runtime ne confirme ni disponibilité pour une tâche, ni activité en cours.</p><ul id="roster"></ul></details>
+      <details id="sources"><summary>Sources et registre des exécutants</summary><p id="pipeline-health">Chargement de Pipeline…</p><p id="registry-health">Chargement du registre Agent Ops…</p><p>Une observation du runtime ne confirme ni disponibilité pour une tâche, ni activité en cours.</p><ul id="roster"></ul><p>Sources de travail connectées : Pipeline. Les intentions de Dot, les travaux des personas et leurs reçus indépendants ne sont pas connectés.</p></details>
     </section>
   </main>
 </body>

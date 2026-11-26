@@ -237,10 +237,6 @@ button:disabled {
   color:var(--accent);
 }
 
-.fixture {
-  color:var(--plan);
-}
-
 article h2 {
   font-size:clamp(1.4rem,2.2vw,2rem);
   line-height:1.18;

@@ -2,16 +2,20 @@
 
 (async () => {
   const $ = id => document.getElementById(id);
-  let sources;
-  try {
-    const response = await fetch('/owner/work/data', {cache:'no-store', credentials:'same-origin', redirect:'error'});
-    if (!response.ok) throw new Error('Unavailable');
-    sources = await response.json();
-  } catch {
-    $('provenance').textContent = 'Accès au cockpit indisponible.';
-    return;
+  const sources = {pipeline:{state:'loading'}, registry:{state:'loading'}};
+  async function fetchSource(name, timeout) {
+    try {
+      const response = await fetch('/owner/work/data/'+name, {cache:'no-store', credentials:'same-origin',
+        redirect:'error', signal:AbortSignal.timeout(timeout)});
+      if (!response.ok) throw new Error('Unavailable');
+      const data = await response.json();
+      if (data.state === 'read' && !Array.isArray(name === 'pipeline' ? data.records : data.agents)) throw new Error('Invalid projection');
+      return data;
+    } catch (error) {
+      return {state:'unavailable', reason:error.name === 'TimeoutError' ? 'timeout' : 'source_indisponible',
+        checkedAt:new Date().toISOString()};
+    }
   }
-  const pipeline = sources.pipeline, registry = sources.registry;
   const dimensions = {status:'Tous les états',domain:'Tous les domaines',type:'Tous les types',executor:'Tous les exécutants'};
   const order = new Map(cockpitCards.lanes.map((lane,i)=>[lane.id,i]));
   const dateFormat = new Intl.DateTimeFormat('fr-CA',{timeZone:'America/Toronto',
@@ -31,12 +35,12 @@
     return node;
   }
   function sourceStatus(label, source) {
-    if (!source) return label+' · aucune lecture.';
-    if (source.state !== 'read') return label+' · indisponible ('+source.reason+'). Dernière tentative le '+date(sources.checkedAt)+'.';
-    return label+' · projection du '+date(source.observedAt)+'.';
+    if (source.state === 'loading') return 'Chargement de '+label+'…';
+    if (source.state !== 'read') return label+' · '+(source.reason === 'timeout' ? 'Délai dépassé' : 'Source indisponible')+
+      ' · '+date(source.checkedAt)+'.';
+    return label+' · relevé du '+date(source.observedAt)+'.';
   }
-  function renderSources() {
-    $('pipeline-health').textContent = sourceStatus('Pipeline',pipeline);
+  function renderRegistry(registry) {
     $('registry-health').textContent = sourceStatus('Agent Ops',registry);
     if (registry?.state === 'read') {
       $('registry-health').append(' '+registry.agents.length+' entrées.');
@@ -50,29 +54,17 @@
     }
   }
   function loadCollection() {
-    const demo = $('sample').value === 'demo';
-    const hasNative = pipeline?.state === 'read';
-    collection = demo ? cockpitCards.demo() : [
-      ...(hasNative ? [cockpitCards.fromPipeline(pipeline.record)] : []),
-      cockpitCards.dot,cockpitCards.finance
-    ];
-    const health = [pipeline,registry].filter(source=>source?.state === 'read').length;
-    $('provenance').textContent = demo ? 'Simulation · Les 30 dossiers et leurs dates sont fictifs.' :
-      (hasNative ? '1 dossier Pipeline et 2 exemples fictifs.' : 'Mode dégradé · 2 exemples fictifs. Dossier Pipeline indisponible.')+
-      ' Sources lues : '+health+'/2.'+(sources.checkedAt ? ' Relevé du '+date(sources.checkedAt)+'.' : '');
+    const pipeline = sources.pipeline;
+    collection = pipeline.state === 'read' ? pipeline.records.map(cockpitCards.fromPipeline) : [];
+    const status = sourceStatus('Pipeline',pipeline);
+    $('pipeline-health').textContent = status;
+    $('provenance').textContent = status + (pipeline.state === 'read'
+      ? ' Services : '+pipeline.services.join(', ')+' · '+(pipeline.hasMore ? 'les '+collection.length+' dossiers les plus récents.' : collection.length+' dossiers dans ce périmètre.') : '');
     for (const [key,label] of Object.entries(dimensions)) {
       const values = [...new Set(collection.map(card=>card[key]))].sort(collator.compare);
       $(key).replaceChildren(new Option(label,''),...values.map(value=>new Option(value,value)));
     }
-    $('search').value = '';
-    $('sort').value = 'priority';
-    laneFilter = ''; selected = null;
     fromStart();
-  }
-  function textSection(title, text) {
-    const box = el('section');
-    box.append(el('h3',title),el('p',text));
-    return box;
   }
   function drawDetail(card, returnToRow) {
     const detail = $('detail');
@@ -82,25 +74,22 @@
     back.type = 'button';
     back.onclick = returnToRow || null;
     const source = el('div',null,'sourceLine');
-    source.append(el('strong',card.ref,card.url ? 'tag' : 'fixture'));
+    source.append(el('strong',card.ref,'tag'));
     if (card.updated) source.append(el('span','Mis à jour le '+date(card.updated)));
     const facts = el('dl',null,'facts');
-    for (const [label,value] of [['Responsable',card.owner],['Exécutant',card.executor],['Domaine',card.domain],['Type de travail',card.type]]) {
-      const pair = el('div');
-      pair.append(el('dt',label),el('dd',value)); facts.append(pair);
+    for (const [label,value] of [['Source','Pipeline'],['Service',card.domain],['État natif',card.status],
+      ['Triage',card.intake || 'Non renseigné'],['Création',date(card.created)],['Attribution',card.executor]]) {
+      const pair = el('div'); pair.append(el('dt',label),el('dd',value)); facts.append(pair);
     }
-    const results = textSection('Résultats',card.result);
-    if (card.evidence) results.append(el('p',card.evidence,'hint'));
-    const history = el('section'), seq = el('ol');
-    history.append(el('h3',card.url ? 'Chronologie Pipeline' : 'Chronologie fictive'),seq);
-    for (const item of card.timeline) {
-      const li = el('li',null,'event');
-      li.append(el('strong',item.stage),document.createTextNode(' · '+item.label));
-      if (item.at) {const time = el('time',date(item.at)); time.dateTime=item.at; li.append(time);}
-      seq.append(li);
+    detail.append(back,source,el('h2',card.title),facts);
+    const evidence=el('section');
+    evidence.append(el('h3','Suivi Pipeline'));
+    if (Number.isInteger(card.attempts)) evidence.append(el('p','Tentatives enregistrées : '+card.attempts));
+    if (Number.isInteger(card.relationships)) evidence.append(el('p','Relations enregistrées : '+card.relationships));
+    for (const event of card.transitions) {
+      if (event.at && event.to) evidence.append(el('p',date(event.at)+' · '+event.to));
     }
-    detail.append(back,source,el('h2',card.title),facts,textSection('Intention',card.intent),
-      results,history,textSection('Suite attendue',card.next));
+    if (evidence.children.length > 1) detail.append(evidence);
     if (card.url) {
       const link = el('a','Ouvrir le dossier '+card.ref+' ↗');
       link.href=card.url; link.rel='noopener noreferrer'; link.target='_blank';
@@ -114,7 +103,8 @@
       const button = el('button',null,'lane');
       button.type='button'; button.dataset.lane=lane.id;
       button.setAttribute('aria-pressed',String(laneFilter===lane.id));
-      button.append(el('span',lane.label),el('strong',String(count)),el('small',lane.hint));
+      button.disabled = sources.pipeline.state !== 'read';
+      button.append(el('span',lane.label),el('strong',button.disabled ? '—' : String(count)),el('small',lane.hint));
       button.onclick=()=>{
         laneFilter = laneFilter===lane.id ? '' : lane.id;
         fromStart();
@@ -142,10 +132,14 @@
     const visible = filtered.filter(card=>!laneFilter || card.lane===laneFilter).sort(compare);
     const count = visible.length;
     if (!visible.some(card=>card.id===selected)) selected = visible[0]?.id;
-    $('total').textContent=count+' sur '+collection.length;
+    $('total').textContent=sources.pipeline.state === 'read' ? count+' sur '+collection.length : '—';
     const rows=$('rows');
     rows.replaceChildren();
-    if (!count) rows.append(el('p','Aucun dossier ne correspond à ces filtres.','empty'));
+    if (!count) {
+      const message = sources.pipeline.state !== 'read' ? sourceStatus('Pipeline',sources.pipeline)
+        : collection.length ? 'Aucun dossier ne correspond à ces filtres.' : 'Aucun dossier Pipeline dans ce périmètre.';
+      rows.append(el('p',message,'empty'));
+    }
     for (const card of visible) {
       const button=el('button',null,'row');
       button.id=card.id; button.type='button';
@@ -182,6 +176,7 @@
     for (const key of Object.keys(dimensions)) $(key).value='';
     $('search').value=''; laneFilter=''; fromStart();
   };
-  $('sample').onchange=loadCollection;
-  renderSources(); loadCollection(); $('app').hidden=false;
+  loadCollection();
+  fetchSource('pipeline', 7000).then(data => {sources.pipeline=data; loadCollection();});
+  fetchSource('registry', 38000).then(data => {sources.registry=data; renderRegistry(data);});
 })();

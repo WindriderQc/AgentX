@@ -25,21 +25,17 @@ async function run() {
     mongoose:{models:{AgentXHouseholdFamilyDevice:{findOneAndUpdate:()=>({lean:async()=>({label:'Synthetic device'})})}}},
     ownerUnlock:{activeUntil:async()=>unlocked ? new Date(Date.now()+10000) : null},
     envelope:(res,data)=>res.json({data}), fail:(res,code)=>res.sendStatus(code)});
-  const scope = {pipelineId:'0007',service:'engineering',label:'Dossier fictif',intent:'Contrôle synthétique.'};
+  const scope = {services:['engineering']};
   const now = new Date().toISOString();
-  const options = {express, scope,
-    readDossier:async input=>{
-      reads++;
-      assert.equal(input.pipelineId,scope.pipelineId);
-      return {task:{pipelineId:scope.pipelineId,service:scope.service,status:'queued',nextAction:{
-        reference:'/pipeline?task=0007',observedAt:now,code:'intake_review'},intakeView:{state:'proposed'},
-        workView:{entryCount:0},automationAttemptCount:0,timeline:[],updatedAt:now,title:'synthetic-excluded-field'}};
-    },
-    readTeam:async()=>{
-      reads++;
-      return {readOnly:true,generatedAt:now,agents:[{registryId:'fixture',runtime:'test',confidence:'configured',
-        persona:{label:'Persona de test',description:'synthetic-excluded-field'}}]};
-    }};
+  let pipelineProvider = async () => ({services:scope.services, hasMore:false, observedAt:now,
+    records:Array.from({length:30},(_,i)=>({pipelineId:String(i+1).padStart(4,'0'), title:'QA '+(i+1),
+      service:scope.services[0],status:'queued',intake:'proposed',createdAt:now,updatedAt:now}))});
+  const team = {readOnly:true, generatedAt:now, agents:[{registryId:'qa-registry',runtime:'test',
+    confidence:'configured',persona:{label:'Persona de test',description:'synthetic-excluded-field'}}]};
+  let teamProvider = async () => team;
+  const options = {express, scope, pipelineMs:300, registryMs:300,
+    readPipeline:input=>{reads++; assert.deepEqual(input,scope); return pipelineProvider();},
+    readTeam:()=>{reads++; return teamProvider();}};
   app.use(mountPath,registerWorkCockpit(options));
   const server = https.createServer({cert,key},app);
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -54,19 +50,19 @@ async function run() {
   }
   let browser;
   try {
-    for(const path of ['/','/data','/cockpit.css','/cards.js','/cockpit.js']) {
+    for(const path of ['/','/data','/data/pipeline','/data/registry','/cockpit.css','/cards.js','/cockpit.js']) {
       assert.equal((await get('/unclassified'+path)).status,403);
       const family=await get(mountPath+path,true);
       assert.equal(family.status,302); assert.equal(family.headers.location,'/panel');
     }
     unlocked=true;
-    for(const path of ['/','/data']) assert.equal((await get(mountPath+path,true)).status,403);
+    for(const path of ['/','/data','/data/pipeline','/data/registry']) assert.equal((await get(mountPath+path,true)).status,403);
     assert.equal(reads,0);
     const result=await get(mountPath+'/data');
     assert.equal(result.status,200); assert.equal(reads,2);
     assert.match(result.headers['cache-control'],/private, no-store/);
     assert.doesNotMatch(result.body,/synthetic-excluded-field/);
-    assert.equal(JSON.parse(result.body).pipeline.record.pipelineId,'0007');
+    assert.equal(JSON.parse(result.body).pipeline.records.length,30);
     assert.deepEqual(Object.keys(JSON.parse(result.body).registry.agents[0]).sort(),['id','observation','persona','runtime']);
     browser=await chromium.launch({headless:true, executablePath:chromiumPath,
       args:['--ignore-certificate-errors-spki-list='+pin]});
@@ -81,11 +77,11 @@ async function run() {
       });
       assert.equal((await page.goto(origin+mountPath+'/')).status(),200);
       const rows=page.locator('#rows .row');
-      await rows.first().waitFor(); assert.equal(await rows.count(),3);
+      await rows.first().waitFor(); assert.equal(await rows.count(),30);
       await page.locator('#pipeline-0007').click();
       assert.equal(await page.locator('#detail a').getAttribute('href'),'/pipeline?task=0007');
       await page.getByRole('button',{name:'Retour à la liste'}).click();
-      await page.locator('#sample').selectOption('demo');
+      assert.equal(await page.locator('#sample').count(),0);
       assert.equal(await rows.count(),30);
       const row=rows.nth(27);
       await row.evaluate(el=>el.scrollIntoView({block:'center'}));
@@ -93,15 +89,41 @@ async function run() {
       await row.click(); await page.getByRole('button',{name:'Retour à la liste'}).click();
       assert.equal(await row.evaluate(el=>el===document.activeElement),true);
       assert.ok(Math.abs(before-await row.evaluate(el=>el.getBoundingClientRect().top))<=1);
-      await page.locator('#search').fill('accessibilite');
+      await page.locator('#search').fill('Pipeline #0007');
       if(width===390) await page.locator('#facets summary').click();
-      await page.locator('#domain').selectOption('Finance');
+      await page.locator('#domain').selectOption(scope.services[0]);
       assert.equal(await rows.count(),1);
-      await page.locator('#executor').selectOption('Dot');
+      await page.locator('#search').fill('unmatched-query');
       assert.equal(await rows.count(),0);
       assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
       await page.close(); console.log(width+'px HTTPS loopback: list, detail, filtered search, scroll and return OK');
     }
+    const page = await browser.newPage();
+    const healthyPipeline = pipelineProvider;
+    let release, slowReads=0;
+    teamProvider=()=>{slowReads++;return new Promise(done=>{release=()=>done(team);});};
+    await page.goto(origin+mountPath+'/');
+    await page.locator('#pipeline-0007').waitFor();
+    await page.waitForFunction(()=>document.querySelector('#registry-health').textContent.includes('Délai dépassé'));
+    const unavailable=JSON.parse((await get(mountPath+'/data/registry')).body);
+    assert.equal(unavailable.reason,'timeout'); assert.equal(slowReads,1); release();
+    teamProvider=async()=>team;
+    pipelineProvider=()=>new Promise(done=>{release=()=>done(healthyPipeline());});
+    await page.reload();
+    await page.waitForFunction(()=>document.querySelector('#roster li'));
+    await page.waitForFunction(()=>document.querySelector('#provenance').textContent.includes('Délai dépassé'));
+    assert.equal(await page.locator('.row').count(),0);
+    assert.equal(await page.locator('#total').textContent(),'—');
+    assert.equal(await page.locator('#overview .lane strong').first().textContent(),'—'); release();
+    pipelineProvider=async()=>{throw Error('Unavailable');};
+    teamProvider=async()=>{throw Error('Unavailable');};
+    await page.reload(); await page.waitForFunction(()=>document.querySelector('#provenance').textContent.includes('indisponible'));
+    assert.equal(await page.locator('.row,#roster li').count(),0);
+    assert.equal(await page.locator('#total').textContent(),'—');
+    await page.route('**/owner/work/data/*',route=>route.abort()); await page.reload();
+    await page.waitForFunction(()=>document.querySelector('#provenance').textContent.includes('indisponible'));
+    assert.equal(await page.locator('.row,#roster li').count(),0);
+    await page.close();
     console.log('Classified unpinned browser 200; missing classification 403; pinned Family redirects to /panel; unlocked pinned device 403. Denials made zero source reads.');
   } finally {
     if(browser) await browser.close();
