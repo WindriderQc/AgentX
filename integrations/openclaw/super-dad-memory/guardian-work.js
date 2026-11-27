@@ -9,9 +9,11 @@ function foregroundTool(event, native, localForeground) {
   if (!isDelegationTool(tool)) return;
   const args = wrapped ? event.params?.args : event.params;
   if (tool === 'sessions_spawn') {
-    if (!args?.agentId || args.context !== 'isolated' || args.runtime && args.runtime !== 'subagent'
+    if (!args?.agentId || args.context !== 'isolated'
+        || args.visible !== undefined && args.visible !== false
+        || args.runtime && args.runtime !== 'subagent'
         || args.mode && args.mode !== 'run' || Object.keys(args).some(k =>
-          !['agentId', 'task', 'context', 'mode', 'runtime', 'label', 'runTimeoutSeconds', 'timeoutSeconds'].includes(k))) return;
+          !['agentId', 'task', 'context', 'visible', 'mode', 'runtime', 'label', 'runTimeoutSeconds', 'timeoutSeconds'].includes(k))) return;
     if (localForeground?.(native, args.agentId)) return tool;
   } else if (localForeground?.(native)) return tool;
 }
