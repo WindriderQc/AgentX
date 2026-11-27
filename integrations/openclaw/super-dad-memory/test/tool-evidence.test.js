@@ -84,6 +84,15 @@ test('a requester-settle return identifies the accepted child of this exact pare
   wrapped[0].content[0].arguments.id = 'openclaw:core:sessions_spawn';
   wrapped[1].details = { tool: { id: 'openclaw:core:sessions_spawn' }, result: { details: accepted } };
   assert.deepEqual(project(wrapped).settledChild, expected);
+  // The SDK accepts the short name in the request and records its canonical tool id in the result.
+  wrapped[0].content[0].arguments.id = 'sessions_spawn';
+  assert.deepEqual(project(wrapped).settledChild, expected);
+  const mismatchedAgent = structuredClone(wrapped);
+  mismatchedAgent[0].content[0].arguments.args.agentId = 'another';
+  assert.equal(project(mismatchedAgent).settledChild, null);
+  const otherWrapper = structuredClone(wrapped);
+  otherWrapper[0].content[0].arguments.id = 'plugin:other:sessions_spawn';
+  assert.equal(project(otherWrapper).settledChild, null);
   for (const delivery of [deliveredBy.replace(childRunId, childSessionKey.split(':').at(-1)),
     deliveredBy.replace(childRunId, childRunId + ',' + childRunId), deliveredBy.replace(sessionKey, 'another-session')]) {
     assert.equal(project(wrapped, delivery).settledChild, null);

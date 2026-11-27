@@ -33,12 +33,11 @@ function settledChild(calls, results, sessionKey, deliveredBy) {
   const match = /^([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})(?::yield-\d+)?(?::retry-\d+)?$/.exec(deliveredBy.slice(prefix.length));
   if (!match) return null;
   for (const call of calls) {
-    if (!['sessions_spawn', 'openclaw:core:sessions_spawn'].includes(call.identity)) continue;
+    if (call.identity !== 'sessions_spawn' && !(call.wrapped && call.identity === 'openclaw:core:sessions_spawn')) continue;
     const result = results.get(call.id);
     if (!Array.isArray(result?.content) || !successful(result, call.tool)) continue;
-    const wrapped = call.identity === 'openclaw:core:sessions_spawn';
-    const native = wrapped ? result.details?.result : result;
-    if (wrapped && (result.details?.tool?.id !== call.identity || native?.isError)) continue;
+    const native = call.wrapped ? result.details?.result : result;
+    if (call.wrapped && (result.details?.tool?.id !== 'openclaw:core:sessions_spawn' || native?.isError)) continue;
     const accepted = native?.details;
     if (accepted?.status !== 'accepted' || accepted.runId !== match[1]) continue;
     const agent = /^agent:([a-z0-9][a-z0-9_-]{0,63}):subagent:[a-f0-9-]+$/.exec(accepted.childSessionKey || '');
@@ -64,7 +63,7 @@ export function nativeToolChecks(history, sessionKey, runId, deliveredBy) {
         seen.add(part.id);
         const wrapped = part.name === 'tool_call' && safeName(part.arguments?.id);
         calls.push({ id: part.id, tool: wrapped ? wrapped.split(':').at(-1) : part.name,
-          identity: wrapped || part.name, args: wrapped ? part.arguments.args : part.arguments });
+          identity: wrapped || part.name, wrapped: Boolean(wrapped), args: wrapped ? part.arguments.args : part.arguments });
       }
     } else if (inside && row?.role === 'toolResult' && isNativeToolCallId(row.toolCallId)) {
       if (!row.__openclaw?.runId || row.__openclaw.runId === runId) results.set(row.toolCallId, row);
