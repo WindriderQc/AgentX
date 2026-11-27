@@ -60,21 +60,33 @@ def open_words(model, factory, rate, samples):
     return words + json.loads(recognizer.FinalResult()).get("result", [])
 
 
-def weather_text(match, words):
-    if not _CANONICAL_WEATHER.fullmatch(match[1]):
-        # Require an independent open-vocabulary reading of the weather question.
-        cue = [w["word"] for w in words[:3] if w.get("conf", 0) >= .8]
-        if cue != ["quel", "temps", "fait-il"] or len(words) != 4:
-            return None
-    return "Quel temps fait-il dehors" + match[2]
+def weather_ending(model, factory, rate, samples):
+    words = open_words(model, factory, rate, samples)
+    if len(words) != 4 or [w["word"] for w in words[:3] if w.get("conf", 0) >= .8] != ["quel", "temps", "fait-il"]:
+        return False
+    # Compare the last aligned word with plausible endings and unknown speech.
+    last = words[-1]
+    start = max(0, round((last["start"] - .04) * rate))
+    end = round((last["end"] + .10) * rate)
+    grammar = json.dumps(["dehors", "d'or", "demain", "bureau", "encore", "[unk]"], ensure_ascii=False)
+    recognizer = factory(model, rate, grammar)
+    recognizer.SetMaxAlternatives(2)
+    recognizer.AcceptWaveform(samples[2 * start:2 * end] + bytes(2 * round(rate * .25)))
+    choices = json.loads(recognizer.FinalResult()).get("alternatives", [])
+    return (len(choices) == 2 and choices[0].get("text") == "dehors"
+            and choices[0]["confidence"] - choices[1]["confidence"] >= 1)
 
 
 def reviewed_text(text, raw, decode, listen, cancel=None):
     if getattr(text, "evidence", {}).get("segments") != 1:
         return None
     weather = _WEATHER.fullmatch(text)
+    weak_question = (text.evidence.get("avgLogProbability", 0) < -.7 and len(text) <= 65
+                     and re.match(r"^(?:quel\b|qu['’]est-ce\b)", text, re.I)
+                     and text.rstrip().endswith("?") and "dehors" not in text.casefold()
+                     and not re.match(r"^quel temps fait[- ]il\b", text, re.I))
     nouns = list(_NOUN.finditer(text))
-    if not weather and (len(nouns) != 1 or re.search(r"\bb[aâ]ton[ -]rouge\b", text, re.I)):
+    if not weather and not weak_question and (len(nouns) != 1 or re.search(r"\bb[aâ]ton[ -]rouge\b", text, re.I)):
         return None
     if weather and not re.fullmatch(r"t[\w'’ -]*il", weather[1], re.I):
         return None
@@ -83,9 +95,13 @@ def reviewed_text(text, raw, decode, listen, cancel=None):
         return None
     rate, samples = clip
     check_cancelled(cancel)
-    if weather:
-        words = [] if _CANONICAL_WEATHER.fullmatch(weather[1]) else listen(rate, samples)
-        return weather_text(weather, words)
+    if weather and _CANONICAL_WEATHER.fullmatch(weather[1]):
+        return "Quel temps fait-il dehors" + weather[2]
+    if (weather or weak_question) and listen(rate, samples):
+        punctuation = weather[2] if weather else " ?"
+        return "Quel temps fait-il dehors" + punctuation
+    if len(nouns) != 1:
+        return None
     match = nouns[0]
     first = decode(acoustic_view(rate, samples, .24))
     proposed = same_slot(text, match, first)
@@ -107,7 +123,7 @@ class FrenchReview:
     def __call__(self, raw, text, decode, cancel):
         def listen(rate, samples):
             check_cancelled(cancel)
-            return open_words(self.model, self.factory, rate, samples)
+            return weather_ending(self.model, self.factory, rate, samples)
 
         try:
             updated = reviewed_text(text, raw, decode, listen, cancel)

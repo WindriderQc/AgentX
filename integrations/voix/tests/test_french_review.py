@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.stt.french_review import FrenchReview, reviewed_text
+from app.stt.french_review import FrenchReview, reviewed_text, weather_ending
 from app.stt.requests import RecognitionCancelled
 
 
@@ -61,10 +61,35 @@ def test_weather_needs_clear_syntax_or_independent_words():
     assert reviewed_text(Transcript("Quel temps fait-il d'or ?"), clip(), unused, unused) == "Quel temps fait-il dehors ?"
     source = Transcript("Quel tanfètil d’or ?")
     assert reviewed_text(source, clip(), unused, lambda *_: []) is None
-    words = [{"word": word, "conf": .95} for word in ("quel", "temps", "fait-il", "dehors")]
-    assert reviewed_text(source, clip(), unused, lambda *_: words) == "Quel temps fait-il dehors ?"
-    words[1]["conf"] = .4
-    assert reviewed_text(source, clip(), unused, lambda *_: words) is None
+    assert reviewed_text(source, clip(), unused, lambda *_: True) == "Quel temps fait-il dehors ?"
+
+
+def test_recover_weak_question_only_with_independent_acoustic_confirmation():
+    source = Transcript("Qu'est-ce que tu fais là ?")
+    source.evidence = {"segments": 1, "avgLogProbability": -.9}
+    assert reviewed_text(source, clip(), unused, lambda *_: False) is None
+    assert reviewed_text(source, clip(), unused, lambda *_: True) == "Quel temps fait-il dehors ?"
+
+
+@pytest.mark.parametrize("cue,score,word,margin,accepted", [
+    ("temps", .95, "dehors", 2, True), ("temps", .95, "demain", 3, False),
+    ("train", .95, "dehors", 2, False), ("temps", .4, "dehors", 2, False),
+    ("temps", .95, "dehors", .2, False),
+])
+def test_weather_acoustic_checks(cue, score, word, margin, accepted):
+    import json
+    class Reader:
+        def __init__(self, *args): self.ending = len(args) == 3
+        def SetWords(self, value): pass
+        def SetMaxAlternatives(self, value): pass
+        def AcceptWaveform(self, data): return False
+        def FinalResult(self):
+            if self.ending:
+                return json.dumps({"alternatives": [{"text": word, "confidence": 8 + margin},
+                                                    {"text": "[unk]", "confidence": 8}]})
+            return json.dumps({"result": [{"word": w, "conf": score, "start": .2, "end": .6}
+                                          for w in ("quel", cue, "fait-il", "bureau")]})
+    assert weather_ending(None, Reader, 16000, bytes(32000)) is accepted
 
 
 def test_non_pcm_long_and_failed_reviews_preserve_original():
