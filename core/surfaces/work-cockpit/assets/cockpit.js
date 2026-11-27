@@ -148,6 +148,7 @@
       button.append(el('span',card.ref,'ref'),el('strong',card.title),el('span',card.status,'sub'));
       button.onclick=()=>{
         const rowTop = button.getBoundingClientRect().top;
+        const paneTop = rows.scrollTop;
         $(selected)?.setAttribute('aria-current','false');
         selected = card.id;
         button.setAttribute('aria-current','true');
@@ -155,10 +156,12 @@
         drawDetail(card, () => {
           delete workspace.dataset.detail;
           button.focus({preventScroll:true});
-          window.scrollBy(0, button.getBoundingClientRect().top - rowTop);
+          if (mobile.matches) window.scrollBy(0, button.getBoundingClientRect().top - rowTop);
+          else rows.scrollTop = paneTop;
         });
         $('detail').focus({preventScroll:true});
-        $('detail').scrollIntoView({block:'start'});
+        if (mobile.matches) $('detail').scrollIntoView({block:'start'});
+        else $('detail').scrollTop = 0;
       };
       rows.append(button);
     }
@@ -167,7 +170,7 @@
     $('filter-count').textContent=activeFilters ? '('+activeFilters+')' : '';
     drawDetail(visible.find(card=>card.id===selected));
   }
-  function fromStart() {delete workspace.dataset.detail; render();}
+  function fromStart() {delete workspace.dataset.detail; render(); $('rows').scrollTop = 0;}
   $('filters').onsubmit=e=>e.preventDefault();
   $('filters').onchange=e=>{if(e.target.tagName==='SELECT') fromStart();};
   $('search').oninput=fromStart; $('sort').onchange=fromStart;
