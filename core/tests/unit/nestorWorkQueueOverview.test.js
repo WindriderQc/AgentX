@@ -49,6 +49,7 @@ test('owner queue overviews use one dated snapshot across pages, overlapping res
     'Le démarrage automatique reste soumis à la fenêtre autorisée et à l’admission native.'
   ]);
   expect(last.overview.text).toContain('créneau ouvert, départ manuel) · opérateur — déclencher pendant le créneau');
+  expect(last.overview.text).toContain('En attente d’action (1 demande) · Exemple — Demande manual ');
   expect(last.overview.text).toContain('créneau expiré, départ automatique) · opérateur — réexaminer la fenêtre autorisée');
   expect(last.overview.text).toContain('créneau à venir, départ automatique) · Core — attendre le créneau et l’admission native');
   for (const [id, mode, state, code, actor] of [
@@ -71,5 +72,28 @@ test('an empty owner queue explicitly renders zero counts and has no examples', 
   expect(result.overview).toBeDefined();
   expect(result.overview.text).toContain('File automatique 0 · En attente d’action 0.');
   expect(result.overview.text).toContain('Créneaux réservés 0 · À venir 0 · Ouverts 0 · Expirés 0 · Invalides 0.');
+  expect(result.overview.text).not.toContain('Exemple');
   expect(result.overview.examples).toEqual([]);
+});
+
+test('the report counts all requests represented by each example and qualifies a recorded dispatch', async () => {
+  const jobs = [
+    { id: 'handoff', kind: 'diagnostic', state: 'dispatching', executor: { mode: 'operator' } },
+    ...['manual-a', 'manual-b', 'manual-c'].map(id => slot(id, false, -10, -5)),
+    ...['plan-a', 'plan-b'].map(id => ({ id, kind: 'profiler', state: 'requested', executor: { hostId: 'example' } })),
+    ...['auto-a', 'auto-b', 'auto-c', 'auto-d'].map(id => slot(id, true, 5, 20))
+  ];
+  queue.list.mockResolvedValueOnce(snapshot(jobs, now));
+  const { overview, jobs: page } = await list(0);
+  expect(page.map(job => job.id)).toEqual(['handoff']);
+  expect(overview.text).toContain('File automatique 4 · En attente d’action 5.');
+  expect(overview.text).toContain('Départs enregistrés 1 · Exécutions enregistrées 0');
+  expect(overview.examples.map(({ id, requestCount }) => [id, requestCount])).toEqual([
+    ['manual-a', 3], ['plan-a', 2], ['auto-a', 4]
+  ]);
+  expect(overview.text).toContain('En attente d’action (3 demandes) · Exemple — Demande manual-a (créneau expiré, départ manuel) · opérateur — réexaminer la fenêtre autorisée et l’intention d’origine');
+  expect(overview.text).toContain('En attente d’action (2 demandes) · Exemple — Demande plan-a (sans réservation, départ manuel) · opérateur — planifier le créneau');
+  expect(overview.text).toContain('En file automatique (4 demandes) · Exemple — Demande auto-a (créneau à venir, départ automatique) · Core — attendre le créneau et l’admission native.');
+  expect(overview.text).toContain('Chaque départ enregistré attend la confirmation d’exécution de l’exécuteur natif. Son mode de départ se vérifie sur la demande correspondante.');
+  expect(overview.text).toContain(overview.observedAt);
 });

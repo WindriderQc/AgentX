@@ -345,8 +345,12 @@ GPU/device qualification.
 ## Nestor, LeadX and result follow-through
 
 `POST /api/consumers/nestor/v1/work-queue` provides `list`, `show`, `request`,
-`cancel`, `notifications` and `acknowledge`. List pages include full status
-counts. Show resolves archived IDs too. Nestor submits planning requests, without
+`cancel`, `notifications` and `acknowledge`. Each list page includes the full
+phase and reservation counts. Its dated `overview.text` gives the complete queue
+report. Within each automatic or action-required situation, `requestCount`
+counts all matching requests and one example identifies the slot, mode and next
+action. A recorded dispatch awaits native confirmation of execution.
+Show resolves archived IDs too. Nestor submits planning requests, without
 an executor, and cannot reserve or dispatch through this capability. Personal
 errands remain personal tasks; implementation work remains Pipeline. A queue
 completion never marks a linked task or GitHub issue done.
