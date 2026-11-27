@@ -442,7 +442,10 @@ function createPersonaTurnHandler({
         }
 
         serverPhases.prepared = Date.now() - startedAt;
-        const run = executeConversation({ backend, session: turnSession, ...(inputOnly && { [householdUserText]: userText }), ...(guardianSession ? { canonicalSession: session,
+        const spoken = require('./spoken-consultation').forTurn({ entry, session, backend, channel: req.body?.channel, env: conversationEnv, event,
+          blocked: picture || consult || member || entry.familyPage?.target || target || safety.flagIds?.length || savedNow || family.captured || sound || workshop,
+          identity: pack.childSafe ? familyIdentity(session.persona) : session.persona?.name, context: [preparedRelayContext, repairContext, memberWork?.contextFor(session.sessionId), contextTail].filter(Boolean).join('\n'), personalTasks: runtimeServices?.tasks?.personal });
+        const run = executeConversation({ backend, spoken, session: turnSession, ...(inputOnly && { [householdUserText]: userText }), ...(guardianSession ? { canonicalSession: session,
           ...(entry.performance?.guardian?.model && { model: entry.performance.guardian.model }),
           guardianStreaming: true, maxOutputTokens: 1024 } : {}), pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText,
@@ -581,7 +584,7 @@ function createPersonaTurnHandler({
       else if (session.teamExchange) await conversations.updateSession({ sessionId: session.sessionId }, { $unset: { teamExchange: '' } });
       if (entry.detached) {
         memberWork.finish(session.sessionId, clientTurnId, { traceId, text: speechText(replyText), written: audit.written, display: audit.display,
-          language: speechLanguage, speaker: audit.speaker, speech: audit.replySpeech });
+          language: speechLanguage, speaker: audit.speaker, speech: audit.replySpeech, ...(sound && { sound: { ...sound, play: 'after-reply' } }) });
         return undefined;
       }
       // #41: the conversation's agent asked for a member. Its turn starts once this one has ended;
@@ -652,7 +655,7 @@ function createPersonaTurnHandler({
       }
       if (abort.signal.aborted || entry.streamClosed) return;
       logger?.error?.('Household persona turn failed', entry.ephemeral ? { code: 'EPHEMERAL_TURN_FAILED' } : { error: error.message, ...(error.detail ? { detail: error.detail } : {}) });
-      if (res.headersSent) { event('error', { message: error.message }); return res.end(); }
+      if (res.headersSent) { event('error', { message: error.message, code: error.code }); return res.end(); }
       return fail(res, error.statusCode || 502, error.message || 'Voice persona turn failed', error.code || 'VOICE_PERSONA_INFERENCE_FAILED');
     } finally {
       try {

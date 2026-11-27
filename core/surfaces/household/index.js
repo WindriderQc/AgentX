@@ -155,7 +155,7 @@ function register(api) {
   const models = createModels(mongoose);
   const conversations = require('./turn-attribution').attributedConversations(
     require('../../src/services/conversations/ephemeralSessions').withEphemeralSessions(runtimeServices.conversations.forSurface('household')));
-  const memberWork = createMemberWork({ conversations });
+  const memberWork = createMemberWork({ conversations, soundFor: id => sounds.get(id) });
   const personalTasks = runtimeServices.tasks.personal;
   const familyTasks = runtimeServices.tasks.family;
   const ownerMemory = runtimeServices.memory.forAudience('owner');
@@ -283,6 +283,7 @@ function register(api) {
       await ensureCatalog();
       const localOnly = protectedSourcesLocalOnly(conversationEnv);
       return envelope(res, { personas: (await runtimeServices.personas.list()).map(personaCatalog.snapshot), runtime: {
+        localSpokenDialogue: Boolean(conversationEnv.HOUSEHOLD_SPOKEN_HOST && conversationEnv.HOUSEHOLD_THINKER_HOST),
         protectedSourcesLocalOnly: localOnly, nativeExplicitInputOnly: nativeInputOnly('hermes', conversationEnv),
         defaultBackend: conversationBackend(localOnly ? null : conversationEnv.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND, conversationEnv),
         openclawConfigured: configuredOpenClaw(conversationEnv), hermesConfigured: configuredHermes(conversationEnv),

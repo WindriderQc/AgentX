@@ -181,6 +181,19 @@ turns use the configurable `HOUSEHOLD_VOICE_TASK` (default
 The two routes can resolve different host pins and models; inspect the effective
 routing snapshot instead of inferring Family's model from personal Main.
 
+An instance can bind `HOUSEHOLD_SPOKEN_HOST` and `HOUSEHOLD_THINKER_HOST` to
+two Core host keys. For ordinary local Family and private Practical microphone
+turns, the first host's pin answers from the scoped short context or requests a
+consultation. It receives no tools. The second host's pin takes the original
+request, selected context and permitted tools. The accepted turn owns both
+calls. A new utterance can detach an ongoing consultation before its reply
+starts. Its saved answer can play at the next pause in the same session. An
+explicit stop cancels outstanding work. Full readings bypass the short reply.
+Model limits and interrupted streams are recorded as incomplete turns.
+Personal native sessions and an explicitly selected engine keep their chosen
+runtime. New personal microphone sessions use the local route by default
+when both hosts are configured.
+
 Family's `/api/voice-personas/family/screen-pages` catalogue exposes the existing
 ecosystem tour and instance-selected `earth` and `iss` views. Add the latter to
 `config/screen-services.json` with `family: true`; only these two service IDs

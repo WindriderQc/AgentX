@@ -90,7 +90,8 @@ async function prepareInferenceRuntime(request, policy, overrides = {}) {
   if (policy !== 'chat' && policy !== 'embed') {
     deps.applyContractOutputLimit({ routed: policy !== 'direct', options, inferenceContract });
   }
-  const thinkingPolicy = ['extension', 'embed'].includes(policy) ? null : deps.resolveThinkingPolicy({
+  const useThinkingPolicy = policy !== 'embed' && (policy !== 'extension' || request.thinkingMode === 'auto');
+  const thinkingPolicy = !useThinkingPolicy ? null : deps.resolveThinkingPolicy({
     requestedThink: toolExecution?.think ?? request.think,
     thinkingMode: request.thinkingMode,
     capabilityContract: inferenceContract,
