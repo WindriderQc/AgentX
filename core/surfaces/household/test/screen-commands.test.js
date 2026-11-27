@@ -110,7 +110,7 @@ test('the page loads screen commands before the conversation, and only Nestor mo
   const page = fs.readFileSync(path.join(__dirname, '../public/conversation-page.js'), 'utf8');
   assert.match(page, /const screenWords = family \? null : window\.NestorScreenCommandsEditor\?\.mount\(/);
   assert.match(page, /const screenCommand = family \? null : window\.NestorScreenCommands\?\.handler\(board, \{ phrases: \(\) => screenWords\?\.phrases\(\) \|\| \[\] \}\)/);
-  assert.match(page, /localControl: \(text, options\) => \(framed && window\.IllustratedFrame\?\.localControl\(text, options\)\) \|\| idlePhotos\?\.localControl\(text, options\) \|\| screenCommand\?\.\(text, options\) \|\| null/,
+  assert.match(page, /localControl: \(text, options\) => openFamilyForge\(text, options\) \|\| \(framed && window\.IllustratedFrame\?\.localControl\(text, options\)\) \|\| idlePhotos\?\.localControl\(text, options\) \|\| screenCommand\?\.\(text, options\) \|\| null/,
     'the frame keep precedes idle photos and the personal screen handler');
   assert.match(page, /if \(!drafts\.hasFiles\(\) && \(\(framed && window\.IllustratedFrame\?\.localControl\(typed\.value, \{ followup: true \}\)\) \|\| screenCommand\?\.\(typed\.value\)\)\)/,
     'typed keep and screen commands share the files filter; files mean a request');
@@ -214,4 +214,16 @@ test('a surface without local controls keeps the previous behaviour', async () =
   await h.say();
   assert.ok(h.calls.includes('turn'));
   h.conversation.stop();
+});
+
+test('the Family Forge command requires an exact spoken request and wake or active dialogue', () => {
+  const { familyForge } = require('../public/screen-commands');
+  assert.deepEqual(familyForge('Hey Nestor, ouvre la Forge 3D'), { action: 'openFamilyForge', addressed: true });
+  assert.deepEqual(familyForge('Va à la Forge 3 D, s’il te plaît', { followup: true }), { action: 'openFamilyForge', addressed: false });
+  assert.equal(familyForge('ouvre la Forge 3D'), null, 'unaddressed on standby');
+  for (const phrase of ['N’ouvre pas la Forge 3D', 'Ouvre la Forge 3D et construis-moi une patinoire',
+    'Comment ouvrir la Forge 3D?', 'Ouvre une autre Forge 3D', 'Ouvre la Forge 3D https://ailleurs.example',
+    'Nous avons dit « ouvre la Forge 3D »']) {
+    assert.equal(familyForge(phrase, { followup: true }), null, phrase);
+  }
 });

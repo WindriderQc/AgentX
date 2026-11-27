@@ -21,7 +21,7 @@ fs.mkdirSync(output, { recursive: true });
 // A fake microphone: `say()` delivers one finished utterance to the conversation loop.
 const fakeAudio = `window.NestorConversation.openAudio = async () => {
   const audio = { canInterrupt: false,
-    listen(callback) { audio.utterance = callback; }, quiet() {}, close() {}, holdPlayback() {}, resumePlayback() {},
+    listen(callback) { audio.utterance = callback; }, quiet() {}, close() { sessionStorage.setItem('fixture-mic-closed', 'yes'); }, holdPlayback() {}, resumePlayback() {},
     async play() {}, async settle() {} };
   window.say = () => audio.utterance(new Blob(['speech']), {});
   return audio;
@@ -58,6 +58,13 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   const { createReplyChannels } = require('../../surfaces/household/reply-channels');
   const familyPages = require('../../surfaces/household/family-pages');
   app.get('/api/voice-personas/family/screen-pages',(_req,res)=>res.json({data:{destinations:pages.entries}}));
+  require('../../surfaces/household/llmx-page').register({ app, env: {
+    HOUSEHOLD_AVATAR_MODULE_URL: 'https://forge-fixture.invalid/embed/llmx-face.js',
+  }, fetchWithTimeout: async url => {
+    assert.equal(url, 'https://forge-fixture.invalid/embed/llmx-room.js');
+    return new Response('document.querySelector("[data-llmx-root]").textContent="Forge audio was not started";',
+      { headers: { 'content-type': 'text/javascript' } });
+  } });
   app.get(['/diskx','/scene/earth','/scene/iss'],(req,res)=>res.type('html').send('<!doctype html><title>Synthetic source fixture</title><h1>Fixture scene</h1><p>Render fixture only; no live telemetry.</p>'));
   app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas, runtime: { defaultBackend: 'agentx', hermesConfigured: true } } }));
   app.use('/api/voice-personas/private', (_req, res) => { errors.push('Private API requested by family'); res.sendStatus(403); });
@@ -162,7 +169,21 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   await ask('pipeline');
   await page.waitForFunction(()=>!document.getElementById('conversationMessage').disabled);
   assert.equal(await frame.count(),0,'owner page proposal is discarded by native parser');
+  await listening();
+  const beforeForge = submissions.length;
+  await page.evaluate(() => {
+    sessionStorage.removeItem('fixture-mic-closed');
+    window.addEventListener('beforeunload', () => sessionStorage.setItem('fixture-closed-before-unload',
+      sessionStorage.getItem('fixture-mic-closed') || 'no'), { once: true });
+  });
+  heard = 'Hey Nestor, ouvre la Forge 3D';
+  await Promise.all([page.waitForURL(origin + '/llmx?profile=family'),
+    page.evaluate(() => { void window.say(); })]);
+  await page.getByText('Forge audio was not started', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('fixture-closed-before-unload')), 'yes', 'voice capture was released before navigation');
+  assert.equal(submissions.length, beforeForge, 'the explicit local command must not send a model turn');
+  assert.equal(context.pages().length, 1, 'the Family Forge replaces the active conversation page');
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({ok:true,scope:'family',views:['ecosystem','earth','iss'],liveModelCalls:0,errors}));
+  console.log(JSON.stringify({ok:true,scope:'family',views:['ecosystem','earth','iss','forge-3d'],liveModelCalls:0,errors}));
 })().catch(error=>{console.error(error.stack);process.exitCode=1;})
 .finally(async()=>{await browser?.close();await new Promise(resolve=>server?server.close(resolve):resolve());});
