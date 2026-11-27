@@ -169,6 +169,22 @@ function fakeBrowser(t) {
   } };
 }
 
+test('speech starting during a lookup keeps both clauses across a pause even if playback begins', async t => {
+  const browser = fakeBrowser(t), phrases = [];
+  const audio = await openAudio(new AbortController().signal, error => assert.fail(error));
+  t.after(() => audio.close());
+  let started = false;
+  audio.listen((blob, capture) => phrases.push(capture), () => {}, { interruptible: true, replyStarted: () => started });
+  browser.send(.1, 400);
+  started = true;
+  browser.send(0, 680);
+  assert.equal(phrases.length, 0);
+  browser.send(.1, 400);
+  browser.send(0, 1000);
+  assert.equal(phrases.length, 1);
+  assert.equal(phrases[0].audioMs, 2480);
+});
+
 test('the real capture adapter keeps the microphone live through long speech and sends one full WAV on pause', async t => {
   const browser = fakeBrowser(t), lifetime = new AbortController(), phrases = [], errors = [];
   const audio = await openAudio(lifetime.signal, error => errors.push(error));
