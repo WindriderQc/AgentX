@@ -1,5 +1,14 @@
 import { createHash } from 'node:crypto';
 import { privateOwnerContext, configuredJobContext } from '../action-provenance.mjs';
+import { workQueueExample } from '../../../shared/workQueueExample.cjs';
+
+// Cite one row from the page. The global counts come independently from Core's summary.
+export function morningQueueExample(jobs) {
+  if (!Array.isArray(jobs)) return null;
+  const examples = jobs.map(workQueueExample).filter(Boolean);
+  return examples.find(row => row.presentation.phase === 'action_required')
+    || examples.find(row => row.presentation.phase === 'automatic_queue') || null;
+}
 
 export function createWorkQueueClient({ baseUrl, fetchImpl = fetch } = {}) {
   return async body => {

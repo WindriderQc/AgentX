@@ -12,6 +12,13 @@ A key (`agent:<id>:...`) names the agent that owns the job, so a dedicated mail
 agent's triage job can record personal notes without any other agent gaining them.
 The existing owner Telegram/Household context checks remain in effect.
 
+For a morning reminder that includes the compute queue, call `nestor_briefing`
+with `{"includeWorkQueue":true}`. Its six-line text includes Core's global
+automatic, action-required and reservation counts. When the page supplies an
+example, its queue reference, slot, start mode, responsible actor and next step
+occupy one additional line. The reply retains the timestamped queue summary
+alongside the existing outcome notices.
+
 `personal_task_dossier` also accepts private Household consultations of the
 `secretary` agent when explicitly granted in `tools.alsoAllow`. That scope
 only exposes `read` (save an evidence snapshot) and `get` (page the saved task
