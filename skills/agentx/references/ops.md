@@ -133,6 +133,9 @@ because an instance still has an unmigrated `QUEUE.md`, stop and ask the owner.
 Product procedure: `docs/HEAVY_WORK_QUEUE.md`.
 
 **Reading and planning.** `work_queue` (owner bus) or `GET /api/cluster/schedule/work-queue`.
+For an owner status report, call `work_queue` with `action: "list"` and `limit: 1`.
+Relay the latest `overview.text` for the figures and use its dated examples for
+individual cases. A later page can see new arrivals. Use one snapshot for totals.
 Use `summary.counts` before pagination: it separates automatic queue, action
 required, recorded dispatch or execution, and uncertainty. Reservations are
 counted apart. Explain the actor and step in `presentation.nextAction`, not the
