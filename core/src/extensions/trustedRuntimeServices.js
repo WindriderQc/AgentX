@@ -349,6 +349,7 @@ async function executeRoutedInference(deps, request, options = {}) {
   const runtime = await prepareInferenceRuntime({
     ...payload, host: hostUrl, claimed: Boolean(benchmarkClaim),
     options: runtimeOptions, keepAlive, think: request.think,
+    ...(request.thinkingMode === 'auto' && { thinkingMode: 'auto', taskType }),
     ...(options.codingCapacity && { includeArtifactIdentity: true }),
   }, request.mode === 'embed' ? 'embed' : 'extension', deps);
   ({ options: runtimeOptions, keepAlive, numCtxSource, inferenceContract } = runtime);

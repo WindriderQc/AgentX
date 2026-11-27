@@ -455,6 +455,7 @@
           }
           if (!this.owns(turn)) return false;
         }
+        if (reply.sound && this.owns(turn)) await this.playClip(turn, reply.sound);
         await this.audio.settle?.(turn.speech.signal);
         await this.awaitCandidate(turn);
         if (!this.owns(turn)) return false;

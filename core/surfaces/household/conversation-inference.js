@@ -1,6 +1,7 @@
 'use strict';
 
-const { readReplyFrames } = require('./persona-catalog');
+const spoken = require('./spoken-consultation');
+const { readReplyFrames, replyLimitError } = require('./persona-catalog');
 const { sumUsage } = require('../../src/services/conversations/turnAccounting');
 const { fingerprint } = require('../../src/services/conversations/relayContext');
 
@@ -24,14 +25,27 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
   // A spoken turn takes the instance's voice lane, in any pack. LLMx scene
   // conversations keep their pack's task: they need its structured replies.
   const taskType = request.channel === 'voice' && !session.llmx ? voiceTask(env) : pack.taskType;
+  let thinker = null, frontUsage = null;
+  if (request.spoken) {
+    const decision = await spoken.decide(request, inference, consumerContract, env, spoken.pinned);
+    frontUsage = decision.body;
+    if (decision.mode === 'parler') {
+      onDelta?.(decision.texte);
+      return { backend, text: decision.texte, metadata: { ...decision.metadata, usage: sumUsage([frontUsage]) },
+        tools: { status: 'observed', authority: 'agentx/core', offered: [], receipts: [], spokenDialogue: 'direct' } };
+    }
+    thinker = await spoken.pinned(env.HOUSEHOLD_THINKER_HOST);
+    request.spoken.consulting();
+  }
   // Famille may call the Core tools the instance turned on: the model's tool
   // calls run through Core's handlers, then the model answers from their
   // results. Without a tool call the first reply streams as before.
-  let toolset = request.familyTools || null;
+  let toolset = request.familyTools || (thinker && request.spoken.personalReads) || null;
   const receipts = [];
   const taskRequiresPrimary = request.requiresFamilyPrimary === true && backend === 'agentx' && pack.childSafe
     && session.packId === 'kidx_nestor' && session.scopeId === 'family' && request.channel === 'voice';
-  let conversation = [{ role: 'system', content: agentxInstructions }, ...prepared.map(({ attachments, ...message }) => message)];
+  const instructions = thinker && request.spoken.personalReads ? agentxInstructions + '\nOnly the listed Core read tools are available. Base current task and calendar answers on their receipts.' : agentxInstructions;
+  let conversation = [{ role: 'system', content: instructions }, ...prepared.map(({ attachments, ...message }) => message)];
   let result, streamed = '', toolCalls = [], toolsOffered = Boolean(toolset), rounds = 0;
   let relay = null, relaySource = null, emittedModelChars = 0, relayContinuation = null, relayEndReason = null;
   const fragment = () => ({ ...relaySource, completed: false,
@@ -55,21 +69,22 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     return true;
   };
   // Measured counts of every call this reply made, summed into the turn.
-  const callUsage = [];
+  const callUsage = frontUsage ? [frontUsage] : [];
   for (;;) {
     const offerTools = toolsOffered && rounds < toolset.maxRounds;
     const execute = async (withTools) => {
       if (relayContinuation) return relayContinuation.execute(conversation, withTools ? toolset.definitions : undefined, { announce: rounds === 0 });
       const body = {
-        mode: 'chat', taskType,
+        mode: 'chat', taskType: thinker ? 'deep_reasoning' : taskType,
         ...(request.model ? { model: request.model.replace(/^ollama\//, '') } : {}),
         ...(request.openTarget ? { exclusiveHost: true, options: { num_ctx: request.openTarget.numCtx } } : {}),
         messages: conversation, ...(withTools ? { tools: toolset.definitions } : {}),
-        stream: request.streaming, think: false, temperature: pack.temperature, max_tokens: pack.maxTokens,
-        callerDetail: `agentx-household/${pack.id}/${session.modeId}`, timeoutMs: 600000
+        stream: request.streaming, ...(thinker ? { model: thinker.model, thinkingMode: 'auto' } : { think: false }), temperature: pack.temperature,
+        max_tokens: thinker ? Math.max(4096, pack.maxTokens) : pack.maxTokens,
+        callerDetail: thinker ? 'agentx-household/local-consultation' : `agentx-household/${pack.id}/${session.modeId}`, timeoutMs: 600000
       };
-      const options = { signal, consumerContract, ...(session.ephemeral ? { contentRetention: 'ephemeral' } : {}), ...(request.openTarget ? { hostUrl: request.openTarget.hostUrl } : {}) };
-      const eligible = env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && !session.ephemeral && !session.llmx && !request.openTarget
+      const options = { signal, consumerContract, ...(thinker && { hostUrl: thinker.hostUrl, retry: { enabled: false } }), ...(session.ephemeral ? { contentRetention: 'ephemeral' } : {}), ...(request.openTarget ? { hostUrl: request.openTarget.hostUrl } : {}) };
+      const eligible = !thinker && env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && !session.ephemeral && !session.llmx && !request.openTarget
         && !rounds && !receipts.length && (pack.childSafe && session.packId === 'kidx_nestor' || request.relayOccupation);
       if (request.relayOccupation && request.attachments?.length) return require('../../src/services/routing/conversationContinuityContext')
         .statusResult(body, 'Le relais sans outils ne peut pas analyser ces pièces jointes. La demande native d’origine est conservée.', 'relay_attachments_unavailable');
@@ -115,7 +130,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     }
     if (result?.metadata?.conversationContinuity?.state === 'status_only') toolsOffered = false;
     // A model whose runtime refuses tools answers the turn without them.
-    if (toolsOffered && !result?.ok && /does not support tools/i.test(JSON.stringify(result?.body?.error || ''))) {
+    if (!thinker && toolsOffered && !result?.ok && /does not support tools/i.test(JSON.stringify(result?.body?.error || ''))) {
       toolsOffered = false;
       try { result = await execute(false); }
       catch (error) {
@@ -139,7 +154,10 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
         callUsage.push(await result.completion);
       }
     }
-    if (!result.stream) callUsage.push(result.body);
+    if (!result.stream) {
+      if (result.body?.done_reason === 'length') throw replyLimitError();
+      callUsage.push(result.body);
+    }
     const message = result.body?.message;
     const text = frames.text || message?.content || result.body?.response || result.body?.choices?.[0]?.message?.content || '';
     if (finishSoundAnswer) {
@@ -175,9 +193,8 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       : 'Je n’ai pas pu terminer la demande d’affichage.';
     onDelta?.(streamed);
   }
-  return { backend, text: streamed,
-    metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}), usage: sumUsage(callUsage) },
-    tools: result.metadata?.conversationContinuity?.state === 'status_only'
+  const tools = result.metadata?.conversationContinuity?.state === 'status_only'
+
       ? { status: 'not_run', authority: 'agentx/core', receipts: [], reason: 'automatic_service_notice',
         conversationContinuity: result.metadata.conversationContinuity }
       : relayEndReason ? { status: 'partial', authority: 'agentx/core', receipts,
@@ -189,6 +206,8 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       ? { status: 'observed', authority: 'agentx/core', offered: toolset.names, receipts }
       : { status: 'not_supported', authority: 'agentx/ollama', receipts: [],
         reason: toolset ? 'The selected model runtime does not accept tools; the turn used supplied context only.'
-          : 'This inference backend uses supplied context; native agent tools, skills and Dreaming are not running.' } };
+          : 'This inference backend uses supplied context; native agent tools, skills and Dreaming are not running.' };
+  return { backend, text: streamed, tools: thinker ? { ...tools, spokenDialogue: 'consulted' } : tools,
+    metadata: { ...(result.metadata || {}), ...(toolset ? { toolRounds: rounds } : {}), usage: sumUsage(callUsage) } };
 }
 module.exports = { runLocalConversation, voiceTask };

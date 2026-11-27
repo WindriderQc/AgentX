@@ -126,8 +126,6 @@ function createBrowserSessionControls({
       if (!validClientTurnId(clientTurnId)) return fail(res, 400, 'A valid turnId is required', 'VOICE_INTERRUPTION_INVALID');
       const entry = activePersonaTurns.get(req.params.sessionId);
       let timer;
-      // A stop reaches the team members still working in the background as well.
-      if (req.body?.stop === true) memberWork?.cancel(req.params.sessionId);
       try {
         if (entry) {
           if (entry.clientTurnId !== clientTurnId) {
@@ -143,6 +141,7 @@ function createBrowserSessionControls({
                 || (consumer === 'llmx' && (!entry.llmx || snapshot.modeId !== sessionScope.modeId))) {
               wrongScope = true; return true;
             }
+            if (req.body?.stop === true) memberWork?.cancel(req.params.sessionId);
             // Speaking over a team member does not cancel it; only an explicit stop does.
             if (req.body?.stop !== true && entry.detach?.()) { detached = true; return true; }
             entry.interrupted = true;
@@ -158,8 +157,9 @@ function createBrowserSessionControls({
           if (detached) return envelope(res, { interrupted: false, detached: true, turnId: clientTurnId });
           if (entry.error && !entry.executionSettled) throw entry.error;
         }
-        if (consumer === 'llmx' && !await conversations.getSession({ sessionId: cleanText(req.params.sessionId, 64),
+        if (!entry && (consumer === 'llmx' || req.body?.stop === true) && !await conversations.getSession({ sessionId: cleanText(req.params.sessionId, 64),
           ...sessionScope, status: 'active' })) return fail(res, 404, 'Conversation not found in this space', 'VOICE_PERSONA_SESSION_NOT_FOUND');
+        if (!entry && req.body?.stop === true) memberWork?.cancel(req.params.sessionId);
         // Short replies may have finished generating before playback is interrupted.
         // Mark the same existing audit so history never implies it was fully heard.
         const audit = await conversations.updateTurn({

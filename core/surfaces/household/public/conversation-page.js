@@ -266,7 +266,8 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     try { pipeline.open = storage?.getItem(pipelineKey) !== 'closed'; } catch {}
     pipeline.addEventListener('toggle', () => { try { storage?.setItem(pipelineKey, pipeline.open ? 'open' : 'closed'); } catch {} });
   }
-  if (!family) { try { backendPicker.value = engines.choose(runtime, false, storage?.getItem(backendKey)); } catch {} }
+  let preferredEngine;
+  if (!family) { try { preferredEngine = storage?.getItem(backendKey); backendPicker.value = engines.choose(runtime, false, preferredEngine); } catch {} }
   try { const savedListening = storage?.getItem(listeningKey); wake.checked = (['wake', 'open'].includes(savedListening) ? savedListening : defaultListening) === 'wake'; } catch {}
   const describeListening = () => {
     el('conversationListeningHint').textContent = wake.checked ? 'Say “Hey/Eille/Oh/Ah/Yo Nestor”, then speak naturally.' : 'Open conversation: speak freely while the mic is on.';
@@ -507,6 +508,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
           if (!showExplicitImage(event.block)) show(mathCard(event.block, session, turnId));
         }
       }
+      if (event.type === 'status' && event.phase === 'consulting') el('conversationStatus').textContent = turnLanguage === 'en' ? 'Nestor is checking. You can keep talking.' : 'Nestor vérifie. Vous pouvez continuer à parler.';
       if (event.type === 'status' && event.phase === 'activity') voiceHealth.activity();
       announcements.update(event);
       if (!interruptedTurns.has(turnId) && event.type === 'status' && ['loading', 'pending', 'waiting_host'].includes(event.phase)) {
@@ -640,34 +642,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     listening: () => ['listening', 'hearing', 'transcribing', 'waiting', 'thinking', 'preparing', 'speaking'].includes(conversation.state),
     language: () => conversation.selection?.language || language.value,
     transcribeLocal });
-  // The reply of a member whose turn went on in the background (member-work.js on Core).
-  async function followMember(session, turnId, speaker) {
-    const name = speaker?.name || 'The other agent';
-    const url = `${sessionBase}/${encodeURIComponent(session.sessionId)}/member-reply?turn=${encodeURIComponent(turnId)}`;
-    const here = () => conversation.session?.sessionId === session.sessionId;
-    el('conversationStatus').textContent = `${name} is continuing in the background. Its answer will be spoken as soon as it is ready.`;
-    for (let round = 0; round < 20 && here(); round += 1) {
-      let work;
-      try { work = (await api(url))?.work; } catch { return; }
-      if (!work || !here()) return;
-      if (work.pending) continue;
-      transcript.querySelector('.empty')?.remove();
-      const row = document.createElement('div');
-      if (work.status !== 'answered' || !work.reply?.text) {
-        row.className = 'conversation-message activity'; row.textContent = `${name} could not finish its answer.`;
-        transcript.append(row); transcript.scrollTop = transcript.scrollHeight;
-        return;
-      }
-      row.className = 'conversation-message assistant'; row.dataset.speaker = name; row.dataset.spoken = 'false';
-      row.textContent = work.reply.text; WrittenReply.render(row, work.reply, { language: language.value }); transcript.append(row); transcript.scrollTop = transcript.scrollHeight;
-      // Said at the first pause; the text is already on screen and in the history.
-      for (let attempt = 0; attempt < 90 && here(); attempt += 1) {
-        if (await conversation.interject(work.reply)) { row.dataset.spoken = 'true'; return; }
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-      return;
-    }
-  }
+  const followMember = window.followConversationMember({ api, sessionBase, transcript, status: el('conversationStatus'), language, getConversation: () => conversation, show });
   const voiceHost = el('conversationPresence');
   const conversation = new NestorConversation.Conversation({
     recoverCapture: true, repairConversation: family, naturalFamilySpeech: family, microphoneIntent: rememberVoiceIntent,
@@ -861,7 +836,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   if (!family) el('conversationTeam').onclick = (event) => {
     const card = event.target.closest('button[data-agent]');
     if (!card || card.disabled || conversation.session || runtime?.protectedSourcesLocalOnly) return;
-    backendPicker.value = 'openclaw';
+    preferredEngine = backendPicker.value = 'openclaw';
     try { storage?.setItem(backendKey, 'openclaw'); } catch {}
     agentPicker.value = card.dataset.agent;
     picker.value = card.dataset.persona;
@@ -916,6 +891,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     language.value = profile.language;
   };
   backendPicker.onchange = () => {
+    preferredEngine = backendPicker.value;
     privacyBackend = null;
     if (!engines.available(runtime, family).includes(backendPicker.value)) backendPicker.value = engines.choose(runtime, family);
     if (!family) { try { storage?.setItem(backendKey, backendPicker.value); } catch {} }
@@ -937,9 +913,16 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       renderPrivacy();
     };
   }
+  const selectVoiceEngine = () => {
+    if (!family && runtime?.localSpokenDialogue && !conversation.session && !engines.available(runtime, false).includes(preferredEngine) && !open.checked && selectedAgent()?.id === 'main') {
+      backendPicker.value = 'agentx';
+      restoreProfile(); describe();
+    }
+  };
   // What a press on Activer Nestor or Reprendre starts; opening a saved conversation starts it too.
   const startVoice = options => {
     if (options?.automatic && !microphoneWanted) return;
+    selectVoiceEngine();
     stopPreview();
     preferences.lastVoice = chosenVoice(); savePreferences();
     if (open.checked) void openHold.start();
@@ -957,6 +940,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     el('conversationResume').hidden = true; setHistoryOpen(false); conversation.stop(); work?.reset(); workflow?.reset(); void releaseOpen(); partial = null;
     transcript.innerHTML = '<p class="empty">Our conversation will appear here.</p>'; clearBoard(); brain.reset(); showExecution(null);
     personalNotes.show(null);
+    if (!family) backendPicker.value = engines.choose(runtime, false, preferredEngine);
     showTools(null); if (!privacyChoice.snapshot().ephemeral) void recap?.refresh();
     el('conversationMessage').value = ''; composer.sync(); drafts.clear(); restoreProfile(); describe(); el('conversationMessage').focus();
   };
@@ -1084,7 +1068,6 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       }
       agentPicker.value = saved.agentId || 'main';
       backendPicker.value = engines.choose(runtime, family, saved.backend);
-      if (!family && engines.available(runtime, false).includes(saved.backend)) { try { storage?.setItem(backendKey, saved.backend); } catch {} }
       picker.value = saved.persona?.id || 'nestor'; open.checked = !!saved.inference?.open;
       language.value = P.profile(data.session.voice).language;
       transcript.replaceChildren(); partial = null; clearBoard(); brain.reset();
@@ -1192,7 +1175,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     const epoch = conversation.epoch;
     await ConversationSettings.startVoiceOnArrival({ waitForVisible: family, signal: voiceEvents.signal,
       current: () => microphoneWanted && voiceHost.isConnected && epoch === conversation.epoch,
-      start: () => conversation.start(selection(), { automatic: true }), status: el('conversationStatus'), french: () => language.value === 'fr' });
+      start: () => startVoice({ automatic: true }), status: el('conversationStatus'), french: () => language.value === 'fr' });
   } else if (autoStart && !microphoneWanted) conversation.show('paused');
   idlePhotos = window.NestorIdlePhotos?.mount({ host: app.querySelector('.conversation-toolbar'), api, space,
     standby: () => !!conversation.selection?.wakeWord && !conversation.wake.active(),
