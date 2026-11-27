@@ -2,6 +2,7 @@
 
 // Curated family views on the real Nestor page (#924): typed and spoken "agrandis",
 // "ferme", "suivant"… act on the content workspace without a model turn.
+// Spoken ISS requests additionally exercise the server-side page matcher.
 // Loopback CPU fixtures only: no model, microphone, speech service or live data.
 // The microphone and speech recognition are simulated; the page, conversation
 // loop and content workspace are the shipped code.
@@ -55,6 +56,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     {id:'iss',label:'ISS',href:'/scene/iss',mode:'frame'}
   ]);
   const { createReplyChannels } = require('../../surfaces/household/reply-channels');
+  const familyPages = require('../../surfaces/household/family-pages');
   app.get('/api/voice-personas/family/screen-pages',(_req,res)=>res.json({data:{destinations:pages.entries}}));
   app.get(['/diskx','/scene/earth','/scene/iss'],(req,res)=>res.type('html').send('<!doctype html><title>Synthetic source fixture</title><h1>Fixture scene</h1><p>Render fixture only; no live telemetry.</p>'));
   app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas, runtime: { defaultBackend: 'agentx', hermesConfigured: true } } }));
@@ -70,7 +72,10 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     const session = sessions.get(req.params.id); session.turnCount++;
 
     const channels=createReplyChannels({allowPages:true,pageCatalog:pages});
-    channels.push(req.body.text==='describe' ? 'Fixture follow-up.' : '<show kind="page">'+req.body.text+'</show>');
+    const intent=familyPages.resolve(req.body.text,pages);
+    const timingFollowUp=req.body.text==='À quelle heure on peut la voir?';
+    channels.push(intent?.standalone ? '<show kind="page">'+intent.target+'</show>'
+      : timingFollowUp ? 'Fixture ISS timing follow-up.' : req.body.text==='describe' ? 'Fixture follow-up.' : '<show kind="page">'+req.body.text+'</show>');
     const value=channels.end();
     res.type('application/x-ndjson');
     for(const block of value.display) res.write(JSON.stringify({type:'show',block})+'\n');
@@ -137,6 +142,23 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     await page.getByRole('button',{name:'Fermer la page',exact:true}).click();
     assert.equal(await frame.count(),0);
   }
+  await page.locator('#conversationStart').click();
+  await page.waitForFunction(() => typeof window.say === 'function');
+  const listening=()=>page.waitForFunction(()=>document.getElementById('conversationPresence').dataset.state==='listening');
+  await listening();
+  heard='Hey Nestor, montre-moi où passe la Station spatiale';
+  await page.evaluate(() => { void window.say(); });
+  await frame.contentFrame().getByRole('heading',{name:'Fixture scene'}).waitFor();
+  assert.equal(await frame.getAttribute('src'),'/scene/iss?view=screen&from=nestor');
+  await listening();
+  heard='À quelle heure on peut la voir?';
+  const before=submissions.length;
+  await page.evaluate(() => { void window.say(); });
+  await page.getByText('Fixture ISS timing follow-up.',{exact:true}).waitFor();
+  assert.equal(submissions[before],heard);
+  assert.equal(screens[before]?.[0]?.page,'iss');
+  assert.equal(await frame.count(),1,'timing follow-up keeps the same ISS view open');
+  await page.getByRole('button',{name:'Fermer la page',exact:true}).click();
   await ask('pipeline');
   await page.waitForFunction(()=>!document.getElementById('conversationMessage').disabled);
   assert.equal(await frame.count(),0,'owner page proposal is discarded by native parser');
