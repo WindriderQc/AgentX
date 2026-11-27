@@ -136,3 +136,30 @@ test('the spoken screen context keeps complete scoped facts and defers large pan
   assert.match(large, /Panorama/); assert.match(large, /consult the scoped source/); assert.match(large, /Lune/);
   assert.ok(!large.includes('x'.repeat(20))); assert.equal(spoken.screenReference({ status: 'none' }), '');
 });
+
+test('the principal handles scoped speech and the admitted guardian reply keeps its evidence', async () => {
+  for (const session of [family, personal]) {
+    const req = { ...request(), session, pack: { ...pack, childSafe: session === family } };
+    for (const relay of [false, true]) {
+      const calls = [];
+      const inference = { execute: () => assert.fail('unexpected additional dispatch'), conversation: async (body, options) => {
+        calls.push(body);
+        assert.equal(body.model, 'agentx-primary'); assert.equal(body.think, false);
+        assert.equal(options.requireOccupied, true); assert.equal(options.relayHostKey, 'guardian');
+        assert.equal(Boolean(options.familyInstructions), session === family);
+        assert.ok(options.relayRequest.messages.every(m => m.role !== 'system'));
+        if (!relay) return result('principal', '{"mode":"parler","texte":"Bonjour !"}');
+        const reply = result('backup', 'À toi de deviner !');
+        reply.metadata.conversationContinuity = { state: 'backup', hostKey: 'guardian', model: 'backup' };
+        reply.conversationNotice = 'Voici le gardien.';
+        return reply;
+      } };
+      const reply = await runLocalConversation({ request: req, prepared: [], inference, consumerContract: 'test',
+        env: { ...env, HOUSEHOLD_SPOKEN_HOST: 'agentx-primary', HOUSEHOLD_CONVERSATION_RELAY_ENABLED: 'true', HOUSEHOLD_SPOKEN_RELAY_HOST: 'guardian' } });
+      assert.equal(calls.length, 1);
+      assert.equal(reply.text, relay ? 'Voici le gardien.\n\nÀ toi de deviner !' : 'Bonjour !');
+      if (relay) assert.equal(reply.tools.conversationRelay.completed, true);
+      else assert.equal(reply.tools.spokenDialogue, 'direct');
+    }
+  }
+});

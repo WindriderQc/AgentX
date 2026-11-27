@@ -95,8 +95,10 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         executePrimary = (extraRetry = {}) => execute({ ...request, model: target.model, exclusiveHost: false,
           options: { ...request.options, ...(target.numCtx && { num_ctx: target.numCtx }) } }, {
           signal, consumerContract: options.consumerContract, hostUrl: target.hostUrl,
-          requireIdleHost: Boolean(options.taskRoute && options.requireOccupied),
-          ...(target.topology && { topology: target.topology }), retry: { enabled: false, ...extraRetry },
+          requireIdleHost: Boolean(options.requireOccupied && !options.observeOccupation),
+          ...(target.topology && { topology: target.topology }),
+          // A scoped voice guardian can answer a proven workload reservation immediately.
+          retry: { enabled: false, ...(options.requireOccupied && options.relayHostKey && { skipInteractiveWait: true }), ...extraRetry },
           conversationContinuity: { state: 'primary', reason: null, limited: false, contextReduced: false }
         });
         return requireResult(await executePrimary());
@@ -105,8 +107,9 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
       if (signal?.aborted || !safeRefusal(error)) throw error;
       failure = error;
     }
-    if (executePrimary && target?.hostUrl && options.taskRoute && options.requireOccupied
-        && options.allowUnavailable === true && !occupation && options.familyPrimaryPreference?.enabled) {
+    const unavailableRelay = options.allowUnavailable === true && !options.observeOccupation
+      && (options.taskRoute === true || request.model === PRINCIPAL_MODEL_ALIAS);
+    if (executePrimary && target?.hostUrl && options.requireOccupied && unavailableRelay && options.familyPrimaryPreference?.enabled) {
       const preferred = await familyPreference.preferReleasedPrimary({
         scope: options.familyPrimaryPreference, firstError: failure, identity: familyPreference.fromRefusal(failure),
         signal, isSafeRefusal: error => safeRefusal(error) && (error?.failure?.safeToRetry === true
@@ -123,7 +126,6 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
       ...(failure.failure?.cause && { cause: failure.failure.cause }) };
     // Only Family opts into availability fallback. The refusal above proves
     // this turn was not dispatched; another owner's uncertain run stays intact.
-    const unavailableRelay = options.allowUnavailable === true && options.taskRoute === true && !options.observeOccupation;
     if (options.requireOccupied && !occupied && !unavailableRelay) {
       return statusResult(request, 'Le cerveau principal est indisponible; aucune occupation active n’est prouvée.', 'occupation_unknown', primaryRefusal);
     }
@@ -140,6 +142,7 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         : describe(failure, principalEndpoints, work);
     const visited = new Set(principalEndpoints.map(hostUrlKey));
     for (const hostKey of policy.hosts) {
+      if (options.relayHostKey && options.relayHostKey !== hostKey) continue;
       signal?.throwIfAborted();
       const url = snapshot.hosts?.[hostKey];
       let hostUrl;

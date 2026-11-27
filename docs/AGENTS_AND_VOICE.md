@@ -182,8 +182,12 @@ The two routes can resolve different host pins and models; inspect the effective
 routing snapshot instead of inferring Family's model from personal Main.
 
 An instance can bind `HOUSEHOLD_SPOKEN_HOST` and `HOUSEHOLD_THINKER_HOST` to
-two Core host keys. For ordinary local Family and private Practical microphone
-turns, the first host's pin answers from the scoped short context or requests a
+Core host keys. With `agentx-primary` as the spoken host, ordinary microphone
+turns use Core's principal pin. When conversation continuity is enabled,
+`HOUSEHOLD_SPOKEN_RELAY_HOST` can select one of its approved resident hosts
+for the guardian. Each new turn checks the principal again.
+In local Family and private Practical conversations the spoken model answers
+from the scoped short context or requests a
 consultation. It receives no tools. The second host's pin takes the original
 request, selected context and permitted tools. The accepted turn owns both
 calls. A new utterance can detach an ongoing consultation before its reply
