@@ -10,6 +10,7 @@ from vosk import KaldiRecognizer, Model, SetLogLevel
 from app.service import app, audio_form, _transcribe_bytes, recognition_metadata, settings
 from app.stt.admission import control_lane
 from voice_control import VoiceControl, recognize
+from app.stt.french_review import FrenchReview
 from app.stt.requests import cancellation
 
 model_dir = os.environ.get("VOIX_CONTROL_MODEL_DIR", "").strip()
@@ -17,6 +18,8 @@ if not model_dir:
     raise RuntimeError("VOIX_CONTROL_MODEL_DIR is required for the voice-control adapter")
 SetLogLevel(-1)
 control = VoiceControl(Model(model_dir), KaldiRecognizer)
+if os.environ.get("VOIX_FR_ACOUSTIC_REVIEW", "").lower() == "true":
+    app.state.french_dictation_review = FrenchReview(control.model, KaldiRecognizer)
 
 
 @app.get("/api/voice-controls/status")
