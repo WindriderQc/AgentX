@@ -18,19 +18,32 @@ function overview({ summary, jobs }) {
     'Le démarrage automatique reste soumis à la fenêtre autorisée et à l’admission native.'
   ];
 
-  // One example per distinct situation in the same snapshot, including those outside the requested page.
-  const examples = new Map();
+  if (counts.dispatching > 0) {
+    lines.push('Chaque départ enregistré attend la confirmation d’exécution de l’exécuteur natif. Son mode de départ se vérifie sur la demande correspondante.');
+  }
+
+  const groups = new Map();
   for (const job of jobs) {
     const { phase, startMode, schedule, nextAction } = job.presentation;
     if (phase !== 'automatic_queue' && phase !== 'action_required') continue;
     const reserved = job.state === 'reserved';
     const key = [phase, startMode, reserved, schedule.state, nextAction.code, nextAction.actor].join('/');
-    if (examples.has(key)) continue;
-    examples.set(key, { id: job.id, title: job.title, phase, startMode, reserved, schedule: schedule.state, nextAction });
-    const example = workQueueExample(job);
-    if (example) lines.push(example.text);
+    const group = groups.get(key);
+    if (group) group.requestCount += 1;
+    else groups.set(key, { job, requestCount: 1 });
   }
-  return { observedAt: summary.observedAt, text: lines.join('\n'), examples: [...examples.values()] };
+
+  const examples = [];
+  for (const { job, requestCount } of groups.values()) {
+    const { phase, label, startMode, schedule, nextAction } = job.presentation;
+    examples.push({ id: job.id, title: job.title, phase, startMode, reserved: job.state === 'reserved',
+      schedule: schedule.state, nextAction, requestCount });
+    const groupLabel = `${label} (${requestCount} ${requestCount === 1 ? 'demande' : 'demandes'})`;
+    const example = workQueueExample(job);
+    lines.push(example ? `${groupLabel} · Exemple — ${example.text}` : groupLabel);
+  }
+  lines.push(`Relevé de Core · ${summary.observedAt}`);
+  return { observedAt: summary.observedAt, text: lines.join('\n'), examples };
 }
 
 async function operate(body, actor = 'nestor') {

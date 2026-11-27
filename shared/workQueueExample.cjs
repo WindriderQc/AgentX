@@ -3,7 +3,7 @@
 const STEPS = {
   plan_slot: 'planifier le créneau et choisir le mode de départ',
   prepare_executor: 'préparer un exécuteur validé pour cette proposition',
-  review_window: 'réexaminer la fenêtre autorisée avant tout nouveau départ',
+  review_window: 'réexaminer la fenêtre autorisée et l’intention d’origine avant tout nouveau départ',
   review_schedule: 'vérifier la fenêtre manquante ou invalide',
   run_in_slot: 'déclencher pendant le créneau après les contrôles natifs',
   use_native_executor: 'suivre la procédure d’approbation et de départ de l’exécuteur',
