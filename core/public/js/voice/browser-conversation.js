@@ -492,7 +492,7 @@
           }
           if (!turn.replyStarted) this.show('hearing');
         }
-      }, { interruptible: true, onProbe: blob => this.probeCandidate(turn, blob) });
+      }, { interruptible: true, replyStarted: () => turn.replyStarted === true, onProbe: blob => this.probeCandidate(turn, blob) });
     }
     // The candidate has gone on long enough to hold words: recognize what was heard so
     // far. Words hold the reply, reversibly, until the whole utterance is recognized.
@@ -1131,7 +1131,7 @@
           try { await play(await wav(last.samples, context.sampleRate).arrayBuffer(), abort.signal, true); await settle(abort.signal); }
           finally { playSignal.removeEventListener('abort', cancel); if (replayAbort === abort) replayAbort = null; }
         },
-        listen(onUtterance, onSpeech, { interruptible = false, progressive = false, onEarly = null, onEarlyCancel = null, onProbe = null } = {}) {
+        listen(onUtterance, onSpeech, { interruptible = false, replyStarted = null, progressive = false, onEarly = null, onEarlyCancel = null, onProbe = null } = {}) {
           if (closed) return;
           history.breakCapture();
           endpoint.reset(); echo.reset(); endpoint.minimumVoiceMs = capture.minimumVoiceMs;
@@ -1160,7 +1160,12 @@
               } else { quiet(); onError(error); }
               return;
             }
-            if (!prior && endpoint.speaking) onSpeech();
+            if (!prior && endpoint.speaking) {
+              // Words spoken while the model is thinking get the normal sentence pause.
+              // Sample at onset so playback starting later cannot split that utterance.
+              if (interruptible && replyStarted) endpoint.endSilenceMs = replyStarted() ? capture.interruptionSilenceMs : capture.endSilenceMs;
+              onSpeech();
+            }
             for (const event of endpoint.drain()) {
               if (event.type === 'early') onEarly?.(wav(event.samples, context.sampleRate), { id: event.id, progressive: event.progressive });
               else if (event.type === 'probe') onProbe?.(wav(event.samples, context.sampleRate));

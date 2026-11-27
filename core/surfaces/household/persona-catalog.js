@@ -67,9 +67,9 @@ function replyLimitError() {
 }
 
 // The same reading, keeping the tool calls a model streams beside its text.
-async function readReplyFrames(stream, onDelta, signal) {
+async function readReplyFrames(stream, onDelta, signal, { allowLength = false } = {}) {
   const decoder = new TextDecoder();
-  let pending = '', answer = '', complete = false, limited = false;
+  let pending = '', answer = '', terminal = null, limited = false;
   const toolCalls = [];
   const consume = (line) => {
     if (signal?.aborted) return;
@@ -79,7 +79,7 @@ async function readReplyFrames(stream, onDelta, signal) {
     const delta = row.message?.content || row.response || '';
     if (delta) { answer += delta; onDelta(delta); }
     if (Array.isArray(row.message?.tool_calls)) toolCalls.push(...row.message.tool_calls);
-    if (row.done === true) { complete = true; limited ||= row.done_reason === 'length'; }
+    if (row.done === true) { terminal = row; limited ||= row.done_reason === 'length'; }
   };
   for await (const chunk of stream) {
     // Keep consuming Core's admitted stream so it can verify EOF and release
@@ -94,9 +94,9 @@ async function readReplyFrames(stream, onDelta, signal) {
   if (signal?.aborted) return { text: '', toolCalls: [] };
   pending += decoder.decode();
   if (pending.trim()) consume(pending);
-  if (!complete) throw new Error('Reply stream ended before completion');
-  if (limited) throw replyLimitError();
-  return { text: answer, toolCalls };
+  if (!terminal) throw new Error('Reply stream ended before completion');
+  if (limited && !allowLength) throw replyLimitError();
+  return { text: answer, toolCalls, terminal };
 }
 
 // A team member's own personality: the active catalog persona naming that agent, so an
