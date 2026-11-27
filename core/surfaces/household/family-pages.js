@@ -33,7 +33,11 @@ function direct(text){
  // stays with the model, including unrecognised second requests.
  const targetWords=ids[0]==='iss'?/\b(?:iss|station|spatiale|internationale|international|space|autour|table|terre)\b/g:ids[0]==='kids-tasks'?/\b(?:taches?|routines?|missions?|corvees?|enfants?|kids|room|salle)\b/g:ids[0]==='ecosystem'?/\b(?:ecosysteme|ecosystem)\b/g:/\b(?:terre|earth)\b/g;
  const allowed=new Set('est ce que tu vous peux pouvez pourrais pourriez pourrait veux veut je j aimerais aimeriez voudrais voudriez me moi nous te s il plait svp stp hey nestor please can could would you i want to ouvre ouvres ouvrir ouvrez montre montres montrer montrez affiche affiches afficher affichez visite visiter open show display la le les l un une du de des d au a pour page pages site vue ecran aujourd hui demain today tomorrow que qu m fais fasse fasses ferais ferait feriez faire petite guidee accompagnee notre nos'.split(' '));
- const remaining=value.replace(targetWords,' ');
+ // "Show me where the station passes" requests the configured ISS view, not
+ // a second task. Timing questions and compound turns still go to inference.
+ const reduced=id==='iss'&&!/\b(?:aujourd hui|demain|today|tomorrow)\b/.test(value)
+  ?value.replace(/\bou passe (?:(?:l|la) )?(?:iss|station (?:spatiale(?: internationale)?|internationale))\b/,'iss'):value;
+ const remaining=reduced.replace(targetWords,' ');
  const standalone=ids.length===1&&!physical&&String(text).split(/[.!?;\n]/).filter(part=>part.trim()).length<=1&&remaining.trim().split(/\s+/).filter(Boolean).every(word=>allowed.has(word));
  return {id:ids.length===1?ids[0]:null,day:/\b(?:demain|tomorrow)\b/.test(tail)?'tomorrow':'today',standalone,ambiguous:ids.length>1};
 }

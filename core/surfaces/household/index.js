@@ -479,9 +479,10 @@ function register(api) {
   const warmup = createVoiceWarmup({ conversations, executeConversation, conversationBackend, conversationEnv, packById, requireNativeAgent,
     agentIdFor, logger, instructions: (...args) => handlePersonaTurn.openingInstructions(...args) });
   warmup.register(personas);
+  const kitchenTimer = require('../../src/services/familyKitchenTimer').createFamilyKitchenTimer({ mongoose });
   const handlePersonaTurn = createPersonaTurnHandler({
     logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor, conversationWorks, artx, ambient,
-    familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
+    familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload, kitchenTimer,
     sounds, visuals, brain, memberWork, conversationImages, screenPages, warmup, presentationCompanion, activePersonaTurns, validClientTurnId,
     envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
     packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
@@ -589,7 +590,7 @@ function register(api) {
   const plantCapture = plantAssistant ? require('../../src/services/householdPlantCapture').createPlantCapture({ assistant: plantAssistant }) : null;
   registerSecretaryMcp({ app, standardJsonParser, models, personalTasks, sounds, plantCapture });
 
-  registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, conversations, ambient, artx });
+  registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, conversations, ambient, artx, kitchenTimer });
   if (runtimeServices.household?.plants) {
     const proposals = runtimeServices.household.plantProposals || null;
     require('./plant-routes').registerPlantRoutes({ app, express, plants: runtimeServices.household.plants, assistant: plantAssistant, proposals, standardJsonParser });

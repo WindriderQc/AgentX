@@ -141,6 +141,21 @@
     const caption = node('p', 'display-block-stage-caption', block.title || '');
     holder.append(caption);
     const receipt = value => root.dispatchEvent(new CustomEvent('persona-scene-receipt', { detail: { space, receipt: value } }));
+    // The GraphysX v1 embed supports addition/count only. Keep subtraction
+    // visible without depending on the optional 3D renderer.
+    const { schema, kind, a, b } = block.scene;
+    if (schema === 'agentx.math-scene.v1' && kind === 'subtract'
+      && Number.isInteger(a) && Number.isInteger(b) && a >= 1 && a <= 20 && b >= 0 && b <= a) {
+      const cubes = node('div', 'display-subtraction-cubes');
+      cubes.setAttribute('aria-hidden', 'true');
+      for (let index = 0; index < a; index += 1) {
+        const removed = index >= a - b;
+        cubes.append(node('span', removed ? 'is-removed' : 'is-remaining', removed ? '×' : '■'));
+      }
+      holder.prepend(cubes);
+      root.requestAnimationFrame(() => { if (holder.isConnected) receipt({ status: 'applied' }); });
+      return holder;
+    }
     const registry = root.customElements;
     const ready = registry?.get('llmx-stage') ? Promise.resolve(true)
       : registry ? Promise.race([registry.whenDefined('llmx-stage').then(() => true), new Promise(resolve => setTimeout(() => resolve(false), STAGE_WAIT_MS))])

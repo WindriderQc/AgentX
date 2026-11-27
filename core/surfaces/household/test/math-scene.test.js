@@ -4,6 +4,27 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { mathSceneFor, mathReply, mathTurnFor } = require('../math-scene');
 
+test('Famille shows a bounded subtraction and follows only the immediately preceding Family picture', () => {
+  const { mathPictureFor } = require('../math-scene');
+  const options = { childSafe: true, language: 'fr' };
+  const first = mathPictureFor('Montre-moi 10 moins 7', options);
+  assert.deepEqual(first.scene, { schema: 'agentx.math-scene.v1', kind: 'subtract', a: 10, b: 7 });
+  assert.match(first.reply, /^10 moins 7, ça fait 3/);
+  assert.deepEqual(mathPictureFor('Nestor, montre-moi dix moins sept !', options), first);
+  assert.deepEqual(mathPictureFor('Montre-moi 10 − 7.', options), first);
+  const prior = { scopeId: 'family', routeTier: 'deterministic', familyMathPicture: first.scene };
+  const follow = mathPictureFor('Et avec 9?', { ...options, previous: prior });
+  assert.deepEqual(follow.scene, { ...first.scene, a: 9 });
+  assert.match(follow.reply, /^9 moins 7, ça fait 2/);
+  assert.equal(mathPictureFor('Et avec 9?', options), null);
+  assert.equal(mathPictureFor('Et avec 9?', { ...options, previous: { ...prior, scopeId: 'personal' } }), null);
+  assert.equal(mathPictureFor('Et avec 9?', { ...options, previous: { ...prior, interrupted: true } }), null);
+  for (const text of ['Et avec 4?', 'Montre-moi 21 moins 7', '10 moins -7', '10,5 moins 7', 'Et avec 9 enfants?',
+    'Quelle météo à 9 heures?', 'Mets une minuterie de 9 minutes', 'Raconte-moi une histoire avec 9 bateaux']) {
+    assert.equal(mathPictureFor(text, { ...options, previous: prior }), null, text);
+  }
+});
+
 test('additions to 20 are recognised in digits and words, French and English', () => {
   const cases = [
     ['Nestor, combien font 3 + 4 ?', 3, 4],

@@ -130,6 +130,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     set onchange(handler) { languageField.onchange = handler; },
     addEventListener: (...args) => languageField.addEventListener(...args)
   };
+  const kitchenTimer = family ? window.FamilyKitchenTimer?.mount({ host: app, api, getLanguage: () => language.value }) : null;
   // Shown, never spoken (#167): secrets exist only in the private space.
   const board = window.DisplayBoard.createScreen({ text: el('conversationBoard'), visual: el('conversationVisual') }, { secrets: !family, space: family ? 'family' : 'personal', getLanguage: () => language.value });
   const companion = family ? null : window.NestorPresentationCompanion?.create({ host: app.querySelector('.conversation-live'),
@@ -493,6 +494,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (!line.trim()) return;
       const event = JSON.parse(line);
       workflow?.stream(turnId, event);
+      if (event.type === 'timer') kitchenTimer?.apply(event.timer);
       if (event.type === 'accepted') { workAccepted = true; void work?.poll(); }
       if (event.type === 'error') throw new Error(event.message);
       if (event.type === 'written' && !interruptedTurns.has(turnId) && writing.push(event)) showWritten(writing.snapshot());
@@ -618,6 +620,21 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
   // The docked avatar (avatar-dock.js) follows these and the persona-presence samplers.
   function activity(kind, detail = {}) { window.dispatchEvent(new CustomEvent('persona-activity', { detail: { space, kind, ...detail } })); }
   let lastGreeting = '', lastWakeReply = '';
+  function openFamilyForge(text, options) {
+    if (!family || textBusy || document.hidden) return null;
+    const href = window.HouseholdNavigation?.familyForgeHref;
+    const command = window.NestorScreenCommands?.familyForge(text, options);
+    const audio = conversation.audio;
+    if (!command || !href || !audio) return null;
+    // Finish recognition bookkeeping before stopping the old capture. The
+    // exact same-origin menu destination then owns the only voice controller.
+    queueMicrotask(() => {
+      if (!voiceHost.isConnected || document.hidden || conversation.audio !== audio) return;
+      conversation.stop(true);
+      window.location.assign(href);
+    });
+    return command;
+  }
   const avatar = window.AvatarDock?.mount({ space: family ? 'family' : 'personal', status: el('conversationStatus'),
     // The same button pauses an active conversation: a tap only ever starts or resumes one.
     onTap: () => { const start = el('conversationStart'); if (start.hidden || start.disabled || !['idle', 'paused', 'error'].includes(conversation.state)) return false; start.click(); return true; },
@@ -669,7 +686,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       partial = null;
     },
     transcribe: (blob, lang, signal) => speechFallback.transcribe(blob, lang, signal),
-    localControl: (text, options) => (framed && window.IllustratedFrame?.localControl(text, options)) || idlePhotos?.localControl(text, options) || screenCommand?.(text, options) || null,
+    localControl: (text, options) => openFamilyForge(text, options) || (framed && window.IllustratedFrame?.localControl(text, options)) || idlePhotos?.localControl(text, options) || screenCommand?.(text, options) || null,
     transcriptionStarted: turnId => workflow?.capture(conversation.session?.sessionId, turnId),
     transcriptionDone: (turnId, values) => { latestVoiceTimings = values || {}; workflow?.timings(turnId, values); },
     transcriptionEnded: (turnId, receipt) => workflow?.captureEnd(turnId, receipt),

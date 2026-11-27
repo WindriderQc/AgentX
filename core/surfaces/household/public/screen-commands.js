@@ -161,7 +161,17 @@
     };
   }
 
-  const api = Object.freeze({ parse, validate, handler, normalize, ACTIONS, actions: Object.freeze(Object.keys(COMMANDS)), MAX_CUSTOM });
+  // The Forge is a top-level Family destination, not an embedded screen command.
+  // Match whole addressed phrases only. A creative prompt remains a normal turn.
+  const FAMILY_FORGE = wrap('(?:ouvre la|va a la) forge 3 ?d');
+  function familyForge(text, { followup = false } = {}) {
+    const match = FAMILY_FORGE.exec(normalize(text).replace(/\p{M}/gu, ''));
+    if (!match) return null;
+    const addressed = Boolean(match[1] || match[2]);
+    return followup || addressed ? { action: 'openFamilyForge', addressed } : null;
+  }
+
+  const api = Object.freeze({ familyForge, parse, validate, handler, normalize, ACTIONS, actions: Object.freeze(Object.keys(COMMANDS)), MAX_CUSTOM });
   root.NestorScreenCommands = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 }(typeof window !== 'undefined' ? window : globalThis));

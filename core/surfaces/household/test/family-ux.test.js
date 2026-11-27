@@ -12,8 +12,23 @@ function family(extra={}){return harness({packId:'kidx_nestor',backend:'agentx',
 for(const request of ['Est-ce que tu me ferais le bruit du T-Rex?','Est-ce que vous me feriez le bruit du loup?','Pourrais-tu me jouer le cri du chat?'])test('natural sound request reaches inference: '+request,async()=>{
  const h=family();const result=await h.turn(request,'voice');assert.equal(result.sound,null);assert.equal(result.routing.tier,'router');assert.equal(h.sent.length,1);
 });
-for(const request of ['ouvre la page ISS','montre-moi la station internationale autour de la Terre','affiche la page ISS'])test('requested ISS opens directly: '+request,async()=>{
+for(const request of ['ouvre la page ISS','montre-moi la station internationale autour de la Terre','affiche la page ISS','Montre-moi où passe la Station spatiale','Est-ce que tu peux me montrer où passe l’ISS?'])test('requested ISS opens directly: '+request,async()=>{
  const h=family();const result=await h.turn(request,'voice');assert.equal(h.sent.length,0);assert.equal(result.display[0].body,'iss');assert.equal(result.display[0].title,'ISS canonique');
+});
+test('ISS pass viewing keeps the timing follow-up conversational',async()=>{
+ const h=family({conversationEnv:{HOUSEHOLD_FAMILY_TOOLS:'iss_passes'}});
+ await h.turn('Montre-moi où passe la Station spatiale','voice');
+ const result=await h.turn('À quelle heure on peut la voir?','voice');
+ assert.equal(h.sent.length,1);
+ assert.ok(h.sent[0].tools.some(tool=>tool.function.name==='iss_passes'));
+ assert.ok(h.sent[0].messages.some(message=>message.role==='user'&&message.content.includes('Station spatiale')));
+ assert.deepEqual(result.display||[],[]);
+});
+for(const request of ['Montre-moi où passe la Station spatiale et dis-moi quand on la verra.','Montre-moi où passe la Station spatiale demain.'])test('explicit ISS visualization preserves additional pass questions: '+request,async()=>{
+ const h=family();
+ const result=await h.turn(request,'voice');
+ assert.equal(h.sent.length,1);
+ assert.equal(result.display[0].body,'iss');
 });
 test('compound page request preserves explanation and replaces a wrong model destination/title',async()=>{
  const h=family({response:'Son altitude varie. <show kind="page" title="Taches">ecosystem play=garage</show>'});

@@ -19,6 +19,8 @@ module.exports = new Schema({
     // LLMx keeps the bounded proposal and its browser receipt on the same turn.
     sceneProposal: { type: Object, default: null },
     sceneReceipt: { type: Object, default: null },
+    // Core's bounded Family math picture, separate from browser evidence.
+    familyMathPicture: { type: Object, default: undefined },
     sceneProposedReplyText: { type: String, default: '' },
     // Blocks shown on screen, never spoken (#167). Secrets are stored redacted.
     display: { type: [Object], default: undefined },

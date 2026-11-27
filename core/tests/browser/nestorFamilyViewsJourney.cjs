@@ -2,6 +2,7 @@
 
 // Curated family views on the real Nestor page (#924): typed and spoken "agrandis",
 // "ferme", "suivant"… act on the content workspace without a model turn.
+// Spoken ISS requests additionally exercise the server-side page matcher.
 // Loopback CPU fixtures only: no model, microphone, speech service or live data.
 // The microphone and speech recognition are simulated; the page, conversation
 // loop and content workspace are the shipped code.
@@ -20,7 +21,7 @@ fs.mkdirSync(output, { recursive: true });
 // A fake microphone: `say()` delivers one finished utterance to the conversation loop.
 const fakeAudio = `window.NestorConversation.openAudio = async () => {
   const audio = { canInterrupt: false,
-    listen(callback) { audio.utterance = callback; }, quiet() {}, close() {}, holdPlayback() {}, resumePlayback() {},
+    listen(callback) { audio.utterance = callback; }, quiet() {}, close() { sessionStorage.setItem('fixture-mic-closed', 'yes'); }, holdPlayback() {}, resumePlayback() {},
     async play() {}, async settle() {} };
   window.say = () => audio.utterance(new Blob(['speech']), {});
   return audio;
@@ -55,7 +56,15 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     {id:'iss',label:'ISS',href:'/scene/iss',mode:'frame'}
   ]);
   const { createReplyChannels } = require('../../surfaces/household/reply-channels');
+  const familyPages = require('../../surfaces/household/family-pages');
   app.get('/api/voice-personas/family/screen-pages',(_req,res)=>res.json({data:{destinations:pages.entries}}));
+  require('../../surfaces/household/llmx-page').register({ app, env: {
+    HOUSEHOLD_AVATAR_MODULE_URL: 'https://forge-fixture.invalid/embed/llmx-face.js',
+  }, fetchWithTimeout: async url => {
+    assert.equal(url, 'https://forge-fixture.invalid/embed/llmx-room.js');
+    return new Response('document.querySelector("[data-llmx-root]").textContent="Forge audio was not started";',
+      { headers: { 'content-type': 'text/javascript' } });
+  } });
   app.get(['/diskx','/scene/earth','/scene/iss'],(req,res)=>res.type('html').send('<!doctype html><title>Synthetic source fixture</title><h1>Fixture scene</h1><p>Render fixture only; no live telemetry.</p>'));
   app.get('/api/voice-personas/catalog', (_req, res) => res.json({ data: { personas, runtime: { defaultBackend: 'agentx', hermesConfigured: true } } }));
   app.use('/api/voice-personas/private', (_req, res) => { errors.push('Private API requested by family'); res.sendStatus(403); });
@@ -70,7 +79,10 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     const session = sessions.get(req.params.id); session.turnCount++;
 
     const channels=createReplyChannels({allowPages:true,pageCatalog:pages});
-    channels.push(req.body.text==='describe' ? 'Fixture follow-up.' : '<show kind="page">'+req.body.text+'</show>');
+    const intent=familyPages.resolve(req.body.text,pages);
+    const timingFollowUp=req.body.text==='À quelle heure on peut la voir?';
+    channels.push(intent?.standalone ? '<show kind="page">'+intent.target+'</show>'
+      : timingFollowUp ? 'Fixture ISS timing follow-up.' : req.body.text==='describe' ? 'Fixture follow-up.' : '<show kind="page">'+req.body.text+'</show>');
     const value=channels.end();
     res.type('application/x-ndjson');
     for(const block of value.display) res.write(JSON.stringify({type:'show',block})+'\n');
@@ -137,10 +149,41 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
     await page.getByRole('button',{name:'Fermer la page',exact:true}).click();
     assert.equal(await frame.count(),0);
   }
+  await page.locator('#conversationStart').click();
+  await page.waitForFunction(() => typeof window.say === 'function');
+  const listening=()=>page.waitForFunction(()=>document.getElementById('conversationPresence').dataset.state==='listening');
+  await listening();
+  heard='Hey Nestor, montre-moi où passe la Station spatiale';
+  await page.evaluate(() => { void window.say(); });
+  await frame.contentFrame().getByRole('heading',{name:'Fixture scene'}).waitFor();
+  assert.equal(await frame.getAttribute('src'),'/scene/iss?view=screen&from=nestor');
+  await listening();
+  heard='À quelle heure on peut la voir?';
+  const before=submissions.length;
+  await page.evaluate(() => { void window.say(); });
+  await page.getByText('Fixture ISS timing follow-up.',{exact:true}).waitFor();
+  assert.equal(submissions[before],heard);
+  assert.equal(screens[before]?.[0]?.page,'iss');
+  assert.equal(await frame.count(),1,'timing follow-up keeps the same ISS view open');
+  await page.getByRole('button',{name:'Fermer la page',exact:true}).click();
   await ask('pipeline');
   await page.waitForFunction(()=>!document.getElementById('conversationMessage').disabled);
   assert.equal(await frame.count(),0,'owner page proposal is discarded by native parser');
+  await listening();
+  const beforeForge = submissions.length;
+  await page.evaluate(() => {
+    sessionStorage.removeItem('fixture-mic-closed');
+    window.addEventListener('beforeunload', () => sessionStorage.setItem('fixture-closed-before-unload',
+      sessionStorage.getItem('fixture-mic-closed') || 'no'), { once: true });
+  });
+  heard = 'Hey Nestor, ouvre la Forge 3D';
+  await Promise.all([page.waitForURL(origin + '/llmx?profile=family'),
+    page.evaluate(() => { void window.say(); })]);
+  await page.getByText('Forge audio was not started', { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('fixture-closed-before-unload')), 'yes', 'voice capture was released before navigation');
+  assert.equal(submissions.length, beforeForge, 'the explicit local command must not send a model turn');
+  assert.equal(context.pages().length, 1, 'the Family Forge replaces the active conversation page');
   assert.deepEqual(errors,[]);
-  console.log(JSON.stringify({ok:true,scope:'family',views:['ecosystem','earth','iss'],liveModelCalls:0,errors}));
+  console.log(JSON.stringify({ok:true,scope:'family',views:['ecosystem','earth','iss','forge-3d'],liveModelCalls:0,errors}));
 })().catch(error=>{console.error(error.stack);process.exitCode=1;})
 .finally(async()=>{await browser?.close();await new Promise(resolve=>server?server.close(resolve):resolve());});
