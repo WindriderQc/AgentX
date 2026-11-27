@@ -5,6 +5,7 @@ const { selectedContextBlock, turnDirectiveBlock, CURRENT_REQUEST_LABEL } = requ
 const interactivePriority = require('../../src/services/interactivePriorityService');
 const { configuredHermes, createHermesTransport } = require('../../src/services/conversations/hermesTransport');
 
+const { protectedSourcesLocalOnly, requireProtectedBackend, nativeInputOnly, householdUserText, nativeUserText } = require('../../src/services/conversations/protectedSources');
 const { voiceTask } = require('./conversation-inference');
 
 const HOST_BUSY_CODES = new Set(['BENCHMARK_CLAIM_ACTIVE', 'RUNTIME_INFERENCE_ADMISSION_DENIED']);
@@ -16,11 +17,16 @@ function configuredOpenClaw(env = process.env) {
 // Instance gate for the optional browser speech recognition fallback: off by
 // default (audio may leave the network); "personal" allows Super Dad only.
 function browserSpeechFallback(env = process.env) {
+  if (protectedSourcesLocalOnly(env)) return { personal: false, family: false };
   const value = String(env.HOUSEHOLD_BROWSER_STT_FALLBACK || 'false').trim().toLowerCase();
   return { personal: ['true', 'personal'].includes(value), family: value === 'true' };
 }
 
 function conversationBackend(requested, env = process.env) {
+  if (protectedSourcesLocalOnly(env)) {
+    if (!requested || requested === 'auto') return 'agentx';
+    if (['hermes', 'openclaw'].includes(requested)) requireProtectedBackend(requested, env);
+  }
   const backend = requested || env.HOUSEHOLD_CONVERSATION_BACKEND || 'auto';
   if (!['auto', 'openclaw', 'agentx', 'hermes'].includes(backend)) {
     throw Object.assign(new Error('Choose auto, openclaw, agentx or hermes for the conversation engine.'), { statusCode: 400 });
@@ -82,11 +88,23 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
   // A household turn outranks evaluation work (#62). If the host stayed
   // reserved past the bounded wait, say so plainly instead of a generic error.
   const execute = async request => {
+    requireProtectedBackend(request.backend, env);
     const startedAt = Date.now();
     const endTurn = interactivePriority.beginHouseholdTurn();
     const stopWaiting = interactivePriority.onWaiting(info => request.onWaiting?.(info));
     try {
       if (request.session?.ephemeral && request.backend !== 'agentx') throw Object.assign(new Error('This native engine cannot guarantee ephemeral memory and history.'), { code: 'CONVERSATION_EPHEMERAL_UNSUPPORTED', statusCode: 409 });
+      if (nativeInputOnly(request.backend, env)) {
+        const text = nativeUserText(request);
+        const { session, backend, pack, channel, turnId, model, signal, streaming,
+          onStarted, onSettled, onTerminalFailure, onActivity, onDelta, onRelayProgress, onWaiting } = request;
+        // Rebuild from trusted routing/streaming fields. Do not inherit any source
+        // block, tool, history, stored attachment, recap or rendering instruction.
+        const staticInstructions = require('./persona-prompt').systemPromptFor(pack, { modeId: session.modeId });
+        return await run({ [householdUserText]: text, text, session, backend, pack, channel, turnId, model, signal, streaming,
+          instructions: staticInstructions, agentxInstructions: staticInstructions, history: [], attachments: [],
+          onStarted, onSettled, onTerminalFailure, onActivity, onDelta, onRelayProgress, onWaiting });
+      }
       const primary = await require('./native-primary-turn').nativePrimaryReply(request);
       if (primary) return primary;
       const accepted = await require('./native-work-acceptance').nativeWorkAcknowledgment(request);
@@ -121,6 +139,7 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
       endTurn();
     }
   };
+  Object.defineProperty(execute, 'familyPrimaryConfigured', { value: env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && typeof inference?.conversation === 'function' });
   execute.reconcile = session => env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED === 'true' && session.backend === 'hermes'
     ? hermes.reconcile?.(session) : null;
   return execute;

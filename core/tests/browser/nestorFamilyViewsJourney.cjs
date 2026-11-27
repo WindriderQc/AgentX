@@ -117,7 +117,7 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   await page.waitForFunction(() => document.querySelectorAll('.conversation-message').length>=4);
   assert.match(screens[1]?.[0]?.page || '', /^ecosystem play=network,memory$/);
   assert.doesNotMatch(JSON.stringify(screens[1]), /pipeline|private/);
-  await page.getByRole('button',{name:'Retour à Nestor',exact:true}).click();
+  await page.getByRole('button',{name:'Fermer la page',exact:true}).click();
   assert.equal(await frame.count(),0);
   assert.equal([...sessions.values()].at(-1).sessionId,sessionId);
   await page.setViewportSize({width:390,height:844});
@@ -127,14 +127,14 @@ const fakeAudio = `window.NestorConversation.openAudio = async () => {
   await page.waitForFunction(() => document.querySelector('#conversationVisual iframe')?.src.includes('/scene/iss'));
   assert.equal(await frame.count(),1,'only the current Family 3D view stays mounted');
   assert.equal(await previous.getAttribute('src'),'about:blank','replaced scene is disposed');
-  await page.getByRole('button',{name:'Retour à Nestor',exact:true}).click();
+  await page.getByRole('button',{name:'Fermer la page',exact:true}).click();
   for(const id of ['earth','iss']) {
     await ask(id); await frame.waitFor();
     await frame.contentFrame().getByRole('heading',{name:'Fixture scene'}).waitFor();
     assert.equal(await frame.getAttribute('src'),'/scene/'+id+'?view=screen&from=nestor');
     await page.locator('#conversationVisual').getByRole('button',{name:'Agrandir',exact:true}).click();
     assert.equal(await frame.evaluate(el=>el.classList.contains('is-expanded')),true);
-    await page.getByRole('button',{name:'Retour à Nestor',exact:true}).click();
+    await page.getByRole('button',{name:'Fermer la page',exact:true}).click();
     assert.equal(await frame.count(),0);
   }
   await ask('pipeline');

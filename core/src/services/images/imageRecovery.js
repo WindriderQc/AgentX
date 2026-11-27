@@ -2,12 +2,22 @@
 const crypto = require('node:crypto');
 const RuntimeCoordination = require('../../../models/RuntimeCoordination');
 const coordination = require('../runtimeCoordinationService');
-const { restoreSnapshots, PRINCIPAL } = require('./gpuReservation');
+const { restoreSnapshots, releasePrepared, PRINCIPAL } = require('./gpuReservation');
 
 // Explicit recovery observes the original job. It never submits another prompt.
 async function recoverOperation(op, client, persist, archive) {
   if (op.state !== 'unknown') throw Object.assign(new Error('Only uncertain operations need runtime recovery'), { statusCode: 409 });
   await coordination.reapExpired();
+  const failedBeforeSubmission = () => persist({ state: 'failed', runtimeRestored: true,
+    error: 'GPU preparation ended before submission. The original reservation release is verified.' }, { workerSlot: 1, references: 1 });
+  if (op.admission?.phase === 'acquiring') {
+    const proof = await coordination.recoverWorkloadAcquisition({ principal: PRINCIPAL, requestId: op._id,
+      workloadId: op._id, kind: 'images', hosts: op.admission.hosts });
+    const unchanged = proof.recovered && !op.dispatchStarted && !op.snapshot && (proof.released || await releasePrepared({
+      id: proof.admissionId, generation: proof.generation, principal: PRINCIPAL }));
+    if (!unchanged) throw Object.assign(new Error('The original image admission or its release is unconfirmed.'), { statusCode: 409 });
+    return failedBeforeSubmission();
+  }
   const runtime = await RuntimeCoordination.findById('runtime').lean();
   const old = runtime?.workloads?.find(x => x.workloadId === op._id && x.principal === PRINCIPAL);
   if (!old && !op.dispatchStarted && !op.admission && !op.snapshot) return persist({ state: 'failed', runtimeRestored: true,
@@ -17,7 +27,15 @@ async function recoverOperation(op, client, persist, archive) {
     const release = proof && await coordination.recoverRelease('workload', {
       id: proof.admissionId, generation: proof.generation, principal: PRINCIPAL });
     if (!release?.released) throw new Error('Runtime release receipt is missing; operator reconciliation is required');
+    if (!op.dispatchStarted) return failedBeforeSubmission();
     return persist({ state: op.artifact ? 'completed' : 'archive_failed', runtimeRestored: true, error: null }, { workerSlot: 1, references: 1 });
+  }
+  if (!op.dispatchStarted && old.recoveryState === 'PREPARED' && old.requestId === op._id && old.kind === 'images'
+      && (!op.admission || op.admission.admissionId === old.admissionId && op.admission.generation === old.generation)) {
+    if (!await releasePrepared({ id: old.admissionId, generation: old.generation, principal: PRINCIPAL })) {
+      throw new Error('Image reservation release is unconfirmed. Reconcile the original operation.');
+    }
+    return failedBeforeSubmission();
   }
   // A timeout or an empty queue cannot prove that a pending Ollama unload ended.
   if (!op.dispatchStarted || !op.snapshot) throw new Error('Pre-generation mutation requires native runtime reconciliation');

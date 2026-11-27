@@ -148,6 +148,17 @@ describe('Core selected-note ownership with real Mongo', () => {
     expect(await owner.count()).toBe(0);
   });
 
+  test('a family turn confirms only the same active note across retries', async () => {
+    const input = { text: 'Synthetic household preference', source: 'voix-explicit', sourceTraceId: 'household:session:turn' };
+    const saved = await family.record(input);
+    expect((await family.record(input)).id).toBe(saved.id);
+    await expect(family.record({ ...input, text: 'Different request' })).rejects.toMatchObject({ statusCode: 409 });
+    expect(await family.count()).toBe(1);
+    await family.forget(saved.id);
+    await expect(family.record(input)).rejects.toMatchObject({ statusCode: 409 });
+    expect(await family.count()).toBe(0);
+  });
+
   test('search reaches relevant old notes beyond the first page and excludes expired notes', async () => {
     const old = await owner.record({ text: 'Synthetic astronomy oldest' });
     await MemoryNote.insertMany(Array.from({ length: 110 }, (_, index) => ({

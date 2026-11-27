@@ -1,8 +1,8 @@
 {
   "id": "finance-ledger",
   "name": "AgentX Finance Ledger",
-  "version": "1.5.0",
-  "description": "Read-only questions over the canonical AgentX Core finance ledger, for the finance persona only.",
+  "version": "1.6.1",
+  "description": "Ledger queries and optional tools for categorization, plans, alerts, document links and statement deposits.",
   "activation": {
     "onStartup": true,
     "onAgentHarnesses": [

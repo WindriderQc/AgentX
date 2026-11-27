@@ -20,13 +20,13 @@ function createCache({ ttlMs, failureBackoffMs = 60_000, maxEntries = 200, now =
     while (entries.size > maxEntries) entries.delete(entries.keys().next().value);
   }
 
-  async function get(key, load) {
+  async function get(key, load, maxAgeMs = ttlMs) {
     const t = now();
     const hit = entries.get(key);
-    if (hit && t - hit.at < ttlMs) return { value: hit.value, cached: true, fetchedAt: new Date(hit.at) };
+    if (hit && t >= hit.at && t - hit.at < Math.min(maxAgeMs, ttlMs)) return { value: hit.value, cached: true, fetchedAt: new Date(hit.at) };
 
     const failed = failures.get(key);
-    if (failed && t - failed.at < failureBackoffMs) throw failed.error;
+    if (failed && t >= failed.at && t - failed.at < failureBackoffMs) throw failed.error;
 
     if (inflight.has(key)) return inflight.get(key);
     const pending = (async () => {

@@ -1,5 +1,42 @@
 # Hermes in the personal conversation
 
+### Send only the current household input to native engines
+
+Set `HOUSEHOLD_NATIVE_EXPLICIT_INPUT_ONLY=true` on Core to keep Hermes and
+OpenClaw available for ordinary typed or dictated turns while preventing
+automatic Core source transfer. The current text is sent under the selected
+native session identity. Core omits selected notes, household members, older
+messages, recaps, screen contents, work and review context. A file or a
+private-source transfer is refused before native submission, with a local
+conversation offered for that task. The same policy covers retries and worker
+callbacks. A lost admission with an older enriched payload needs native
+reconciliation. Stored user preferences are preserved.
+
+This mode allows the native engine to use its own previous history and actual
+provider, including a cloud provider. A person can disclose information in
+the current message. For households that require all current input and native
+history to stay local, the stricter option below takes precedence.
+
+### Household sources restricted to local inference
+
+Set `HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY=true` on Core when household inputs
+and sources must stay on the instance. Configure Core's AgentX / Ollama inference
+hosts for local models. New household sessions select this engine before their
+first turn. The setting covers children, family notes, health, legal and
+financial sources, unclassified input, attachments, recaps and prior turns.
+There is no external-source opt-in in this mode. Cloud qualification uses
+synthetic fixtures.
+
+Retained Hermes and OpenClaw sessions remain readable. A new turn in a retained
+native session returns `HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY`. The user can
+start a new local session. A native run with a known identity can still be
+observed or stopped. A lost Hermes dispatch without a run identity requires
+native reconciliation because replay would submit the original private payload.
+The native work observer and browser speech-service fallback are unavailable
+while this policy is active. The owner-memory adapters must also be installed on
+native runtimes accessed independently of Core's household sessions.
+
+
 Nestor's personal surface can use Hermes for its native agent loop while Core
 keeps the visible conversation, selected context and receipts. The browser's
 existing microphone, local transcription, segmented speech, interruption and

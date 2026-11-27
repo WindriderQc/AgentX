@@ -819,6 +819,19 @@ describe('trusted runtime services', () => {
     }));
   });
 
+  test('an idle-host request takes both exclusive gates and keeps other residents loaded', async () => {
+    const deps = inferenceDeps();
+    const result = await executeRoutedInference(deps, {
+      mode: 'generate', model: 'model-a', prompt: 'hello'
+    }, { requireIdleHost: true });
+
+    expect(result.ok).toBe(true);
+    expect(deps.beginInferenceAdmission).toHaveBeenCalledWith(expect.objectContaining({ mode: 'exclusive' }));
+    expect(deps.hostGate.acquireExclusive).toHaveBeenCalledTimes(1);
+    expect(deps.hostGate.acquire).not.toHaveBeenCalled();
+    expect(deps.hostPreferenceService.prepareExclusiveModel).not.toHaveBeenCalled();
+  });
+
   test('takes exclusive host admission and releases an idle resident model before inference', async () => {
     const events = [];
     const release = jest.fn(() => events.push('release'));

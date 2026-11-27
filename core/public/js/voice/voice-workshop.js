@@ -41,6 +41,7 @@
     const draft = () => ({ ...prefs, language: field('language').value, voice: field('voice').value,
       wakeWord: field('wakeWord').checked, interruption: field('interruption').checked, linksClickable: field('linksClickable').checked,
       inputDeviceId: field('inputDeviceId').value });
+    const sampleLanguage = language => root.NestorSpeech.explicitSpeechLanguage(language) || conversation?.session?.defaultLanguage || root.NestorSpeech.DEFAULT_LANGUAGE;
     function voiceOptions(select, lang, selected = '') {
       select.replaceChildren(new Option('Voix effective du parcours', ''));
       for (const voice of state.catalog?.voices || []) {
@@ -66,12 +67,12 @@
       const selectedId = embedded ? selection().personaId : null;
       if (selectedId && ['personal','family'].includes(scope) && state.personas.some(p => p.id === selectedId)) {
         const profile = root.PersonaPresentation.read((() => { try { return root.localStorage; } catch { return null; } })(), state.personas).profiles[selectedId];
-        prefs.personaId = selectedId; prefs.language = profile?.language || 'fr'; prefs.voice = profile?.selections?.[prefs.language] || '';
+        prefs.personaId = selectedId; prefs.language = profile?.language || 'auto'; prefs.voice = profile?.selections?.[prefs.language] || '';
       }
-      field('language').value = prefs.language; field('testLanguage').value = prefs.language;
-      updateExample(prefs.language);
-      if (field('compareLanguage')) field('compareLanguage').value = prefs.language === 'fr' ? 'en' : 'fr';
-      voiceOptions(field('voice'), prefs.language, prefs.voice); voiceOptions(field('testVoice'), prefs.language, prefs.voice);
+      field('language').value = prefs.language; field('testLanguage').value = sampleLanguage(prefs.language);
+      updateExample(sampleLanguage(prefs.language));
+      if (field('compareLanguage')) field('compareLanguage').value = sampleLanguage(prefs.language) === 'fr' ? 'en' : 'fr';
+      voiceOptions(field('voice'), prefs.language, prefs.voice); voiceOptions(field('testVoice'), sampleLanguage(prefs.language), prefs.voice);
       for (const key of ['wakeWord','interruption','linksClickable']) field(key).checked = prefs[key] === true;
       if (prefs.inputDeviceId) field('inputDeviceId').add(new Option('Micro enregistré', prefs.inputDeviceId));
       field('inputDeviceId').value = prefs.inputDeviceId;
@@ -243,7 +244,7 @@
       role('saved').textContent = 'Enregistré sur ce navigateur. Les paramètres de capture seront lus à la prochaine ouverture du micro.';
       prefs = S.read(scope, state.personas); onSaved(prefs);
     }); }, { signal: life.signal });
-    field('language').addEventListener('change', () => { voiceOptions(field('voice'), field('language').value); field('testLanguage').value = field('language').value; updateExample(field('testLanguage').value); voiceOptions(field('testVoice'), field('testLanguage').value); if (field('compareLanguage')) field('compareLanguage').value = field('language').value === 'fr' ? 'en' : 'fr'; refresh(); }, { signal: life.signal });
+    field('language').addEventListener('change', () => { voiceOptions(field('voice'), field('language').value); field('testLanguage').value = sampleLanguage(field('language').value); updateExample(field('testLanguage').value); voiceOptions(field('testVoice'), field('testLanguage').value); if (field('compareLanguage')) field('compareLanguage').value = sampleLanguage(field('language').value) === 'fr' ? 'en' : 'fr'; refresh(); }, { signal: life.signal });
     field('testLanguage').addEventListener('change', () => { updateExample(field('testLanguage').value); voiceOptions(field('testVoice'), field('testLanguage').value); refresh(); }, { signal: life.signal });
     field('speechText').addEventListener('input', refresh, { signal: life.signal });
     field('scope').addEventListener('change', () => { root.location.href = '/voice-lab?scope=' + field('scope').value; }, { signal: life.signal });

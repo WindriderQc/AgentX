@@ -277,6 +277,14 @@ describe('GET /api/v1/livedata/ec-weather', () => {
     expect(d.distanceKm).toBeLessThan(1);
   });
 
+  test('a city page with missing coordinates cannot displace the nearest valid station', async () => {
+    const bad = feature('not-located', 0, 0, 'Station inconnue');
+    bad.geometry.coordinates = [];
+    global.fetch.mockResolvedValue(response({ features: [bad, feature('nearby', -71.2, 46.8, 'Station locale')] }));
+    const res = await request(buildApp()).get('/api/v1/livedata/ec-weather?lat=46.81&lon=-71.21').expect(200);
+    expect(res.body.data.identifier).toBe('nearby');
+  });
+
   test('widens the search once, then answers 404 outside Canada', async () => {
     global.fetch.mockResolvedValue(response({ features: [] }));
     const res = await request(buildApp()).get('/api/v1/livedata/ec-weather?lat=48.85&lon=2.35').expect(404);

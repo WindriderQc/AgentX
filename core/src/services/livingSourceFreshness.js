@@ -9,11 +9,13 @@ const iso = (value, now) => {
 function latest(records, field, now) {
   return records.map(row => iso(row?.[field], now)).filter(Boolean).sort().at(-1) || null;
 }
-function producerEvidence(source, result, now) {
+function producerEvidence(source, result, now, section) {
   const common = { lastSuccessfulRunAt: null, lastFailedRunAt: null,
     effectiveCadenceMs: null, history: 'unknown' };
-  if (source === 'weather') return { ...common, authority: 'data.ec-weather', mode: 'on_demand',
-    lastSuccessfulRetrievalAt: iso(result.data?.fetchedAt, now),
+  if (source === 'weather') return { ...common, authority: 'data.ec-weather',
+    mode: section === 'forecast' || section === 'alerts' || result.freshness?.preparedStatus ? 'prepared_read' : 'on_demand',
+    lastSuccessfulRetrievalAt: iso(result.sourceUpdatedAt || result.data?.fetchedAt, now),
+    ...(result.data?.forecastIssuedAt && { forecastIssuedAt: iso(result.data.forecastIssuedAt, now) }),
     observedAt: iso(result.data?.observedAt, now),
     observationAgeMs: result.freshness?.observationAgeMs ?? null,
     cadenceMeaning: 'Cache lifetime is not a periodic producer schedule.',

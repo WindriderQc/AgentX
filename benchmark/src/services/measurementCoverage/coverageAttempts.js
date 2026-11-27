@@ -1,5 +1,6 @@
 'use strict';
 
+const { Types } = require('mongoose');
 const Attempt = require('../../../models/CoverageAttempt');
 const WC = { w: 1, j: true };
 
@@ -29,7 +30,7 @@ async function beginPost(id, queueId, dispatchId) {
 
 async function beginNative(id, queueId, dispatchId) {
   return Attempt.findOneAndUpdate({ _id: id, active: true, queueId, dispatchId, nativeDispatchedAt: { $exists: false } },
-    { $set: { nativeDispatchedAt: new Date() } }, { new: true, writeConcern: WC }).lean();
+    { $set: { nativeDispatchedAt: new Date(), plannedBatchId: new Types.ObjectId().toString() } }, { new: true, writeConcern: WC }).lean();
 }
 
 module.exports = { active, get, create, update, beginPost, beginNative };

@@ -15,7 +15,7 @@
 const LIMITS = Object.freeze({ waitMs: 45000, keepMs: 600000, question: 300 });
 const PRIVATE_SCOPE = Object.freeze({ packId: 'personal_operator', scopeId: 'personal' });
 
-function createMemberWork({ conversations, now = () => Date.now() } = {}) {
+function createMemberWork({ conversations, soundFor, now = () => Date.now() } = {}) {
   const jobs = new Map(); // `${sessionId}\n${turnId}` -> job
   const waiters = new Map();
   const key = (sessionId, turnId) => `${sessionId}\n${turnId}`;
@@ -78,18 +78,34 @@ function createMemberWork({ conversations, now = () => Date.now() } = {}) {
       ...(job.status === 'answered' ? { reply: job.reply } : { error: job.error }) }
     : { turnId: job.turnId, pending: true, speaker: { agentId: job.agentId, name: job.name } });
 
+  async function stored(session, turnId) {
+    if (!turnId || turnId.length > 128 || !conversations.getTurn) return null;
+    const row = await conversations.getTurn({ sessionId: session.sessionId, packId: session.packId,
+      scopeId: session.scopeId, clientTurnId: turnId, traceId: turnId, 'toolEvidence.spokenDialogue': 'consulted' });
+    if (!row || row.outcome !== 'completed') return null;
+    const sound = row.soundId && soundFor?.(row.soundId);
+    return { turnId, pending: false, status: 'answered', speaker: row.speaker || { agentId: session.agentId, name: session.persona?.name },
+      reply: { traceId: turnId, text: row.replyText, written: row.written, display: row.display,
+        language: row.speechLanguage, speaker: row.speaker, speech: row.replySpeech || require('./persona-catalog').speechFor(session.persona, row.speechLanguage, session.voice),
+        ...(sound && { sound: { ...sound, play: 'after-reply' } }) } };
+  }
+
   function register(router) {
-    router.get('/private/sessions/:sessionId/member-reply', async (req, res) => {
+    const registerScope = (path, scope) => router.get(path, async (req, res) => {
       const session = await conversations.getSession({ sessionId: req.params.sessionId }).catch(() => null);
-      if (!session || session.packId !== PRIVATE_SCOPE.packId || session.scopeId !== PRIVATE_SCOPE.scopeId) {
+      if (!session || session.packId !== scope.packId || session.scopeId !== scope.scopeId) {
         return res.status(404).json({ ok: false, status: 'error', code: 'VOICE_PERSONA_SESSION_NOT_FOUND', message: 'Voice persona session not found' });
       }
       const controller = new AbortController();
       res.on('close', () => controller.abort());
-      const job = await wait(session.sessionId, String(req.query.turn || ''), { signal: controller.signal });
+      const turnId = String(req.query.turn || '');
+      const job = await wait(session.sessionId, turnId, { signal: controller.signal });
+      const work = publicJob(job) || await stored(session, turnId);
       if (res.writableEnded || res.destroyed) return undefined;
-      return res.json({ ok: true, status: 'success', data: { work: publicJob(job) } });
+      return res.json({ ok: true, status: 'success', data: { work } });
     });
+    registerScope('/private/sessions/:sessionId/member-reply', PRIVATE_SCOPE);
+    registerScope('/family/sessions/:sessionId/member-reply', { packId: 'kidx_nestor', scopeId: 'family' });
   }
 
   return { start, finish, fail, active, cancel, contextFor, wait, register, publicJob };

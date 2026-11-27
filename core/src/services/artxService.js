@@ -84,7 +84,9 @@ function createArtxService({ ambient, decide = null, now = () => Date.now(), hou
     return read({ displayId: value.displayId });
   }
 
-  function read({ displayId } = {}) {
+  function read({ displayId, view: requestedView } = {}) {
+    if (requestedView !== undefined && !['current', 'previous'].includes(requestedView))
+      throw failure('ARTX_VIEW_INVALID', 'Select the current or previous display view.', 400);
     const state = displays.get(displayId);
     const view = value => {
       const accepted = receipt(value), data = accepted && source(accepted.snapshotId);
@@ -93,6 +95,11 @@ function createArtxService({ ambient, decide = null, now = () => Date.now(), hou
       if (accepted.taskId && !task) return null;
       return describe(data, accepted, task);
     };
+    if (requestedView) {
+      const accepted = state?.observation?.[requestedView];
+      const scene = view(accepted);
+      return { displayId, [requestedView]: scene, status: scene ? 'available' : accepted ? 'expired' : 'unavailable' };
+    }
     const current = view(state?.observation?.current), previous = view(state?.observation?.previous);
     return { displayId, current, previous, status: current ? 'available' : state?.observation?.current ? 'expired' : 'unavailable' };
   }

@@ -1,23 +1,22 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { privateOwnerContext, updateState, nowIso } from "./store.js";
-import { agentxRead, briefingFromCore, contextFor, recordTool, recordRun } from "./harness.js";
+import { agentxRead, readMorningBriefing, contextFor, recordTool, recordRun } from "./harness.js";
 import { continuityHttpHandler, continuityOperations, householdWorkspace } from "./continuity.js";
 import { mediaHttpHandler, mediaRoot } from "./media.js";
-import { resolveAgentWorkspaceDir, resolveAgentEffectiveModelPrimary } from "openclaw/plugin-sdk/agent-runtime";
+import { resolveAgentConfig, resolveAgentWorkspaceDir, resolveAgentEffectiveModelPrimary } from "openclaw/plugin-sdk/agent-runtime";
 
-import { createCoreNotesClient, configuredJobContext } from "./core-notes.js";
+import { createCoreNotesClient, configuredJobContext, registerPersonalMemory } from "./core-notes.js";
 import { createCoreVaultClient } from "./core-vault.js";
 import { createCoreJournalClient } from "./core-journal.js";
 import { createCoreBriefClient } from "./core-brief.js";
-import { createCoreFinanceBriefClient } from "./core-finance-brief.js";
 import { createCoreIdentifiersClient, householdOwnerSession } from "./core-identifiers.js";
 import { registerLocalImages } from "./local-images.js";
 import { registerDataTools } from "./data-tools.js";
-import { registerWorkQueue, createWorkQueueClient } from "./work-queue.js";
+import { registerWorkQueue } from "./work-queue.js";
 import { registerConversationWork } from './conversation-work.js';
 import { registerNativeReadBudget } from './native-read-budget.js';
 import { registerMailRecall } from './core-recall.js';
-import { registerLifeAtlas, lifeAtlasBrief } from './core-atlas.js';
+import { registerLifeAtlas } from './core-atlas.js';
 import { registerPhotos } from './photos.js';
 import { registerPresentation } from './presentation.js';
 import { registerDossier } from './core-dossier.js';
@@ -35,27 +34,26 @@ export default definePluginEntry({
     registerWorkQueue(api);
     registerMailRecall(api);
     registerLifeAtlas(api);
-    registerConversationWork(api);
-    registerNativeReadBudget(api);
+    const localForeground = registerOwnerMemoryTurn(api, { resolveAgentConfig });
+    registerConversationWork(api, { localForeground });
+    const quotedTranslationV1 = registerNativeReadBudget(api) === true;
     registerPhotos(api);
     registerPresentation(api);
     registerDossier(api);
     registerSources(api);
-    registerOwnerMemoryTurn(api);
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const writeVaultNote = createCoreVaultClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const mailJournal = createCoreJournalClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const teamBrief = createCoreBriefClient({ baseUrl: api.pluginConfig?.agentxUrl });
-    const financeBrief = createCoreFinanceBriefClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const identifiers = createCoreIdentifiersClient({ baseUrl: api.pluginConfig?.agentxUrl });
     const secretaryContext = context => configuredJobContext(context, api.pluginConfig?.secretarySessionKeys);
     const morningContext = context => configuredJobContext(context, api.pluginConfig?.briefingSessionKeys);
     const readTasks = () => agentxRead(api.pluginConfig?.agentxUrl,
       "list_personal_tasks", { includeDone: false, includeNotes: false, limit: 12 });
     const questions = createNativeQuestions({ config: api.pluginConfig || {} });
-    const continuity = continuityOperations({ workspace: workspaceFor(), config: api.config,
+    const continuity = continuityOperations({ workspace: workspaceFor(), config: api.config, quotedTranslationV1,
       workAgentId: api.pluginConfig?.conversationWorkAgentId, guardianAgentId: api.pluginConfig?.conversationGuardianAgentId,
       resolveWorkspace, modelFor: id => resolveAgentEffectiveModelPrimary(api.config, id),
       readHistory: async sessionKey => ({ sessionKey, ...await api.runtime.subagent.getSessionMessages({ sessionKey, limit: 100 }) }) });
@@ -67,33 +65,7 @@ export default definePluginEntry({
       }) });
     api.registerHttpRoute({ path: "/api/nestor/media", auth: "gateway", match: "exact",
       handler: mediaHttpHandler(mediaRoot(process.env, api.pluginConfig?.mediaRoot)) });
-    api.registerTool((context) => {
-      if (!privateOwnerContext(context, api.config) && !secretaryContext(context)) return null;
-      return {
-        name: "personal_memory",
-        label: "Personal Memory",
-        description: "Remember only an explicit, lasting personal fact, preference or decision in one sentence. Never a summary of a mail, thread or document (use mail_journal), never identifiers or account numbers. Search/list private notes; correct a note using its existing id; forget an exact id. Notes use AgentX Core, shared with the owner Nestor UI and voice. Confirm only the receipt; forgetting does not erase chat history.",
-        parameters: {
-          type: "object",
-          properties: {
-            action: { type: "string", enum: ["remember", "list", "search", "forget"] },
-            text: { type: "string", minLength: 1, maxLength: 2000 },
-            query: { type: "string", maxLength: 2000 },
-            id: { type: "string", pattern: "^[a-f0-9]{24}$" },
-            kind: { type: "string", enum: ["fact", "preference", "decision"] },
-            expiresAt: { type: "string", maxLength: 40 },
-            includeHistory: { type: "boolean", description: "Explicit list only: include replaced facts and successor links within this owner space." },
-          },
-          required: ["action"],
-          additionalProperties: false,
-        },
-        async execute(_callId, params) {
-          // The session, not the model, says where a remembered fact came from.
-          const provenance = secretaryContext(context) ? "mail-review" : morningContext(context) ? "scheduled" : "conversation";
-          return receipt(await readNotes(params.action === "remember" ? { ...params, provenance } : params));
-        },
-      };
-    }, { name: "personal_memory", optional: true });
+    registerPersonalMemory(api, readNotes);
 
     api.registerTool(context => {
       if (!privateOwnerContext(context, api.config) && !secretaryContext(context)) return null;
@@ -188,19 +160,10 @@ export default definePluginEntry({
       if (!privateOwnerContext(context, api.config) && !morningContext(context)) return null;
       return {
         name: "nestor_briefing", label: "Nestor Personal Briefing",
-        description: "Get the French morning brief composed by AgentX Core from all open personal tasks (at most six lines), plus pending heavy-work outcomes from Core alerts. Relay the personal text as is, then mention up to two verified queue outcomes if present. If finance.text is present, relay it as the Finances line (labels and counts only, never amounts). If lifeAtlas.text is present, relay it with its link. Read-only; does not acknowledge results, deliver a message or imply calendar access.",
-        parameters: { type: "object", properties: {}, additionalProperties: false },
-        async execute() {
-          const brief = briefingFromCore(await agentxRead(api.pluginConfig?.agentxUrl, "personal_briefing", {}));
-          try { brief.workQueue = await createWorkQueueClient({ baseUrl: api.pluginConfig?.agentxUrl })({ action: 'notifications', limit: 5 }); }
-          catch (error) { brief.workQueue = { available: false, warning: error.message }; }
-          // The finance line is optional: when Core has nothing or does not answer, the brief goes on without it.
-          const finance = await financeBrief().catch(() => null);
-          if (finance) brief.finance = finance;
-          // Proposals waiting in the Life Atlas; optional like the finance line.
-          const lifeAtlas = await lifeAtlasBrief({ baseUrl: api.pluginConfig?.agentxUrl }).catch(() => null);
-          if (lifeAtlas) brief.lifeAtlas = lifeAtlas;
-          return receipt(brief);
+        description: "Get the French morning brief composed from Core's open personal tasks (at most six lines), plus pending heavy-work outcomes from Core alerts. Set includeWorkQueue when the owner requests queue and reservation counts in the verbatim text, with one available example giving the start mode and the actor’s next step. Relay the text as is, then mention up to two verified queue outcomes if present. If finance.text is present, relay it as the Finances line (labels and counts only, never amounts). If lifeAtlas.text is present, relay it with its link. Read-only; does not acknowledge results, deliver a message or imply calendar access.",
+        parameters: { type: "object", properties: { includeWorkQueue: { type: "boolean" } }, additionalProperties: false },
+        async execute(_id, params = {}) {
+          return receipt(await readMorningBriefing(api.pluginConfig?.agentxUrl, params));
         },
       };
     }, { name: "nestor_briefing", optional: true });

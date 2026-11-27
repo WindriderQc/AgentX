@@ -1,10 +1,13 @@
 'use strict';
+
+const { requireProtectedBackend, nativeInputOnly, nativeUserText } = require('../../src/services/conversations/protectedSources');
 const { conversationInput, browserReplyTool, sceneReply } = require('./llmx-conversation');
 const { nativePerformedBy } = require('./native-attribution');
 const { acceptedImageReply } = require('./accepted-images');
 const { scoreSpeechLanguage } = require('../../public/js/voice/speech-language');
 const { requestsTaskCheck, taskCheckObserved, confirmedLoop, checkFailure, recordedTaskReply } = require('./tool-turn-guard');
-const { requestsSecretary, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
+const { requestsSecretary, requestsDirectSecretaryRead, secretaryReturnObserved, SECRETARY_DIRECTIVE } = require('./native-specialist-policy');
+const { translationSessionKey } = require('../../../shared/quotedTranslation.cjs');
 const { nativeResponseFailure } = require('./native-response-failure');
 
 const agentIdFor = session => ['kidx_nestor', 'kidx_reader'].includes(session.packId) ? 'family' : session.agentId || 'main';
@@ -87,10 +90,19 @@ function agentInstructions(session, persona, surface, mode, { soundPlayback = fa
 }
 
 function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, readImageOperation, settleMs = 20000, delegateMs = 300000, progressMs = 2000, streamGraceMs = 3000, streamDrainMs = 30000, evidenceReadMs = 10000 } = {}) {
-  return async ({ session, text, speechLanguage, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, maxOutputTokens, guardianStreaming = false, readAcceptedTaskWork, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onTerminalFailure = async () => {}, onActivity = () => {} }) => {
+  return async request => {
+    let { session, text, speechLanguage, applicationEvent, currentContent, turnContext, turnDirective, instructions, history = [], model, channel, browserReply, maxOutputTokens, guardianStreaming = false, readAcceptedTaskWork, signal, onDelta = () => {}, onStarted = async () => {}, onSettled = async () => {}, onTerminalFailure = async () => {}, onActivity = () => {} } = request;
+    requireProtectedBackend('openclaw', env);
+    const inputOnly = nativeInputOnly('openclaw', env);
+    if (inputOnly) {
+      const direct = nativeUserText(request);
+      currentContent = direct; history = []; turnContext = ''; turnDirective = ''; browserReply = false;
+      const pack = require('./packs').packById(session.packId);
+      instructions = pack ? require('./persona-prompt').systemPromptFor(pack, { modeId: session.modeId }) : '';
+    }
     if (!env.OPENCLAW_GATEWAY_URL || !env.OPENCLAW_GATEWAY_TOKEN) throw new Error('Nestor agent is unavailable: the OpenClaw Gateway is not configured.');
     signal?.throwIfAborted();
-    const sessionKey = sessionKeyFor(session);
+    const sessionKey = channel === 'translation' && agentIdFor(session) === 'main' ? translationSessionKey(session.sessionId) : sessionKeyFor(session);
     // Only the explicitly installed tool-free guardian may speak append-only
     // deltas. Complete Main still waits for its exact final native projection.
     const liveGuardian = guardianStreaming && channel === 'voice' && !browserReply
@@ -99,8 +111,9 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     let spoken = '', pendingSpeech = '', spokenItem;
     // A per-run model changes neither the native agent nor its history/tools.
     // Explicit Open selection always wins; other surfaces keep native policy.
-    const secretaryRequest = personalVoice(session, channel) && requestsSecretary(text);
-    const selectedModel = model || (personalVoice(session, channel) && !secretaryRequest && !session.inference?.open
+    const useVoiceProfile = !inputOnly && personalVoice(session, channel);
+    const secretaryRequest = useVoiceProfile && requestsSecretary(text);
+    const selectedModel = model || (useVoiceProfile && !secretaryRequest && !session.inference?.open
       && session.modeId !== 'open' ? env.HOUSEHOLD_VOICE_MODEL?.trim() : undefined);
     if (secretaryRequest) turnDirective = [turnDirective, SECRETARY_DIRECTIVE].filter(Boolean).join('\n\n');
     const content = currentContent ?? conversationInput({ text, applicationEvent });
@@ -159,6 +172,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
     };
     // Report each native tool call once, so Household can say what Nestor does.
     const reported = new Set();
+    let secretarySpawnSeen = false;
     let consulted, lastTool, watching = false, wake;
     // The gateway closes its stream only after its own work behind the run. When
     // that work stalls, the run's final answer is already in the native transcript:
@@ -228,6 +242,7 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
         if (!item?.id || reported.has(item.id)) continue;
         reported.add(item.id);
         generating = true;
+        if (item.tool === 'sessions_spawn' && item.agentId === 'secretary') secretarySpawnSeen = true;
         if (item.agentId) consulted = item.agentId;
         lastTool = item.tool;
         await onActivity({ kind: 'tool', tool: item.tool, ...(item.agentId ? { agentId: item.agentId } : {}) });
@@ -436,9 +451,9 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
       }
       if (!browserCall) {
         answer = evidence.answer.text;
-        if (agentIdFor(session) === 'main' && session.packId === 'personal_operator' && session.scopeId === 'personal'
-            && !session.llmx && session.source !== 'graphysx-llmx'
-            && requestsTaskCheck(text) && taskObservedRun !== runId) {
+        const personalMain = agentIdFor(session) === 'main' && session.packId === 'personal_operator' && session.scopeId === 'personal'
+          && !session.llmx && session.source !== 'graphysx-llmx';
+        if (personalMain && channel !== 'translation' && requestsTaskCheck(text) && taskObservedRun !== runId) {
           const acknowledgment = personalVoice(session, channel) ? await require('./task-work-acceptance').taskWorkAcknowledgment(
             readAcceptedTaskWork, { session, text, language: language.decided ? language.language : 'fr' }) : null;
           if (acknowledgment) { answer = acknowledgment.text; acceptedTaskWork = acknowledgment.acceptedWork; }
@@ -447,6 +462,12 @@ function createAgentClient({ env = process.env, fetchImpl = fetch, continuity, r
             const replyLanguage = language.decided ? language.language : 'fr';
             answer = recordedTaskReply(evidence, runId, replyLanguage) || checkFailure(replyLanguage);
           }
+        }
+        if (inputOnly && personalMain && (secretarySpawnSeen || requestsDirectSecretaryRead(text))
+            && !secretaryReturnObserved(evidence, sessionKey, runId)) {
+          verificationFailure = 'secretary_return_missing';
+          answer = language.language === 'en' ? 'I could not verify the Secretary’s result for this request.'
+            : 'Je n’ai pas reçu de résultat vérifiable du Secrétaire pour cette demande.';
         }
         if (personalVoice(session, channel) && unfinishedToolPreamble(answer)) {
           answer = /^(?:i|let me)\b/i.test(answer) || scoreSpeechLanguage(answer).language === 'en'

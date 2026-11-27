@@ -17,9 +17,9 @@
   const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
   const readingVoiceKey = 'household.reading.voices.v1';
   const readingLanguageKey = 'household.reading.language.v1';
-  let readingLanguage = 'fr';
+  let readingLanguage = 'auto';
   let readingVoices = {};
-  try { readingLanguage = window.PersonaPresentation.profile({ language: localStorage.getItem(readingLanguageKey) }).language; } catch { /* French default */ }
+  try { readingLanguage = window.PersonaPresentation.profile({ language: localStorage.getItem(readingLanguageKey) }).language; } catch { /* Automatic mode when storage is unavailable. */ }
   try { readingVoices = window.PersonaPresentation.selections(JSON.parse(localStorage.getItem(readingVoiceKey) || '{}')); } catch { /* tab-only settings */ }
   function toast(message) {
     toastNode.textContent = message;
@@ -117,14 +117,14 @@
     const data = await api(`/api/voice-personas/${privateLane ? 'private/' : ''}sessions/${encodeURIComponent(session.sessionId)}/turns/text`, {
       method: 'POST',
       signal: options.signal,
-      body: JSON.stringify({ text, channel, language })
+      body: JSON.stringify({ text, channel, language, turnId: crypto.randomUUID(), soundPlayback: true })
     });
     options.signal?.throwIfAborted();
     const reply = data.reply?.text || '';
     if (data.session) state.session = data.session;
     state.history.push({ role: 'user', content: text }, { role: 'assistant', content: reply });
     state.history = state.history.slice(-8);
-    return { reply, data, language };
+    return { reply, data, language: data.reply?.language || window.NestorSpeech.replySpeechLanguage(reply, window.NestorSpeech.turnSpeechLanguage(text, '', language, session.defaultLanguage)) };
   }
 
   function voiceBar(prefix) {
@@ -247,7 +247,7 @@
   function browserSpeak(text, profile) {
     if (!text || state.outputMuted || !('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(profile.language === 'fr' ? window.NestorSpeech.frenchClockText(text) : text);
     utterance.lang = profile.locale;
     const voice = window.NestorSpeech.pickBrowserVoice(window.speechSynthesis.getVoices(), profile);
     if (voice) utterance.voice = voice;
@@ -299,7 +299,7 @@
   async function transcribe(blob, language = readingLanguage, signal) {
     const form = new FormData();
     form.append('file', blob, 'household.webm');
-    form.append('language', language);
+    form.append('language', window.NestorSpeech.transcriptionLanguage(language));
     const response = await fetch('/api/voix/transcribe', { method: 'POST', credentials: 'include', body: form, signal });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.message || 'Transcription failed');

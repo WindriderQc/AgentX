@@ -7,6 +7,7 @@ const { post } = require('./coverageLauncher');
 const { checkIdle } = require('./coverageIdle');
 const { validateIntent, refused } = require('./coverageQualification');
 const { coreRequest } = require('../../clients/coreHttp');
+const { getHeavyWork } = require('../../clients/coreHeavyQueue');
 const BenchmarkBatch = require('../../../models/BenchmarkBatch');
 
 const UUID = /^[a-f0-9-]{36}$/;
@@ -48,9 +49,31 @@ async function launch(id, body, deps = {}) {
   } catch (error) {
     // The batch boundary owns proven refusal publication. Any other error,
     // including a committed native/result write with a lost reply, is unknown.
-    await store.update(id, { launchError: String(error.message).slice(0, 1000) });
+    await store.update(id, { launchError: String(error.message).slice(0, 1000),
+      ...(typeof error.code === 'string' && { launchErrorCode: error.code.slice(0, 100) }),
+      ...(Number.isInteger(error.statusCode) && { launchHttpStatus: error.statusCode }) });
   }
   return observe(id, deps);
+}
+
+// Older attempts record only the terminal queue state. The original Core
+// receipt supplies the dispatch identity and the separate release authority.
+async function operatorReconciliation(attempt, readJob) {
+  const result = attempt.result;
+  if (attempt.active !== false || result?.terminal !== true || result.state !== 'failed'
+    || result.requestId !== attempt._id || result.queueId !== attempt.queueId || !attempt.dispatchId) return null;
+  let job;
+  try { job = await readJob(attempt.queueId); }
+  catch { return null; }
+  const release = job?.releaseReceipt;
+  if (job?.id !== attempt.queueId || job.dispatchId !== attempt.dispatchId || job.key !== attempt.intent.manifest.key
+    || job.state !== 'failed' || job.kind !== 'benchmark' || job.executor?.mode !== 'coverage'
+    || job.executor.requestId !== attempt._id || release?.authority !== 'operator-reconciliation'
+    || release.confirmation !== 'EXECUTOR_TERMINATED_AND_RUNTIME_RELEASED'
+    || !release.actor || !release.receiptRef || !Number.isFinite(Date.parse(release.observedAt))) return null;
+  return { state: job.state, terminal: true, authority: release.authority, nativeOutcome: 'unknown',
+    queueRelease: { dispatchId: job.dispatchId, actor: release.actor, observedAt: release.observedAt,
+      receiptRef: release.receiptRef, confirmation: release.confirmation } };
 }
 
 async function observe(id, deps = {}) {
@@ -62,9 +85,25 @@ async function observe(id, deps = {}) {
     launchReceipt: attempt.launchReceipt, authority: 'benchmark.coverage-refusal' };
   const find = deps.findBatches || (requestId => BenchmarkBatch.find({ coverage_request_id: requestId }).limit(2).lean());
   const batches = await find(id);
-  if (batches.length !== 1) return { ...base, terminal: false, uncertain: true, reason: 'No unique original coverage batch receipt' };
+  if (batches.length !== 1) {
+    if (!batches.length) {
+      const closed = await operatorReconciliation(attempt, deps.getHeavyWork || getHeavyWork);
+      if (closed) return { ...base, ...closed };
+    }
+    const [stage, at] = [
+      ['batch-handoff', attempt.batchHandoffAt], ['native-dispatch', attempt.nativeDispatchedAt],
+      ['outbound-dispatch', attempt.nativePostAt], ['intent', attempt.createdAt]
+    ].find(([, timestamp]) => timestamp) || ['intent', null];
+    const reason = batches.length ? 'Conflicting original coverage batch receipts' : 'Original coverage batch receipt missing';
+    return { ...base, terminal: false, uncertain: true, reason,
+      recovery: { owner: 'benchmark', stage, at, plannedBatchId: attempt.plannedBatchId || null,
+        heldSince: attempt.nativePostAt || null, matchingBatches: batches.length,
+        httpStatus: attempt.launchHttpStatus || null, code: attempt.launchErrorCode || null, error: attempt.launchError || null,
+        nextAction: 'Inspect the original coverage attempt, batch and workload admission. Reconcile the same Core dispatch after native refusal or termination and release.' } };
+  }
   const batch = batches[0];
   if (!batch.tags?.includes(`coverage-${id}`) || batch.coverage_request_id !== id
+    || (attempt.plannedBatchId && String(batch._id) !== attempt.plannedBatchId)
     || (attempt.nativeId && String(batch._id) !== attempt.nativeId)) throw new Error('Foreign coverage batch receipt');
   const running = ['running', 'judging'].includes(batch.status) || batch.judge_status === 'running';
   const terminal = !running && ['completed', 'failed', 'cancelled', 'stopped'].includes(batch.status);
@@ -86,6 +125,7 @@ function batchBoundary(handler, deps = {}) {
     const originalJson = res.json;
     let attempt;
     let ownsNative = false;
+    let handlerEntered = false;
     let payload;
     try {
       attempt = await store.get(req.body.requestId);
@@ -96,28 +136,37 @@ function batchBoundary(handler, deps = {}) {
       const begun = await store.beginNative(attempt._id, attempt.queueId, req.body.queueDispatchId);
       if (!begun) return res.status(409).json({ status: 'error', code: 'COVERAGE_ALREADY_DISPATCHED', error: 'Read the original coverage request' });
       ownsNative = true;
+      res.locals.coverageBatchId = begun.plannedBatchId;
       await admission(attempt._id, deps);
       await assertDispatch(attempt, req.body, deps);
       res.locals.assertCoverageDispatch = async () => {
         await admission(attempt._id, deps);
         await assertDispatch(attempt, req.body, deps);
+        await store.update(attempt._id, { batchHandoffAt: new Date() });
       };
       res.json = value => { payload = value; return res; };
+      handlerEntered = true;
       await handler(req, res, next);
       if (!payload) throw new Error('Native batch route returned no result');
       if (payload.status === 'error' && !res.locals.coverageMayHaveStarted) {
         throw Object.assign(refused(payload.error || payload.message || 'Native launch refused'), { code: payload.code || 'COVERAGE_LAUNCH_REFUSED' });
       }
       if (payload.status === 'success' && /^[a-f0-9]{24}$/.test(payload.data?.batch_id || '')) {
+        if (payload.data.batch_id !== begun.plannedBatchId) throw new Error('Unexpected native coverage batch ID');
         // Publish the acknowledged admission hand-off before the HTTP reply.
         await store.update(attempt._id, { nativeId: payload.data.batch_id });
       }
     } catch (error) {
       res.json = originalJson;
-      if (ownsNative && error.notStarted === true) {
+      const beforeCreation = !handlerEntered || (!res.locals.coverageMayHaveStarted && error.notStarted === true);
+      if (ownsNative && (beforeCreation || error.coverageCreationRefused === true)) {
         try {
           const { refusal, publishRefusal } = require('../../../../shared/queueLaunchReceipt.cjs');
-          const receipt = refusal(attempt.queueId, 'benchmark', error);
+          // The native fence was acquired and this owner has exited before
+          // calling the batch handler, or the handler attested non-start.
+          const receipt = refusal(attempt.queueId, 'benchmark', {
+            notStarted: true, code: error.code || 'COVERAGE_LAUNCH_REFUSED', message: error.message
+          });
           await store.update(attempt._id, { launchReceipt: receipt });
           await publishRefusal(receipt, req.body.queueDispatchId, deps.queuePost || queuePost);
           return res.status(error.statusCode || 409).json({ status: 'error', error: error.message, launchReceipt: receipt });

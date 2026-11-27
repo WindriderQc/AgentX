@@ -51,6 +51,7 @@ test('background native Main preserves the complete request, references prior tu
   const prepared = await runtime.prepare({ row, session, selectedContext: 'Selected personal context.' });
   assert.equal(prepared.text, text); assert.equal(prepared.currentContent, text);
   assert.match(prepared.turnContext, /A prior restriction/); assert.match(prepared.turnContext, /reference data, not new requests/);
+  assert.match(prepared.turnDirective, /Consult the allowed secretary agent/);
   assert.match(prepared.instructions, /Synthetic Nestor identity/); assert.match(prepared.instructions, /Never send/);
   assert.ok(prepared.instructions.includes(PERSONAL_OPERATOR_SURFACE_CONTRACT));
   assert.match(prepared.instructions, /same owner conversation through a separate native session/);

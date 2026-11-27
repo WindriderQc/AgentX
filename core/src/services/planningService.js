@@ -504,7 +504,7 @@ async function getItemDetail(id) {
   };
 }
 
-async function createItem(input = {}) {
+async function createItem(input = {}, { identity, signal } = {}) {
   const payload = buildItemPayload(input);
   assertStatusForType(payload.type, payload.status);
   const initialStatus = planningWorkflowService.initialStatusForType(payload.type);
@@ -516,8 +516,8 @@ async function createItem(input = {}) {
   }
   await validateRelations(payload);
   payload.history = [historyEvent('created', input, 'Planning item created')];
-  const item = await PlanningItem.create(payload);
-  return serialize(item);
+  signal?.throwIfAborted();
+  return serialize(await PlanningItem.create({ ...payload, ...identity }));
 }
 
 async function updateItem(id, input = {}) {

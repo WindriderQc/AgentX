@@ -7,6 +7,7 @@ const { PNG } = require('pngjs');
 const ImageOperation = require('../../models/ImageOperation');
 const { defaultArchive } = require('../../src/services/imageArchive');
 jest.mock('../../src/services/images/config', () => ({ ...jest.requireActual('../../src/services/images/config'), loadConfig: jest.fn() }));
+jest.mock('../../src/services/hostPinPrimitives', () => ({ ...jest.requireActual('../../src/services/hostPinPrimitives'), fetchRunningModelInfosStrict: jest.fn(async () => []) }));
 jest.mock('../../src/services/images/comfyClient', () => ({ createComfyClient: jest.fn() }));
 jest.mock('../../src/services/images/gpuReservation', () => ({ reserve: jest.fn() }));
 const { loadConfig } = require('../../src/services/images/config');

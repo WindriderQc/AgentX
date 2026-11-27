@@ -6,6 +6,7 @@ const { resolvePrincipalAlias, PRINCIPAL_MODEL_ALIAS } = require('./principalAli
 const { reducedRequest, decorate, statusResult } = require('./conversationContinuityContext');
 const { reasonOf, primaryHosts, describe, readQueue, boundedRead } = require('./conversationContinuityStatus');
 const { safeOccupation } = require('./conversationRelayContinuation');
+const familyPreference = require('./familyPrimaryPreference');
 
 const ENV = 'AGENTX_CONVERSATION_CONTINUITY_JSON';
 const SAFE_REFUSALS = new Set(['PRINCIPAL_MODEL_UNAVAILABLE', 'BENCHMARK_CLAIM_ACTIVE',
@@ -41,7 +42,7 @@ function requireResult(result) {
 }
 
 function createConversationContinuity({ execute, readSnapshot, deps, validate, readWork = readQueue,
-  readPolicy = () => process.env[ENV], observeFamilyOccupation, log = require('../../../config/logger') }) {
+  readPolicy = () => process.env[ENV], observeFamilyOccupation, readPrimaryRelease = familyPreference.readRelease, log = require('../../../config/logger') }) {
   return async (request, options = {}) => {
     let policy;
     try { policy = parse(readPolicy()); } catch {
@@ -61,7 +62,7 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
       return statusResult(request, 'Core ne peut pas vérifier l’état du routage pour le moment.', 'routing_unavailable');
     }
     let target = options.primaryTarget || null;
-    let failure;
+    let failure, executePrimary;
     let occupation = null;
     if (typeof options.observeOccupation === 'function') {
       occupation = await options.observeOccupation();
@@ -89,30 +90,50 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
       if (typeof options.observeOccupation === 'function') {
         failure = { code: 'HERMES_WORK_ACTIVE' };
       } else {
-        // Family needs one atomic lane admission: another shared inference also
-        // counts as occupied. This never preempts an admitted owner or reroutes it.
-        const primary = await execute({ ...request, model: target.model, exclusiveHost: options.taskRoute && options.requireOccupied ? true : false,
+        // Reserve an idle primary atomically. Its other resident models can
+        // stay loaded between turns, including the document search model.
+        executePrimary = (extraRetry = {}) => execute({ ...request, model: target.model, exclusiveHost: false,
           options: { ...request.options, ...(target.numCtx && { num_ctx: target.numCtx }) } }, {
           signal, consumerContract: options.consumerContract, hostUrl: target.hostUrl,
-          ...(target.topology && { topology: target.topology }), retry: { enabled: false },
+          requireIdleHost: Boolean(options.requireOccupied && !options.observeOccupation),
+          ...(target.topology && { topology: target.topology }),
+          // A scoped voice guardian can answer a proven workload reservation immediately.
+          retry: { enabled: false, ...(options.requireOccupied && options.relayHostKey && { skipInteractiveWait: true }), ...extraRetry },
           conversationContinuity: { state: 'primary', reason: null, limited: false, contextReduced: false }
-      });
-      return requireResult(primary);
+        });
+        return requireResult(await executePrimary());
       }
     } catch (error) {
       if (signal?.aborted || !safeRefusal(error)) throw error;
       failure = error;
+    }
+    const unavailableRelay = options.allowUnavailable === true && !options.observeOccupation
+      && (options.taskRoute === true || request.model === PRINCIPAL_MODEL_ALIAS);
+    if (executePrimary && target?.hostUrl && options.requireOccupied && unavailableRelay && options.familyPrimaryPreference?.enabled) {
+      const preferred = await familyPreference.preferReleasedPrimary({
+        scope: options.familyPrimaryPreference, firstError: failure, identity: familyPreference.fromRefusal(failure),
+        signal, isSafeRefusal: error => safeRefusal(error) && (error?.failure?.safeToRetry === true
+          || error?.ollamaRequestNotSent === true || error?.cause?.ollamaRequestNotSent === true),
+        readRelease: readPrimaryRelease,
+        executePrimary: () => executePrimary({ skipInteractiveWait: true }),
+        notify: options.onPrimaryWait, windowMs: options.familyPrimaryPreference.windowMs
+      });
+      if (preferred.action === 'primary') return requireResult(preferred.result);
+      failure = preferred.error;
     }
     const occupied = Boolean(occupation || safeOccupation(failure?.failure));
     const primaryRefusal = occupation ? null : { code: failure.code,
       ...(failure.failure?.cause && { cause: failure.failure.cause }) };
     // Only Family opts into availability fallback. The refusal above proves
     // this turn was not dispatched; another owner's uncertain run stays intact.
-    const unavailableRelay = options.allowUnavailable === true && options.taskRoute === true && !options.observeOccupation;
     if (options.requireOccupied && !occupied && !unavailableRelay) {
       return statusResult(request, 'Le cerveau principal est indisponible; aucune occupation active n’est prouvée.', 'occupation_unknown', primaryRefusal);
     }
     const reason = occupation ? 'hermes_active' : reasonOf(failure);
+    if (options.requiresFamilyPrimary === true && options.taskRoute === true && options.requireOccupied === true
+        && options.allowUnavailable === true && !options.observeOccupation) {
+      return statusResult(request, "Le dessin n’a pas été lancé.", 'family_primary_required', primaryRefusal);
+    }
     const work = options.requireOccupied ? null : await boundedRead(readWork, 1500, signal).catch(() => null);
     signal?.throwIfAborted();
     const principalEndpoints = primaryHosts(snapshot, target);
@@ -121,6 +142,7 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         : describe(failure, principalEndpoints, work);
     const visited = new Set(principalEndpoints.map(hostUrlKey));
     for (const hostKey of policy.hosts) {
+      if (options.relayHostKey && options.relayHostKey !== hostKey) continue;
       signal?.throwIfAborted();
       const url = snapshot.hosts?.[hostKey];
       let hostUrl;
@@ -144,10 +166,10 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         if (!resident || Number(resident.context_length) !== Number(pin.contextSize)) continue;
       } catch { if (signal?.aborted) signal.throwIfAborted(); continue; }
       const notice = options.requireOccupied
-        ? `Yo c’est l’Gardien… Nestor est ${occupied ? 'occupé' : 'indisponible'}.`
+        ? [options.relayGreeting, options.speechLanguage === 'en' ? `The guardian is answering while Nestor is ${occupied ? 'busy' : 'unavailable'}.` : `Le gardien prend le relais. Nestor est ${occupied ? 'occupé' : 'indisponible'}.`].filter(Boolean).join(' ')
         : `Message automatique d’AgentX — Petit contretemps : Nestor passe en mode de secours local avec son gardien, avec un contexte récent réduit et sans outils d’action. ${status}`;
       const reduced = reducedRequest(options.relayRequest || request, { ...policy, model: pin.model,
-        contextSize: Number(pin.contextSize), notice, status, familyInstructions: options.familyInstructions, relayTools: options.relayTools });
+        contextSize: Number(pin.contextSize), notice, status, presentation: options.relayPresentation, familyInstructions: options.familyInstructions, relayTools: options.relayTools });
       if (!reduced) return statusResult(request, status, 'backup_context_unavailable', primaryRefusal);
       const continuity = { state: 'backup', reason, limited: true, contextReduced: true,
         model: pin.model, hostKey, ...(primaryRefusal && { primaryRefusal }),

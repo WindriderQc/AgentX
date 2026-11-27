@@ -18,7 +18,7 @@ function attributionForTurn(session, input) {
     personaVersion: persona?.version ?? null, name: persona?.name || agentId };
   const performedBy = evidence?.performedBy?.length ? evidence.performedBy
     : [{ agentId, runId: evidence?.run?.runId || evidence?.runId || null }];
-  const language = spokenReplyLanguage(input.replyText || '', input.inputText || '');
+  const language = spokenReplyLanguage(input.replyText || '', input.inputText || '', input.speechLanguage);
   const speech = catalog.speechFor(persona, language, agentId === agentIdFor(session) ? session.voice : {});
   return { speaker, performedBy, voice: { provider: speech.provider, voice: speech.voice }, speech };
 }

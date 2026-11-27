@@ -39,6 +39,38 @@ const { ageInYears, instanceToday } = require('../../src/domains/household/famil
 const KNOWN_UNKNOWN = 'dis simplement ce que tu ne sais pas; ne devine jamais un âge exact';
 
 describe('built-in Household surface on Core', () => {
+  test('a household with local-only sources admits ordinary Personal locally before preparing native data', async () => {
+    const policy = process.env.HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY, engine = process.env.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND;
+    const workToken = process.env.PERSONAL_CONVERSATION_WORK_TOKEN;
+    process.env.PERSONAL_CONVERSATION_WORK_TOKEN = 'synthetic-work-token';
+    process.env.HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY = 'true';
+    process.env.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND = 'hermes';
+    try {
+      const catalog = await request(app).get('/api/voice-personas/catalog').expect(200);
+      expect(catalog.body.data.runtime).toMatchObject({ defaultBackend: 'agentx', protectedSourcesLocalOnly: true });
+      const read = await request(app).post('/api/voice-personas/native/work').set('authorization', 'Bearer synthetic-work-token')
+        .send({ operation: 'native_context' }).expect(409);
+      expect(read.body.code).toBe('HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY');
+      const base = '/api/voice-personas/private/sessions';
+      const input = { packId: 'personal_operator', modeId: 'operator' };
+      const rejected = await request(app).post(base).send({ ...input, backend: 'hermes' }).expect(409);
+      expect(rejected.body.code).toBe('HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY');
+      const created = await request(app).post(base).send(input).expect(201);
+      expect(created.body.data.session.backend).toBe('agentx');
+      const runs = agentForTest.mock.calls.length;
+      const url = base + '/' + created.body.data.session.sessionId + '/turns/text';
+      const reply = await request(app).post(url).send({ text: 'Synthetic ordinary question', channel: 'text' }).expect(200);
+      expect(reply.body.data.routing.backend).toBe('agentx');
+      expect(agentForTest.mock.calls).toHaveLength(runs);
+    } finally {
+      if (workToken === undefined) delete process.env.PERSONAL_CONVERSATION_WORK_TOKEN;
+      else process.env.PERSONAL_CONVERSATION_WORK_TOKEN = workToken;
+      if (policy === undefined) delete process.env.HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY;
+      else process.env.HOUSEHOLD_PROTECTED_SOURCES_LOCAL_ONLY = policy;
+      if (engine === undefined) delete process.env.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND;
+      else process.env.HOUSEHOLD_PERSONAL_CONVERSATION_BACKEND = engine;
+    }
+  });
   test('voice workshop is served from Workshop and old diagnostic bookmarks keep their destination', async () => {
     const page = await request(app).get('/voice-lab').expect(200);
     expect(page.text).toContain('/js/voice/voice-workshop.js');
@@ -240,7 +272,11 @@ describe('built-in Household surface on Core', () => {
       const id = created.body.data.session.sessionId;
       const turn = text => request(app).post(`/api/voice-personas/private/sessions/${id}/turns/text`).send({ text, channel: 'voice' }).expect(200);
       await turn('Bonjour Nestor');
-      const direct = await turn("Bonjour Nestor, est-ce que tu peux demander à secrétaire si j'ai des factures à payer?");
+      await turn('Ne demande absolument rien à la secrétaire.');
+      expect(agentForTest.mock.calls.at(-1)[0].session.agentId).toBe('main');
+      await turn("Bonjour Nestor, est-ce que tu peux demander à secrétaire si j'ai des factures à payer?");
+      expect(agentForTest.mock.calls.at(-1)[0].session.agentId).toBe('main');
+      const direct = await turn("Secrétaire, ai-je des factures à payer?");
       const member = agentForTest.mock.calls.at(-1)[0];
       expect(member.session).toMatchObject({ agentId: 'secretary', agentSessionKey: `agent:secretary:household:direct:${id}` });
       expect(member.instructions).toContain('addressed you (Secretary) directly');
@@ -1040,7 +1076,7 @@ describe('built-in Household surface on Core', () => {
 
     const personalBefore = await PipelineTask.countDocuments({ service: 'personal' });
     await request(app).post(`${base}/${id}/turns/text`).send({ text: "J'ai une idée : une cabane dans l'arbre" }).expect(200);
-    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain('an idea and it has been saved for Dad to review');
+    expect(executeForTest.mock.calls.at(-1)[0].messages.at(-1).content).toContain('an idea and it has been saved in the parent review inbox');
     expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toBe(familySystem);
     const idea = await PlanningItem.findOne({ type: 'idea', tags: 'origin:family' }).lean();
     expect(idea).toMatchObject({ status: 'inbox', summary: "J'ai une idée : une cabane dans l'arbre" });
@@ -1116,7 +1152,7 @@ describe('built-in Household surface on Core', () => {
   });
 
   test('the family lane runs new Family conversations on Core inference with their Core features; spoken turns use the voice task (#261)', async () => {
-    const names = ['HOUSEHOLD_FAMILY_CONVERSATION_BACKEND', 'HOUSEHOLD_VOICE_TASK', 'OPENCLAW_GATEWAY_URL', 'OPENCLAW_GATEWAY_TOKEN'];
+    const names = ['HOUSEHOLD_FAMILY_TOOLS', 'HOUSEHOLD_FAMILY_CONVERSATION_BACKEND', 'HOUSEHOLD_VOICE_TASK', 'OPENCLAW_GATEWAY_URL', 'OPENCLAW_GATEWAY_TOKEN'];
     const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
     for (const name of names) delete process.env[name];
     Object.assign(process.env, { OPENCLAW_GATEWAY_URL: 'http://openclaw.example.test', OPENCLAW_GATEWAY_TOKEN: 'synthetic-token' });
@@ -1168,23 +1204,30 @@ describe('built-in Household surface on Core', () => {
       await turn({ text: "Qu'est-ce que je dois faire aujourd'hui?", channel: 'voice' }).expect(200);
       expect(lastInference().messages.at(-1).content).toContain('Synthetic lane child : à faire : Synthetic water the plant');
       await turn({ text: "J'ai une idée : un potager sur le balcon", channel: 'voice' }).expect(200);
-      expect(lastInference().messages.at(-1).content).toContain('an idea and it has been saved for Dad to review');
+      expect(lastInference().messages.at(-1).content).toContain('an idea and it has been saved in the parent review inbox');
       expect((await PlanningItem.findOne({ type: 'idea', summary: "J'ai une idée : un potager sur le balcon" }).lean()).tags)
         .toEqual(expect.arrayContaining(['origin:family', 'kind:idea']));
       await turn({ text: 'Rappelle-moi de nourrir le poisson demain', channel: 'voice' }).expect(200);
-      expect(lastInference().messages.at(-1).content).toContain('a reminder and it has been saved for Dad to review');
+      expect(lastInference().messages.at(-1).content).toContain('a reminder and it has been saved in the parent review inbox');
       expect((await PlanningItem.findOne({ type: 'idea', summary: 'Rappelle-moi de nourrir le poisson demain' }).lean()).tags)
         .toEqual(expect.arrayContaining(['origin:family', 'kind:reminder']));
       inferences = executeForTest.mock.calls.length;
       const math = await turn({ text: 'Nestor, combien font 8 + 5 ?', channel: 'voice', stream: true }).buffer(true).parse(ndjson).expect(200);
       expect(JSON.parse(math.body.split('\n')[0])).toEqual({ type: 'scene', scene: { schema: 'agentx.math-scene.v1', kind: 'add', a: 8, b: 5 } });
       expect(executeForTest.mock.calls.length).toBe(inferences);
+      process.env.HOUSEHOLD_FAMILY_TOOLS = 'get_sound';
       const beforeSound = executeForTest.mock.calls.length;
-      const cow = (await turn({ text: 'Quel bruit fait la vache?', channel: 'voice' }).expect(200)).body.data;
+      const soundTurn = { text: 'Quel bruit fait la vache?', channel: 'voice', soundPlayback: true, turnId: require('node:crypto').randomUUID() };
+      executeForTest.mockResolvedValueOnce({ ok: true, body: { message: { tool_calls: [{ function: { name: 'get_sound', arguments: { query: 'cow', play: true } } }] } }, metadata: {} })
+        .mockResolvedValueOnce({ ok: true, body: { response: 'Écoute la vache.' }, metadata: {} });
+      const cow = (await turn(soundTurn).expect(200)).body.data;
       expect(cow.sound).toMatchObject({ id: 'cow', play: 'after-reply' });
-      expect(cow.reply.text).toBe('Écoute !');
-      expect(cow.routing.tier).toBe('deterministic');
-      expect(executeForTest.mock.calls.length).toBe(beforeSound);
+      expect(cow.reply.text).toBe('Écoute la vache.');
+      expect(cow.tools.receipts).toEqual([expect.objectContaining({ tool: 'get_sound', soundId: 'cow', turnId: soundTurn.turnId })]);
+      const duplicate = (await turn(soundTurn).expect(202)).body.data;
+      expect(duplicate.replayed).toBe(false);
+      expect(duplicate.sound).toBeUndefined();
+      expect(executeForTest.mock.calls.length).toBe(beforeSound + 2);
       expect(agentForTest.mock.calls.length).toBe(nativeRuns + 1);
     } finally {
       fetchMock.mockRestore();

@@ -1,6 +1,7 @@
 'use strict';
 
 const fetch = require('node-fetch');
+const { TrustedRuntimeServiceError, topologyRefusal } = require('../services/routing/trustedRuntimeError');
 const { prepareInferenceRuntime } = require('../services/inferenceRuntimePolicy');
 const {
   executeAdmittedOllamaAttempt,
@@ -41,26 +42,6 @@ const LOCAL_OPTION_KEYS = new Set([
   'seed', 'stop', 'repeat_last_n', 'repeat_penalty', 'presence_penalty',
   'frequency_penalty', 'mirostat', 'mirostat_tau', 'mirostat_eta', 'penalize_newline'
 ]);
-
-class TrustedRuntimeServiceError extends Error {
-  constructor(message, { code = 'RUNTIME_INFERENCE_ERROR', statusCode = 500, cause = null } = {}) {
-    super(message);
-    this.name = 'TrustedRuntimeServiceError';
-    this.code = code;
-    this.statusCode = statusCode;
-    if (cause) {
-      this.cause = cause;
-      if (cause.failure) this.failure = frozenCopy(cause.failure);
-      if (cause.retry) this.retry = frozenCopy(cause.retry);
-    }
-  }
-}
-
-function topologyRefusal(refusal) {
-  const error = new TrustedRuntimeServiceError(refusal.message, { code: refusal.code, statusCode: refusal.status });
-  return Object.assign(error, { details: frozenCopy(refusal.data),
-    failure: { cause: refusal.code.toLowerCase(), safeToRetry: true } });
-}
 
 function positiveInteger(value) {
   const parsed = Number(value);
@@ -368,6 +349,7 @@ async function executeRoutedInference(deps, request, options = {}) {
   const runtime = await prepareInferenceRuntime({
     ...payload, host: hostUrl, claimed: Boolean(benchmarkClaim),
     options: runtimeOptions, keepAlive, think: request.think,
+    ...(request.thinkingMode === 'auto' && { thinkingMode: 'auto', taskType }),
     ...(options.codingCapacity && { includeArtifactIdentity: true }),
   }, request.mode === 'embed' ? 'embed' : 'extension', deps);
   ({ options: runtimeOptions, keepAlive, numCtxSource, inferenceContract } = runtime);
@@ -438,7 +420,7 @@ async function executeRoutedInference(deps, request, options = {}) {
         // Compared once, in admission order: the order Ollama receives prompts.
         if (observePrefix) promptPrefix ??= observePrefix({ hostUrl, model, messages: request.messages, tools: request.tools });
       },
-      verifyRejection: true, exclusive: request.exclusiveHost === true,
+      verifyRejection: true, exclusive: request.exclusiveHost === true || options.requireIdleHost === true,
       ...(request.exclusiveHost === true && {
         prepareExclusive: async (admission) => {
           const prepared = await deps.hostPreferenceService.prepareExclusiveModel(hostUrl, model, {

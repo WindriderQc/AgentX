@@ -52,6 +52,7 @@ async function start(job, { send = request } = {}) {
     if (!receipt) throw fail('Invalid native coverage refusal receipt', 409);
     throw Object.assign(new Error(receipt.reason), { notStarted: true, code: receipt.code });
   }
+  if (result.authority === 'operator-reconciliation') throw fail('Original coverage dispatch was closed by its operator', 409);
   if (result.uncertain) throw fail(result.reason || 'Native coverage launch unknown', 409);
   return { requestId: result.requestId };
 }
@@ -60,6 +61,11 @@ async function observe(job, { read = request } = {}) {
   const result = exactIntent(job, await read(pathFor(job)));
   if (result.dispatchId !== job.dispatchId || (job.operation && job.operation.id !== result.requestId)) {
     throw fail('Coverage receipt belongs to another dispatch', 409);
+  }
+  if (result.authority === 'operator-reconciliation') {
+    // This reflects an existing Core closure. It cannot attach an operation
+    // or close a currently active Core dispatch as a native batch result.
+    return { terminal: false, uncertain: true, reason: 'Operator queue closure is not a native batch receipt' };
   }
   const base = { operationId: result.requestId, terminal: false };
   if (result.launchReceipt) {

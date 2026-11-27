@@ -1,0 +1,134 @@
+'use strict';
+
+// Standalone browser acceptance behind the existing Household middleware.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const https = require('node:https');
+const {createHash, X509Certificate} = require('node:crypto');
+const express = require('express');
+// Usage: node verify-local.cjs <test-cert> <test-key> [playwright-module] [chromium]
+const [certFile, keyFile, playwrightModule, chromiumPath] = process.argv.slice(2);
+const {chromium} = require(playwrightModule || 'playwright');
+const {registerWorkCockpit, mountPath} = require('./routes');
+
+async function run() {
+  const cert = fs.readFileSync(certFile);
+  const key = fs.readFileSync(keyFile);
+  const spki = new X509Certificate(cert).publicKey.export({type:'spki',format:'der'});
+  const pin = createHash('sha256').update(spki).digest('base64');
+  const app = express();
+  app.use(require('cookie-parser')());
+  let unlocked = false, reads = 0;
+  // Simulate an integration mounted before the Household classification.
+  app.use('/unclassified', registerWorkCockpit({express}));
+  require('../household/family-device').register({app, standardJsonParser:express.json(),
+    mongoose:{models:{AgentXHouseholdFamilyDevice:{findOneAndUpdate:()=>({lean:async()=>({label:'Synthetic device'})})}}},
+    ownerUnlock:{activeUntil:async()=>unlocked ? new Date(Date.now()+10000) : null},
+    envelope:(res,data)=>res.json({data}), fail:(res,code)=>res.sendStatus(code)});
+  const scope = {services:['engineering']};
+  const now = new Date().toISOString();
+  let pipelineProvider = async () => ({services:scope.services, hasMore:false, observedAt:now,
+    records:Array.from({length:30},(_,i)=>({pipelineId:String(i+1).padStart(4,'0'), title:'QA '+(i+1),
+      service:scope.services[0],status:'queued',intake:'proposed',createdAt:now,updatedAt:now}))});
+  const team = {readOnly:true, generatedAt:now, agents:[{registryId:'qa-registry',runtime:'test',
+    confidence:'configured',persona:{label:'Persona de test',description:'synthetic-excluded-field'}}]};
+  let teamProvider = async () => team;
+  const options = {express, scope, pipelineMs:300, registryMs:300,
+    readPipeline:input=>{reads++; assert.deepEqual(input,scope); return pipelineProvider();},
+    readTeam:()=>{reads++; return teamProvider();}};
+  app.use(mountPath,registerWorkCockpit(options));
+  const server = https.createServer({cert,key},app);
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const origin = 'https://127.0.0.1:'+server.address().port;
+  function get(path,family=false) {
+    return new Promise((resolve,reject)=>{
+      https.get(origin+path,{ca:cert,headers:family ? {Cookie:'agentx_family_device=fixture-only'} : {}},res=>{
+        let body=''; res.setEncoding('utf8'); res.on('data',chunk=>body+=chunk);
+        res.on('end',()=>resolve({status:res.statusCode,body,headers:res.headers}));
+      }).on('error',reject);
+    });
+  }
+  let browser;
+  try {
+    for(const path of ['/','/data','/data/pipeline','/data/registry','/cockpit.css','/cards.js','/cockpit.js']) {
+      assert.equal((await get('/unclassified'+path)).status,403);
+      const family=await get(mountPath+path,true);
+      assert.equal(family.status,302); assert.equal(family.headers.location,'/panel');
+    }
+    unlocked=true;
+    for(const path of ['/','/data','/data/pipeline','/data/registry']) assert.equal((await get(mountPath+path,true)).status,403);
+    assert.equal(reads,0);
+    const result=await get(mountPath+'/data');
+    assert.equal(result.status,200); assert.equal(reads,2);
+    assert.match(result.headers['cache-control'],/private, no-store/);
+    assert.doesNotMatch(result.body,/synthetic-excluded-field/);
+    assert.equal(JSON.parse(result.body).pipeline.records.length,30);
+    assert.deepEqual(Object.keys(JSON.parse(result.body).registry.agents[0]).sort(),['id','observation','persona','runtime']);
+    browser=await chromium.launch({headless:true, executablePath:chromiumPath,
+      ignoreDefaultArgs:['--hide-scrollbars'], args:['--ignore-certificate-errors-spki-list='+pin]});
+    for (const width of [1280,390]) {
+      const page=await browser.newPage({viewport:{width,height:width===390 ? 844 : 980}});
+      const external=[], errors=[];
+      page.on('pageerror',error=>errors.push(error.message));
+      await page.route('**/*', route=>{
+        const req=route.request();
+        if(new URL(req.url()).origin!==origin || req.method()!=='GET') {external.push(req.method());return route.abort();}
+        return route.continue();
+      });
+      assert.equal((await page.goto(origin+mountPath+'/')).status(),200);
+      const rows=page.locator('#rows .row');
+      await rows.first().waitFor(); assert.equal(await rows.count(),30);
+      await page.locator('#pipeline-0007').click();
+      assert.equal(await page.locator('#detail a').getAttribute('href'),'/pipeline?task=0007');
+      await page.getByRole('button',{name:'Retour à la liste'}).click();
+      assert.equal(await page.locator('#sample').count(),0);
+      assert.equal(await rows.count(),30);
+      const row=rows.nth(27);
+      await row.evaluate(el=>el.scrollIntoView({block:'center'}));
+      const before=await row.evaluate(el=>el.getBoundingClientRect().top);
+      await row.click(); await page.getByRole('button',{name:'Retour à la liste'}).click();
+      assert.equal(await row.evaluate(el=>el===document.activeElement),true);
+      assert.ok(Math.abs(before-await row.evaluate(el=>el.getBoundingClientRect().top))<=1);
+      await page.locator('#search').fill('Pipeline #0007');
+      if(width===390) await page.locator('#facets summary').click();
+      await page.locator('#domain').selectOption(scope.services[0]);
+      assert.equal(await rows.count(),1);
+      await page.locator('#search').fill('unmatched-query');
+      assert.equal(await rows.count(),0);
+      assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+      await page.close(); console.log(width+'px HTTPS loopback: list, detail, filtered search, scroll and return OK');
+    }
+    await require('./test/scroll-gestures.cjs')(browser, origin+mountPath+'/');
+    const page = await browser.newPage();
+    const healthyPipeline = pipelineProvider;
+    let release, slowReads=0;
+    teamProvider=()=>{slowReads++;return new Promise(done=>{release=()=>done(team);});};
+    await page.goto(origin+mountPath+'/');
+    await page.locator('#pipeline-0007').waitFor();
+    await page.waitForFunction(()=>document.querySelector('#registry-health').textContent.includes('Délai dépassé'));
+    const unavailable=JSON.parse((await get(mountPath+'/data/registry')).body);
+    assert.equal(unavailable.reason,'timeout'); assert.equal(slowReads,1); release();
+    teamProvider=async()=>team;
+    pipelineProvider=()=>new Promise(done=>{release=()=>done(healthyPipeline());});
+    await page.reload();
+    await page.waitForFunction(()=>document.querySelector('#roster li'));
+    await page.waitForFunction(()=>document.querySelector('#provenance').textContent.includes('Délai dépassé'));
+    assert.equal(await page.locator('.row').count(),0);
+    assert.equal(await page.locator('#total').textContent(),'—');
+    assert.equal(await page.locator('#overview .lane strong').first().textContent(),'—'); release();
+    pipelineProvider=async()=>{throw Error('Unavailable');};
+    teamProvider=async()=>{throw Error('Unavailable');};
+    await page.reload(); await page.waitForFunction(()=>document.querySelector('#provenance').textContent.includes('indisponible'));
+    assert.equal(await page.locator('.row,#roster li').count(),0);
+    assert.equal(await page.locator('#total').textContent(),'—');
+    await page.route('**/owner/work/data/*',route=>route.abort()); await page.reload();
+    await page.waitForFunction(()=>document.querySelector('#provenance').textContent.includes('indisponible'));
+    assert.equal(await page.locator('.row,#roster li').count(),0);
+    await page.close();
+    console.log('Classified unpinned browser 200; missing classification 403; pinned Family redirects to /panel; unlocked pinned device 403. Denials made zero source reads.');
+  } finally {
+    if(browser) await browser.close();
+    server.closeAllConnections(); await new Promise(resolve=>server.close(resolve));
+  }
+}
+run().catch(error=>{console.error(error);process.exitCode=1;});

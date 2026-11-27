@@ -32,11 +32,12 @@
     store.setItem('agentx.voice.capture.v1.' + scope(context), JSON.stringify(selected));
     return selected;
   }
+  const preference = value => ['en', 'fr'].includes(value) ? value : 'auto';
   function read(context, personas = [], store = storage()) {
     context = scope(context);
     if (context === 'reading') {
       let lang; try { lang = store?.getItem('household.reading.language.v1'); } catch {}
-      const language = lang === 'en' ? 'en' : 'fr', voices = json(store, 'household.reading.voices.v1');
+      const language = preference(lang), voices = json(store, 'household.reading.voices.v1');
       return { language, voice: validVoice(voices[language]) ? voices[language] : '', inputDeviceId: inputDevice(context, store), wakeWord: true, interruption: true,
         owner: 'Kids Room et Lecture · ce navigateur', capture: capture(context, store) };
     }
@@ -45,7 +46,7 @@
     const personaId = context === 'family' ? 'nestor' : prefs.personaId || 'nestor';
     const profile = prefs.profiles?.[personaId] || {};
     let listening; try { listening = store?.getItem('household.space.' + context + '.listening'); } catch {}
-    const language = profile.language === 'en' ? 'en' : 'fr';
+    const language = preference(profile.language);
     return { language, personaId, voice: validVoice(profile.selections?.[language]) ? profile.selections[language] : '', inputDeviceId: inputDevice(context, store),
       wakeWord: ['wake', 'open'].includes(listening) ? listening === 'wake' : context === 'family', interruption: prefs.interruption !== false,
       linksClickable: context === 'family' ? familyLinks(store) === 'clickable' : true,
@@ -57,7 +58,7 @@
   function write(context, patch, personas = [], store = storage()) {
     context = scope(context);
     if (!store) throw new Error('This browser cannot save preferences.');
-    const language = patch.language === 'en' ? 'en' : 'fr';
+    const language = preference(patch.language);
     if (patch.voice && !validVoice(patch.voice)) throw new Error('Select an installed voice.');
     if (context === 'reading') {
       const voices = json(store, 'household.reading.voices.v1');

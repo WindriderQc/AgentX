@@ -77,6 +77,19 @@ Supported executors:
   frozen artifact, scorer, prompt and judge proofs; drift refuses without
   widening the request. A unique native batch identity and permanent dispatch
   barriers prevent duplicate effects after concurrent ticks or restart.
+  At the native dispatch fence Benchmark records the planned batch/workload ID
+  before requesting admission. The coverage attempt read reports that ID, the
+  last observed transition, the missing or conflicting batch evidence and any
+  recorded HTTP error code. Older attempts can lack a planned ID.
+  An inactive coverage attempt closed through operator recovery reports the
+  exact Core release receipt and an unknown native batch outcome separately.
+  This read verifies the original dispatch against Core, including for older
+  attempts with only a terminal queue summary.
+  Cluster Schedule gives the operator the hold duration and original native attempt
+  path. Core's critical uncertainty notice keeps its existing incident ID.
+  A failed admission read before entering batch creation, an explicit Core
+  refusal, or a preparation failure before any batch insert with confirmed
+  workload release produces a durable pre-start refusal.
   Lost replies and uncertain writes read the same intent and Core request;
   an empty lookup or elapsed estimate never permits replacement. Proven
   refusals use `agentx.queue-launch/v1` and Core's existing refusal receipt.
@@ -332,8 +345,12 @@ GPU/device qualification.
 ## Nestor, LeadX and result follow-through
 
 `POST /api/consumers/nestor/v1/work-queue` provides `list`, `show`, `request`,
-`cancel`, `notifications` and `acknowledge`. List pages include full status
-counts. Show resolves archived IDs too. Nestor submits planning requests, without
+`cancel`, `notifications` and `acknowledge`. Each list page includes the full
+phase and reservation counts. Its dated `overview.text` gives the complete queue
+report. Within each automatic or action-required situation, `requestCount`
+counts all matching requests and one example identifies the slot, mode and next
+action. A recorded dispatch awaits native confirmation of execution.
+Show resolves archived IDs too. Nestor submits planning requests, without
 an executor, and cannot reserve or dispatch through this capability. Personal
 errands remain personal tasks; implementation work remains Pipeline. A queue
 completion never marks a linked task or GitHub issue done.

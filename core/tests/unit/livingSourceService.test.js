@@ -145,6 +145,15 @@ test('read envelopes repeat the exact catalogue guidance for every visible sourc
   expect(brief).toHaveBeenCalledTimes(2);
 });
 
+test('owner catalogue carries a compact pipeline_artifacts pointer, household has none', () => {
+  const owner = forAudience('owner').catalogue();
+  const family = forAudience('household').catalogue();
+  expect(owner.pipelineArtifacts).toEqual({ tool: 'pipeline_artifacts', requiredArgument: 'pipelineId' });
+  expect(family).not.toHaveProperty('pipelineArtifacts');
+  expect(family.sources.map(row => row.source)).toEqual(['weather', 'agentx']);
+  expect(owner.sources.map(row => row.source)).toEqual(['weather', 'agentx', 'secretary', 'comptable']);
+});
+
 test('failed sole or all brief sections do not claim a successful read', async () => {
   for (const sections of [{ mail: { unavailable: 'Source unavailable' } },
     { mail: { unavailable: 'Source unavailable' }, actions: { unavailable: 'Source unavailable' } }]) {
@@ -153,4 +162,47 @@ test('failed sole or all brief sections do not claim a successful read', async (
   }
   const partial = await forAudience('owner', { brief: async () => ({ sections: { mail: { unavailable: 'Source unavailable' }, actions: [] } }), now }).read({ source: 'secretary' });
   expect(partial.status).toBe('partial');
+});
+
+test('only an explicit current read refreshes missing prepared coverage', async () => {
+  const readCurrent = jest.fn(async () => weather);
+  const source = forAudience('owner', { now, ambient: { preparedWeather: async () => null, weather: readCurrent } });
+  for (const section of ['forecast', 'alerts']) {
+    expect(await source.read({ source: 'weather', section })).toMatchObject({ status: 'unavailable',
+      producerEvidence: { mode: 'prepared_read', lastSuccessfulRetrievalAt: null } });
+  }
+  expect(readCurrent).not.toHaveBeenCalled();
+  expect(await source.read({ source: 'weather' })).toMatchObject({ status: 'available', data: { temperatureC: 0 } });
+  expect(readCurrent).toHaveBeenCalledTimes(1);
+});
+
+test('an observation first reported after its own retrieval has no attested time on either reading path', async () => {
+  const { preparedBulletin, projectBulletin } = require('../../src/services/livingSourceWeather');
+  const current = { temperatureC: 2, observedAt: '2026-11-10T11:59:00Z' };
+  const fetchedAt = '2026-11-10T11:55:00Z';
+  const prepared = projectBulletin(preparedBulletin({ preparedStatus: 'fresh', fetchedAt, current }), now(), 'UTC');
+  for (const deps of [{ preparedWeather: async () => prepared }, { weather: async () => ({ ...current, fetchedAt }) }]) {
+    const result = await forAudience('household', { ambient: deps, now }).read({ source: 'weather' });
+    expect(result).toMatchObject({ status: 'available', data: { temperatureC: 2, observedAt: null },
+      freshness: { observationAgeMs: null }, producerEvidence: { observedAt: null } });
+  }
+});
+
+test.each(['2026-02-30T11:48:00Z', '2026-05-10T11:48:00'])('explicit current read leaves the invalid or unzoned observation %s undated', async observedAt => {
+  const reading = await forAudience('household', { ambient: { weather: async () => ({ ...weather, observedAt }) }, now }).read({ source: 'weather' });
+  expect(reading).toMatchObject({ status: 'available', data: { observedAt: null }, freshness: { observationAgeMs: null } });
+});
+
+test('refreshes an explicitly requested stale observation and preserves the best dated result on failure', async () => {
+  const { projectWeather } = require('../../src/services/livingSourceWeather');
+  const old = projectWeather({ fetchedAt: '2026-11-10T10:00:00Z', observedAt: '2026-11-10T09:59:00Z', temperatureC: 3 }, now());
+  const readCurrent = jest.fn().mockResolvedValueOnce({ ...weather, observedAt: '2026-11-10T11:50:00Z' })
+    .mockRejectedValueOnce(new Error('private outage')).mockResolvedValueOnce(null)
+    .mockResolvedValueOnce({ ...weather, observedAt: '2026-11-09T07:00:00Z' }).mockResolvedValueOnce(weather);
+  const service = forAudience('household', { now, ambient: { preparedWeather: async () => ({ current: old }), weather: readCurrent } });
+  const current = () => service.read({ source: 'weather', section: 'current' });
+  expect(await current()).toMatchObject({ status: 'available', data: { temperatureC: 0 } });
+  for (let i = 0; i < 4; i++) {
+    expect(await current()).toMatchObject({ status: 'stale', sourceUpdatedAt: old.sourceUpdatedAt, data: old.data });
+  }
 });

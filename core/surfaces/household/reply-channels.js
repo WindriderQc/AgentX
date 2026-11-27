@@ -104,7 +104,7 @@ function spokenTable(lines) {
   return lines.map(row => row.replace(/^\s*\||\|\s*$/g, '').split('|').map(cell => cell.trim()).filter(Boolean).join('. ')).join('\n');
 }
 
-function createReplyChannels({ allowSecrets = false, allowMath = false, allowPages = false, canonicalPageTitles = false, pageTarget = null, pageCatalog = screenPages, answerForPage = null, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onWritten = () => {}, onConsult = () => {} } = {}) {
+function createReplyChannels({ allowSecrets = false, allowMath = false, allowPages = false, canonicalPageTitles = false, pageTarget = null, pageCatalog = screenPages, answerForPage = null, projectCompletedSpeech = null, language = 'fr', readAloud = false, onSay = () => {}, onShow = () => {}, onWritten = () => {}, onConsult = () => {} } = {}) {
   const lang = languageOf(language);
   const display = [];
   // Ordered, safe presentation evidence. Raw model protocol and hidden reasoning
@@ -131,7 +131,7 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
     if (/[ \t]$/.test(spoken)) text = text.replace(/^[ \t]+/, '');
     if (!text) return;
     spoken += text;
-    onSay(text);
+    if (!projectCompletedSpeech) onSay(text);
   };
   const addBlock = (kind, title, body, extra = {}, retain = true) => {
     const content = String(body || '').replace(/^\n+|\s+$/g, '');
@@ -281,6 +281,9 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
       }
       if (boundary <= 0) return;
       speakProse(line.slice(0, boundary));
+      // Speech can use the delimiter now, while the next token is still being
+      // checked. emit() coalesces it when the written stream receives it later.
+      if (!ended && line[boundary] === ' ' && spoken.endsWith('.')) emit(' ', false);
       line = line.slice(boundary);
       if (ended) line = '';
     }
@@ -334,7 +337,12 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
       pending += String(delta);
       process();
     },
-    end({ fallbackPage } = {}) {
+    streamSpeech() {
+      if (!projectCompletedSpeech) return;
+      projectCompletedSpeech = null;
+      if (spoken) onSay(spoken);
+    },
+    end({ fallbackPage, completed = false } = {}) {
       if (!ended) {
         ended = true;
         process();
@@ -349,6 +357,12 @@ function createReplyChannels({ allowSecrets = false, allowMath = false, allowPag
         const answer = page ? String(answerForPage(page) || '').trim() : '';
         if (answer) emit((spoken.trim() ? ' ' : '') + answer);
         if (!spoken.trim() && display.length) emit(ONLY_SHOWN[lang], false);
+        // Only a settled turn selects and publishes deferred speech. Closing a
+        // partial turn for its written audit must not speak a completed answer.
+        if (projectCompletedSpeech && completed) {
+          spoken = projectCompletedSpeech(spoken.trim());
+          if (spoken) onSay(spoken);
+        }
       }
       return { say: spoken.replace(/\n{3,}/g, '\n\n').trim(), display: display.slice(),
         written: { version: 1, segments: writtenSegments.map(segment => ({ ...segment })) } };
@@ -421,7 +435,19 @@ const FAMILY_MATH_CONTRACT = 'Counting and additions up to 20 get Core\'s cube p
   + 'Core checks the formula and draws every point: explain aloud what the picture shows and what each slider changes, never list points, and do not claim the picture loaded. '
   + 'When a math card is on screen, its formula and current slider values come from the current presentation.';
 
-function contract({ family = false, math = !family, imageSources = [], pages = false, pageCatalog = screenPages } = {}) {
+// The Family voice page only accepts a new page when its destination was
+// resolved. Ordinary spoken turns still have the full drawing and math grammar.
+function familyVoiceContract({ math, imageSources }) {
+  return [
+    'Give the spoken answer in plain prose. Use <show kind="text|list|table|code|link" title="short title">…</show> for written detail, lists, code or links. Summarize those aloud. Read the full text or story when asked. Keep safety instructions and emergency contacts in the spoken answer. Never display private information.',
+    'A proposed card can fail. Use the current screen receipt to say what appeared. Describe image pixels only if you received the actual image.',
+    math ? FAMILY_MATH_CONTRACT : '',
+    imageSources.length ? 'For an existing picture use <show kind="image" source="' + imageSources.join('|') + '" title="short caption">subject label</show>. Select one offered source. Use a public subject for web and a name for a household picture. The resolver can return no match.' : '',
+  ].filter(Boolean).join(' ');
+}
+
+function contract({ family = false, math = !family, imageSources = [], pages = false, pageCatalog = screenPages, compact = false } = {}) {
+  if (family && compact) return familyVoiceContract({ math, imageSources });
   if (family) {
     pageCatalog = screenPages.createCatalog(pageCatalog.entries.filter(row => ['ecosystem', 'earth', 'iss', 'kids-tasks'].includes(row.id)));
     pages = pages && pageCatalog.entries.length > 0;
@@ -439,7 +465,9 @@ function contract({ family = false, math = !family, imageSources = [], pages = f
     math ? family ? FAMILY_MATH_CONTRACT : MATH_CONTRACT : '',
     imageSources.length
       ? `To show a picture, write <show kind="image" source="${imageSources.join('|')}" title="short caption">a few search words</show>. `
-        + 'web searches the internet; photos and media search the household\'s own pictures by file or folder name. Never write a URL or a path; Household finds the picture and it may find none. '
+        + (imageSources.includes('web') ? (family ? 'For a public web picture, give the short subject label. ' : 'web searches the internet. ') : '')
+        + (imageSources.some(source => source === 'photos' || source === 'media') ? 'Use the available household image source for a file or folder name. ' : '')
+        + 'Choose one listed source. Never write a URL or a path; Household finds the picture and it may find none. '
         + 'Say "je te montre" only as an intention; do not describe details of a picture you have not seen.'
       : '',
     pages

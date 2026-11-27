@@ -1,7 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { familyWeatherContext } = require('../family-weather');
+const { readFamilyWeather, familyWeatherReading } = require('../family-weather');
+const familyWeatherContext = async (...args) => (await readFamilyWeather(...args)).text;
 const { createFamilyAmbient } = require('../family-ambient');
 const { harness } = require('./fixtures/persona-journey.cjs');
 const { runLocalConversation } = require('../conversation-inference');
@@ -70,17 +71,19 @@ test('weather observation and retrieval get separate local times across a date b
   assert.match(context, /"fetchedAtLocal":"2026-02-03 22:15"/);
   assert.match(context, /"observationAgeMinutes":75/);
   assert.match(context, /Never read a raw UTC Z timestamp as local time/);
-  assert.match(context, /D’après le relevé de 21 h/);
-  assert.doesNotMatch(context, /D’après le relevé de 22 h/);
+  assert.match(context, /"observationStatus":"recent"/);
+  assert.match(context, /lead with the temperature and conditions/);
+  assert.doesNotMatch(context, /start the spoken reply with|D’après le relevé/);
 });
 
-test('a previous-day weather introduction preserves its date and local minutes', async () => {
+test('an expired observation preserves its local date and minutes for an explicit time question', async () => {
   const now = new Date('2026-02-04T03:15:00Z');
   const context = await familyWeatherContext({ weather: async () => ({
     fetchedAt: now.toISOString(), observedAt: '2026-02-03T02:30:00Z', temperatureC: -2
   }) }, { now, timeZone: 'America/New_York' });
-  assert.match(context, /D’après le relevé du 2 février à 21 h 30/);
-  assert.match(context, /reading from 21:30 on February 2/);
+  assert.match(context, /"observedAtLocal":"2026-02-02 21:30"/);
+  assert.match(context, /"observationStatus":"expired"/);
+  assert.match(context, /current conditions cannot be confirmed/);
 });
 
 test('unknown observation time never borrows the fresh retrieval time for the spoken introduction', async () => {
@@ -88,8 +91,8 @@ test('unknown observation time never borrows the fresh retrieval time for the sp
   const context = await familyWeatherContext({ weather: async () => ({
     fetchedAt: now.toISOString(), temperatureC: 2
   }) }, { now, timeZone: 'America/New_York' });
-  assert.match(context, /"observationIntroductions":null/);
-  assert.doesNotMatch(context, /D’après le relevé de 22 h/);
+  assert.match(context, /"observedAtLocal":null/);
+  assert.match(context, /"observationStatus":"undated"/);
 });
 
 test('the spoken observation hour uses the timezone offset at observation, including a DST transition', async () => {
@@ -97,7 +100,7 @@ test('the spoken observation hour uses the timezone offset at observation, inclu
   const context = await familyWeatherContext({ weather: async () => ({
     fetchedAt: now.toISOString(), observedAt: '2026-03-08T06:30:00Z', temperatureC: 2
   }) }, { now, timeZone: 'America/New_York' });
-  assert.match(context, /D’après le relevé de 1 h 30/);
+  assert.match(context, /"observedAtLocal":"2026-03-08 01:30"/);
   assert.match(context, /"observationAgeMinutes":60/);
 });
 
@@ -164,3 +167,36 @@ for (const packId of ['personal_operator', 'kidx_nestor']) {
     });
   }
 }
+
+test('a sufficient observation covers the exact wind measurement only within its freshness window', () => {
+  const now = new Date('2026-06-01T13:00:00Z');
+  const weather = { fetchedAt: now.toISOString(), observedAt: '2026-06-01T12:00:00Z', condition: 'Nuageux', temperatureC: 0 };
+  const covers = (value, currentQuestion) => Boolean(familyWeatherReading(value, { now, currentQuestion }).coveredWeather);
+  assert.equal(covers(weather, 'quelle meteo'), true);
+  assert.equal(covers(weather, 'est ce qu il vente'), false);
+  assert.equal(covers({ ...weather, windKmh: 0 }, 'est ce qu il vente'), true);
+  assert.equal(covers({ ...weather, observedAt: '2026-06-01T13:00:30Z' }, 'quelle meteo'), false);
+  assert.equal(covers({ ...weather, observedAt: null }, 'quelle meteo'), false);
+  assert.equal(covers({ ...weather, fetchedAt: '2026-06-01T12:00:00Z' }, 'quelle meteo'), false);
+});
+
+test('the fallback keeps decimals, sign and the requested wind measurement in the spoken language', () => {
+  const { projectionFor } = require('../family-weather-speech');
+  const reading = { temperatureC: -0.3, condition: 'Nuageux' };
+  const project = projectionFor(reading, 'fr');
+  const expected = 'Il fait moins 0,3 degré Celsius. Nuageux.';
+  for (const text of ['', 'Je te propose ce contenu à l’écran.', 'Je n’ai pas un seul chiffre en degrés à te donner.',
+    'Il fait trente degrés.', 'À moins 0,3 pendant le trajet, il fait 8 degrés.', 'Il fait 0,3 degré.',
+    'Il fait moins 0,3 degré Fahrenheit.']) assert.equal(project(text), expected);
+  for (const text of ['Il fait −0,3 °C, tu peux sortir !', 'Il fait moins 0,3 degré et le ciel est nuageux.']) {
+    assert.equal(project(text), text);
+  }
+  assert.equal(projectionFor({ ...reading, temperatureC: 14 }, 'fr')('Il fait quatorze degrés, bon matin !'),
+    'Il fait quatorze degrés, bon matin !');
+  assert.equal(projectionFor(null, 'fr'), null);
+  const wind = projectionFor({ ...reading, windKmh: 12 }, 'en');
+  assert.equal(wind('It is minus 0.3 degrees Celsius.'), 'It is minus 0.3 degrees Celsius. Cloudy skies. The wind speed is 12 kilometres per hour.');
+  const normal = 'The wind is twelve kilometres per hour.';
+  assert.equal(wind(normal), normal);
+  assert.match(projectionFor({ temperatureC: 0, condition: 'Pluie', windKmh: 0 }, 'fr')(''), /0 degré Celsius\. Pluie\. Le vent souffle à 0 kilomètre à l’heure/);
+});

@@ -16,6 +16,8 @@
   // A math picture waits for Nestor's first word so the cubes move while he explains them;
   // a silent or text-only turn still shows it after this long.
   const SCENE_HOLD_MS = 2500;
+  const IDLE_RETURN_MS = 120000;
+  const BUSY_STATES = new Set(['starting', 'hearing', 'transcribing', 'waiting', 'thinking', 'preparing', 'speaking', 'reviewing', 'resuming', 'recovering']);
   const storageKey = space => 'household.avatar.' + space + '.layout';
 
   // Conversation states (browser-conversation.js) → the face's observable phases.
@@ -55,13 +57,14 @@
 
   // The scene's three views: plein (Nestor fills the screen), montre (he stands in the corner
   // beside what he shows) and menu (the page, its menus and the transcript). Something shown
-  // while the page is open stays there; closing the page returns to it. When Nestor goes back
-  // to waiting for "Hey Nestor", he takes the screen again.
+  // while the page is open stays there; closing the page returns to it. Voice sleep changes
+  // the face's animation, not what is shown. Only app inactivity can return without a click.
   function nextView(view, event, shown = false) {
+    if (event === 'return-full' || event === 'idle-return') return 'plein';
     if (event === 'tap') return view === 'menu' ? (shown ? 'montre' : 'plein') : 'menu';
     if (view === 'menu') return view;
     if (event === 'show') return 'montre';
-    return ['close', 'clear', 'sleep'].includes(event) ? 'plein' : view;
+    return ['close', 'clear'].includes(event) ? 'plein' : view;
   }
 
   function readMode(space) {
@@ -93,7 +96,7 @@
     };
   }
 
-  function mount({ space = 'personal', documentRef = root.document, status = null, onTap = null, onSend = null } = {}) {
+  function mount({ space = 'personal', documentRef = root.document, status = null, onTap = null, onSend = null, idleReturnMs = IDLE_RETURN_MS, nowMs = () => root.performance.now() } = {}) {
     const doc = documentRef;
     root.AvatarDock.current?.dispose();
     const family = space === 'family';
@@ -102,13 +105,16 @@
     dock.setAttribute('aria-label', family ? 'Nestor, face' : 'Your agent, face');
     dock.innerHTML = `<div class="avatar-dock-stage"><div class="avatar-dock-orb" aria-hidden="true"></div></div>
       <div class="avatar-dock-bar" role="toolbar" aria-label="Face size">
-        <button type="button" data-mode="scene" title="Interactive full screen">⛶</button>
-        <button type="button" data-mode="bulle" title="Bubble">●</button>
-        <button type="button" data-mode="quart" title="Quarter screen">◱</button>
-        <button type="button" data-mode="moitie" title="Half screen">◧</button>
-        <button type="button" data-mode="cache" title="Hide the face">×</button>
-      </div>
-      <button type="button" class="avatar-dock-reopen" title="Show the face">${family ? 'Nestor' : 'Face'}</button>`;
+        <button type="button" data-mode="bulle" title="Bulle" aria-label="Bulle">●</button>
+        <button type="button" data-mode="quart" title="Quart d’écran" aria-label="Quart d’écran">◱</button>
+        <button type="button" data-mode="moitie" title="Demi-écran" aria-label="Demi-écran">◧</button>
+        <button type="button" data-mode="cache" title="Masquer l’avatar" aria-label="Masquer l’avatar">×</button>
+      </div>`;
+    const returnFull = doc.createElement('button');
+    returnFull.type = 'button';
+    returnFull.className = 'avatar-return-full';
+    returnFull.textContent = 'Avatar plein écran';
+    returnFull.setAttribute('aria-keyshortcuts', 'Control+Alt+N');
     // The scene's own controls stay reachable on a touchscreen, where nothing hovers.
     const sceneBar = doc.createElement('div');
     sceneBar.className = 'avatar-scene-bar';
@@ -124,7 +130,7 @@
     const clock = doc.createElement('div');
     clock.className = 'avatar-scene-clock';
     clock.innerHTML = '<time class="avatar-scene-time"></time><div class="avatar-scene-line"><span class="avatar-scene-date"></span></div>';
-    doc.body.append(dock, sceneBar, clock);
+    doc.body.append(dock, sceneBar, clock, returnFull);
     const execution = root.AvatarExecution?.mount({ container: sceneBar, space, documentRef: doc });
     const sceneStatus = sceneBar.querySelector('.avatar-scene-status');
     const sceneReply = sceneBar.querySelector('.avatar-scene-reply');
@@ -139,13 +145,37 @@
     renderClock();
     const clockTimer = setInterval(renderClock, 15000);
     const stage = dock.querySelector('.avatar-dock-stage');
+    stage.tabIndex = -1;
     const orb = dock.querySelector('.avatar-dock-orb');
     // The mask's receipt for the current picture and the recorded turn it belongs to (#131);
     // sent once both are known, in whichever order they arrive.
     let pendingReceipt = null, recordedTurn = null, heldScene = null, sceneTimer = null;
     let face = null, lastFacePresence = null, lastOrbLevel = null;
     let mode = readMode(space), disposed = false, view = 'plein', shown = false, pagePresented = false;
-    let state = 'idle', wasAsleep = false, hostBusy = false, toolPulses = 0, tint = '#52cfc5', sample = null;
+    let state = 'idle', hostBusy = false, toolPulses = 0, tint = '#52cfc5', sample = null;
+    const editable = element => element?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+    const photosShowing = () => Boolean(doc.querySelector?.('.nestor-idle-photos:not([hidden])'));
+    let lastActivity = nowMs(), composing = false, pointerHeld = false;
+    const touch = () => { lastActivity = nowMs(); };
+    const controls = new AbortController(), listen = { capture: true, passive: true, signal: controls.signal };
+    const protectedView = () => {
+      const active = doc.activeElement;
+      const draft = sceneInput.value.length || doc.getElementById('conversationMessage')?.value?.length
+        || doc.querySelector?.('#conversationDraftFiles:not(:empty)');
+      return doc.hidden || doc.hasFocus?.() === false || photosShowing() || composing || pointerHeld || draft
+        || BUSY_STATES.has(state) || doc.querySelector?.('[data-conversation-busy="true"]')
+        || editable(active) || active?.tagName === 'IFRAME'
+        || doc.querySelector?.('iframe:hover, .nestor-ambient-visit:not([hidden])')
+        || [...doc.querySelectorAll('dialog[open], [aria-modal="true"]:not([hidden])')].some(node => node.getClientRects().length > 0);
+    };
+    for (const event of ['pointermove', 'click', 'wheel', 'scroll', 'input', 'focusin', 'focusout', 'visibilitychange'])
+      doc.addEventListener(event, touch, listen);
+    doc.addEventListener('pointerdown', () => { pointerHeld = true; touch(); }, listen);
+    for (const event of ['pointerup', 'pointercancel']) doc.addEventListener(event, () => { pointerHeld = false; touch(); }, listen);
+    doc.addEventListener('compositionstart', () => { composing = true; touch(); }, listen);
+    doc.addEventListener('compositionend', () => { composing = false; touch(); }, listen);
+    root.addEventListener('blur', () => { pointerHeld = false; touch(); }, listen);
+
     const meter = createTokenMeter();
     let resolveReady, readySettled = false;
     const ready = new Promise(resolve => { resolveReady = resolve; });
@@ -191,6 +221,7 @@
       if (scene) { dock.dataset.view = view; doc.body.dataset.avatarView = view; }
       else { delete dock.dataset.view; delete doc.body.dataset.avatarView; }
       sceneBar.hidden = !scene || view === 'menu';
+      returnFull.hidden = scene && view === 'plein' || photosShowing();
       sceneClose.hidden = view !== 'montre';
       sceneBar.querySelector('.avatar-scene-actions').hidden = !onSend && sceneClose.hidden;
       clock.hidden = !scene || view !== 'plein';
@@ -202,11 +233,36 @@
       if (dock.parentElement !== parent) parent.append(dock);
     }
     function sceneEvent(event) {
+      if (event === 'show' || event === 'tap') touch();
       if (event === 'show') shown = true;
-      if (['close', 'clear', 'sleep'].includes(event)) shown = false;
+      if (['close', 'clear'].includes(event)) shown = false;
       view = nextView(view, event, shown);
       applyView();
     }
+    function faceFull(event = 'return-full', focus = false) {
+      if (photosShowing() || mode === 'scene' && view === 'plein') return false;
+      view = nextView(view, event, shown); // Preserve the scene/content and every draft.
+      if (mode !== 'scene') setMode(DEFAULT_MODE);
+      else applyView();
+      touch();
+      if (focus) stage.focus({ preventScroll: true });
+      return true;
+    }
+    returnFull.addEventListener('click', () => faceFull('return-full', true), { signal: controls.signal });
+    doc.addEventListener('keydown', event => {
+      touch();
+      if (event.defaultPrevented || event.repeat || event.isComposing || composing || editable(event.target)
+          || event.getModifierState?.('AltGraph') || !event.ctrlKey || !event.altKey || event.metaKey || event.shiftKey
+          || event.key.toLowerCase() !== 'n') return;
+      if (faceFull('return-full', true)) event.preventDefault();
+    }, { signal: controls.signal });
+    const idleReturn = setInterval(() => {
+      // Do not override an explicitly selected fixed size. Its button remains available.
+      if (photosShowing()) { returnFull.hidden = true; touch(); return; }
+      returnFull.hidden = mode === 'scene' && view === 'plein';
+      if (mode !== 'scene' || view === 'plein' || protectedView()) { touch(); return; }
+      if (nowMs() - lastActivity >= idleReturnMs) faceFull('idle-return');
+    }, 1000);
     sceneClose.addEventListener('click', () => sceneEvent('close'));
     // The page's own composer sends it, so a typed line follows the same path as one typed
     // in the conversation (privacy choice, voice in progress, a failed send kept there).
@@ -222,11 +278,8 @@
     dock.querySelector('.avatar-dock-bar').addEventListener('click', event => {
       const button = event.target.closest('[data-mode]');
       if (!button) return;
-      // Choosing the scene again from the open page returns to it.
-      if (button.dataset.mode === 'scene') view = shown ? 'montre' : 'plein';
       setMode(button.dataset.mode);
     });
-    dock.querySelector('.avatar-dock-reopen').addEventListener('click', () => setMode(DEFAULT_MODE));
     stage.addEventListener('click', () => {
       if (mode === 'bulle') setMode('quart');
       // A tap on the full-screen face first wakes or resumes Nestor when he waits for it.
@@ -249,9 +302,6 @@
       // mutate the concealed face/orb; the renderer's visibility observer pauses it.
       if (doc.hidden || mode === 'cache' || doc.querySelector?.('.nestor-idle-photos:not([hidden])')) return;
       const value = presence();
-      const asleep = ['listening', 'hearing'].includes(state) && !!sample?.asleep?.();
-      if (asleep && !wasAsleep) sceneEvent('sleep');
-      wasAsleep = asleep;
       // The face keeps animating on its own; an identical host sample adds no signal.
       if (face && (!lastFacePresence || Object.keys(value).some(key => value[key] !== lastFacePresence[key]))) {
         face.presence = value; lastFacePresence = value;
@@ -264,7 +314,7 @@
     const onPresence = event => {
       const detail = event.detail || {};
       if (detail.state && detail.state !== state) {
-        state = detail.state;
+        state = detail.state; touch();
         if (!['transcribing', 'waiting', 'thinking', 'preparing'].includes(state)) { hostBusy = false; meter.reset(); }
         if (state === 'speaking') releaseScene();
       }
@@ -358,6 +408,8 @@
         finishReady('orb');
         clearInterval(tick);
         clearInterval(clockTimer);
+        clearInterval(idleReturn);
+        controls.abort();
         clearTimeout(sceneTimer);
         root.removeEventListener('persona-presence', onPresence);
         root.removeEventListener('persona-activity', onActivity);
@@ -369,6 +421,7 @@
         delete doc.body.dataset.avatarMode;
         delete doc.body.dataset.avatarView;
         dock.remove();
+        returnFull.remove();
         sceneBar.remove();
         clock.remove();
         if (root.AvatarDock.current === handle) root.AvatarDock.current = null;

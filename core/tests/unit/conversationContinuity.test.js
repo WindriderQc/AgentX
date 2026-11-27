@@ -42,6 +42,19 @@ describe('local conversation continuity', () => {
     expect(w.readSnapshot).not.toHaveBeenCalled();
   });
 
+  it('admits the spoken principal only when idle and selects the scoped guardian from policy', async () => {
+    const held = busy();
+    held.failure.cause = 'workload_reserved';
+    const w = world({ execute: jest.fn(async body => { if (body.model === 'primary') throw held; return response(body.model); }) });
+    const result = await w.service(request(), { requireOccupied: true, relayHostKey: 'cpu' });
+    expect(w.run.mock.calls[0][1]).toMatchObject({ requireIdleHost: true, retry: { enabled: false, skipInteractiveWait: true } });
+    expect(w.deps.fetch.mock.calls.map(call => call[0])).toEqual([CPU + '/api/ps']);
+    expect(result.metadata.conversationContinuity).toMatchObject({ state: 'backup', hostKey: 'cpu' });
+    const unavailable = await w.service(request(), { requireOccupied: true, relayHostKey: 'unregistered' });
+    expect(unavailable.metadata.conversationContinuity.state).toBe('status_only');
+    expect(w.deps.fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('uses a healthy principal with its complete request and pin contract', async () => {
     const run = jest.fn(async () => response('primary'));
     const w = world({ role: true, execute: run });
@@ -176,7 +189,7 @@ describe('local conversation continuity', () => {
       });
       expect(result.metadata.conversationContinuity.state).toBe('backup');
       expect(result.metadata.conversationContinuity.primaryRefusal).toEqual({ code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', cause });
-      expect(result.body.message.content).toBe('Yo c’est l’Gardien… Nestor est indisponible.\n\nRéponse limitée');
+      expect(result.body.message.content).toBe('Le gardien prend le relais. Nestor est indisponible.\n\nRéponse limitée');
       expect(result.body.message.content).toContain('indisponible');
       expect(result.body.message.content).not.toContain('occupé');
       expect(w.run).toHaveBeenCalledTimes(2);

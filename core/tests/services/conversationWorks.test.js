@@ -510,7 +510,7 @@ async function personalHttp(executeConversation, warmup = null) {
 function nativeProof(attempt, answer = 'Lecture confirmée par la Secrétaire.') {
   return { ok: true, authority: 'openclaw.nestor', operation: 'turn', runId: attempt.runId, sessionKey: attempt.sessionKey,
     run: { runId: attempt.runId, sessionKey: attempt.sessionKey, status: 'completed' },
-    answer: { status: 'ready', runId: attempt.runId, text: answer, deliveredBy: 'announce:requester-settle:synthetic' },
+    answer: { status: 'ready', runId: attempt.runId, text: answer, deliveredBy: `announce:requester-settle:main:${attempt.sessionKey}:synthetic` },
     progress: [{ tool: 'sessions_spawn', agentId: 'secretary' }], receipts: [],
     toolChecks: { status: 'observed', runId: attempt.runId, completedTools: ['sessions_spawn', 'sessions_yield'], loop: null } };
 }

@@ -1,19 +1,20 @@
+import { isTranslationSession } from '../../../shared/quotedTranslation.cjs';
 import { readState } from "./store.js";
 import { nativeToolChecks } from './tool-evidence.js';
 import { isNativeToolCallId } from '../../../shared/nativeToolCallId.cjs';
 import { openclawTurnUsage } from '../../../shared/openclawTurnUsage.cjs';
 
 const invalid = message => Object.assign(new Error(message), { statusCode: 400 });
-const householdKey = /^agent:([a-z0-9][a-z0-9_-]*):household:direct:[a-f0-9-]{36}$/;
+const householdAgent = key => isTranslationSession(key) ? 'main' : /^agent:([a-z0-9][a-z0-9_-]*):household:direct:[a-f0-9-]{36}$/.exec(key || '')?.[1];
 
 export function configuredAgents(config = {}) {
   return config.agents?.entries || Object.fromEntries((config.agents?.list || []).map(agent => [agent.id, agent]));
 }
 
 export function householdWorkspace(context, config, resolveWorkspace) {
-  const match = householdKey.exec(context.sessionKey || '');
-  if (!match || context.agentId !== match[1] || !configuredAgents(config)[match[1]]) return null;
-  return resolveWorkspace ? resolveWorkspace(match[1]) : configuredAgents(config)[match[1]].workspace || null;
+  const agent = householdAgent(context.sessionKey);
+  if (!agent || context.agentId !== agent || !configuredAgents(config)[agent]) return null;
+  return resolveWorkspace ? resolveWorkspace(agent) : configuredAgents(config)[agent].workspace || null;
 }
 
 // Display only: the native model object stays in OpenClaw. No model is selected
@@ -50,9 +51,12 @@ export function nativeTurnAnswer(history, sessionKey, runId) {
   const message = messages[last];
   // A run that delegated to a sub-agent ends on sessions_yield. Its answer
   // arrives in the native announce run that settles this session afterwards.
+  const later = messages.slice(last + 1);
+  const next = later.findIndex(row => row?.role === 'assistant' && /^resp_/.test(row.__openclaw?.runId || ''));
+  const sameTurn = next < 0 ? later : later.slice(0, next);
   if (yielded(message)) {
     const settle = `announce:requester-settle:${sessionKey.split(':')[1]}:${sessionKey}:`;
-    const reply = messages.slice(last + 1).filter(row => row?.role === 'assistant' && row.__openclaw?.runId?.startsWith(settle)).at(-1);
+    const reply = sameTurn.filter(row => row?.role === 'assistant' && row.__openclaw?.runId?.startsWith(settle)).at(-1);
     const text = finalText(reply);
     return text ? { status: 'ready', source: 'openclaw/sessions.get', runId, deliveredBy: reply.__openclaw.runId, messageId: reply.__openclaw.id, text }
       : { status: 'yielded', source: 'openclaw/sessions.get', runId };
@@ -60,9 +64,7 @@ export function nativeTurnAnswer(history, sessionKey, runId) {
   const background = backgroundTool(message);
   if (background) {
     // Only completions before the next Household turn belong to this one.
-    const later = messages.slice(last + 1);
-    const next = later.findIndex(row => row?.role === 'assistant' && /^resp_/.test(row.__openclaw?.runId || ''));
-    const reply = (next < 0 ? later : later.slice(0, next)).filter(row => row?.role === 'assistant'
+    const reply = sameTurn.filter(row => row?.role === 'assistant'
       && row.__openclaw?.runId?.startsWith(`${background}:`) && finalText(row)).at(-1);
     return reply ? { status: 'ready', source: 'openclaw/sessions.get', runId, deliveredBy: reply.__openclaw.runId,
       messageId: reply.__openclaw.id, text: finalText(reply) } : { status: 'yielded', source: 'openclaw/sessions.get', runId };
@@ -106,7 +108,7 @@ export function nativeTurnProgress(history, sessionKey, runId) {
     });
 }
 
-export function continuityOperations({ workspace, config, resolveWorkspace, modelFor, readHistory, workAgentId, guardianAgentId }) {
+export function continuityOperations({ workspace, config, resolveWorkspace, modelFor, readHistory, workAgentId, guardianAgentId, quotedTranslationV1 = false }) {
   if (['main', 'family', workAgentId].includes(guardianAgentId)) guardianAgentId = undefined;
   return async request => {
     if (!request || typeof request !== "object" || Array.isArray(request)) throw invalid("Expected an object");
@@ -116,12 +118,12 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
       if (!config) throw new Error('Native agent configuration unavailable');
       result = { agents: agentCatalog(config, modelFor).filter(agent => agent.id !== workAgentId)
         .map(agent => agent.id === guardianAgentId ? { ...agent, internal: true } : agent),
-        capabilities: { isolatedWork: true, nativeReadBudget: true, nativeConversation: true } };
+        capabilities: { isolatedWork: true, nativeReadBudget: true, nativeConversation: true, ...(quotedTranslationV1 && { quotedTranslationV1: true }) } };
     } else if (operation === 'work_attempt') {
-      const match = householdKey.exec(request.sessionKey || '');
-      const isolatedMain = match?.[1] === 'main' || request.isolatedConsultation === true && ['secretary', 'comptable', 'leadx', 'cloudx'].includes(match?.[1]);
-      if (!isolatedMain && (!workAgentId || match?.[1] !== workAgentId)) throw invalid('A configured worker attempt is required');
-      const agentWorkspace = householdWorkspace({ agentId: match[1], sessionKey: request.sessionKey }, config, resolveWorkspace);
+      const agent = householdAgent(request.sessionKey);
+      const isolatedMain = agent === 'main' || request.isolatedConsultation === true && ['secretary', 'comptable', 'leadx', 'cloudx'].includes(agent);
+      if (!isolatedMain && (!workAgentId || agent !== workAgentId)) throw invalid('A configured worker attempt is required');
+      const agentWorkspace = householdWorkspace({ agentId: agent, sessionKey: request.sessionKey }, config, resolveWorkspace);
       if (!agentWorkspace) throw invalid('The native worker is unavailable');
       const history = await readHistory(request.sessionKey);
       const ids = [...new Set((history?.sessionKey === request.sessionKey ? history.messages || [] : [])
@@ -139,12 +141,12 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
         status: runId ? 'observed' : 'unknown', source: 'openclaw/sessions.get' };
       // No history or capsule absence is a proof that a request was not sent.
     } else if (operation === "turn") {
-      const match = householdKey.exec(request.sessionKey || '');
-      if (!/^resp_[a-f0-9-]{36}$/.test(request.runId || "") || !match) {
+      const agent = householdAgent(request.sessionKey);
+      if (!/^resp_[a-f0-9-]{36}$/.test(request.runId || "") || !agent) {
         throw invalid("A Household agent turn is required");
       }
-      const agentWorkspace = config ? householdWorkspace({ agentId: match[1], sessionKey: request.sessionKey }, config, resolveWorkspace)
-        : match[1] === 'main' ? workspace : null;
+      const agentWorkspace = config ? householdWorkspace({ agentId: agent, sessionKey: request.sessionKey }, config, resolveWorkspace)
+        : agent === 'main' ? workspace : null;
       if (!agentWorkspace) throw invalid('The native agent is unavailable');
       const state = await readState(agentWorkspace);
       const matches = row => row.runId === request.runId && row.sessionKey === request.sessionKey;
@@ -167,7 +169,7 @@ export function continuityOperations({ workspace, config, resolveWorkspace, mode
         result.run = { ...result.run, usage: openclawTurnUsage(history, request.sessionKey, request.runId) };
       }
       result.progress = nativeTurnProgress(history, request.sessionKey, request.runId);
-      result.toolChecks = nativeToolChecks(history, request.sessionKey, request.runId);
+      result.toolChecks = nativeToolChecks(history, request.sessionKey, request.runId, result.answer.deliveredBy);
     } else throw invalid("Choose agents or turn; notes belong to AgentX Core");
     return { ok: true, authority: "openclaw.nestor", operation, ...result };
   };

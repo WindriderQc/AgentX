@@ -44,7 +44,7 @@ function createConversationImages({ conversations, service = images, visuals = n
     return Boolean(safety.deterministicEscalation || childBoundaryReply(pack, safety, description)
       || FAMILY_UNSUITABLE.test(description.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
   }
-  function contract(session, backend) {
+  function contract(session, backend, { scenes = true, familyVoice = false } = {}) {
     if (!spaceFor(session)) return '';
     const config = configuration();
     if (!config.configured) return 'Local image creation is unavailable in this conversation. Do not emit a draw block or claim to create an image.';
@@ -52,9 +52,12 @@ function createConversationImages({ conversations, service = images, visuals = n
     const edit = 'To change a picture already on screen, use its number from the list of pictures on screen: emit <show kind="image" source="draw" from="N" title="short caption">the change to make</show>. The application edits that picture itself, as the reference, after your reply. Say in one short sentence what you will change and start it; never ask for confirmation.';
     if (spaceFor(session) === 'private' && backend === 'openclaw') return (config.conversationProfile ? edit + ' Do not use local_image for such a change. ' : '') + 'When the user requests a new image, use local_image create once, then end this turn so image preparation can start. Core selects a quick conversation preset by default when available. The application displays progress and the result automatically. Never poll in this same turn or claim completion without its verified receipt.';
     if (!config.conversationProfile) return 'Local drawing is unavailable in this conversation. Do not emit a draw block or claim to create an image.';
+    if (familyVoice && spaceFor(session) === 'family' && !illustratedIn(config, 'family')) {
+      return 'For a requested new drawing, emit one <show kind="image" source="draw" title="short caption">standalone description</show>. For an edit add from="N" using the on-screen picture number. Preserve requested details. Keep drawings and edits age-appropriate, non-sexual and non-graphic. For an unsafe request offer a safe alternative without emitting draw. Omit private data, uploads, paths and custom settings. The screen follows progress. Only its verified receipt confirms completion.';
+    }
     return 'Only when the user asks you to create a drawing or change a picture, emit one <show kind="image" source="draw" title="short caption">a precise standalone description of the requested image</show>. This is a bounded application request, not a native tool. Preserve requested objects, counts and relations; do not insert private information. ' + edit + ' Without from, describe the whole scene; this produces a new illustration. Never say the image is ready. The application accepts at most one drawing or change per turn, after your reply. It displays progress, the result and an atelier link. Never use draw for an image search or to replay an earlier request.'
       + (spaceFor(session) === 'family' ? ' Family drawings must be age-appropriate, non-sexual and non-graphic. Apply the family safety rules to the drawing description and to every change, as well as to speech. Offer a safe alternative or refuse an unsafe request without emitting draw. No uploads or custom generation settings are accepted here; only a picture on screen can be named, by its number.' : ' No file paths, addresses or custom generation settings are accepted in a draw block; only a picture on screen can be named, by its number.')
-      + (illustratedIn(config, spaceFor(session)) ? SCENE_CONTRACT : '');
+      + (scenes && illustratedIn(config, spaceFor(session)) ? SCENE_CONTRACT : '');
   }
   async function contextFor(session) {
     if (!spaceFor(session)) return '';
@@ -71,7 +74,7 @@ function createConversationImages({ conversations, service = images, visuals = n
         + '\nOnly ready=true confirms a completed image. The screen follows its progress; you have not inspected its visual content.';
     } catch { return '\n\nCurrent image state could not be verified. Do not claim readiness or create another image to recover it.'; }
   }
-  async function complete({ session, pack, backend, display, evidence, turnId, signal, onShow, member = false }) {
+  async function complete({ session, pack, backend, display, evidence, turnId, signal, onShow, member = false, qualified = false }) {
     const space = !member && spaceFor(session), native = space === 'private' && backend === 'openclaw';
     // Scene blocks are never shown, stored or replayed as cards.
     const scenes = [];
@@ -85,7 +88,7 @@ function createConversationImages({ conversations, service = images, visuals = n
     }
     let requested = false;
     for (const block of display.filter(block => block.kind === 'image' && block.source === 'draw')) {
-      const description = block.body;
+      const description = block.body; let submitting = false;
       try {
         signal.throwIfAborted();
         const config = configuration(), quick = config.conversationProfile;
@@ -103,13 +106,20 @@ function createConversationImages({ conversations, service = images, visuals = n
           ...(edit && { ...edit.size, references: [edit.reference] }) };
         const options = { conversation: scopeFor(session), signal };
         // A profile that only qualifies its square preset still edits, in that preset.
+        submitting = true;
         const operation = await service.accept(request, options).catch(error => {
-          if (!edit || !/Resolution not qualified/.test(error.message)) throw error;
+          if (qualified || !edit || !/Resolution not qualified/.test(error.message)) throw error;
           return service.accept({ ...request, width: quick.width, height: quick.height }, options);
         });
         Object.assign(block, card(operation, session, block.title || 'Your drawing', description));
       } catch (error) {
         if (signal.aborted) return;
+        if (qualified) {
+          // The call may have committed its action before rejecting, regardless of HTTP status.
+          Object.assign(block, { source: 'local', status: submitting ? 'unknown' : 'not_submitted',
+            body: submitting ? 'The drawing admission could not be confirmed.' : 'No drawing was submitted on this turn.' });
+          continue;
+        }
         Object.assign(block, { source: 'local', status: error.statusCode ? 'failed' : 'unknown', body: error.code === 'IMAGE_REFERENCE'
           ? 'This picture cannot be used for a change. Choose another picture, or ask for a new drawing.' : error.statusCode
           ? 'The drawing was not accepted. Try again when the workshop is available, or choose another idea.'
@@ -117,6 +127,7 @@ function createConversationImages({ conversations, service = images, visuals = n
       }
       onShow(block);
     }
+    if (qualified) return;
     const illustrated = !native && illustratedIn(configuration(), space);
     if (illustrated && !requested && scenes.length) await illustrate(scenes.at(-1), { session, space, pack, turnId, signal, onShow });
     else if (illustrated) note(session, space, turnId, requested && scenes.length ? 'drawing_requested' : 'no_scene');

@@ -89,6 +89,13 @@
     host.append(toggle); region.append(image, actions); document.body.append(region);
     function activity(event) {
       if (event?.detail?.space && event.detail.space !== space) return;
+      if (active && event?.type === 'keydown') {
+        // Modifiers arrive as separate keydowns before the avatar shortcut.
+        // Leave the frame in charge; the avatar action is unavailable over photos.
+        if (['Control', 'Alt', 'AltGraph', 'Shift', 'Meta'].includes(event.key)
+          || (/^n$/i.test(event.key) && event.ctrlKey && event.altKey && !event.shiftKey && !event.metaKey
+            && !event.getModifierState?.('AltGraph'))) return;
+      }
       if (active && event?.type === 'keydown' && ['ArrowLeft', 'ArrowRight'].includes(event.key)
         && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
         && !editing(event.target) && !editing(document.activeElement)) {

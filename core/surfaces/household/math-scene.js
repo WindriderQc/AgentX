@@ -213,4 +213,4 @@ function mathPictureContext(rows = []) {
     + JSON.stringify(scene) + '. ' + observation;
 }
 
-module.exports = { mathSceneFor, mathReply, mathTurnFor, mathPictureFor, mathPictureContext, LIMITS, SCHEMA };
+module.exports = { numberAt, mathSceneFor, mathReply, mathTurnFor, mathPictureFor, mathPictureContext, LIMITS, SCHEMA };

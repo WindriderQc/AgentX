@@ -133,6 +133,11 @@ because an instance still has an unmigrated `QUEUE.md`, stop and ask the owner.
 Product procedure: `docs/HEAVY_WORK_QUEUE.md`.
 
 **Reading and planning.** `work_queue` (owner bus) or `GET /api/cluster/schedule/work-queue`.
+For an owner status report, call `work_queue` with `action: "list"` and `limit: 1`.
+For a queue-only status question, return the complete `overview.text` as the
+answer. Each example's `requestCount` covers all requests in that situation,
+including those outside the page. A recorded dispatch awaits native confirmation.
+Use `show` for an individual request. A later page can see new arrivals.
 Use `summary.counts` before pagination: it separates automatic queue, action
 required, recorded dispatch or execution, and uncertainty. Reservations are
 counted apart. Explain the actor and step in `presentation.nextAction`, not the

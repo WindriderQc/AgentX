@@ -14,6 +14,8 @@
 const { fetchData: defaultFetchData } = require('../../src/services/dataServiceClient');
 const { issPasses: defaultIssPasses, readHomeObserver } = require('../../src/services/mcpIssTools');
 const { getOpsWatch: defaultGetOpsWatch } = require('../../src/services/opsWatchService');
+const { preparedBulletin, projectBulletin } = require('../../src/services/livingSourceWeather');
+const { familyTimeZone } = require('../../src/domains/household/family');
 const { projectTomorrowHours } = require('./family-forecast');
 const { createFamilyPaintings } = require('./family-paintings');
 const { skyView } = require('../../src/services/sky/nightSky');
@@ -102,7 +104,7 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
   nodeHints = readNodeHints(process.env, logger) } = {}) {
   const cache = new Map();
 
-  async function cached(name, ttl, read) {
+  async function cached(name, ttl, read, failureTtl = FAILURE_TTL_MS) {
     const at = now().getTime();
     const hit = cache.get(name);
     if (hit && hit.until > at) return hit.value;
@@ -114,7 +116,7 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
         return value;
       } catch (error) {
         logger?.debug?.(`Family ambient ${name} unavailable: ${error.message}`);
-        cache.set(name, { value: null, until: now().getTime() + FAILURE_TTL_MS });
+        cache.set(name, { value: null, until: now().getTime() + failureTtl });
         return null;
       }
     })();
@@ -191,7 +193,20 @@ function createFamilyAmbient({ fetchData = defaultFetchData, issPasses = default
     return view ? { ...view } : null;
   }
 
-  return { snapshot, weather: readCurrentWeather, peekWeather, forecastTomorrow: async ({ timeZone, requestAt = now() } = {}) => {
+  // The conversation reads Data's prepared entry over the LAN. The screen and
+  // legacy current-conditions consumers retain their existing on-demand cache.
+  const preparedKey = 'prepared-weather';
+  const preparedTtl = 30000;
+  async function readPrepared() {
+    const result = await fetchData('/api/v1/livedata/ec-weather', { query: 'lang=fr&prepared=1', timeoutMs: 500 });
+    if (!result?.response?.ok || result.body?.status !== 'success') return null;
+    return preparedBulletin(result.body.data);
+  }
+  async function preparedWeather() {
+    const raw = await cached(preparedKey, preparedTtl, readPrepared, preparedTtl);
+    return projectBulletin(raw, now(), familyTimeZone());
+  }
+  return { snapshot, weather: readCurrentWeather, peekWeather, preparedWeather, forecastTomorrow: async ({ timeZone, requestAt = now() } = {}) => {
     const data = await weatherBundle();
     return projectTomorrowHours(data, { timeZone, requestAt, now: now() });
   }, painting: id => (paintings ? paintings.image(id) : null) };

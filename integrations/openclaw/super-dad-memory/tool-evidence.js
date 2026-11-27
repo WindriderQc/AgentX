@@ -25,7 +25,30 @@ function successful(result, tool) {
   return result.content.length > 0;
 }
 
-export function nativeToolChecks(history, sessionKey, runId) {
+// OpenClaw's requester-settle identity names the accepted child run(s), followed
+// by optional yield/retry counters. Attribute only a single, identified child.
+function settledChild(calls, results, sessionKey, deliveredBy) {
+  const prefix = `announce:requester-settle:${sessionKey.split(':')[1]}:${sessionKey}:`;
+  if (typeof deliveredBy !== 'string' || !deliveredBy.startsWith(prefix)) return null;
+  const match = /^([a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})(?::yield-\d+)?(?::retry-\d+)?$/.exec(deliveredBy.slice(prefix.length));
+  if (!match) return null;
+  for (const call of calls) {
+    if (call.identity !== 'sessions_spawn' && !(call.wrapped && call.identity === 'openclaw:core:sessions_spawn')) continue;
+    const result = results.get(call.id);
+    if (!Array.isArray(result?.content) || !successful(result, call.tool)) continue;
+    const native = call.wrapped ? result.details?.result : result;
+    if (call.wrapped && (result.details?.tool?.id !== 'openclaw:core:sessions_spawn' || native?.isError)) continue;
+    const accepted = native?.details;
+    if (accepted?.status !== 'accepted' || accepted.runId !== match[1]) continue;
+    const agent = /^agent:([a-z0-9][a-z0-9_-]{0,63}):subagent:[a-f0-9-]+$/.exec(accepted.childSessionKey || '');
+    if (agent && (!call.args?.agentId || call.args.agentId === agent[1])) {
+      return { agentId: agent[1], runId: accepted.runId };
+    }
+  }
+  return null;
+}
+
+export function nativeToolChecks(history, sessionKey, runId, deliveredBy) {
   const unavailable = { status: 'unavailable', runId, completedTools: [], loop: null };
   if (history?.sessionKey !== sessionKey || !Array.isArray(history.messages)) return unavailable;
   const calls = [], results = new Map(), seen = new Set();
@@ -40,7 +63,7 @@ export function nativeToolChecks(history, sessionKey, runId) {
         seen.add(part.id);
         const wrapped = part.name === 'tool_call' && safeName(part.arguments?.id);
         calls.push({ id: part.id, tool: wrapped ? wrapped.split(':').at(-1) : part.name,
-          identity: wrapped || part.name, args: wrapped ? part.arguments.args : part.arguments });
+          identity: wrapped || part.name, wrapped: Boolean(wrapped), args: wrapped ? part.arguments.args : part.arguments });
       }
     } else if (inside && row?.role === 'toolResult' && isNativeToolCallId(row.toolCallId)) {
       if (!row.__openclaw?.runId || row.__openclaw.runId === runId) results.set(row.toolCallId, row);
@@ -57,5 +80,6 @@ export function nativeToolChecks(history, sessionKey, runId) {
     previous = key;
     if (!WAIT_TOOLS.has(call.tool) && repeats >= 4 && !loop) loop = { tool: call.tool, repetitions: repeats };
   }
-  return { status: 'observed', runId, completedTools: [...completedTools], loop };
+  return { status: 'observed', runId, completedTools: [...completedTools], loop,
+    ...(deliveredBy?.startsWith('announce:requester-settle:') && { settledChild: settledChild(calls, results, sessionKey, deliveredBy) }) };
 }

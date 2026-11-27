@@ -78,3 +78,43 @@ test('dedicated guardian wrapper identity and Core observation cannot be forged 
   unavailable = true;
   assert.equal((await guard(guardian, { toolName: 'tool_call', params })).block, true);
 });
+
+test('a foreground decision applies only to its local isolated consultation call', async () => {
+  let missing = false;
+  const guard = createGuardianWorkGuard(async (_op, _native, input) => {
+    if (missing) throw Object.assign(new Error('Unavailable'), { statusCode: 404 });
+    return { foreground: true, delegated: false };
+  }, undefined, (_ctx, child) => !child || child === 'reader');
+  const spawn = args => ({ toolName: 'tool_call', toolCallId: 'call1', params: {
+    id: 'openclaw:core:sessions_spawn', args: { agentId: 'reader', context: 'isolated', task: 'Synthetic question', ...args }
+  } });
+  assert.equal(await guard(native, spawn()), undefined);
+  for (const args of [{context:'fork'},{agentId:'remote'},{model:'other/model'},{runtime:'acp'},{attachments:[{}]}]) {
+    assert.equal((await guard(native, spawn(args))).block, true);
+  }
+  assert.equal((await guard(native,{toolName:'personal_memory'})).block, true);
+  missing = true;
+  assert.equal((await guard(native, spawn())).block,true);
+});
+
+test('a wrapped private spawn accepts an explicit false visibility only with Core foreground admission', async () => {
+  const inputs = [];
+  let available = true;
+  const guard = createGuardianWorkGuard(async (_op, _ctx, input) => {
+    inputs.push(input);
+    if (!available || !input) throw Object.assign(new Error('No foreground admission'), { statusCode: 409 });
+    return { foreground: true, delegated: false };
+  }, undefined, (_ctx, child) => child === 'reader');
+  const spawn = overrides => ({
+    toolName: 'tool_call', toolCallId: 'call2',
+    params: { id: 'sessions_spawn', args: { agentId: 'reader', context: 'isolated', task: 'Read the fixture', visible: false, ...overrides } }
+  });
+  assert.equal(await guard(native, spawn({})), undefined);
+  assert.deepEqual(inputs.at(-1), { tool: 'sessions_spawn' });
+  for (const overrides of [{ visible: true }, { visible: 'false' }, { visible: null }, { agentId: 'other' }, { context: 'fork' }]) {
+    assert.equal((await guard(native, spawn(overrides))).block, true);
+    assert.equal(inputs.at(-1), undefined);
+  }
+  available = false;
+  assert.equal((await guard(native, spawn({}))).block, true);
+});

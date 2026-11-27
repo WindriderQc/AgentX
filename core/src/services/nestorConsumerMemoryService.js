@@ -3,6 +3,7 @@
 const memoryAdapters = require('./memoryAdapters');
 const { getRagServiceClient } = require('./ragServiceClient');
 const { forAudience } = require('./memoryReadService');
+const { memoryFactInput } = require('../../../shared/memoryFactMetadata');
 const {
   MEMORY_SOURCES,
   LIMITS,
@@ -56,16 +57,33 @@ function normalizeK(value) {
   return Math.max(1, Math.min(Math.trunc(parsed), LIMITS.memoryResultsPerSource));
 }
 
+// Read the same zoned instants that RAG accepts at ingestion. A legacy or
+// malformed date stays unknown without losing the other date or the hit.
+function ragFactInstant(value) {
+  try {
+    return memoryFactInput({ validFrom: value ?? null }).validFrom;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeResult(result, source) {
   const metadata = result?.metadata || {};
-  const text = String(result?.compressedText || result?.text || result?.snippet || '').slice(0, 4000);
+  const fullText = String(result?.compressedText || result?.text || result?.snippet || '');
+  const truncated = fullText.length > 4000;
+  const text = truncated ? fullText.slice(0, 4000).replace(/[\uD800-\uDBFF]$/, '') : fullText;
   const resolvedSource = String(result?.source || metadata.source || source || '').trim();
   const rawReference = result?.ref || metadata.ref || metadata.documentId || result?.documentId || null;
   return {
     source: /^[a-z][a-z0-9+.-]*:\/\//i.test(resolvedSource) ? source : resolvedSource,
     ...(metadata.scope ? { scope: metadata.scope, sensitivity: metadata.sensitivity } : {}),
+    ...(source === 'rag' && {
+      validFrom: ragFactInstant(metadata.validFrom),
+      recordedAt: ragFactInstant(metadata.recordedAt),
+    }),
     text,
     snippet: text,
+    ...(truncated && { truncated: true }),
     score: Number.isFinite(Number(result?.score)) ? Number(result.score) : null,
     ref: rawReference && !/^[a-z][a-z0-9+.-]*:\/\//i.test(String(rawReference))
       ? String(rawReference).slice(0, 500)

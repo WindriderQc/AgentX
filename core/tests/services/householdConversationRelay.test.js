@@ -52,13 +52,13 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
     return Response.json({ run_id: state.foreignRun ? 'run_foreign' : id, status: run.cancelled ? 'cancelled' : run.done ? 'completed' : 'running',
       completed: run.done, partial: state.partial === true, output: state.nativeOutput || 'Résultat natif original vérifié.', runtime: { provider: 'synthetic', model: 'synthetic-main' } });
   });
-  const local = jest.fn(async input => {
+  const local = jest.fn(async (input, options = {}) => {
     state.inference.push(input);
     if (input.model === 'synthetic-main' && state.busy) {
       const now = new Date();
       const failure = state.failure || inferenceConflict({ inferences: [{ state: 'ACTIVE', host: PRIMARY,
         mode: 'shared', model: 'synthetic-main', acquiredAt: now, expiresAt: new Date(+now + 60000) }] },
-      { host: PRIMARY, mode: input.exclusiveHost ? 'exclusive' : 'shared', resourceIds: [] }, now);
+      { host: PRIMARY, mode: input.exclusiveHost || options.requireIdleHost ? 'exclusive' : 'shared', resourceIds: [] }, now);
       throw Object.assign(Error('Refused before dispatch'), { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', failure });
     }
     if (guardianTools && input.model === 'synthetic-guardian' && !input.messages.some(message => message.role === 'tool')) {
@@ -116,7 +116,7 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
     activePersonaTurns, envelope, fail, cleanText: value => String(value || ''), validClientTurnId: () => true, memberWork,
     reconcileConversation: execute.reconcile })('', pack.id, pack.defaultScopeId);
   const send = (text, id = randomUUID(), channel = 'voice', stream = true) => request(app).post(`/sessions/${session.sessionId}/turns/text`).send({ text, turnId: id, channel, stream });
-  return { ...state, state, session, app, send, execute, env, activePersonaTurns, memberWork, release: () => { state.held = false; state.releases.forEach(resolve => resolve()); } };
+  return { ...state, state, session, app, send, execute, local, env, activePersonaTurns, memberWork, release: () => { state.held = false; state.releases.forEach(resolve => resolve()); } };
 }
 const events = response => response.text.trim().split('\n').map(line => JSON.parse(line));
 const done = response => events(response).find(event => event.type === 'done')?.data;
@@ -127,9 +127,10 @@ afterEach(async () => { world?.release(); await until(() => !world || world.acti
 test.each(['voice', 'text'])('Family %s relays on a real admission conflict, retains child safety and returns to its unchanged primary route', async channel => {
   world = await fixture('agentx');
   const id = randomUUID(), reply = await world.send('Explique les nuages.', id, channel).expect(200);
-  expect(done(reply).reply.text).toBe('Yo c’est l’Gardien… Nestor est occupé.\n\nJe peux continuer la discussion.');
+  expect(done(reply).reply.text).toBe('Le gardien prend le relais. Nestor est occupé.\n\nJe peux continuer la discussion.');
   expect(world.state.inference.map(input => input.model)).toEqual(['synthetic-main', 'synthetic-guardian']);
-  expect(world.state.inference[0].exclusiveHost).toBe(true);
+  expect(world.local.mock.calls[0][1].requireIdleHost).toBe(true);
+  expect(world.state.inference[0].exclusiveHost).toBe(false);
   const backup = world.state.inference[1];
   expect(backup.tools).toBeUndefined(); expect(JSON.stringify(backup)).not.toContain('/api/consumers/nestor');
   expect(backup.messages[0].content).toContain('adaptée aux enfants');
@@ -181,7 +182,7 @@ test('Hermes detaches its actual running native work, relays tool-free, preserve
   expect(interrupted.body.data.detached).toBe(true); await first;
   expect(world.state.runs[0].cancelled).toBeUndefined();
   const relayId = randomUUID(), relay = await world.send('Peux-tu expliquer simplement les nuages ?', relayId).expect(200);
-  expect(done(relay).reply.text).toBe('Yo c’est l’Gardien… Nestor est occupé.\n\nJe peux continuer la discussion.');
+  expect(done(relay).reply.text).toBe('Le gardien prend le relais. Nestor est occupé.\n\nJe peux continuer la discussion.');
   expect(world.state.runs).toHaveLength(1);
   expect(world.state.inference.every(input => input.model === 'synthetic-guardian')).toBe(true);
   expect(done(relay).tools.conversationRelay.relayFor).toMatchObject({ authority: 'hermes', runId: running.runId, turnId: firstId });
@@ -247,7 +248,7 @@ test('voice relay announces itself once in streamed speech and waits for Core te
   complete({ completed: true, terminalComplete: true });
   const result = await response;
   const spoken = events(result).filter(event => event.type === 'delta').map(event => event.delta).join('');
-  expect(spoken.match(/Yo c’est l’Gardien… Nestor est occupé\./g)).toHaveLength(1);
+  expect(spoken.match(/Le gardien prend le relais. Nestor est occupé\./g)).toHaveLength(1);
   expect(done(result).reply.text).toContain('Je peux continuer la discussion.');
   expect((await conversations.getTurn({ sessionId: world.session.sessionId, traceId: id })).toolEvidence.conversationRelay.completed).toBe(true);
 });
@@ -425,10 +426,14 @@ test.each([
   expect(backup.model).toBe('synthetic-guardian');
   expect(backup.messages[0].content).toContain(packs.packById('kidx_nestor').systemPrompt);
   const context = backup.messages[0].content;
+  expect(context).toContain('The relay has no memory access.');
+  expect(context).toContain('Mode contract (');
+  expect(context).not.toContain('Core living-source catalogue');
   expect(world.state.ambientReads).toEqual({ current: Number(scenario === 'explicit current weather'), tomorrow: Number(Boolean(forecastHour)) });
   if (scenario === 'explicit current weather') {
     expect(context).toContain('"temperatureC":4.5');
     expect(context).toContain('Environnement Canada');
+    expect(context).toContain('never substitute it for observedAt');
   } else {
     expect(context).not.toContain('"temperatureC":4.5');
   }
@@ -436,7 +441,6 @@ test.each([
     expect(context).toContain('hourly forecast for ' + targetDate);
     expect(context).toContain('["07:00","GMT-5",1,null]');
     expect(context).toContain('Only these listed hours are verified, not the full day');
-    expect(context).not.toContain('Core living-source catalogue');
     expect(context).toContain('Environnement Canada');
   } else if (forecastHour === '04:00') {
     expect(context).toContain('no verified daytime forecast coverage');

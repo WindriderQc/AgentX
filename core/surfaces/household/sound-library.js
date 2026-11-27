@@ -3,14 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-// A child asking "c'est quoi le bruit d'une vache?" gets the spoken answer AND
-// the real recording. This catalog is the whole allowlist: the model never
-// names, chooses, or invents a file, so a turn can only ever play a clip listed
-// here whose audio is actually on disk. Adding a sound means adding one row,
-// its clip under public/sounds/, and its licence line in public/sounds/CREDITS.md.
-//
-// Matching is deterministic for the same reason the safety escalation is: a
-// bounded rule a parent can read beats a model deciding when to make noise.
+// Only catalogued files present on disk are available for playback. Clients
+// receive their reviewed path, label, kind and gain from this library.
 
 const DEFAULT_SOUND_DIR = path.join(__dirname, 'public', 'sounds');
 const PUBLIC_SOUND_PATH = '/assets/household/sounds';
@@ -329,20 +323,23 @@ function describe(entry, bytes = 0) {
 function createSoundLibrary({ soundsDir = DEFAULT_SOUND_DIR, logger = null } = {}) {
   const available = [];
   const missing = [];
-  for (const entry of CATALOG) {
-    let bytes = 0;
+  function asset(entry) {
+    if (!entry) return null;
     try {
       const stat = fs.statSync(path.join(soundsDir, entry.file));
-      if (stat.isFile() && stat.size > 0) bytes = stat.size;
-    } catch (_error) { bytes = 0; }
-    if (bytes) available.push(describe(entry, bytes));
+      return stat.isFile() && stat.size > 0 ? describe(entry, stat.size) : null;
+    } catch { return null; }
+  }
+  for (const entry of CATALOG) {
+    const sound = asset(entry);
+    if (sound) available.push(sound);
     else missing.push(entry.id);
   }
   if (missing.length) {
     logger?.warn?.('Household sound library is missing clips', { soundsDir, missing: missing.join(',') });
   }
   const ids = new Set(available.map((sound) => sound.id));
-  const byId = new Map(available.map((sound) => [sound.id, sound]));
+  const byId = new Map(CATALOG.filter(entry => ids.has(entry.id)).map(entry => [entry.id, entry]));
   return {
     dir: soundsDir,
     sounds: available,
@@ -353,35 +350,15 @@ function createSoundLibrary({ soundsDir = DEFAULT_SOUND_DIR, logger = null } = {
       catalog: CATALOG.length,
       missing
     },
-    get(id) { return byId.get(String(id || '')) || null; },
+    get(id) { return asset(byId.get(String(id || ''))); },
     select(text, { explicitSoundIntent = false } = {}) {
       const entry = selectSound(text, { ids, explicitSoundIntent });
-      return entry ? byId.get(entry.id) || null : null;
+      return asset(entry);
     }
   };
 }
 
-// Positive, conservative grammar: an unknown word or a second clause keeps inference.
-function soundOnlyRequest(text, sound) {
-  const entry = CATALOG.find(row => row.id === sound?.id);
-  if (!entry || String(text).split(/[.!?;]+/).filter(part => part.trim()).length > 1) return false;
-  const words = value => normalize(value).replace(/['-]/g, ' ').replace(/\s+/g, ' ').trim();
-  let remaining = ' ' + words(text) + ' ';
-  for (const alias of [...entry.names, ...(entry.cries || [])].map(words).sort((a,b) => b.length-a.length)) {
-    const phrase = ' ' + alias + ' '; while (remaining.includes(phrase)) remaining = remaining.replace(phrase, ' ');
-  }
-  const allowed = new Set(('fais faites faire fait font ferais ferait feriez ferions ferai feras fera ferez imite imites imitez imiter reproduis reproduire ecoute ecouter entendre entends joue joues jouez jouer jouerais joueriez peux peut pouvez pourrais pourrait pourriez pourras pourra voudrais voudriez aimerais aimeriez saurais sais est ce que tu vous me moi nous le la les un une du de des d l au a son sons bruit bruits cri cris chant rugissement quel quelle quels quelles comment s il te plait svp stp ca non no je voulais veux dire plutot i wanted meant rather how does do a an the of sound sounds make makes hear play imitate can could you please it is let would us noise cry say').split(' '));
-  return words(remaining).split(' ').filter(Boolean).every(word => allowed.has(word));
-}
-
-function familyIntroduction(sound, language = 'fr') {
-  if (language === 'en') return sound.kind === 'effect' ? 'Here is a sound effect!' : sound.kind === 'imitation' ? 'Here is an imitation!' : 'Listen!';
-  return sound.kind === 'effect' ? 'Écoute ce bruitage !' : sound.kind === 'imitation' ? 'Écoute cette imitation !' : 'Écoute !';
-}
-
 module.exports = {
-  familyIntroduction,
-  soundOnlyRequest,
   CATALOG,
   DEFAULT_SOUND_DIR,
   PUBLIC_SOUND_PATH,

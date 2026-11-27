@@ -1,8 +1,8 @@
 {
   "name": "@agentx/openclaw-finance-ledger",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "type": "module",
-  "description": "Read-only AgentX finance ledger tool for the OpenClaw finance persona.",
+  "description": "Ledger queries and optional tools for categorization, plans, alerts, document links and statement deposits.",
   "files": [
     "index.js",
     "core-finance.js",

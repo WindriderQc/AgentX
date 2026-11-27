@@ -22,6 +22,28 @@ test('a configured personal Hermes engine respects saved choice and safely handl
   assert.equal(policy.choose({ ...runtime, hermesConfigured: false, openclawConfigured: false }, false, 'hermes'), 'agentx');
 });
 
+test('a protected household offers local inference even when a native preference was saved', () => {
+  const policy = engines(), runtime = { protectedSourcesLocalOnly: true, defaultBackend: 'agentx', hermesConfigured: true, openclawConfigured: true };
+  for (const family of [true, false]) {
+    assert.deepEqual([...policy.available(runtime, family)], ['agentx']);
+    assert.equal(policy.choose(runtime, family, 'hermes'), 'agentx');
+  }
+});
+
+test('the active native engine identifies what leaves Core and its own retained history', () => {
+  const policy = engines(), runtime = { nativeExplicitInputOnly: true };
+  for (const backend of ['hermes', 'openclaw']) {
+    const notice = policy.sourceNotice(runtime, backend);
+    assert.ok(notice.includes(policy.label(backend)));
+    assert.match(notice, /texte saisi ou la transcription de votre voix/);
+    assert.match(notice, /son propre historique/);
+    assert.match(notice, /sources de Core restent locales/);
+  }
+  assert.equal(policy.sourceNotice(runtime, 'agentx'), '');
+  assert.equal(policy.sourceNotice({}, 'hermes'), '');
+  assert.equal(policy.sourceNotice({ ...runtime, protectedSourcesLocalOnly: true }, 'hermes'), '');
+});
+
 test('family never offers or selects Hermes, including a shared personal default or saved selection', () => {
   const policy = engines(), runtime = { defaultBackend: 'hermes', hermesConfigured: true };
   assert.equal(policy.available(runtime, true).includes('hermes'), false);

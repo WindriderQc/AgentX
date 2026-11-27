@@ -18,13 +18,6 @@ function loop(extra={}){
  return {c,audio,timelines,texts,synthesis,say:text=>{heard=text;return utterance(new Blob(['synthetic']));},speech:()=>speech?.()};
 }
 
-test('a family sound request bypasses inference and gives one brief honest introduction',async()=>{
- const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary(),response:'A deliberately contradictory fake model answer.'});
- const reply=await h.turn('Fais-moi le bruit du T-Rex.','voice');
- assert.equal(reply.sound.id,'trex');assert.equal(h.sent.length,0);assert.equal(reply.routing.tier,'deterministic');
- assert.equal(reply.reply.text,'Écoute ce bruitage !');assert.equal(h.turns[0].soundId,'trex');
-});
-
 test('local sound handling respects safety and leaves ordinary and personal requests on their existing path',async()=>{
  const family=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary()});
  const safe=await family.turn('Je veux me tuer. Fais le bruit du T-Rex.','voice');assert.equal(safe.sound,null);assert.equal(family.sent.length,0);
@@ -152,14 +145,6 @@ test('repair topic is carried as quoted reference and its directive remains outs
 });
 
 
-test('a compound sound and explanation keeps both parts and separates the short introduction from the answer',async()=>{
- const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary(),response:'Une réponse synthétique sur les dinosaures.'});
- const reply=await h.turn('Fais le bruit du T-Rex puis explique pourquoi les dinosaures ont disparu.','voice');
- assert.equal(h.sent.length,1);assert.equal(reply.sound.id,'trex');assert.equal(reply.sound.play,'after-introduction');
- assert.equal(reply.reply.soundIntroduction,'Écoute ce bruitage !');assert.equal(reply.reply.afterSoundText,'Une réponse synthétique sur les dinosaures.');
- assert.match(reply.reply.text,/Écoute ce bruitage ! Une réponse/);assert.match(h.sent[0].request,/Answer all remaining parts/);
-});
-
 test('a pending or carried repair refuses background speech until its own turn is settled',async t=>{
  t.mock.timers.enable({apis:['setTimeout']});const h=loop();t.after(()=>h.c.stop());await h.c.start({language:'fr'});
  const first=h.say('Non, non, je voulais');await tick();assert.equal(await h.c.interject({text:'Remarque de fond synthétique.'}),false);
@@ -180,23 +165,17 @@ test('a stream transport failure after successful speech is request_error, not a
 });
 
 
-for(const request of ['Fais le bruit du T-Rex. Raconte une histoire de dinosaure.','Fais le bruit du T-Rex et donne un exemple de dinosaure.','Fais le bruit du T-Rex et chante une chanson.'])test('a second request is never discarded: '+request,async()=>{
- const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary(),response:'La seconde demande est conservée.'});const reply=await h.turn(request,'voice');assert.equal(h.sent.length,1);assert.equal(reply.reply.afterSoundText,'La seconde demande est conservée.');assert.equal(reply.sound.id,'trex');
-});
-for(const request of ['Comment fait le chat ?','How does a cow sound?','Non, non, je voulais le bruit du T-Rex.'])test('a complete sound-only request uses no inference: '+request,async()=>{
- const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary()});const reply=await h.turn(request,'voice');assert.ok(reply.sound);assert.equal(h.sent.length,0);
-});
-
-
-test('FR and EN direct imitations retain catalog matching and bypass inference', async () => {
- for (const [request, id] of [['fais miaou','cat'], ['ouaf ouaf','dog'], ['make moo','cow']]) {
-  const h=harness({packId:'kidx_nestor',backend:'agentx',sounds:createSoundLibrary()});
-  const reply=await h.turn(request,'voice');
-  assert.equal(reply.sound.id,id,request); assert.equal(h.sent.length,0,request);
-  assert.equal(reply.routing.tier,'deterministic');
- }
-});
-
+for (const text of ['Comment fait le chat ?', 'How does a cow sound?', 'Non, non, je voulais le bruit du T-Rex.',
+  'fais miaou', 'ouaf ouaf', 'make moo', 'Fais le bruit du T-Rex et donne un exemple de dinosaure.']) {
+  test('free conversation leaves this sound decision to the model: ' + text, async () => {
+    const h = harness({ packId: 'kidx_nestor', backend: 'agentx', sounds: createSoundLibrary(),
+      conversationEnv: { HOUSEHOLD_FAMILY_TOOLS: 'get_sound' }, response: 'La réponse du modèle.' });
+    const reply = await h.turn(text, 'voice', { soundPlayback: true });
+    assert.equal(h.sent.length, 1);
+    assert.equal(reply.reply.text, 'La réponse du modèle.');
+    assert.equal(reply.sound, null);
+  });
+}
 
 test('French audio projection is also the echo comparison text, without changing the canonical reply',async()=>{
  const started=deferred(),released=deferred(),h=loop({naturalFamilySpeech:true,turn:async()=>({text:'Il est 04 h 24.'})});

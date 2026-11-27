@@ -47,4 +47,4 @@ function registerAgentOps({ express, logger, personaProvider, projectionProvider
   return router;
 }
 
-module.exports = { registerAgentOps };
+module.exports = { registerAgentOps, withTeam };

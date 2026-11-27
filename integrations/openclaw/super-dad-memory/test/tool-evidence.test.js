@@ -67,3 +67,40 @@ test('task-list and briefing success require the actual returned task data', () 
   const empty = turn(0, { tool: 'list_personal_tasks' }); empty[1].content = [];
   assert.deepEqual(checks(empty).completedTools, []);
 });
+
+test('a requester-settle return identifies the accepted child of this exact parent call', () => {
+  const childRunId = '33333333-3333-4333-8333-333333333333';
+  const childSessionKey = 'agent:secretary:subagent:44444444-4444-4444-8444-444444444444';
+  const deliveredBy = `announce:requester-settle:main:${sessionKey}:${childRunId}:yield-1:retry-2`;
+  const expected = { agentId: 'secretary', runId: childRunId };
+  const accepted = { status: 'accepted', childSessionKey, runId: childRunId };
+  const project = (rows, delivery = deliveredBy) => nativeToolChecks({ sessionKey, messages: rows }, sessionKey, runId, delivery);
+  const direct = turn(1, { tool: 'sessions_spawn', args: { agentId: 'secretary' } });
+  direct[0].content[0] = { type: 'toolCall', id: 'call-1', name: 'sessions_spawn', arguments: { agentId: 'secretary' } };
+  direct[1].details = accepted;
+  assert.deepEqual(project(direct).settledChild, expected);
+
+  const wrapped = turn(1, { tool: 'sessions_spawn', args: { agentId: 'secretary' } });
+  wrapped[0].content[0].arguments.id = 'openclaw:core:sessions_spawn';
+  wrapped[1].details = { tool: { id: 'openclaw:core:sessions_spawn' }, result: { details: accepted } };
+  assert.deepEqual(project(wrapped).settledChild, expected);
+  // The SDK accepts the short name in the request and records its canonical tool id in the result.
+  wrapped[0].content[0].arguments.id = 'sessions_spawn';
+  assert.deepEqual(project(wrapped).settledChild, expected);
+  const mismatchedAgent = structuredClone(wrapped);
+  mismatchedAgent[0].content[0].arguments.args.agentId = 'another';
+  assert.equal(project(mismatchedAgent).settledChild, null);
+  const otherWrapper = structuredClone(wrapped);
+  otherWrapper[0].content[0].arguments.id = 'plugin:other:sessions_spawn';
+  assert.equal(project(otherWrapper).settledChild, null);
+  for (const delivery of [deliveredBy.replace(childRunId, childSessionKey.split(':').at(-1)),
+    deliveredBy.replace(childRunId, childRunId + ',' + childRunId), deliveredBy.replace(sessionKey, 'another-session')]) {
+    assert.equal(project(wrapped, delivery).settledChild, null);
+  }
+  for (const patch of [{ toolCallId: 'other' }, { isError: true }, { __openclaw: { runId: 'other' } },
+    { details: accepted }, { details: { tool: { id: 'other:sessions_spawn' }, result: { details: accepted } } }]) {
+    assert.equal(project([wrapped[0], { ...wrapped[1], ...patch }]).settledChild, null);
+  }
+  assert.equal(project([direct[0], { ...direct[1], details: { ...accepted, childSessionKey: childSessionKey.replace('secretary', 'other') } }]).settledChild, null);
+  assert.equal(project([direct[0], { ...direct[1], details: { ...accepted, status: 'denied' } }]).settledChild, null);
+});

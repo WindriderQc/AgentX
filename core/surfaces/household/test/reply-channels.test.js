@@ -172,6 +172,23 @@ test('ordinary prose streams before completion and keeps the complete answer', (
   assert.equal(said.join(''), 'Bonjour mon ami, comment vas-tu?');
 });
 
+test('a stable sentence reaches browser speech before the following word is complete', () => {
+  const { nextSpeechChunkLength } = require('../../../public/js/voice/browser-conversation');
+  for (const chunks of [[' ', 'La'], [' La']]) {
+    let spoken = '';
+    const channels = createReplyChannels({ onSay: delta => { spoken += delta; } });
+    channels.push('Il neige.');
+    assert.equal(nextSpeechChunkLength(spoken, true), 0);
+    for (const chunk of chunks) {
+      channels.push(chunk);
+      assert.equal(spoken.slice(0, nextSpeechChunkLength(spoken, true)), 'Il neige. ');
+      assert.doesNotMatch(spoken, /La/);
+    }
+    channels.push(' route est blanche.');
+    assert.equal(channels.end().say, 'Il neige. La route est blanche.');
+  }
+});
+
 test('brief speech preserves the complete written explanation through stream, storage and history', () => {
   const summary = 'La réponse repose sur trois causes, avec les détails ci-dessous.';
   const complete = 'Explication complète. '.repeat(700) + '\nDernière réserve importante.';
@@ -422,4 +439,37 @@ test('speech projections never reintroduce a retained secret or a consultation',
       assert.ok(writtenContent(result).endsWith('Apres.'));
     }
   }
+});
+
+test('only completed deferred speech is published, once, and service notices can resume streaming immediately', () => {
+  const spoken = [];
+  const options = { onSay: text => spoken.push(text), projectCompletedSpeech: () => 'Lecture vérifiée.' };
+  const interrupted = createReplyChannels(options);
+  interrupted.push('Début de réponse ');
+  interrupted.end();
+  assert.deepEqual(spoken, []);
+  const complete = createReplyChannels(options);
+  complete.push('<show kind="text">Carte</show>');
+  assert.equal(complete.end({ completed: true }).say, 'Lecture vérifiée.');
+  complete.end({ completed: true });
+  assert.deepEqual(spoken, ['Lecture vérifiée.']);
+  const service = createReplyChannels(options);
+  service.streamSpeech();
+  service.push('Le relais est occupé. ');
+  assert.ok(spoken.join('').includes('Le relais est occupé.'));
+  const result = service.end({ completed: true });
+  assert.equal(result.say, 'Le relais est occupé.');
+});
+
+test('compact family speech keeps the drawing, math, reading and privacy contracts', () => {
+  const pageCatalog = require('../../../public/js/screen-pages').createCatalog([{ id: 'iss', label: 'ISS', href: '/iss', mode: 'frame' }]);
+  const options = { family: true, pages: true, pageCatalog, math: true, imageSources: ['web'] };
+  const full = require('../reply-channels').contract(options);
+  const compact = require('../reply-channels').contract({ ...options, compact: true });
+  assert.ok(compact.length < full.length);
+  for (const marker of ['<show kind="image"', 'formula', 'full text or story', 'private information']) {
+    assert.ok(compact.includes(marker), marker);
+  }
+  assert.match(full, /kind="page"/);
+  assert.doesNotMatch(compact, /kind="page"/);
 });

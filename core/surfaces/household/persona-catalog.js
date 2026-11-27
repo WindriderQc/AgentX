@@ -62,10 +62,14 @@ async function readReplyStream(stream, onDelta, signal) {
   return (await readReplyFrames(stream, onDelta, signal)).text;
 }
 
+function replyLimitError() {
+  return Object.assign(new Error('Réponse incomplète : la génération a atteint sa limite.'), { code: 'VOICE_REPLY_INCOMPLETE', statusCode: 502 });
+}
+
 // The same reading, keeping the tool calls a model streams beside its text.
-async function readReplyFrames(stream, onDelta, signal) {
+async function readReplyFrames(stream, onDelta, signal, { allowLength = false } = {}) {
   const decoder = new TextDecoder();
-  let pending = '', answer = '', complete = false;
+  let pending = '', answer = '', terminal = null, limited = false;
   const toolCalls = [];
   const consume = (line) => {
     if (signal?.aborted) return;
@@ -75,7 +79,7 @@ async function readReplyFrames(stream, onDelta, signal) {
     const delta = row.message?.content || row.response || '';
     if (delta) { answer += delta; onDelta(delta); }
     if (Array.isArray(row.message?.tool_calls)) toolCalls.push(...row.message.tool_calls);
-    if (row.done === true) complete = true;
+    if (row.done === true) { terminal = row; limited ||= row.done_reason === 'length'; }
   };
   for await (const chunk of stream) {
     // Keep consuming Core's admitted stream so it can verify EOF and release
@@ -90,8 +94,20 @@ async function readReplyFrames(stream, onDelta, signal) {
   if (signal?.aborted) return { text: '', toolCalls: [] };
   pending += decoder.decode();
   if (pending.trim()) consume(pending);
-  if (!complete) throw new Error('Reply stream ended before completion');
-  return { text: answer, toolCalls };
+  if (!terminal) throw new Error('Reply stream ended before completion');
+  if (limited && !allowLength) throw replyLimitError();
+  return { text: answer, toolCalls, terminal };
 }
 
-module.exports = { generatedPersonas, snapshot, speechFor, readReplyStream, readReplyFrames, instanceVoice };
+// A team member's own personality: the active catalog persona naming that agent, so an
+// edit made on the Team page applies; the shared definition when the catalog is unreadable.
+async function teamPersona(agentId, personas) {
+  try {
+    const active = (await personas?.list?.() || []).find((entry) => entry.uiConfig?.layoutConfig?.agentId === agentId);
+    if (active) return snapshot(active);
+  } catch { /* the shared definition below */ }
+  const row = generatedPersonas().find((entry) => entry.uiConfig.layoutConfig.agentId === agentId);
+  return row ? snapshot({ ...row, version: 0, _id: 'catalog' }) : null;
+}
+
+module.exports = { replyLimitError, teamPersona, generatedPersonas, snapshot, speechFor, readReplyStream, readReplyFrames, instanceVoice };

@@ -5,7 +5,7 @@ export const sourceReadParameters = {
   type: 'object', required: ['source'], additionalProperties: false,
   properties: {
     source: { type: 'string', enum: ['weather', 'agentx', 'secretary', 'comptable'] },
-    section: { type: 'string', maxLength: 80 }, days: integer(366), limit: integer(500),
+    section: { type: 'string', maxLength: 80, description: 'Weather: current (default), forecast or alerts. Private sources expose their own sections.' }, days: integer(366), limit: integer(500),
     recordOffset: integer(Number.MAX_SAFE_INTEGER, 0), asOf: { type: 'string', maxLength: 40 },
     pageChars: integer(24000, 256), offset: integer(Number.MAX_SAFE_INTEGER, 0),
     expectedHash: { type: 'string', pattern: '^[a-f0-9]{64}$' }
@@ -14,8 +14,12 @@ export const sourceReadParameters = {
 
 export const familySourceReadParameters = {
   ...sourceReadParameters,
-  properties: Object.fromEntries(['source', 'pageChars', 'offset', 'expectedHash'].map(key =>
-    [key, key === 'source' ? { type: 'string', enum: ['weather', 'agentx'] } : sourceReadParameters.properties[key]]))
+  properties: {
+    source: { type: 'string', enum: ['weather', 'agentx'] },
+    section: { type: 'string', enum: ['current', 'forecast', 'alerts'], description: 'Weather section. Defaults to current.' },
+    pageChars: sourceReadParameters.properties.pageChars, offset: sourceReadParameters.properties.offset,
+    expectedHash: sourceReadParameters.properties.expectedHash
+  }
 };
 
 // Core's conversation-agent emits this key for the shared family agent,

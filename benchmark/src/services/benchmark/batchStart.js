@@ -35,6 +35,7 @@ const { freezeJudgeConfig } = require('./judgeExecutionContract');
 
 async function startBatch({
     coverage_request_id,
+    coverageBatchId,
     host,
     models,
     targets = null,
@@ -65,7 +66,7 @@ async function startBatch({
     if (judgeTarget.mode === 'native_agent' || !judgeTarget.capabilities.judge) {
         throw new Error('Only direct_model or isolated_model targets may be used as judge');
     }
-    const plannedBatchId = new mongoose.Types.ObjectId();
+    const plannedBatchId = new mongoose.Types.ObjectId(coverageBatchId);
     const plannedBatchKey = plannedBatchId.toString();
     const workloadTtlMs = execution_config?.estimated_duration_ms || null;
     await acquireWorkloadAdmission(plannedBatchId.toString(), {
@@ -73,6 +74,9 @@ async function startBatch({
         ...await resolveBatchAdmissionScope(normalizedTargets, { ...judge_config, target: judgeTarget, host: judgeTarget.host }),
         batchId: plannedBatchId.toString(),
         ttlMs: workloadTtlMs
+    }).catch(error => {
+        if (coverage_request_id && error.admissionRefused === true) error.coverageCreationRefused = true;
+        throw error;
     });
     const creationAbort = new AbortController();
     const creationHeartbeat = startBenchmarkClaimHeartbeat([], plannedBatchKey, workloadTtlMs, {
@@ -89,6 +93,7 @@ async function startBatch({
         throw error;
     }
     let admissionHandedOff = false;
+    let batchSaveAttempted = false;
     try {
     judge_config = resolveJudgeConfig({ ...judge_config, target: judgeTarget, host: judgeTarget.host || `harness:${judgeTarget.harness.name}`, model: judgeTarget.model });
     judge_config = await freezeJudgeConfig(judge_config, { signal: creationAbort.signal });
@@ -204,6 +209,7 @@ async function startBatch({
     batch.captureSystemSnapshot();
     try {
         creationHeartbeat.assertActive();
+        batchSaveAttempted = true;
         await batch.save({ signal: creationAbort.signal });
         creationHeartbeat.assertActive();
     } catch (error) {
@@ -276,6 +282,7 @@ async function startBatch({
                 if (released?.released !== true) {
                     throw new Error(released?.reason || 'Workload admission release was not acknowledged');
                 }
+                if (coverage_request_id && !batchSaveAttempted) error.coverageCreationRefused = true;
             } catch (releaseError) {
                 markReconciliationPending(error, releaseError, 'BATCH_CREATION_ADMISSION_RECONCILIATION_PENDING', {
                     workloadId: plannedBatchKey, batchId: plannedBatchId, resultId: plannedBatchId, phase: 'batch creation release'

@@ -70,6 +70,8 @@ boundary does not establish a single catalog or selection interface everywhere.
 
 With `HOUSEHOLD_TEAM_MEMBERS` configured, an owner-addressed personal turn can
 run in the named specialist's native session and use its presentation voice.
+A request to Nestor to consult someone stays with Nestor, who can ask the
+installed specialist when the request calls for it.
 The next turn returns to the conversation's agent with that exchange as
 reference data. Family turns do not take this route. Speaking again while the
 specialist works leaves it running: the conversation's agent answers the new
@@ -108,7 +110,8 @@ A useful personality contract says to:
   understanding a consequential result requires it.
 - Use natural humor when it fits the audience; never require jokes or swearing.
 - Match the surface. Family uses playful, simple explanations and gentle humor;
-  its `FAMILY_TONE` replaces adult temperament on both conversation backends.
+  its presentation replaces adult temperament on both conversation backends.
+  An instance can supply its wording in the [family style file](../core/surfaces/household/family-style.txt).
 
 Presentation never widens permissions or turns an intended action into a
 completed one. Keep execution claims tied to actual receipts. A personality
@@ -130,23 +133,41 @@ uses admitted inference; `openclaw` uses the native agent conversation bridge.
 An optional `HOUSEHOLD_FAMILY_CONVERSATION_BACKEND` chooses the backend for new
 child-safe sessions without moving existing history between engines.
 
-Direct Core inference has no OpenClaw or Hermes tool loop. Family can use the
-bounded Core loop selected by `HOUSEHOLD_FAMILY_TOOLS`: `iss_passes`, `web_search`
-and `network_devices`. These dispatch the existing Core handlers, retain dated
-source results and tool receipts, and expose no owner memory, mail or mutation.
-Web results are untrusted references with URLs to cite; network reads use the
-existing collector inventory and disclose its freshness, without scanning.
-The family conversation receives the same cached Environment Canada conditions as
-the weather strip, with their source and fetch time. Readings older than thirty
-minutes, missing dates and failed reads are disclosed as unavailable. Conditions
-are not a forecast. This bounded reference also accompanies the local guardian;
-it contains no coordinates or operations snapshot and grants no owner tools.
+Direct Core inference offers the tools selected by `HOUSEHOLD_FAMILY_TOOLS`
+from the [Family registry](../core/surfaces/household/family-tools.js).
+Core executes calls and returns their results and receipts. With `source_read`
+granted, the local Family model can request the current conditions, forecast
+or alerts. An instance can also set `HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT=true`
+to attach a dated weather excerpt to each eligible local Family turn. Data
+can keep the bulletin warm while the screen is closed with
+`LIVEDATA_EC_WEATHER_PREPARE_ENABLED=true`, background jobs and the live weather feed.
+With `family_cards_read`, the local model can request published plant cards
+or Kids Room chores in eligible sessions. Web results are untrusted references
+with URLs. Network reads use the existing collector inventory and its timestamps.
+
+The optional `family_inbox_capture` grant lets the local Family model choose
+whether to save an explicitly requested idea or reminder for parent review.
+The tool takes only a kind. Core binds the current utterance and its stable
+browser turn ID, and a retry returns the existing item’s state. The item stays
+in the parent inbox until reviewed. Only the parent can promote it. A reminder
+in this inbox has no scheduled alarm. In an equipped turn, skipping the tool
+leaves the inbox untouched. Family and memory context preferences must allow
+it. Reader, ephemeral sessions and native engines do not receive this tool.
+Qualify the model’s handling of a request, a paraphrase and a withdrawal before
+enabling this grant on an instance.
+
+Personal Nestor can consult current Family notes on an authorized owner
+runtime when the instance enables `HOUSEHOLD_PERSONAL_FAMILY_MEMORY_READ`.
+It requests `personal_memory` with action `search_family` and a query.
+A result carries the family space and the original note's provenance.
+Personal searches and edits continue to address the personal notebook. Family
+and Reader recall notes in the family space. Each conversation keeps its own
+transcript.
 
 Full-screen Nestor shows the observed reply model as a badge in the top right
 corner and distinguishes Big Brain, the limited guardian relay and other model
 fallbacks by name and colour; nothing shows before a turn. A tap opens the detail.
-The guardian introduces a busy relay with “Yo c’est l’Gardien… Nestor est occupé.”
-An unavailable principal is described as “indisponible” instead.
+The guardian announces the relay in the selected language and reports whether the principal is busy or unavailable. The instance can supply a greeting.
 Until a model receipt arrives, it says that confirmation is pending; completed
 replies are labelled as the last reply. Personal pending requests use the existing
 work projection, with stale and uncertain states retained, and their count shows on
@@ -154,12 +175,28 @@ the badge; Famille has no such projection and never lists an empty one. Camera c
 its controls nor execution status cover the photo slideshow. An already open
 page needs a reload to use newly deployed scripts.
 
-Core's deterministic family routines, captures, math picture and sounds still
-compose with it. Spoken Core
+Core supplies the family routines, captures and math picture. Spoken Core
 turns use the configurable `HOUSEHOLD_VOICE_TASK` (default
   `voice_persona_chat`), except LLMx scenes. Typed turns keep their pack's task.
 The two routes can resolve different host pins and models; inspect the effective
 routing snapshot instead of inferring Family's model from personal Main.
+
+An instance can bind `HOUSEHOLD_SPOKEN_HOST` and `HOUSEHOLD_THINKER_HOST` to
+Core host keys. With `agentx-primary` as the spoken host, ordinary microphone
+turns use Core's principal pin. When conversation continuity is enabled,
+`HOUSEHOLD_SPOKEN_RELAY_HOST` can select one of its approved resident hosts
+for the guardian. Each new turn checks the principal again.
+In local Family and private Practical conversations the spoken model answers
+from the scoped short context or requests a
+consultation. It receives no tools. The second host's pin takes the original
+request, selected context and permitted tools. The accepted turn owns both
+calls. A new utterance can detach an ongoing consultation before its reply
+starts. Its saved answer can play at the next pause in the same session. An
+explicit stop cancels outstanding work. Full readings bypass the short reply.
+Model limits and interrupted streams are recorded as incomplete turns.
+Personal native sessions and an explicitly selected engine keep their chosen
+runtime. New personal microphone sessions use the local route by default
+when both hosts are configured.
 
 Family's `/api/voice-personas/family/screen-pages` catalogue exposes the existing
 ecosystem tour and instance-selected `earth` and `iss` views. Add the latter to
@@ -509,6 +546,18 @@ recovery; those remain part of device acceptance.
 
 ## Recognition while the person speaks
 
+After speech starts, the browser also listens for quieter syllables above the
+recent room noise. A softer ending after a pause can supersede an early
+transcription before the request reaches the conversation. After the last
+block at the onset level, quieter sound may extend capture by up to one
+extra silence window. This bounds the delay in a room with pulsing noise.
+
+During playback, the echo check compares recognized words with clauses that
+have reached the player. A short fragment such as “le train ou le bateau” can
+match playback verbatim. A correction such as “le bateau, pas le train” remains
+a user turn. Across five or more words, the comparison tolerates a hesitation
+or a plural determiner heard as “les” when the other words match in order.
+
 Surfaces offering local early recognition use whole-prefix snapshots while the
 microphone remains live: at most once every two seconds during the first fifteen
 seconds, then at a 200 ms pause. Longer utterances keep every captured sample and
@@ -669,11 +718,19 @@ before relying on these capabilities in a new Core build.
 
 ### Family sound playback and spoken repairs
 
-In the Family surface, a request solely for an available catalog sound uses a
-short deterministic introduction without inference. A compound request retains
-its model answer and plays introduction, clip, then answer; streamed model text
-is buffered so it cannot compete with the introduction. Unknown or additional
-words keep the normal inference path. Safety and arithmetic retain precedence.
+A local Family or Reader turn can use `get_sound` when the instance enables
+it and the client advertises clip playback. The model chooses whether to ask
+for a recording. Core verifies that the catalog file exists and binds at most
+one selection to that turn. The browser finishes the spoken reply, plays the
+verified clip, then resumes listening. Its playback events record what played.
+A retry with the same browser turn ID can recover the saved conversation.
+Direct sound buttons continue to play the selected recording.
+
+Family idea, reminder and memory writes require a direct request. Matching accepts
+spoken forms such as “Tu peux-tu me rappeler de prendre mes mitaines?” and keeps the
+original wording in the record. A quoted or negated command stays in the conversation.
+The assistant may confirm a reminder was saved for parent review once that write
+succeeds. Scheduling a notification requires its own evidence.
 
 Explicit spoken corrections can group up to four fragments (800 characters)
 after 700 ms of quiet. Ordinary yes/no replies keep their immediate path. Speech

@@ -3,24 +3,24 @@
 
 const { readingRequested } = require('../../src/services/voice/presentation');
 const crypto = require('crypto');
-const personaCatalog = require('./persona-catalog');
+const { teamPersona } = require('./persona-catalog');
+const artxContext = require('./artx-context');
 const { agentInstructions, agentIdFor, personalVoice } = require('./conversation-agent');
+const { protectedSourcesLocalOnly, requireProtectedBackend, nativeInputOnly, sourceTransferError, householdUserText } = require('../../src/services/conversations/protectedSources');
 const { conversationBackend } = require('./conversation-executor');
 const { workshopContext, workshopPrompt } = require('./kidx-workshop');
 const llmx = require('./llmx-conversation');
-const { FAMILY_TONE, familyTurn, householdMembers } = require('./family-context');
-const { familyToolset } = require('./family-tools');
+const { FAMILY_SURFACE_CONTRACT, familyTurn, householdMembers } = require('./family-context');
+const { bindFamilyServices, familyToolNames, familyToolset } = require('./family-tools');
 const familyPictureLookup = require('./family-picture-lookup');
-const { familyAlbumTurn } = require('./family-album-access');
-const { familyAlbumReceipts } = require('./family-album-receipts');
 const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('./family-repair-context');
 const familyPages = require('./family-pages');
 const { familyClockContext, familyIdentity } = require('./family-clock');
-const { familyIntroduction, soundOnlyRequest } = require('./sound-library');
 const { mathPictureFor, mathPictureContext } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels, { displayForReply } = require('./turn-presentation');
-const { scoreSpeechLanguage, speechText } = require('../../public/js/voice/speech-language');
+const { conversationLanguage } = require('./conversation-language');
+const { speechText, explicitSpeechLanguage } = require('../../public/js/voice/speech-language');
 const nestorKnowledge = require('./nestor-knowledge');
 const { voiceRecallOptions } = require('./voice-note-recall');
 const teamAddress = require('./team-address');
@@ -28,21 +28,9 @@ const { observedTurnPhases } = require('./turn-phase-evidence');
 const { turnDirective, localTimeContext } = require('./persona-prompt');
 const { interruptedRequestContext } = require('./persona-records');
 const dedicatedGuardian = require('./dedicated-guardian');
+const familyPictureIntent = require('./family-picture-intent');
 const { profileUnavailable } = require('../../src/services/conversationWorks/performance');
 const { turnUsage } = require('../../src/services/conversations/turnAccounting');
-
-// A team member's own personality: the active catalog persona naming that agent, so an
-// edit made on the Team page applies; the shared definition when the catalog is unreadable.
-async function teamPersona(agentId, personas) {
-  try {
-    const active = (await personas?.list?.() || []).find((entry) => entry.uiConfig?.layoutConfig?.agentId === agentId);
-    if (active) return personaCatalog.snapshot(active);
-  } catch { /* the shared definition below */ }
-  const row = personaCatalog.generatedPersonas().find((entry) => entry.uiConfig.layoutConfig.agentId === agentId);
-  return row ? personaCatalog.snapshot({ ...row, version: 0, _id: 'catalog' }) : null;
-}
-
-const FAMILY_SURFACE_CONTRACT = 'This is a family learning conversation. Use the child’s latest language, defaulting to Canadian French only when unclear. Keep private adult data separate. Household handles speech and supplies the current approved context; native permissions define your tools. ' + FAMILY_TONE;
 
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null, conversationWorks = null, artx = null, ambient = null,
@@ -80,12 +68,12 @@ function createPersonaTurnHandler({
       return fail(res, 413, 'The text exceeds the 4,000-character limit. Nothing was shortened or sent to the model.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
     }
     if (!userText && !isOpening) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
-    if (!isLlmX && req.body?.language !== undefined && !['fr', 'en'].includes(req.body.language)) {
-      return fail(res, 400, 'language must be fr or en', 'VOICE_PERSONA_INVALID_LANGUAGE');
+    if (!isLlmX && req.body?.language !== undefined && !['auto', 'fr', 'en'].includes(req.body.language)) {
+      return fail(res, 400, 'language must be auto, fr or en', 'VOICE_PERSONA_INVALID_LANGUAGE');
     }
     if (!consult && activePersonaTurns.has(req.params.sessionId)) return fail(res, 409, 'Wait for this conversation to finish its reply.', 'VOICE_TURN_IN_PROGRESS');
     // A typed Famille browser turn keeps its id like a voice one, so a math card's sliders (#1270) are saved with it.
-    let clientTurnId = consult ? consult.turnId : (isLlmX || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'text') || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
+    let clientTurnId = consult ? consult.turnId : (isLlmX || (access === 'child' && (!requiredSession || requiredSession.browser === true) && ['text', 'voice'].includes(req.body?.channel)) || (access === 'private' && req.body?.channel === 'text') || ((access === 'private' || requiredSession?.browser === true) && req.body?.channel === 'voice'
       && (req.body?.stream === true || ['read', 'observe'].includes(conversationEnv.PERSONAL_CONVERSATION_WORK_MODE))))
       && validClientTurnId(req.body?.turnId) ? req.body.turnId : '';
     const startedAt = Date.now();
@@ -123,8 +111,10 @@ function createPersonaTurnHandler({
       }
       const pack = packById(session.packId);
       if (!pack) return fail(res, 409, 'Session persona pack is unavailable', 'VOICE_PERSONA_PACK_NOT_FOUND');
+      const inputOnly = nativeInputOnly(session.backend || conversationBackend(null, conversationEnv), conversationEnv);
       const preferences = preferencesFor ? await preferencesFor(pack.childSafe).read() : null;
-      const features = preferences?.values || {};
+      const features = inputOnly ? { ...preferences?.values, historyContext: false, recapContext: false, reviewContext: false,
+        knowledgeContext: false, householdContext: false, memoryContext: false } : preferences?.values || {};
       const selectedMode = pack.modes.find((entry) => entry.id === session.modeId);
       if (!selectedMode) return fail(res, 409, 'Session mode is unavailable', 'VOICE_PERSONA_SESSION_MODE_UNAVAILABLE');
       if (access === 'child' && !pack.childSafe) {
@@ -145,6 +135,12 @@ function createPersonaTurnHandler({
           'VOIX_FAMILY_SESSION_REQUIRED'
         );
       }
+      // Resolve a retained session before accepting work, loading sources or preparing native input.
+      if (protectedSourcesLocalOnly(conversationEnv)) {
+        const previous = session.hermesRuntime ? 'hermes' : session.agentSessionKey ? 'openclaw' : 'agentx';
+        requireProtectedBackend(session.backend || previous, conversationEnv);
+      }
+      if (inputOnly && (consult || isLlmX || req.body?.attachmentIds?.length)) throw sourceTransferError();
       if (req.body?.ephemeral !== undefined && req.body.ephemeral !== entry.ephemeral) {
         return fail(res, 409, 'The submitted privacy policy does not match this context.', 'CONVERSATION_PRIVACY_MISMATCH');
       }
@@ -157,16 +153,16 @@ function createPersonaTurnHandler({
       if (clientTurnId) {
         entry.snapshot = { sessionId: session.sessionId, packId: pack.id, modeId: session.modeId, scopeId: session.scopeId };
       }
-      const preferredSpeechLanguage = isLlmX ? null : (req.body?.language || session.voice?.language) === 'en' ? 'en' : 'fr';
+      const preference = req.body?.language ?? session.voice?.language;
+      const preferredSpeechLanguage = isLlmX ? null : await conversationLanguage({ text: userText, preference, session, conversations, env: conversationEnv });
       const requestedAttachments = runtimeServices.attachments.ids(req.body?.attachmentIds);
       const attachmentStore = !isLlmX && access === 'private' && session.packId === 'personal_operator' && session.scopeId === 'personal'
         ? personalAttachments(session.sessionId) : null;
       if (requestedAttachments.length && !attachmentStore) return fail(res, 400, 'Attachments are available in personal Nestor.', 'ATTACHMENTS_PERSONAL_ONLY');
       entry.attachments = requestedAttachments.length ? await attachmentStore.references(requestedAttachments) : [];
-      const workEligible = !entry.ephemeral && Boolean(conversationWorks?.eligible(session, req.body?.channel));
-      const nativeDelegation = conversationEnv.PERSONAL_CONVERSATION_WORK_MODE === 'native' && workEligible;
-      const workCandidate = !entry.ephemeral && !consult && !isLlmX
-        && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session), { nativeDelegation });
+      const workEligible = !inputOnly && !entry.ephemeral && Boolean(conversationWorks?.eligible(session, req.body?.channel));
+      const workCandidate = !inputOnly && !entry.ephemeral && !consult && !isLlmX
+        && !teamAddress.addressedMember(userText, teamAddress.teamMembers(conversationEnv), agentIdFor(session));
       const retainedWork = workCandidate && !workEligible ? await conversationWorks?.retained?.(session, req.body?.turnId, req.body?.channel) : null;
       if (workCandidate && !workEligible && !retainedWork && features.inferenceProfile && features.inferenceProfile !== 'local'
           && personalVoice(session, req.body?.channel) && session.backend === 'openclaw'
@@ -208,21 +204,18 @@ function createPersonaTurnHandler({
         }
       }
       const workshop = workshopContext(req.body?.workshop, session);
-      entry.familyPage = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? await familyPages.forTurn(userText, pagesFor(pack), conversations, session) : null;
       const assessedSafety = assessSafety(userText, { adult: !pack.childSafe });
       const safety = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyPages.navigationSafety(userText, assessedSafety, assessSafety) : assessedSafety;
       const childBoundary = childBoundaryReply(pack, safety, userText);
-      // #131 Famille answers a counting or addition question itself; #1270 Super Dad shows the
-      // cubes beside the model's answer. Both spaces draw the model's own math cards.
       const mathPicture = !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathPictureFor(userText, { childSafe: pack.childSafe, language: preferredSpeechLanguage }) : null;
       const mathTurn = mathPicture?.answeredBy === 'core' ? mathPicture : null;
-      let backend, replyText, afterSoundText = '', sceneProposal = null, display = [];
-      // Native VoiX cannot play browser sound payloads.
-      const selectedFamilySound = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !safety.deterministicEscalation && !childBoundary && !mathTurn
-        && (!requiredSession || requiredSession.browser === true) ? sounds.select(userText) : null;
-      const localSound = selectedFamilySound && soundOnlyRequest(userText, selectedFamilySound) ? selectedFamilySound : null;
-      const separateSoundReply = Boolean(selectedFamilySound && !localSound);
-      let sound = selectedFamilySound;
+      const pictureRequest = !isLlmX && !consult && !entry.workId && !entry.attachments.length && familyPictureIntent.explicitCreation({ session,
+        backend: conversationBackend(session.backend, conversationEnv), channel: req.body?.channel, turnId: clientTurnId, safety, text: userText, available: executeConversation.familyPrimaryConfigured });
+      entry.familyPage = !pictureRequest && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? await familyPages.forTurn(userText, pagesFor(pack), conversations, session) : null;
+      let backend, picture = false, replyText, sceneProposal = null, display = [];
+      const clipPlayer = (!requiredSession || requiredSession.browser === true) && req.body?.soundPlayback === true;
+      const soundTurnId = clientTurnId || entry.imageTurnId;
+      let sound = null;
       let member = null, memberPersona = null, speaker = null, consultRequest = null;
       const serverPhases = {}; // where this turn's server time goes (turn-phases.js)
       let continuity = { status: 'not-required', source: 'session-audit', messageCount: 0 };
@@ -249,9 +242,6 @@ function createPersonaTurnHandler({
         replyText = childBoundary || mathTurn.reply; if (mathTurn) event('scene', { scene: mathTurn.scene });
       } else if (entry.familyPage?.standalone) {
         ({replyText,display} = await familyPages.reply(entry.familyPage, visuals, event, preferredSpeechLanguage));
-      } else if (localSound) {
-        replyText = familyIntroduction(localSound, preferredSpeechLanguage);
-        knowledge.status = 'not-required-local-sound';
       } else {
         if (mathPicture) event('scene', { scene: mathPicture.scene });
         backend = conversationBackend(session.backend, conversationEnv);
@@ -259,15 +249,14 @@ function createPersonaTurnHandler({
         if (entry.relayDuplicate) return envelope(res, { accepted: true, turnId: clientTurnId, recovery: 'explicit_listen', replayed: false }, 202);
         if (pack.id === VOIX_FAMILY_PACK_ID && session.scopeId === 'family' && backend === 'agentx' && !isLlmX && !consult && !entry.ephemeral
             && !entry.workId && !safety.flagIds?.length && !entry.attachments.length) {
-          const picture = await familyPictureLookup.reply({ text: userText, language: preferredSpeechLanguage, visuals, signal: abort.signal,
-            turnId: clientTurnId || entry.imageTurnId, albumAllowed: familyAlbumTurn(req.familyDevice, pack.id, session.scopeId),
-            issueAlbumImage: id => familyAlbumReceipts.issue(req.familyDevice, session.sessionId, id) });
-          if (picture) { replyText = picture.text; display = picture.display; knowledge.status = 'not-required-picture-lookup'; display.forEach(block => event('show', { block })); }
+          picture = pictureRequest && entry.relayIntake === true;
+          const lookup = picture ? null : await familyPictureLookup.replyForTurn(req.familyDevice, pack.id, session, { text: userText, language: preferredSpeechLanguage, visuals, signal: abort.signal, turnId: clientTurnId || entry.imageTurnId });
+          if (lookup) { replyText = lookup.text; display = lookup.display; knowledge.status = 'not-required-picture-lookup'; display.forEach(block => event('show', { block })); }
         }
       }
       if (backend && !replyText) {
-        const team = backend === 'openclaw' && !pack.childSafe && !isLlmX ? teamAddress.teamMembers(conversationEnv) : [];
-        member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session), { nativeDelegation });
+        const team = !inputOnly && backend === 'openclaw' && !pack.childSafe && !isLlmX ? teamAddress.teamMembers(conversationEnv) : [];
+        member = consult ? consult.member : teamAddress.addressedMember(userText, team, agentIdFor(session));
         // That member is still on an earlier question: the conversation's agent answers and says so.
         if (member && !consult && memberWork?.active(session.sessionId).some(job => job.agentId === member.agentId)) member = null;
         memberPersona = member ? await teamPersona(member.agentId, runtimeServices.personas) : null;
@@ -294,11 +283,11 @@ function createPersonaTurnHandler({
         let history = [], interruptedContext = '', mathContext = '', repairContext = '';
         const recoverInterrupted = backend === 'openclaw' && !member && personalVoice(session, 'voice');
         const recoverMath = pack.childSafe && !isLlmX;
-        if (features.historyContext !== false && (recoverMath || backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore || recoverInterrupted)) {
+        if (!picture && features.historyContext !== false && (recoverMath || backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore || recoverInterrupted)) {
           // Core inference reads a block window, so its history start (and the cached prefix) moves rarely.
           try {
             const rows = (await loadSessionAuditRows(conversations, session, pack, pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? { limit: LOOKBACK_TURNS } : {})).filter(row => !(entry.workId || entry.relayIntake) || row.traceId !== clientTurnId);
-            history = sessionHistoryMessages(rows, pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {});
+            history = sessionHistoryMessages(require('./spoken-consultation').followupHistory(rows, session, memberWork, backend, req.body?.channel, conversationEnv), pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {});
             if (recoverInterrupted) interruptedContext = interruptedRequestContext(rows);
             if (recoverMath) mathContext = mathPictureContext(rows);
             if (pack.id === VOIX_FAMILY_PACK_ID && !isLlmX) repairContext = familyRepairContext(rows, userText);
@@ -310,21 +299,26 @@ function createPersonaTurnHandler({
           await conversations.updateSession({ sessionId: session.sessionId }, { $set: { backend, agentId: agentIdFor(session) } });
           session.backend = backend;
         }
+        const familyToolTurn = !picture && backend === 'agentx' && pack.childSafe && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !isOpening && !member;
+        const { familyCards, captureByTool, familyInbox } = bindFamilyServices({ eligible: familyToolTurn && !entry.ephemeral && !consult && !guardianSession, env: conversationEnv, session, features,
+          familyTasks, plants: runtimeServices.household?.plants, userText, turnId: clientTurnId, signal: abort.signal, safety });
         let memories = [], savedNow = false, family = {}, members = '';
-        if (!isOpening && !entry.ephemeral) {
+        if (!inputOnly && !picture && !isOpening && !entry.ephemeral) {
           const notes = notesFor(pack, session.scopeId);
           if (!pack.childSafe && features.householdContext !== false) members = await householdMembers(familyTasks, { logger });
-          // Kids Room routines, and a child's idea or reminder kept for Dad (#41, #13).
           if (pack.childSafe) {
-            const familySpace = features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID;
+            entry.traceId ||= crypto.randomUUID();
             ({ savedNow, ...family } = await familyTurn({ userText, notes, familyTasks, detectMemoryRequest, logger, plants: runtimeServices.household?.plants,
-              withChores: familySpace }));
+              noteOrigin: { source: req.body?.channel === 'voice' ? 'voix-explicit' : 'explicit-ui',
+                sourceTraceId: `household:${session.sessionId}:${clientTurnId || entry.traceId}` },
+              captureByTool, withChores: !familyCards && features.householdContext !== false && pack.id === VOIX_FAMILY_PACK_ID }));
           }
           try {
             if (features.memoryContext !== false) memories = (await notes.search(userText, voiceRecallOptions(userText, personalVoice(session, req.body?.channel), MEMORY_RECALL_LIMIT))).notes;
           } catch (error) {
             logger?.error?.('Core note recall failed', { error: error.message });
-            return fail(res, 503, 'Memories are unavailable. Try again before continuing.', 'MEMORY_NOTES_UNAVAILABLE');
+            if (pack.id !== VOIX_FAMILY_PACK_ID || backend !== 'agentx') return fail(res, 503, 'Memories are unavailable. Try again before continuing.', 'MEMORY_NOTES_UNAVAILABLE');
+            memories = null;
           }
           if (features.knowledgeContext !== false && (pack.childSafe || backend === 'agentx')) {
             knowledge = await nestorKnowledge.retrieve(knowledgeState, pack.id, userText, {
@@ -332,14 +326,11 @@ function createPersonaTurnHandler({
             });
           }
         }
-        const browserSoundPlayback = (!requiredSession || requiredSession.browser === true) && req.body?.soundPlayback === true;
-        // The clip an explicit request names is chosen here, in both spaces, so playing it never
-        // depends on a model calling a tool: the voice model announced the sound and called nothing.
-        sound = (pack.childSafe ? !requiredSession || requiredSession.browser === true : browserSoundPlayback) ? sounds.select(userText) : null;
+        if (!picture && !pack.childSafe && clipPlayer) sound = sounds.select(userText);
         const preselected = Boolean(sound);
         const context = { memories, savedNow, captured: family.captured, knowledgeContext: [members, knowledge.context, family.chores, family.plants].filter(Boolean).join('\n\n'),
-          modeId: session.modeId, sound: separateSoundReply ? null : sound, latestUserText: userText,
-          speechLanguage: preferredSpeechLanguage };
+          modeId: session.modeId, sound: sound, latestUserText: userText,
+          speechLanguage: preferredSpeechLanguage, automaticLanguage: !explicitSpeechLanguage(preference) };
         let lastProposal = null, previousBrowserOutput = null;
         const nativeBrowserReply = sceneEnabled && backend === 'openclaw';
         if (isLlmX && !isOpening) {
@@ -360,32 +351,35 @@ function createPersonaTurnHandler({
           holdState = await openHold.waitForResident(holdState, { signal: abort.signal,
             onStatus: state => event('status', { phase: state.phase }) });
         }
-        // Instructions hold only what stays the same for the whole conversation, so the
-        // model's prompt cache keeps them. Everything selected for this turn (notes,
-        // members, knowledge, chores, saves, the sound note, the reply language, a team
-        // member's last exchange and the reviewer's advice) goes last, beside the request.
-        const brainAdvice = entry.ephemeral || isLlmX || features.reviewContext === false ? { text: '', refs: [] }
+        // Keep instructions stable for prompt caching. Put this turn's facts, language, sound choices and advice beside its request.
+        const brainAdvice = picture || entry.ephemeral || isLlmX || features.reviewContext === false ? { text: '', refs: [] }
           : brain.contextWithRefs ? await brain.contextWithRefs(session.sessionId, session) : { text: await brain.contextFor(session.sessionId, session), refs: [] };
-        const workAdvice = !entry.ephemeral && !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
+        const workAdvice = !inputOnly && !entry.ephemeral && !isLlmX && !member && session.packId === 'personal_operator' && session.scopeId === 'personal' && agentIdFor(session) === 'main'
           ? conversationWorks?.guardianContextWithRefs
             ? await conversationWorks.guardianContextWithRefs(session.sessionId, entry.workId)
             : { text: await conversationWorks?.guardianContext?.(session.sessionId, entry.workId) || '', refs: [] }
           : { text: '', refs: [] };
-        const { text: familyWeatherContext, relayForecastContext } = await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
-          channel: req.body?.channel, userText, timeZone: conversationEnv.PLANNING_TIME_ZONE, requestAt: new Date(startedAt) });
-        const contextBase = [familyWeatherContext, systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
+        const { text: livingSourceContext, relayWeatherContext, relayForecastContext, preparedRelayContext, coveredWeather } = inputOnly || picture ? {} : await require('./living-source-context').prepareLivingSourceContext({ pack, session, familyPackId: VOIX_FAMILY_PACK_ID, isLlmX, member, consult, guardian: Boolean(guardianSession), backend, ambient,
+          channel: req.body?.channel, sourceReadEnabled: familyToolTurn && familyToolNames(conversationEnv).includes('source_read'), userText, history, env: conversationEnv, requestAt: new Date(startedAt) });
+        const contextBase = inputOnly || picture ? '' : [livingSourceContext, systemPromptFor(pack, { ...context, contextOnly: true }), pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyClockContext({timeZone: conversationEnv.PLANNING_TIME_ZONE}) : localTimeContext(), interruptedContext, mathContext, repairContext,
           member ? '' : teamAddress.exchangeContext(session.teamExchange), member ? '' : memberWork?.contextFor(session.sessionId) || ''].join('');
-        const screen = !isLlmX && !consult ? require('./screen-context') : null;
+        const screen = !inputOnly && !picture && !isLlmX && !consult ? require('./screen-context') : null;
         entry.presentationContext = screen?.presentationEvidence(req.body?.screen, pagesFor(pack));
         entry.pipelineFacts = screen && !pack.childSafe && !member ? await require('./pipeline-turn-facts').factsFor(userText, entry.presentationContext) : null;
         // The collaborator sees public conversation data and sourced reads,
         // never the principal's system/guardian instruction context.
-        entry.companion = !consult && !isLlmX ? presentationCompanion?.begin({ session,
+        entry.companion = !inputOnly && !picture && !consult && !isLlmX ? presentationCompanion?.begin({ session,
           turnId: clientTurnId || entry.imageTurnId, enabled: req.body?.presentationCompanion === true && !member, paused: req.body?.presentationPinned === true,
           frame: { text: userText, history, screen: entry.presentationContext }, signal: abort.signal }) : null;
-        const contextTail = [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
-          !isLlmX && !member && !consult ? require('./artx-context').artxContext(artx, req.body?.artx,
-            evidence => { entry.artxEvidence = evidence; }) : '',
+        if (!inputOnly && !picture && !isLlmX && !member && !consult && artx && req.body?.artx)
+          entry.artxEvidence = artxContext.observe(artx, req.body.artx);
+        const readerSound = !picture && backend === 'agentx' && pack.id === 'kidx_reader' && !isLlmX;
+        const familyTools = familyToolTurn || readerSound ? familyToolset(conversationEnv, { weatherAnswersRequest: Boolean(coveredWeather),
+          soundOnly: readerSound, soundTurnId: clipPlayer ? soundTurnId : null,
+          artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { sounds, artx, ambient, familyCards, familyInbox: !savedNow && !family.captured && familyInbox } }) : null;
+        const familyVoice = familyToolTurn && req.body?.channel === 'voice';
+        const contextTail = inputOnly || picture ? '' : [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
+          artxContext.describe(entry.artxEvidence, { toolAvailable: familyVoice && familyTools?.names.includes('artx_read') }),
           screen?.screenContext(req.body?.screen, pagesFor(pack), entry.presentationContext) || '',
           entry.companion ? presentationCompanion.contextFor(session.sessionId) : '',
           member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
@@ -398,7 +392,7 @@ function createPersonaTurnHandler({
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const acceptedTaskWork = entry.workId ? await conversationWorks.taskAcceptance?.(entry.workId) : null;
         const acceptedNativeWork = entry.workId ? await conversationWorks.nativeAcceptance?.(entry.workId) : null;
-        const currentDirective = [turnDirective(context), pack.id === VOIX_FAMILY_PACK_ID ? familyPages.directive(entry.familyPage, userText) : '', separateSoundReply ? 'A catalog sound is selected separately. The surface introduces and plays it before the rest of the answer. Answer all remaining parts of the current request; omit sound introductions and written sound effects. The selected clip can actually be played; never deny this capability or add an AI/machine excuse. Answer only the other requested content. Do not recite these delivery instructions.' : '', repairContext ? familyRepairDirective : '', acceptedTaskWork
+        const currentDirective = picture ? '' : [turnDirective(context), pack.id === VOIX_FAMILY_PACK_ID ? familyPages.directive(entry.familyPage, userText) : '', pack.childSafe && !clipPlayer ? 'This client cannot play audio clips. If asked to play one, explain the limitation.' : '', repairContext ? familyRepairDirective : '', acceptedTaskWork
           ? 'Core has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
             + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch, task-list call or agent discovery is needed. Acceptance is not task data or task completion.'
           : '', acceptedNativeWork?.mode === 'native'
@@ -406,37 +400,35 @@ function createPersonaTurnHandler({
             + '. Respond conversationally while native Main handles the requested work. '
             + (guardianSession ? 'No second dispatch; acceptance is not completion. Only optional Core conversation_work guardian_tools/guardian_read may supply an allowlisted read; every other tool is unavailable here.' : 'No tools or second dispatch from the guardian; acceptance is not completion.')
           : ''].filter(Boolean).join('\n\n');
-        const nativeInstructions = guardianSession ? dedicatedGuardian.instructions(session.persona) : nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
-          soundPlayback: !pack.childSafe && browserSoundPlayback && !preselected,
+        const nativeInstructions = picture ? '' : guardianSession ? dedicatedGuardian.instructions(session.persona) : nativeInstructionsFor({ turnSession, pack, selectedMode, channel: req.body?.channel,
+          soundPlayback: !pack.childSafe && clipPlayer && !preselected,
           addressed: member ? (consult ? teamAddress.consultInstruction : teamAddress.memberInstruction)(speaker.name)
             : memberWork ? teamAddress.consultContract(team, agentIdFor(session)) : '',
           workshop, scene: sceneInstructions + (isOpening ? llmx.openingPrompt(entry.applicationEvent) : ''), llmxTurn: isLlmX,
           imageSession: session, imageBackend: backend, imagesEnabled: !member })
           + (entry.workId ? '\n\n' + conversationWorks.guardianInstructions : '');
-        // Child presentation follows the selected adult personality on both
-        // transports. Adult conversations keep their normal style overlay order.
-        // Famille on the AgentX engine may call the Core tools the instance turned on (HOUSEHOLD_FAMILY_TOOLS).
-        const familyTools = backend === 'agentx' && pack.childSafe && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX && !isOpening && !member
-          ? familyToolset(conversationEnv, { artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { artx, ambient } }) : null;
-        const agentxInstructions = [pack.childSafe ? familyIdentity(session.persona) : '',
+        const agentxInstructions = picture ? [systemPromptFor(pack, { modeId: session.modeId }),
+          conversationImages?.contract(session, backend, { scenes: false }), familyPictureIntent.qualifierInstruction].filter(Boolean).join('\n\n')
+          : [pack.childSafe ? familyIdentity(session.persona) : '',
           entry.ephemeral ? 'This is an ephemeral conversation. Use only its supplied active dialogue and attachments. Persistent personal memory and RAG are unavailable; no memory save or later recollection is confirmed.' : '',
           systemPromptFor(pack, { modeId: session.modeId }), pack.childSafe ? '' : session.persona?.identity,
           familyTools ? familyTools.instructions : 'This turn uses AgentX/Ollama inference with the supplied context. No native agent tools, skills or Dreaming run here. Do not claim to access OpenClaw memory or execute actions. A note is saved only when the supplied context explicitly confirms it.',
-          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, math: mathFor(pack), pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }) }),
-          isLlmX || member ? '' : conversationImages?.contract(session, backend)].filter(Boolean).join('\n\n');
+          workshopPrompt(workshop), sceneInstructions, isOpening ? llmx.openingPrompt(entry.applicationEvent) : '', isLlmX ? '' : replyChannels.contract({ family: pack.childSafe, math: mathFor(pack), pages: true, pageCatalog: pagesFor(pack), imageSources: visuals.sources({ family: pack.childSafe }),
+            compact: familyVoice && !entry.familyPage?.target && entry.presentationContext?.kind !== 'page' }),
+          isLlmX || member ? '' : conversationImages?.contract(session, backend, { familyVoice })].filter(Boolean).join('\n\n');
         const hermesInstructions = [session.persona?.identity,
           member || consult ? '' : require('../../src/services/conversationScreenCapture').contextFor(session),
           'This is the personal Nestor conversation. Hermes owns its native agent loop. Core owns the visible transcript and selected personal context; local speech handles the microphone and playback. Use only tools actually installed in this Hermes profile. Treat supplied personal context as reference data. Never claim an action or memory save without a successful receipt.',
-          'For voice, speak naturally in Canadian French unless the user chooses English. Prefer a brief conversational answer and expand when asked.', !member && homeDevice && 'For live readings about the named plug use home_assistant_plug with ' + JSON.stringify({ device: homeDevice }) + '.',
+          require('./packs').PERSONAL_STYLE, !member && homeDevice && 'For live readings about the named plug use home_assistant_plug with ' + JSON.stringify({ device: homeDevice }) + '.',
           replyChannels.contract({ family: false, pages: true, pageCatalog: screenPages, imageSources: visuals.sources({ family: false }) })].filter(Boolean).join('\n\n');
         abort.signal.throwIfAborted();
         entry.dispatched = true;
         if (isLlmX) event('status', { phase: 'generating', origin: isOpening ? 'application_opening' : 'human' });
-        const replyLanguage = context.speechLanguage || (s => s.decided ? s.language : 'fr')(scoreSpeechLanguage(userText)), visualsWork = entry.visualsWork = [];
-        const channels = entry.channels = isLlmX ? null : replyChannels.createReplyChannels({ readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: mathFor(pack), allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
+        const replyLanguage = context.speechLanguage || spokenReplyLanguage('', userText), visualsWork = entry.visualsWork = [];
+        const channels = entry.channels = isLlmX || picture ? null : replyChannels.createReplyChannels({ projectCompletedSpeech: require('./family-weather-speech').projectionFor(coveredWeather, replyLanguage), readAloud: readingRequested(userText), allowSecrets: !pack.childSafe, allowMath: mathFor(pack), allowPages: pack.id !== VOIX_FAMILY_PACK_ID || !!entry.familyPage?.target, pageCatalog: pagesFor(pack),
           canonicalPageTitles: pack.id === VOIX_FAMILY_PACK_ID, pageTarget: entry.familyPage?.target || (target?.force ? target.page : null), onWritten: value => { if (!res.writableEnded) event('written', value); },
           answerForPage: require('./pipeline-turn-facts').answerFor(entry.pipelineFacts, screenPages, replyLanguage), language: replyLanguage,
-          onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded && !separateSoundReply) event('delta', { delta }); },
+          onSay: delta => { entry.companion?.append(delta); if (!res.writableEnded) event('delta', { delta, language: replyLanguage }); },
           // One consultation per reply, and a member does not consult in turn.
           onConsult: request => { if (!member) consultRequest ||= teamAddress.consultedMember(request, team, agentIdFor(session)); }, onShow: block => {
             entry.companion?.explicit();
@@ -446,35 +438,36 @@ function createPersonaTurnHandler({
           } });
         if (!member) {
           warmup?.noteTurn(session);
-          // A canonical acknowledgment invokes no native turn and can finish
-          // while opening warm-up still owns the guardian's native session.
           if (!acceptedNativeWork || acceptedNativeWork.foreground === 'guardian') await warmup?.settled(session.sessionId);
         }
 
         serverPhases.prepared = Date.now() - startedAt;
-        const run = executeConversation({ backend, session: turnSession, ...(guardianSession ? { canonicalSession: session,
+        const spoken = require('./spoken-consultation').forTurn({ entry, session, backend, channel: req.body?.channel, env: conversationEnv, event,
+          blocked: picture || consult || member || entry.familyPage?.target || target || safety.flagIds?.length || savedNow || family.captured || sound || workshop,
+          identity: pack.childSafe ? familyIdentity(session.persona) : session.persona?.name, context: [preparedRelayContext, repairContext, memberWork?.contextFor(session.sessionId), require('./spoken-consultation').screenReference(entry.presentationContext)].filter(Boolean).join('\n'), personalTasks: runtimeServices?.tasks?.personal });
+        const run = executeConversation({ backend, spoken, session: turnSession, ...(inputOnly && { [householdUserText]: userText }), ...(guardianSession ? { canonicalSession: session,
           ...(entry.performance?.guardian?.model && { model: entry.performance.guardian.model }),
           guardianStreaming: true, maxOutputTokens: 1024 } : {}), pack: isOpening ? { ...pack, maxTokens: 180 }
           : sceneEnabled ? { ...pack, maxTokens: 4096 } : pack, text: userText,
-          history: features.historyContext === false ? [] : guardianSession ? dedicatedGuardian.history(history) : history, streaming, channel: req.body?.channel,
-          conversationFeatures: features, turnId: clientTurnId || crypto.randomUUID(), hermesInstructions,
-          ...(preferredSpeechLanguage ? { speechLanguage: preferredSpeechLanguage } : {}),
+          history: picture || features.historyContext === false ? [] : guardianSession ? dedicatedGuardian.history(history) : history, streaming, channel: req.body?.channel,
+          conversationFeatures: picture ? { ...features, historyContext: false } : features, requiresFamilyPrimary: picture, turnId: clientTurnId || crypto.randomUUID(), hermesInstructions,
+          ...(preferredSpeechLanguage ? { speechLanguage: preferredSpeechLanguage, automaticLanguage: !explicitSpeechLanguage(preference) } : {}),
           ...(acceptedTaskWork ? { readAcceptedTaskWork: () => conversationWorks.taskAcceptance(entry.workId) } : {}),
           ...(acceptedNativeWork ? { readAcceptedNativeWork: () => conversationWorks.nativeAcceptance(entry.workId) } : {}),
           ...(entry.primaryWork ? { readPrimaryWork: entry.readPrimaryWork,
             requirePrimaryRelay: () => requireNativeAgent(agentIdFor(turnSession)) } : {}),
           attachments: entry.attachments, attachmentStore,
           ...(isOpening ? { applicationEvent: entry.applicationEvent } : {}),
-          instructions: nativeInstructions, agentxInstructions, familyWeatherContext, relayForecastContext, guardianTools: require('./guardian-read-tools').forTurn(conversationEnv, { backend, packId: pack.id, blocked: isLlmX || isOpening || Boolean(member), excludeWeather: Boolean(relayForecastContext), ambient }), ...(familyTools ? { familyTools } : {}), ...(turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
-          ...(currentDirective ? { turnDirective: currentDirective } : {}),
+          instructions: nativeInstructions, agentxInstructions, familyWeatherContext: relayWeatherContext, relayForecastContext, preparedRelayContext, guardianTools: picture ? null : require('./guardian-read-tools').forTurn(conversationEnv, { backend, packId: pack.id, blocked: isLlmX || isOpening || Boolean(member), excludeWeather: Boolean(relayForecastContext), ambient }), ...(familyTools ? { familyTools } : {}), ...(!picture && turnContext ? { turnContext: guardianContext ? guardianContext.text : turnContext } : {}),
+          ...(!picture && currentDirective ? { turnDirective: currentDirective } : {}),
           ...(nativeBrowserReply ? { browserReply: { context: req.llmx.sceneContext, previousOutput: previousBrowserOutput } } : {}),
           ...(useOpen ? { model: 'ollama/' + holdState.model, openTarget: { hostUrl: holdState.host.url, numCtx: holdState.numCtx } } : {}),
-          signal: abort.signal, onExecution: evidence => event('execution', { evidence }), onWaiting: () => event('status', { phase: 'waiting_host' }), onActivity: activity => event('status', { phase: 'activity', activity }),
-          onStarted: require('./persona-native-start').nativeTurnStarted({ entry, session, turnSession, member, guardianSession, backend, conversations, conversationWorks }),
+          signal: abort.signal, onExecution: evidence => { if (evidence.continuity && evidence.continuity.state !== 'primary') channels?.streamSpeech(); event('execution', { evidence }); }, onWaiting: info => event('status', { phase: 'waiting_host', ...(info?.reason === 'primary_active' && { reason: 'primary_active' }) }), onActivity: activity => event('status', { phase: 'activity', activity }),
+          onStarted: require('./persona-native-start').nativeTurnStarted({ entry, session, turnSession, member, guardianSession, backend, inputOnly, conversations, conversationWorks }),
           onRelayProgress: progress => { entry.auditContext = { ...entry.auditContext, toolEvidence: { status: 'partial', authority: 'agentx/ollama', receipts: [], conversationRelay: progress } }; },
           onSettled: () => { entry.executionSettled = true; },
-          onDelta: delta => { entry.generated = (entry.generated + delta).slice(0, 5000); if (channels) channels.push(delta); else if (!isOpening && !sceneEnabled) event('delta', { delta }); }
-        });
+          onDelta: delta => { if (picture) return; entry.generated = (entry.generated + delta).slice(0, 5000); if (channels) channels.push(delta); else if (!isOpening && !sceneEnabled) event('delta', { delta }); }
+        }).catch(error => familyPictureIntent.qualificationFailure(error, picture, abort.signal));
         entry.completion = run.then(() => null, error => error);
         const result = await run;
         serverPhases.executed = Date.now() - startedAt; serverPhases.agent = result.metadata?.phases;
@@ -490,10 +483,14 @@ function createPersonaTurnHandler({
           : { status: 'ready', source: 'session-audit', messageCount: history.length };
         if (!pack.childSafe) continuity.personal = { status: 'ready', authority: 'agentx.core', notes: memories };
         toolEvidence = result.tools;
-        if (!pack.childSafe && browserSoundPlayback && !preselected) {
+        if (!pack.childSafe && clipPlayer && !preselected) {
           const receipt = toolEvidence?.status === 'observed' && toolEvidence.runId ? toolEvidence.receipts?.filter(row =>
             ['agentx__get_sound', 'get_sound'].includes(row.tool) && row.runId === toolEvidence.runId).at(-1) : null;
           sound = receipt?.status === 'verified' ? sounds.get(receipt.soundId) : null;
+        }
+        if (pack.childSafe && clipPlayer && toolEvidence?.authority === 'agentx/core' && toolEvidence.status === 'observed') {
+          const receipt = toolEvidence.receipts?.find(row => row.tool === 'get_sound' && row.turnId === soundTurnId && row.status === 'completed' && row.playbackRequested === true && row.availability === 'available');
+          if (receipt) sound = sounds.get(receipt.soundId);
         }
         // A native agent owns its knowledge tools: its receipts say whether one ran.
         if (['openclaw', 'hermes'].includes(backend) && !pack.childSafe) knowledge = { ...knowledge, status: 'agent-managed', enabled: true,
@@ -506,14 +503,17 @@ function createPersonaTurnHandler({
           parentAttention: safety.requiresParentAttention, soundId: sound?.id || '' };
         if (channels && !channels.received) channels.push(result.text);
         if (abort.signal.aborted) return;
-        if (channels) { ({ display } = channels.end({ fallbackPage: !member && target?.page })); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
-        if (channels && !abort.signal.aborted) await conversationImages?.complete({ session, pack, backend, display,
+        if (channels) { ({ display } = channels.end({ fallbackPage: !member && target?.page, completed: true })); entry.companion?.finish(); event('say_end'); await Promise.all(visualsWork); }
+        if (channels && !abort.signal.aborted && toolEvidence?.conversationRelay?.reason !== 'occupation_changed') await conversationImages?.complete({ session, pack, backend, display,
           evidence: toolEvidence, turnId: clientTurnId || entry.imageTurnId, signal: abort.signal, member: Boolean(member),
           onShow: block => event('show', { block }) });
-        const parsed = sceneEnabled ? llmx.sceneReply(result.text, req.llmx.sceneContext) : { text: channels ? channels.end().say : result.text, sceneProposal: null };
+        const qualified = picture && await familyPictureIntent.completeQualified({ result, session, pack, backend, language: replyLanguage, images: conversationImages, turnId: clientTurnId, signal: abort.signal });
+        if (qualified) { display = qualified.display; knowledge.status = 'not-required-explicit-drawing'; }
+        const parsed = sceneEnabled ? llmx.sceneReply(result.text, req.llmx.sceneContext) : { text: qualified ? qualified.reply : channels ? channels.end().say : result.text, sceneProposal: null };
         replyText = plainReply(parsed.text);
         sceneProposal = parsed.sceneProposal;
         entry.naturalReply = replyText;
+        if (qualified) familyPictureIntent.publish({ entry, replyText, display, signal: abort.signal, event, speechText });
         if (isOpening && !abort.signal.aborted && (!/^Hello\b/.test(replyText) || replyText.length > 600)) {
           entry.generated = replyText;
           throw Object.assign(new Error('The agent did not produce the brief Hello opening. Its attempt was retained; no automatic retry was started.'), { code: 'LLMX_OPENING_INVALID' });
@@ -525,12 +525,12 @@ function createPersonaTurnHandler({
       if (holdState?.active) {
         try { holdState = await openHold.touch({ warm: false }); } catch { /* keep the pre-turn status */ }
       }
-      if (entry.familyPage?.target && !childBoundary && !safety.deterministicEscalation) display = await familyPages.ensure(entry.familyPage, display, visuals, event, preferredSpeechLanguage);
-      if (!replyText) replyText = 'Je n’ai pas réussi à préparer une réponse utile.';
-      if (separateSoundReply) { afterSoundText = replyText; replyText = familyIntroduction(sound, preferredSpeechLanguage) + ' ' + replyText; }
-      const traceId = entry.workId || entry.relayIntake ? clientTurnId : crypto.randomUUID();
+      if (!picture && entry.familyPage?.target && !childBoundary && !safety.deterministicEscalation) display = await familyPages.ensure(entry.familyPage, display, visuals, event, preferredSpeechLanguage);
+      if (!replyText) replyText = sound?.label[preferredSpeechLanguage] || (preferredSpeechLanguage === 'en' ? 'I couldn’t prepare an answer.' : 'Je n’ai pas réussi à préparer une réponse utile.');
+      const traceId = entry.workId || entry.relayIntake ? clientTurnId : entry.traceId || crypto.randomUUID(), relayStopped = toolEvidence?.conversationRelay?.reason === 'occupation_changed';
+      const speechLanguage = spokenReplyLanguage(replyText, userText, preferredSpeechLanguage);
       const audit = await conversations[entry.workId || entry.relayIntake ? 'settleTurn' : 'recordTurn']({
-        traceId,
+        traceId, speechLanguage, ...(relayStopped && { writtenStatus: 'partial', outcome: 'failed' }),
         ...(isLlmX ? { source: 'graphysx-llmx', origin: isOpening ? 'application_opening' : 'human', outcome: 'completed', applicationEvent: entry.applicationEvent || null } : {}),
         ...(sceneProposal ? { sceneProposal } : {}), ...(display.length ? { display: replyChannels.storedDisplay(display) } : {}),
         ...(clientTurnId ? { clientTurnId, interrupted: entry.interrupted } : {}),
@@ -576,7 +576,7 @@ function createPersonaTurnHandler({
         if (routeTier === 'deterministic') await conversationWorks.handled(entry.workId);
         await conversationWorks.guardianSettled(entry.workId, 'completed', metadata.guardianDisposition);
       }
-      if (!localSound && !entry.ephemeral && !entry.workId && !isLlmX && session.backend !== 'hermes' && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
+      if (!picture && !relayStopped && !entry.ephemeral && !entry.workId && !isLlmX && session.backend !== 'hermes' && (!preferencesFor || (await preferencesFor(pack.childSafe).read()).values.backgroundReview)) brain.schedule({ session, pack, traceId });
       entry.replyText = replyText;
       // The conversation's agent hears about a member's answer once, on its next turn.
       if (member) await conversations.updateSession({ sessionId: session.sessionId },
@@ -584,7 +584,7 @@ function createPersonaTurnHandler({
       else if (session.teamExchange) await conversations.updateSession({ sessionId: session.sessionId }, { $unset: { teamExchange: '' } });
       if (entry.detached) {
         memberWork.finish(session.sessionId, clientTurnId, { traceId, text: speechText(replyText), written: audit.written, display: audit.display,
-          language: spokenReplyLanguage(replyText, userText), speaker: audit.speaker, speech: audit.replySpeech });
+          language: speechLanguage, speaker: audit.speaker, speech: audit.replySpeech, ...(sound && { sound: { ...sound, play: 'after-reply' } }) });
         return undefined;
       }
       // #41: the conversation's agent asked for a member. Its turn starts once this one has ended;
@@ -608,17 +608,13 @@ function createPersonaTurnHandler({
         traceId, speaker: audit.speaker, written: audit.written, speechProjection: audit.speechProjection, ...(consulted ? { consult: consulted } : {}),
         ...(adviceRefs.length ? { adviceRefs } : {}),
         ...(isLlmX ? { origin: isOpening ? 'application_opening' : 'human', turnId: clientTurnId } : {}),
-        ...(sceneProposal ? { sceneProposal } : {}), ...((audit.display || display).length ? { display: displayForReply(audit, display) } : {}),
+        ...(sceneProposal ? { sceneProposal } : {}), ...(picture ? { familyDrawing: true } : {}), ...((audit.display || display).length ? { display: displayForReply(audit, display) } : {}),
         session: publicSession(updated || session),
         pack: packSummary(pack),
         mode: modeSummary(pack.modes.find((entry) => entry.id === session.modeId) || pack.modes[0]),
-        // The surface reads this aloud, so it is told which voice to use rather
-        // than re-deriving it from the question and disagreeing with the text.
-        reply: { text: req.body?.channel === 'voice' ? speechText(replyText) : replyText, language: spokenReplyLanguage(replyText, userText), speaker: audit.speaker,
-          speech: audit.replySpeech, ...(separateSoundReply ? { soundIntroduction: familyIntroduction(sound, preferredSpeechLanguage), afterSoundText } : {}) },
-        // Present only when a clip was selected; the browser may offer playback
-        // once speech finishes, but this response is not a playback receipt.
-        sound: sound ? { ...sound, play: separateSoundReply ? 'after-introduction' : 'after-reply' } : null,
+        reply: { text: req.body?.channel === 'voice' ? speechText(replyText) : replyText, language: speechLanguage, speaker: audit.speaker,
+          speech: audit.replySpeech },
+        sound: sound ? { ...sound, play: 'after-reply' } : null,
         safety,
         model: { model: metadata.model || '', hostKey: metadata.hostKey || '' },
         routing: {
@@ -659,14 +655,14 @@ function createPersonaTurnHandler({
       }
       if (abort.signal.aborted || entry.streamClosed) return;
       logger?.error?.('Household persona turn failed', entry.ephemeral ? { code: 'EPHEMERAL_TURN_FAILED' } : { error: error.message, ...(error.detail ? { detail: error.detail } : {}) });
-      if (res.headersSent) { event('error', { message: error.message }); return res.end(); }
+      if (res.headersSent) { event('error', { message: error.message, code: error.code }); return res.end(); }
       return fail(res, error.statusCode || 502, error.message || 'Voice persona turn failed', error.code || 'VOICE_PERSONA_INFERENCE_FAILED');
     } finally {
       try {
         if (entry.completion) { const error = await entry.completion; if (!entry.primaryDetached) entry.error ||= error; }
         if ((entry.workId || entry.relayIntake || (isOpening ? entry.openingReserved : entry.interrupted || (sceneEnabled && entry.dispatched))) && entry.snapshot && !entry.auditWritten) {
           const reply = sceneEnabled ? entry.naturalReply || '' : plainReply(entry.channels ? entry.channels.end().say : entry.generated, 5000);
-          entry.traceId = entry.workId || entry.relayIntake ? clientTurnId : crypto.randomUUID();
+          entry.traceId = entry.workId || entry.relayIntake ? clientTurnId : entry.traceId || crypto.randomUUID();
           await conversations[entry.workId || entry.relayIntake ? 'settleTurn' : 'recordTurn']({
             ...entry.snapshot, traceId: entry.traceId, clientTurnId, interrupted: entry.interrupted,
             ...(isLlmX ? { source: 'graphysx-llmx', origin: isOpening ? 'application_opening' : 'human', outcome: abort.signal.aborted ? 'cancelled' : 'failed', applicationEvent: entry.applicationEvent || null } : {}),

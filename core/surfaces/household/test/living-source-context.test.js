@@ -40,6 +40,24 @@ test('reader, team member, consultation, wrong owner scope and LLMx get no sourc
     assert.deepEqual(calls, []);
   }
 });
+
+test('the optional prepared excerpt is confined to a granted local Family principal', async () => {
+  for (const options of [
+    { ...family, sourceReadEnabled: false }, { ...family, pack: { id: 'kidx_reader', childSafe: true } },
+    { ...family, backend: 'openclaw' }, { ...family, backend: 'hermes' }, { ...family, guardian: true },
+    { ...family, isLlmX: true }, { ...family, member: {} }, { ...family, consult: true }, owner
+  ]) {
+    const services = deps();
+    let preparedReads = 0;
+    services.ambient.preparedWeather = async () => { preparedReads++; };
+    const context = await livingSourceContext({ backend: 'agentx', ...services, sourceReadEnabled: true,
+      env: { HOUSEHOLD_FAMILY_PREPARED_WEATHER_CONTEXT: 'true' }, ...options });
+    assert.equal(preparedReads, 0);
+    if (options.sourceReadEnabled === false) assert.match(context, /Core living-source catalogue/);
+    assert.doesNotMatch(context, /Prepared local weather/);
+  }
+});
+
 test('oversized catalogue fails explicitly rather than delivering silent truncation', async () => {
   await assert.rejects(livingSourceContext({ ...family, ambient: { weather: async () => weather },
     sources: { forAudience: () => ({ catalogue: () => ({ title: 'x'.repeat(MAX_CONTEXT_CHARS) }) }) } }),

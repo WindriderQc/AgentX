@@ -5,6 +5,7 @@ const MemoryNote = require('../../models/MemoryNote');
 const { sealText } = require('./identifierVault');
 const { createIndex } = require('./memoryNoteIndex');
 const { currentFactFilter } = require('./memoryNoteValidity');
+const { noteSpaces, personalCanReadFamily } = require('../domains/household/noteSpaces');
 const { scoreFloor } = require('../helpers/scoreFloor');
 const { memoryFactInput, memoryFactProjection, mergeMemoryFactMetadata } = require('../../../shared/memoryFactMetadata');
 const temporal = require('./personalHistoryTemporal');
@@ -205,6 +206,11 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     const sourceTraceId = cleanText(input.sourceTraceId, 300);
     const row = await MemoryNote.findOneAndUpdate({ ...boundary, sourceTraceId },
       { $setOnInsert: { ...values, sourceTraceId } }, { new: true, upsert: true, runValidators: true });
+    // A family reply may confirm only the original, still-current note for this turn.
+    if (audience === 'household' && (row.status !== 'active' || row.text !== text || row.source !== values.source
+      || (row.invalidatedAt && row.invalidatedAt <= new Date()) || (row.expiresAt && row.expiresAt <= new Date()))) {
+      throw error('This turn no longer identifies the requested active note.', 409);
+    }
     if (!row.embeddedHash) indexLater(row);
     return project(row);
   }
@@ -411,7 +417,7 @@ function forSpace({ audience, scopeId, packIds, index = createIndex() } = {}) {
     ...replacements, count: () => MemoryNote.countDocuments(active()) });
 }
 
-const personal = () => forSpace({ audience: 'owner', scopeId: 'personal', packIds: ['personal_operator'] });
+const personal = () => forSpace(noteSpaces.personal);
 async function operatePersonal(input = {}) {
   const notes = personal();
   const operation = input.operation || input.action;
@@ -420,6 +426,11 @@ async function operatePersonal(input = {}) {
   let result;
   if (operation === 'list') result = await notes.list(input);
   else if (operation === 'search') result = await notes.search(input.query, input);
+  else if (operation === 'search_family') {
+    if (!personalCanReadFamily()) throw error('Family note access is disabled for the personal assistant', 403);
+    const family = forSpace(noteSpaces.family);
+    result = { ...await family.search(input.query, { limit: input.limit }), memorySpace: 'family' };
+  }
   else if (operation === 'turn-context') result = await notes.turnContext(input.query);
   else if (operation === 'context') {
     const matched = await notes.search(input.query, input);
@@ -431,7 +442,7 @@ async function operatePersonal(input = {}) {
   else if (operation === 'remember') result = await notes.remember({ ...input,
     source: input.provenance === undefined ? undefined : AGENT_PROVENANCE[input.provenance] || 'nestor-conversation' });
   else if (operation === 'forget') result = await notes.forget(input.id);
-  else throw error('Choose list, search, remember, forget or turn-context');
+  else throw error('Choose list, search, search_family, remember, forget, context or turn-context');
   return { ...result, operation };
 }
 

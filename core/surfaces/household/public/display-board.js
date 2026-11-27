@@ -112,8 +112,8 @@
 
   // A picture Core found; the model never supplied its address. Web images load
   // directly over https without a referrer, household files through Core.
-  function imageBody(block, space) {
-    if (block.source === 'local' && root.ConversationImages) return root.ConversationImages.create(block, { space });
+  function imageBody(block, space, language) {
+    if (block.source === 'local' && root.ConversationImages) return root.ConversationImages.create(block, { space, language });
     const image = block.status === 'found' ? block.image : null;
     const album = space === 'family' && block.source === 'photos' && /^\/api\/photos\/frame\/album\/[A-Za-z0-9_-]{43}\/image$/i.test(image?.url || '');
     const href = image && (/^\/api\/voice-personas\/(?:family|private)\/visuals\/(?:file|generated)\?/.test(image.url) || album ? image.url : safeUrl(image.url));
@@ -236,7 +236,7 @@
     return holder;
   }
 
-  function render(block, { secrets, space = 'personal', history = null, onOpen = null, requestedAt = null }) {
+  function render(block, { secrets, space = 'personal', language, history = null, onOpen = null, requestedAt = null }) {
     if (!block || (block.kind === 'scene' ? !block.scene : typeof block.body !== 'string') || (block.kind === 'secret' && !secrets)) return null;
     if (block.kind === 'review' && (space !== 'personal' || block.from !== 'companion')) return null;
     const target = block.kind === 'page' ? pageTarget(block, space) : null;
@@ -256,7 +256,7 @@
     header.append(actions);
     let content;
     if (block.kind === 'secret') content = secretBody(block, actions);
-    else if (block.kind === 'image') content = imageBody(block, space);
+    else if (block.kind === 'image') content = imageBody(block, space, language);
     else if (block.kind === 'scene') content = sceneBody(block, space);
     else if (block.kind === 'page') content = history
       ? root.NestorPageHistory?.create({ block, target, turn: history, onOpen })
@@ -294,7 +294,7 @@
     return card;
   }
 
-  function create(container, { secrets = false, kinds = null, heading = 'On screen', space = 'personal', onChange = null } = {}) {
+  function create(container, { secrets = false, kinds = null, heading = 'On screen', space = 'personal', getLanguage, onChange = null } = {}) {
     const list = node('div', 'display-board-list');
     container.replaceChildren(node('h2', 'display-board-heading', heading), list);
     const update = () => { container.hidden = !list.childElementCount; onChange?.(Array.from(list.children)); };
@@ -306,14 +306,14 @@
           if (existing) { update(); return true; }
         }
         const history = restoring && space === 'personal' && block?.kind === 'page' ? turn : null;
-        const card = render(block, { secrets, space, history, requestedAt,
+        const card = render(block, { secrets, space, language: getLanguage?.(), history, requestedAt,
           onOpen: current => board.add(current, { requestedAt: new Date().toISOString() }) });
         if (!card) return false;
         if (space === 'family' && block.kind === 'page') {
           // One guided view at a time: hidden 3D frames must not keep animating.
           Array.from(list.children).filter(child => child.dataset.kind === 'page')
             .forEach(child => { child._dispose?.(); child.remove(); });
-          const close = node('button', 'display-block-action', 'Retour à Nestor'); close.type = 'button';
+          const close = node('button', 'display-block-action', 'Fermer la page'); close.type = 'button';
           close.onclick = () => { card._dispose?.(); card.remove(); update(); };
           card.querySelector('.display-block-actions').append(close);
         }
@@ -361,11 +361,11 @@
 
   // Nestor has one selected content workspace. Family retains its existing
   // scoped boards and permissions; there is no second presentation store.
-  function createScreen({ text, visual }, { secrets = false, space = 'personal' } = {}) {
+  function createScreen({ text, visual }, { secrets = false, space = 'personal', getLanguage } = {}) {
     const presentation = space === 'personal' ? root.NestorPagePresentation?.mount({ visual }) : null;
     if (presentation) {
       text.hidden = visual.hidden = true;
-      const board = create(presentation.board, { secrets, space, heading: 'Contenu', onChange: presentation.update });
+      const board = create(presentation.board, { secrets, space, getLanguage, heading: 'Contenu', onChange: presentation.update });
       return { add(block) {
         const added = board.add(block);
         if (added && block.kind === 'image') presentation.revealImage?.();
@@ -384,7 +384,7 @@
         context: () => presentation.active() ? board.context() : [], clear: board.clear };
     }
     const boards = [create(text, { secrets, space, kinds: ['text', 'list', 'table', 'code', 'link', 'secret'] }),
-      create(visual, { secrets, space, kinds: ['page', 'image', 'scene', 'math'], heading: 'Pages and images' })];
+      create(visual, { secrets, space, getLanguage, kinds: ['page', 'image', 'scene', 'math'], heading: 'Pages and images' })];
     // The zone that drew last holds what is "shown" now, so Nestor reads a math card's
     // sliders even when an older note is still in the text zone.
     let latest = null;

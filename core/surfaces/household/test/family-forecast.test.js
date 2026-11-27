@@ -23,6 +23,17 @@ test('a forecast with no current observations returns only the hours actually co
   assert.doesNotMatch(JSON.stringify(output), /sentinel|relative label|Aujourd’hui/);
 });
 
+test('tomorrow hours become usable at issue time after a pre-issue retrieval', () => {
+  const data = { forecastIssuedAt: '2026-11-24T05:00:00Z', fetchedAt: '2026-11-24T04:59:00Z',
+    hourly: [{ time: '2026-11-25T06:00:00Z', temperatureC: 0 }] };
+  const forecastAt = time => projectTomorrowHours(data, { timeZone, requestAt: at(time) });
+  assert.equal(forecastAt('2026-11-24T04:59:59.999Z'), null);
+  const forecast = forecastAt(data.forecastIssuedAt);
+  assert.equal(forecast.targetDate, '2026-11-25');
+  assert.equal(forecast.hourly[0].localTime, '01:00');
+  assert.equal(forecastAt('2026-11-24T05:29:00.001Z'), null); // Retrieval is older than 30 minutes.
+});
+
 test('the request calendar day is pinned before the data fetch even if it crosses local midnight', () => {
   const before = at('2026-11-24T04:59:59Z');
   const after = at('2026-11-24T05:00:01Z');

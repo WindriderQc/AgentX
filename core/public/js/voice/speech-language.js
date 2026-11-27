@@ -6,7 +6,9 @@
   if (root) { root.AgentXSpeech = api; root.NestorSpeech = api; }
 }(typeof globalThis !== 'undefined' ? globalThis : this, () => {
   const spokenTime = typeof module === 'object' && module.exports ? require('./spoken-time') : globalThis.AgentXSpokenTime;
+  const frenchClockText = text => spokenTime?.frenchClockText(text) ?? String(text || '');
   const frenchDateTimeText = text => spokenTime?.frenchDateTimeText(text) ?? String(text || '');
+  const DEFAULT_LANGUAGE = 'en';
   const PROFILES = Object.freeze({
     en: Object.freeze({
       language: 'en',
@@ -55,8 +57,6 @@
     return '';
   }
 
-  // Nestor speaks Québécois French by default: English needs more English than
-  // French words. `decided` separates a real score from that default.
   function scoreSpeechLanguage(text) {
     const source = String(text || '').toLowerCase();
     const words = source.normalize('NFKC').match(/[\p{L}']+/gu) || [];
@@ -66,13 +66,13 @@
       if (FRENCH_WORDS.has(word)) french += 1;
       if (ENGLISH_WORDS.has(word)) english += 1;
     }
-    return { french, english, language: english > french ? 'en' : 'fr', decided: french !== english };
+    return { french, english, language: french === english ? '' : english > french ? 'en' : 'fr', decided: french !== english };
   }
 
   function detectSpeechLanguage(text, hint = '') {
-    const explicit = normalizeSpeechLanguage(hint);
+    const explicit = explicitSpeechLanguage(hint);
     if (explicit) return explicit;
-    return scoreSpeechLanguage(text).language;
+    return scoreSpeechLanguage(text).language || DEFAULT_LANGUAGE;
   }
 
   function speechProfile(text, hint = '') {
@@ -83,7 +83,7 @@
   // Ambiguous fragments (host names, OK) inherit the previous spoken clause.
   function replySpeechLanguage(text, fallback = '') {
     const score = scoreSpeechLanguage(text);
-    return score.decided ? score.language : normalizeSpeechLanguage(fallback) || score.language;
+    return score.decided ? score.language : explicitSpeechLanguage(fallback) || DEFAULT_LANGUAGE;
   }
 
   // A language the person chose, as opposed to an automatic mode (auto, fr-en).
@@ -95,12 +95,12 @@
   // One voice per turn: a franglais reply must not switch speakers between
   // clauses. A chosen French or English preference wins. In automatic mode the
   // language recognized in the user's speech decides, then the words they
-  // used, then French.
-  function turnSpeechLanguage(text, recognized = '', preferred = '') {
+  // used, then the supplied conversation or installation fallback.
+  function turnSpeechLanguage(text, recognized = '', preferred = '', fallback = '') {
     const chosen = explicitSpeechLanguage(preferred);
     if (chosen) return chosen;
     const score = scoreSpeechLanguage(text);
-    return normalizeSpeechLanguage(recognized) || (score.decided ? score.language : 'fr');
+    return score.language || explicitSpeechLanguage(fallback) || explicitSpeechLanguage(recognized) || DEFAULT_LANGUAGE;
   }
 
   function withoutMediaReferences(text) {
@@ -141,7 +141,7 @@
   }
 
   function transcriptionLanguage(value) {
-    return normalizeSpeechLanguage(value) || 'fr-en';
+    return explicitSpeechLanguage(value) || 'fr-en';
   }
 
   function synthesisText(value, provider = 'kokoro') {
@@ -181,8 +181,8 @@
   }
 
   return Object.freeze({
-    frenchDateTimeText,
-    PROFILES,
+    frenchDateTimeText, frenchClockText,
+    DEFAULT_LANGUAGE, PROFILES,
     detectSpeechLanguage,
     normalizeSpeechLanguage,
     scoreSpeechLanguage,
