@@ -65,7 +65,7 @@ async function run() {
     assert.equal(JSON.parse(result.body).pipeline.records.length,30);
     assert.deepEqual(Object.keys(JSON.parse(result.body).registry.agents[0]).sort(),['id','observation','persona','runtime']);
     browser=await chromium.launch({headless:true, executablePath:chromiumPath,
-      args:['--ignore-certificate-errors-spki-list='+pin]});
+      ignoreDefaultArgs:['--hide-scrollbars'], args:['--ignore-certificate-errors-spki-list='+pin]});
     for (const width of [1280,390]) {
       const page=await browser.newPage({viewport:{width,height:width===390 ? 844 : 980}});
       const external=[], errors=[];
@@ -98,6 +98,7 @@ async function run() {
       assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
       await page.close(); console.log(width+'px HTTPS loopback: list, detail, filtered search, scroll and return OK');
     }
+    await require('./test/scroll-gestures.cjs')(browser, origin+mountPath+'/');
     const page = await browser.newPage();
     const healthyPipeline = pipelineProvider;
     let release, slowReads=0;
