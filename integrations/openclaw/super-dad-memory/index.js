@@ -34,13 +34,13 @@ export default definePluginEntry({
     registerWorkQueue(api);
     registerMailRecall(api);
     registerLifeAtlas(api);
-    registerConversationWork(api);
+    const localForeground = registerOwnerMemoryTurn(api, { resolveAgentConfig });
+    registerConversationWork(api, { localForeground });
     const quotedTranslationV1 = registerNativeReadBudget(api) === true;
     registerPhotos(api);
     registerPresentation(api);
     registerDossier(api);
     registerSources(api);
-    registerOwnerMemoryTurn(api, { resolveAgentConfig });
     const resolveWorkspace = id => resolveAgentWorkspaceDir(api.config, id);
     const workspaceFor = () => resolveWorkspace('main');
     const readNotes = createCoreNotesClient({ baseUrl: api.pluginConfig?.agentxUrl });

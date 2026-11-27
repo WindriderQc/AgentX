@@ -32,13 +32,13 @@ export function registerNativeReadBudget(api, { fetchImpl = fetch } = {}) {
     const tool = event.toolName;
     try {
       const result = await call('native_budget', { agentId: context.agentId, sessionKey: context.sessionKey, runId }, { tool }, callId);
-      runs.set(key, 'bounded');
+      runs.set(key, result.foreground === true ? 'foreground' : 'bounded');
       if (runs.size > 1000) runs.delete(runs.keys().next().value);
       if (result.admitted === true) return;
       return { block: true, blockReason: 'This consultation has exhausted its bounded research budget. No further tool was executed. Finish now with a concise answer supported by the sources already read, or explain exactly what the lookup could not verify. Do not invent a fact, try another URL, discover another tool, or claim you lack web access.' };
     } catch (cause) {
       // A guardian, specialist or unbounded native action has no such work.
-      if (cause.statusCode === 404 && runs.get(key) !== 'bounded') {
+      if (cause.statusCode === 404 && !runs.has(key)) {
         runs.set(key, 'ordinary');
         if (runs.size > 1000) runs.delete(runs.keys().next().value);
         return;

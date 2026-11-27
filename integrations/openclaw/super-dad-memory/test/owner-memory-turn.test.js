@@ -15,7 +15,7 @@ function setup(settings = config, agentxUrl = 'http://127.0.0.1:3180') {
   const hooks = {};
   const requests = [];
   let data;
-  registerOwnerMemoryTurn({ pluginConfig: { agentxUrl }, config: settings, on(name, handler) { hooks[name] = handler; } }, {
+  const localForeground = registerOwnerMemoryTurn({ pluginConfig: { agentxUrl }, config: settings, on(name, handler) { hooks[name] = handler; } }, {
     resolveAgentConfig: (cfg, id) => configuredAgents(cfg)[id],
     fetchImpl: async (url, options) => {
       requests.push({ url: String(url), body: JSON.parse(options.body) });
@@ -23,7 +23,7 @@ function setup(settings = config, agentxUrl = 'http://127.0.0.1:3180') {
       return { ok: true, json: async () => ({ data: { authority: 'agentx.core', schema: 'agentx.owner-memory-turn/v1', operation: 'turn-context', policy: 'Core owns current memory.', ...data } }) };
     }, now: () => 0,
   });
-  return { hooks, requests, use(value) { data = value; } };
+  return { hooks, requests, localForeground, use(value) { data = value; } };
 }
 
 test('fresh Core evidence reaches continued turns and fences native and wrapped history for the same run', async () => {
@@ -159,4 +159,21 @@ test('a public or unconfigured Core destination keeps private tools closed', asy
 test('the adapter is part of the native plugin distribution', async () => {
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url)));
   assert.ok(manifest.files.includes('owner-memory-turn.js'));
+});
+
+test('foreground delegation requires the live owner route and an explicitly allowed local child', async () => {
+  const settings = structuredClone(config);
+  settings.agents.entries.main.subagents = { allowAgents: ['reader'] };
+  settings.agents.entries.reader = { model: structuredClone(settings.agents.entries.main.model) };
+  const { hooks, localForeground } = setup(settings);
+  assert.equal(localForeground(context, 'reader'), false);
+  await hooks.before_prompt_build({ prompt: 'Synthetic question' }, context);
+  assert.equal(localForeground(context, 'reader'), true);
+  assert.equal(localForeground(context, 'external'), false);
+  settings.agents.entries.reader.model.fallbacks.push('remote/model');
+  assert.equal(localForeground(context, 'reader'), false);
+  settings.agents.entries.reader.model.fallbacks = [];
+  assert.equal(localForeground({ ...context, requester: { senderIsOwner: false } }, 'reader'), false);
+  hooks.agent_end({}, context);
+  assert.equal(localForeground(context, 'reader'), false);
 });

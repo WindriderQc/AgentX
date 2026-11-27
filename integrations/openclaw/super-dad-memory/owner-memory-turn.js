@@ -83,7 +83,7 @@ export function registerOwnerMemoryTurn(api, { resolveAgentConfig, fetchImpl = f
     for (const [id, state] of active) if (state.until <= instant) active.delete(id);
     active.delete(key);
     if (!key || !context.sessionKey || !context.agentId || context.sandboxed || !gateway || !isLocalPrincipal(context, api.config, gateway, resolveAgentConfig) || typeof prompt !== 'string' || !prompt.trim()) return;
-    const state = { session: context.sessionKey, agent: context.agentId, until: instant + 900_000, protected: false };
+    const state = { session: context.sessionKey, agent: context.agentId, provider: context.modelProviderId, until: instant + 900_000, protected: false };
     active.set(key, state);
     // The other agents may use a tool already granted to them (e.g. a Family
     // photo). They never receive the owner's automatic notes or added grants.
@@ -124,4 +124,16 @@ export function registerOwnerMemoryTurn(api, { resolveAgentConfig, fetchImpl = f
     const key = event.runId || context.runId;
     if (active.get(key)?.session === context.sessionKey) active.delete(key);
   });
+  return (context, childId) => {
+    const route = active.get(context.runId);
+    if (!route || route.agent !== 'main' || route.session !== context.sessionKey || now() >= route.until
+        || !isOwner(context, api.config)) return false;
+    if (!childId) return true;
+    const subagents = resolveAgentConfig(api.config, 'main')?.subagents;
+    const child = resolveAgentConfig(api.config, childId);
+    return !subagents?.model && !api.config.agents?.defaults?.subagents?.model && !child?.subagents?.model
+      && Array.isArray(subagents?.allowAgents) && subagents.allowAgents.includes(childId)
+      && isLocalPrincipal({ agentId: childId, modelId: 'agentx-primary', modelProviderId: route.provider },
+        api.config, gateway, resolveAgentConfig);
+  };
 }

@@ -17,14 +17,14 @@ export function createConversationWorkClient({ baseUrl, token, fetchImpl = fetch
     return body.data;
   };
 }
-export function registerConversationWork(api, { fetchImpl = fetch } = {}) {
+export function registerConversationWork(api, { fetchImpl = fetch, localForeground } = {}) {
   const config = api.pluginConfig || {};
   if (!config.conversationWorkToken || !/^[a-z][a-z0-9_-]{0,63}$/.test(config.conversationWorkAgentId || '')
       || ['main', 'family'].includes(config.conversationWorkAgentId)) return;
   const nativeCalls = new Map();
   const call = createConversationWorkClient({ baseUrl: config.agentxUrl, token: config.conversationWorkToken, fetchImpl });
   const guard = createGuardianWorkGuard(call, config.conversationGuardianAgentId !== config.conversationWorkAgentId
-    ? config.conversationGuardianAgentId : undefined);
+    ? config.conversationGuardianAgentId : undefined, localForeground);
   api.on('before_tool_call', async (event, context) => {
     if (!household(context)) return;
     const id = event.toolCallId || context.toolCallId, runId = event.runId || context.runId;
