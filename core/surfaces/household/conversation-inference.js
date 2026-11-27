@@ -20,22 +20,53 @@ function familyRelayInstructions(session, pack, env) {
     require('./reply-channels').contract({ family: true, math: false, pages: false })].join('\n\n');
 }
 
+function relayOptions(request, env, body, taskRequiresPrimary, usePrincipal = false) {
+  const familyInstructions = request.pack.childSafe && [
+    familyRelayInstructions(request.session, request.pack, env),
+    request.preparedRelayContext || request.relayForecastContext || (request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext)
+  ].filter(Boolean).join('\n\n');
+  return {
+    speechLanguage: request.speechLanguage,
+    relayPresentation: [!request.pack.childSafe && require('./packs').PERSONAL_STYLE,
+      require('./persona-prompt').replyLanguageDirective(request.text, request.speechLanguage, request.automaticLanguage)].filter(Boolean).join(' '),
+    relayGreeting: env[request.speechLanguage === 'en' ? 'HOUSEHOLD_RELAY_GREETING_EN' : 'HOUSEHOLD_RELAY_GREETING_FR'],
+    taskRoute: !usePrincipal && !request.relayOccupation, requireOccupied: true, relayTools: request.guardianTools,
+    allowUnavailable: !request.relayOccupation && request.pack.childSafe, requiresFamilyPrimary: taskRequiresPrimary,
+    ...(env.HOUSEHOLD_PRIMARY_RELEASE_GRACE_ENABLED === 'true' && !request.relayOccupation && request.streaming === true && request.channel === 'voice'
+      && request.session.packId === 'kidx_nestor' && request.session.scopeId === 'family' && request.pack.childSafe && {
+      familyPrimaryPreference: { enabled: true, surface: 'family', backend: request.backend, channel: request.channel,
+        windowMs: Number(env.HOUSEHOLD_PRIMARY_RELEASE_GRACE_MS) || 1500 },
+      onPrimaryWait: () => request.onWaiting?.({ reason: 'primary_active' })
+    }),
+    ...(request.relayOccupation && { observeOccupation: request.relayOccupation }),
+    ...(familyInstructions && { familyInstructions }),
+    ...(usePrincipal && { relayHostKey: env.HOUSEHOLD_SPOKEN_RELAY_HOST }),
+    relayRequest: { ...body, messages: usePrincipal ? body.messages.slice(1) : [...(request.history || []), { role: 'user', content: request.text }] }
+  };
+}
+
 async function runLocalConversation({ request, prepared, inference, consumerContract, env }) {
   const { backend, session, pack, signal, onDelta, agentxInstructions } = request;
   // A spoken turn takes the instance's voice lane, in any pack. LLMx scene
   // conversations keep their pack's task: they need its structured replies.
   const taskType = request.channel === 'voice' && !session.llmx ? voiceTask(env) : pack.taskType;
-  let thinker = null, frontUsage = null;
+  let thinker = null, frontUsage = null, pendingRelay = null;
   if (request.spoken) {
-    const decision = await spoken.decide(request, inference, consumerContract, env, spoken.pinned);
+    const decision = await spoken.decide(request, inference, consumerContract, env, spoken.pinned, async body => {
+      if (env.HOUSEHOLD_CONVERSATION_RELAY_ENABLED !== 'true' || !inference.conversation) return null;
+      return inference.conversation(body, { signal, consumerContract, ...relayOptions(request, env, body, false, true) });
+    });
     frontUsage = decision.body;
     if (decision.mode === 'parler') {
       onDelta?.(decision.texte);
       return { backend, text: decision.texte, metadata: { ...decision.metadata, usage: sumUsage([frontUsage]) },
         tools: { status: 'observed', authority: 'agentx/core', offered: [], receipts: [], spokenDialogue: 'direct' } };
     }
-    thinker = await spoken.pinned(env.HOUSEHOLD_THINKER_HOST);
-    request.spoken.consulting();
+    if (decision.mode === 'relay') pendingRelay = decision.result;
+    else {
+      thinker = await spoken.pinned(env.HOUSEHOLD_THINKER_HOST);
+      request.spoken.consulting();
+    }
   }
   // Famille may call the Core tools the instance turned on: the model's tool
   // calls run through Core's handlers, then the model answers from their
@@ -90,20 +121,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
         .statusResult(body, 'Le relais sans outils ne peut pas analyser ces pièces jointes. La demande native d’origine est conservée.', 'relay_attachments_unavailable');
       if (eligible && inference.conversation) {
         const continued = await inference.conversation({ ...body, ...(request.relayOccupation ? { model: 'agentx-primary' } : {}) }, {
-          ...options, speechLanguage: request.speechLanguage,
-          relayPresentation: [request.relayOccupation && require('./packs').PERSONAL_STYLE,
-            require('./persona-prompt').replyLanguageDirective(request.text, request.speechLanguage, request.automaticLanguage)].filter(Boolean).join(' '),
-          relayGreeting: env[request.speechLanguage === 'en' ? 'HOUSEHOLD_RELAY_GREETING_EN' : 'HOUSEHOLD_RELAY_GREETING_FR'],
-          taskRoute: !request.relayOccupation, requireOccupied: true, relayTools: request.guardianTools,
-          allowUnavailable: !request.relayOccupation, requiresFamilyPrimary: taskRequiresPrimary,
-          ...(env.HOUSEHOLD_PRIMARY_RELEASE_GRACE_ENABLED === 'true' && !request.relayOccupation && request.streaming === true && request.channel === 'voice'
-            && session.packId === 'kidx_nestor' && session.scopeId === 'family' && pack.childSafe && {
-            familyPrimaryPreference: { enabled: true, surface: 'family', backend, channel: request.channel,
-              windowMs: Number(env.HOUSEHOLD_PRIMARY_RELEASE_GRACE_MS) || 1500 },
-            onPrimaryWait: () => request.onWaiting?.({ reason: 'primary_active' })
-          }),
-          ...(request.relayOccupation ? { observeOccupation: request.relayOccupation } : { familyInstructions: [familyRelayInstructions(session, pack, env), request.preparedRelayContext || request.relayForecastContext || (request.guardianTools?.names.includes('weather') ? '' : request.familyWeatherContext)].filter(Boolean).join('\n\n') }),
-          relayRequest: { ...body, messages: [...(request.history || []), { role: 'user', content: request.text }] }
+          ...options, ...relayOptions(request, env, body, taskRequiresPrimary)
         });
         if (continued) return continued;
       }
@@ -113,8 +131,10 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
         .statusResult(body, 'Le relais local n’est pas disponible; la demande native d’origine est conservée.', 'relay_unavailable');
       return inference.execute(body, options);
     };
-    try { result = await execute(offerTools); }
-    catch (error) {
+    try {
+      result = pendingRelay || await execute(offerTools);
+      pendingRelay = null;
+    } catch (error) {
       if (!settleChangedOccupation(error)) throw error;
       break;
     }

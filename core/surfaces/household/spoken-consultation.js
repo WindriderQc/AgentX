@@ -4,6 +4,8 @@ const { selectedContextBlock, CURRENT_REQUEST_LABEL } = require('./conversation-
 
 const { readReplyFrames } = require('./persona-catalog');
 
+const { PRINCIPAL_MODEL_ALIAS } = require('../../src/services/routing/principalAlias');
+
 const decisionSchema = { type: 'object', properties: {
   mode: { type: 'string', enum: ['parler', 'consulter'] }, texte: { type: 'string' }
 }, required: ['mode', 'texte'], additionalProperties: false };
@@ -83,16 +85,23 @@ function messagesFor(request) {
   return [{ role: 'system', content: system }, ...recent, { role: 'user', content: current }];
 }
 
-async function decide(request, inference, consumerContract, env, targetFor = pinned) {
+async function decide(request, inference, consumerContract, env, targetFor = pinned, principalConversation) {
   const messages = messagesFor(request);
   if (!messages || require('../../src/services/voice/presentation').readingRequested(request.text)) return { mode: 'consulter' };
-  const target = await targetFor(env.HOUSEHOLD_SPOKEN_HOST);
-  const result = await inference.execute({ mode: 'chat', model: target.model, messages, format: decisionSchema,
+  const principal = env.HOUSEHOLD_SPOKEN_HOST === PRINCIPAL_MODEL_ALIAS;
+  const target = principal ? null : await targetFor(env.HOUSEHOLD_SPOKEN_HOST);
+  const body = { mode: 'chat', model: target?.model || PRINCIPAL_MODEL_ALIAS, messages, format: decisionSchema,
     think: false, stream: true, temperature: 0, max_tokens: request.pack.maxTokens,
-    callerDetail: 'agentx-household/spoken-dialogue', timeoutMs: 60000
-  }, { hostUrl: target.hostUrl, consumerContract, signal: request.signal, retry: { enabled: false } });
+    callerDetail: 'agentx-household/spoken-dialogue', timeoutMs: 60000 };
+  const routed = principal && principalConversation ? await principalConversation(body) : null;
+  if (['backup', 'status_only'].includes(routed?.metadata?.conversationContinuity?.state)) {
+    // The ordinary reply loop owns the original admitted relay stream, tools and receipts.
+    return { mode: 'relay', result: routed };
+  }
+  const result = routed ?? await inference.execute(body, { ...(target && { hostUrl: target.hostUrl }),
+    consumerContract, signal: request.signal, retry: { enabled: false } });
   if (!result?.ok || !result.stream || !result.completion?.then) throw failure('The local voice stream is unavailable.');
-  // A second utterance can stop delivery while Frank is generating. Core drains
+  // A second utterance can stop delivery during generation. Core drains
   // the admitted stream and verifies its release before we acknowledge the stop.
   let frames, usage;
   try {
@@ -105,7 +114,8 @@ async function decide(request, inference, consumerContract, env, targetFor = pin
     request.signal.throwIfAborted();
   }
   const { terminal, text, toolCalls } = frames;
-  if (terminal?.model !== target.model || result.metadata?.hostUrl !== target.hostUrl || toolCalls.length) {
+  if (!result.metadata?.hostUrl || !terminal?.model || terminal.model !== (target?.model || result.metadata.model)
+      || (target && result.metadata.hostUrl !== target.hostUrl) || toolCalls.length) {
     throw failure('The local voice model did not return a complete decision.');
   }
   if (terminal.done_reason === 'length') return { mode: 'consulter', body: usage };
