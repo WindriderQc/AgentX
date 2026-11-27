@@ -90,3 +90,20 @@ test('only a pending consulted turn detaches and its original id owns the worker
   assert.equal(entry.detach(), true); assert.equal(entry.detach(), false); assert.equal(active.size, 0);
   assert.deepEqual(started[0].slice(0, 2), ['f', 'turn-a']);
 });
+
+test('the foreground sees completed exchanges while an accepted lookup owns its unanswered question', async t => {
+  t.mock.method(spoken, 'pinned', target);
+  const rows = [{ clientTurnId: 'active', outcome: 'pending', inputText: 'lookup' },
+    { clientTurnId: 'prior', outcome: 'completed', inputText: 'old', replyText: 'resolved' }];
+  const memberWork = { active: () => [{ turnId: 'active' }] };
+  const selected = spoken.followupHistory(rows, family, memberWork, 'agentx', 'voice', env);
+  assert.deepEqual(selected, [rows[1]]);
+  const req = request();
+  req.history = require('../persona-records').sessionHistoryMessages(selected, { ...pack, historyTurns: 4 });
+  const reply = await run(req, async body => {
+    assert.equal(body.model, 'speaker'); assert.deepEqual(body.messages.slice(1,3).map(m => m.content), ['old','resolved']);
+    return result('speaker', JSON.stringify({ mode: 'parler', texte: 'Pip.' }));
+  });
+  assert.equal(reply.tools.spokenDialogue, 'direct');
+  assert.equal(spoken.followupHistory(rows, family, memberWork, 'agentx', 'text', env), rows);
+});

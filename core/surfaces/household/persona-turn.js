@@ -287,7 +287,7 @@ function createPersonaTurnHandler({
           // Core inference reads a block window, so its history start (and the cached prefix) moves rarely.
           try {
             const rows = (await loadSessionAuditRows(conversations, session, pack, pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? { limit: LOOKBACK_TURNS } : {})).filter(row => !(entry.workId || entry.relayIntake) || row.traceId !== clientTurnId);
-            history = sessionHistoryMessages(rows, pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {});
+            history = sessionHistoryMessages(require('./spoken-consultation').followupHistory(rows, session, memberWork, backend, req.body?.channel, conversationEnv), pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {});
             if (recoverInterrupted) interruptedContext = interruptedRequestContext(rows);
             if (recoverMath) mathContext = mathPictureContext(rows);
             if (pack.id === VOIX_FAMILY_PACK_ID && !isLlmX) repairContext = familyRepairContext(rows, userText);
