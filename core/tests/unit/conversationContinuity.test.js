@@ -47,7 +47,7 @@ describe('local conversation continuity', () => {
     held.failure.cause = 'workload_reserved';
     const w = world({ execute: jest.fn(async body => { if (body.model === 'primary') throw held; return response(body.model); }) });
     const result = await w.service(request(), { requireOccupied: true, relayHostKey: 'cpu' });
-    expect(w.run.mock.calls[0][1].requireIdleHost).toBe(true);
+    expect(w.run.mock.calls[0][1]).toMatchObject({ requireIdleHost: true, retry: { enabled: false, skipInteractiveWait: true } });
     expect(w.deps.fetch.mock.calls.map(call => call[0])).toEqual([CPU + '/api/ps']);
     expect(result.metadata.conversationContinuity).toMatchObject({ state: 'backup', hostKey: 'cpu' });
     const unavailable = await w.service(request(), { requireOccupied: true, relayHostKey: 'unregistered' });

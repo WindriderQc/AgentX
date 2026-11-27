@@ -96,7 +96,9 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
           options: { ...request.options, ...(target.numCtx && { num_ctx: target.numCtx }) } }, {
           signal, consumerContract: options.consumerContract, hostUrl: target.hostUrl,
           requireIdleHost: Boolean(options.requireOccupied && !options.observeOccupation),
-          ...(target.topology && { topology: target.topology }), retry: { enabled: false, ...extraRetry },
+          ...(target.topology && { topology: target.topology }),
+          // A scoped voice guardian can answer a proven workload reservation immediately.
+          retry: { enabled: false, ...(options.requireOccupied && options.relayHostKey && { skipInteractiveWait: true }), ...extraRetry },
           conversationContinuity: { state: 'primary', reason: null, limited: false, contextReduced: false }
         });
         return requireResult(await executePrimary());
