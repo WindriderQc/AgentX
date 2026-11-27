@@ -21,6 +21,21 @@ function followupHistory(rows, session, memberWork, backend, channel, env) {
   return active.size ? rows.filter(row => row.outcome !== 'pending' || !active.has(row.clientTurnId || row.traceId)) : rows;
 }
 
+function screenReference(view) {
+  if (!view) return '';
+  const { artx, ...screen } = view;
+  const pieces = [];
+  for (const [name, evidence] of [['screen', screen], ['ArtX', artx]]) {
+    if (!evidence || !Object.keys(evidence).length || evidence.status === 'none') continue;
+    const data = JSON.stringify(evidence);
+    // Keep whole, already validated observations. A larger view stays with
+    // the worker; its title alone is never evidence of its contents.
+    pieces.push(data.length <= 1100 ? name + ': ' + data : name + ': ' +
+      JSON.stringify({ title: evidence.title, status: evidence.status, details: 'consult the scoped source for content' }));
+  }
+  return pieces.join('\n');
+}
+
 function forTurn({ entry, session, backend, channel, env, blocked, context, identity, personalTasks, event }) {
   if (backend !== 'agentx' || blocked || !entry.relayIntake || entry.workId || entry.attachments.length || !enabled(session, channel, env)) return null;
   return { context, identity, personalReads: session.scopeId === 'personal' ? require('./spoken-personal-reads').personalReads(session, { personalTasks }) : null,
@@ -49,7 +64,7 @@ function messagesFor(request) {
   const { text, spoken, history = [], speechLanguage, pack } = request;
   const system = [pack.systemPrompt, spoken.identity,
     'Réponds brièvement à la demande actuelle dans la langue choisie. Utilise les faits et le dialogue comme références. ' +
-    'parler : réponse naturelle ou question de clarification. consulter : un fait manque, une tâche ou un outil est demandé, ou il faut approfondir. ' +
+    'parler : causerie, explication, culture générale, imagination, faits fournis ou question de clarification. Utilise aussi tes connaissances générales. consulter : il faut vérifier une donnée personnelle ou actuelle absente, agir, lire une source ou approfondir une analyse. ' +
     'Dans ce cas laisse texte vide, Core transmet la demande originale. Une citation ou une demande retirée ne lance rien. ' +
     'Tu ne réalises aucune action. Un travail déjà en cours continue séparément, réponds à la nouvelle question.',
     pack.childSafe ? 'Espace Famille : refuse les données personnelles privées, même par délégation.' : 'Respecte les capacités de cet espace personnel.',
@@ -87,4 +102,4 @@ async function decide(request, inference, consumerContract, env, targetFor = pin
   return { ...choice, texte: choice.texte.trim(), metadata: result.metadata, body: result.body };
 }
 
-module.exports = { enabled, followupHistory, pinned, decide, messagesFor, forTurn };
+module.exports = { enabled, followupHistory, screenReference, pinned, decide, messagesFor, forTurn };

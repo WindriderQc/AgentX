@@ -444,7 +444,7 @@ function createPersonaTurnHandler({
         serverPhases.prepared = Date.now() - startedAt;
         const spoken = require('./spoken-consultation').forTurn({ entry, session, backend, channel: req.body?.channel, env: conversationEnv, event,
           blocked: picture || consult || member || entry.familyPage?.target || target || safety.flagIds?.length || savedNow || family.captured || sound || workshop,
-          identity: pack.childSafe ? familyIdentity(session.persona) : session.persona?.name, context: [preparedRelayContext, repairContext, memberWork?.contextFor(session.sessionId), contextTail].filter(Boolean).join('\n'), personalTasks: runtimeServices?.tasks?.personal });
+          identity: pack.childSafe ? familyIdentity(session.persona) : session.persona?.name, context: [preparedRelayContext, repairContext, memberWork?.contextFor(session.sessionId), require('./spoken-consultation').screenReference(entry.presentationContext)].filter(Boolean).join('\n'), personalTasks: runtimeServices?.tasks?.personal });
         const run = executeConversation({ backend, spoken, session: turnSession, ...(inputOnly && { [householdUserText]: userText }), ...(guardianSession ? { canonicalSession: session,
           ...(entry.performance?.guardian?.model && { model: entry.performance.guardian.model }),
           guardianStreaming: true, maxOutputTokens: 1024 } : {}), pack: isOpening ? { ...pack, maxTokens: 180 }

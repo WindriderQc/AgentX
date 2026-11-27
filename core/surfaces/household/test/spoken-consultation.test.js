@@ -107,3 +107,12 @@ test('the foreground sees completed exchanges while an accepted lookup owns its 
   assert.equal(reply.tools.spokenDialogue, 'direct');
   assert.equal(spoken.followupHistory(rows, family, memberWork, 'agentx', 'text', env), rows);
 });
+
+test('the spoken screen context keeps complete scoped facts and defers large panels', () => {
+  const compact = spoken.screenReference({ kind: 'text', status: 'visible', title: 'Panorama', text: 'Twelve' });
+  assert.match(compact, /Twelve/);
+  const large = spoken.screenReference({ kind: 'page', status: 'visible', title: 'Panorama', read: 'x'.repeat(2000),
+    artx: { status: 'available', caption: 'Lune' } });
+  assert.match(large, /Panorama/); assert.match(large, /consult the scoped source/); assert.match(large, /Lune/);
+  assert.ok(!large.includes('x'.repeat(20))); assert.equal(spoken.screenReference({ status: 'none' }), '');
+});
