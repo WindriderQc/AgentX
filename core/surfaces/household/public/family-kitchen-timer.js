@@ -7,9 +7,12 @@
     panel.className = 'family-kitchen-timer';
     panel.hidden = true;
     const label = document.createElement('span'), digits = document.createElement('strong'), status = document.createElement('span');
+    const track = document.createElement('div');
+    track.className = 'family-kitchen-timer-track';
+    track.setAttribute('aria-hidden', 'true');
     label.className = 'family-kitchen-timer-label';
     status.setAttribute('role', 'status');
-    panel.append(label, digits, status);
+    panel.append(label, digits, track, status);
     host.append(panel);
 
     let timer, observedAt, missed = false, pending = false, audio, alerting = false, lastAlertAttempt;
@@ -61,7 +64,10 @@
       const en = english();
       panel.hidden = false;
       label.textContent = en ? 'Kitchen timer' : 'Minuterie';
-      const left = Math.max(0, Math.ceil((timer.endsAt - estimatedNow()) / 1000));
+      const remainingMs = Math.max(0, timer.endsAt - estimatedNow());
+      const left = Math.ceil(remainingMs / 1000);
+      const percent = Math.min(100, remainingMs / (timer.durationSeconds * 10));
+      panel.style.setProperty('--timer-remaining', Number.isFinite(percent) ? percent.toFixed(2) + '%' : '0%');
       const two = n => String(n).padStart(2, '0');
       const hours = Math.floor(left / 3600), rest = two(Math.floor(left % 3600 / 60)) + ':' + two(left % 60);
       digits.textContent = hours ? hours + ':' + rest : rest;

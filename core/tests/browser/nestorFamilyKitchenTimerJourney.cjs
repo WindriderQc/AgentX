@@ -21,7 +21,7 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   .replace(/  <script src="\/assets\/household\/app.js[^\n]+/, '')
   .replace('</body>', '<script>(' + function () {
     document.addEventListener('DOMContentLoaded', async () => {
-      window.AvatarDock = undefined;
+      if (!location.search.includes('avatar=1')) window.AvatarDock = undefined;
       Object.defineProperty(navigator, 'permissions', { configurable: true, value: { query: async () => ({ state: 'granted' }) } });
       window.NestorConversation.openAudio = async () => {
         const audio = { canInterrupt: false,
@@ -59,6 +59,9 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   app.use('/js', express.static(path.join(core, 'public/js')));
   app.use('/css', express.static(path.join(core, 'public/css')));
   app.get('/api/voix/player.js', (_req, res) => res.type('js').send(''));
+  if (process.env.AGENTX_TIMER_AVATAR_BUNDLE) {
+    app.get('/api/household/avatar/llmx-face.js', (_req, res) => res.sendFile(path.resolve(process.env.AGENTX_TIMER_AVATAR_BUNDLE)));
+  }
   app.get('/panel', (_req, res) => res.type('html').send(html));
   const router = express.Router();
   registerKitchenTimer(router, { ...timer, claimAlert: async id => {
@@ -91,7 +94,8 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   }
   assert.ok(server?.listening, 'No high loopback port was available');
   const origin = 'http://127.0.0.1:' + server.address().port;
-  browser = await chromium.launch({ headless: true, ...(process.env.AGENTX_BROWSER_EXECUTABLE && { executablePath: process.env.AGENTX_BROWSER_EXECUTABLE }) });
+  browser = await chromium.launch({ headless: true,
+...(process.env.AGENTX_BROWSER_EXECUTABLE && { executablePath: process.env.AGENTX_BROWSER_EXECUTABLE }) });
   const context = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
   await context.route('**/*', route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
   const page = await context.newPage();
@@ -117,7 +121,7 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   await page.locator('#conversationStart').click();
   const panel = page.locator('.family-kitchen-timer');
   await panel.waitFor({ state: 'visible' });
-  assert.match(await panel.innerText(), /Minuterie\s+02:00/);
+  assert.match(await panel.innerText(), /Minuterie\s+02:00/i);
   assert.equal(family.sent.length, 0);
   const persistedId = (await timer.read()).id;
   now += 20_000;
@@ -146,7 +150,49 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   await page.getByText('Minuterie annulée.', { exact: true }).waitFor();
   await panel.waitFor({ state: 'hidden' });
   assert.equal(family.sent.length, 0);
+  await typed('Mets une minuterie de 5 minutes.');
+  await panel.waitFor({ state: 'visible' });
+  const visual = await context.newPage();
+  visual.on('pageerror', error => errors.push(error.message));
+  await visual.goto(origin + '/panel?avatar=1');
+  await ready(visual);
+  if (process.env.AGENTX_TIMER_AVATAR_BUNDLE) {
+    await visual.locator('.avatar-dock[data-renderer=face]').waitFor({ timeout: 30000 });
+  }
+  const output = process.env.AGENTX_TIMER_VISUAL_OUTPUT;
+  if (output) fs.mkdirSync(output, { recursive: true });
+  for (const [width, height] of [[1920, 1080], [390, 844]]) {
+    await visual.setViewportSize({ width, height });
+    await visual.locator('.avatar-dock[data-view=plein]').waitFor();
+    await visual.waitForFunction(() => {
+      const r = document.querySelector('.avatar-dock[data-view=plein]')?.getBoundingClientRect();
+      return r && Math.abs(r.left) < 1 && Math.abs(r.width - innerWidth) < 1 && Math.abs(r.height - innerHeight) < 1;
+    });
+    const card = visual.locator('.family-kitchen-timer');
+    await card.waitFor();
+    assert.match(await card.innerText(), /Minuterie\s+0[45]:[0-5]\d/i);
+    const layers = await card.evaluate(panel => {
+      const bounds = node => node?.getBoundingClientRect();
+      const r = bounds(panel);
+      const overlaps = selector => [...document.querySelectorAll(selector)].some(node => {
+        const other = bounds(node);
+        return other.width && other.height && r.right > other.left && r.left < other.right && r.bottom > other.top && r.top < other.bottom;
+      });
+      return {
+        top: Number(getComputedStyle(panel).zIndex) > Number(getComputedStyle(document.querySelector('.avatar-dock')).zIndex),
+        fits: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
+        clear: !overlaps('.avatar-scene-clock, .avatar-scene-brain-badge, .avatar-scene-actions'),
+        digits: parseFloat(getComputedStyle(panel.querySelector('strong')).fontSize),
+        artworkClear: r.left >= innerWidth * .6 && r.bottom < innerHeight / 3,
+        progress: getComputedStyle(panel.querySelector('.family-kitchen-timer-track'), '::before').width !== '0px'
+      };
+    });
+    assert.deepEqual({ ...layers, digits: layers.digits >= (width > 700 ? 47 : 27) },
+      { top: true, fits: true, clear: true, digits: true, artworkClear: true, progress: true });
+    if (output) await visual.screenshot({ animations: 'disabled', path: path.join(output, 'famille-timer-' + width + '.png') });
+  }
+  await visual.close();
   assert.deepEqual(errors, []);
-  console.log('PASS Famille timer: real page, Core deterministic route, reload, status, expiry once, cancel; simulated time and audio.');
+  console.log('PASS Famille timer: real page, Core deterministic route, reload, status, expiry once, cancel, full-screen avatar at TV and phone widths; simulated time and audio.');
 })().catch(error => { console.error(error); process.exitCode = 1; })
   .finally(async () => { await browser?.close(); await new Promise(resolve => server ? server.close(resolve) : resolve()); });
