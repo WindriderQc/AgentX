@@ -32,6 +32,10 @@
 .display-block-caption { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: .82rem; color: var(--soft); overflow-wrap: anywhere; }
 .display-block-caption a { color: var(--cyan); }
 .display-block[data-kind="scene"] { border-left-color: var(--purple); }
+.display-subtraction-cubes { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 0.35rem; padding: 0.75rem; }
+.display-subtraction-cubes span { display: grid; place-items: center; aspect-ratio: 1; border: 1px solid; border-radius: 0.3rem; }
+.display-subtraction-cubes .is-remaining { color: #64c5ff; }
+.display-subtraction-cubes .is-removed { color: #ffad66; border-style: dashed; }
 /* A live Core page beside the conversation (#924). */
 .display-block[data-kind="page"] { border-left-color: var(--cyan); grid-column: 1 / -1; }
 .display-block-page { display: block; width: 100%; height: 60vh; border: 0; border-radius: 8px; background: #06111a; }

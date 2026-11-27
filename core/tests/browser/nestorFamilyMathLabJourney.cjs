@@ -16,13 +16,14 @@ const { randomUUID } = require('node:crypto');
 const core = path.resolve(__dirname, '../..'), publicDir = path.join(core, 'surfaces/household/public');
 const { generatedPersonas, snapshot } = require('../../surfaces/household/persona-catalog');
 const { createReplyChannels } = require('../../surfaces/household/reply-channels');
-const { mathTurnFor } = require('../../surfaces/household/math-scene');
+const { mathTurnFor, mathPictureFor } = require('../../surfaces/household/math-scene');
 const { presentationEvidence } = require('../../surfaces/household/screen-context');
 const screenPages = require('../../public/js/screen-pages');
 const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture', version: 1 }));
 const output = process.env.MATH_LAB_OUTPUT_DIR, stageModule = process.env.MATH_LAB_STAGE_MODULE;
+const subtractionOnly = process.env.MATH_LAB_SUBTRACTION_ONLY === '1';
 assert.ok(output, 'Keep browser evidence outside Git: set MATH_LAB_OUTPUT_DIR');
-assert.ok(stageModule && fs.existsSync(stageModule), 'Set MATH_LAB_STAGE_MODULE to GraphysX-Web dist/embed/llmx-face.js');
+if (!subtractionOnly) assert.ok(stageModule && fs.existsSync(stageModule), 'Set MATH_LAB_STAGE_MODULE to GraphysX-Web dist/embed/llmx-face.js');
 fs.mkdirSync(output, { recursive: true });
 // What the family model might write; Core's reply channels decide what reaches the screen.
 const REPLIES = {
@@ -50,7 +51,9 @@ let browser, server;
   app.get('/vendor/marked/18.0.11/marked.umd.js', (_req, res) => res.type('js').sendFile(path.join(core, 'node_modules/marked/lib/marked.umd.js')));
   app.get('/vendor/dompurify/3.4.17/purify.min.js', (_req, res) => res.type('js').sendFile(path.join(core, 'node_modules/dompurify/dist/purify.min.js')));
   app.get('/api/voix/player.js', (_req, res) => res.type('js').send(''));
-  app.get('/api/household/avatar/llmx-face.js', (_req, res) => res.type('js').sendFile(path.resolve(stageModule)));
+  app.get('/api/household/avatar/llmx-face.js', (_req, res) => subtractionOnly
+    ? res.type('js').send('/* Optional 3D renderer intentionally absent in the 2D journey. */')
+    : res.type('js').sendFile(path.resolve(stageModule)));
   app.get('/fixture', (_req, res) => {
     let html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
       .replace('<!-- product-navigation -->', '<span id="runtimePill"></span>')
@@ -79,11 +82,12 @@ let browser, server;
     res.type('application/x-ndjson');
     let value;
     // Famille (#131): a counting or addition question gets Core's cubes and Core's own answer, no model.
-    const cubes = mathTurnFor(req.body.text, 'fr');
+    const previous = turns.get(session.sessionId)?.at(-1);
+    const cubes = mathPictureFor(req.body.text, { childSafe: true, language: 'fr', previous });
     if (cubes) {
       res.write(JSON.stringify({ type: 'scene', scene: cubes.scene }) + '\n');
       res.write(JSON.stringify({ type: 'delta', delta: cubes.reply }) + '\n');
-      value = { say: cubes.reply, display: [] };
+      value = { say: cubes.reply, display: [], familyMathPicture: cubes.scene };
     } else {
       const key = Object.keys(REPLIES).find(word => req.body.text.toLowerCase().includes(word)) || 'question';
       const channels = createReplyChannels({ allowMath: true, onSay: delta => res.write(JSON.stringify({ type: 'delta', delta }) + '\n'),
@@ -92,7 +96,8 @@ let browser, server;
       value = channels.end();
     }
     if (!turns.has(session.sessionId)) turns.set(session.sessionId, []);
-    turns.get(session.sessionId).push({ clientTurnId: req.body.turnId, inputText: req.body.text, replyText: value.say, display: value.display, mathValues: {} });
+    turns.get(session.sessionId).push({ clientTurnId: req.body.turnId, inputText: req.body.text, replyText: value.say, display: value.display, mathValues: {},
+      scopeId: 'family', routeTier: value.familyMathPicture ? 'deterministic' : 'inference', familyMathPicture: value.familyMathPicture });
     session.lastTurnAt = new Date().toISOString(); lastSessionId = session.sessionId;
     res.end(JSON.stringify({ type: 'done', data: { session, traceId: randomUUID(), reply: { text: value.say }, routing: { backend: 'agentx' } } }) + '\n');
   });
@@ -137,6 +142,25 @@ let browser, server;
     const zone = page.locator('#conversationVisual');
     const newestMath = zone.locator('.display-block[data-kind=math]').first();
     const fitsWidth = () => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
+    const checkSubtraction = async () => {
+      const subtraction = zone.locator('.display-subtraction-cubes');
+      await ask('Montre-moi 10 moins 7');
+      await subtraction.waitFor();
+      assert.equal(await subtraction.locator('.is-remaining').count(), 3);
+      assert.equal(await subtraction.locator('.is-removed').count(), 7);
+      await ask('Et avec 9?');
+      await page.waitForFunction(() => document.querySelector('.display-subtraction-cubes')?.children.length === 9);
+      assert.equal(await subtraction.locator('.is-remaining').count(), 2);
+      assert.equal(await subtraction.locator('.is-removed').count(), 7);
+      assert.ok(await fitsWidth(), 'the subtraction fits the viewport');
+      await subtraction.screenshot({ path: path.join(output, label + '-famille-subtraction.png') });
+    };
+    if (subtractionOnly) {
+      await checkSubtraction();
+      cases.push({ label, viewport, subtraction: '10−7 then 9−7' });
+      await context.close();
+      continue;
+    }
     const settle3d = async card => { await card.locator('.math-plot[data-view="3d"]').waitFor({ timeout: 15000 });
       await card.locator('llmx-stage').scrollIntoViewIfNeeded(); await page.waitForTimeout(1800); };
     const slide = (card, name, value) => card.locator(`input[aria-label="Paramètre ${name}"]`).evaluate((input, v) => {
@@ -256,6 +280,7 @@ let browser, server;
     await restored.scrollIntoViewIfNeeded();
     await page.waitForTimeout(1200);
     await page.screenshot({ path: path.join(output, `${label}-famille-restored.png`) });
+    await checkSubtraction();
     cases.push({ label, viewport, cardWidth: box.width });
     await context.close();
   }

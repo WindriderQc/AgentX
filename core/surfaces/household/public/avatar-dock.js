@@ -52,6 +52,7 @@
   function sceneCaption(scene) {
     if (!scene) return '';
     if (scene.kind === 'add') return `${scene.a} + ${scene.b} = ${scene.a + scene.b}`;
+    if (scene.kind === 'subtract') return `${scene.a} − ${scene.b} = ${scene.a - scene.b}`;
     return scene.kind === 'count' ? `Counting to ${scene.to}` : '';
   }
 

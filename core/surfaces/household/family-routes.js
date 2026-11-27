@@ -4,7 +4,7 @@
 // and the family check-in / approval / recurrence workflow.
 const { shoppingList: defaultShoppingList } = require('../../src/services/shoppingListService');
 const defaultIdeaInbox = require('../../src/services/ideaInboxService');
-const { mathSceneFor } = require('./math-scene');
+const { mathSceneFor, recordedSubtraction } = require('./math-scene');
 const { registerFamilyAmbient } = require('./family-ambient');
 
 function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, shoppingList = defaultShoppingList, ideaInbox = defaultIdeaInbox, conversations = null, ambient = undefined, artx = null }) {
@@ -92,7 +92,7 @@ async function recordMathReceipt(conversations, body = {}) {
   const query = { sessionId, traceId, scopeId: 'family' };
   const turn = await conversations.getTurn(query);
   if (!turn) throw receiptFailure(404, 'MATH_RECEIPT_TURN_NOT_FOUND', 'No family turn matches this receipt');
-  const scene = mathSceneFor(turn.inputText);
+  const scene = recordedSubtraction(turn) || mathSceneFor(turn.inputText);
   if (!scene) throw receiptFailure(409, 'MATH_RECEIPT_NO_PICTURE', 'This turn did not ask for a math picture');
   const receipt = { ...scene, status, ...(reason ? { reason } : {}) };
   const same = stored => stored && Object.keys(receipt).every(key => stored[key] === receipt[key]) && stored.reason === receipt.reason;

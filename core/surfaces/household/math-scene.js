@@ -76,6 +76,41 @@ function numberAt(words, index) {
 const QUESTION = new Set(['combien', 'font', 'fait', 'egal', 'egale', 'egalent', '=', 'how', 'equals', 'makes', 'is']);
 const COUNT_VERB = /^(?:compt|count)/;
 
+function boundedSubtraction(a, b) {
+  return Number.isInteger(a) && Number.isInteger(b) && a >= 1 && a <= LIMITS.sumMax && b >= 0 && b <= a
+    ? { schema: SCHEMA, kind: 'subtract', a, b } : null;
+}
+
+function cleanMathCommand(text) {
+  return String(text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .trim().replace(/[.?!]+$/, '').trim().replace(/^nestor\s*,?\s+/, '');
+}
+
+function commandNumber(value) {
+  const words = tokens(value), number = numberAt(words, 0);
+  return number?.next === words.length ? number.value : null;
+}
+
+function subtractionFollowUp(text) {
+  const match = cleanMathCommand(text).match(/^(?:et\s+)?avec\s+([a-z0-9]+(?:[ -][a-z]+)*)$/);
+  return match ? commandNumber(match[1]) : null;
+}
+
+function recordedSubtraction(turn) {
+  const scene = turn?.familyMathPicture;
+  return turn?.scopeId === 'family' && turn.routeTier === 'deterministic' && !turn.interrupted
+    && scene?.schema === SCHEMA && scene.kind === 'subtract' ? boundedSubtraction(scene.a, scene.b) : null;
+}
+
+function familySubtraction(text, previous) {
+  const command = cleanMathCommand(text).replace(/^(?:montre[ -]moi|combien (?:ca fait|fait|font)|ca fait combien|c['’]est quoi)\s+/, '');
+  const match = command.match(/^([a-z0-9]+(?:[ -][a-z]+)*)\s+moins\s+([a-z0-9]+(?:[ -][a-z]+)*)$/)
+    || command.match(/^(\d{1,2})\s*[-−]\s*(\d{1,2})$/);
+  if (match) return boundedSubtraction(commandNumber(match[1]), commandNumber(match[2]));
+  const earlier = recordedSubtraction(previous);
+  return earlier ? boundedSubtraction(subtractionFollowUp(text), earlier.b) : null;
+}
+
 function additionIn(words) {
   // "et"/"and" join numbers in ordinary talk ("2 et 3 ans"); they count as a
   // plus only when the sentence asks a sum. "+" and "plus" always do.
@@ -136,6 +171,11 @@ const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
  */
 function mathReply(scene, language = 'fr') {
   const en = language === 'en';
+  if (scene.kind === 'subtract') {
+    const { a, b } = scene;
+    return en ? [a, 'minus', b, 'is', a - b].join(' ') + '.'
+      : [a, 'moins', b + ',', 'ça fait', a - b].join(' ') + ' ! On enlève ' + b + ', puis on compte les cubes qui restent.';
+  }
   if (scene.kind === 'add') {
     const { a, b } = scene, sum = a + b;
     const head = en ? `${a} plus ${b} makes ${sum}!` : `${a} plus ${b}, ça fait ${sum} !`;
@@ -175,8 +215,10 @@ function mathTurnFor(text, language) {
  * answer, without the model. Super Dad (#1270): the same picture beside the
  * model's own answer, so an adult question keeps its full explanation.
  */
-function mathPictureFor(text, { childSafe = false, language } = {}) {
+function mathPictureFor(text, { childSafe = false, language, previous } = {}) {
   if (childSafe) {
+    const subtraction = familySubtraction(text, previous);
+    if (subtraction) return { scene: subtraction, reply: mathReply(subtraction, language), answeredBy: 'core' };
     const turn = mathTurnFor(text, language);
     return turn && { ...turn, answeredBy: 'core' };
   }
@@ -197,20 +239,21 @@ function mathSceneNote(scene) {
 function mathPictureContext(rows = []) {
   const turn = rows.find(row => {
     if (row.scopeId !== 'family' || row.routeTier !== 'deterministic' || row.interrupted) return false;
+    if (recordedSubtraction(row)) return true;
     const math = mathTurnFor(row.inputText, row.speechLanguage);
     return math && row.replyText === math.reply;
   });
   if (!turn) return '';
-  const scene = mathSceneFor(turn.inputText);
+  const scene = recordedSubtraction(turn) || mathSceneFor(turn.inputText);
   const receipt = turn.sceneReceipt;
   const matches = receipt && Object.entries(scene).every(([key, value]) => receipt[key] === value);
   const observation = matches && receipt.status === 'applied'
     ? 'The browser reported that the renderer applied this picture. This does not prove the child saw it.'
     : matches && receipt.status === 'rejected'
-      ? 'The browser reported that the renderer rejected this picture. Do not claim the 3D picture was shown.'
-      : 'Display is unconfirmed. Do not claim the 3D picture was shown.';
+      ? 'The browser reported that the renderer rejected this picture. Do not claim the ' + (scene.kind === 'subtract' ? '2D' : '3D') + ' picture was shown.'
+      : 'Display is unconfirmed. Do not claim the ' + (scene.kind === 'subtract' ? '2D' : '3D') + ' picture was shown.';
   return '\n\nEarlier math picture in this Family conversation (historical reference, not the current screen): '
     + JSON.stringify(scene) + '. ' + observation;
 }
 
-module.exports = { numberAt, mathSceneFor, mathReply, mathTurnFor, mathPictureFor, mathPictureContext, LIMITS, SCHEMA };
+module.exports = { numberAt, mathSceneFor, mathReply, mathTurnFor, mathPictureFor, mathPictureContext, subtractionFollowUp, recordedSubtraction, LIMITS, SCHEMA };

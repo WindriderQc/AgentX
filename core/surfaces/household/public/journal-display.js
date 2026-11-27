@@ -47,9 +47,10 @@
   function sceneHtml(receipt, esc) {
     if (!receipt?.status) return '';
     const picture = receipt.kind === 'add' ? `${receipt.a} + ${receipt.b} = ${receipt.a + receipt.b}`
+      : receipt.kind === 'subtract' ? `${receipt.a} − ${receipt.b} = ${receipt.a - receipt.b}`
       : receipt.kind === 'count' ? `counting to ${receipt.to}` : 'scene';
     const outcome = receipt.status === 'applied' ? 'drawn' : `not drawn (${esc(REJECTIONS[receipt.reason] || receipt.reason || 'rejected')})`;
-    return `<li><span class="journal-shown-kind">3D</span> ${esc(picture)} · ${outcome}</li>`;
+    return `<li><span class="journal-shown-kind">${receipt.kind === 'subtract' ? '2D' : '3D'}</span> ${esc(picture)} · ${outcome}</li>`;
   }
 
   /** What reached the child's screen for this turn, or '' when nothing did. */

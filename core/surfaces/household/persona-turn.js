@@ -16,7 +16,7 @@ const familyPictureLookup = require('./family-picture-lookup');
 const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('./family-repair-context');
 const familyPages = require('./family-pages');
 const { familyClockContext, familyIdentity } = require('./family-clock');
-const { mathPictureFor, mathPictureContext } = require('./math-scene');
+const { mathPictureFor, mathPictureContext, subtractionFollowUp } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels, { displayForReply } = require('./turn-presentation');
 const { conversationLanguage } = require('./conversation-language');
@@ -207,7 +207,13 @@ function createPersonaTurnHandler({
       const assessedSafety = assessSafety(userText, { adult: !pack.childSafe });
       const safety = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyPages.navigationSafety(userText, assessedSafety, assessSafety) : assessedSafety;
       const childBoundary = childBoundaryReply(pack, safety, userText);
-      const mathPicture = !isLlmX && !childBoundary && !safety.deterministicEscalation ? mathPictureFor(userText, { childSafe: pack.childSafe, language: preferredSpeechLanguage }) : null;
+      const mathAllowed = !isLlmX && !childBoundary && !safety.deterministicEscalation;
+      let previousMathTurn;
+      if (mathAllowed && pack.childSafe && session.scopeId === 'family' && subtractionFollowUp(userText) !== null) {
+        [previousMathTurn] = await conversations.listTurns({ sessionId: session.sessionId, packId: pack.id, scopeId: session.scopeId }, { limit: 1 });
+      }
+      const mathPicture = mathAllowed ? mathPictureFor(userText, { childSafe: pack.childSafe,
+        language: preferredSpeechLanguage, previous: previousMathTurn }) : null;
       const mathTurn = mathPicture?.answeredBy === 'core' ? mathPicture : null;
       const pictureRequest = !isLlmX && !consult && !entry.workId && !entry.attachments.length && familyPictureIntent.explicitCreation({ session,
         backend: conversationBackend(session.backend, conversationEnv), channel: req.body?.channel, turnId: clientTurnId, safety, text: userText, available: executeConversation.familyPrimaryConfigured });
@@ -533,6 +539,7 @@ function createPersonaTurnHandler({
         traceId, speechLanguage, ...(relayStopped && { writtenStatus: 'partial', outcome: 'failed' }),
         ...(isLlmX ? { source: 'graphysx-llmx', origin: isOpening ? 'application_opening' : 'human', outcome: 'completed', applicationEvent: entry.applicationEvent || null } : {}),
         ...(sceneProposal ? { sceneProposal } : {}), ...(display.length ? { display: replyChannels.storedDisplay(display) } : {}),
+        ...(mathTurn?.scene.kind === 'subtract' ? { familyMathPicture: mathTurn.scene } : {}),
         ...(clientTurnId ? { clientTurnId, interrupted: entry.interrupted } : {}),
         sessionId: session.sessionId,
         packId: pack.id,

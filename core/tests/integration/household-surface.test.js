@@ -1151,6 +1151,35 @@ describe('built-in Household surface on Core', () => {
     expect(followUp).toContain('browser reported that the renderer applied this picture');
   });
 
+  test('Family subtraction voice transcripts use a same-session follow-up and retain the renderer receipt', async () => {
+    const base = '/api/voice-personas/family/sessions';
+    const create = async () => (await request(app).post(base).send({
+      packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx'
+    }).expect(201)).body.data.session.sessionId;
+    const id = await create();
+    const ndjson = (res, done) => { let text = ''; res.setEncoding('utf8'); res.on('data', chunk => { text += chunk; }); res.on('end', () => done(null, text)); };
+    const ask = async (sessionId, text) => {
+      const response = await request(app).post(base + '/' + sessionId + '/turns/text').send({ text, stream: true, channel: 'voice' })
+        .buffer(true).parse(ndjson).expect(200);
+      return response.body.split('\n').filter(Boolean).map(JSON.parse);
+    };
+    const inferencesBefore = executeForTest.mock.calls.length;
+    const first = await ask(id, 'Montre-moi 10 moins 7');
+    const follow = await ask(id, 'Et avec 9?');
+    const scene = { schema: 'agentx.math-scene.v1', kind: 'subtract', a: 9, b: 7 };
+    expect(first[0]).toEqual({ type: 'scene', scene: { ...scene, a: 10 } });
+    expect(follow[0]).toEqual({ type: 'scene', scene });
+    expect(follow.at(-1).data.reply.text).toMatch(/^9 moins 7, ça fait 2/);
+    expect(follow.at(-1).data.routing.tier).toBe('deterministic');
+    expect(executeForTest.mock.calls.length).toBe(inferencesBefore);
+    const traceId = follow.at(-1).data.traceId;
+    const receipt = (await request(app).post('/api/family/math-receipts').send({ sessionId: id, traceId, status: 'applied' }).expect(200)).body.data;
+    expect(receipt.receipt).toMatchObject({ ...scene, status: 'applied' });
+    expect((await ask(await create(), 'Et avec 9?')).some(row => row.type === 'scene')).toBe(false);
+    await ask(id, 'Raconte une histoire');
+    expect((await ask(id, 'Et avec 9?')).some(row => row.type === 'scene')).toBe(false);
+  });
+
   test('the family lane runs new Family conversations on Core inference with their Core features; spoken turns use the voice task (#261)', async () => {
     const names = ['HOUSEHOLD_FAMILY_TOOLS', 'HOUSEHOLD_FAMILY_CONVERSATION_BACKEND', 'HOUSEHOLD_VOICE_TASK', 'OPENCLAW_GATEWAY_URL', 'OPENCLAW_GATEWAY_TOKEN'];
     const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
