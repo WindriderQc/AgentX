@@ -256,4 +256,12 @@ function mathPictureContext(rows = []) {
     + JSON.stringify(scene) + '. ' + observation;
 }
 
-module.exports = { numberAt, mathSceneFor, mathReply, mathTurnFor, mathPictureFor, mathPictureContext, subtractionFollowUp, recordedSubtraction, LIMITS, SCHEMA };
+async function mathPictureForConversation(text, { pack, session, language, conversations }) {
+  let previous;
+  if (pack.childSafe && session.scopeId === 'family' && subtractionFollowUp(text) !== null) {
+    [previous] = await conversations.listTurns({ sessionId: session.sessionId, packId: pack.id, scopeId: session.scopeId }, { limit: 1 });
+  }
+  return mathPictureFor(text, { childSafe: pack.childSafe, language, previous });
+}
+
+module.exports = { mathPictureForConversation, numberAt, mathSceneFor, mathReply, mathTurnFor, mathPictureFor, mathPictureContext, subtractionFollowUp, recordedSubtraction, LIMITS, SCHEMA };

@@ -5,7 +5,7 @@ const {createPersonaTurnHandler}=require('../../persona-turn');
 const {createConversationExecutor}=require('../../conversation-executor');
 const packs=require('../../packs'),prompt=require('../../persona-prompt'),records=require('../../persona-records');
 const RUN_ID='resp_33333333-3333-4333-8333-333333333333';
-function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages, validClientTurnId = () => false, conversationEnv = {}, artx = null, ambient = null, hermesClient, continuityExecute, failContext, visuals = null, familyTasks, plants, preferencesFor }) {
+function harness({ packId, backend, response = 'Réponse synthétique.', conversationImages, settle, sounds, screenPages, validClientTurnId = () => false, conversationEnv = {}, artx = null, ambient = null, hermesClient, continuityExecute, failContext, visuals = null, familyTasks, plants, preferencesFor, kitchenTimer }) {
   const pack = packs.packById(packId);
   const session = { sessionId: 'synthetic-session', status: 'active', packId, modeId: pack.defaultMode, scopeId: pack.defaultScopeId,
     backend, agentId: pack.childSafe ? 'family' : 'main', turnCount: 0,
@@ -42,7 +42,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     }
   });
   const handle = createPersonaTurnHandler({
-    screenPages, logger: null, runtimeServices: { attachments: { ids: () => [] }, household: { plants } }, conversations, conversationEnv, artx, ambient, preferencesFor,
+    screenPages, logger: null, runtimeServices: { attachments: { ids: () => [] }, household: { plants } }, conversations, conversationEnv, artx, ambient, preferencesFor, kitchenTimer,
     executeConversation: Object.assign(async request => { const result = await executeConversation(request); settle?.(request); return result; }, {familyPrimaryConfigured:executeConversation.familyPrimaryConfigured}), conversationImages,
     requireNativeAgent: async () => {},
     familyTasks: familyTasks || { listProfileDetails: async () => ({ profiles: state.profiles }), listProfiles: async () => ({ profiles: state.profiles }),

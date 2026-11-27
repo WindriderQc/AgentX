@@ -7,7 +7,7 @@ const defaultIdeaInbox = require('../../src/services/ideaInboxService');
 const { mathSceneFor, recordedSubtraction } = require('./math-scene');
 const { registerFamilyAmbient } = require('./family-ambient');
 
-function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, shoppingList = defaultShoppingList, ideaInbox = defaultIdeaInbox, conversations = null, ambient = undefined, artx = null }) {
+function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, shoppingList = defaultShoppingList, ideaInbox = defaultIdeaInbox, conversations = null, ambient = undefined, artx = null, kitchenTimer = null }) {
   const router = express.Router();
   const reply = async (res, status, operation) => {
     try { return res.status(status).json({ ok: true, status: 'success', data: await operation() }); }
@@ -17,6 +17,7 @@ function registerFamilyRoutes({ app, express, familyTasks, standardJsonParser, s
     }
   };
   router.use(standardJsonParser);
+  if (kitchenTimer) require('./family-kitchen-timer-routes').registerKitchenTimer(router, kitchenTimer);
   // One household shopping list, the same one Nestor keeps. Children may read
   // and add; crossing items off is an explicit household review action.
   const shopping = [['get', '/shopping', 'list'], ['post', '/shopping/add', 'add'], ['post', '/shopping/bought', 'bought']];

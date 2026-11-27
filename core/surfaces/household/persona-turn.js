@@ -1,6 +1,5 @@
 'use strict';
 // Shared Household turn engine for browser routes and native consumers.
-
 const { readingRequested } = require('../../src/services/voice/presentation');
 const crypto = require('crypto');
 const { teamPersona } = require('./persona-catalog');
@@ -16,7 +15,7 @@ const familyPictureLookup = require('./family-picture-lookup');
 const { familyRepairContext, familyRepairDirective, LOOKBACK_TURNS } = require('./family-repair-context');
 const familyPages = require('./family-pages');
 const { familyClockContext, familyIdentity } = require('./family-clock');
-const { mathPictureFor, mathPictureContext, subtractionFollowUp } = require('./math-scene');
+const { mathPictureForConversation, mathPictureContext } = require('./math-scene');
 const replyChannels = require('./reply-channels');
 const { plainReply } = replyChannels, { displayForReply } = require('./turn-presentation');
 const { conversationLanguage } = require('./conversation-language');
@@ -31,10 +30,9 @@ const dedicatedGuardian = require('./dedicated-guardian');
 const familyPictureIntent = require('./family-picture-intent');
 const { profileUnavailable } = require('../../src/services/conversationWorks/performance');
 const { turnUsage } = require('../../src/services/conversations/turnAccounting');
-
 function createPersonaTurnHandler({
   logger, runtimeServices, conversations, conversationEnv, executeConversation, requireNativeAgent, preferencesFor = null, conversationWorks = null, artx = null, ambient = null,
-  familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload,
+  familyTasks, ownerMemory, familyMemory, notesFor, personalAttachments, knowledgeState, openHold, openingPayload, kitchenTimer = null,
   sounds, visuals, brain, memberWork, conversationImages, screenPages = require('../../public/js/screen-pages'), warmup = null, presentationCompanion = null, activePersonaTurns, validClientTurnId,
   envelope, fail, cleanText, assessSafety, childBoundaryReply, escalationReply, detectMemoryRequest,
   packById, packSummary, modeSummary, publicSession, systemPromptFor, spokenReplyLanguage,
@@ -64,9 +62,7 @@ function createPersonaTurnHandler({
     const isLlmX = Boolean(req.llmx), isOpening = req.llmx?.opening === true;
     const sceneEnabled = isLlmX && !isOpening && llmx.sceneCapable(req.llmx.sceneContext);
     const userText = consult ? consult.question : isOpening ? '' : String(req.body?.text || '').trim();
-    if (userText.length > 4000) {
-      return fail(res, 413, 'The text exceeds the 4,000-character limit. Nothing was shortened or sent to the model.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
-    }
+    if (userText.length > 4000) return fail(res, 413, 'The text exceeds the 4,000-character limit. Nothing was shortened or sent to the model.', 'VOICE_PERSONA_TEXT_TOO_LARGE');
     if (!userText && !isOpening) return fail(res, 400, 'text is required', 'VOICE_PERSONA_TEXT_REQUIRED');
     if (!isLlmX && req.body?.language !== undefined && !['auto', 'fr', 'en'].includes(req.body.language)) {
       return fail(res, 400, 'language must be auto, fr or en', 'VOICE_PERSONA_INVALID_LANGUAGE');
@@ -207,17 +203,12 @@ function createPersonaTurnHandler({
       const assessedSafety = assessSafety(userText, { adult: !pack.childSafe });
       const safety = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyPages.navigationSafety(userText, assessedSafety, assessSafety) : assessedSafety;
       const childBoundary = childBoundaryReply(pack, safety, userText);
-      const mathAllowed = !isLlmX && !childBoundary && !safety.deterministicEscalation;
-      let previousMathTurn;
-      if (mathAllowed && pack.childSafe && session.scopeId === 'family' && subtractionFollowUp(userText) !== null) {
-        [previousMathTurn] = await conversations.listTurns({ sessionId: session.sessionId, packId: pack.id, scopeId: session.scopeId }, { limit: 1 });
-      }
-      const mathPicture = mathAllowed ? mathPictureFor(userText, { childSafe: pack.childSafe,
-        language: preferredSpeechLanguage, previous: previousMathTurn }) : null;
+      const timerReply = !isLlmX && !consult && !entry.attachments.length && !childBoundary && !safety.deterministicEscalation && !safety.flagIds?.length && pack.id === VOIX_FAMILY_PACK_ID && session.scopeId === 'family' ? await kitchenTimer?.turnReply(userText, preferredSpeechLanguage) : null;
+      const mathPicture = !timerReply && !isLlmX && !childBoundary && !safety.deterministicEscalation ? await mathPictureForConversation(userText, { pack, session, language: preferredSpeechLanguage, conversations }) : null;
       const mathTurn = mathPicture?.answeredBy === 'core' ? mathPicture : null;
       const pictureRequest = !isLlmX && !consult && !entry.workId && !entry.attachments.length && familyPictureIntent.explicitCreation({ session,
         backend: conversationBackend(session.backend, conversationEnv), channel: req.body?.channel, turnId: clientTurnId, safety, text: userText, available: executeConversation.familyPrimaryConfigured });
-      entry.familyPage = !pictureRequest && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? await familyPages.forTurn(userText, pagesFor(pack), conversations, session) : null;
+      entry.familyPage = !timerReply && !pictureRequest && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? await familyPages.forTurn(userText, pagesFor(pack), conversations, session) : null;
       let backend, picture = false, replyText, sceneProposal = null, display = [];
       const clipPlayer = (!requiredSession || requiredSession.browser === true) && req.body?.soundPlayback === true;
       const soundTurnId = clientTurnId || entry.imageTurnId;
@@ -244,6 +235,8 @@ function createPersonaTurnHandler({
       };
       if (safety.deterministicEscalation) {
         replyText = escalationReply(pack, safety);
+      } else if (timerReply) {
+        replyText = timerReply.text; if (timerReply.timer) event('timer', { timer: timerReply.timer });
       } else if (childBoundary || mathTurn) { // #131: the picture first, then Nestor's exact answer without waiting for inference.
         replyText = childBoundary || mathTurn.reply; if (mathTurn) event('scene', { scene: mathTurn.scene });
       } else if (entry.familyPage?.standalone) {

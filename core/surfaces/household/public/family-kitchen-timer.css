@@ -1,0 +1,22 @@
+.family-kitchen-timer {
+  position: fixed;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  z-index: 60;
+  display: grid;
+  gap: .15rem;
+  min-width: 7.75rem;
+  padding: .55rem .85rem;
+  border: 1px solid #72d2c8;
+  border-radius: .85rem;
+  color: #f9fbff;
+  background: #172332;
+  box-shadow: 0 3px 14px #0005;
+  text-align: center;
+  pointer-events: none;
+}
+.family-kitchen-timer[hidden] { display: none; }
+.family-kitchen-timer strong { font-size: 1.5rem; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.family-kitchen-timer span { font-size: .8rem; }
+.family-kitchen-timer [role="status"]:empty { display: none; }
+.family-kitchen-timer[data-state="finished"] { border-color: #e4b066; }

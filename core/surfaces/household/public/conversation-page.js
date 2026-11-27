@@ -130,6 +130,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
     set onchange(handler) { languageField.onchange = handler; },
     addEventListener: (...args) => languageField.addEventListener(...args)
   };
+  const kitchenTimer = family ? window.FamilyKitchenTimer?.mount({ host: app, api, getLanguage: () => language.value }) : null;
   // Shown, never spoken (#167): secrets exist only in the private space.
   const board = window.DisplayBoard.createScreen({ text: el('conversationBoard'), visual: el('conversationVisual') }, { secrets: !family, space: family ? 'family' : 'personal', getLanguage: () => language.value });
   const companion = family ? null : window.NestorPresentationCompanion?.create({ host: app.querySelector('.conversation-live'),
@@ -493,6 +494,7 @@ window.mountConversation = async function ({ app, api, esc, space = 'personal', 
       if (!line.trim()) return;
       const event = JSON.parse(line);
       workflow?.stream(turnId, event);
+      if (event.type === 'timer') kitchenTimer?.apply(event.timer);
       if (event.type === 'accepted') { workAccepted = true; void work?.poll(); }
       if (event.type === 'error') throw new Error(event.message);
       if (event.type === 'written' && !interruptedTurns.has(turnId) && writing.push(event)) showWritten(writing.snapshot());
