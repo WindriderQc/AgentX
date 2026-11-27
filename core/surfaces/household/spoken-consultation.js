@@ -2,6 +2,8 @@
 
 const { selectedContextBlock, CURRENT_REQUEST_LABEL } = require('./conversation-agent');
 
+const { readReplyFrames } = require('./persona-catalog');
+
 const decisionSchema = { type: 'object', properties: {
   mode: { type: 'string', enum: ['parler', 'consulter'] }, texte: { type: 'string' }
 }, required: ['mode', 'texte'], additionalProperties: false };
@@ -86,20 +88,33 @@ async function decide(request, inference, consumerContract, env, targetFor = pin
   if (!messages || require('../../src/services/voice/presentation').readingRequested(request.text)) return { mode: 'consulter' };
   const target = await targetFor(env.HOUSEHOLD_SPOKEN_HOST);
   const result = await inference.execute({ mode: 'chat', model: target.model, messages, format: decisionSchema,
-    think: false, stream: false, temperature: 0, max_tokens: request.pack.maxTokens,
+    think: false, stream: true, temperature: 0, max_tokens: request.pack.maxTokens,
     callerDetail: 'agentx-household/spoken-dialogue', timeoutMs: 60000
   }, { hostUrl: target.hostUrl, consumerContract, signal: request.signal, retry: { enabled: false } });
-  if (!result?.ok || !result.body?.done
-      || result.body.model !== target.model || result.metadata?.hostUrl !== target.hostUrl || result.body.message?.tool_calls?.length) {
+  if (!result?.ok || !result.stream || !result.completion?.then) throw failure('The local voice stream is unavailable.');
+  // A second utterance can stop delivery while Frank is generating. Core drains
+  // the admitted stream and verifies its release before we acknowledge the stop.
+  let frames, usage;
+  try {
+    frames = await readReplyFrames(result.stream, () => {}, request.signal, { allowLength: true });
+  } finally {
+    usage = await result.completion;
+  }
+  if (request.signal?.aborted) {
+    await request.onSettled?.();
+    request.signal.throwIfAborted();
+  }
+  const { terminal, text, toolCalls } = frames;
+  if (terminal?.model !== target.model || result.metadata?.hostUrl !== target.hostUrl || toolCalls.length) {
     throw failure('The local voice model did not return a complete decision.');
   }
-  if (result.body.done_reason === 'length') return { mode: 'consulter', body: result.body };
-  if (result.body.done_reason !== 'stop') throw failure('The local voice decision did not finish.');
+  if (terminal.done_reason === 'length') return { mode: 'consulter', body: usage };
+  if (terminal.done_reason !== 'stop') throw failure('The local voice decision did not finish.');
   let choice;
-  try { choice = JSON.parse(result.body.message.content); } catch { /* Invalid output has no authority. */ }
+  try { choice = JSON.parse(text); } catch { /* Invalid output has no authority. */ }
   if (!choice || !['parler', 'consulter'].includes(choice.mode) || typeof choice.texte !== 'string'
       || (choice.mode === 'parler' && !choice.texte.trim()) || /<\/?(?:show|consult|secret|say|written|sound|page|math)\b/i.test(choice.texte) || Object.keys(choice).some(key => !['mode', 'texte'].includes(key))) throw failure('Invalid local voice decision.');
-  return { ...choice, texte: choice.texte.trim(), metadata: result.metadata, body: result.body };
+  return { ...choice, texte: choice.texte.trim(), metadata: result.metadata, body: usage };
 }
 
 module.exports = { enabled, followupHistory, screenReference, pinned, decide, messagesFor, forTurn };

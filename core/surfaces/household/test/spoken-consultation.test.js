@@ -15,6 +15,8 @@ const pack = { id: 'kidx_nestor', childSafe: true, maxTokens: 512, systemPrompt:
 const request = () => ({ backend: 'agentx', session: family, channel: 'voice', text: 'Question originale',
   agentxInstructions: 'Scoped worker instructions', pack, history: [], spoken: { context: 'Source publique', consulting() {} } });
 const result = (model, content, fields = {}) => ({ ok: true, metadata: { model, hostUrl: target(model).hostUrl },
+  ...(model !== 'worker' && { stream: [JSON.stringify({ model, done: true, done_reason: 'stop', message: { content }, ...fields })],
+    completion: Promise.resolve({ completed: true, terminalComplete: true }) }),
   body: { model, done: true, done_reason: 'stop', message: { content }, ...fields } });
 const run = (req, execute) => runLocalConversation({ request: req, prepared: [{ role: 'user', content: req.text }],
   inference: { execute }, consumerContract: 'household-test', env });
@@ -32,11 +34,29 @@ test('a direct spoken reply has a single nonthinking call, canonical voice text,
   const req = request(), deltas = [], calls = [];
   req.onDelta = delta => deltas.push(delta);
   const reply = await run(req, async (body, options) => {
-    calls.push(body); assert.equal(options.hostUrl, 'http://speaker'); assert.equal(body.think, false);
+    calls.push(body); assert.equal(options.hostUrl, 'http://speaker'); assert.equal(body.think, false); assert.equal(body.stream, true);
     assert.equal(body.tools, undefined); assert.ok(body.format); assert.match(body.messages.at(-1).content, /Question originale$/);
     return result('speaker', JSON.stringify({ mode: 'parler', texte: 'Oui.' }));
   });
   assert.equal(calls.length, 1); assert.deepEqual(deltas, ['Oui.']); assert.equal(reply.tools.spokenDialogue, 'direct');
+});
+
+test('interrupting the foreground waits for verified release and discards its decision', async () => {
+  for (const verified of [true, false]) {
+    const controller = new AbortController();
+    let settled = false, release;
+    const receipt = new Promise((resolve, reject) => { release = () => verified ? resolve({ completed: true }) : reject(new Error('unverified release')); });
+    const reply = spoken.decide({ ...request(), signal: controller.signal, onSettled: () => { settled = true; } },
+      { execute: async () => {
+        controller.abort();
+        return { ...result('speaker', '{"mode":"consulter","texte":""}'), completion: receipt };
+      } }, 'test', env, target);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(settled, false);
+    release();
+    await assert.rejects(reply, verified ? { name: 'AbortError' } : /unverified release/);
+    assert.equal(settled, verified);
+  }
 });
 
 test('a consultation uses the original request, same scope and only its own tools', async t => {
