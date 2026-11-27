@@ -3,9 +3,11 @@
 const { isTranslationSession } = require('../../../../shared/quotedTranslation.cjs');
 const { tokenMatches, fail } = require('./contract');
 const { requireProtectedBackend, nativeInputOnly, sourceTransferError } = require('../conversations/protectedSources');
+const { isNativeToolCallId } = require('../../../../shared/nativeToolCallId.cjs');
+const { isDelegationTool } = require('../../../../shared/nativeDelegation.cjs');
 const { createWorkDelivery } = require('./delivery');
 
-function registerConversationWorkRoutes(router, { works, env = process.env }) {
+function registerConversationWorkRoutes(router, { works, env = process.env, isForegroundRun }) {
   const delivery = createWorkDelivery(works);
   const control = require('./control').createWorkControl(works);
   const handle = action => async (req, res) => {
@@ -26,11 +28,25 @@ function registerConversationWorkRoutes(router, { works, env = process.env }) {
     handle(req => works.questions.lookup(req.params.sessionId, req.params.workId, req.params.intentId)));
   router.post('/native/work', handle(async req => {
     const token = /^Bearer\s+(.+)$/i.exec(req.get('authorization') || '')?.[1];
-    if (!tokenMatches(token, env.PERSONAL_CONVERSATION_WORK_TOKEN) || isTranslationSession(req.body?.context?.sessionKey)) throw fail('CONVERSATION_WORK_NOT_FOUND', 'Conversation work not found.', 404);
+    const explicit = nativeInputOnly('openclaw', env);
+    if (!tokenMatches(token, env.PERSONAL_CONVERSATION_WORK_TOKEN)) {
+      if (explicit) throw fail('CONVERSATION_WORK_UNAUTHORIZED', 'Conversation work unavailable.', 403);
+      throw fail('CONVERSATION_WORK_NOT_FOUND', 'Conversation work not found.', 404);
+    }
+    if (isTranslationSession(req.body?.context?.sessionKey)) throw fail('CONVERSATION_WORK_NOT_FOUND', 'Conversation work not found.', 404);
     requireProtectedBackend('openclaw', env);
-    if (nativeInputOnly('openclaw', env)) throw sourceTransferError();
     const { operation, context, input, callId } = req.body || {};
     if (Object.keys(req.body || {}).some(key => !['operation', 'context', 'input', 'callId'].includes(key))) throw fail('CONVERSATION_WORK_REQUEST_INVALID', 'Invalid work request.');
+    if (explicit) {
+      // A foreground check returns only a control decision. Worker/source handlers below remain inaccessible.
+      if (!['guardian_tool', 'native_budget'].includes(operation) || !isNativeToolCallId(callId)
+          || !input || Object.keys(input).length !== 1 || !isDelegationTool(input.tool)
+          || !context || Object.keys(context).some(k => !['agentId', 'sessionKey', 'runId'].includes(k))
+          || isForegroundRun?.(context) !== true) throw sourceTransferError();
+      return operation === 'guardian_tool'
+        ? { authority: 'core.conversation-works', foreground: true, delegated: false }
+        : { authority: 'core.conversation-works', foreground: true, admitted: true };
+    }
     if (operation === 'question_context') return works.questions.context(input);
     if (operation === 'question_effect') return works.questions.claim(input);
     if (operation === 'request') return works.request(context);

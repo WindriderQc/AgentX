@@ -452,7 +452,7 @@ function register(api) {
     surface: 'household', sessionId, packId: 'personal_operator', scopeId: 'personal'
   });
   const conversationWorks = require('./conversation-work-runtime').registerWorkRuntime({
-    router: personas, conversations, tasks: personalTasks, agentClient, continuity: nestorClient,
+    router: personas, conversations, tasks: personalTasks, agentClient, continuity: nestorClient, activePersonaTurns,
     env: conversationEnv, logger, screenPages, ambient, attachmentStore: personalAttachments, capability: runtimeServices.conversationWorks });
   const personalSessionScope = sessionId => ({ sessionId, packId: 'personal_operator', scopeId: 'personal' }), familySessionScope = sessionId => ({ sessionId, packId: 'kidx_nestor', scopeId: 'family' });
   personas.get('/private/sessions/:sessionId/export', async (req, res) => {

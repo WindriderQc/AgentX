@@ -78,3 +78,21 @@ test('dedicated guardian wrapper identity and Core observation cannot be forged 
   unavailable = true;
   assert.equal((await guard(guardian, { toolName: 'tool_call', params })).block, true);
 });
+
+test('a foreground decision applies only to its local isolated consultation call', async () => {
+  let missing = false;
+  const guard = createGuardianWorkGuard(async (_op, _native, input) => {
+    if (missing) throw Object.assign(new Error('Unavailable'), { statusCode: 404 });
+    return { foreground: true, delegated: false };
+  }, undefined, (_ctx, child) => !child || child === 'reader');
+  const spawn = args => ({ toolName: 'tool_call', toolCallId: 'call1', params: {
+    id: 'openclaw:core:sessions_spawn', args: { agentId: 'reader', context: 'isolated', task: 'Synthetic question', ...args }
+  } });
+  assert.equal(await guard(native, spawn()), undefined);
+  for (const args of [{context:'fork'},{agentId:'remote'},{model:'other/model'},{runtime:'acp'},{attachments:[{}]}]) {
+    assert.equal((await guard(native, spawn(args))).block, true);
+  }
+  assert.equal((await guard(native,{toolName:'personal_memory'})).block, true);
+  missing = true;
+  assert.equal((await guard(native, spawn())).block,true);
+});
