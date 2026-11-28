@@ -49,3 +49,10 @@ test('a private label never becomes an external query, including a later explici
   assert.match((await h.turn('Sur le Web.', 'voice')).reply.text, /catalogue/);
   assert.deepEqual(queries, []);
 });
+
+test('an unrelated request that names the Web stays on its original conversation route', async () => {
+  const { h, queries } = fixture(true);
+  await h.turn('Cherche la météo sur le Web.', 'voice');
+  assert.equal(h.sent.length, 1);
+  assert.deepEqual(queries, []);
+});

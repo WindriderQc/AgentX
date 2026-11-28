@@ -117,8 +117,9 @@ function photoChoice(text) {
   if (!request || /\b(?:puis|ensuite|then|album|galerie|gallery|photos|médias|immich|internet|web)\b/.test(request[1])) return null;
   const subject = request[1].replace(/^(?:(?:un|une|le|la|les|a|an|the) |l')/, '').trim();
   // An ordinary request to show a page or a calculation keeps its own route.
-  const photo = /\b(?:photos?|pictures?)\b/.test(phrase);
-  if (!suffix && (genericPicture(phrase) || (!photo && !names.get(word(subject))))) return null;
+  const photoObject = /\b(?:photos?|images?|pictures?)\b/.test(phrase);
+  if (!photoObject && !names.get(word(subject))) return null;
+  if (!suffix && genericPicture(phrase)) return null;
   if (!suffix) return { source: 'ask', query: subject };
   return { source: suffix[1].endsWith('immich') ? 'photos' : 'web', query: subject };
 }
