@@ -17,7 +17,7 @@ function previousTimerReceipt(turn) {
   const receipt = turn?.toolEvidence?.receipts?.some(row => row.tool === TOOL.name && row.status === 'completed');
   return receipt
     ? 'Verified Core context: the immediately preceding exchange used the kitchen timer. If the current speaker follows up about how much time is left on it, call family_kitchen_timer with action=status before answering. If they change the subject, follow the new subject instead.'
-    : 'Verified Core context: the immediately preceding exchange did not use the kitchen timer. For a short follow-up about time remaining, stay on the current subject or ask what they mean. Do not call family_kitchen_timer just because a timer was mentioned earlier; only a clear current reference to the kitchen timer warrants that read.';
+    : 'Verified Core context: the immediately preceding exchange did not use the kitchen timer. If the current speaker clearly asks for the kitchen timer, call family_kitchen_timer even if the last subject was different or you just asked them to clarify. Otherwise for a short follow-up about time remaining, stay on the current subject or clarify. An earlier timer mention by itself does not warrant a read.';
 }
 
 async function callTool(args, binding) {

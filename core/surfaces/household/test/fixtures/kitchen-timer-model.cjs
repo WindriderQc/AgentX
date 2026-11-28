@@ -13,6 +13,7 @@ function timerModel(body) {
   const text = latest.content;
   if (/Station spatiale/i.test(text)) return "On va parler de l'ISS.";
   if (/encore deux minutes/i.test(text)) return call('extend', 120);
+  if (/sur la minuterie de la cuisine/i.test(text)) return call('status');
   if (/Combien il reste/i.test(text)) {
     return messages.filter(item => item.role === 'assistant').at(-1)?.content.includes("l'ISS")
       ? "Tu veux dire avant le prochain passage de l'ISS?" : call('status');
@@ -20,7 +21,7 @@ function timerModel(body) {
   if (/annule la minuterie/i.test(text)) return call('cancel');
   if (/sans rien lancer|ne pars pas|il a dit/i.test(text)) return "D'accord, je ne lance rien.";
   if (/mets deux minutes|minuterie de trente|minuterie de 30|mettre le chrono|minuterie de 5/i.test(text))
-    return call('start', /30|trente/.test(text) ? 30 : /5 minutes/.test(text) ? 300 : 120);
+    return call('start', /(?:30|trente) secondes/.test(text) ? 30 : /5 minutes/.test(text) ? 300 : 120);
   return "Je t'écoute.";
 }
 

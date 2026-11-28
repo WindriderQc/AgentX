@@ -82,6 +82,9 @@ test('Famille inference chooses the operation from the current dialogue, in text
   assert.match(unrelated.reply.text, /ISS/);
   assert.deepEqual(unrelated.tools.receipts, []);
   assert.equal((await kitchenTimer.read()).endsAt, beforeExtend + 120_000);
+  const switchedBack = await say('Et sur la minuterie de la cuisine, il reste combien de temps ?');
+  assert.equal(switchedBack.tools.receipts[0].outcome, 'status');
+  assert.match(switchedBack.reply.text, /3 minutes et 45 secondes/);
   const cancelled = await say('Annule la minuterie', 'text');
   assert.match(cancelled.reply.text, /annulée/);
   assert.equal(cancelled.tools.receipts[0].outcome, 'cancelled');
