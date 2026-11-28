@@ -1218,7 +1218,7 @@ describe('built-in Household surface on Core', () => {
       const spoken = await turn({ text: 'Pourquoi le ciel est bleu?', channel: 'voice', stream: true }).buffer(true).parse(ndjson).expect(200);
       expect(lastInference()).toMatchObject({ taskType: 'voice_persona_chat', think: false, stream: true, callerDetail: 'agentx-household/kidx_nestor/family' });
       expect(spoken.body.split('\n').filter(Boolean).map(line => JSON.parse(line)).at(-1).data)
-        .toMatchObject({ routing: { tier: 'router' }, tools: { status: 'not_supported' }, session: { backend: 'agentx' } });
+        .toMatchObject({ routing: { tier: 'router' }, tools: { status: 'observed', offered: ['family_kitchen_timer'], receipts: [] }, session: { backend: 'agentx' } });
       await turn({ text: 'Pourquoi la mer est salée?' }).expect(200);
       expect(lastInference()).toMatchObject({ taskType: 'nestor_answer_light', think: false, stream: false });
       process.env.HOUSEHOLD_VOICE_TASK = 'quick_chat';
