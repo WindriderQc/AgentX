@@ -78,7 +78,7 @@ test('Famille inference chooses the operation from the current dialogue, in text
   await say('Parlons de la Station spatiale.');
   const unrelatedCall = family.sent.length;
   const unrelated = await say(statusQuestion);
-  assert.doesNotMatch(family.sent[unrelatedCall].request, /immediately preceding exchange used the kitchen timer/);
+  assert.match(family.sent[unrelatedCall].request, /immediately preceding exchange did not use the kitchen timer/);
   assert.match(unrelated.reply.text, /ISS/);
   assert.deepEqual(unrelated.tools.receipts, []);
   assert.equal((await kitchenTimer.read()).endsAt, beforeExtend + 120_000);
