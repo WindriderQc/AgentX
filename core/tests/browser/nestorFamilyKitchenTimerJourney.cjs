@@ -13,7 +13,9 @@ const { createFamilyKitchenTimer } = require('../../src/services/familyKitchenTi
 const core = path.resolve(__dirname, '../..'), publicDir = path.join(core, 'surfaces/household/public');
 const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture', version: 1 }));
 let now = 1_000_000, heard = '', browser, server, claims = 0;
-const errors = [];
+const errors = [], voiceFrames = [];
+let completeVoice;
+const voiceCompletion = new Promise(resolve => { completeVoice = resolve; });
 const timer = createFamilyKitchenTimer({ mongoose: memoryMongoose(), now: () => now });
 const family = harness({ packId: 'kidx_nestor', backend: 'agentx', kitchenTimer: timer,
   response: require('../../surfaces/household/test/fixtures/kitchen-timer-model.cjs').timerModel });
@@ -78,6 +80,15 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
     res.status(201).json({ data: { session: family.session } });
   });
   app.post('/api/voice-personas/family/sessions/:sessionId/turns/text', async (req, res) => {
+    if (req.body.channel === 'voice' && req.body.stream) {
+      const write = res.write.bind(res);
+      res.write = (data, ...args) => {
+        const frame = JSON.parse(data);
+        voiceFrames.push(frame);
+        if (frame.type === 'done' || frame.type === 'error') completeVoice(frame);
+        return write(data, ...args);
+      };
+    }
     await family.handle(req, res, 'child', { packId: family.pack.id, modeId: family.pack.defaultMode, scopeId: 'family', browser: true });
     if (!res.writableEnded) res.status(res.failure?.status || 200).json(res.failure || { data: res.payload });
   });
@@ -122,11 +133,12 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   await page.locator('#conversationStart').click();
   await page.waitForFunction(() => document.getElementById('conversationPresence').dataset.state === 'listening');
   heard = 'Hey Nestor, mets deux minutes.';
-  const voiceTurn = page.waitForResponse(response => response.url().endsWith('/turns/text') && response.request().postDataJSON().channel === 'voice');
   await page.evaluate(() => window.say());
-  const frames = (await (await voiceTurn).text()).trim().split('\n').map(JSON.parse);
-  const timerFrame = frames.find(frame => frame.type === 'timer');
-  const doneFrame = frames.find(frame => frame.type === 'done');
+  await page.locator('.family-kitchen-timer').waitFor({ state: 'visible' });
+  const doneFrame = await Promise.race([voiceCompletion, new Promise((_, reject) =>
+    setTimeout(() => reject(Error('No terminal Famille voice response')), 12000).unref())]);
+  const timerFrame = voiceFrames.find(frame => frame.type === 'timer');
+  assert.equal(doneFrame.type, 'done', JSON.stringify(doneFrame));
   assert.equal(timerFrame.timer.endsAt, now + 120000);
   assert.equal(doneFrame.data.tools.receipts.filter(row => row.outcome === 'started').length, 1);
   assert.match(doneFrame.data.reply.text, /2 minutes/);
