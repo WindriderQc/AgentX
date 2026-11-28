@@ -1414,7 +1414,8 @@ describe('built-in Household surface on Core', () => {
       expect(searches[1].searchParams.get('safesearch')).toBe('2');
       expect(events.at(-1).data.display[0].status).toBe('found');
       const resumed = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
-      expect(resumed.turns[0].display[0]).toMatchObject({ kind: 'image', status: 'found', image: { url: 'https://images.example.test/giraffe.jpg' } });
+      const imageTurn = resumed.turns.find(turn => turn.traceId === events.at(-1).data.traceId);
+      expect(imageTurn?.display?.[0]).toMatchObject({ kind: 'image', status: 'found', image: { url: 'https://images.example.test/giraffe.jpg' } });
       await request(app).get('/api/voice-personas/family/visuals/file?source=photos&path=a.jpg').expect(404);
     } finally {
       upstream.mockRestore();
