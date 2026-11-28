@@ -99,6 +99,7 @@ test('the kitchen drawing follows the selected conversation language through rec
     screen.add(block(pending));
     assert.match(visual.text(), /Ta demande de dessin est reçue/);
     await until(() => visual.find('img'));
+    visual.find('img').listeners.load();
     assert.match(visual.text(), /Ton image est prête/);
     assert.match(visual.text(), /Télécharger l’image/);
   } finally {
@@ -106,3 +107,39 @@ test('the kitchen drawing follows the selected conversation language through rec
     globalThis.fetch = prevFetch;
   }
 });
+
+for (const [event, expected, text, rejected] of [
+  ['load', 'visible', /Ton image est prête/, /Cette image est indisponible/],
+  ['error', 'unavailable', /Cette image est indisponible/, /Ton image est prête/]
+]) {
+  test(`a restored drawing waits for actual image ${event} and an identical poll preserves it`, async () => {
+    let release;
+    const receipt = new Promise(resolve => { release = resolve; });
+    const reads = [];
+    const holder = create(block(ready), { space: 'family', language: 'fr', fetcher: async (url, options) => {
+      reads.push({ url, options }); return receipt;
+    } });
+    try {
+      const img = holder.find('img');
+      assert.ok(img);
+      assert.equal(holder._presentationState(), 'loading');
+      assert.doesNotMatch(holder.text(), /Ton image est prête/);
+      img.listeners[event]();
+      assert.equal(holder._presentationState(), expected);
+      assert.match(holder.text(), text);
+      assert.doesNotMatch(holder.text(), rejected);
+      await until(() => reads.length === 1);
+      release(response({ ...ready, artifact: { ...ready.artifact } }));
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(holder._presentationState(), expected);
+      assert.match(holder.text(), text);
+      assert.doesNotMatch(holder.text(), rejected);
+      assert.equal(holder.find('img'), event === 'load' ? img : undefined);
+      assert.equal(reads[0].url, pending.statusUrl);
+      assert.equal(reads[0].options.method, undefined);
+    } finally {
+      release(response(ready));
+      holder._dispose();
+    }
+  });
+}
