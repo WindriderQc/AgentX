@@ -127,7 +127,7 @@ test.each(['false', 'true'])('the local Family route answers covered weather req
       expect(events.find(row => row.type === 'done').data.reply.text).toContain('14 degrés');
       expect(executeForTest.mock.calls).toHaveLength(before + 1);
       const body = executeForTest.mock.calls.at(-1)[0];
-      expect(body.tools.map(tool => tool.function.name).sort()).toEqual(['iss_passes', 'network_devices']);
+      expect(body.tools.map(tool => tool.function.name).sort()).toEqual(['family_kitchen_timer', 'iss_passes', 'network_devices']);
       expect(body.messages[0].content).not.toMatch(/use web_search/i);
       expect(body.messages.at(-1).content).toContain('"temperatureC":14');
       expect(body.messages.at(-1).content).toContain('Answer this request directly');
