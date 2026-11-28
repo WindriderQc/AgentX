@@ -327,7 +327,7 @@ function createVisuals({ env = process.env, fetchImpl = (...args) => globalThis.
     router.get('/family/visuals/generated', (req, res) => sendGenerated(req, res, { family: true }));
   }
 
-  return { sources, present, reviewedFamilyPicturesEnabled, register, sendFile, sendGenerated, bytesFor };
+  return { sources, present, reviewedFamilyPicturesEnabled, hasReviewedFamilyPicture: label => reviewedPictures().has(pictureName(label)), register, sendFile, sendGenerated, bytesFor };
 }
 
 module.exports = { createVisuals, searchTerms, parseRoots, publicAddress, IMAGE_TYPES, SOURCE_LABELS };

@@ -4,6 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createImmichClient, photoError } = require('./immichClient');
+const { conversationGrant, lookupOwnerPhoto, loadOwnerPhoto } = require('./conversationPhotoLibrary');
 const { UUID, fold } = require('./photoFilters');
 // Same marker and normalization as PhotoService.
 const REVIEW_PENDING_TAG = fold('AgentX/Relecture/à relire');
@@ -34,9 +35,7 @@ function loadFrameConfig(env = process.env) {
   if (raw.source !== undefined && !['directory-and-album', 'album'].includes(raw.source)) throw fail();
   if (raw.source === 'album' && !raw.albumId) throw fail();
   // A malformed or absent conversation grant must not alter the existing frame.
-  const grant = raw.conversationLookup;
-  const conversationLookup = grant?.enabled === true && canonicalId(grant.albumId)
-    ? { enabled: true, albumId: canonicalId(grant.albumId) } : null;
+  const conversationLookup = conversationGrant(raw.conversationLookup);
   return { ...(conversationLookup && { conversationLookup }), prefix, ...(raw.albumId ? { albumId: raw.albumId } : {}),
     ...(raw.source ? { source: raw.source } : {}),
     idleSeconds: seconds(raw.idleSeconds, 120, 30), intervalSeconds: seconds(raw.intervalSeconds, 30, 5) };
@@ -66,12 +65,12 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
   }
   function lookupSettings() {
     const value = settings();
-    // The independently designated album is the complete authority. Never
-    // inherit the frame's source, prefix, or album even in mixed mode.
-    const grant = value.conversationLookup;
-    const albumId = canonicalId(grant?.albumId);
+    const grant = conversationGrant(value.conversationLookup);
+    if (!grant) throw fail();
+    if (grant.source === 'owner-library') return grant;
+    const albumId = grant.albumId;
     const privateLibraryId = canonicalId(processingConfig()?.libraryId);
-    if (grant?.enabled !== true || !albumId || !privateLibraryId) throw fail();
+    if (!privateLibraryId) throw fail();
     return { source: 'album', albumId, privateLibraryId };
   }
   function lookupFilter(value) {
@@ -135,11 +134,12 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
       }
       return asset ? { id: asset.id, src: '/api/photos/frame/' + asset.id + '/image' } : null;
     },
-    async lookup(fileName) {
+    async lookup(fileName, signal) {
       const value = lookupSettings();
       if (typeof fileName !== 'string' || !/^[\p{L}\p{N}][\p{L}\p{N} '\-]{0,79}$/u.test(fileName)) {
         throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid photo search');
       }
+      if (value.source === 'owner-library') return lookupOwnerPhoto(client, value.ownerId, fileName, signal);
       const asset = await lookupMetadata({ ...lookupFilter(value), originalFileName: { like: fileName } });
       if (!lookupEligible(asset, value) || typeof asset.originalFileName !== 'string'
         || !asset.originalFileName.toLowerCase().includes(fileName.toLowerCase())) return null;
@@ -152,6 +152,7 @@ function createPhotoFrameService({ client = createImmichClient(), config = () =>
     async lookupImage(id) {
       const value = lookupSettings();
       if (!UUID.test(String(id))) throw photoError(400, 'PHOTOS_BAD_REQUEST', 'Invalid image');
+      if (value.source === 'owner-library') return loadOwnerPhoto(client, value.ownerId, id);
       // Recheck direct metadata too: an index row may predate an asset becoming hidden/offline.
       const asset = await client.json('/assets/' + id);
       if (!reviewed(asset, value) || asset.id.toLowerCase() !== id.toLowerCase()) {

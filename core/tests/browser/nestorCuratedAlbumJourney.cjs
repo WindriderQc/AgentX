@@ -23,15 +23,15 @@ async function listen(app) {
 
 // Only the Immich v3.3.3 fields consumed by these requests. Search items can
 // omit tags, so the direct asset response remains necessary before delivery.
-function providerFixture() {
+function providerFixture(ownerLibrary) {
   const album = randomUUID();
   const processingLibrary = randomUUID();
-  const library = randomUUID();
-  const assets = ['triangle', 'disque'].map(name => ({
-    id: randomUUID(), libraryId: library, originalFileName: name + '.png',
+  const library = randomUUID(), owner = randomUUID(), other = randomUUID();
+  const assets = ['triangle', 'disque'].map((name, index) => ({
+    id: randomUUID(), ownerId: index === 0 ? owner : other, libraryId: ownerLibrary ? null : library, originalFileName: name + '.png',
     type: 'IMAGE', visibility: 'timeline', isOffline: false, isTrashed: false
   }));
-  const members = new Set([assets[0].id]);
+  const members = new Set(ownerLibrary ? [] : [assets[0].id]);
   const thumbnails = [];
   const errors = [];
   const png = new PNG({ width: 32, height: 32 });
@@ -48,8 +48,15 @@ function providerFixture() {
     assert.equal(req.get('x-api-key'), 'fixture-key');
     next();
   });
+  app.get('/api/users/me', (_req, res) => res.json({ id: owner }));
   app.post('/api/search/metadata', (req, res) => {
     const { size, filter } = req.body;
+    if (ownerLibrary) {
+      assert.equal(size, 50);
+      assert.equal(filter.albumIds, undefined);
+      const items = assets.filter(row => row.originalFileName.includes(filter.originalFileName.like));
+      return res.json({ assets: { items, nextCursor: null } });
+    }
     assert.equal(size, 1);
     assert.deepEqual(filter.albumIds, { any: [album] });
     assert.deepEqual(filter.type, { eq: 'IMAGE' });
@@ -75,17 +82,22 @@ function providerFixture() {
     errors.push(error.message);
     res.sendStatus(500);
   });
-  return { app, album, processingLibrary, members, thumbnails, errors, approved: assets[0].id };
+  function revoke() {
+    if (ownerLibrary) assets[0].ownerId = other;
+    else members.clear();
+  }
+  const grant = ownerLibrary ? { enabled: true, source: 'owner-library', ownerId: owner } : { enabled: true, albumId: album };
+  return { app, grant, processingLibrary, revoke, thumbnails, errors, approved: assets[0].id };
 }
 
-async function journey() {
-  const fixture = providerFixture();
+async function journey(ownerLibrary) {
+  const fixture = providerFixture(ownerLibrary);
   const provider = await listen(fixture.app);
   let site, browser;
   try {
     const client = createImmichClient({ env: { IMMICH_URL: provider.url, IMMICH_API_KEY_FILE: 'fixture' },
       readFile: () => 'fixture-key' });
-    const frame = createPhotoFrameService({ client, config: () => ({ conversationLookup: { enabled: true, albumId: fixture.album } }),
+    const frame = createPhotoFrameService({ client, config: () => ({ conversationLookup: fixture.grant }),
       processingConfig: () => ({ libraryId: fixture.processingLibrary }) });
     const app = express();
     const tokens = ['fixture-first-browser', 'fixture-second-browser'];
@@ -145,7 +157,7 @@ async function journey() {
     const missing = await ask('Retrouve une photo de disque dans nos photos.');
     assert.deepEqual(missing.display, []);
     assert.match(missing.text, /pas trouvé/);
-    fixture.members.clear();
+    fixture.revoke();
     // A fresh document must authorize the bytes again. A previously displayed
     // copy can remain in a renderer even after the album changes.
     await page.reload();
@@ -157,11 +169,11 @@ async function journey() {
     assert.deepEqual(fixture.thumbnails, [fixture.approved]);
     assert.deepEqual(fixture.errors, []);
     assert.deepEqual(browserErrors, []);
-    console.log('PASS: matching display pixels, scoped browser receipt, out-of-album photo, revocation before reload, one authorized thumbnail');
+    console.log('PASS:', ownerLibrary ? 'owner library' : 'curated album', 'pixels, browser isolation, scope rejection, revoked reload, one thumbnail');
   } finally {
     if (browser) await browser.close();
     if (site) await site.close();
     await provider.close();
   }
 }
-journey().catch(error => { console.error(error); process.exitCode = 1; });
+journey(false).then(() => journey(true)).catch(error => { console.error(error); process.exitCode = 1; });

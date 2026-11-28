@@ -250,7 +250,7 @@ function createPersonaTurnHandler({
         if (pack.id === VOIX_FAMILY_PACK_ID && session.scopeId === 'family' && backend === 'agentx' && !isLlmX && !consult && !entry.ephemeral
             && !entry.workId && !safety.flagIds?.length && !entry.attachments.length) {
           picture = pictureRequest && entry.relayIntake === true;
-          const lookup = picture ? null : await familyPictureLookup.replyForTurn(req.familyDevice, pack.id, session, { text: userText, language: preferredSpeechLanguage, visuals, signal: abort.signal, turnId: clientTurnId || entry.imageTurnId });
+          const lookup = picture ? null : await familyPictureLookup.replyForTurn(req.familyDevice, pack.id, session, { conversations, text: userText, language: preferredSpeechLanguage, visuals, signal: abort.signal, turnId: clientTurnId || entry.imageTurnId });
           if (lookup) { replyText = lookup.text; display = lookup.display; knowledge.status = 'not-required-picture-lookup'; display.forEach(block => event('show', { block })); }
         }
       }
