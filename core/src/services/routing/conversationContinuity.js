@@ -7,6 +7,7 @@ const { reducedRequest, decorate, statusResult } = require('./conversationContin
 const { reasonOf, primaryHosts, describe, readQueue, boundedRead } = require('./conversationContinuityStatus');
 const { safeOccupation } = require('./conversationRelayContinuation');
 const familyPreference = require('./familyPrimaryPreference');
+const familyHandoff = require('../conversations/familyHandoff');
 
 const ENV = 'AGENTX_CONVERSATION_CONTINUITY_JSON';
 const SAFE_REFUSALS = new Set(['PRINCIPAL_MODEL_UNAVAILABLE', 'BENCHMARK_CLAIM_ACTIVE',
@@ -134,11 +135,13 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         && options.allowUnavailable === true && !options.observeOccupation) {
       return statusResult(request, "Le dessin n’a pas été lancé.", 'family_primary_required', primaryRefusal);
     }
+    const familyCategory = options.requireOccupied && options.familyInstructions && !occupation
+      ? familyHandoff.categoryFor({ occupied, cause: primaryRefusal?.cause, holderType: failure?.failure?.holder?.type, reason }) : null;
     const work = options.requireOccupied ? null : await boundedRead(readWork, 1500, signal).catch(() => null);
     signal?.throwIfAborted();
     const principalEndpoints = primaryHosts(snapshot, target);
     const status = occupation ? 'Le travail demandé continue dans son exécution Hermes d’origine. Sa durée restante est inconnue.'
-      : options.familyInstructions && occupied ? 'Le cerveau principal traite une autre demande. Sa durée restante est inconnue.'
+      : familyCategory ? familyHandoff.description(familyCategory, options.speechLanguage)
         : describe(failure, principalEndpoints, work);
     const visited = new Set(principalEndpoints.map(hostUrlKey));
     for (const hostKey of policy.hosts) {
@@ -166,13 +169,16 @@ function createConversationContinuity({ execute, readSnapshot, deps, validate, r
         if (!resident || Number(resident.context_length) !== Number(pin.contextSize)) continue;
       } catch { if (signal?.aborted) signal.throwIfAborted(); continue; }
       const notice = options.requireOccupied
-        ? [options.relayGreeting, options.speechLanguage === 'en' ? `The guardian is answering while Nestor is ${occupied ? 'busy' : 'unavailable'}.` : `Le gardien prend le relais. Nestor est ${occupied ? 'occupé' : 'indisponible'}.`].filter(Boolean).join(' ')
+        ? [options.relayGreeting, familyCategory
+          ? [options.speechLanguage === 'en' ? 'The guardian is taking over.' : 'Le gardien prend le relais.', status].join(' ')
+          : options.speechLanguage === 'en' ? `The guardian is answering while Nestor is ${occupied ? 'busy' : 'unavailable'}.`
+            : `Le gardien prend le relais. Nestor est ${occupied ? 'occupé' : 'indisponible'}.`].filter(Boolean).join(' ')
         : `Message automatique d’AgentX — Petit contretemps : Nestor passe en mode de secours local avec son gardien, avec un contexte récent réduit et sans outils d’action. ${status}`;
       const reduced = reducedRequest(options.relayRequest || request, { ...policy, model: pin.model,
         contextSize: Number(pin.contextSize), notice, status, presentation: options.relayPresentation, familyInstructions: options.familyInstructions, relayTools: options.relayTools });
       if (!reduced) return statusResult(request, status, 'backup_context_unavailable', primaryRefusal);
       const continuity = { state: 'backup', reason, limited: true, contextReduced: true,
-        model: pin.model, hostKey, ...(primaryRefusal && { primaryRefusal }),
+        model: pin.model, hostKey, ...(familyCategory && { handoffCategory: familyCategory }), ...(primaryRefusal && { primaryRefusal }),
         ...(occupation && { relayFor: { authority: 'hermes', runId: occupation.runId, sessionKey: occupation.sessionKey, turnId: occupation.turnId } }) };
       const routing = { degraded: true, reason, fallbackFrom: { model: target?.model || null, host: target?.hostKey || null },
         fallbackTo: { model: pin.model, host: hostKey } };

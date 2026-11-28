@@ -124,6 +124,9 @@ function createConversationExecutor({ agentClient, inference, consumerContract, 
           const selected = [request.turnContext, context].filter(Boolean).join('\n\n');
           require('../../src/services/conversations/turnContext').assertContextSize(selected, 96000);
           request = { ...request, turnContext: selected,
+            ...(request.spoken && relay.isFamily(request.session) && {
+              spoken: { ...request.spoken, context: [request.spoken.context, context].filter(Boolean).join('\n\n') }
+            }),
             hermesInstructions: [request.hermesInstructions, relay.RETURN_INSTRUCTIONS].filter(Boolean).join('\n\n'),
             agentxInstructions: [request.agentxInstructions, relay.RETURN_INSTRUCTIONS].filter(Boolean).join('\n\n') };
         }
