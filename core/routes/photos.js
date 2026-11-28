@@ -25,6 +25,7 @@
 const express = require('express');
 const { createPhotoService } = require('../src/services/photos/photoService');
 const { createPhotoFrameService } = require('../src/services/photos/photoFrameService');
+const { familyAlbumReceipts } = require('../surfaces/household/family-album-receipts');
 const { requestPrincipal } = require('../src/helpers/requestCaller');
 
 const actor = (req) => String(req.get('x-service-caller') || requestPrincipal(req)).slice(0, 100);
@@ -43,7 +44,9 @@ function sendError(res, error) {
   });
 }
 
-function createPhotoRoutes({ service = createPhotoService(), frame = createPhotoFrameService(), log = console } = {}) {
+function createPhotoRoutes({ service = createPhotoService(), frame = createPhotoFrameService(), log = console,
+  readAlbumSession = sessionId => require('../src/services/surfaceConversationService').forSurface('household')
+    .getSession({ sessionId, packId: 'kidx_nestor', scopeId: 'family' }) } = {}) {
   const router = express.Router();
   router.use((_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
   const handle = (fn) => async (req, res) => {
@@ -53,6 +56,21 @@ function createPhotoRoutes({ service = createPhotoService(), frame = createPhoto
   router.get('/status', handle(() => service.status()));
   router.get('/frame/status', handle(() => frame.status()));
   router.get('/frame/next', handle((req) => frame.next(req.query.exclude, req.query.recent)));
+  router.get('/frame/album/:receipt/image', async (req, res) => {
+    const notFound = () => sendError(res, Object.assign(new Error('No such approved photo'), {
+      status: 404, code: 'PHOTOS_NOT_FOUND'
+    }));
+    const receipt = familyAlbumReceipts.claim(req.familyDevice, req.params.receipt);
+    if (!receipt) return notFound();
+    try {
+      const session = await readAlbumSession(receipt.sessionId);
+      if (!session || session.status !== 'active' || session.packId !== 'kidx_nestor' || session.scopeId !== 'family') return notFound();
+      const image = await frame.lookupImage(receipt.assetId);
+      res.set({ 'Content-Type': image.contentType, 'Content-Length': String(image.bytes.length),
+        'X-Content-Type-Options': 'nosniff', 'Content-Disposition': 'inline' });
+      return res.end(image.bytes);
+    } catch (error) { return sendError(res, error); }
+  });
   router.get('/frame/:id/image', async (req, res) => {
     try {
       const image = await frame.image(req.params.id);

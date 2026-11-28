@@ -115,12 +115,15 @@
   function imageBody(block, space, language) {
     if (block.source === 'local' && root.ConversationImages) return root.ConversationImages.create(block, { space, language });
     const image = block.status === 'found' ? block.image : null;
-    const href = image && (/^\/api\/voice-personas\/(?:family|private)\/visuals\/(?:file|generated)\?/.test(image.url) ? image.url : safeUrl(image.url));
+    const album = space === 'family' && block.source === 'photos' && /^\/api\/photos\/frame\/album\/[A-Za-z0-9_-]{43}\/image$/i.test(image?.url || '');
+    const href = image && (/^\/api\/voice-personas\/(?:family|private)\/visuals\/(?:file|generated)\?/.test(image.url) || album ? image.url : safeUrl(image.url));
     if (!href) return node('p', 'display-block-note', 'No image found for “' + block.body + '”.');
     const figure = node('figure', 'display-block-figure');
     const img = node('img');
     img.src = href; img.alt = block.title || block.body; img.loading = 'lazy'; img.decoding = 'async'; img.referrerPolicy = 'no-referrer';
-    img.addEventListener('error', () => figure.replaceChildren(node('p', 'display-block-note', 'This image is no longer available.')), { once: true });
+    img.addEventListener('error', () => figure.replaceChildren(node('p', 'display-block-note', album
+      ? 'Cette photo n’est plus disponible. Demande-la de nouveau à Nestor.'
+      : 'This image is no longer available.')), { once: true });
     const caption = node('figcaption', 'display-block-caption');
     caption.append(node('span', '', image.sourceLabel || block.source || ''));
     const origin = safeUrl(image.origin);
