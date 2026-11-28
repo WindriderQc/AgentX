@@ -16,6 +16,36 @@ SPEC.loader.exec_module(runner)
 original_feedback = runner.feedback
 
 
+class PublicPrBodyTest(unittest.TestCase):
+    def test_manual_publication_never_copies_worker_output(self):
+        for output in ('{"type":"tool","sessionID":"synthetic-session","output":"private fixture"}',
+                       'Worker prose containing synthetic-private-detail', ''):
+            with self.subTest(output=output), mock.patch.object(runner, 'git'), \
+                    mock.patch.object(runner, 'request', side_effect=[[], {'html_url': 'https://example.invalid/pr/1'}]) as send:
+                runner.push_and_open_pr(Path('/synthetic'), 'branch', '0001', 'Synthetic task', output, 'fixture-token')
+                body = send.call_args.args[1]['body']
+                self.assertNotIn('synthetic-session', body)
+                self.assertNotIn('private', body.lower().replace('remain private', ''))
+                self.assertNotIn('Worker prose', body)
+                self.assertNotIn('passed', body)
+                self.assertTrue(send.call_args.args[1]['draft'])
+                self.assertIn('review', body.lower())
+
+    def test_explicit_safe_body_remains_exact_for_create_and_update(self):
+        body = 'Reviewed deterministic evidence capsule.'
+        for existing in ([], [{'number': 1, 'base': {'ref': runner.BASE_BRANCH}, 'html_url': 'https://example.invalid/pr/1'}]):
+            with self.subTest(existing=bool(existing)), mock.patch.object(runner, 'git'), \
+                    mock.patch.object(runner, 'request', side_effect=[existing, {'html_url': 'https://example.invalid/pr/1'}]) as send:
+                runner.push_and_open_pr(Path('/synthetic'), 'branch', '0001', 'Synthetic task', body, 'fixture-token', safe_body=True)
+                self.assertEqual(send.call_args.args[1]['body'], body)
+
+    def test_manual_existing_pr_is_not_rewritten(self):
+        with mock.patch.object(runner, 'git'), mock.patch.object(runner, 'request', return_value=[
+                {'html_url': 'https://example.invalid/pr/1'}]) as send:
+            runner.push_and_open_pr(Path('/synthetic'), 'branch', '0001', 'Synthetic task', 'raw fixture', 'fixture-token')
+            self.assertEqual(send.call_count, 1)
+
+
 class CodingRunTest(unittest.TestCase):
     def test_manual_stop_records_bounded_cause_without_runtime_or_retry_authority(self):
         progress = runner.coding_progress.Progress('0001', '11111111-2222-4333-8444-555555555555')
