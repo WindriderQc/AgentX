@@ -3,16 +3,17 @@
 const { randomUUID } = require('node:crypto');
 const KEY = 'family';
 const ALERT_WINDOW_MS = 60_000;
+const RECENT_MUTATIONS = 1024;
 
 function createFamilyKitchenTimer({ mongoose, now = Date.now, makeId = randomUUID }) {
   const name = 'AgentXFamilyKitchenTimer';
   const Timer = mongoose.models[name] || mongoose.model(name, new mongoose.Schema({
     _id: String, timerId: String, durationSeconds: Number, endsAt: Number, cancelledAt: Number, alertClaimedAt: Number,
-    startRequestId: String, extensionRequests: [String]
+    revision: Number, appliedRequests: [String]
   }, { versionKey: false }), 'household_kitchen_timers');
 
   function view(row, serverNow = now()) {
-    if (!row || row.cancelledAt != null) return { state: 'idle', serverNow };
+    if (!row?.timerId || row.cancelledAt != null) return { state: 'idle', serverNow };
     return {
       state: row.endsAt > serverNow ? 'running' : 'finished', id: row.timerId, serverNow,
       endsAt: row.endsAt, durationSeconds: row.durationSeconds, alertClaimed: row.alertClaimedAt != null
@@ -40,47 +41,52 @@ function createFamilyKitchenTimer({ mongoose, now = Date.now, makeId = randomUUI
       return result('invalid', words.unavailable);
     if (['start', 'extend'].includes(action) && (!Number.isInteger(seconds) || seconds < 1 || seconds > 86400))
       return result('invalid', words.invalid);
+    const statusText = (timer) => timer.state === 'running' ? remaining(timer, language)
+      : timer.state === 'finished' ? words.done : words.none;
+    const noChange = (timer) => result('unchanged', statusText(timer), timer);
     signal?.throwIfAborted();
-    const at = now();
-    if (action === 'start') {
+    if (action === 'status') {
+      const timer = await read();
+      return result('status', statusText(timer), timer);
+    }
+    // Bind the action to the first observed timer, not a replacement that
+    // happens to be present when a concurrent compare-and-set loses.
+    let originalId;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      signal?.throwIfAborted();
+      const row = await Timer.findById(KEY).lean(), at = now(), current = view(row, at);
+      if (attempt === 0) originalId = row?.timerId || null;
+      if (row?.appliedRequests?.includes(requestId)) return noChange(current);
+      const keep = [...(row?.appliedRequests || []), requestId].slice(-RECENT_MUTATIONS);
+      let change = {}, outcome = 'unchanged', text = statusText(current);
+      if ((row?.timerId || null) === originalId) {
+        if (action === 'start' && current.state !== 'running') {
+          change = { timerId: makeId(), endsAt: at + seconds * 1000, durationSeconds: seconds, cancelledAt: null, alertClaimedAt: null };
+          outcome = 'started';
+          text = words.started + ' ' + remaining(view(change, at), language);
+        } else if (action === 'start') {
+          text = words.running + ' ' + text;
+        } else if (action === 'cancel' && current.state === 'running') {
+          change = { cancelledAt: at };
+          outcome = 'cancelled';
+          text = words.cancelled;
+        } else if (action === 'extend' && current.state === 'running' && current.endsAt + seconds * 1000 - at <= 86_400_000) {
+          change = { endsAt: current.endsAt + seconds * 1000, durationSeconds: current.durationSeconds + seconds };
+          outcome = 'extended';
+          text = remaining(view({ ...row, ...change }, at), language);
+        }
+      }
+      signal?.throwIfAborted();
       try {
-        const row = await Timer.findOneAndUpdate({ _id: KEY, startRequestId: { $ne: requestId },
-          $or: [{ endsAt: { $lte: at } }, { cancelledAt: { $ne: null } }] },
-          { $set: { timerId: makeId(), endsAt: at + seconds * 1000, durationSeconds: seconds, cancelledAt: null,
-            alertClaimedAt: null, startRequestId: requestId, extensionRequests: [] } }, { upsert: true, new: true }).lean();
-        const timer = view(row);
-        return result('started', words.started + ' ' + (timer.state === 'running' ? remaining(timer, language) : words.done), timer);
+        const updated = await Timer.findOneAndUpdate({ _id: KEY, revision: row?.revision ?? null,
+          ...(['cancelled', 'extended'].includes(outcome) && { endsAt: { $gt: now() }, alertClaimedAt: null }) },
+        { $set: { ...change, appliedRequests: keep, revision: (row?.revision ?? 0) + 1 } }, { upsert: !row, new: true }).lean();
+        if (updated) return result(outcome, text, view(updated, at));
       } catch (error) {
         if (error.code !== 11000) throw error;
-        const timer = await read();
-        return result('unchanged', timer.state === 'running' ? words.running + ' ' + remaining(timer, language)
-          : timer.state === 'finished' ? words.done : words.none, timer);
       }
     }
-    const row = await Timer.findById(KEY).lean();
-    const timer = view(row);
-    const statusText = timer.state === 'running' ? remaining(timer, language) : timer.state === 'finished' ? words.done : words.none;
-    if (action === 'status') return result('status', statusText, timer);
-    if (timer.state !== 'running') return result('unchanged', words.none, timer);
-    const when = now();
-    const filter = { _id: KEY, timerId: timer.id, cancelledAt: null, endsAt: { $gt: when } };
-    signal?.throwIfAborted();
-    if (action === 'cancel') {
-      const updated = await Timer.findOneAndUpdate(filter, { $set: { cancelledAt: when } }, { new: true }).lean();
-      return updated ? result('cancelled', words.cancelled, view(updated)) : result('unchanged', words.unavailable, await read());
-    }
-    const requests = row.extensionRequests || [];
-    if (requests.includes(requestId)) return result('unchanged', statusText, timer);
-    if (requests.length >= 128 || row.endsAt + seconds * 1000 - when > 86_400_000)
-      return result('unchanged', language === 'en' ? 'No time was added to the timer.' : "Je n'ai pas ajouté de temps à la minuterie.", timer);
-    // Compare the deadline used to compute the update. A concurrent change
-    // is not retried against a different state or a replacement timer.
-    const updated = await Timer.findOneAndUpdate({ ...filter, endsAt: { $eq: row.endsAt, $gt: when } },
-      { $set: { endsAt: row.endsAt + seconds * 1000, durationSeconds: row.durationSeconds + seconds,
-        extensionRequests: [...requests, requestId] } }, { new: true }).lean();
-    if (!updated) return result('unchanged', language === 'en' ? 'No time was added to the timer.' : "Je n'ai pas ajouté de temps à la minuterie.", await read());
-    const extended = view(updated);
-    return result('extended', extended.state === 'running' ? remaining(extended, language) : words.done, extended);
+    return result('unavailable', words.unavailable);
   }
   async function claimAlert(id) {
     if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) return { claimed: false };

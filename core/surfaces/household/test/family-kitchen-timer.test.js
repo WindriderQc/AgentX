@@ -38,6 +38,26 @@ test('Core preserves the original deadline, extends once and claims a single ale
   assert.equal((await timer.read()).state, 'idle');
 });
 
+test('old applied and no-op requests cannot alter a replacement timer', async () => {
+  let time = 3_000_000;
+  const timer = makeTimer(() => time);
+  const run = (action, requestId, seconds) => timer.perform({ action, seconds }, { requestId });
+  await run('cancel', 'cancel-while-empty');
+  const a = await run('start', 'create-a', 60);
+  await run('extend', 'extend-a', 30);
+  await run('cancel', 'cancel-a');
+  const b = await run('start', 'create-b', 120);
+  for (const [action, id, seconds] of [['extend', 'extend-a', 30], ['cancel', 'cancel-a'], ['cancel', 'cancel-while-empty']]) {
+    assert.equal((await run(action, id, seconds)).outcome, 'unchanged');
+    assert.deepEqual(await timer.read(), b.timer);
+  }
+  time = b.timer.endsAt;
+  assert.equal((await run('start', 'create-a', 60)).outcome, 'unchanged');
+  assert.equal((await timer.read()).id, b.timer.id);
+  assert.equal((await timer.read()).state, 'finished');
+  assert.equal(a.timer.id === b.timer.id, false);
+});
+
 test('Famille inference chooses the operation from the current dialogue, in text or voice', async () => {
   let now = 1_000_000;
   const kitchenTimer = makeTimer(() => now);

@@ -13,7 +13,7 @@ function memoryMongoose() {
           if (value && typeof value === 'object') return Object.entries(value).every(([op, bound]) =>
             op === '$eq' ? current[key] === bound : op === '$ne' ? current[key] !== bound : op === '$lte' ? current[key] <= bound
               : op === '$gte' ? current[key] >= bound : op === '$gt' ? current[key] > bound : false);
-          return current[key] === value;
+          return value === null ? current[key] == null : current[key] === value;
         });
         if (!row && !options.upsert) return null;
         if (row && !matches(row, query)) {

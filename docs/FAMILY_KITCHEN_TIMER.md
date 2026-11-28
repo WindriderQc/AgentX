@@ -11,8 +11,9 @@ is unchanged.
 
 Core owns one timer. A second start does not overwrite it. Start duration is
 one second to 24 hours; adding time updates the existing timer and cannot put
-more than 24 hours on the clock. A retried extension for the same turn does
-not add time twice. The panel uses the same Core deadline that the tool
+more than 24 hours on the clock. Core keeps the last 1,024 mutation request identities across timer replacements,
+so retried starts, extensions, and cancellations cannot change a replacement
+timer within that history. The panel uses the same Core deadline that the tool
 reports. Reloading the panel or restarting Core with the same database does
 not restart the countdown. There is no second timer store or separate worker.
 

@@ -46,3 +46,35 @@ test('Core adds time once across concurrent retries and keeps the same timer and
   expect(await timer.claimAlert(active.id)).toEqual({ claimed: true });
   expect(await timer.claimAlert(active.id)).toEqual({ claimed: false });
 });
+
+test('a replacement timer is untouched by replayed Core mutations', async () => {
+  let time = 3_000_000;
+  const timer = createFamilyKitchenTimer({ mongoose, now: () => time });
+  const run = (action, requestId, seconds) => timer.perform({ action, seconds }, { requestId });
+  await run('cancel', 'cancel-while-empty');
+  const a = await run('start', 'create-a', 60);
+  await run('extend', 'extend-a', 30);
+  await run('cancel', 'cancel-a');
+  const b = await run('start', 'create-b', 120);
+  for (const [action, id, seconds] of [['extend', 'extend-a', 30], ['cancel', 'cancel-a'], ['cancel', 'cancel-while-empty']]) {
+    expect((await run(action, id, seconds)).outcome).toBe('unchanged');
+    expect(await timer.read()).toEqual(b.timer);
+  }
+  time = b.timer.endsAt;
+  expect((await run('start', 'create-a', 60)).outcome).toBe('unchanged');
+  expect((await timer.read()).id).toBe(b.timer.id);
+  expect((await timer.read()).state).toBe('finished');
+  expect(a.timer.id === b.timer.id).toBe(false);
+});
+
+
+test('existing active timer rows without revision keep their deadline through the upgrade', async () => {
+  const now = 4_000_000, id = '00000000-0000-4000-8000-000000000001';
+  await mongoose.connection.collection('household_kitchen_timers').insertOne({
+    _id: 'family', timerId: id, endsAt: now + 60_000, durationSeconds: 60, cancelledAt: null, alertClaimedAt: null
+  });
+  const timer = createFamilyKitchenTimer({ mongoose, now: () => now });
+  expect(await timer.read()).toMatchObject({ id, endsAt: now + 60_000 });
+  const extended = await timer.perform({ action: 'extend', seconds: 15 }, { requestId: 'first-on-upgrade' });
+  expect(extended).toMatchObject({ outcome: 'extended', timer: { id, endsAt: now + 75_000 } });
+});

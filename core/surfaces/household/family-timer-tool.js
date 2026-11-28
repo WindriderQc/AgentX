@@ -17,7 +17,7 @@ async function callTool(args, binding) {
   const fallback = language === 'en' ? 'I could not verify the kitchen timer.' : "Je n'ai pas pu vérifier la minuterie.";
   try {
     const result = await service.perform(args, { requestId, language, signal });
-    return { isError: result.outcome === 'invalid', structuredContent: result };
+    return { isError: ['invalid', 'unavailable'].includes(result.outcome), structuredContent: result };
   } catch (error) {
     if (signal?.aborted) throw error;
     return { isError: true, structuredContent: { error: 'TIMER_UNAVAILABLE', text: fallback } };
