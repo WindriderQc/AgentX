@@ -18,6 +18,29 @@ test('French starts, checks and cancellations are narrow and normalize transcrip
   assert.equal(parse('Mets une minuterie de deux minutes et dessine un chat'), null);
   assert.equal(parse('Tu peux me raconter l’histoire d’une minuterie de deux minutes?'), null);
 });
+test('Québec shorthand and explicit polite starts require a complete timer-only command', () => {
+  for (const [phrase, seconds] of [
+    ['Mets deux minutes', 120],
+    ['Nestor, mets-moi 2 minutes et 30 secondes, s’il te plaît.', 150],
+    ['Peux-tu mettre une minuterie de deux minutes?', 120],
+    ['Pourrais-tu démarrer le chrono pour une minute?', 60],
+    ['Tu peux lancer une minuterie pour 45 secondes ?', 45]
+  ]) assert.deepEqual(parse(phrase), { action: 'start', seconds }, phrase);
+  for (const phrase of [
+    'Deux minutes',
+    'Mets deux minutes de musique',
+    'Mets deux minutes et joue une chanson',
+    'Mets deux minutes au micro-ondes',
+    'Peux-tu mettre deux minutes?',
+    'Peux-tu mettre une minuterie de deux minutes et jouer une chanson?',
+    'Peux-tu mettre une minuterie de 2,5 minutes puis dessiner un chat?',
+    'Ne mets pas deux minutes',
+    'Mets -2 minutes',
+    'Mets 2,5 minutes',
+    'Mets 25 heures',
+    'Il a dit : « Mets deux minutes »'
+  ]) assert.equal(parse(phrase), null, phrase);
+});
 test('Core persists the original absolute deadline, does not overwrite, and claims one alert', async () => {
   let time = 1_000_000;
   const mongoose = memoryMongoose(), now = () => time;
@@ -47,7 +70,7 @@ test('Core persists the original absolute deadline, does not overwrite, and clai
 test('native Famille voice and typed turns use the same deterministic Core contract without inference', async () => {
   const kitchenTimer = createFamilyKitchenTimer({ mongoose: memoryMongoose(), now: () => 1_000_000 });
   const family = harness({ packId: 'kidx_nestor', backend: 'agentx', kitchenTimer });
-  const started = await family.turn('Mets une minuterie de 2 minutes', 'voice');
+  const started = await family.turn('Mets deux minutes', 'voice');
   const remaining = await family.turn('Combien il reste?', 'voice');
   const cancelled = await family.turn('Annule la minuterie', 'text');
   assert.match(started.reply.text, /2 minutes/);
@@ -55,6 +78,10 @@ test('native Famille voice and typed turns use the same deterministic Core contr
   assert.match(cancelled.reply.text, /annulée/);
   assert.equal(family.sent.length, 0);
   assert.deepEqual(family.turns.map(t => t.channel), ['text', 'voice', 'voice']);
+  const polite = await family.turn('Peux-tu mettre une minuterie de deux minutes?', 'voice');
+  assert.match(polite.reply.text, /2 minutes/);
+  assert.equal(family.sent.length, 0);
+  await family.turn('Annule la minuterie', 'text');
   await family.turn('Combien il reste?', 'voice');
   assert.equal(family.sent.length, 1);
 });

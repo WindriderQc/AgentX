@@ -105,6 +105,11 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   async function ready(page) {
     await page.waitForFunction(() => window.fixtureReady || window.fixtureError);
     assert.equal(await page.evaluate(() => window.fixtureError), undefined);
+    // This fixture asserts French copy; Auto can select English for short status text.
+    await page.locator('#conversationLanguage input[value="fr"]').evaluate(input => {
+      input.checked = true;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
   }
   await page.goto(origin + '/panel');
   await ready(page);
@@ -115,7 +120,7 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   };
   await page.locator('#conversationStart').click();
   await page.waitForFunction(() => document.getElementById('conversationPresence').dataset.state === 'listening');
-  heard = 'Hey Nestor, mets une minuterie de 2 minutes.';
+  heard = 'Hey Nestor, mets deux minutes.';
   await page.evaluate(() => window.say());
   assert.equal(family.turns[0]?.channel, 'voice');
   await page.locator('#conversationStart').click();
@@ -144,7 +149,7 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   await page.clock.fastForward(6_000);
   assert.equal(await page.evaluate(() => window.beeps), 0);
   assert.equal(claims, 1);
-  await typed('Pars le chrono pour 30 secondes.');
+  await typed('Peux-tu mettre une minuterie de 30 secondes?');
   await page.getByText(/C’est parti\./).waitFor();
   await typed('Annule la minuterie.');
   await page.getByText('Minuterie annulée.', { exact: true }).waitFor();
