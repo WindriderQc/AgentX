@@ -3,85 +3,126 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createFamilyKitchenTimer } = require('../../../src/services/familyKitchenTimer');
-const { parse } = require('../../../src/services/familyKitchenTimerCommand');
+const { familyToolset } = require('../family-tools');
+const { forTurn: guardTools } = require('../guardian-read-tools');
 const { memoryMongoose } = require('./fixtures/kitchen-timer-memory.cjs');
 const { harness } = require('./fixtures/persona-journey.cjs');
+const { call, timerModel, name } = require('./fixtures/kitchen-timer-model.cjs');
+const packId = 'kidx_nestor';
+const makeTimer = now => createFamilyKitchenTimer({ mongoose: memoryMongoose(), now });
 
-test('French starts, checks and cancellations are narrow and normalize transcript punctuation', () => {
-  assert.deepEqual(parse('Nestor, mets une minuterie de deux minutes, s’il te plaît.'), { action: 'start', seconds: 120 });
-  assert.deepEqual(parse('Pars le chrono pour 1 minute et 30 secondes.'), { action: 'start', seconds: 90 });
-  assert.deepEqual(parse('Combien de temps reste-t-il sur la minuterie ?'), { action: 'status', explicit: true });
-  assert.deepEqual(parse('Combien il reste?'), { action: 'status', explicit: false });
-  assert.deepEqual(parse('Arrête la minuterie.'), { action: 'cancel' });
-  assert.deepEqual(parse('Lance une minuterie de 0 seconde.'), { action: 'invalid' });
-  assert.deepEqual(parse('Pars la minuterie pour 25 heures.'), { action: 'invalid' });
-  assert.equal(parse('Mets une minuterie de deux minutes et dessine un chat'), null);
-  assert.equal(parse('Tu peux me raconter l’histoire d’une minuterie de deux minutes?'), null);
-});
-test('Québec shorthand and explicit polite starts require a complete timer-only command', () => {
-  for (const [phrase, seconds] of [
-    ['Mets deux minutes', 120],
-    ['Nestor, mets-moi 2 minutes et 30 secondes, s’il te plaît.', 150],
-    ['Peux-tu mettre une minuterie de deux minutes?', 120],
-    ['Pourrais-tu démarrer le chrono pour une minute?', 60],
-    ['Tu peux lancer une minuterie pour 45 secondes ?', 45]
-  ]) assert.deepEqual(parse(phrase), { action: 'start', seconds }, phrase);
-  for (const phrase of [
-    'Deux minutes',
-    'Mets deux minutes de musique',
-    'Mets deux minutes et joue une chanson',
-    'Mets deux minutes au micro-ondes',
-    'Peux-tu mettre deux minutes?',
-    'Peux-tu mettre une minuterie de deux minutes et jouer une chanson?',
-    'Peux-tu mettre une minuterie de 2,5 minutes puis dessiner un chat?',
-    'Ne mets pas deux minutes',
-    'Mets -2 minutes',
-    'Mets 2,5 minutes',
-    'Mets 25 heures',
-    'Il a dit : « Mets deux minutes »'
-  ]) assert.equal(parse(phrase), null, phrase);
-});
-test('Core persists the original absolute deadline, does not overwrite, and claims one alert', async () => {
-  let time = 1_000_000;
-  const mongoose = memoryMongoose(), now = () => time;
-  const timer = createFamilyKitchenTimer({ mongoose, now });
-  assert.equal((await timer.command('Combien il reste?')).handled, false);
-  const original = await timer.command('Mets une minuterie de 2 minutes');
-  assert.equal(original.timer.endsAt, 1_120_000);
-  assert.match(original.reply.text, /2 minutes/);
-  time += 15_000;
-  const concurrent = await timer.command('Lance une minuterie de 10 secondes');
-  assert.equal(concurrent.timer.id, original.timer.id);
-  assert.equal(concurrent.timer.endsAt, original.timer.endsAt);
-  assert.match((await timer.command('Combien il reste?')).reply.text, /1 minute et 45 secondes/);
-  assert.deepEqual(await timer.claimAlert(original.timer.id), { claimed: false });
-  time = original.timer.endsAt;
-  assert.equal((await timer.read()).state, 'finished');
-  const claims = await Promise.all([timer.claimAlert(original.timer.id), timer.claimAlert(original.timer.id)]);
-  assert.equal(claims.filter(x => x.claimed).length, 1);
-  assert.equal((await timer.read()).alertClaimed, true);
-  const next = await timer.command('Lance une minuterie pour 15 secondes');
-  assert.notEqual(next.timer.id, original.timer.id);
-  assert.match((await timer.command('Annule la minuterie.')).reply.text, /annulée/);
+test('Core preserves the original deadline, extends once and claims a single alert', async () => {
+  let now = 1_000_000;
+  const timer = makeTimer(() => now);
+  const perform = (action, seconds, requestId) => timer.perform({ action, seconds }, { requestId });
+  const started = await perform('start', 120, 'first');
+  assert.equal(started.timer.endsAt, 1_120_000);
+  now += 15_000;
+  assert.equal((await perform('start', 10, 'second')).timer.id, started.timer.id);
+  assert.match((await perform('status')).text, /1 minute et 45 secondes/);
+  const extend = () => perform('extend', 30, 'extend-one');
+  const results = await Promise.all([extend(), extend()]);
+  assert.equal(results.filter(result => result.outcome === 'extended').length, 1);
+  const active = await timer.read();
+  assert.equal(active.id, started.timer.id);
+  assert.equal(active.endsAt, 1_150_000);
+  now = started.timer.endsAt;
+  assert.deepEqual(await timer.claimAlert(active.id), { claimed: false });
+  now = active.endsAt;
+  const claims = await Promise.all([timer.claimAlert(active.id), timer.claimAlert(active.id)]);
+  assert.equal(claims.filter(row => row.claimed).length, 1);
+  assert.equal((await perform('start', 120, 'first')).timer.id, active.id);
+  const replacement = await perform('start', 15, 'new-start');
+  assert.notEqual(replacement.timer.id, active.id);
+  assert.equal((await perform('cancel', undefined, 'cancel')).outcome, 'cancelled');
   assert.equal((await timer.read()).state, 'idle');
-  time += 90_000;
-  assert.deepEqual(await timer.claimAlert(next.timer.id), { claimed: false });
 });
-test('native Famille voice and typed turns use the same deterministic Core contract without inference', async () => {
-  const kitchenTimer = createFamilyKitchenTimer({ mongoose: memoryMongoose(), now: () => 1_000_000 });
-  const family = harness({ packId: 'kidx_nestor', backend: 'agentx', kitchenTimer });
-  const started = await family.turn('Mets deux minutes', 'voice');
-  const remaining = await family.turn('Combien il reste?', 'voice');
-  const cancelled = await family.turn('Annule la minuterie', 'text');
+
+test('old applied and no-op requests cannot alter a replacement timer', async () => {
+  let time = 3_000_000;
+  const timer = makeTimer(() => time);
+  const run = (action, requestId, seconds) => timer.perform({ action, seconds }, { requestId });
+  await run('cancel', 'cancel-while-empty');
+  const a = await run('start', 'create-a', 60);
+  await run('extend', 'extend-a', 30);
+  await run('cancel', 'cancel-a');
+  const b = await run('start', 'create-b', 120);
+  for (const [action, id, seconds] of [['extend', 'extend-a', 30], ['cancel', 'cancel-a'], ['cancel', 'cancel-while-empty']]) {
+    assert.equal((await run(action, id, seconds)).outcome, 'unchanged');
+    assert.deepEqual(await timer.read(), b.timer);
+  }
+  time = b.timer.endsAt;
+  assert.equal((await run('start', 'create-a', 60)).outcome, 'unchanged');
+  assert.equal((await timer.read()).id, b.timer.id);
+  assert.equal((await timer.read()).state, 'finished');
+  assert.equal(a.timer.id === b.timer.id, false);
+});
+
+test('Famille inference chooses the operation from the current dialogue, in text or voice', async () => {
+  let now = 1_000_000;
+  const kitchenTimer = makeTimer(() => now);
+  const family = harness({ packId, backend: 'agentx', kitchenTimer, response: timerModel });
+  const say = (text, channel = 'voice') => family.turn(text, channel);
+  const started = await say('Voudrais-tu mettre le chrono, à peu près le temps de se brosser les dents, deux minutes?');
   assert.match(started.reply.text, /2 minutes/);
-  assert.match(remaining.reply.text, /2 minutes/);
+  assert.equal(started.tools.receipts[0].outcome, 'started');
+  assert.ok(family.sent[0].tools.some(row => row.function.name === name));
+  now += 15_000;
+  const statusQuestion = 'Combien il reste?';
+  const statusCall = family.sent.length;
+  assert.match((await say(statusQuestion)).reply.text, /1 minute et 45 secondes/);
+  assert.match(family.sent[statusCall].request, /immediately preceding exchange used the kitchen timer/);
+  const beforeExtend = (await kitchenTimer.read()).endsAt;
+  assert.equal((await say('Donne-nous encore deux minutes')).tools.receipts[0].outcome, 'extended');
+  assert.equal((await kitchenTimer.read()).endsAt, beforeExtend + 120_000);
+  await say('Parlons de la Station spatiale.');
+  const unrelatedCall = family.sent.length;
+  const unrelated = await say(statusQuestion);
+  assert.match(family.sent[unrelatedCall].request, /immediately preceding exchange did not use the kitchen timer/);
+  assert.match(unrelated.reply.text, /ISS/);
+  assert.deepEqual(unrelated.tools.receipts, []);
+  assert.equal((await kitchenTimer.read()).endsAt, beforeExtend + 120_000);
+  const switchedBack = await say('Et sur la minuterie de la cuisine, il reste combien de temps ?');
+  assert.equal(switchedBack.tools.receipts[0].outcome, 'status');
+  assert.match(switchedBack.reply.text, /3 minutes et 45 secondes/);
+  const cancelled = await say('Annule la minuterie', 'text');
   assert.match(cancelled.reply.text, /annulée/);
-  assert.equal(family.sent.length, 0);
-  assert.deepEqual(family.turns.map(t => t.channel), ['text', 'voice', 'voice']);
-  const polite = await family.turn('Peux-tu mettre une minuterie de deux minutes?', 'voice');
-  assert.match(polite.reply.text, /2 minutes/);
-  assert.equal(family.sent.length, 0);
-  await family.turn('Annule la minuterie', 'text');
-  await family.turn('Combien il reste?', 'voice');
-  assert.equal(family.sent.length, 1);
+  assert.equal(cancelled.tools.receipts[0].outcome, 'cancelled');
+  await say('Il a dit « Mets deux minutes » sans rien lancer.');
+  assert.equal((await kitchenTimer.read()).state, 'idle');
+});
+
+test('timer is not a general or Gardien action and malformed or duplicate writes do not execute', async () => {
+  const kitchenTimer = makeTimer(() => 1_000_000);
+  const env = { HOUSEHOLD_FAMILY_TOOLS: name };
+  assert.equal(familyToolset(env), null);
+  assert.ok(!guardTools(env, { backend: 'agentx', packId })?.names.includes(name));
+  const signal = new AbortController().signal, events = [];
+  const tools = familyToolset(env, { onTimer: timer => events.push(timer), toolDeps: {
+    kitchenTimer: { service: kitchenTimer, requestId: 'start-turn', language: 'fr', signal } } });
+  const send = (action, seconds) => tools.execute(call(action, seconds).message.tool_calls[0]);
+  assert.equal((await send('start', -1)).receipt.status, 'failed');
+  assert.equal((await kitchenTimer.read()).state, 'idle');
+  assert.equal((await send('start', 60)).receipt.outcome, 'started');
+  await send('start', 120);
+  assert.equal((await kitchenTimer.read()).endsAt, 1_060_000);
+  assert.equal(events.length, 1);
+});
+
+test('unsupported model tools and occupied principal do not mutate Core', async () => {
+  const kitchenTimer = makeTimer(() => 1_000_000);
+  const failed = harness({ packId, backend: 'agentx', kitchenTimer,
+    response: body => body.tools ? { ok: false, body: { error: 'does not support tools' }, status: 400 } : timerModel(body) });
+  const reply = await failed.turn('Mets deux minutes', 'voice');
+  assert.match(reply.reply.text, /ne peux pas vérifier/);
+  assert.equal(reply.tools.status, 'not_supported');
+  assert.equal((await kitchenTimer.read()).state, 'idle');
+  const busy = harness({ packId, backend: 'agentx', kitchenTimer,
+    conversationEnv: { HOUSEHOLD_CONVERSATION_RELAY_ENABLED: 'true' },
+    continuityExecute: async () => ({ ok: true, body: { response: 'Nestor est occupé. Je ne peux pas lancer la minuterie.' },
+      metadata: { model: 'agentx-status', conversationContinuity: { state: 'status_only' } } }) });
+  const unavailable = await busy.turn('Mets deux minutes', 'voice');
+  assert.match(unavailable.reply.text, /ne peux pas lancer/);
+  assert.deepEqual(unavailable.tools.receipts, []);
+  assert.equal((await kitchenTimer.read()).state, 'idle');
 });

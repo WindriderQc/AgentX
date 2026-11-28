@@ -1,18 +1,19 @@
 'use strict';
 
 const { randomUUID } = require('node:crypto');
-const { parse } = require('./familyKitchenTimerCommand');
 const KEY = 'family';
 const ALERT_WINDOW_MS = 60_000;
+const RECENT_MUTATIONS = 1024;
 
 function createFamilyKitchenTimer({ mongoose, now = Date.now, makeId = randomUUID }) {
   const name = 'AgentXFamilyKitchenTimer';
   const Timer = mongoose.models[name] || mongoose.model(name, new mongoose.Schema({
-    _id: String, timerId: String, durationSeconds: Number, endsAt: Number, cancelledAt: Number, alertClaimedAt: Number
+    _id: String, timerId: String, durationSeconds: Number, endsAt: Number, cancelledAt: Number, alertClaimedAt: Number,
+    revision: Number, appliedRequests: [String]
   }, { versionKey: false }), 'household_kitchen_timers');
 
   function view(row, serverNow = now()) {
-    if (!row || row.cancelledAt != null) return { state: 'idle', serverNow };
+    if (!row?.timerId || row.cancelledAt != null) return { state: 'idle', serverNow };
     return {
       state: row.endsAt > serverNow ? 'running' : 'finished', id: row.timerId, serverNow,
       endsAt: row.endsAt, durationSeconds: row.durationSeconds, alertClaimed: row.alertClaimedAt != null
@@ -32,38 +33,60 @@ function createFamilyKitchenTimer({ mongoose, now = Date.now, makeId = randomUUI
     const parts = [hours && plural(hours, en ? 'hour' : 'heure'), minutes && plural(minutes, 'minute'), seconds && plural(seconds, en ? 'second' : 'seconde')].filter(Boolean);
     return (en ? 'Time left: ' : 'Il reste ') + parts.join(en ? ' and ' : ' et ') + '.';
   }
-  async function command(text, language = 'fr') {
-    const intent = parse(text), words = labels(language);
-    const result = (reply, timer) => ({ handled: true, reply: { text: reply, language }, timer });
-    if (!intent) return { handled: false };
-    const at = now();
-    if (intent.action === 'start') {
-      const timerId = makeId();
-      const endsAt = at + intent.seconds * 1000;
+  async function perform({ action, seconds } = {}, { language = 'fr', requestId, signal } = {}) {
+    const words = labels(language);
+    const result = (outcome, text, timer = null) => ({ outcome, text, timer });
+    const mutation = ['start', 'cancel', 'extend'].includes(action);
+    if (!['start', 'status', 'cancel', 'extend'].includes(action) || (mutation && !requestId))
+      return result('invalid', words.unavailable);
+    if (['start', 'extend'].includes(action) && (!Number.isInteger(seconds) || seconds < 1 || seconds > 86400))
+      return result('invalid', words.invalid);
+    const statusText = (timer) => timer.state === 'running' ? remaining(timer, language)
+      : timer.state === 'finished' ? words.done : words.none;
+    const noChange = (timer) => result('unchanged', statusText(timer), timer);
+    signal?.throwIfAborted();
+    if (action === 'status') {
+      const timer = await read();
+      return result('status', statusText(timer), timer);
+    }
+    // Bind the action to the first observed timer, not a replacement that
+    // happens to be present when a concurrent compare-and-set loses.
+    let originalId;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      signal?.throwIfAborted();
+      const row = await Timer.findById(KEY).lean(), at = now(), current = view(row, at);
+      if (attempt === 0) originalId = row?.timerId || null;
+      if (row?.appliedRequests?.includes(requestId)) return noChange(current);
+      const keep = [...(row?.appliedRequests || []), requestId].slice(-RECENT_MUTATIONS);
+      let change = {}, outcome = 'unchanged', text = statusText(current);
+      if ((row?.timerId || null) === originalId) {
+        if (action === 'start' && current.state !== 'running') {
+          change = { timerId: makeId(), endsAt: at + seconds * 1000, durationSeconds: seconds, cancelledAt: null, alertClaimedAt: null };
+          outcome = 'started';
+          text = words.started + ' ' + remaining(view(change, at), language);
+        } else if (action === 'start') {
+          text = words.running + ' ' + text;
+        } else if (action === 'cancel' && current.state === 'running') {
+          change = { cancelledAt: at };
+          outcome = 'cancelled';
+          text = words.cancelled;
+        } else if (action === 'extend' && current.state === 'running' && current.endsAt + seconds * 1000 - at <= 86_400_000) {
+          change = { endsAt: current.endsAt + seconds * 1000, durationSeconds: current.durationSeconds + seconds };
+          outcome = 'extended';
+          text = remaining(view({ ...row, ...change }, at), language);
+        }
+      }
+      signal?.throwIfAborted();
       try {
-        const row = await Timer.findOneAndUpdate({ _id: KEY, $or: [{ endsAt: { $lte: at } }, { cancelledAt: { $ne: null } }] },
-          { $set: { timerId, endsAt, durationSeconds: intent.seconds, cancelledAt: null, alertClaimedAt: null } },
-          { upsert: true, new: true }).lean();
-        const timer = view(row);
-        return result(words.started + ' ' + (timer.state === 'running' ? remaining(timer, language) : words.done), timer);
+        const updated = await Timer.findOneAndUpdate({ _id: KEY, revision: row?.revision ?? null,
+          ...(['cancelled', 'extended'].includes(outcome) && { endsAt: { $gt: now() }, alertClaimedAt: null }) },
+        { $set: { ...change, appliedRequests: keep, revision: (row?.revision ?? 0) + 1 } }, { upsert: !row, new: true }).lean();
+        if (updated) return result(outcome, text, view(updated, at));
       } catch (error) {
         if (error.code !== 11000) throw error;
-        const timer = await read();
-        return result(timer.state === 'running' ? words.running + ' ' + remaining(timer, language) : words.none, timer);
       }
     }
-    if (intent.action === 'cancel') {
-      const current = await read();
-      if (current.state !== 'running') return result(words.none, current);
-      const row = await Timer.findOneAndUpdate({ _id: KEY, timerId: current.id, cancelledAt: null, endsAt: { $gt: now() } },
-        { $set: { cancelledAt: now() } }, { new: true }).lean();
-      return row ? result(words.cancelled, view(row)) : result(words.none, await read());
-    }
-    const timer = await read();
-    if (intent.action === 'invalid') return result(words.invalid, timer);
-    if (timer.state === 'running') return result(remaining(timer, language), timer);
-    if (!intent.explicit && !(timer.state === 'finished' && timer.serverNow - timer.endsAt < ALERT_WINDOW_MS)) return { handled: false, timer };
-    return result(timer.state === 'finished' ? words.done : words.none, timer);
+    return result('unavailable', words.unavailable);
   }
   async function claimAlert(id) {
     if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) return { claimed: false };
@@ -72,16 +95,7 @@ function createFamilyKitchenTimer({ mongoose, now = Date.now, makeId = randomUUI
       endsAt: { $lte: at, $gte: at - ALERT_WINDOW_MS } }, { $set: { alertClaimedAt: at } }, { new: true }).lean();
     return { claimed: !!row };
   }
-  async function turnReply(text, language) {
-    if (!parse(text)) return null;
-    try {
-      const result = await command(text, language);
-      return result.handled ? { text: result.reply.text, timer: result.timer } : null;
-    } catch {
-      return { text: labels(language).unavailable, timer: null };
-    }
-  }
-  return { command, read, claimAlert, turnReply };
+  return { perform, read, claimAlert };
 }
 
 module.exports = { createFamilyKitchenTimer, ALERT_WINDOW_MS };

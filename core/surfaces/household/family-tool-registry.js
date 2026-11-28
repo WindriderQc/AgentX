@@ -7,7 +7,8 @@ const Ajv = require('ajv');
 const sources = require('./family-source-tools');
 const cards = require('./family-card-tool');
 const inbox = require('./family-inbox-tool');
-const TOOLS = [...sources.TOOLS, cards.TOOL, inbox.TOOL, ...bus.TOOLS.filter(t => ['iss_passes', 'artx_read', 'artx_present'].includes(t.name)),
+const timer = require('./family-timer-tool');
+const TOOLS = [...sources.TOOLS, cards.TOOL, inbox.TOOL, timer.TOOL, ...bus.TOOLS.filter(t => ['iss_passes', 'artx_read', 'artx_present'].includes(t.name)),
   ...web.TOOLS.filter(t => t.name === 'web_search'),
   ...network.SECRETARY_TOOLS.filter(t => ['network_devices', 'get_sound'].includes(t.name))];
 const ajv = new Ajv({ strict: false, validateFormats: false });
@@ -16,6 +17,7 @@ async function callTool(params, deps, tools) {
   if (!validators.get(params.name)?.(params.arguments || {})) return { isError: true,
     structuredContent: { error: 'INVALID_ARGUMENTS', message: 'Unknown family read or invalid arguments.' } };
   if (sources.TOOLS.some(tool => tool.name === params.name)) return sources.callTool(params, deps);
+  if (params.name === timer.TOOL.name) return timer.callTool(params.arguments, deps?.kitchenTimer);
   if (params.name === inbox.TOOL.name) return inbox.callTool(params.arguments, deps?.familyInbox);
   if (params.name === cards.TOOL.name) return cards.callTool(params.arguments, deps?.familyCards);
   if (params.name === 'web_search') {

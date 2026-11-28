@@ -152,6 +152,10 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
     // A model whose runtime refuses tools answers the turn without them.
     if (!thinker && toolsOffered && !result?.ok && /does not support tools/i.test(JSON.stringify(result?.body?.error || ''))) {
       toolsOffered = false;
+      if (toolset.names.includes('family_kitchen_timer')) {
+        conversation = [{ ...conversation[0], content: conversation[0].content
+          + '\nThe inference runtime refused tools on this turn. Ignore earlier tool-availability instructions. No timer action or live status is confirmed. State this limitation if asked about the kitchen timer.' }, ...conversation.slice(1)];
+      }
       try { result = await execute(false); }
       catch (error) {
         if (!settleChangedOccupation(error)) throw error;

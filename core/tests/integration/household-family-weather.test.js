@@ -127,7 +127,7 @@ test.each(['false', 'true'])('the local Family route answers covered weather req
       expect(events.find(row => row.type === 'done').data.reply.text).toContain('14 degrés');
       expect(executeForTest.mock.calls).toHaveLength(before + 1);
       const body = executeForTest.mock.calls.at(-1)[0];
-      expect(body.tools.map(tool => tool.function.name).sort()).toEqual(['iss_passes', 'network_devices']);
+      expect(body.tools.map(tool => tool.function.name).sort()).toEqual(['family_kitchen_timer', 'iss_passes', 'network_devices']);
       expect(body.messages[0].content).not.toMatch(/use web_search/i);
       expect(body.messages.at(-1).content).toContain('"temperatureC":14');
       expect(body.messages.at(-1).content).toContain('Answer this request directly');
@@ -137,12 +137,12 @@ test.each(['false', 'true'])('the local Family route answers covered weather req
       { observedAt: new Date(Date.now() - 4 * 3600000).toISOString(), fetchedAt, temperatureC: 14, condition: 'Nuageux' }]) {
       jest.spyOn(ambient, 'weather').mockResolvedValueOnce(reading);
       await voiceTurn(sessionId, 'Quelle météo fait-il dehors ?');
-      expect(executeForTest.mock.calls.at(-1)[0].tools.map(tool => tool.function.name).sort()).toEqual([...grants].sort());
+      expect(executeForTest.mock.calls.at(-1)[0].tools.map(tool => tool.function.name).sort()).toEqual([...grants, 'family_kitchen_timer'].sort());
     }
     for (const text of ['Cherche la météo sur le web.', 'Quelle météo fait-il à Lyon ?', 'Quelle est la météo demain ?',
       'Donne-moi la météo et le prochain passage de la station spatiale.']) {
       await voiceTurn(sessionId, text);
-      expect(executeForTest.mock.calls.at(-1)[0].tools.map(tool => tool.function.name).sort()).toEqual([...grants].sort());
+      expect(executeForTest.mock.calls.at(-1)[0].tools.map(tool => tool.function.name).sort()).toEqual([...grants, 'family_kitchen_timer'].sort());
     }
   } finally {
     if (previousFilter === undefined) delete process.env.HOUSEHOLD_NATIVE_EXPLICIT_INPUT_ONLY;

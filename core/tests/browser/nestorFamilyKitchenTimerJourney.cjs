@@ -13,9 +13,12 @@ const { createFamilyKitchenTimer } = require('../../src/services/familyKitchenTi
 const core = path.resolve(__dirname, '../..'), publicDir = path.join(core, 'surfaces/household/public');
 const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture', version: 1 }));
 let now = 1_000_000, heard = '', browser, server, claims = 0;
-const errors = [];
+const errors = [], voiceFrames = [];
+let completeVoice;
+const voiceCompletion = new Promise(resolve => { completeVoice = resolve; });
 const timer = createFamilyKitchenTimer({ mongoose: memoryMongoose(), now: () => now });
-const family = harness({ packId: 'kidx_nestor', backend: 'agentx', kitchenTimer: timer });
+const family = harness({ packId: 'kidx_nestor', backend: 'agentx', kitchenTimer: timer,
+  response: require('../../surfaces/household/test/fixtures/kitchen-timer-model.cjs').timerModel });
 const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   .replace('<!-- product-navigation -->', '<span id="runtimePill"></span>')
   .replace(/  <script src="\/assets\/household\/app.js[^\n]+/, '')
@@ -77,6 +80,15 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
     res.status(201).json({ data: { session: family.session } });
   });
   app.post('/api/voice-personas/family/sessions/:sessionId/turns/text', async (req, res) => {
+    if (req.body.channel === 'voice' && req.body.stream) {
+      const write = res.write.bind(res);
+      res.write = (data, ...args) => {
+        const frame = JSON.parse(data);
+        voiceFrames.push(frame);
+        if (frame.type === 'done' || frame.type === 'error') completeVoice(frame);
+        return write(data, ...args);
+      };
+    }
     await family.handle(req, res, 'child', { packId: family.pack.id, modeId: family.pack.defaultMode, scopeId: 'family', browser: true });
     if (!res.writableEnded) res.status(res.failure?.status || 200).json(res.failure || { data: res.payload });
   });
@@ -122,12 +134,21 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   await page.waitForFunction(() => document.getElementById('conversationPresence').dataset.state === 'listening');
   heard = 'Hey Nestor, mets deux minutes.';
   await page.evaluate(() => window.say());
+  await page.locator('.family-kitchen-timer').waitFor({ state: 'visible' });
+  const doneFrame = await Promise.race([voiceCompletion, new Promise((_, reject) =>
+    setTimeout(() => reject(Error('No terminal Famille voice response')), 12000).unref())]);
+  const timerFrame = voiceFrames.find(frame => frame.type === 'timer');
+  assert.equal(doneFrame.type, 'done', JSON.stringify(doneFrame));
+  assert.equal(timerFrame.timer.endsAt, now + 120000);
+  assert.equal(doneFrame.data.tools.receipts.filter(row => row.outcome === 'started').length, 1);
+  assert.match(doneFrame.data.reply.text, /2 minutes/);
   assert.equal(family.turns[0]?.channel, 'voice');
   await page.locator('#conversationStart').click();
   const panel = page.locator('.family-kitchen-timer');
   await panel.waitFor({ state: 'visible' });
   assert.match(await panel.innerText(), /Minuterie\s+02:00/i);
-  assert.equal(family.sent.length, 0);
+  assert.equal(family.sent.length, 2);
+  assert.equal(family.sent[0].tools.some(tool => tool.function.name === "family_kitchen_timer"), true);
   const persistedId = (await timer.read()).id;
   now += 20_000;
   await page.reload();
@@ -154,7 +175,7 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   await typed('Annule la minuterie.');
   await page.getByText('Minuterie annulée.', { exact: true }).waitFor();
   await panel.waitFor({ state: 'hidden' });
-  assert.equal(family.sent.length, 0);
+  assert.ok(family.sent.length >= 2);
   await typed('Mets une minuterie de 5 minutes.');
   await panel.waitFor({ state: 'visible' });
   const visual = await context.newPage();
@@ -198,6 +219,6 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   }
   await visual.close();
   assert.deepEqual(errors, []);
-  console.log('PASS Famille timer: real page, Core deterministic route, reload, status, expiry once, cancel, full-screen avatar at TV and phone widths; simulated time and audio.');
+  console.log('PASS Famille timer: real page, model tool and Core receipt, reload, status, expiry once, cancel, full-screen avatar at TV and phone widths; simulated time and audio.');
 })().catch(error => { console.error(error); process.exitCode = 1; })
   .finally(async () => { await browser?.close(); await new Promise(resolve => server ? server.close(resolve) : resolve()); });
