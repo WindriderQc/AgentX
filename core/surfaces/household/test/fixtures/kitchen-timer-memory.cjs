@@ -11,7 +11,7 @@ function memoryMongoose() {
         const matches = (current, filter) => Object.entries(filter).every(([key, value]) => {
           if (key === '$or') return value.some(item => matches(current, item));
           if (value && typeof value === 'object') return Object.entries(value).every(([op, bound]) =>
-            op === '$ne' ? current[key] !== bound : op === '$lte' ? current[key] <= bound
+            op === '$eq' ? current[key] === bound : op === '$ne' ? current[key] !== bound : op === '$lte' ? current[key] <= bound
               : op === '$gte' ? current[key] >= bound : op === '$gt' ? current[key] > bound : false);
           return current[key] === value;
         });

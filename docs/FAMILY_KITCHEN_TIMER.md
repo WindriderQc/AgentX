@@ -1,18 +1,20 @@
 # Famille kitchen timer
 
-On the Famille conversation page, say or type « Mets une minuterie de deux minutes »,
-« Combien il reste? », or « Annule la minuterie ». The follow-up without a named
-timer is treated as a timer question only while one is running or has just finished.
-There is one shared kitchen timer per Famille space. A second start reports the
-original timer instead of silently replacing it. Supported durations range from
-one second to 24 hours.
+Start, check, extend or cancel the shared kitchen timer by talking to or typing
+to Nestor Famille. Nestor interprets the current conversation and calls the
+scoped Core tool, rather than matching a list of commands. A question like
+“Combien il reste?” can be about the timer or a different subject. Gardien does
+not have timer write access. Nestor reports only what Core confirms. Eligible
+Famille turns use the existing tool-capable conversation lane; the older
+tool-free spoken selector cannot execute this action. The personal voice lane
+is unchanged.
 
-Core handles recognized commands before model routing in the existing Famille
-conversation, with the usual scope and safety checks. Core stores an absolute
-deadline and an opaque ID in MongoDB. The panel reads and shows that state in
-the current view. Refreshing the panel or restarting Core with the same
-database does not restart the countdown. There is no browser timer record,
-cloud notification, new worker, or GPU requirement.
+Core owns one timer. A second start does not overwrite it. Start duration is
+one second to 24 hours; adding time updates the existing timer and cannot put
+more than 24 hours on the clock. A retried extension for the same turn does
+not add time twice. The panel uses the same Core deadline that the tool
+reports. Reloading the panel or restarting Core with the same database does
+not restart the countdown. There is no second timer store or separate worker.
 
 At expiry, a visible browser that can play audio can claim one short beep
 from Core, within one minute. Core records the claim atomically before the

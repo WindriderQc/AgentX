@@ -32,6 +32,7 @@ function harness({ packId, backend, response = 'Réponse synthétique.', convers
     inference: { conversation: continuityExecute, execute: async body => {
       sent.push({ prefix: body.messages[0].content, messages: body.messages, request: body.messages.at(-1).content, taskType: body.taskType, tools: body.tools });
       const reply = typeof response === 'function' ? response(body) : response;
+      if (reply?.ok === false) return reply;
       return { ok: true, body: typeof reply === 'string' ? { response: reply } : reply, metadata: { model: 'synthetic' } };
     } },
     agentClient: async request => {

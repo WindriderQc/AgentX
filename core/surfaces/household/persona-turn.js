@@ -203,12 +203,11 @@ function createPersonaTurnHandler({
       const assessedSafety = assessSafety(userText, { adult: !pack.childSafe });
       const safety = pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? familyPages.navigationSafety(userText, assessedSafety, assessSafety) : assessedSafety;
       const childBoundary = childBoundaryReply(pack, safety, userText);
-      const timerReply = !isLlmX && !consult && !entry.attachments.length && !childBoundary && !safety.deterministicEscalation && !safety.flagIds?.length && pack.id === VOIX_FAMILY_PACK_ID && session.scopeId === 'family' ? await kitchenTimer?.turnReply(userText, preferredSpeechLanguage) : null;
-      const mathPicture = !timerReply && !isLlmX && !childBoundary && !safety.deterministicEscalation ? await mathPictureForConversation(userText, { pack, session, language: preferredSpeechLanguage, conversations }) : null;
+      const mathPicture = !isLlmX && !childBoundary && !safety.deterministicEscalation ? await mathPictureForConversation(userText, { pack, session, language: preferredSpeechLanguage, conversations }) : null;
       const mathTurn = mathPicture?.answeredBy === 'core' ? mathPicture : null;
       const pictureRequest = !isLlmX && !consult && !entry.workId && !entry.attachments.length && familyPictureIntent.explicitCreation({ session,
         backend: conversationBackend(session.backend, conversationEnv), channel: req.body?.channel, turnId: clientTurnId, safety, text: userText, available: executeConversation.familyPrimaryConfigured });
-      entry.familyPage = !timerReply && !pictureRequest && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? await familyPages.forTurn(userText, pagesFor(pack), conversations, session) : null;
+      entry.familyPage = !pictureRequest && pack.id === VOIX_FAMILY_PACK_ID && !isLlmX ? await familyPages.forTurn(userText, pagesFor(pack), conversations, session) : null;
       let backend, picture = false, replyText, sceneProposal = null, display = [];
       const clipPlayer = (!requiredSession || requiredSession.browser === true) && req.body?.soundPlayback === true;
       const soundTurnId = clientTurnId || entry.imageTurnId;
@@ -235,8 +234,6 @@ function createPersonaTurnHandler({
       };
       if (safety.deterministicEscalation) {
         replyText = escalationReply(pack, safety);
-      } else if (timerReply) {
-        replyText = timerReply.text; if (timerReply.timer) event('timer', { timer: timerReply.timer });
       } else if (childBoundary || mathTurn) { // #131: the picture first, then Nestor's exact answer without waiting for inference.
         replyText = childBoundary || mathTurn.reply; if (mathTurn) event('scene', { scene: mathTurn.scene });
       } else if (entry.familyPage?.standalone) {
@@ -375,7 +372,10 @@ function createPersonaTurnHandler({
         const readerSound = !picture && backend === 'agentx' && pack.id === 'kidx_reader' && !isLlmX;
         const familyTools = familyToolTurn || readerSound ? familyToolset(conversationEnv, { weatherAnswersRequest: Boolean(coveredWeather),
           soundOnly: readerSound, soundTurnId: clipPlayer ? soundTurnId : null,
-          artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, toolDeps: { sounds, artx, ambient, familyCards, familyInbox: !savedNow && !family.captured && familyInbox } }) : null;
+          artxDisplayId: req.body?.artx?.displayId, artxRequestId: clientTurnId || entry.imageTurnId, onTimer: timer => event('timer', { timer }),
+          toolDeps: { sounds, artx, ambient, familyCards, familyInbox: !savedNow && !family.captured && familyInbox,
+            kitchenTimer: !inputOnly && !entry.ephemeral && !consult && !guardianSession && !entry.attachments.length && !safety.flagIds?.length && kitchenTimer
+              ? { service: kitchenTimer, language: preferredSpeechLanguage, requestId: session.sessionId + ':' + (clientTurnId || entry.imageTurnId), signal: abort.signal } : null } }) : null;
         const familyVoice = familyToolTurn && req.body?.channel === 'voice';
         const contextTail = inputOnly || picture ? '' : [isLlmX || member ? '' : await conversationImages?.contextFor?.(session), safety.advisoryNote || '',
           artxContext.describe(entry.artxEvidence, { toolAvailable: familyVoice && familyTools?.names.includes('artx_read') }),
@@ -442,7 +442,7 @@ function createPersonaTurnHandler({
 
         serverPhases.prepared = Date.now() - startedAt;
         const spoken = require('./spoken-consultation').forTurn({ entry, session, backend, channel: req.body?.channel, env: conversationEnv, event,
-          blocked: picture || consult || member || entry.familyPage?.target || target || safety.flagIds?.length || savedNow || family.captured || sound || workshop,
+          blocked: familyTools?.names.includes('family_kitchen_timer') || picture || consult || member || entry.familyPage?.target || target || safety.flagIds?.length || savedNow || family.captured || sound || workshop,
           identity: pack.childSafe ? familyIdentity(session.persona) : session.persona?.name, context: [preparedRelayContext, repairContext, memberWork?.contextFor(session.sessionId), require('./spoken-consultation').screenReference(entry.presentationContext)].filter(Boolean).join('\n'), personalTasks: runtimeServices?.tasks?.personal });
         const run = executeConversation({ backend, spoken, session: turnSession, ...(inputOnly && { [householdUserText]: userText }), ...(guardianSession ? { canonicalSession: session,
           ...(entry.performance?.guardian?.model && { model: entry.performance.guardian.model }),

@@ -15,7 +15,8 @@ const personas = generatedPersonas().map(row => snapshot({ ...row, _id: 'fixture
 let now = 1_000_000, heard = '', browser, server, claims = 0;
 const errors = [];
 const timer = createFamilyKitchenTimer({ mongoose: memoryMongoose(), now: () => now });
-const family = harness({ packId: 'kidx_nestor', backend: 'agentx', kitchenTimer: timer });
+const family = harness({ packId: 'kidx_nestor', backend: 'agentx', kitchenTimer: timer,
+  response: require('../../surfaces/household/test/fixtures/kitchen-timer-model.cjs').timerModel });
 const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   .replace('<!-- product-navigation -->', '<span id="runtimePill"></span>')
   .replace(/  <script src="\/assets\/household\/app.js[^\n]+/, '')
@@ -121,13 +122,21 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   await page.locator('#conversationStart').click();
   await page.waitForFunction(() => document.getElementById('conversationPresence').dataset.state === 'listening');
   heard = 'Hey Nestor, mets deux minutes.';
+  const voiceTurn = page.waitForResponse(response => response.url().endsWith('/turns/text') && response.request().postDataJSON().channel === 'voice');
   await page.evaluate(() => window.say());
+  const frames = (await (await voiceTurn).text()).trim().split('\n').map(JSON.parse);
+  const timerFrame = frames.find(frame => frame.type === 'timer');
+  const doneFrame = frames.find(frame => frame.type === 'done');
+  assert.equal(timerFrame.timer.endsAt, now + 120000);
+  assert.equal(doneFrame.data.tools.receipts.filter(row => row.outcome === 'started').length, 1);
+  assert.match(doneFrame.data.reply.text, /2 minutes/);
   assert.equal(family.turns[0]?.channel, 'voice');
   await page.locator('#conversationStart').click();
   const panel = page.locator('.family-kitchen-timer');
   await panel.waitFor({ state: 'visible' });
   assert.match(await panel.innerText(), /Minuterie\s+02:00/i);
-  assert.equal(family.sent.length, 0);
+  assert.equal(family.sent.length, 2);
+  assert.equal(family.sent[0].tools.some(tool => tool.function.name === "family_kitchen_timer"), true);
   const persistedId = (await timer.read()).id;
   now += 20_000;
   await page.reload();
@@ -154,7 +163,7 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   await typed('Annule la minuterie.');
   await page.getByText('Minuterie annulée.', { exact: true }).waitFor();
   await panel.waitFor({ state: 'hidden' });
-  assert.equal(family.sent.length, 0);
+  assert.ok(family.sent.length >= 2);
   await typed('Mets une minuterie de 5 minutes.');
   await panel.waitFor({ state: 'visible' });
   const visual = await context.newPage();
@@ -198,6 +207,6 @@ const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8')
   }
   await visual.close();
   assert.deepEqual(errors, []);
-  console.log('PASS Famille timer: real page, Core deterministic route, reload, status, expiry once, cancel, full-screen avatar at TV and phone widths; simulated time and audio.');
+  console.log('PASS Famille timer: real page, model tool and Core receipt, reload, status, expiry once, cancel, full-screen avatar at TV and phone widths; simulated time and audio.');
 })().catch(error => { console.error(error); process.exitCode = 1; })
   .finally(async () => { await browser?.close(); await new Promise(resolve => server ? server.close(resolve) : resolve()); });

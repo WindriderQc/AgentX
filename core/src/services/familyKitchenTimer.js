@@ -1,14 +1,14 @@
 'use strict';
 
 const { randomUUID } = require('node:crypto');
-const { parse } = require('./familyKitchenTimerCommand');
 const KEY = 'family';
 const ALERT_WINDOW_MS = 60_000;
 
 function createFamilyKitchenTimer({ mongoose, now = Date.now, makeId = randomUUID }) {
   const name = 'AgentXFamilyKitchenTimer';
   const Timer = mongoose.models[name] || mongoose.model(name, new mongoose.Schema({
-    _id: String, timerId: String, durationSeconds: Number, endsAt: Number, cancelledAt: Number, alertClaimedAt: Number
+    _id: String, timerId: String, durationSeconds: Number, endsAt: Number, cancelledAt: Number, alertClaimedAt: Number,
+    startRequestId: String, extensionRequests: [String]
   }, { versionKey: false }), 'household_kitchen_timers');
 
   function view(row, serverNow = now()) {
@@ -32,38 +32,55 @@ function createFamilyKitchenTimer({ mongoose, now = Date.now, makeId = randomUUI
     const parts = [hours && plural(hours, en ? 'hour' : 'heure'), minutes && plural(minutes, 'minute'), seconds && plural(seconds, en ? 'second' : 'seconde')].filter(Boolean);
     return (en ? 'Time left: ' : 'Il reste ') + parts.join(en ? ' and ' : ' et ') + '.';
   }
-  async function command(text, language = 'fr') {
-    const intent = parse(text), words = labels(language);
-    const result = (reply, timer) => ({ handled: true, reply: { text: reply, language }, timer });
-    if (!intent) return { handled: false };
+  async function perform({ action, seconds } = {}, { language = 'fr', requestId, signal } = {}) {
+    const words = labels(language);
+    const result = (outcome, text, timer = null) => ({ outcome, text, timer });
+    const mutation = ['start', 'cancel', 'extend'].includes(action);
+    if (!['start', 'status', 'cancel', 'extend'].includes(action) || (mutation && !requestId))
+      return result('invalid', words.unavailable);
+    if (['start', 'extend'].includes(action) && (!Number.isInteger(seconds) || seconds < 1 || seconds > 86400))
+      return result('invalid', words.invalid);
+    signal?.throwIfAborted();
     const at = now();
-    if (intent.action === 'start') {
-      const timerId = makeId();
-      const endsAt = at + intent.seconds * 1000;
+    if (action === 'start') {
       try {
-        const row = await Timer.findOneAndUpdate({ _id: KEY, $or: [{ endsAt: { $lte: at } }, { cancelledAt: { $ne: null } }] },
-          { $set: { timerId, endsAt, durationSeconds: intent.seconds, cancelledAt: null, alertClaimedAt: null } },
-          { upsert: true, new: true }).lean();
+        const row = await Timer.findOneAndUpdate({ _id: KEY, startRequestId: { $ne: requestId },
+          $or: [{ endsAt: { $lte: at } }, { cancelledAt: { $ne: null } }] },
+          { $set: { timerId: makeId(), endsAt: at + seconds * 1000, durationSeconds: seconds, cancelledAt: null,
+            alertClaimedAt: null, startRequestId: requestId, extensionRequests: [] } }, { upsert: true, new: true }).lean();
         const timer = view(row);
-        return result(words.started + ' ' + (timer.state === 'running' ? remaining(timer, language) : words.done), timer);
+        return result('started', words.started + ' ' + (timer.state === 'running' ? remaining(timer, language) : words.done), timer);
       } catch (error) {
         if (error.code !== 11000) throw error;
         const timer = await read();
-        return result(timer.state === 'running' ? words.running + ' ' + remaining(timer, language) : words.none, timer);
+        return result('unchanged', timer.state === 'running' ? words.running + ' ' + remaining(timer, language)
+          : timer.state === 'finished' ? words.done : words.none, timer);
       }
     }
-    if (intent.action === 'cancel') {
-      const current = await read();
-      if (current.state !== 'running') return result(words.none, current);
-      const row = await Timer.findOneAndUpdate({ _id: KEY, timerId: current.id, cancelledAt: null, endsAt: { $gt: now() } },
-        { $set: { cancelledAt: now() } }, { new: true }).lean();
-      return row ? result(words.cancelled, view(row)) : result(words.none, await read());
+    const row = await Timer.findById(KEY).lean();
+    const timer = view(row);
+    const statusText = timer.state === 'running' ? remaining(timer, language) : timer.state === 'finished' ? words.done : words.none;
+    if (action === 'status') return result('status', statusText, timer);
+    if (timer.state !== 'running') return result('unchanged', words.none, timer);
+    const when = now();
+    const filter = { _id: KEY, timerId: timer.id, cancelledAt: null, endsAt: { $gt: when } };
+    signal?.throwIfAborted();
+    if (action === 'cancel') {
+      const updated = await Timer.findOneAndUpdate(filter, { $set: { cancelledAt: when } }, { new: true }).lean();
+      return updated ? result('cancelled', words.cancelled, view(updated)) : result('unchanged', words.unavailable, await read());
     }
-    const timer = await read();
-    if (intent.action === 'invalid') return result(words.invalid, timer);
-    if (timer.state === 'running') return result(remaining(timer, language), timer);
-    if (!intent.explicit && !(timer.state === 'finished' && timer.serverNow - timer.endsAt < ALERT_WINDOW_MS)) return { handled: false, timer };
-    return result(timer.state === 'finished' ? words.done : words.none, timer);
+    const requests = row.extensionRequests || [];
+    if (requests.includes(requestId)) return result('unchanged', statusText, timer);
+    if (requests.length >= 128 || row.endsAt + seconds * 1000 - when > 86_400_000)
+      return result('unchanged', language === 'en' ? 'No time was added to the timer.' : "Je n'ai pas ajouté de temps à la minuterie.", timer);
+    // Compare the deadline used to compute the update. A concurrent change
+    // is not retried against a different state or a replacement timer.
+    const updated = await Timer.findOneAndUpdate({ ...filter, endsAt: { $eq: row.endsAt, $gt: when } },
+      { $set: { endsAt: row.endsAt + seconds * 1000, durationSeconds: row.durationSeconds + seconds,
+        extensionRequests: [...requests, requestId] } }, { new: true }).lean();
+    if (!updated) return result('unchanged', language === 'en' ? 'No time was added to the timer.' : "Je n'ai pas ajouté de temps à la minuterie.", await read());
+    const extended = view(updated);
+    return result('extended', extended.state === 'running' ? remaining(extended, language) : words.done, extended);
   }
   async function claimAlert(id) {
     if (typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id)) return { claimed: false };
@@ -72,16 +89,7 @@ function createFamilyKitchenTimer({ mongoose, now = Date.now, makeId = randomUUI
       endsAt: { $lte: at, $gte: at - ALERT_WINDOW_MS } }, { $set: { alertClaimedAt: at } }, { new: true }).lean();
     return { claimed: !!row };
   }
-  async function turnReply(text, language) {
-    if (!parse(text)) return null;
-    try {
-      const result = await command(text, language);
-      return result.handled ? { text: result.reply.text, timer: result.timer } : null;
-    } catch {
-      return { text: labels(language).unavailable, timer: null };
-    }
-  }
-  return { command, read, claimAlert, turnReply };
+  return { perform, read, claimAlert };
 }
 
 module.exports = { createFamilyKitchenTimer, ALERT_WINDOW_MS };
