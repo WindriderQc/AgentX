@@ -55,11 +55,19 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
   const local = jest.fn(async (input, options = {}) => {
     state.inference.push(input);
     if (input.model === 'synthetic-main' && state.busy) {
+      if (state.unreachable) throw Object.assign(Error('synthetic host unreachable before dispatch'),
+        { ollamaRequestNotSent: true, code: 'ECONNREFUSED' });
       const now = new Date();
       const failure = state.failure || inferenceConflict({ inferences: [{ state: 'ACTIVE', host: PRIMARY,
         mode: 'shared', model: 'synthetic-main', acquiredAt: now, expiresAt: new Date(+now + 60000) }] },
       { host: PRIMARY, mode: input.exclusiveHost || options.requireIdleHost ? 'exclusive' : 'shared', resourceIds: [] }, now);
       throw Object.assign(Error('Refused before dispatch'), { code: 'RUNTIME_INFERENCE_ADMISSION_DENIED', failure });
+    }
+    if (input.model === 'synthetic-main' && input.format?.properties?.mode) {
+      const content = JSON.stringify({ mode: 'parler', texte: 'Le principal a repris.' });
+      return { ok: true, stream: [JSON.stringify({ model: 'synthetic-main', message: { content }, done: true, done_reason: 'stop' })],
+        completion: Promise.resolve({ completed: true, terminalComplete: true }),
+        metadata: { model: input.model, hostUrl: PRIMARY } };
     }
     if (guardianTools && input.model === 'synthetic-guardian' && !input.messages.some(message => message.role === 'tool')) {
       const names = new Set((input.tools || []).map(tool => tool.function.name));
@@ -69,10 +77,10 @@ async function fixture(backend = 'hermes', enabled = true, { richFamilyPresentat
     }
     if (state.backupStream && input.model === 'synthetic-guardian') return { ok: true,
       stream: (async function* () {
-        yield Buffer.from(JSON.stringify({ message: { content: 'Je peux continuer la discussion.' }, done: true }) + '\n');
+        yield Buffer.from(JSON.stringify({ message: { content: state.guardianText || 'Je peux continuer la discussion.' }, done: true }) + '\n');
       })(), completion: state.streamCompletion || Promise.resolve({ completed: true, terminalComplete: true }),
       metadata: { model: input.model } };
-    return { ok: true, body: { message: { content: input.model === 'synthetic-main' ? 'Réponse du principal.' : 'Je peux continuer la discussion.' } },
+    return { ok: true, body: { message: { content: ['synthetic-main', 'synthetic-thinker'].includes(input.model) ? 'Réponse du principal.' : 'Je peux continuer la discussion.' } },
       metadata: { model: input.model } };
   });
   const continuity = createConversationContinuity({ execute: local, readPolicy: () => JSON.stringify({ hosts: ['guardian'] }),
@@ -127,7 +135,7 @@ afterEach(async () => { world?.release(); await until(() => !world || world.acti
 test.each(['voice', 'text'])('Family %s relays on a real admission conflict, retains child safety and returns to its unchanged primary route', async channel => {
   world = await fixture('agentx');
   const id = randomUUID(), reply = await world.send('Explique les nuages.', id, channel).expect(200);
-  expect(done(reply).reply.text).toBe('Le gardien prend le relais. Nestor est occupé.\n\nJe peux continuer la discussion.');
+  expect(done(reply).reply.text).toBe('Le gardien prend le relais. Une autre demande utilise les ressources de Nestor.\n\nJe peux continuer la discussion.');
   expect(world.state.inference.map(input => input.model)).toEqual(['synthetic-main', 'synthetic-guardian']);
   expect(world.local.mock.calls[0][1].requireIdleHost).toBe(true);
   expect(world.state.inference[0].exclusiveHost).toBe(false);
@@ -145,6 +153,9 @@ test.each(['voice', 'text'])('Family %s relays on a real admission conflict, ret
   const resumed = world.state.inference.at(-1);
   expect(JSON.stringify(resumed.messages)).toContain('Core temporary relay dialogue');
   expect(JSON.stringify(resumed.messages)).toContain('Explique les nuages.');
+  expect(JSON.stringify(resumed.messages)).toContain('Je peux continuer la discussion.');
+  expect(JSON.stringify(resumed.messages)).toContain('inference_active');
+  expect(JSON.stringify(resumed.messages)).not.toContain('"hostKey"');
   expect(resumed.messages[0].content).toContain('explicitly identify any necessary correction');
   expect(world.state.runs).toHaveLength(0);
 });
@@ -248,7 +259,7 @@ test('voice relay announces itself once in streamed speech and waits for Core te
   complete({ completed: true, terminalComplete: true });
   const result = await response;
   const spoken = events(result).filter(event => event.type === 'delta').map(event => event.delta).join('');
-  expect(spoken.match(/Le gardien prend le relais. Nestor est occupé\./g)).toHaveLength(1);
+  expect(spoken.match(/Le gardien prend le relais. Une autre demande utilise les ressources de Nestor\./g)).toHaveLength(1);
   expect(done(result).reply.text).toContain('Je peux continuer la discussion.');
   expect((await conversations.getTurn({ sessionId: world.session.sessionId, traceId: id })).toolEvidence.conversationRelay.completed).toBe(true);
 });
@@ -526,4 +537,110 @@ test.each([['agentx', false], ['agentx', true], ['hermes', false]])('%s relay ex
   await world.send('Explique une lecture météo avec ton outil et un calcul.', id).expect(202);
   expect(world.state.inference).toHaveLength(count);
   if (primary) { world.release(); await primary; }
+});
+
+test.each([
+  ['workload_reserved', 'workload', 'Un travail a réservé les ressources de Nestor.'],
+  ['maintenance_active', 'maintenance', 'Une maintenance retient les ressources de Nestor.'],
+  ['host_down', null, 'Core n’a pas pu joindre Nestor. Son activité n’est pas connue.'],
+  ['unknown', null, 'Nestor est indisponible. La raison n’est pas vérifiée.']
+])('Family streams a truthful %s as category only, then returns with the real exchanged turn', async (category, type, phrase) => {
+  world = await fixture('agentx');
+  const first = randomUUID(), other = randomUUID();
+  world.state.unreachable = category === 'host_down';
+  world.state.failure = { cause: category === 'unknown' ? 'unverified-fixture-private-code' : category, safeToRetry: true,
+    holder: type && { type, kind: 'private-fixture-work-title', principal: 'private-fixture-holder' } };
+  world.state.backupStream = true;
+  world.state.guardianText = 'Le hibou fictif porte le foulard violet.';
+  const original = 'De quelle couleur est le foulard du hibou fictif ?';
+  const result = await world.send(original, first).expect(200);
+  const speech = events(result).filter(event => event.type === 'delta').map(event => event.delta).join('');
+  expect(speech.split(phrase)).toHaveLength(2);
+  expect(speech).toContain(world.state.guardianText);
+  expect(speech).not.toMatch(/private-fixture|unverified-fixture|synthetic-guardian|127\.0\.0/);
+  const row = await conversations.getTurn({ sessionId: world.session.sessionId, traceId: first });
+  expect(row.toolEvidence.conversationRelay).toMatchObject({ handoffCategory: category, completed: true });
+  expect(row.inputText).toBe(original);
+  expect(row.replyText).toContain(world.state.guardianText);
+  await conversations.createSession({ sessionId: other, packId: world.session.packId, scopeId: world.session.scopeId,
+    backend: 'agentx', modeId: world.session.modeId, status: 'active' });
+  await conversations.recordTurn({ sessionId: other, packId: world.session.packId, scopeId: world.session.scopeId, modeId: world.session.modeId,
+    traceId: randomUUID(), inputText: original, replyText: 'Foulard orange autre session INTERDIT.', outcome: 'completed', toolEvidence: row.toolEvidence });
+  await conversations.recordTurn({ sessionId: world.session.sessionId, packId: world.session.packId, scopeId: world.session.scopeId, modeId: world.session.modeId,
+    traceId: randomUUID(), inputText: 'Un aparté fictif.', replyText: '', outcome: 'failed' });
+  world.state.busy = false;
+  await world.send('Rappelle-moi la couleur de son foulard.').expect(200);
+  const selected = world.state.inference.at(-1);
+  expect(selected.model).toBe('synthetic-main');
+  const payload = JSON.stringify(selected.messages);
+  expect(payload).toContain(original);
+  expect(payload).toContain(world.state.guardianText);
+  expect(selected.messages.at(-1).content).toContain(`"handoffCategory":"${category}"`);
+  expect(payload).not.toMatch(/INTERDIT|private-fixture|unverified-fixture|127\.0\.0|"hostKey"/);
+});
+
+test('returning compact Family primary sees an exact prior exchange beyond its two ordinary pairs', async () => {
+  world = await fixture('agentx');
+  const original = 'Quel objet le hibou tient-il dans cette histoire fictive ?';
+  const answer = 'Le hibou tient un parapluie en papier violet.';
+  world.state.backupStream = true; world.state.guardianText = answer;
+  await world.send(original).expect(200);
+  world.state.busy = false;
+  await world.send('Parlons du jardin maintenant.').expect(200);
+  await world.send('Explique le bruit du vent.').expect(200);
+  world.env.HOUSEHOLD_SPOKEN_HOST = 'agentx-primary';
+  world.env.HOUSEHOLD_THINKER_HOST = 'synthetic-need-not-start';
+  world.env.HOUSEHOLD_SPOKEN_RELAY_HOST = 'guardian';
+  const current = 'Et que tenait le hibou dans les pattes ?';
+  const response = await world.send(current).expect(200);
+  expect(done(response).tools.spokenDialogue).toBe('direct');
+  const compact = world.state.inference.at(-1);
+  expect(compact.model).toBe('synthetic-main');
+  expect(compact.format.properties.mode.enum).toEqual(['parler', 'consulter']);
+  expect(compact.messages.slice(1,-1).map(row => row.content).join(' ')).not.toContain(answer);
+  const final = compact.messages.at(-1).content;
+  expect(final).toContain(original); expect(final).toContain(answer);
+  expect(final).toContain('"handoffCategory":"inference_active"');
+  expect(final).toContain('"playback":"unverified"');
+  expect(final).not.toContain('"hostKey"');
+  expect(final.endsWith(current)).toBe(true);
+  expect(final.length).toBeLessThanOrEqual(7000);
+});
+
+test('over-budget compact handoff falls back to one full-context call without clipping the exchanged dialogue', async () => {
+  world = await fixture('agentx');
+  const { fingerprint } = require('../../src/services/conversations/relayContext');
+  const records = [];
+  for (let i = 1; i <= 2; i++) {
+    const input = 'Question fictive avec un numéro ' + i;
+    const reply = 'Réponse synthétique ' + i + ' : ' + 'mot '.repeat(920) + 'fin vérifiable ' + i;
+    await conversations.recordTurn({ sessionId: world.session.sessionId, packId: world.session.packId, scopeId: world.session.scopeId,
+      modeId: world.session.modeId, traceId: randomUUID(), inputText: input, replyText: reply, outcome: 'completed',
+      toolEvidence: { conversationRelay: { authority: 'core.conversation-continuity', role: 'relay', completed: true,
+        model: 'synthetic-guardian', hostKey: 'guardian', requestSha256: fingerprint(input), handoffCategory: 'maintenance_active' } } });
+    records.push({ input, reply });
+  }
+  world.state.busy = false;
+  await world.send('Un autre sujet fictif.').expect(200);
+  await world.send('Une deuxième courte discussion.').expect(200);
+  world.env.HOUSEHOLD_SPOKEN_HOST = 'agentx-primary';
+  world.env.HOUSEHOLD_THINKER_HOST = 'synthetic-thinker';
+  world.env.HOUSEHOLD_SPOKEN_RELAY_HOST = 'guardian';
+  const spoken = require('../../surfaces/household/spoken-consultation');
+  const pin = jest.spyOn(spoken, 'pinned').mockResolvedValue({ hostUrl: PRIMARY, model: 'synthetic-thinker', contextSize: 32768 });
+  try {
+    const before = world.state.inference.length, question = 'Reviens aux réponses du gardien.';
+    const response = await world.send(question).expect(200);
+    const calls = world.state.inference.slice(before);
+    expect(done(response).tools.spokenDialogue).toBe('consulted');
+    expect(calls).toHaveLength(1);
+    expect(calls[0].model).toBe('synthetic-thinker');
+    expect(calls[0].format).toBeUndefined();
+    const last = calls[0].messages.at(-1).content;
+    expect(last.length).toBeGreaterThan(7000);
+    for(const record of records) {
+      expect(last).toContain(record.input); expect(last).toContain(record.reply);
+    }
+    expect(last.endsWith(question)).toBe(true);
+  } finally { pin.mockRestore(); }
 });

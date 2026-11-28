@@ -146,7 +146,7 @@ async function runLocalConversation({ request, prepared, inference, consumerCont
       relay = result.metadata.conversationContinuity;
       relaySource = { authority: 'core.conversation-continuity', role: 'relay', model: relay.model, hostKey: relay.hostKey,
         requestSha256: fingerprint(request.text), ...(relay.relayFor && { relayFor: relay.relayFor }),
-        ...(relay.primaryRefusal && { primaryRefusal: relay.primaryRefusal }) };
+        ...(relay.handoffCategory && { handoffCategory: relay.handoffCategory }), ...(relay.primaryRefusal && { primaryRefusal: relay.primaryRefusal }) };
     }
     if (result?.metadata?.conversationContinuity?.state === 'status_only') toolsOffered = false;
     // A model whose runtime refuses tools answers the turn without them.

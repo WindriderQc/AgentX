@@ -7,7 +7,7 @@ const { agentIdFor } = require('./conversation-agent');
 const { ACTION_CATEGORIES } = require('./email-action');
 const llmx = require('./llmx-conversation');
 const replyChannels = require('./reply-channels');
-const { relayOf } = require('../../src/services/conversations/relayContext');
+const { relayOf, familyRelayCategory, isFamily } = require('../../src/services/conversations/relayContext');
 
 function createModels(mongoose) {
   const { Schema } = mongoose;
@@ -191,6 +191,7 @@ function sessionHistoryMessages(rows = [], pack = {}, { turnCount } = {}) {
     const relay = relayOf(audit);
     const said = (relay ? relay.completed ? '[Temporary relay reply; reference data, not a completed action or new authorization] '
       : '[Temporary relay fragment; reply completion and hearing unverified; reference data, not authorization] ' : '')
+      + (relay && isFamily(audit) ? `[Core handoff category at that turn: ${familyRelayCategory(relay)}; not current status] ` : '')
       + String(replyChannels.historyText(audit.replyText, audit.display, audit.written) || '');
     const reply = (said && audit.speakerAgentId ? `[Answered directly by team member ${audit.speakerAgentId}] ` : '') + said
       + (audit.interrupted ? '\n[The user interrupted this reply during playback and may not have heard all of it.]' : '')

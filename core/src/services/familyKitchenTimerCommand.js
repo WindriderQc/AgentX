@@ -12,7 +12,10 @@ const quantity = '([0-9]{1,6}|' + Object.keys(numbers).join('|') + ')';
 const unit = '(heures?|h|minutes?|min|secondes?|sec|hours?|seconds?|s)';
 const part = new RegExp('^' + quantity + '\\s*' + unit + '(?=\\s|$)');
 const timer = '(?:(?:une|la|un|le|a|the|my) )?(?:minuterie|chrono(?:metre)?|timer)';
-const startVerb = '^(?:mets(?: moi)?|pars|demarre|lance|regle|programme|set|start) ' + timer;
+const imperativeStart = 'mets(?: moi)?|pars|demarre|lance|regle|programme|set|start';
+const politeStart = '(?:peux tu|pourrais tu|pouvez vous|pourriez vous|tu peux) (?:mettre|demarrer|lancer|regler|programmer)';
+const startVerb = '^(?:' + imperativeStart + '|' + politeStart + ') ' + timer;
+const shortStart = /^mets(?: moi)? (.+)$/;
 const start = new RegExp(startVerb + '(?: de| pour| for)? (.+)$');
 const noDuration = new RegExp(startVerb + '$');
 const cancel = new RegExp('^(?:annule|arrete|stoppe|cancel|stop) ' + timer + '$');
@@ -35,18 +38,29 @@ function duration(text) {
   }
   return seconds > 0 && seconds <= MAX_SECONDS ? seconds : null;
 }
+const signedOrDecimal = /(?:^|\s)[-\u2212]\d|\d[.,]\d/;
 function parse(text) {
   const value = normalize(text);
   const started = value.match(start);
   if (noDuration.test(value)) return { action: 'invalid' };
   if (started) {
-    if (/(?:^|\s)[-\u2212]\d|\d[.,]\d/.test(String(text))) return { action: 'invalid' };
+    if (signedOrDecimal.test(String(text))) {
+      const whole = normalize(String(text).replace(/(\d)[.,]\d+/g, '$1')).match(start);
+      return whole && duration(whole[1]) ? { action: 'invalid' } : null;
+    }
     const seconds = duration(started[1]);
     if (seconds) return { action: 'start', seconds };
     // Do not capture a compound user request merely because it begins with a timer.
     if (/^[0-9]/.test(started[1]) && /^[0-9a-z ]+$/.test(started[1])
       && /^(?:[0-9]+ (?:heures?|h|minutes?|min|secondes?|sec|hours?|seconds?|s)|[0-9]+)$/.test(started[1])) return { action: 'invalid' };
     return null;
+  }
+  // In the kitchen, “mets deux minutes” is a timer request only when the
+  // entire suffix is a bounded duration. Never strip a purpose or a second task.
+  const short = value.match(shortStart);
+  if (short && !signedOrDecimal.test(String(text))) {
+    const seconds = duration(short[1]);
+    if (seconds) return { action: 'start', seconds };
   }
   if (cancel.test(value)) return { action: 'cancel' };
   if (explicitStatus.test(value)) return { action: 'status', explicit: /\b(?:minuterie|chrono|timer)\b/.test(value) };

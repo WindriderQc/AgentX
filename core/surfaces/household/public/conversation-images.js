@@ -70,23 +70,47 @@
       if (family && (!known || state === 'archive_failed' || state === 'unknown')) return labels.parent;
       return known ? labels.states[state] : labels.states.unknown;
     }
-    let figure;
+    let figure, artifactKey;
+    function clearFigure() {
+      figure?.remove();
+      figure = null; artifactKey = null;
+    }
     function show(op) {
       operation = op;
       const ready = op.state === 'completed' && op.runtimeRestored === true
         && /^[a-f0-9]{64}$/.test(op.artifact?.sha256 || '') && op.artifact.url === statusUrl + '/image';
-      presentationState = ready || ACTIVE.has(op.state) ? 'loading' : 'unavailable';
-      status.textContent = ready ? labels.states.completed : op.state === 'completed' ? labels.pendingProof : label(op.state);
-      if (ready && !figure) {
-        figure = node('figure'); figure.className = 'display-block-figure';
-        const img = node('img'); img.src = op.artifact.url; img.alt = block.title || block.body || labels.creation; img.loading = 'lazy'; img.decoding = 'async';
-        img.addEventListener('load', () => { presentationState = 'visible'; }, { once: true });
-        img.addEventListener('error', () => { presentationState = 'unavailable'; figure.replaceChildren(node('p', labels.missing)); }, { once: true });
+      if (ready) {
+        const key = op.artifact.sha256;
+        // A receipt proves the worker finished, not that the browser loaded the bytes.
+        // In particular, a receipt poll must not reset a load or error already observed.
+        if (figure && artifactKey === key) return false;
+        clearFigure();
+        artifactKey = key;
+        presentationState = 'loading';
+        status.textContent = labels.pendingProof;
+        const current = figure = node('figure'); current.className = 'display-block-figure';
+        const img = node('img'); img.alt = block.title || block.body || labels.creation; img.loading = 'lazy'; img.decoding = 'async';
+        img.addEventListener('load', () => {
+          if (disposed || figure !== current) return;
+          presentationState = 'visible';
+          status.textContent = labels.states.completed;
+        }, { once: true });
+        img.addEventListener('error', () => {
+          if (disposed || figure !== current) return;
+          presentationState = 'unavailable';
+          status.textContent = labels.missing;
+          current.replaceChildren();
+        }, { once: true });
         const download = node('a', labels.download); download.href = op.artifact.url; download.download = `image-${id}.png`;
-        figure.append(img, download); holder.append(figure);
+        img.src = op.artifact.url;
+        current.append(img, download); holder.append(current);
+        return false;
       }
-      if (!ready && figure) { figure.remove(); figure = null; }
-      return ACTIVE.has(op.state);
+      clearFigure();
+      const active = ACTIVE.has(op.state);
+      presentationState = active ? 'loading' : 'unavailable';
+      status.textContent = op.state === 'completed' ? labels.pendingProof : label(op.state);
+      return active;
     }
     async function poll() {
       if (disposed || holder.isConnected === false) return holder._dispose();
