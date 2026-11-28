@@ -70,9 +70,9 @@ test('a replacement timer is untouched by replayed Core mutations', async () => 
 
 test('existing active timer rows without revision keep their deadline through the upgrade', async () => {
   const now = 4_000_000, id = '00000000-0000-4000-8000-000000000001';
-  await mongoose.connection.collection('household_kitchen_timers').insertOne({
+  await mongoose.connection.collection('household_kitchen_timers').replaceOne({ _id: 'family' }, {
     _id: 'family', timerId: id, endsAt: now + 60_000, durationSeconds: 60, cancelledAt: null, alertClaimedAt: null
-  });
+  }, { upsert: true });
   const timer = createFamilyKitchenTimer({ mongoose, now: () => now });
   expect(await timer.read()).toMatchObject({ id, endsAt: now + 60_000 });
   const extended = await timer.perform({ action: 'extend', seconds: 15 }, { requestId: 'first-on-upgrade' });
