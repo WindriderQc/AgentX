@@ -1391,9 +1391,18 @@ describe('built-in Household surface on Core', () => {
     const ndjson = (res, done) => { let text = ''; res.setEncoding('utf8'); res.on('data', chunk => { text += chunk; }); res.on('end', () => done(null, text)); };
     try {
       const id = (await request(app).post(base).send({ packId: 'kidx_nestor', modeId: 'family', scopeId: 'family', backend: 'agentx' }).expect(201)).body.data.session.sessionId;
+      const ambiguous = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Montre-moi une girafe' }).expect(200);
+      expect(ambiguous.body.data.reply.text).toContain('Dans nos photos ou sur le Web');
+      expect(searches).toHaveLength(0);
+      const chosen = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Sur le Web' }).expect(200);
+      expect(chosen.body.data.display[0]).toMatchObject({ source: 'web', status: 'found' });
+      expect(searches).toHaveLength(1);
+      expect(searches[0].searchParams.get('q')).toContain('girafe');
+
+      // A combined explanatory request still exercises model-authored display blocks.
       executeForTest.mockResolvedValueOnce({ ok: true, metadata: { model: 'synthetic' }, body: { response:
         'Je te montre une girafe! <show kind="image" source="web" title="Une girafe">girafe savane</show> Elle mange des feuilles.' } });
-      const streamed = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Montre-moi une girafe', stream: true })
+      const streamed = await request(app).post(`${base}/${id}/turns/text`).send({ text: 'Explique-moi la vie des girafes avec une image du Web.', stream: true })
         .buffer(true).parse(ndjson).expect(200);
       const events = streamed.body.split('\n').filter(Boolean).map(line => JSON.parse(line));
       expect(executeForTest.mock.calls.at(-1)[0].messages[0].content).toContain('<show kind="image" source="web"');
@@ -1401,7 +1410,8 @@ describe('built-in Household surface on Core', () => {
       const image = events.find(event => event.type === 'show').block;
       expect(image).toMatchObject({ kind: 'image', source: 'web', status: 'found',
         image: { url: 'https://images.example.test/giraffe.jpg', sourceLabel: 'Internet' } });
-      expect(searches[0].searchParams.get('safesearch')).toBe('2');
+      expect(searches).toHaveLength(2);
+      expect(searches[1].searchParams.get('safesearch')).toBe('2');
       expect(events.at(-1).data.display[0].status).toBe('found');
       const resumed = (await request(app).get(`${base}/${id}/history`).expect(200)).body.data;
       expect(resumed.turns[0].display[0]).toMatchObject({ kind: 'image', status: 'found', image: { url: 'https://images.example.test/giraffe.jpg' } });
