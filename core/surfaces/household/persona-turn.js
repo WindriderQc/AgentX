@@ -276,7 +276,7 @@ function createPersonaTurnHandler({
           event('status', { phase: 'activity', activity: { kind: 'member_addressed', agentId: member.agentId } });
         }
         if (backend === 'openclaw') await requireNativeAgent(entry.primaryWork ? 'main' : agentIdFor(turnSession));
-        let history = [], interruptedContext = '', mathContext = '', repairContext = '';
+        let history = [], interruptedContext = '', mathContext = '', repairContext = '', timerContext = '';
         const recoverInterrupted = backend === 'openclaw' && !member && personalVoice(session, 'voice');
         const recoverMath = pack.childSafe && !isLlmX;
         if (!picture && features.historyContext !== false && (recoverMath || backend === 'agentx' || !turnSession.agentSessionKey || attachmentStore || recoverInterrupted)) {
@@ -286,7 +286,7 @@ function createPersonaTurnHandler({
             history = sessionHistoryMessages(require('./spoken-consultation').followupHistory(rows, session, memberWork, backend, req.body?.channel, conversationEnv), pack, backend === 'agentx' ? { turnCount: session.turnCount || 0 } : {});
             if (recoverInterrupted) interruptedContext = interruptedRequestContext(rows);
             if (recoverMath) mathContext = mathPictureContext(rows);
-            if (pack.id === VOIX_FAMILY_PACK_ID && !isLlmX) repairContext = familyRepairContext(rows, userText);
+            if (pack.id === VOIX_FAMILY_PACK_ID && !isLlmX) { repairContext = familyRepairContext(rows, userText); timerContext = require('./family-timer-tool').previousTimerReceipt(rows.find(row => row.outcome !== 'pending')); }
           }
           catch { return fail(res, 503, 'Conversation history is unavailable; no out-of-context answer was generated.', 'VOICE_PERSONA_HISTORY_UNAVAILABLE'); }
         }
@@ -391,7 +391,7 @@ function createPersonaTurnHandler({
         if (entry.workId) await conversationWorks.prepare(entry.workId, turnContext);
         const acceptedTaskWork = entry.workId ? await conversationWorks.taskAcceptance?.(entry.workId) : null;
         const acceptedNativeWork = entry.workId ? await conversationWorks.nativeAcceptance?.(entry.workId) : null;
-        const currentDirective = picture ? '' : [turnDirective(context), pack.id === VOIX_FAMILY_PACK_ID ? familyPages.directive(entry.familyPage, userText) : '', pack.childSafe && !clipPlayer ? 'This client cannot play audio clips. If asked to play one, explain the limitation.' : '', repairContext ? familyRepairDirective : '', acceptedTaskWork
+        const currentDirective = picture ? '' : [turnDirective(context), familyTools?.names.includes('family_kitchen_timer') ? timerContext : '', pack.id === VOIX_FAMILY_PACK_ID ? familyPages.directive(entry.familyPage, userText) : '', pack.childSafe && !clipPlayer ? 'This client cannot play audio clips. If asked to play one, explain the limitation.' : '', repairContext ? familyRepairDirective : '', acceptedTaskWork
           ? 'Core has already accepted this current personal task lookup. Its verified intake is ' + JSON.stringify(acceptedTaskWork)
             + '. Give a short acknowledgment and keep handling any other parts of the request with your existing capabilities. This lookup belongs to the separate worker: no second dispatch, task-list call or agent discovery is needed. Acceptance is not task data or task completion.'
           : '', acceptedNativeWork?.mode === 'native'

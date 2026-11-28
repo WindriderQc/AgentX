@@ -69,12 +69,16 @@ test('Famille inference chooses the operation from the current dialogue, in text
   assert.ok(family.sent[0].tools.some(row => row.function.name === name));
   now += 15_000;
   const statusQuestion = 'Combien il reste?';
+  const statusCall = family.sent.length;
   assert.match((await say(statusQuestion)).reply.text, /1 minute et 45 secondes/);
+  assert.match(family.sent[statusCall].request, /immediately preceding exchange used the kitchen timer/);
   const beforeExtend = (await kitchenTimer.read()).endsAt;
   assert.equal((await say('Donne-nous encore deux minutes')).tools.receipts[0].outcome, 'extended');
   assert.equal((await kitchenTimer.read()).endsAt, beforeExtend + 120_000);
   await say('Parlons de la Station spatiale.');
+  const unrelatedCall = family.sent.length;
   const unrelated = await say(statusQuestion);
+  assert.doesNotMatch(family.sent[unrelatedCall].request, /immediately preceding exchange used the kitchen timer/);
   assert.match(unrelated.reply.text, /ISS/);
   assert.deepEqual(unrelated.tools.receipts, []);
   assert.equal((await kitchenTimer.read()).endsAt, beforeExtend + 120_000);
